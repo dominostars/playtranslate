@@ -25,7 +25,7 @@ class AnkiManager(private val context: Context) {
 
         private const val AUTHORITY = "com.ichi2.anki.flashcards"
         private const val FILE_PROVIDER_AUTHORITY = "com.playtranslate.fileprovider"
-        private const val MODEL_NAME = "PlayTranslate"
+        private const val MODEL_NAME = "PlayTranslate v003"
 
         /** AnkiDroid field separator (ASCII 31, unit separator) */
         private const val SEP = "\u001f"
@@ -109,14 +109,18 @@ class AnkiManager(private val context: Context) {
         val afmt = """{{Back}}"""
         val css = """
             @media(prefers-color-scheme:light){
-              .card{background-color:#ffffff;color:#1a1a1a}
-              .gl-secondary{color:#555555}
-              .gl-hint{color:#888888}
+              .card{background-color:#F0F0F0;color:#1C1C1C}
+              .gl-secondary{color:#505050}
+              .gl-hint{color:#909090}
+              .gl-hl{color:#B34700}
+              .gl-hl-bg{background:#B3470026}
             }
             @media(prefers-color-scheme:dark){
-              .card{background-color:#1a1a1a;color:#efefef}
-              .gl-secondary{color:#aaaaaa}
-              .gl-hint{color:#888888}
+              .card{background-color:#1A1A1A;color:#EFEFEF}
+              .gl-secondary{color:#A0A0A0}
+              .gl-hint{color:#606060}
+              .gl-hl{color:#E8C07A}
+              .gl-hl-bg{background:#E8C07A26}
             }
         """.trimIndent().replace("\n", " ")
 

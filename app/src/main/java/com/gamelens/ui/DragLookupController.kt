@@ -51,6 +51,7 @@ class DragLookupController(
     private var screenshotPath: String? = null
     private var currentSentence: String? = null
     private var lastSentSentence: String? = null
+    private var wordLookupJob: Job? = null
 
     // Hold-still detection with wobble tolerance
     private var anchorX = 0f
@@ -319,6 +320,7 @@ class DragLookupController(
         val sentence = extractSentence(groupText, hitLine.text, matchedSurface, matchedIdx)
 
         currentSentence = sentence
+        prefetchWordLookups(sentence)
 
         withContext(Dispatchers.Main) {
             showPopup(entry, wordCenterX, fingerY)
@@ -462,6 +464,23 @@ class DragLookupController(
         return groupText.substring(sentenceStart, sentenceEnd).trim()
     }
 
+    private fun prefetchWordLookups(sentence: String) {
+        val cache = LastSentenceCache
+        // Skip if the cache already has results for a text containing this sentence
+        if (cache.original != null && cache.wordResults != null
+            && cache.original!!.contains(sentence)) return
+        val service = PlayTranslateAccessibilityService.instance ?: return
+        wordLookupJob?.cancel()
+        wordLookupJob = scope.launch {
+            val results = LastSentenceCache.lookupWords(service, sentence)
+            // Only write cache if this sentence is still current
+            if (currentSentence == sentence) {
+                cache.original = sentence
+                cache.wordResults = results
+            }
+        }
+    }
+
     private fun sendLineToMainApp(lineText: String) {
         val service = PlayTranslateAccessibilityService.instance ?: return
         if (Prefs.isSingleScreen(service)) return  // only in dual-screen mode
@@ -492,16 +511,15 @@ class DragLookupController(
             }
             .joinToString("\n")
 
-        // Use cached sentence data from main app if it matches the current sentence
         val cache = LastSentenceCache
         val sentenceOrig = currentSentence
-        val hasCachedContext = sentenceOrig != null && cache.original != null
-            && cache.original!!.contains(sentenceOrig)
+        val hasCachedTranslation = sentenceOrig != null && cache.original != null
+            && cache.original!!.contains(sentenceOrig) && cache.translation != null
 
         popup.dismiss()
 
-        // If we have no cached translation, translate now via CaptureService
-        if (!hasCachedContext && sentenceOrig != null) {
+        if (!hasCachedTranslation && sentenceOrig != null) {
+            // Need to translate; word lookups are already prefetching in background
             scope.launch {
                 val translation = try {
                     CaptureService.instance?.translateOnce(sentenceOrig)?.first
@@ -509,14 +527,18 @@ class DragLookupController(
                     Log.e(TAG, "Translation for Anki failed", e)
                     null
                 }
+                // Wait for prefetch to finish before launching
+                wordLookupJob?.join()
+                cache.translation = translation
                 val intent = buildAnkiIntent(service, word, reading, pos, definition,
-                    sentenceOrig, translation)
+                    entry.freqScore, cache.original ?: sentenceOrig, translation)
                 service.startActivity(intent)
             }
         } else {
             val intent = buildAnkiIntent(service, word, reading, pos, definition,
-                if (hasCachedContext) cache.original else sentenceOrig,
-                if (hasCachedContext) cache.translation else null)
+                entry.freqScore,
+                if (hasCachedTranslation) cache.original else sentenceOrig,
+                if (hasCachedTranslation) cache.translation else null)
             service.startActivity(intent)
         }
     }
@@ -524,6 +546,7 @@ class DragLookupController(
     private fun buildAnkiIntent(
         context: android.content.Context,
         word: String, reading: String, pos: String, definition: String,
+        freqScore: Int,
         sentenceOriginal: String?, sentenceTranslation: String?
     ): Intent = Intent(context, WordAnkiReviewActivity::class.java).apply {
         flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -531,6 +554,7 @@ class DragLookupController(
         putExtra(WordAnkiReviewActivity.EXTRA_READING, reading)
         putExtra(WordAnkiReviewActivity.EXTRA_POS, pos)
         putExtra(WordAnkiReviewActivity.EXTRA_DEFINITION, definition)
+        putExtra(WordAnkiReviewActivity.EXTRA_FREQ_SCORE, freqScore)
         putExtra(WordAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, screenshotPath)
         if (sentenceOriginal != null) {
             putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_ORIGINAL, sentenceOriginal)

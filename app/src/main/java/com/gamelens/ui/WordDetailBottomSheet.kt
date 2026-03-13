@@ -161,6 +161,7 @@ class WordDetailBottomSheet : DialogFragment() {
 
         WordAnkiReviewSheet.newInstance(
             word, reading, pos, definition, screenshotPath,
+            freqScore = entry.freqScore,
             sentenceOriginal = sentenceOriginal,
             sentenceTranslation = sentenceTranslation,
             sentenceWordResults = sentenceWordResults

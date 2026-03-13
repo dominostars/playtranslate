@@ -52,3 +52,4 @@ fun Fragment.loadAnkiDecksInto(
         onLoaded(entries)
     }
 }
+

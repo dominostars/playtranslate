@@ -136,4 +136,6 @@
     <string name="label_screenshot">Screenshot</string>
     <string name="anki_mode_sentence">Sentence</string>
     <string name="anki_mode_word">Word</string>
+    <string name="anki_bold_target_word">Bold target word in sentence</string>
+    <string name="anki_bold_target_word_named">Bold \"%1$s\" in sentence</string>
 </resources>

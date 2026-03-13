@@ -354,9 +354,12 @@ class TranslationResultFragment : Fragment() {
             val romajiDeferred = async { buildRomaji(text) }
 
             val ctx = context ?: return@launch
-            val tokens = withContext(Dispatchers.IO) {
-                DictionaryManager.get(ctx.applicationContext).tokenize(text)
+            val allPairs = withContext(Dispatchers.IO) {
+                DictionaryManager.get(ctx.applicationContext).tokenizeWithSurfaces(text)
             }
+            val seen = mutableSetOf<String>()
+            val tokensWithSurface = allPairs.filter { seen.add(it.second) }
+            val tokens = tokensWithSurface.map { it.second }
 
             if (tokens.isEmpty()) {
                 tvMainWordsLoading.visibility = View.GONE
@@ -371,6 +374,7 @@ class TranslationResultFragment : Fragment() {
             }
 
             val inflater = LayoutInflater.from(context)
+            val surfaceByToken = tokensWithSurface.associate { it.second to it.first }
             val rows = tokens.map { word ->
                 val row = inflater.inflate(R.layout.item_word_lookup, mainWordsContainer, false)
                 row.findViewById<TextView>(R.id.tvItemWord).text = word
@@ -380,6 +384,7 @@ class TranslationResultFragment : Fragment() {
             }
 
             val resultsArr = arrayOfNulls<Pair<String, Triple<String, String, Int>>>(rows.size)
+            val surfaceArr = arrayOfNulls<Pair<String, String>>(rows.size)
 
             supervisorScope {
                 rows.forEachIndexed { idx, (word, row) ->
@@ -429,6 +434,10 @@ class TranslationResultFragment : Fragment() {
                                 )
                             }
                             resultsArr[idx] = Pair(displayWord, Triple(reading, meaning, freqScore))
+                            val surface = surfaceByToken[word]
+                            if (surface != null && surface != displayWord) {
+                                surfaceArr[idx] = Pair(displayWord, surface)
+                            }
                         } else {
                             mainWordsContainer.removeView(row)
                         }
@@ -439,6 +448,7 @@ class TranslationResultFragment : Fragment() {
             resultsArr.filterNotNull().forEach { (dw, rmt) ->
                 mainWordResults[dw] = rmt
             }
+            val surfaces = surfaceArr.filterNotNull().toMap()
             tvMainWordsLoading.visibility = View.GONE
             tvNoWords.visibility = if (mainWordResults.isEmpty()) View.VISIBLE else View.GONE
             btnMainAddToAnki.isEnabled = true
@@ -446,6 +456,7 @@ class TranslationResultFragment : Fragment() {
             LastSentenceCache.original = lastResult?.originalText
             LastSentenceCache.translation = lastResult?.translatedText
             LastSentenceCache.wordResults = mainWordResults.toMap()
+            LastSentenceCache.surfaceForms = surfaces
 
             val romaji = romajiDeferred.await()
             if (romaji.isNotBlank() && romaji != text) {

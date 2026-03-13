@@ -1,14 +1,14 @@
 package com.gamelens
 
 import android.content.Context
-import android.util.TypedValue
 import androidx.annotation.AttrRes
 
 /** Resolves a theme colour attribute to an ARGB int. */
 fun Context.themeColor(@AttrRes attr: Int): Int {
-    val tv = TypedValue()
-    theme.resolveAttribute(attr, tv, true)
-    return tv.data
+    val a = obtainStyledAttributes(intArrayOf(attr))
+    val color = a.getColor(0, 0)
+    a.recycle()
+    return color
 }
 
 /** Returns the correct full-screen dialog theme for the user's selected palette. */

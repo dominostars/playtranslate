@@ -29,6 +29,7 @@ class WordAnkiReviewActivity : AppCompatActivity() {
         val reading = intent.getStringExtra(EXTRA_READING) ?: ""
         val pos = intent.getStringExtra(EXTRA_POS) ?: ""
         val definition = intent.getStringExtra(EXTRA_DEFINITION) ?: ""
+        val freqScore = intent.getIntExtra(EXTRA_FREQ_SCORE, 0)
         val screenshotPath = intent.getStringExtra(EXTRA_SCREENSHOT_PATH)
         val sentenceOriginal = intent.getStringExtra(EXTRA_SENTENCE_ORIGINAL)
         val sentenceTranslation = intent.getStringExtra(EXTRA_SENTENCE_TRANSLATION)
@@ -53,18 +54,19 @@ class WordAnkiReviewActivity : AppCompatActivity() {
             && LastSentenceCache.original == sentenceOriginal
         ) LastSentenceCache.wordResults else null
 
-        showReviewSheet(word, reading, pos, definition, screenshotPath,
+        showReviewSheet(word, reading, pos, definition, freqScore, screenshotPath,
             sentenceOriginal, sentenceTranslation, cachedWordResults)
     }
 
     private fun showReviewSheet(
         word: String, reading: String, pos: String,
-        definition: String, screenshotPath: String?,
+        definition: String, freqScore: Int, screenshotPath: String?,
         sentenceOriginal: String?, sentenceTranslation: String?,
         sentenceWordResults: Map<String, Triple<String, String, Int>>? = null
     ) {
         val sheet = WordAnkiReviewSheet.newInstance(
             word, reading, pos, definition, screenshotPath,
+            freqScore = freqScore,
             sentenceOriginal = sentenceOriginal,
             sentenceTranslation = sentenceTranslation,
             sentenceWordResults = sentenceWordResults
@@ -90,6 +92,7 @@ class WordAnkiReviewActivity : AppCompatActivity() {
         const val EXTRA_POS = "extra_pos"
         const val EXTRA_DEFINITION = "extra_definition"
         const val EXTRA_SCREENSHOT_PATH = "extra_screenshot_path"
+        const val EXTRA_FREQ_SCORE = "extra_freq_score"
         const val EXTRA_SENTENCE_ORIGINAL = "extra_sentence_original"
         const val EXTRA_SENTENCE_TRANSLATION = "extra_sentence_translation"
     }
