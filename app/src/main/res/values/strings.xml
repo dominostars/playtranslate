@@ -114,6 +114,8 @@
     <string name="btn_reveal_translation">Show Translation</string>
     <string name="settings_hide_translation">Hide translation</string>
     <string name="settings_hide_translation_hint">Skip automatic translation. Tap "Show Translation" on the results screen to see it on demand.</string>
+    <string name="settings_show_transliteration">Show transliteration</string>
+    <string name="settings_show_transliteration_hint">Display romanized reading below the original text.</string>
 
     <!-- Anki integration -->
     <string name="section_anki_deck">Anki Deck</string>

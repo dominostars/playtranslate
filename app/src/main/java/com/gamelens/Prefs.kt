@@ -66,6 +66,10 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_HIDE_TRANSLATION, false)
         set(v) = sp.edit().putBoolean(KEY_HIDE_TRANSLATION, v).apply()
 
+    var showTransliteration: Boolean
+        get() = sp.getBoolean(KEY_SHOW_TRANSLITERATION, false)
+        set(v) = sp.edit().putBoolean(KEY_SHOW_TRANSLITERATION, v).apply()
+
     /** Capture method chosen during onboarding: "" = not set, "accessibility", "media_projection" */
     var captureMethod: String
         get() = sp.getString(KEY_CAPTURE_METHOD, "") ?: ""
@@ -169,6 +173,7 @@ class Prefs(context: Context) {
         private const val KEY_OVERLAY_ICON_EDGE      = "overlay_icon_edge"
         private const val KEY_OVERLAY_ICON_FRACTION  = "overlay_icon_fraction"
         private const val KEY_SUPPRESS_TRANSITION            = "suppress_next_transition"
+        private const val KEY_SHOW_TRANSLITERATION             = "show_transliteration"
         private const val KEY_DEBUG_FORCE_SINGLE_SCREEN      = "debug_force_single_screen"
         private const val KEY_DEBUG_SHOW_OCR_BOXES           = "debug_show_ocr_boxes"
 

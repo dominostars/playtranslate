@@ -272,6 +272,16 @@ class SettingsBottomSheet : DialogFragment() {
             switchHideTranslation.toggle()
         }
 
+        // ── Show transliteration (auto-save on toggle) ──────────────────
+        val switchShowTransliteration = view.findViewById<Switch>(R.id.switchShowTransliteration)
+        switchShowTransliteration.isChecked = prefs.showTransliteration
+        switchShowTransliteration.setOnCheckedChangeListener { _, checked ->
+            prefs.showTransliteration = checked
+        }
+        view.findViewById<View>(R.id.rowShowTransliteration).setOnClickListener {
+            switchShowTransliteration.toggle()
+        }
+
         // ── Theme picker ──────────────────────────────────────────────────
         buildThemePicker(llThemePicker, prefs)
 
