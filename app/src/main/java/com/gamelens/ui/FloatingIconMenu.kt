@@ -4,11 +4,14 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
 import android.widget.Button
@@ -22,25 +25,49 @@ import com.gamelens.R
  * Full-screen overlay that dims the screen and shows a small popup menu
  * next to the floating icon. Tapping outside the menu dismisses it.
  * When the hide button is tapped, shows a confirmation dialog.
+ *
+ * Also supports drag-to-select: dragging outside the menu draws a selection
+ * rectangle and fires [onRegionSelected] with fractional coordinates.
  */
 class FloatingIconMenu(context: Context) : FrameLayout(context) {
 
     private val dp = resources.displayMetrics.density
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     var onHideIcon: (() -> Unit)? = null
     var onDismiss: (() -> Unit)? = null
+    var onRegionSelected: ((top: Float, bottom: Float, left: Float, right: Float) -> Unit)? = null
     var isSingleScreen: Boolean = false
 
     private val dimPaint = Paint().apply {
-        color = Color.argb(100, 0, 0, 0)
+        color = Color.argb(170, 0, 0, 0)
+    }
+    private val clearPaint = Paint().apply {
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+    }
+    private val selectionStrokePaint = Paint().apply {
+        style = Paint.Style.STROKE
+        color = Color.WHITE
+        strokeWidth = 3f * dp
+        isAntiAlias = true
     }
 
     private val menuCard: LinearLayout
+    private val instructionText: TextView
     private var confirmDialog: LinearLayout? = null
     private val appName: String = context.getString(R.string.app_name)
 
+    // ── Drag state ────────────────────────────────────────────────────────
+    private var isDragging = false
+    private var dragStartX = 0f
+    private var dragStartY = 0f
+    private var selectionRect: RectF? = null
+    private var potentialDrag = false
+
     init {
         setWillNotDraw(false)
+        // Must use LAYER_TYPE_SOFTWARE or HARDWARE for saveLayer / PorterDuff to work
+        setLayerType(LAYER_TYPE_HARDWARE, null)
 
         val btnSize = (44 * dp).toInt()
 
@@ -76,24 +103,128 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         ))
+
+        // Instruction text at top center
+        instructionText = TextView(context).apply {
+            text = "Drag finger to capture a specific area"
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setPadding(
+                (16 * dp).toInt(), (16 * dp).toInt(),
+                (16 * dp).toInt(), (8 * dp).toInt()
+            )
+        }
+        addView(instructionText, LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        })
     }
 
     override fun onDraw(canvas: Canvas) {
-        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), dimPaint)
+        val sel = selectionRect
+        if (sel != null && isDragging) {
+            // Draw dim everywhere, then punch a transparent hole for the selection
+            val sc = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), dimPaint)
+            canvas.drawRect(sel, clearPaint)
+            canvas.restoreToCount(sc)
+            // White stroke border around selection
+            canvas.drawRect(sel, selectionStrokePaint)
+        } else {
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), dimPaint)
+        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-            // Check if touch is outside the active card (menu or dialog)
-            val activeView: View = confirmDialog ?: menuCard
-            val loc = IntArray(2)
-            activeView.getLocationOnScreen(loc)
-            val rect = RectF(
-                loc[0].toFloat(), loc[1].toFloat(),
-                loc[0].toFloat() + activeView.width, loc[1].toFloat() + activeView.height
-            )
-            if (!rect.contains(event.rawX, event.rawY)) {
+        // Don't intercept while confirmation dialog is showing
+        if (confirmDialog != null) {
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                val activeView = confirmDialog!!
+                val loc = IntArray(2)
+                activeView.getLocationOnScreen(loc)
+                val rect = RectF(
+                    loc[0].toFloat(), loc[1].toFloat(),
+                    loc[0].toFloat() + activeView.width, loc[1].toFloat() + activeView.height
+                )
+                if (!rect.contains(event.rawX, event.rawY)) {
+                    onDismiss?.invoke()
+                    return true
+                }
+            }
+            return super.onTouchEvent(event)
+        }
+
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                // Check if touch is on the menu card
+                val loc = IntArray(2)
+                menuCard.getLocationOnScreen(loc)
+                val menuRect = RectF(
+                    loc[0].toFloat(), loc[1].toFloat(),
+                    loc[0].toFloat() + menuCard.width, loc[1].toFloat() + menuCard.height
+                )
+                if (menuRect.contains(event.rawX, event.rawY)) {
+                    return super.onTouchEvent(event)
+                }
+                // Outside menu — potential drag
+                potentialDrag = true
+                dragStartX = event.x
+                dragStartY = event.y
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (!potentialDrag) return super.onTouchEvent(event)
+                val dx = event.x - dragStartX
+                val dy = event.y - dragStartY
+                if (!isDragging && (dx * dx + dy * dy > touchSlop * touchSlop)) {
+                    isDragging = true
+                    // Hide menu card and instruction during drag
+                    menuCard.visibility = View.GONE
+                    instructionText.visibility = View.GONE
+                }
+                if (isDragging) {
+                    val left   = minOf(dragStartX, event.x)
+                    val top    = minOf(dragStartY, event.y)
+                    val right  = maxOf(dragStartX, event.x)
+                    val bottom = maxOf(dragStartY, event.y)
+                    selectionRect = RectF(left, top, right, bottom)
+                    invalidate()
+                }
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                if (isDragging) {
+                    val sel = selectionRect
+                    if (sel != null && sel.width() > touchSlop && sel.height() > touchSlop) {
+                        val w = width.toFloat()
+                        val h = height.toFloat()
+                        if (w > 0 && h > 0) {
+                            onRegionSelected?.invoke(
+                                sel.top / h,
+                                sel.bottom / h,
+                                sel.left / w,
+                                sel.right / w
+                            )
+                        }
+                    }
+                    isDragging = false
+                    potentialDrag = false
+                    selectionRect = null
+                    return true
+                }
+                // Tap outside menu → dismiss
+                potentialDrag = false
                 onDismiss?.invoke()
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                isDragging = false
+                potentialDrag = false
+                selectionRect = null
+                invalidate()
                 return true
             }
         }
@@ -105,6 +236,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private fun showConfirmDialog() {
         // Hide the menu button
         menuCard.visibility = View.GONE
+        instructionText.visibility = View.GONE
 
         val dialog = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL

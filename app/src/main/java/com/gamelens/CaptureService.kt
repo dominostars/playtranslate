@@ -18,6 +18,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -352,9 +354,10 @@ class CaptureService : Service() {
             val screenshotPath = saveScreenshotToCache(raw)
             raw.recycle()
 
+            val liveGroupTexts = ocrResult.groupTexts
             liveTranslationJob = serviceScope.launch {
                 try {
-                    val (translated, note) = if (skipTranslation) Pair("", null) else translate(newText)
+                    val (translated, note) = if (skipTranslation) Pair("", null) else translateGroups(liveGroupTexts)
                     if (gen != captureGeneration) return@launch
                     val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
                     onResult?.invoke(
@@ -451,7 +454,7 @@ class CaptureService : Service() {
                 Pair("", null)
             } else {
                 onStatusUpdate?.invoke(getString(R.string.status_translating))
-                translate(ocrResult.fullText)
+                translateGroups(ocrResult.groupTexts)
             }
 
             // Discard stale results if a newer capture was started while this one
@@ -474,6 +477,23 @@ class CaptureService : Service() {
             Log.e(TAG, "Capture cycle failed: ${e.message}", e)
             onError?.invoke(e.message ?: "Unknown error")
         }
+    }
+
+    /**
+     * Translates each group in parallel and joins results with double-newline.
+     * Returns the combined translated text and an optional note (from ML Kit fallback).
+     */
+    private suspend fun translateGroups(groupTexts: List<String>): Pair<String, String?> {
+        if (groupTexts.size <= 1) {
+            return translate(groupTexts.firstOrNull() ?: "")
+        }
+        val results = groupTexts.map { group ->
+            serviceScope.async { translate(group) }
+        }.awaitAll()
+        val translated = results.joinToString("\n\n") { it.first }
+        // Surface a note if any group fell back to ML Kit
+        val note = results.mapNotNull { it.second }.firstOrNull()
+        return Pair(translated, note)
     }
 
     /** On-demand translation for the "Show Translation" button when hideTranslation is active. */

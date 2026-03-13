@@ -42,6 +42,14 @@
             android:excludeFromRecents="true"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- Standalone results host for region capture on single-screen / backgrounded. -->
+        <activity
+            android:name=".ui.TranslationResultActivity"
+            android:exported="false"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.PlayTranslate" />
+
         <!-- Foreground service that owns the OCR + translation pipeline. -->
         <service
             android:name=".CaptureService"

@@ -52,6 +52,8 @@ class OcrManager {
         val fullText: String,
         /** Flat list of segments (one per TextElement) for tappable display. */
         val segments: List<TextSegment>,
+        /** Text of each OCR group, for per-group translation. */
+        val groupTexts: List<String> = emptyList(),
         /** Debug bounding boxes at block/line/element level, or null if debug is off. */
         val debugBoxes: OcrDebugBoxes? = null
     )
@@ -91,28 +93,34 @@ class OcrManager {
 
         val segments = mutableListOf<TextSegment>()
         val fullTextBuilder = StringBuilder()
+        val groupTexts = mutableListOf<String>()
 
         groups.forEachIndexed { gi, group ->
             if (gi > 0) {
                 fullTextBuilder.append(" ")  // space for translation (no paragraph breaks)
                 segments += TextSegment("\n\n", isSeparator = true)
             }
+            val groupBuilder = StringBuilder()
             // Blocks within the same group are continuous text (merged by proximity).
             // No separator between them — they flow as one sentence.
             group.forEach { block ->
                 block.lines.forEachIndexed { li, line ->
                     if (li > 0) {
                         fullTextBuilder.append(" ")  // space for translation (no line breaks)
+                        groupBuilder.append(" ")
                         segments += TextSegment("\n", isSeparator = true)
                     }
                     line.elements.forEach { element ->
                         if (!isUiDecoration(element.text)) {
                             fullTextBuilder.append(element.text)
+                            groupBuilder.append(element.text)
                             segments += TextSegment(element.text)
                         }
                     }
                 }
             }
+            val gt = groupBuilder.toString().trim()
+            if (gt.isNotBlank()) groupTexts += gt
         }
 
         val fullText = fullTextBuilder.toString().trim()
@@ -147,7 +155,7 @@ class OcrManager {
             OcrDebugBoxes(blockBoxes, lineBoxes, elementBoxes, groupBoxes, scaleFactor)
         } else null
 
-        return OcrResult(fullText, segments, debugBoxes)
+        return OcrResult(fullText, segments, groupTexts, debugBoxes)
     }
 
     /**
@@ -213,11 +221,11 @@ class OcrManager {
      *
      * Blocks are processed in top-to-bottom order. A block is merged into the
      * current group when ALL of the following hold:
-     *  1. Its median line height is within 15 % of the previous block's height.
+     *  1. Its median line height is within 20 % of the previous block's height.
      *  2. The vertical gap between them is ≤ 2.5× the larger line height.
      *  3. The current group's text does not end with sentence-final punctuation
      *     — those indicate a complete sentence boundary.
-     *  4. Horizontal alignment: the block's left edge is within half a line height
+     *  4. Horizontal alignment: the block's left edge is within one line height
      *     of the group's left edge, OR the right edges are similarly aligned.
      */
     private fun groupBlocksBySize(blocks: List<Text.TextBlock>): List<List<Text.TextBlock>> {
@@ -243,7 +251,7 @@ class OcrManager {
                 val sizeMatch = prevH > 0 && run {
                     val lo = minOf(blockH, prevH)
                     val hi = maxOf(blockH, prevH)
-                    (hi - lo).toDouble() / lo <= 0.10
+                    (hi - lo).toDouble() / lo <= 0.20
                 }
                 val closeEnough = refH > 0 && gap <= (refH * 2.5f).toInt()
                 val noSentenceEnd = run {
@@ -251,8 +259,8 @@ class OcrManager {
                     tail.isEmpty() || tail.last() !in SENTENCE_END_CHARS
                 }
 
-                // Horizontal alignment: left edges or right edges within half a line height
-                val alignTolerance = refH / 2
+                // Horizontal alignment: left edges or right edges within one line height
+                val alignTolerance = refH
                 val groupLeft  = lastGroup.mapNotNull { it.boundingBox?.left }.minOrNull() ?: 0
                 val groupRight = lastGroup.mapNotNull { it.boundingBox?.right }.maxOrNull() ?: 0
                 val leftAligned  = kotlin.math.abs(blockBox.left - groupLeft) <= alignTolerance
@@ -288,7 +296,9 @@ class OcrManager {
         val text: String,
         val bounds: Rect,
         /** Index of the group this line belongs to (lines in the same group are combined text). */
-        val groupIndex: Int = 0
+        val groupIndex: Int = 0,
+        /** Pre-built combined text of the entire group this line belongs to (same logic as [recognise]). */
+        val groupText: String = text
     )
 
     /**
@@ -322,6 +332,21 @@ class OcrManager {
 
         val lines = mutableListOf<OcrLine>()
         groups.forEachIndexed { gi, group ->
+            // Build combined group text using the same logic as recognise():
+            // no separator between blocks, space between lines within a block.
+            val groupTextBuilder = StringBuilder()
+            group.forEach { block ->
+                block.lines.forEachIndexed { li, line ->
+                    if (li > 0) groupTextBuilder.append(" ")
+                    line.elements.forEach { element ->
+                        if (!isUiDecoration(element.text)) {
+                            groupTextBuilder.append(element.text)
+                        }
+                    }
+                }
+            }
+            val combinedGroupText = groupTextBuilder.toString().trim()
+
             for (block in group) {
                 for (line in block.lines) {
                     val b = line.boundingBox ?: continue
@@ -337,7 +362,8 @@ class OcrManager {
                             (b.right / scaleFactor).toInt(),
                             (b.bottom / scaleFactor).toInt()
                         ),
-                        groupIndex = gi
+                        groupIndex = gi,
+                        groupText = combinedGroupText
                     )
                 }
             }

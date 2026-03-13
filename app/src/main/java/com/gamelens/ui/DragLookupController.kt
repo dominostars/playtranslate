@@ -49,6 +49,7 @@ class DragLookupController(
     /** Path to the screenshot captured at drag start — used for Anki export. */
     private var screenshotPath: String? = null
     private var currentSentence: String? = null
+    private var lastSentSentence: String? = null
 
     // Hold-still detection with wobble tolerance
     private var anchorX = 0f
@@ -98,6 +99,7 @@ class DragLookupController(
      */
     fun onDragStart() {
         ocrLines = null
+        lastSentSentence = null
         ocrJob?.cancel()
         ocrJob = scope.launch {
             try {
@@ -308,17 +310,18 @@ class DragLookupController(
         Log.d(TAG, "Found: $matchedSurface ($lookupForm) → ${entry.slug}")
         lastWord = lookupForm
 
-        // Build the full group text and extract the sentence containing the matched word
-        val groupText = lines
-            .filter { it.groupIndex == hitLine.groupIndex }
-            .joinToString("") { it.text }
+        // Use the pre-built group text (same combination logic as the main OCR pipeline)
+        val groupText = hitLine.groupText
         val sentence = extractSentence(groupText, hitLine.text, matchedSurface, matchedIdx)
 
         currentSentence = sentence
 
         withContext(Dispatchers.Main) {
             showPopup(entry, wordCenterX, fingerY)
-            sendLineToMainApp(sentence)
+            if (sentence != lastSentSentence) {
+                lastSentSentence = sentence
+                sendLineToMainApp(sentence)
+            }
         }
         return true
     }
@@ -449,6 +452,7 @@ class DragLookupController(
     private fun sendLineToMainApp(lineText: String) {
         val service = PlayTranslateAccessibilityService.instance ?: return
         if (Prefs.isSingleScreen(service)) return  // only in dual-screen mode
+        if (!MainActivity.isInForeground) return    // don't foreground the app
         val intent = Intent(service, MainActivity::class.java).apply {
             action = MainActivity.ACTION_DRAG_SENTENCE
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP

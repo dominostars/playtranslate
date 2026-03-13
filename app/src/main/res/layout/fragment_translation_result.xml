@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Status / hint text (shown when idle or processing) -->
+    <LinearLayout
+        android:id="@+id/statusContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:paddingHorizontal="24dp"
+        android:visibility="visible">
+
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="@string/status_idle"
+            android:textColor="?attr/colorTextHint"
+            android:textSize="24sp" />
+
+        <TextView
+            android:id="@+id/tvStatusHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="@string/status_hold_hint"
+            android:textColor="?attr/colorTextHint"
+            android:textSize="24sp"
+            android:layout_marginTop="28dp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tvLiveHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:textColor="?attr/colorTextHint"
+            android:textSize="24sp"
+            android:layout_marginTop="28dp"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
+    <!-- Results scroll view (hidden until first translation) -->
+    <ScrollView
+        android:id="@+id/resultsContent"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="14dp"
+            android:paddingTop="56dp"
+            android:paddingBottom="8dp">
+
+            <!-- Translation section (hidden when hideTranslation pref is on) -->
+            <LinearLayout
+                android:id="@+id/translationSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <!-- TRANSLATION label -->
+                <TextView
+                    android:id="@+id/labelTranslation"
+                    style="@style/Widget.PlayTranslate.SectionLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="?attr/colorTextTranslation"
+                    android:text="@string/section_translation" />
+
+                <!-- Translation text -->
+                <TextView
+                    android:id="@+id/tvTranslation"
+                    style="@style/Widget.PlayTranslate.TranslationText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:layout_marginBottom="14dp" />
+
+                <!-- Inline warning shown when using offline/degraded translation -->
+                <TextView
+                    android:id="@+id/tvTranslationNote"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="?attr/colorTextHint"
+                    android:textSize="11sp"
+                    android:layout_marginTop="6dp"
+                    android:visibility="gone" />
+
+                <!-- Anki + Copy buttons for translation section, right-aligned -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="end"
+                    android:layout_marginBottom="10dp">
+
+                    <ImageButton
+                        android:id="@+id/btnMainAddToAnki"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:layout_marginEnd="16dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="Add to Anki"
+                        android:src="@drawable/ic_anki"
+                        android:tint="?attr/colorTextSecondary" />
+
+                    <ImageButton
+                        android:id="@+id/btnCopyTranslation"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="Copy translation"
+                        android:src="@drawable/ic_copy"
+                        android:tint="?attr/colorTextSecondary" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- Hidden-translation placeholder (shown when hideTranslation pref is on) -->
+            <LinearLayout
+                android:id="@+id/translationHiddenSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="14dp"
+                android:visibility="gone">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnRevealTranslation"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="8dp"
+                    android:text="@string/btn_reveal_translation" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnAnkiNoTranslation"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/btn_add_to_anki" />
+
+            </LinearLayout>
+
+            <!-- Divider between translation and original -->
+            <View
+                android:id="@+id/dividerMid"
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="?attr/colorBgDivider"
+                android:layout_marginBottom="10dp" />
+
+            <!-- ORIGINAL label — de-emphasised, secondary role -->
+            <TextView
+                android:id="@+id/labelOriginal"
+                style="@style/Widget.PlayTranslate.SectionLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/section_original" />
+
+            <!-- OCR text; tap opens editor -->
+            <com.gamelens.ui.ClickableTextView
+                android:id="@+id/tvOriginal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textSize="20sp"
+                android:textColor="?attr/colorTextHint"
+                android:lineSpacingMultiplier="1.4" />
+
+            <!-- Transliteration (romaji) shown below original text -->
+            <TextView
+                android:id="@+id/tvTransliteration"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="?attr/colorTextHint"
+                android:textSize="13sp"
+                android:layout_marginTop="2dp"
+                android:visibility="gone" />
+
+            <!-- Copy button for original text, right-aligned -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="end"
+                android:layout_marginBottom="10dp">
+
+                <ImageButton
+                    android:id="@+id/btnCopyOriginal"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Copy original"
+                    android:src="@drawable/ic_copy"
+                    android:tint="?attr/colorTextSecondary" />
+
+            </LinearLayout>
+
+            <!-- Divider before vocabulary -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="?attr/colorBgDivider"
+                android:layout_marginBottom="10dp" />
+
+            <!-- WORDS label -->
+            <TextView
+                style="@style/Widget.PlayTranslate.SectionLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/section_words"
+                android:layout_marginBottom="6dp" />
+
+            <TextView
+                android:id="@+id/tvMainWordsLoading"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/words_loading"
+                android:textColor="?attr/colorTextHint"
+                android:textSize="13sp"
+                android:layout_marginBottom="8dp"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/mainWordsContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <TextView
+                android:id="@+id/tvNoWords"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/words_none"
+                android:textColor="?attr/colorTextHint"
+                android:textSize="13sp"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
+    </ScrollView>
+
+</FrameLayout>

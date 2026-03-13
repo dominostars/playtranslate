@@ -48,6 +48,7 @@ import com.gamelens.ui.AnkiReviewBottomSheet
 import com.gamelens.ui.RegionPickerSheet
 import com.gamelens.ui.SettingsBottomSheet
 import com.gamelens.ui.LastSentenceCache
+import com.gamelens.ui.TranslationResultFragment
 import com.gamelens.ui.WordDetailBottomSheet
 import com.google.mlkit.nl.translate.TranslateLanguage
 import kotlinx.coroutines.async
@@ -58,17 +59,10 @@ import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationResultHost {
 
     // ── Views ─────────────────────────────────────────────────────────────
 
-    private lateinit var tvStatus: TextView
-    private lateinit var resultsContent: android.widget.ScrollView
-    private lateinit var tvOriginal: ClickableTextView
-    private lateinit var tvTranslation: TextView
-    private lateinit var tvTranslationNote: TextView
-    private lateinit var tvMainWordsLoading: TextView
-    private lateinit var mainWordsContainer: LinearLayout
     private lateinit var btnTranslate: MaterialButton
     private lateinit var btnCapturing: MaterialButton
     private lateinit var btnChangeRegion: Button
@@ -77,38 +71,22 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnLivePlay: ImageButton
     private lateinit var btnLivePause: ImageButton
     private lateinit var liveProgressRing: CircularProgressIndicator
-    private lateinit var btnCopyOriginal: ImageButton
-    private lateinit var btnCopyTranslation: ImageButton
-    private lateinit var btnMainAddToAnki: ImageButton
-    private lateinit var statusContainer: android.view.View
-    private lateinit var tvStatusHint: TextView
-    private lateinit var tvLiveHint: TextView
     private lateinit var liveButtonContainer: android.view.View
     private lateinit var onboardingContainer: View
     private lateinit var pageNotif: View
     private lateinit var pageA11y: View
     private lateinit var pageA11ySingle: View
-    private lateinit var labelOriginal: TextView
-    private lateinit var labelTranslation: TextView
-    private lateinit var tvNoWords: TextView
-    private lateinit var tvTransliteration: TextView
-    private lateinit var translationSection: android.widget.LinearLayout
-    private lateinit var translationHiddenSection: android.widget.LinearLayout
-    private lateinit var btnRevealTranslation: com.google.android.material.button.MaterialButton
-    private lateinit var btnAnkiNoTranslation: com.google.android.material.button.MaterialButton
-
-    private val romajiTransliterator by lazy {
-        try { android.icu.text.Transliterator.getInstance("Any-Latin; NFD; [:Nonspacing Mark:] Remove; NFC") }
-        catch (_: Exception) { null }
-    }
     private lateinit var editOverlay: android.widget.LinearLayout
     private lateinit var etEditOriginal: android.widget.EditText
 
-    private var wordLookupJob: Job? = null
     private var editTranslationJob: Job? = null
-    private val mainWordResults = mutableMapOf<String, Triple<String, String, Int>>()
     private var editTranslationManager: TranslationManager? = null
     private var wasKeyboardVisible = false
+
+    // ── Fragment ───────────────────────────────────────────────────────────
+
+    private val resultFragment: TranslationResultFragment?
+        get() = supportFragmentManager.findFragmentById(R.id.resultsContainer) as? TranslationResultFragment
 
     // ── Region quick-dropdown state ────────────────────────────────────────
     private var inDragMode = false
@@ -139,10 +117,11 @@ class MainActivity : AppCompatActivity() {
 
     private val prefs by lazy { Prefs(this) }
 
-    private var lastResult: TranslationResult? = null
     private var isLiveMode = false
     /** Non-null while a temporary "use once" custom region is active. Cleared when saved config is restored. */
     private var overrideRegionLabel: String? = null
+    /** Fractions for the current override region (set alongside overrideRegionLabel). */
+    private var overrideRegion: FloatArray? = null  // [top, bottom, left, right]
     /** True while programmatic scrollTo(0,0) is in progress to prevent auto-pause. */
     private var suppressScrollPause = false
 
@@ -172,8 +151,6 @@ class MainActivity : AppCompatActivity() {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             !shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
         ) {
-            // Permanently blocked — the system dialog will no longer appear.
-            // Send the user directly to the app's notification settings.
             startActivity(
                 Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
                     putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
@@ -205,6 +182,33 @@ class MainActivity : AppCompatActivity() {
         if (!granted) Toast.makeText(this, getString(R.string.anki_permission_denied), Toast.LENGTH_SHORT).show()
     }
 
+    // ── TranslationResultHost ─────────────────────────────────────────────
+
+    override fun getCaptureService(): CaptureService? = captureService
+
+    override fun onWordTapped(
+        word: String,
+        screenshotPath: String?,
+        sentenceOriginal: String?,
+        sentenceTranslation: String?,
+        wordResults: Map<String, Triple<String, String, Int>>
+    ) {
+        pauseLiveMode()
+        WordDetailBottomSheet.newInstance(
+            word,
+            screenshotPath,
+            sentenceOriginal = sentenceOriginal,
+            sentenceTranslation = sentenceTranslation,
+            sentenceWordResults = wordResults
+        ).show(supportFragmentManager, WordDetailBottomSheet.TAG)
+    }
+
+    override fun onInteraction() {
+        pauseLiveMode()
+    }
+
+    override fun getAnkiPermissionLauncher() = requestAnkiPermission
+
     // ── Lifecycle ─────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -234,17 +238,26 @@ class MainActivity : AppCompatActivity() {
             DictionaryManager.get(applicationContext).preload()
             Deinflector.preload()
         }
+
+        // Wire up the fragment's original-tapped listener for edit overlay
+        resultFragment?.setOnOriginalTappedListener { offset -> showEditOverlay(offset) }
     }
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
-        if (intent?.action == ACTION_DRAG_SENTENCE) {
-            handleDragSentence(intent)
+        when (intent?.action) {
+            ACTION_DRAG_SENTENCE -> handleDragSentence(intent)
+            ACTION_REGION_CAPTURE -> handleRegionCapture(intent)
         }
     }
 
     override fun onResume() {
         super.onResume()
+        isInForeground = true
+        // Re-wire service callbacks in case TranslationResultActivity overwrote them
+        if (serviceConnected) wireServiceCallbacks()
+        // Re-wire fragment listener after config change
+        resultFragment?.setOnOriginalTappedListener { offset -> showEditOverlay(offset) }
         PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
         checkOnboardingState()
         if (onboardingContainer.visibility == View.VISIBLE) return
@@ -256,6 +269,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
+        isInForeground = false
     }
 
     override fun onDestroy() {
@@ -270,13 +284,6 @@ class MainActivity : AppCompatActivity() {
     // ── Setup ─────────────────────────────────────────────────────────────
 
     private fun bindViews() {
-        tvStatus             = findViewById(R.id.tvStatus)
-        resultsContent       = findViewById(R.id.resultsContent)
-        tvOriginal           = findViewById(R.id.tvOriginal)
-        tvTranslation        = findViewById(R.id.tvTranslation)
-        tvTranslationNote    = findViewById(R.id.tvTranslationNote)
-        tvMainWordsLoading   = findViewById(R.id.tvMainWordsLoading)
-        mainWordsContainer   = findViewById(R.id.mainWordsContainer)
         btnTranslate         = findViewById(R.id.btnTranslate)
         btnCapturing         = findViewById(R.id.btnCapturing)
         btnChangeRegion      = findViewById(R.id.btnChangeRegion)
@@ -285,27 +292,13 @@ class MainActivity : AppCompatActivity() {
         btnLivePlay          = findViewById(R.id.btnLivePlay)
         btnLivePause         = findViewById(R.id.btnLivePause)
         liveProgressRing     = findViewById(R.id.liveProgressRing)
-        btnCopyOriginal      = findViewById(R.id.btnCopyOriginal)
-        btnCopyTranslation   = findViewById(R.id.btnCopyTranslation)
-        btnMainAddToAnki     = findViewById(R.id.btnMainAddToAnki)
-        statusContainer      = findViewById(R.id.statusContainer)
-        tvStatusHint         = findViewById(R.id.tvStatusHint)
-        tvLiveHint           = findViewById(R.id.tvLiveHint)
         liveButtonContainer  = findViewById(R.id.liveButtonContainer)
-        labelOriginal        = findViewById(R.id.labelOriginal)
-        labelTranslation     = findViewById(R.id.labelTranslation)
-        tvNoWords            = findViewById(R.id.tvNoWords)
-        tvTransliteration    = findViewById(R.id.tvTransliteration)
         onboardingContainer  = findViewById(R.id.onboardingContainer)
         pageNotif            = findViewById(R.id.pageNotif)
         pageA11y             = findViewById(R.id.pageA11y)
         pageA11ySingle       = findViewById(R.id.pageA11ySingle)
-        editOverlay              = findViewById(R.id.editOverlay)
-        etEditOriginal           = findViewById(R.id.etEditOriginal)
-        translationSection       = findViewById(R.id.translationSection)
-        translationHiddenSection = findViewById(R.id.translationHiddenSection)
-        btnRevealTranslation     = findViewById(R.id.btnRevealTranslation)
-        btnAnkiNoTranslation     = findViewById(R.id.btnAnkiNoTranslation)
+        editOverlay          = findViewById(R.id.editOverlay)
+        etEditOriginal       = findViewById(R.id.etEditOriginal)
     }
 
     private fun setupRegionButton() {
@@ -351,16 +344,8 @@ class MainActivity : AppCompatActivity() {
             }
             sheet.onTranslateOnce = { top, bottom, left, right, label ->
                 overrideRegionLabel = label
-                captureService?.configure(
-                    displayId             = prefs.captureDisplayId,
-                    sourceLang            = selectedSourceLang(),
-                    targetLang            = selectedTargetLang(),
-                    captureTopFraction    = top,
-                    captureBottomFraction = bottom,
-                    captureLeftFraction   = left,
-                    captureRightFraction  = right,
-                    regionLabel           = label
-                )
+                overrideRegion = floatArrayOf(top, bottom, left, right)
+                applyOverrideIfActive()
                 updateRegionButton()
                 withAccessibility { captureService?.captureOnce() }
             }
@@ -398,7 +383,7 @@ class MainActivity : AppCompatActivity() {
         btnLivePause.visibility = View.VISIBLE
         btnClear.visibility = View.GONE
         updateRegionButton()
-        showStatus(searchingStatusText())
+        resultFragment?.showStatus(searchingStatusText())
         ensureConfigured()
         captureService?.startLive()
     }
@@ -410,11 +395,11 @@ class MainActivity : AppCompatActivity() {
         liveProgressRing.visibility = View.GONE
         captureService?.stopLive()
         updateRegionButton()
-        if (resultsContent.visibility == View.VISIBLE) {
+        val frag = resultFragment
+        if (frag != null && frag.isShowingResults) {
             btnClear.visibility = View.VISIBLE
         } else {
-            // Status screen was showing (e.g. "Searching for…") — revert to idle hints
-            showStatus(getString(R.string.status_idle))
+            frag?.showStatus(getString(R.string.status_idle))
         }
     }
 
@@ -425,7 +410,10 @@ class MainActivity : AppCompatActivity() {
     private fun setupButtons() {
         btnChangeRegion.setOnClickListener { showRegionPickerSheet() }
         btnTranslate.setOnClickListener {
-            withAccessibility { captureService?.captureOnce() }
+            withAccessibility {
+                applyOverrideIfActive()
+                captureService?.captureOnce()
+            }
         }
         btnCapturing.setOnClickListener { showRegionPickerSheet() }
 
@@ -435,97 +423,9 @@ class MainActivity : AppCompatActivity() {
         btnLivePause.setOnClickListener { toggleLiveMode() }
 
         btnClear.setOnClickListener {
-            showStatus(getString(R.string.status_idle))
+            resultFragment?.showStatus(getString(R.string.status_idle))
+            btnClear.visibility = View.GONE
         }
-
-        btnCopyOriginal.setOnClickListener {
-            copyToClipboard(tvOriginal.text?.toString() ?: return@setOnClickListener)
-        }
-
-        btnCopyTranslation.setOnClickListener {
-            copyToClipboard(tvTranslation.text?.toString() ?: return@setOnClickListener)
-        }
-
-        btnMainAddToAnki.setOnClickListener {
-            pauseLiveMode()
-            val result = lastResult ?: return@setOnClickListener
-            val ankiManager = AnkiManager(this)
-            when {
-                !ankiManager.isAnkiDroidInstalled() ->
-                    Toast.makeText(this, getString(R.string.anki_not_installed), Toast.LENGTH_SHORT).show()
-                !ankiManager.hasPermission() ->
-                    AlertDialog.Builder(this)
-                        .setTitle(R.string.anki_permission_rationale_title)
-                        .setMessage(R.string.anki_permission_rationale_message)
-                        .setPositiveButton(R.string.btn_continue) { _, _ ->
-                            requestAnkiPermission.launch(AnkiManager.PERMISSION)
-                        }
-                        .setNegativeButton(android.R.string.cancel, null)
-                        .show()
-                else ->
-                    AnkiReviewBottomSheet.newInstance(
-                        result.originalText, result.translatedText, mainWordResults, result.screenshotPath
-                    ).show(supportFragmentManager, AnkiReviewBottomSheet.TAG)
-            }
-        }
-
-        btnRevealTranslation.setOnClickListener {
-            val result = lastResult ?: return@setOnClickListener
-            val text = result.originalText
-            btnRevealTranslation.isEnabled = false
-            btnRevealTranslation.text = "…"
-            lifecycleScope.launch {
-                try {
-                    val svc = captureService
-                    val (translated, note) = if (svc != null) {
-                        svc.translateOnce(text)
-                    } else {
-                        val tm = editTranslationManager
-                            ?: TranslationManager(selectedSourceLang(), selectedTargetLang()).also { editTranslationManager = it }
-                        tm.ensureModelReady()
-                        Pair(tm.translate(text), null)
-                    }
-                    lastResult = result.copy(translatedText = translated)
-                    tvTranslation.text = translated
-                    tvTranslationNote.text = note ?: ""
-                    tvTranslationNote.visibility = if (note != null) View.VISIBLE else View.GONE
-                    translationSection.visibility       = View.VISIBLE
-                    translationHiddenSection.visibility = View.GONE
-                } catch (_: Exception) {
-                    btnRevealTranslation.isEnabled = true
-                    btnRevealTranslation.text = getString(R.string.btn_reveal_translation)
-                }
-            }
-        }
-
-        btnAnkiNoTranslation.setOnClickListener {
-            pauseLiveMode()
-            val result = lastResult ?: return@setOnClickListener
-            val ankiManager = AnkiManager(this)
-            when {
-                !ankiManager.isAnkiDroidInstalled() ->
-                    Toast.makeText(this, getString(R.string.anki_not_installed), Toast.LENGTH_SHORT).show()
-                !ankiManager.hasPermission() ->
-                    AlertDialog.Builder(this)
-                        .setTitle(R.string.anki_permission_rationale_title)
-                        .setMessage(R.string.anki_permission_rationale_message)
-                        .setPositiveButton(R.string.btn_continue) { _, _ ->
-                            requestAnkiPermission.launch(AnkiManager.PERMISSION)
-                        }
-                        .setNegativeButton(android.R.string.cancel, null)
-                        .show()
-                else ->
-                    AnkiReviewBottomSheet.newInstance(
-                        result.originalText, "", mainWordResults, result.screenshotPath
-                    ).show(supportFragmentManager, AnkiReviewBottomSheet.TAG)
-            }
-        }
-    }
-
-    private fun copyToClipboard(text: String) {
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("PlayTranslate", text))
-        Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
     }
 
     private fun applyTheme() {
@@ -571,14 +471,15 @@ class MainActivity : AppCompatActivity() {
     private fun updateActionButtonState() {
         val ready = isCaptureReady
         btnTranslate.alpha = if (ready) 1f else 0.45f
-        if (statusContainer.visibility == View.VISIBLE) {
+        val frag = resultFragment ?: return
+        if (frag.isStatusVisible()) {
             if (!ready) {
-                tvStatus.text = getString(R.string.status_accessibility_needed)
-                tvStatusHint.visibility = View.GONE
-            } else if (tvStatus.text == getString(R.string.status_accessibility_needed)) {
-                showStatus(getString(R.string.status_idle))
-            } else if (tvStatus.text == getString(R.string.status_idle)) {
-                tvStatusHint.visibility = View.VISIBLE
+                frag.showStatus(getString(R.string.status_accessibility_needed))
+                frag.setStatusHintVisibility(false)
+            } else if (frag.getStatusText() == getString(R.string.status_accessibility_needed)) {
+                frag.showStatus(getString(R.string.status_idle))
+            } else if (frag.getStatusText() == getString(R.string.status_idle)) {
+                frag.setStatusHintVisibility(true)
             }
         }
     }
@@ -595,48 +496,26 @@ class MainActivity : AppCompatActivity() {
         val svc = captureService ?: return
         svc.onResult = { result ->
             runOnUiThread {
-                editTranslationJob?.cancel()  // drop any in-flight edit translation
+                editTranslationJob?.cancel()
                 editTranslationJob = null
-                if (!isLiveMode) configureService()  // restore saved region config after one-shot
+                // Restore saved region config after one-shot, but only if no override is active
+                if (!isLiveMode && overrideRegion == null) configureService()
                 liveProgressRing.visibility = View.GONE
-                lastResult = result
-                tvOriginal.setSegments(result.segments)
-                tvOriginal.onTapAtOffset = { offset -> pauseLiveMode(); showEditOverlay(offset) }
-                tvTranslation.text = result.translatedText
-                tvTranslationNote.text = result.note ?: ""
-                tvTranslationNote.visibility = if (result.note != null) View.VISIBLE else View.GONE
-                if (prefs.hideTranslation) {
-                    translationSection.visibility       = View.GONE
-                    translationHiddenSection.visibility = View.VISIBLE
-                    btnRevealTranslation.isEnabled = true
-                    btnRevealTranslation.text = getString(R.string.btn_reveal_translation)
-                } else {
-                    translationSection.visibility       = View.VISIBLE
-                    translationHiddenSection.visibility = View.GONE
-                }
-                labelOriginal.text    = langDisplayName(selectedSourceLang())
-                labelTranslation.text = langDisplayName(selectedTargetLang())
-                statusContainer.visibility = View.GONE
-                resultsContent.visibility  = View.VISIBLE
-                suppressScrollPause = true
-                resultsContent.scrollTo(0, 0)
-                resultsContent.post { suppressScrollPause = false }
+                resultFragment?.displayResult(result)
                 if (!isLiveMode) btnClear.visibility = View.VISIBLE
-                btnMainAddToAnki.isEnabled = false
-                startWordLookups(result.originalText)
             }
         }
         svc.onError = { msg ->
-            runOnUiThread { showStatus(getString(R.string.status_error, msg)) }
+            runOnUiThread { resultFragment?.showError(msg) }
         }
         svc.onStatusUpdate = { msg ->
-            runOnUiThread { showStatus(msg) }
+            runOnUiThread { resultFragment?.showStatus(msg) }
         }
         svc.onTranslationStarted = {
             runOnUiThread { liveProgressRing.visibility = View.VISIBLE }
         }
         svc.onLiveNoText = {
-            runOnUiThread { if (isLiveMode) showStatus(searchingStatusText()) }
+            runOnUiThread { if (isLiveMode) resultFragment?.showStatus(searchingStatusText()) }
         }
 
         ensureConfigured()
@@ -644,57 +523,25 @@ class MainActivity : AppCompatActivity() {
 
     // ── Drag-to-lookup sentence passthrough ──────────────────────────────
 
-    /**
-     * Called when the floating icon drag-to-lookup finds a word.
-     * Displays the full line in the translation view as if it were a captured sentence.
-     */
     private fun handleDragSentence(intent: Intent) {
         val lineText = intent.getStringExtra(EXTRA_DRAG_LINE_TEXT) ?: return
         val screenshotPath = intent.getStringExtra(EXTRA_DRAG_SCREENSHOT_PATH)
 
-        // Pause live mode if active
         if (isLiveMode) pauseLiveMode()
 
-        // Build segments from the line text (one segment per character for tappability)
         val segments = lineText.map { TextSegment(it.toString()) }
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(java.util.Date())
 
-        // Show original text immediately
-        tvOriginal.setSegments(segments)
-        tvOriginal.onTapAtOffset = { offset -> showEditOverlay(offset) }
-        labelOriginal.text = langDisplayName(selectedSourceLang())
-        labelTranslation.text = langDisplayName(selectedTargetLang())
-        statusContainer.visibility = View.GONE
-        resultsContent.visibility = View.VISIBLE
-        suppressScrollPause = true
-        resultsContent.scrollTo(0, 0)
-        resultsContent.post { suppressScrollPause = false }
+        val frag = resultFragment ?: return
+        frag.showTranslatingPlaceholder(lineText, segments)
         btnClear.visibility = View.VISIBLE
-        btnMainAddToAnki.isEnabled = false
-
-        // Show "translating..." while we wait
-        tvTranslation.text = getString(R.string.status_translating)
-        tvTranslationNote.text = ""
-        tvTranslationNote.visibility = View.GONE
-        if (prefs.hideTranslation) {
-            translationSection.visibility = View.GONE
-            translationHiddenSection.visibility = View.VISIBLE
-            btnRevealTranslation.isEnabled = true
-            btnRevealTranslation.text = getString(R.string.btn_reveal_translation)
-        } else {
-            translationSection.visibility = View.VISIBLE
-            translationHiddenSection.visibility = View.GONE
-        }
-
-        // Translate and look up words
-        startWordLookups(lineText)
 
         val svc = captureService
         if (svc != null && svc.isConfigured && !prefs.hideTranslation) {
             lifecycleScope.launch {
                 try {
                     val (translated, note) = svc.translateOnce(lineText)
-                    lastResult = TranslationResult(
+                    val result = TranslationResult(
                         originalText = lineText,
                         segments = segments,
                         translatedText = translated,
@@ -702,30 +549,31 @@ class MainActivity : AppCompatActivity() {
                         screenshotPath = screenshotPath,
                         note = note
                     )
-                    tvTranslation.text = translated
-                    tvTranslationNote.text = note ?: ""
-                    tvTranslationNote.visibility = if (note != null) View.VISIBLE else View.GONE
+                    frag.displayResult(result)
                 } catch (e: Exception) {
-                    tvTranslation.text = ""
-                    lastResult = TranslationResult(
-                        originalText = lineText,
-                        segments = segments,
-                        translatedText = "",
-                        timestamp = timestamp,
-                        screenshotPath = screenshotPath
-                    )
+                    frag.updateTranslation("")
                 }
             }
         } else {
-            tvTranslation.text = ""
-            lastResult = TranslationResult(
-                originalText = lineText,
-                segments = segments,
-                translatedText = "",
-                timestamp = timestamp,
-                screenshotPath = screenshotPath
-            )
+            frag.updateTranslation("")
         }
+    }
+
+    // ── Region capture from floating icon ─────────────────────────────────
+
+    private fun handleRegionCapture(intent: Intent) {
+        val topFrac    = intent.getFloatExtra(EXTRA_TOP_FRAC, 0f)
+        val bottomFrac = intent.getFloatExtra(EXTRA_BOTTOM_FRAC, 1f)
+        val leftFrac   = intent.getFloatExtra(EXTRA_LEFT_FRAC, 0f)
+        val rightFrac  = intent.getFloatExtra(EXTRA_RIGHT_FRAC, 1f)
+
+        if (isLiveMode) pauseLiveMode()
+
+        overrideRegionLabel = DRAGGED_REGION_LABEL
+        overrideRegion = floatArrayOf(topFrac, bottomFrac, leftFrac, rightFrac)
+        applyOverrideIfActive()
+        updateRegionButton()
+        captureService?.captureOnce()
     }
 
     // ── Accessibility service flow ─────────────────────────────────────────
@@ -741,7 +589,6 @@ class MainActivity : AppCompatActivity() {
                 ensureConfigured()
                 action()
             } else {
-                // Token expired (new session) — re-request
                 pendingAfterMpGrant = { ensureConfigured(); action() }
                 val mgr = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                 mediaProjectionLauncher.launch(mgr.createScreenCaptureIntent())
@@ -759,10 +606,32 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** Re-applies the override region config if one is active. */
+    private fun applyOverrideIfActive() {
+        val region = overrideRegion ?: return
+        val label = overrideRegionLabel ?: return
+        captureService?.configure(
+            displayId             = prefs.captureDisplayId,
+            sourceLang            = selectedSourceLang(),
+            targetLang            = selectedTargetLang(),
+            captureTopFraction    = region[0],
+            captureBottomFraction = region[1],
+            captureLeftFraction   = region[2],
+            captureRightFraction  = region[3],
+            regionLabel           = label
+        )
+    }
+
+    /** Clears any dragged-region override. */
+    private fun clearOverride() {
+        overrideRegionLabel = null
+        overrideRegion = null
+    }
+
     /** Applies all current prefs to the capture service. */
     private fun configureService() {
         val svc = captureService ?: return
-        overrideRegionLabel = null
+        clearOverride()
         val entry = prefs.getRegionList().getOrElse(prefs.captureRegionIndex) { Prefs.DEFAULT_REGION_LIST[0] }
         svc.configure(
             displayId             = prefs.captureDisplayId,
@@ -805,13 +674,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (singleScreen) {
-            // Single-screen: accessibility is required for overlay support
             if (!a11yEnabled) {
                 existingSheet?.dismissAllowingStateLoss()
                 showOnboardingPage(pageA11ySingle)
                 return
             }
-            // Single-screen + accessibility ready: settings IS the UI
             onboardingContainer.visibility = View.GONE
             btnSettings.visibility = View.GONE
             val isAlreadySingleScreenSheet = existingSheet != null &&
@@ -823,7 +690,6 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // Multi-screen: dismiss any non-dismissable settings sheet from single-screen mode
         if (existingSheet != null && existingSheet.arguments?.getBoolean("hide_dismiss", false) == true) {
             existingSheet.dismissAllowingStateLoss()
         }
@@ -883,29 +749,21 @@ class MainActivity : AppCompatActivity() {
     private fun selectedSourceLang() = TranslateLanguage.JAPANESE
     private fun selectedTargetLang() = TranslateLanguage.ENGLISH
 
-    private fun showStatus(msg: String) {
-        tvStatus.text = msg
-        val isIdle = msg == getString(R.string.status_idle)
-        tvStatusHint.visibility = if (isIdle) View.VISIBLE else View.GONE
-        tvLiveHint.visibility   = if (isIdle && !prefs.hideLiveMode && !isLiveMode) View.VISIBLE else View.GONE
-        statusContainer.visibility = View.VISIBLE
-        resultsContent.visibility  = View.GONE
-        btnClear.visibility        = View.GONE
-    }
-
     /**
      * Sets tvLiveHint text with an inline play icon ImageSpan.
      * Called once on resume so the span is ready before first display.
      */
     private fun initLiveHintText() {
+        val frag = resultFragment ?: return
         val icon = ContextCompat.getDrawable(this, R.drawable.ic_play)?.mutate() ?: return
         icon.setTint(themeColor(R.attr.colorTextHint))
-        val size = (tvLiveHint.textSize * 1.1f).toInt()
+        val textSize = 24f * resources.displayMetrics.scaledDensity
+        val size = (textSize * 1.1f).toInt()
         icon.setBounds(0, 0, size, size)
         val span = android.text.style.ImageSpan(icon, android.text.style.ImageSpan.ALIGN_BASELINE)
         val sb = android.text.SpannableString("Press \u0000 button below to start live mode")
         sb.setSpan(span, 6, 7, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-        tvLiveHint.text = sb
+        frag.setLiveHintText(sb)
     }
 
     /** Returns the "Searching for X in the Y area" message for live mode. */
@@ -917,30 +775,15 @@ class MainActivity : AppCompatActivity() {
         return "Searching for $lang in the \"$label\" area"
     }
 
-    /**
-     * Applies the hideLiveMode preference: hides/shows live buttons and hint.
-     * Stops live mode if it is active and the button is being hidden.
-     */
     private fun applyLiveModeVisibilitySetting() {
         val hide = prefs.hideLiveMode
         if (hide && isLiveMode) stopLiveMode()
         liveButtonContainer.visibility = if (hide) View.GONE else View.VISIBLE
-        // Refresh live hint if the status screen is currently shown
-        if (statusContainer.visibility == View.VISIBLE) {
-            val isIdle = tvStatus.text.toString() == getString(R.string.status_idle)
-            tvLiveHint.visibility = if (isIdle && !hide && !isLiveMode) View.VISIBLE else View.GONE
+        val frag = resultFragment ?: return
+        if (frag.isStatusVisible()) {
+            val isIdle = frag.getStatusText() == getString(R.string.status_idle)
+            frag.setLiveHintVisibility(isIdle && !hide && !isLiveMode)
         }
-    }
-
-    /**
-     * Converts Japanese [text] to romaji by first running Kuromoji to get the
-     * kana reading of every token (including kanji), then applying ICU's
-     * Any-Latin transliterator to convert kana to ASCII romaji.
-     * Must be called from a coroutine — Kuromoji runs on IO.
-     */
-    private suspend fun buildRomaji(text: String): String = withContext(Dispatchers.IO) {
-        val t = romajiTransliterator ?: return@withContext ""
-        Deinflector.toKanaTokens(text).joinToString(" ") { t.transliterate(it) }
     }
 
     private fun langDisplayName(langCode: String): String =
@@ -948,7 +791,7 @@ class MainActivity : AppCompatActivity() {
             .replaceFirstChar { it.uppercase() }
 
     private fun showEditOverlay(charOffset: Int) {
-        val currentText = tvOriginal.text?.toString() ?: return
+        val currentText = resultFragment?.lastResult?.originalText ?: return
         etEditOriginal.setText(currentText)
         val safeOffset = charOffset.coerceIn(0, currentText.length)
         etEditOriginal.setSelection(safeOffset)
@@ -966,11 +809,8 @@ class MainActivity : AppCompatActivity() {
         val newText = etEditOriginal.text?.toString()?.trim() ?: return
         if (newText.isBlank()) return
 
-        tvOriginal.text = newText
-        tvTranslation.text = "…"
-        tvTranslationNote.visibility = View.GONE
-        lastResult = lastResult?.copy(originalText = newText, translatedText = "")
-        startWordLookups(newText)
+        val frag = resultFragment ?: return
+        frag.updateOriginalText(newText)
 
         editTranslationJob?.cancel()
         editTranslationJob = lifecycleScope.launch {
@@ -979,17 +819,16 @@ class MainActivity : AppCompatActivity() {
                     ?: TranslationManager(selectedSourceLang(), selectedTargetLang()).also { editTranslationManager = it }
                 tm.ensureModelReady()
                 val translated = tm.translate(newText)
-                tvTranslation.text = translated
-                lastResult = lastResult?.copy(translatedText = translated)
+                frag.updateTranslation(translated)
             } catch (_: Exception) {
-                tvTranslation.text = "—"
+                frag.updateTranslation("—")
             }
         }
     }
 
     private fun setupEditOverlay() {
         // Pause live mode when the user scrolls the results (shows intent to read)
-        resultsContent.setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
+        resultFragment?.getResultsScrollView()?.setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
             if (scrollY != oldScrollY && isLiveMode && !suppressScrollPause) pauseLiveMode()
         }
 
@@ -1000,7 +839,6 @@ class MainActivity : AppCompatActivity() {
             } else false
         }
 
-        // Detect keyboard being swiped away while edit overlay is visible
         window.decorView.viewTreeObserver.addOnGlobalLayoutListener {
             val rect = android.graphics.Rect()
             window.decorView.getWindowVisibleDisplayFrame(rect)
@@ -1010,129 +848,6 @@ class MainActivity : AppCompatActivity() {
                 commitEdit()
             }
             wasKeyboardVisible = keyboardVisible
-        }
-    }
-
-    // ── Word lookups for main results view ────────────────────────────────
-
-    private fun startWordLookups(text: String) {
-        wordLookupJob?.cancel()
-        mainWordsContainer.removeAllViews()
-        mainWordResults.clear()
-        tvMainWordsLoading.visibility = View.VISIBLE
-        tvMainWordsLoading.text = getString(R.string.words_loading)
-
-        tvNoWords.visibility = View.GONE
-        tvTransliteration.visibility = View.GONE
-
-        wordLookupJob = lifecycleScope.launch {
-            // Kick off romaji immediately — no need to wait for dictionary lookups.
-            val romajiDeferred = async { buildRomaji(text) }
-
-            // N-gram phrase detection runs on IO; this also drives the fallback
-            // to plain Deinflector.tokenize() when the database isn't open yet.
-            val tokens = withContext(Dispatchers.IO) {
-                DictionaryManager.get(applicationContext).tokenize(text)
-            }
-
-            if (tokens.isEmpty()) {
-                tvMainWordsLoading.visibility = View.GONE
-                tvNoWords.visibility = View.VISIBLE
-                btnMainAddToAnki.isEnabled = true
-                val romaji = romajiDeferred.await()
-                if (romaji.isNotBlank() && romaji != text) {
-                    tvTransliteration.text = romaji
-                    tvTransliteration.visibility = View.VISIBLE
-                }
-                return@launch
-            }
-
-            // Pre-inflate all rows in sentence order (on Main thread).
-            val rows = tokens.map { word ->
-                val row = layoutInflater.inflate(R.layout.item_word_lookup, mainWordsContainer, false)
-                row.findViewById<TextView>(R.id.tvItemWord).text = word
-                row.findViewById<TextView>(R.id.tvItemMeaning).text = "…"
-                mainWordsContainer.addView(row)
-                Pair(word, row)
-            }
-
-            // Collect results indexed by sentence position; populated concurrently.
-            // Pair<displayWord, Triple<reading, meaning, freqScore>>
-            val resultsArr = arrayOfNulls<Pair<String, Triple<String, String, Int>>>(rows.size)
-
-            supervisorScope {
-                rows.forEachIndexed { idx, (word, row) ->
-                    launch {
-                        val tvWord    = row.findViewById<TextView>(R.id.tvItemWord)
-                        val tvReading = row.findViewById<TextView>(R.id.tvItemReading)
-                        val tvFreq    = row.findViewById<TextView>(R.id.tvItemFreq)
-                        val tvMeaning = row.findViewById<TextView>(R.id.tvItemMeaning)
-                        var reading = ""
-                        var meaning = ""
-                        var displayWord = word
-                        var freqScore = 0
-                        try {
-                            val response = withContext(Dispatchers.IO) {
-                                DictionaryManager.get(applicationContext).lookup(word)
-                            }
-                            if (response != null && response.data.isNotEmpty()) {
-                                val entry   = response.data.first()
-                                val primary = entry.japanese.firstOrNull()
-                                displayWord = primary?.word ?: primary?.reading ?: word
-                                tvWord.text = displayWord
-                                reading = primary?.reading?.takeIf { it != primary.word } ?: ""
-                                freqScore = entry.freqScore
-                                meaning = entry.senses.mapIndexed { i, sense ->
-                                    val glosses = sense.englishDefinitions.joinToString("; ")
-                                    if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
-                                }.joinToString("\n")
-                            }
-                        } catch (_: Exception) {}
-                        if (meaning.isNotEmpty()) {
-                            tvReading.text = reading
-                            tvMeaning.text = meaning
-                            if (freqScore > 0) {
-                                tvFreq.text = "★".repeat(freqScore)
-                                tvFreq.visibility = View.VISIBLE
-                            }
-                            val lookupWord = displayWord
-                            row.setOnClickListener {
-                                pauseLiveMode()
-                                WordDetailBottomSheet.newInstance(
-                                    lookupWord,
-                                    lastResult?.screenshotPath,
-                                    sentenceOriginal = lastResult?.originalText,
-                                    sentenceTranslation = lastResult?.translatedText,
-                                    sentenceWordResults = mainWordResults.toMap()
-                                ).show(supportFragmentManager, WordDetailBottomSheet.TAG)
-                            }
-                            resultsArr[idx] = Pair(displayWord, Triple(reading, meaning, freqScore))
-                        } else {
-                            mainWordsContainer.removeView(row)
-                        }
-                    }
-                }
-            }
-
-            // All lookups done — populate mainWordResults in sentence order.
-            resultsArr.filterNotNull().forEach { (dw, rmt) ->
-                mainWordResults[dw] = rmt
-            }
-            tvMainWordsLoading.visibility = View.GONE
-            tvNoWords.visibility = if (mainWordResults.isEmpty()) View.VISIBLE else View.GONE
-            btnMainAddToAnki.isEnabled = true
-
-            // Update shared cache so floating-icon Anki cards include sentence context
-            LastSentenceCache.original = lastResult?.originalText
-            LastSentenceCache.translation = lastResult?.translatedText
-            LastSentenceCache.wordResults = mainWordResults.toMap()
-
-            // Show romaji — deferred was already running concurrently with lookups.
-            val romaji = romajiDeferred.await()
-            if (romaji.isNotBlank() && romaji != text) {
-                tvTransliteration.text = romaji
-                tvTransliteration.visibility = View.VISIBLE
-            }
         }
     }
 
@@ -1147,13 +862,12 @@ class MainActivity : AppCompatActivity() {
         val gameDisplay = displayManager.getDisplay(prefs.captureDisplayId)
 
         val currentIndex = prefs.captureRegionIndex.coerceIn(0, regions.lastIndex)
-        // "Add Custom Region" at top, other regions next, current at bottom (under finger)
         val order = mutableListOf<Int>()
-        order.add(-1)  // sentinel for "Add Custom Region"
+        order.add(-1)
         for (i in regions.indices) { if (i != currentIndex) order.add(i) }
         order.add(currentIndex)
         dropdownRegionOrder = order
-        dropdownHighlightedRow = order.lastIndex   // current starts highlighted
+        dropdownHighlightedRow = order.lastIndex
         dropdownGameDisplay = gameDisplay
         dropdownRegions = regions
 
@@ -1177,7 +891,6 @@ class MainActivity : AppCompatActivity() {
 
         val anchorLoc = intArrayOf(0, 0)
         anchor.getLocationOnScreen(anchorLoc)
-        // Popup goes upward — bottom of popup aligns with top of anchor
         val popupHeight = (order.size * dropdownItemHeightPx).toInt()
         val popupTop = maxOf(0, anchorLoc[1] - popupHeight)
         dropdownTopY = popupTop.toFloat()
@@ -1191,7 +904,6 @@ class MainActivity : AppCompatActivity() {
         popup.showAtLocation(anchor, Gravity.NO_GRAVITY, popupMarginH, popupTop)
         dropdownPopup = popup
 
-        // Show overlay for the currently selected region
         if (gameDisplay != null) {
             val entry = regions[currentIndex]
             PlayTranslateAccessibilityService.instance?.showRegionOverlay(
@@ -1238,12 +950,17 @@ class MainActivity : AppCompatActivity() {
             openAddCustomRegionFromDropdown()
             return
         }
-        val changed = dropdownHighlightedRow != dropdownRegionOrder.lastIndex
-        if (changed) {
+        val changedSavedRegion = dropdownHighlightedRow != dropdownRegionOrder.lastIndex
+        val hadOverride = overrideRegion != null
+        if (changedSavedRegion) {
             prefs.captureRegionIndex = selectedRegionIdx
-            updateRegionButton()
-            configureService()
+            configureService()          // clears override
+            updateRegionButton()        // now reads the saved region label
             withAccessibility { captureService?.captureOnce() }
+        } else if (hadOverride) {
+            // User released on the current saved region — clear the drawn override
+            configureService()
+            updateRegionButton()
         }
     }
 
@@ -1259,16 +976,8 @@ class MainActivity : AppCompatActivity() {
             sheet.onDismissed = {}
             sheet.onTranslateOnce = { top, bottom, left, right, label ->
                 overrideRegionLabel = label
-                captureService?.configure(
-                    displayId             = prefs.captureDisplayId,
-                    sourceLang            = selectedSourceLang(),
-                    targetLang            = selectedTargetLang(),
-                    captureTopFraction    = top,
-                    captureBottomFraction = bottom,
-                    captureLeftFraction   = left,
-                    captureRightFraction  = right,
-                    regionLabel           = label
-                )
+                overrideRegion = floatArrayOf(top, bottom, left, right)
+                applyOverrideIfActive()
                 updateRegionButton()
                 withAccessibility { captureService?.captureOnce() }
             }
@@ -1331,5 +1040,14 @@ class MainActivity : AppCompatActivity() {
         const val ACTION_DRAG_SENTENCE = "com.gamelens.ACTION_DRAG_SENTENCE"
         const val EXTRA_DRAG_LINE_TEXT = "extra_drag_line_text"
         const val EXTRA_DRAG_SCREENSHOT_PATH = "extra_drag_screenshot_path"
+        const val ACTION_REGION_CAPTURE = "com.gamelens.ACTION_REGION_CAPTURE"
+        const val EXTRA_TOP_FRAC = "extra_top_frac"
+        const val EXTRA_BOTTOM_FRAC = "extra_bottom_frac"
+        const val EXTRA_LEFT_FRAC = "extra_left_frac"
+        const val EXTRA_RIGHT_FRAC = "extra_right_frac"
+        const val DRAGGED_REGION_LABEL = "Drawn Region"
+
+        @Volatile
+        var isInForeground = false
     }
 }

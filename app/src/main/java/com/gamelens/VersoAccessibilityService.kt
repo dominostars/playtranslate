@@ -365,6 +365,10 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             hideFloatingIcon()
         }
         menu.onDismiss = { dismissFloatingMenu() }
+        menu.onRegionSelected = { top, bottom, left, right ->
+            dismissFloatingMenu()
+            handleRegionSelection(display.displayId, top, bottom, left, right)
+        }
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -389,6 +393,35 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         try { floatingMenu?.let { floatingMenuWm?.removeView(it) } } catch (_: Exception) {}
         floatingMenu = null
         floatingMenuWm = null
+    }
+
+    /**
+     * Routes a drag-selected region to the appropriate activity:
+     * - If effectively single screen (or app not in foreground), launches TranslationResultActivity
+     * - Otherwise, sends ACTION_REGION_CAPTURE to MainActivity
+     */
+    private fun handleRegionSelection(displayId: Int, top: Float, bottom: Float, left: Float, right: Float) {
+        val effectivelySingleScreen = Prefs.isSingleScreen(this) || !MainActivity.isInForeground
+        if (effectivelySingleScreen) {
+            val intent = Intent(this, com.gamelens.ui.TranslationResultActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                putExtra(com.gamelens.ui.TranslationResultActivity.EXTRA_TOP_FRAC, top)
+                putExtra(com.gamelens.ui.TranslationResultActivity.EXTRA_BOTTOM_FRAC, bottom)
+                putExtra(com.gamelens.ui.TranslationResultActivity.EXTRA_LEFT_FRAC, left)
+                putExtra(com.gamelens.ui.TranslationResultActivity.EXTRA_RIGHT_FRAC, right)
+            }
+            startActivity(intent)
+        } else {
+            val intent = Intent(this, MainActivity::class.java).apply {
+                action = MainActivity.ACTION_REGION_CAPTURE
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                putExtra(MainActivity.EXTRA_TOP_FRAC, top)
+                putExtra(MainActivity.EXTRA_BOTTOM_FRAC, bottom)
+                putExtra(MainActivity.EXTRA_LEFT_FRAC, left)
+                putExtra(MainActivity.EXTRA_RIGHT_FRAC, right)
+            }
+            startActivity(intent)
+        }
     }
 
     /** Returns the capture display (game screen), or the only display on single-screen. */
