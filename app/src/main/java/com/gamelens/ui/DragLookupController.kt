@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import com.gamelens.AnkiManager
+import com.gamelens.CaptureService
 import com.gamelens.MainActivity
 import com.gamelens.OcrManager
 import com.gamelens.PlayTranslateAccessibilityService
@@ -497,22 +498,46 @@ class DragLookupController(
         val hasCachedContext = sentenceOrig != null && cache.original != null
             && cache.original!!.contains(sentenceOrig)
 
-        val intent = Intent(service, WordAnkiReviewActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            putExtra(WordAnkiReviewActivity.EXTRA_WORD, word)
-            putExtra(WordAnkiReviewActivity.EXTRA_READING, reading)
-            putExtra(WordAnkiReviewActivity.EXTRA_POS, pos)
-            putExtra(WordAnkiReviewActivity.EXTRA_DEFINITION, definition)
-            putExtra(WordAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, screenshotPath)
-            if (hasCachedContext) {
-                putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_ORIGINAL, cache.original)
-                putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_TRANSLATION, cache.translation)
-            } else if (sentenceOrig != null) {
-                putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_ORIGINAL, sentenceOrig)
-            }
-        }
-        service.startActivity(intent)
         popup.dismiss()
+
+        // If we have no cached translation, translate now via CaptureService
+        if (!hasCachedContext && sentenceOrig != null) {
+            scope.launch {
+                val translation = try {
+                    CaptureService.instance?.translateOnce(sentenceOrig)?.first
+                } catch (e: Exception) {
+                    Log.e(TAG, "Translation for Anki failed", e)
+                    null
+                }
+                val intent = buildAnkiIntent(service, word, reading, pos, definition,
+                    sentenceOrig, translation)
+                service.startActivity(intent)
+            }
+        } else {
+            val intent = buildAnkiIntent(service, word, reading, pos, definition,
+                if (hasCachedContext) cache.original else sentenceOrig,
+                if (hasCachedContext) cache.translation else null)
+            service.startActivity(intent)
+        }
+    }
+
+    private fun buildAnkiIntent(
+        context: android.content.Context,
+        word: String, reading: String, pos: String, definition: String,
+        sentenceOriginal: String?, sentenceTranslation: String?
+    ): Intent = Intent(context, WordAnkiReviewActivity::class.java).apply {
+        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        putExtra(WordAnkiReviewActivity.EXTRA_WORD, word)
+        putExtra(WordAnkiReviewActivity.EXTRA_READING, reading)
+        putExtra(WordAnkiReviewActivity.EXTRA_POS, pos)
+        putExtra(WordAnkiReviewActivity.EXTRA_DEFINITION, definition)
+        putExtra(WordAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, screenshotPath)
+        if (sentenceOriginal != null) {
+            putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_ORIGINAL, sentenceOriginal)
+        }
+        if (sentenceTranslation != null) {
+            putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_TRANSLATION, sentenceTranslation)
+        }
     }
 
     private fun saveScreenshot(bitmap: Bitmap): String? {

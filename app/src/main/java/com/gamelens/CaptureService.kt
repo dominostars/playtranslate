@@ -109,6 +109,7 @@ class CaptureService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         createNotificationChannel()
     }
 
@@ -123,6 +124,7 @@ class CaptureService : Service() {
     }
 
     override fun onDestroy() {
+        instance = null
         stopLive()
         serviceScope.cancel()
         ocrManager.close()
@@ -400,6 +402,11 @@ class CaptureService : Service() {
 
     companion object {
         private const val LIVE_DEDUP_TOLERANCE = 3  // max character-count drift treated as noise
+
+        /** Process-scoped reference for in-process callers (e.g. DragLookupController). */
+        @Volatile
+        var instance: CaptureService? = null
+            private set
     }
 
     fun resetConfiguration() {
