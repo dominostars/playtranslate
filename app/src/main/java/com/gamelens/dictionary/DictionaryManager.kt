@@ -244,18 +244,21 @@ class DictionaryManager private constructor(private val context: Context) {
 
     // ── Database queries ──────────────────────────────────────────────────
 
-    /** Returns entry IDs matching [word] as a kanji or reading form, up to 8. */
+    /**
+     * Returns entry IDs matching [word] as a kanji or reading form, up to 8,
+     * sorted by frequency (most common first).
+     */
     private fun queryEntryIds(db: SQLiteDatabase, word: String): List<Long> {
         val ids = mutableListOf<Long>()
 
         db.rawQuery(
-            "SELECT DISTINCT entry_id FROM kanji WHERE text = ? LIMIT 8",
+            "SELECT DISTINCT k.entry_id FROM kanji k JOIN entry e ON e.id = k.entry_id WHERE k.text = ? ORDER BY e.freq_score DESC LIMIT 8",
             arrayOf(word)
         ).use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
 
         if (ids.isEmpty()) {
             db.rawQuery(
-                "SELECT DISTINCT entry_id FROM reading WHERE text = ? LIMIT 8",
+                "SELECT DISTINCT r.entry_id FROM reading r JOIN entry e ON e.id = r.entry_id WHERE r.text = ? ORDER BY e.freq_score DESC LIMIT 8",
                 arrayOf(word)
             ).use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
         }
