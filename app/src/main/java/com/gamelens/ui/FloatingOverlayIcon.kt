@@ -138,6 +138,8 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     var onHoldStart: (() -> Unit)? = null
     /** Called when the user lifts after a hold (without having dragged). */
     var onHoldEnd: (() -> Unit)? = null
+    /** Called when a hold is cancelled because the user started dragging. */
+    var onHoldCancel: (() -> Unit)? = null
 
     var wm: WindowManager? = null
     var params: WindowManager.LayoutParams? = null
@@ -287,8 +289,13 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                 p.y = (downParamY + dy).toInt()
                 try { wm?.updateViewLayout(this, p) } catch (_: Exception) {}
 
-                if (totalMovement >= tapThresholdPx && !holdFired) {
-                    removeCallbacks(holdRunnable) // cancel hold — this is a drag
+                if (totalMovement >= tapThresholdPx) {
+                    removeCallbacks(holdRunnable)
+                    // If hold was active, cancel it and transition to drag
+                    if (holdFired) {
+                        holdFired = false
+                        onHoldCancel?.invoke()
+                    }
                     if (!dragStartFired) {
                         // Center the icon on the finger (user may have grabbed off-center)
                         val rawX = event.rawX

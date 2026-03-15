@@ -490,11 +490,14 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         )
         // Track whether live mode was running when the popup appeared
         var liveWasPausedForPopup = false
+        // True when transitioning from hold to drag (overlays need time to clear)
+        var holdTransition = false
 
         popup.onDismiss = {
             controller.onPopupDismissed()
-            // Resume live mode if it was paused for this popup
-            if (liveWasPausedForPopup) {
+            // Resume live mode only if drag is finished (not mid-drag word change).
+            // If the user is still dragging, resumption waits for onDragEnd.
+            if (liveWasPausedForPopup && !icon.inDragMode) {
                 liveWasPausedForPopup = false
                 val effectivelySingleScreen = Prefs.isSingleScreen(this) || !MainActivity.isInForeground
                 if (effectivelySingleScreen) {
@@ -505,7 +508,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             }
         }
         icon.onDragStart = {
-            // Pause live mode while showing definition popup
+            // Pause live mode while dragging for definitions
             if (MainActivity.isLiveModeActive) {
                 liveWasPausedForPopup = true
                 val effectivelySingleScreen = Prefs.isSingleScreen(this) || !MainActivity.isInForeground
@@ -515,10 +518,44 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                     sendMainActivityIntent(MainActivity.ACTION_STOP_LIVE)
                 }
             }
-            controller.onDragStart()
+            hideTranslationOverlay()
+            if (holdTransition) {
+                // Overlays were just visible — wait for compositor to clear
+                holdTransition = false
+                debugHandler.postDelayed({ controller.onDragStart() }, 100)
+            } else {
+                controller.onDragStart()
+            }
         }
         icon.onDragMove = { rawX, rawY -> controller.onDragMove(rawX, rawY) }
-        icon.onDragEnd = { controller.onDragEnd() }
+        icon.onDragEnd = {
+            val popupShowing = controller.onDragEnd()
+            // If no popup visible on lift, resume live mode immediately
+            if (!popupShowing && liveWasPausedForPopup) {
+                liveWasPausedForPopup = false
+                val effectivelySingleScreen = Prefs.isSingleScreen(this) || !MainActivity.isInForeground
+                if (effectivelySingleScreen) {
+                    toggleLiveDirect(true)
+                } else {
+                    sendMainActivityIntent(MainActivity.ACTION_START_LIVE)
+                }
+            }
+            popupShowing
+        }
+        icon.onHoldCancel = {
+            // Hold cancelled because user started dragging — clean up hold
+            // state and transition to drag mode, reusing the existing
+            // screenshot so the drag controller doesn't capture our overlays.
+            val svc = CaptureService.instance
+            icon.showLoading = false
+            if (MainActivity.isLiveModeActive) {
+                svc?.holdActive = false
+            } else {
+                svc?.cancelOneShot()
+                hideTranslationOverlay()
+            }
+            holdTransition = true
+        }
         icon.onHoldStart = {
             val svc = CaptureService.instance
             if (MainActivity.isLiveModeActive) {
