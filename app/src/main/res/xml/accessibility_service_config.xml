@@ -13,7 +13,7 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/accessibility_service_description"
     android:accessibilityEventTypes="typeWindowStateChanged"
-    android:accessibilityFlags="flagDefault|flagRequestFilterKeyEvents"
+    android:accessibilityFlags="flagDefault|flagRequestFilterKeyEvents|flagRetrieveInteractiveWindows"
     android:canRequestFilterKeyEvents="true"
     android:canTakeScreenshot="true"
     android:notificationTimeout="100" />

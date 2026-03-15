@@ -19,6 +19,8 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.gamelens.ui.DragLookupController
 import com.gamelens.ui.FloatingIconMenu
 import com.gamelens.ui.FloatingOverlayIcon
@@ -76,6 +78,12 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         instance = this
+        // Ensure we can query the window list (needed for nav bar detection
+        // during joystick polling). Setting this at runtime avoids needing
+        // the user to re-toggle the service after an app update.
+        serviceInfo = serviceInfo.apply {
+            flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        }
         ensureFloatingIcon()
     }
 
@@ -326,17 +334,24 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         get() = buttonHeld || touchActive || joystickHeld
 
     /**
-     * Start monitoring gamepad buttons, screen touches, and joystick on [displayId].
+     * Start monitoring gamepad buttons and screen touches on [displayId].
+     * If [joystick] is true, also adds a joystick sentinel that polls for
+     * analog stick / d-pad movement (uses focus cycling — slight risk of
+     * eating key events). On API 34+ with MediaProjection this is disabled
+     * since timer-based polling handles everything without focus tricks.
+     *
      * [callback] fires on the main thread for every detected input.
      */
-    fun startInputMonitoring(displayId: Int, callback: () -> Unit) {
+    fun startInputMonitoring(displayId: Int, joystick: Boolean = true, callback: () -> Unit) {
         onGameInput = callback
         lastKeyEventTime = 0L
         buttonHeld = false
         touchActive = false
         addTouchSentinel(displayId)
-        addJoystickSentinel(displayId)
-        startJoystickPolling()
+        if (joystick) {
+            addJoystickSentinel(displayId)
+            startJoystickPolling()
+        }
     }
 
     fun stopInputMonitoring() {
@@ -416,6 +431,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     private var joystickPolling = false
     /** True while the joystick is being held — overlay stays hidden. */
     private var joystickHeld = false
+    /** WindowContext for querying game display's nav bar state. */
+    private var immersiveCheckWm: WindowManager? = null
 
     @Suppress("DEPRECATION")
     private fun addJoystickSentinel(displayId: Int) {
@@ -427,10 +444,6 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val view = View(ctx).apply {
             isFocusable = true
             isFocusableInTouchMode = true
-            // Prevent nav bar from appearing when this sentinel gains focus
-            systemUiVisibility = (View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                or View.SYSTEM_UI_FLAG_FULLSCREEN)
             setOnGenericMotionListener { _, event ->
                 if (event.source and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK
                     && event.action == MotionEvent.ACTION_MOVE
@@ -461,6 +474,19 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         joystickSentinelView = view
         joystickSentinelWm = wm
         joystickSentinelParams = params
+
+        // Create a WindowContext for TYPE_APPLICATION_OVERLAY on the game
+        // display. Unlike TYPE_ACCESSIBILITY_OVERLAY, standard overlays sit
+        // below system bars and their WindowMetrics reflect the real nav bar
+        // state. We poll this right before each focus cycle.
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                val windowCtx = ctx.createWindowContext(
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null
+                )
+                immersiveCheckWm = windowCtx.getSystemService(WindowManager::class.java)
+            } catch (_: Exception) {}
+        }
     }
 
     private fun removeJoystickSentinel() {
@@ -468,6 +494,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         joystickSentinelView = null
         joystickSentinelWm = null
         joystickSentinelParams = null
+        immersiveCheckWm = null
     }
 
     private val joystickPollRunnable = object : Runnable {
@@ -522,12 +549,34 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         debugHandler.removeCallbacks(joystickPollRunnable)
     }
 
+    @Suppress("DEPRECATION")
     private fun setSentinelFocusable(focusable: Boolean) {
         val view = joystickSentinelView ?: return
         val wm = joystickSentinelWm ?: return
         val params = joystickSentinelParams ?: return
         if (focusable) {
             params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+            // Query the game display's nav bar state via a TYPE_APPLICATION_OVERLAY
+            // WindowContext. Standard overlays sit below system bars, so their
+            // metrics reflect the real nav bar state (unlike our accessibility overlay).
+            var isGameImmersive = false
+            if (Build.VERSION.SDK_INT >= 30) {
+                immersiveCheckWm?.let { checkWm ->
+                    val navInsets = checkWm.currentWindowMetrics.windowInsets
+                        .getInsets(android.view.WindowInsets.Type.navigationBars())
+                    isGameImmersive = (navInsets.bottom == 0)
+                }
+            }
+            view.systemUiVisibility = if (isGameImmersive) {
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            } else {
+                View.SYSTEM_UI_FLAG_VISIBLE
+            }
         } else {
             params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         }
@@ -671,10 +720,19 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         menu.onDismiss = { dismissFloatingMenu() }
         menu.onToggleLive = {
             dismissFloatingMenu()
+            val effectivelySingleScreen = Prefs.isSingleScreen(this) || !MainActivity.isInForeground
             if (MainActivity.isLiveModeActive) {
-                sendMainActivityIntent(MainActivity.ACTION_STOP_LIVE)
+                if (effectivelySingleScreen) {
+                    toggleLiveDirect(false)
+                } else {
+                    sendMainActivityIntent(MainActivity.ACTION_STOP_LIVE)
+                }
             } else {
-                sendMainActivityIntent(MainActivity.ACTION_START_LIVE)
+                if (effectivelySingleScreen) {
+                    toggleLiveDirect(true)
+                } else {
+                    sendMainActivityIntent(MainActivity.ACTION_START_LIVE)
+                }
             }
         }
         menu.onRegionSelected = { top, bottom, left, right ->
@@ -716,6 +774,46 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val icon = floatingIcon ?: return null
         val p = icon.params ?: return null
         return android.graphics.Rect(p.x, p.y, p.x + icon.viewSizePx, p.y + icon.viewSizePx)
+    }
+
+    /**
+     * Start/stop live mode directly without bringing MainActivity to the
+     * foreground. Used on single-screen devices where showing the Activity
+     * would cover the game.
+     */
+    private fun toggleLiveDirect(start: Boolean) {
+        val svc = CaptureService.instance ?: return
+        if (start) {
+            // On API 34+, request MediaProjection via a transparent Activity
+            // so the game stays visible and the user can select it in the picker.
+            if (Build.VERSION.SDK_INT >= 34 && !svc.hasMediaProjection) {
+                MediaProjectionConsentActivity.launch(this) { granted ->
+                    if (granted) toggleLiveDirect(true)
+                }
+                return
+            }
+            MainActivity.isLiveModeActive = true
+            if (!svc.isConfigured) {
+                val prefs = Prefs(this)
+                val entry = prefs.getRegionList().getOrElse(prefs.captureRegionIndex) {
+                    Prefs.DEFAULT_REGION_LIST[0]
+                }
+                svc.configure(
+                    displayId             = prefs.captureDisplayId,
+                    sourceLang            = prefs.sourceLang,
+                    targetLang            = prefs.targetLang,
+                    captureTopFraction    = entry.top,
+                    captureBottomFraction = entry.bottom,
+                    captureLeftFraction   = entry.left,
+                    captureRightFraction  = entry.right,
+                    regionLabel           = entry.label
+                )
+            }
+            svc.startLive()
+        } else {
+            MainActivity.isLiveModeActive = false
+            svc.stopLive()
+        }
     }
 
     private fun sendMainActivityIntent(action: String) {

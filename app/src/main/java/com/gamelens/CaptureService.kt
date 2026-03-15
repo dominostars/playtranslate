@@ -103,8 +103,31 @@ class CaptureService : Service() {
 
     fun setMediaProjection(resultCode: Int, data: Intent) {
         mediaProjection?.stop()
+        // On API 34+, upgrade the foreground service type to include
+        // mediaProjection BEFORE calling getMediaProjection() — Android 14
+        // requires the FGS type to be active when the projection starts.
+        // The manifest declares specialUse only; mediaProjection is added
+        // at runtime after the user grants consent.
+        if (Build.VERSION.SDK_INT >= 34) {
+            try {
+                startForeground(
+                    NOTIF_ID, buildNotification(),
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or
+                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                )
+            } catch (_: Exception) {}
+        }
         val mgr = getSystemService(MediaProjectionManager::class.java)
-        mediaProjection = mgr.getMediaProjection(resultCode, data)
+        val mp = mgr.getMediaProjection(resultCode, data)
+        // API 34+ requires registering a callback before createVirtualDisplay().
+        if (Build.VERSION.SDK_INT >= 34) {
+            mp.registerCallback(object : android.media.projection.MediaProjection.Callback() {
+                override fun onStop() {
+                    mediaProjection = null
+                }
+            }, Handler(Looper.getMainLooper()))
+        }
+        mediaProjection = mp
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -116,7 +139,17 @@ class CaptureService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIF_ID, buildNotification())
+        if (Build.VERSION.SDK_INT >= 34) {
+            // Explicitly request only specialUse at startup. The manifest
+            // also declares mediaProjection, but that type is activated
+            // later in setMediaProjection() after the user grants consent.
+            startForeground(
+                NOTIF_ID, buildNotification(),
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIF_ID, buildNotification())
+        }
         return START_STICKY
     }
 
@@ -293,23 +326,44 @@ class CaptureService : Service() {
 
     val isLive: Boolean get() = liveActive
 
+    /**
+     * True when MediaProjection is available on API 34+ — captures exclude
+     * our overlays, so we can poll on a timer without flicker or needing
+     * to hide overlays. No joystick sentinel needed (avoids eating controls).
+     */
+    private val useTimerBasedLive: Boolean
+        get() = Build.VERSION.SDK_INT >= 34 && mediaProjection != null
+
+    private var liveTimerJob: Job? = null
+
     fun startLive() {
         liveActive = true
         lastLiveOcrText = null
         cachedOverlayBoxes = null
         interactionDebounceJob?.cancel()
         liveTranslationJob?.cancel()
+        liveTimerJob?.cancel()
 
-        // Listen for gamepad / d-pad / touch input from the AccessibilityService
-        PlayTranslateAccessibilityService.instance
-            ?.startInputMonitoring(gameDisplayId) { onUserInteraction() }
-
-        // Initial capture
-        interactionDebounceJob = serviceScope.launch { runLiveCaptureCycle() }
+        if (useTimerBasedLive) {
+            // API 34+: timer-based polling. MediaProjection captures only
+            // the game task — our overlays are excluded from OCR. Buttons
+            // and touch still hide the overlay and reset the timer.
+            PlayTranslateAccessibilityService.instance
+                ?.startInputMonitoring(gameDisplayId, joystick = false) { onUserInteraction() }
+            startLiveTimer()
+        } else {
+            // API < 34: interaction-driven. Joystick sentinel polls for
+            // movement since we must hide overlays to get clean captures.
+            PlayTranslateAccessibilityService.instance
+                ?.startInputMonitoring(gameDisplayId, joystick = true) { onUserInteraction() }
+            interactionDebounceJob = serviceScope.launch { runLiveCaptureCycle() }
+        }
     }
 
     fun stopLive() {
         liveActive = false
+        liveTimerJob?.cancel()
+        liveTimerJob = null
         interactionDebounceJob?.cancel()
         interactionDebounceJob = null
         liveTranslationJob?.cancel()
@@ -318,6 +372,17 @@ class CaptureService : Service() {
         cachedOverlayBoxes = null
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+    }
+
+    /** API 34+ timer-based polling: capture every N seconds. */
+    private fun startLiveTimer() {
+        liveTimerJob?.cancel()
+        liveTimerJob = serviceScope.launch {
+            while (liveActive) {
+                runLiveCaptureCycle()
+                delay(Prefs(this@CaptureService).captureIntervalSec * 1000L)
+            }
+        }
     }
 
     /**
@@ -331,16 +396,21 @@ class CaptureService : Service() {
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
         liveTranslationJob?.cancel()
 
-        // (Re)start the settle timer — capture fires once input stops
-        interactionDebounceJob?.cancel()
-        interactionDebounceJob = serviceScope.launch {
-            val settleMs = Prefs(this@CaptureService).captureIntervalSec * 1000L
-            delay(settleMs)
-            // Wait until all input sources have released before capturing
-            while (PlayTranslateAccessibilityService.instance?.isInputActive == true) {
+        if (useTimerBasedLive) {
+            // API 34+: restart the timer so next capture happens after
+            // the settle delay, not mid-interaction.
+            startLiveTimer()
+        } else {
+            // API < 34: debounce until input stops
+            interactionDebounceJob?.cancel()
+            interactionDebounceJob = serviceScope.launch {
+                val settleMs = Prefs(this@CaptureService).captureIntervalSec * 1000L
                 delay(settleMs)
+                while (PlayTranslateAccessibilityService.instance?.isInputActive == true) {
+                    delay(settleMs)
+                }
+                runLiveCaptureCycle()
             }
-            runLiveCaptureCycle()
         }
     }
 
@@ -356,10 +426,21 @@ class CaptureService : Service() {
     }
 
     /**
-     * Captures the given display using AccessibilityService if available,
-     * falling back to MediaProjection.
+     * Captures the given display.
+     *
+     * On API 34+ (Android 14) with MediaProjection: captures only the game's
+     * task, excluding our accessibility overlays. No need to hide/show them.
+     *
+     * Otherwise: uses AccessibilityService.takeScreenshot (hides overlays
+     * briefly via Choreographer to get a clean frame), falling back to
+     * MediaProjection if the AccessibilityService isn't available.
      */
     private suspend fun captureScreen(displayId: Int): Bitmap? {
+        // On API 34+, MediaProjection is task-based — it captures only
+        // the game, not our overlays. Prefer it when available.
+        if (Build.VERSION.SDK_INT >= 34 && mediaProjection != null) {
+            return captureScreenViaMediaProjection(displayId)
+        }
         val a11y = PlayTranslateAccessibilityService.instance
         return if (a11y != null) {
             suspendCancellableCoroutine { cont ->
@@ -380,32 +461,38 @@ class CaptureService : Service() {
         val w = metrics.widthPixels
         val h = metrics.heightPixels
         val dpi = metrics.densityDpi
-        return suspendCancellableCoroutine { cont ->
-            val imageReader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
-            val vd = mp.createVirtualDisplay(
-                "PlayTranslateCapture", w, h, dpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                imageReader.surface, null, null
-            )
-            imageReader.setOnImageAvailableListener({ reader ->
-                if (!cont.isActive) { vd.release(); reader.close(); return@setOnImageAvailableListener }
-                val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
-                val plane = image.planes[0]
-                val rowPadding = plane.rowStride - plane.pixelStride * w
-                val bmpW = w + rowPadding / plane.pixelStride
-                val bmp = Bitmap.createBitmap(bmpW, h, Bitmap.Config.ARGB_8888)
-                bmp.copyPixelsFromBuffer(plane.buffer)
-                image.close()
-                vd.release()
-                reader.close()
-                val result = if (rowPadding == 0) bmp
-                    else Bitmap.createBitmap(bmp, 0, 0, w, h).also { bmp.recycle() }
-                // Re-check after bitmap creation — cancel may have arrived in the narrow
-                // window between the earlier isActive check and now.
-                if (!cont.isActive) { result.recycle(); return@setOnImageAvailableListener }
-                cont.resume(result)
-            }, Handler(Looper.getMainLooper()))
-            cont.invokeOnCancellation { vd.release(); imageReader.close() }
+        return kotlinx.coroutines.withTimeoutOrNull(3000L) {
+            suspendCancellableCoroutine { cont ->
+                val imageReader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
+                val vd = try {
+                    mp.createVirtualDisplay(
+                        "PlayTranslateCapture", w, h, dpi,
+                        DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                        imageReader.surface, null, null
+                    )
+                } catch (e: Exception) {
+                    imageReader.close()
+                    cont.resume(null)
+                    return@suspendCancellableCoroutine
+                }
+                imageReader.setOnImageAvailableListener({ reader ->
+                    if (!cont.isActive) { vd.release(); reader.close(); return@setOnImageAvailableListener }
+                    val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
+                    val plane = image.planes[0]
+                    val rowPadding = plane.rowStride - plane.pixelStride * w
+                    val bmpW = w + rowPadding / plane.pixelStride
+                    val bmp = Bitmap.createBitmap(bmpW, h, Bitmap.Config.ARGB_8888)
+                    bmp.copyPixelsFromBuffer(plane.buffer)
+                    image.close()
+                    vd.release()
+                    reader.close()
+                    val result = if (rowPadding == 0) bmp
+                        else Bitmap.createBitmap(bmp, 0, 0, w, h).also { bmp.recycle() }
+                    if (!cont.isActive) { result.recycle(); return@setOnImageAvailableListener }
+                    cont.resume(result)
+                }, Handler(Looper.getMainLooper()))
+                cont.invokeOnCancellation { vd.release(); imageReader.close() }
+            }
         }
     }
 

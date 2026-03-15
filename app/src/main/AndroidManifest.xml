@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE"
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="com.ichi2.anki.permission.READ_WRITE_DATABASE" />
@@ -50,11 +51,20 @@
             android:excludeFromRecents="true"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- Transparent Activity for MediaProjection consent (API 34+).
+             Keeps the game visible so the user can select it in the picker. -->
+        <activity
+            android:name=".MediaProjectionConsentActivity"
+            android:exported="false"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.PlayTranslate.Transparent" />
+
         <!-- Foreground service that owns the OCR + translation pipeline. -->
         <service
             android:name=".CaptureService"
             android:exported="false"
-            android:foregroundServiceType="specialUse">
+            android:foregroundServiceType="specialUse|mediaProjection">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="OCR and translation pipeline using AccessibilityService screen capture" />

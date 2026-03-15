@@ -608,6 +608,16 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
     private fun withAccessibility(action: () -> Unit) {
         if (PlayTranslateAccessibilityService.isEnabled) {
+            // On API 34+, also request MediaProjection for live mode if
+            // not already granted — it enables flicker-free overlay capture.
+            if (Build.VERSION.SDK_INT >= 34
+                && captureService?.hasMediaProjection != true) {
+                val pendingAction = action
+                MediaProjectionConsentActivity.launch(this) { granted ->
+                    if (granted) { ensureConfigured(); pendingAction() }
+                }
+                return
+            }
             ensureConfigured()
             action()
             return
