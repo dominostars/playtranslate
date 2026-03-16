@@ -13,6 +13,7 @@ import android.os.Looper
 import android.view.Choreographer
 import android.util.Log
 import android.view.Display
+import android.view.Gravity
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -72,6 +73,10 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     private var translationOverlayDisplayId: Int = -1
     private var touchSentinelView: View? = null
     private var touchSentinelWm: WindowManager? = null
+    private var regionEditorBar: View? = null
+    private var regionEditorBarWm: WindowManager? = null
+    private var regionEditorLabel: View? = null
+    private var regionEditorLabelWm: WindowManager? = null
     private var debugOcrManager: OcrManager? = null
     private val debugHandler = Handler(Looper.getMainLooper())
     private var debugRunning = false
@@ -93,6 +98,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         stopDebugOcrLoop()
         hideTranslationOverlay()
         hideRegionOverlay()
+        hideRegionEditor()
         hideRegionDragOverlay()
         dismissFloatingMenu()
         hideFloatingIcon()
@@ -689,6 +695,15 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 )
             }
         }
+        menu.onCaptureRegion = {
+            dismissFloatingMenu()
+            val effectivelySingleScreen = Prefs.isSingleScreen(this) || !MainActivity.isInForeground
+            if (effectivelySingleScreen) {
+                showRegionEditor(display)
+            } else {
+                sendMainActivityIntent(MainActivity.ACTION_ADD_CUSTOM_REGION)
+            }
+        }
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -717,6 +732,167 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         if (wasShowing) {
             CaptureService.instance?.holdActive = false
         }
+    }
+
+    // ── Single-screen region editor ─────────────────────────────────────
+
+    /**
+     * Shows the RegionDragView pre-populated with the current capture region
+     * plus a small floating bar with Use/Cancel buttons. Used on single-screen
+     * devices (or when the app is backgrounded) where we can't show
+     * AddCustomRegionSheet on a separate screen.
+     */
+    private fun showRegionEditor(display: Display) {
+        hideRegionEditor()
+        // Suppress live captures while editing
+        CaptureService.instance?.holdActive = true
+        hideTranslationOverlay()
+
+        // Pre-populate with current active region (or default if full-screen)
+        val region = CaptureService.instance?.activeRegion
+        val isFullScreen = region == null ||
+            (region[0] <= 0f && region[1] >= 1f && region[2] <= 0f && region[3] >= 1f)
+        val initTop    = if (isFullScreen) 0.25f else region!![0]
+        val initBottom = if (isFullScreen) 0.75f else region!![1]
+        val initLeft   = if (isFullScreen) 0.25f else region!![2]
+        val initRight  = if (isFullScreen) 0.75f else region!![3]
+
+        showRegionDragOverlay(display) { _, _, _, _ -> /* live updates not needed */ }
+        dragView?.setRegion(initTop, initBottom, initLeft, initRight)
+
+        // Build floating Use / Cancel button bar
+        val ctx = createDisplayContext(display)
+        val wm = ctx.getSystemService(WindowManager::class.java) ?: return
+        val dp = ctx.resources.displayMetrics.density
+        val btnSize = (48 * dp).toInt()
+        val barPad = (12 * dp).toInt()
+        val gap = (16 * dp).toInt()
+
+        val bar = android.widget.LinearLayout(ctx).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(barPad * 2, barPad, barPad * 2, barPad)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(android.graphics.Color.argb(220, 30, 30, 30))
+                cornerRadius = 28 * dp
+            }
+        }
+
+        // Cancel button (X)
+        val cancelBtn = android.widget.TextView(ctx).apply {
+            text = "\u2715"
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 22f
+            gravity = Gravity.CENTER
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(android.graphics.Color.argb(200, 180, 50, 50))
+            }
+            layoutParams = android.widget.LinearLayout.LayoutParams(btnSize, btnSize).apply {
+                marginEnd = gap
+            }
+            setOnClickListener {
+                hideRegionEditor()
+                if (MainActivity.isLiveModeActive) {
+                    CaptureService.instance?.refreshLiveOverlay()
+                }
+            }
+        }
+
+        // Use button (checkmark)
+        val useBtn = android.widget.TextView(ctx).apply {
+            text = "\u2713"
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 22f
+            gravity = Gravity.CENTER
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(android.graphics.Color.argb(200, 50, 140, 50))
+            }
+            layoutParams = android.widget.LinearLayout.LayoutParams(btnSize, btnSize)
+            setOnClickListener {
+                val fracs = dragView?.getFullRegion() ?: return@setOnClickListener
+                val top = fracs[0]; val bottom = fracs[1]
+                val left = fracs[2]; val right = fracs[3]
+                hideRegionEditor()
+                if (MainActivity.isLiveModeActive) {
+                    CaptureService.instance?.let { svc ->
+                        val prefs = Prefs(this@PlayTranslateAccessibilityService)
+                        svc.configure(
+                            displayId             = prefs.captureDisplayId,
+                            sourceLang            = prefs.sourceLang,
+                            targetLang            = prefs.targetLang,
+                            captureTopFraction    = top,
+                            captureBottomFraction = bottom,
+                            captureLeftFraction   = left,
+                            captureRightFraction  = right,
+                            regionLabel           = "Drawn Region"
+                        )
+                        svc.refreshLiveOverlay()
+                    }
+                } else {
+                    handleRegionSelection(display.displayId, top, bottom, left, right)
+                }
+            }
+        }
+
+        bar.addView(cancelBtn)
+        bar.addView(useBtn)
+
+        val barParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = (32 * dp).toInt()
+        }
+
+        wm.addView(bar, barParams)
+        regionEditorBarWm = wm
+        regionEditorBar = bar
+
+        // Instruction label at top center
+        val label = android.widget.TextView(ctx).apply {
+            text = "Restrict screen captures to this region"
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setPadding((16 * dp).toInt(), (12 * dp).toInt(), (16 * dp).toInt(), (12 * dp).toInt())
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(android.graphics.Color.argb(200, 30, 30, 30))
+                cornerRadius = 12 * dp
+            }
+        }
+        val labelParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            y = (16 * dp).toInt()
+        }
+        wm.addView(label, labelParams)
+        regionEditorLabelWm = wm
+        regionEditorLabel = label
+    }
+
+    private fun hideRegionEditor() {
+        hideRegionDragOverlay()
+        try { regionEditorBar?.let { regionEditorBarWm?.removeView(it) } } catch (_: Exception) {}
+        regionEditorBar = null
+        regionEditorBarWm = null
+        try { regionEditorLabel?.let { regionEditorLabelWm?.removeView(it) } } catch (_: Exception) {}
+        regionEditorLabel = null
+        regionEditorLabelWm = null
+        CaptureService.instance?.holdActive = false
     }
 
     /**

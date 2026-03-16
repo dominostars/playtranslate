@@ -267,6 +267,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             ACTION_REGION_CAPTURE -> handleRegionCapture(intent)
             ACTION_START_LIVE -> if (!isLiveMode) withAccessibility { startLiveMode() }
             ACTION_STOP_LIVE -> if (isLiveMode) stopLiveMode()
+            ACTION_ADD_CUSTOM_REGION -> openAddCustomRegionFromDropdown()
         }
     }
 
@@ -1102,6 +1103,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         const val DRAGGED_REGION_LABEL = "Drawn Region"
         const val ACTION_START_LIVE = "com.gamelens.ACTION_START_LIVE"
         const val ACTION_STOP_LIVE = "com.gamelens.ACTION_STOP_LIVE"
+        const val ACTION_ADD_CUSTOM_REGION = "com.gamelens.ACTION_ADD_CUSTOM_REGION"
 
         @Volatile
         var isInForeground = false

@@ -41,6 +41,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     var onRegionSelected: ((top: Float, bottom: Float, left: Float, right: Float) -> Unit)? = null
     var onClearRegion: (() -> Unit)? = null
     var onToggleLive: (() -> Unit)? = null
+    var onCaptureRegion: (() -> Unit)? = null
     var isSingleScreen: Boolean = false
 
     /** Current active capture region as fractional coordinates (top, bottom, left, right).
@@ -80,10 +81,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         textSize = 12f * dp
         textAlign = Paint.Align.CENTER
         typeface = Typeface.DEFAULT_BOLD
-    }
-    private val regionLabelBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(170, 0, 0, 0)
-        style = Paint.Style.FILL
+        setShadowLayer(4f * dp, 0f, 0f, Color.BLACK)
     }
 
     private var clearRegionButton: View? = null
@@ -147,7 +145,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         liveIcon = TextView(context).apply {
             text = "\u25B6"
             setTextColor(Color.WHITE)
-            textSize = 22f
+            textSize = 26f
             gravity = Gravity.CENTER
         }
         liveBtn.addView(liveIcon, LayoutParams(
@@ -169,6 +167,51 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         liveGroup.addView(liveBtn)
         liveGroup.addView(liveLabel)
         menuCard.addView(liveGroup)
+
+        // Capture Region button + label
+        val regionGroup = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = (10 * dp).toInt() }
+        }
+        val regionBtn = FrameLayout(context).apply {
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#3070B0"))
+                cornerRadius = 14 * dp
+            }
+            layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
+            setOnClickListener { onCaptureRegion?.invoke() }
+        }
+        val regionIcon = TextView(context).apply {
+            text = "\u25A3" // ▣ square with inner square
+            setTextColor(Color.WHITE)
+            textSize = 33f
+            gravity = Gravity.CENTER
+        }
+        regionBtn.addView(regionIcon, LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+        val regionLabel = TextView(context).apply {
+            text = "Capture\nRegion"
+            setTextColor(Color.parseColor("#CCFFFFFF"))
+            textSize = 9f
+            gravity = Gravity.CENTER_HORIZONTAL
+            setTypeface(null, Typeface.BOLD)
+            maxWidth = btnSize
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (4 * dp).toInt() }
+        }
+        regionGroup.addView(regionBtn)
+        regionGroup.addView(regionLabel)
+        menuCard.addView(regionGroup)
 
         // Hide button + label
         val hideGroup = LinearLayout(context).apply {
@@ -238,10 +281,12 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private fun updateLiveButton() {
         if (isLiveMode) {
             liveIcon.text = "\u275A\u275A" // ❚❚ pause
+            liveIcon.textSize = 20f
             liveLabel.text = "Pause"
             (liveBtn.background as? GradientDrawable)?.setColor(Color.parseColor("#D4A020"))
         } else {
             liveIcon.text = "\u25B6" // ▶ play
+            liveIcon.textSize = 26f
             liveLabel.text = "Auto Translate"
             (liveBtn.background as? GradientDrawable)?.setColor(Color.parseColor("#40A040"))
         }
@@ -271,21 +316,10 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 canvas.drawRect(0f, 0f, w, h, dimPaint)
                 canvas.drawRect(regionRect, regionFillPaint)
                 canvas.drawRect(regionRect, regionStrokePaint)
-                // Label with rounded background centered in the region
+                // Label centered in the region (shadow provides contrast)
                 val label = "Current capture region"
-                val labelW = regionLabelPaint.measureText(label)
-                val labelH = regionLabelPaint.descent() - regionLabelPaint.ascent()
-                val padH = 10f * dp
-                val padV = 6f * dp
                 val labelCx = regionRect.centerX()
                 val labelCy = regionRect.centerY()
-                val bgRect = RectF(
-                    labelCx - labelW / 2 - padH,
-                    labelCy - labelH / 2 - padV,
-                    labelCx + labelW / 2 + padH,
-                    labelCy + labelH / 2 + padV
-                )
-                canvas.drawRoundRect(bgRect, 8f * dp, 8f * dp, regionLabelBgPaint)
                 canvas.drawText(label, labelCx,
                     labelCy - (regionLabelPaint.descent() + regionLabelPaint.ascent()) / 2,
                     regionLabelPaint)
@@ -338,6 +372,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                     isDragging = true
                     menuCard.visibility = View.GONE
                     instructionText.visibility = View.GONE
+                    clearRegionButton?.visibility = View.GONE
                 }
                 if (isDragging) {
                     val left   = minOf(dragStartX, event.x)
