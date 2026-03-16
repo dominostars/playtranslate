@@ -72,7 +72,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         isAntiAlias = true
     }
     private val regionFillPaint = Paint().apply {
-        color = Color.argb(100, 100, 180, 255)
+        color = Color.argb(60, 100, 180, 255)
         style = Paint.Style.FILL
     }
     private val regionLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -268,10 +268,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                     region[2] * w, region[0] * h,
                     region[3] * w, region[1] * h
                 )
-                val sc = canvas.saveLayer(0f, 0f, w, h, null)
                 canvas.drawRect(0f, 0f, w, h, dimPaint)
-                canvas.drawRect(regionRect, clearPaint)
-                canvas.restoreToCount(sc)
                 canvas.drawRect(regionRect, regionFillPaint)
                 canvas.drawRect(regionRect, regionStrokePaint)
                 // Label with rounded background centered in the region
