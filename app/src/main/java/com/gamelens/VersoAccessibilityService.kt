@@ -77,6 +77,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     private var regionEditorBarWm: WindowManager? = null
     private var regionEditorLabel: View? = null
     private var regionEditorLabelWm: WindowManager? = null
+    private var regionIndicatorView: View? = null
+    private var regionIndicatorWm: WindowManager? = null
+    private val regionIndicatorHandler = Handler(Looper.getMainLooper())
     private var debugOcrManager: OcrManager? = null
     private val debugHandler = Handler(Looper.getMainLooper())
     private var debugRunning = false
@@ -98,6 +101,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         stopDebugOcrLoop()
         hideTranslationOverlay()
         hideRegionOverlay()
+        hideRegionIndicator()
         hideRegionEditor()
         hideRegionDragOverlay()
         dismissFloatingMenu()
@@ -142,6 +146,103 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         try { overlayView?.let { overlayWm?.removeView(it) } } catch (_: Exception) {}
         overlayView = null
         overlayWm = null
+    }
+
+    // ── Capture region indicator (brief flash) ───────────────────────────
+
+    /**
+     * Briefly flashes the capture region on the game display with a white
+     * border and "Capturing (label)" text. Auto-dismisses after [durationMs]
+     * with a fade-out. Call [hideRegionIndicator] to force-remove instantly
+     * (e.g. before taking another screenshot).
+     */
+    fun showRegionIndicator(
+        display: Display,
+        topFrac: Float, bottomFrac: Float,
+        leftFrac: Float, rightFrac: Float,
+        label: String,
+        durationMs: Long = 1500L
+    ) {
+        hideRegionIndicator()
+
+        // Skip for full-screen regions
+        if (topFrac <= 0f && bottomFrac >= 1f && leftFrac <= 0f && rightFrac >= 1f) return
+
+        val ctx = createDisplayContext(display)
+        val wm = ctx.getSystemService(WindowManager::class.java) ?: return
+        val dp = ctx.resources.displayMetrics.density
+        val displayLabel = "Capturing $label"
+
+        val view = object : View(ctx) {
+            private val borderOutlinePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.argb(200, 0, 0, 0)
+                style = android.graphics.Paint.Style.STROKE
+                strokeWidth = 5f * dp
+            }
+            private val borderPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.WHITE
+                style = android.graphics.Paint.Style.STROKE
+                strokeWidth = 2.5f * dp
+            }
+            private val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.WHITE
+                textSize = 13f * dp
+                textAlign = android.graphics.Paint.Align.CENTER
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setShadowLayer(6f * dp, 0f, 0f, android.graphics.Color.BLACK)
+            }
+
+            override fun onDraw(canvas: android.graphics.Canvas) {
+                val w = width.toFloat()
+                val h = height.toFloat()
+                val l = w * leftFrac
+                val t = h * topFrac
+                val r = w * rightFrac
+                val b = h * bottomFrac
+                // Black outline behind white border for contrast
+                canvas.drawRect(l, t, r, b, borderOutlinePaint)
+                canvas.drawRect(l, t, r, b, borderPaint)
+                val cx = (l + r) / 2f
+                val cy = (t + b) / 2f
+                canvas.drawText(displayLabel, cx,
+                    cy - (textPaint.descent() + textPaint.ascent()) / 2f,
+                    textPaint)
+            }
+        }
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        )
+        wm.addView(view, params)
+        regionIndicatorView = view
+        regionIndicatorWm = wm
+
+        // Hold for 1 second, then fade out
+        regionIndicatorHandler.postDelayed({
+            view.animate()
+                .alpha(0f)
+                .setDuration(800L)
+                .withEndAction { hideRegionIndicator() }
+                .start()
+        }, 1000L)
+    }
+
+    fun hideRegionIndicator() {
+        regionIndicatorHandler.removeCallbacksAndMessages(null)
+        val view = regionIndicatorView
+        if (view != null) {
+            view.animate().cancel()
+            view.visibility = View.INVISIBLE
+            try { regionIndicatorWm?.removeView(view) } catch (_: Exception) {}
+        }
+        regionIndicatorView = null
+        regionIndicatorWm = null
     }
 
     fun showRegionDragOverlay(display: Display, onRegionChanged: (Float, Float, Float, Float) -> Unit) {
@@ -1089,6 +1190,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
         // Hide overlays so they don't appear in the screenshot.
         // The floating icon uses FLAG_SECURE so the compositor excludes it automatically.
+        // The region indicator is removed entirely (not restored after capture).
+        val hadRegionIndicator = regionIndicatorView != null
+        if (hadRegionIndicator) hideRegionIndicator()
         val hadDebugOverlay = debugOverlayView != null
         val hadTranslationOverlay = translationOverlayView != null
         if (hadDebugOverlay) debugOverlayView?.visibility = android.view.View.INVISIBLE
@@ -1122,7 +1226,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             )
         }
 
-        if (hadDebugOverlay || hadTranslationOverlay) {
+        if (hadRegionIndicator || hadDebugOverlay || hadTranslationOverlay) {
             // Wait two vsync frames for the compositor to flush the overlay-free
             // frame (~32 ms at 60 Hz). Frame-accurate and shorter than a fixed delay.
             val choreographer = Choreographer.getInstance()

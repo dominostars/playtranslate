@@ -295,11 +295,14 @@ class CaptureService : Service() {
     private var cachedOverlayCropTop = 0
     private var cachedOverlayScreenW = 0
     private var cachedOverlayScreenH = 0
+    /** True until the first live capture shows the region indicator. */
+    private var liveShowRegionFlash = false
 
     val isLive: Boolean get() = liveActive
 
     fun startLive() {
         liveActive = true
+        liveShowRegionFlash = true
         lastLiveOcrText = null
         cachedOverlayBoxes = null
         interactionDebounceJob?.cancel()
@@ -357,6 +360,23 @@ class CaptureService : Service() {
     fun cancelOneShot() {
         ++captureGeneration
         stopSceneChangeDetection()
+    }
+
+    /**
+     * Briefly flash the capture region indicator on the game display.
+     * Called after a screenshot is captured so the indicator doesn't
+     * appear in the screenshot.
+     */
+    private fun flashRegionIndicator() {
+        val a11y = PlayTranslateAccessibilityService.instance ?: return
+        val dm = getSystemService(DisplayManager::class.java)
+        val display = dm.getDisplay(gameDisplayId) ?: return
+        a11y.showRegionIndicator(
+            display,
+            captureTopFraction, captureBottomFraction,
+            captureLeftFraction, captureRightFraction,
+            captureRegionLabel
+        )
     }
 
     // ── Scene-change detection (API < 34) ────────────────────────────────
@@ -614,6 +634,12 @@ class CaptureService : Service() {
             // from captureDisplay can become invalid after any sub-bitmap operations
             // due to HardwareBuffer lifecycle issues.
             lastCleanScreenshotPath = saveScreenshotToCache(raw)
+
+            // Flash region indicator AFTER screenshot is saved — safe from contamination
+            if (liveShowRegionFlash) {
+                liveShowRegionFlash = false
+                flashRegionIndicator()
+            }
             val colorScale = 4
             val colorRef = Bitmap.createScaledBitmap(raw, raw.width / colorScale, raw.height / colorScale, false)
 
@@ -847,6 +873,9 @@ class CaptureService : Service() {
             }
 
             val screenshotPath = saveScreenshotToCache(raw)
+
+            // Flash region indicator AFTER screenshot is saved — safe from contamination
+            flashRegionIndicator()
 
             // Exclude the status bar: dynamically query its height for the game display.
             // maxOf() means if the user's region already starts below the status bar,
