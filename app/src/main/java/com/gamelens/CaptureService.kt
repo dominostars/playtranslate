@@ -333,11 +333,13 @@ class CaptureService : Service() {
     /** Trigger a fresh capture cycle in live mode (e.g. after hold-release). */
     fun refreshLiveOverlay() {
         if (!liveActive) return
-        // Clear cached data so the dedup check doesn't short-circuit
-        // and re-show stale overlays.
+        // Clear all previous live mode work so the fresh cycle runs
+        // without interference from stale scene detection or translation.
         lastLiveOcrText = null
         cachedOverlayBoxes = null
         ++captureGeneration
+        stopSceneChangeDetection()
+        liveTranslationJob?.cancel()
         interactionDebounceJob?.cancel()
         interactionDebounceJob = serviceScope.launch { runLiveCaptureCycle() }
     }
