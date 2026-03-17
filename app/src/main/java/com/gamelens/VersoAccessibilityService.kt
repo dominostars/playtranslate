@@ -212,15 +212,14 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val displayLabel = "Capturing $label"
 
         val view = object : View(ctx) {
-            private val borderOutlinePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                color = android.graphics.Color.argb(200, 0, 0, 0)
-                style = android.graphics.Paint.Style.STROKE
-                strokeWidth = 5f * dp
+            private val dimPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.argb(120, 0, 0, 0)
+                style = android.graphics.Paint.Style.FILL
             }
             private val borderPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                 color = android.graphics.Color.WHITE
                 style = android.graphics.Paint.Style.STROKE
-                strokeWidth = 2.5f * dp
+                strokeWidth = 1.5f * dp
             }
             private val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                 color = android.graphics.Color.WHITE
@@ -229,6 +228,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
                 setShadowLayer(6f * dp, 0f, 0f, android.graphics.Color.BLACK)
             }
+            private val labelMargin = 8f * dp
 
             override fun onDraw(canvas: android.graphics.Canvas) {
                 val w = width.toFloat()
@@ -237,14 +237,27 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 val t = h * topFrac
                 val r = w * rightFrac
                 val b = h * bottomFrac
-                // Black outline behind white border for contrast
-                canvas.drawRect(l, t, r, b, borderOutlinePaint)
+
+                // Darkened area outside the capture region
+                if (t > 0f) canvas.drawRect(0f, 0f, w, t, dimPaint)
+                if (b < h) canvas.drawRect(0f, b, w, h, dimPaint)
+                if (l > 0f) canvas.drawRect(0f, t, l, b, dimPaint)
+                if (r < w) canvas.drawRect(r, t, w, b, dimPaint)
+
+                // White border around the region
                 canvas.drawRect(l, t, r, b, borderPaint)
+
+                // Label centered horizontally, above the region (or below if no space)
                 val cx = (l + r) / 2f
-                val cy = (t + b) / 2f
-                canvas.drawText(displayLabel, cx,
-                    cy - (textPaint.descent() + textPaint.ascent()) / 2f,
-                    textPaint)
+                val textH = textPaint.descent() - textPaint.ascent()
+                val labelY = if (t > textH + labelMargin * 2) {
+                    // Above the region
+                    t - labelMargin - textPaint.descent()
+                } else {
+                    // Below the region
+                    b + labelMargin - textPaint.ascent()
+                }
+                canvas.drawText(displayLabel, cx, labelY, textPaint)
             }
         }
 
