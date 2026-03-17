@@ -34,8 +34,8 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
     /** Timestamp of the most recent `takeScreenshot` call (success or failure). */
     private var lastCaptureTimeMs = 0L
 
-    /** Android's takeScreenshot rate limit is ~1 s. Add a small buffer. */
-    private val RATE_LIMIT_MS = 1050L
+    /** Android's takeScreenshot rate limit is ~1 s. Minimal buffer to maximize throughput. */
+    private val RATE_LIMIT_MS = 1010L
 
     // ── File cache ───────────────────────────────────────────────────────
 
@@ -116,7 +116,10 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
     private suspend fun awaitRateLimit() {
         val elapsed = System.currentTimeMillis() - lastCaptureTimeMs
         val waitMs = RATE_LIMIT_MS - elapsed
-        if (waitMs > 0) delay(waitMs)
+        if (waitMs > 0) {
+            Log.d(TAG, "awaitRateLimit: waiting ${waitMs}ms (elapsed=${elapsed}ms since last capture)")
+            delay(waitMs)
+        }
     }
 
     /**
@@ -134,7 +137,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
                         bitmapExecutor.execute {
                             val bmp = Bitmap
                                 .wrapHardwareBuffer(screenshot.hardwareBuffer, screenshot.colorSpace)
-                                ?.copy(Bitmap.Config.ARGB_8888, false)
+                                ?.copy(Bitmap.Config.ARGB_8888, true)
                             screenshot.hardwareBuffer.close()
                             if (cont.isActive) cont.resume(bmp)
                             else bmp?.recycle()

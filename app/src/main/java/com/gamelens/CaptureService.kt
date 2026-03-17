@@ -386,7 +386,10 @@ class CaptureService : Service() {
     // sampled pixels changed, the game is moving and overlays are stale.
 
     private var sceneCheckJob: Job? = null
-    private val SCENE_CHECK_INTERVAL_MS = 500L
+    /** Short interval — the actual poll rate is dominated by the
+     *  ScreenshotManager's rate limit (~1s), not this delay. Keeping it
+     *  short means we react quickly after the rate limit clears. */
+    private val SCENE_CHECK_INTERVAL_MS = 100L
     private val SCENE_CHANGE_THRESHOLD = 0.40f  // 40% of sampled pixels must change
     private val PIXEL_DIFF_THRESHOLD = 30       // per-channel RGB difference
 
@@ -428,22 +431,34 @@ class CaptureService : Service() {
             var prevFramePixels: IntArray? = null
 
             while (liveActive) {
+                val pollStart = System.currentTimeMillis()
                 delay(SCENE_CHECK_INTERVAL_MS)
+                Log.d(TAG, "SceneDetect: poll delay done, requesting raw screenshot (waited ${System.currentTimeMillis() - pollStart}ms)")
 
-                val bitmap = mgr.requestRaw(gameDisplayId) ?: continue
+                val preCapture = System.currentTimeMillis()
+                val bitmap = mgr.requestRaw(gameDisplayId)
+                if (bitmap == null) {
+                    Log.w(TAG, "SceneDetect: requestRaw returned null after ${System.currentTimeMillis() - preCapture}ms")
+                    continue
+                }
+                Log.d(TAG, "SceneDetect: requestRaw took ${System.currentTimeMillis() - preCapture}ms")
 
                 val currentPixels = IntArray(positions.size) { i ->
                     val (x, y) = positions[i]
                     if (x < bitmap.width && y < bitmap.height) bitmap.getPixel(x, y) else 0
                 }
-                bitmap.recycle()
 
                 if (!sceneMoving) {
+                    bitmap.recycle()
                     // Phase 1: compare against reference to detect movement start
                     val pct = pixelDiffPercent(refPixels, currentPixels)
+                    Log.d(TAG, "SceneDetect: Phase1 diff=${(pct * 100).toInt()}% threshold=${(SCENE_CHANGE_THRESHOLD * 100).toInt()}%")
                     if (pct >= SCENE_CHANGE_THRESHOLD) {
                         sceneMoving = true
+                        Log.d(TAG, "SceneDetect: MOVEMENT DETECTED at ${System.currentTimeMillis()}")
                         liveCaptureJob?.cancel()
+                        lastLiveOcrText = null
+                        cachedOverlayBoxes = null
                         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
                     }
                 } else {
@@ -451,21 +466,23 @@ class CaptureService : Service() {
                     val prev = prevFramePixels
                     if (prev != null) {
                         val pct = pixelDiffPercent(prev, currentPixels)
+                        Log.d(TAG, "SceneDetect: Phase2 diff=${(pct * 100).toInt()}% stable=<5%")
                         if (pct < 0.05f) {
-                            // Scene stabilized — recapture. Launch capture
-                            // in its own job so it won't be killed if
-                            // onUserInteraction cancels the debounce.
-                            interactionDebounceJob?.cancel()
-                            interactionDebounceJob = serviceScope.launch {
-                                delay(300L)
-                                while (PlayTranslateAccessibilityService.instance?.isInputActive == true) {
-                                    delay(300L)
-                                }
-                                liveCaptureJob = serviceScope.launch { runLiveCaptureCycle() }
+                            // Scene stabilized — reuse this screenshot directly
+                            // for OCR instead of taking another (saves ~1s rate limit).
+                            // The bitmap is already clean: Phase 1 hid the overlay,
+                            // and FLAG_SECURE excludes the floating icon.
+                            Log.d(TAG, "SceneDetect: STABILIZED — reusing bitmap for OCR at ${System.currentTimeMillis()}")
+                            liveCaptureJob?.cancel()
+                            liveCaptureJob = serviceScope.launch {
+                                runLiveCaptureCycle(preCaptured = bitmap)
                             }
                             return@launch
                         }
+                    } else {
+                        Log.d(TAG, "SceneDetect: Phase2 first frame (no prev yet)")
                     }
+                    bitmap.recycle()
                 }
                 prevFramePixels = currentPixels
             }
@@ -598,12 +615,27 @@ class CaptureService : Service() {
         }
     }
 
-    private suspend fun runLiveCaptureCycle() {
-        if (!isConfigured) return
+    /**
+     * @param preCaptured If non-null, use this bitmap instead of taking a new
+     *   screenshot. Used by scene detection which already has a clean frame.
+     */
+    private suspend fun runLiveCaptureCycle(preCaptured: Bitmap? = null) {
+        if (!isConfigured) { preCaptured?.recycle(); return }
         val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
 
-        // ScreenshotManager handles rate limiting — no retry needed.
-        val raw: Bitmap = captureScreen(gameDisplayId) ?: return
+        val raw: Bitmap = if (preCaptured != null) {
+            Log.d(TAG, "LiveCapture: using pre-captured bitmap (${preCaptured.width}x${preCaptured.height})")
+            preCaptured
+        } else {
+            val captureStart = System.currentTimeMillis()
+            Log.d(TAG, "LiveCapture: starting captureScreen at $captureStart")
+            val bmp = captureScreen(gameDisplayId) ?: run {
+                Log.w(TAG, "LiveCapture: captureScreen returned null after ${System.currentTimeMillis() - captureStart}ms")
+                return
+            }
+            Log.d(TAG, "LiveCapture: captureScreen took ${System.currentTimeMillis() - captureStart}ms")
+            bmp
+        }
 
         try {
             val statusBarHeight = getStatusBarHeightForDisplay(gameDisplayId)
