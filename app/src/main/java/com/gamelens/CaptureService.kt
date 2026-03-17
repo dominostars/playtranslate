@@ -386,10 +386,6 @@ class CaptureService : Service() {
     // sampled pixels changed, the game is moving and overlays are stale.
 
     private var sceneCheckJob: Job? = null
-    /** Short interval — the actual poll rate is dominated by the
-     *  ScreenshotManager's rate limit (~1s), not this delay. Keeping it
-     *  short means we react quickly after the rate limit clears. */
-    private val SCENE_CHECK_INTERVAL_MS = 100L
     private val SCENE_CHANGE_THRESHOLD = 0.40f  // 40% of sampled pixels must change
     private val PIXEL_DIFF_THRESHOLD = 30       // per-channel RGB difference
 
@@ -404,8 +400,8 @@ class CaptureService : Service() {
         val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager ?: return
 
         sceneCheckJob = serviceScope.launch {
-            // Initial delay to let the overlay render before taking reference
-            delay(SCENE_CHECK_INTERVAL_MS)
+            // Brief delay to let the overlay render before taking reference
+            delay(300L)
 
             // Take reference frame (with overlays visible)
             val refBitmap = mgr.requestRaw(gameDisplayId) ?: return@launch
@@ -431,9 +427,6 @@ class CaptureService : Service() {
             var prevFramePixels: IntArray? = null
 
             while (liveActive) {
-                val pollStart = System.currentTimeMillis()
-                delay(SCENE_CHECK_INTERVAL_MS)
-                Log.d(TAG, "SceneDetect: poll delay done, requesting raw screenshot (waited ${System.currentTimeMillis() - pollStart}ms)")
 
                 val preCapture = System.currentTimeMillis()
                 val bitmap = mgr.requestRaw(gameDisplayId)

@@ -34,8 +34,9 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
     /** Timestamp of the most recent `takeScreenshot` call (success or failure). */
     private var lastCaptureTimeMs = 0L
 
-    /** Android's takeScreenshot rate limit is ~1 s. Minimal buffer to maximize throughput. */
-    private val RATE_LIMIT_MS = 1010L
+    /** Minimum time between any two takeScreenshot calls. Balances
+     *  responsiveness against Android's rate limit and device performance. */
+    private val MIN_SCREENSHOT_INTERVAL_MS = 500L
 
     // ── File cache ───────────────────────────────────────────────────────
 
@@ -54,7 +55,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
      */
     suspend fun requestClean(displayId: Int): Bitmap? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
-        awaitRateLimit()
+        awaitScreenshotInterval()
 
         // Hide overlays so they don't appear in the screenshot
         val state = a11y.prepareForCleanCapture()
@@ -76,7 +77,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
      */
     suspend fun requestRaw(displayId: Int): Bitmap? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
-        awaitRateLimit()
+        awaitScreenshotInterval()
         return doTakeScreenshot(displayId)
     }
 
@@ -113,11 +114,11 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
      * Suspend until enough time has passed since the last `takeScreenshot`
      * call to avoid the Android rate limit (error code 3).
      */
-    private suspend fun awaitRateLimit() {
+    private suspend fun awaitScreenshotInterval() {
         val elapsed = System.currentTimeMillis() - lastCaptureTimeMs
-        val waitMs = RATE_LIMIT_MS - elapsed
+        val waitMs = MIN_SCREENSHOT_INTERVAL_MS - elapsed
         if (waitMs > 0) {
-            Log.d(TAG, "awaitRateLimit: waiting ${waitMs}ms (elapsed=${elapsed}ms since last capture)")
+            Log.d(TAG, "awaitScreenshotInterval: waiting ${waitMs}ms (elapsed=${elapsed}ms since last capture)")
             delay(waitMs)
         }
     }
