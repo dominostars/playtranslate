@@ -499,8 +499,12 @@ class CaptureService : Service() {
         if (!liveActive) return
 
         // Cancel any in-flight capture/translation and hide the overlay
-        // so the next screenshot is clean.
+        // so the next screenshot is clean. Clear dedup state so the next
+        // cycle always translates fresh — user input means the screen
+        // likely changed, even if only a few characters differ.
         liveCaptureJob?.cancel()
+        lastLiveOcrText = null
+        cachedOverlayBoxes = null
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
         stopSceneChangeDetection()
 
