@@ -288,6 +288,10 @@ class CaptureService : Service() {
     private var liveActive = false
     private var liveTranslationJob: Job? = null
     private var interactionDebounceJob: Job? = null
+    /** Separate from [interactionDebounceJob] so cancelling the debounce
+     *  doesn't kill an in-flight capture. The capture self-invalidates
+     *  via [captureGeneration] checks instead. */
+    private var liveCaptureJob: Job? = null
     private var lastLiveOcrText: String? = null
     /** Cached overlay data so dedup-unchanged frames can re-show instantly. */
     private var cachedOverlayBoxes: List<TranslationOverlayView.TextBox>? = null
@@ -306,6 +310,7 @@ class CaptureService : Service() {
         lastLiveOcrText = null
         cachedOverlayBoxes = null
         interactionDebounceJob?.cancel()
+        liveCaptureJob?.cancel()
         liveTranslationJob?.cancel()
 
         // Buttons and touch are detected via onKeyEvent and touch sentinel.
@@ -314,13 +319,15 @@ class CaptureService : Service() {
 
         // Interaction-driven capture. Scene-change detection via pixel-diff
         // handles joystick/d-pad movement.
-        interactionDebounceJob = serviceScope.launch { runLiveCaptureCycle() }
+        liveCaptureJob = serviceScope.launch { runLiveCaptureCycle() }
     }
 
     fun stopLive() {
         liveActive = false
         interactionDebounceJob?.cancel()
         interactionDebounceJob = null
+        liveCaptureJob?.cancel()
+        liveCaptureJob = null
         liveTranslationJob?.cancel()
         liveTranslationJob = null
         stopSceneChangeDetection()
@@ -341,7 +348,8 @@ class CaptureService : Service() {
         stopSceneChangeDetection()
         liveTranslationJob?.cancel()
         interactionDebounceJob?.cancel()
-        interactionDebounceJob = serviceScope.launch { runLiveCaptureCycle() }
+        liveCaptureJob?.cancel()
+        liveCaptureJob = serviceScope.launch { runLiveCaptureCycle() }
     }
 
     /** One-shot: capture, OCR, translate, show overlay (not live mode). */
@@ -462,15 +470,16 @@ class CaptureService : Service() {
                     if (prev != null) {
                         val pct = pixelDiffPercent(prev, currentPixels)
                         if (pct < 0.05f) {
-                            // Scene stabilized — recapture
+                            // Scene stabilized — recapture. Launch capture
+                            // in its own job so it won't be killed if
+                            // onUserInteraction cancels the debounce.
                             interactionDebounceJob?.cancel()
                             interactionDebounceJob = serviceScope.launch {
-                                val settleMs = Prefs(this@CaptureService).captureIntervalSec * 1000L
-                                delay(settleMs)
+                                delay(300L)
                                 while (PlayTranslateAccessibilityService.instance?.isInputActive == true) {
-                                    delay(settleMs)
+                                    delay(300L)
                                 }
-                                runLiveCaptureCycle()
+                                liveCaptureJob = serviceScope.launch { runLiveCaptureCycle() }
                             }
                             return@launch
                         }
@@ -515,7 +524,7 @@ class CaptureService : Service() {
         liveTranslationJob?.cancel()
         stopSceneChangeDetection()
 
-        // Debounce until input stops
+        // Debounce until input stops, then launch capture in its own job
         interactionDebounceJob?.cancel()
         interactionDebounceJob = serviceScope.launch {
             val settleMs = Prefs(this@CaptureService).captureIntervalSec * 1000L
@@ -523,7 +532,7 @@ class CaptureService : Service() {
             while (PlayTranslateAccessibilityService.instance?.isInputActive == true) {
                 delay(settleMs)
             }
-            runLiveCaptureCycle()
+            liveCaptureJob = serviceScope.launch { runLiveCaptureCycle() }
         }
     }
 
@@ -616,7 +625,11 @@ class CaptureService : Service() {
         if (!isConfigured) return
         val cycleGen = captureGeneration
         try {
-            val raw: Bitmap = captureScreen(gameDisplayId) ?: return
+            // Retry once on failure — takeScreenshot can be rate-limited
+            // (error code 3, ~1s cooldown) if scene detection polled recently.
+            val raw: Bitmap = captureScreen(gameDisplayId)
+                ?: run { delay(500); captureScreen(gameDisplayId) }
+                ?: return
 
             // Crop for OCR without recycling raw — we need raw for the screenshot, but only
             // if the dedup check passes. Keeping raw alive avoids saving screenshots for
