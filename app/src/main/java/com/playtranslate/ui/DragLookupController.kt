@@ -495,8 +495,8 @@ class DragLookupController(
 
     private fun prefetchWordLookups(sentence: String) {
         val cache = LastSentenceCache
-        // Skip if the cache already has results for a text containing this sentence
-        if (cache.original?.contains(sentence) == true && cache.wordResults != null) return
+        // Skip if the cache already has results for this exact sentence
+        if (cache.original == sentence && cache.wordResults != null) return
         val service = PlayTranslateAccessibilityService.instance ?: return
         wordLookupJob?.cancel()
         wordLookupJob = scope.launch {
@@ -504,6 +504,7 @@ class DragLookupController(
             // Only write cache if this sentence is still current
             if (currentSentence == sentence) {
                 cache.original = sentence
+                cache.translation = null  // clear stale translation from previous text
                 cache.wordResults = results
             }
         }
@@ -553,8 +554,10 @@ class DragLookupController(
 
         val cache = LastSentenceCache
         val sentenceOrig = currentSentence
+        Log.d(TAG, "launchAnkiReview: sentenceOrig=${sentenceOrig?.take(50)}, cache.original=${cache.original?.take(50)}")
         val hasCachedTranslation = sentenceOrig != null
-            && cache.original?.contains(sentenceOrig) == true && cache.translation != null
+            && cache.original == sentenceOrig && cache.translation != null
+        Log.d(TAG, "launchAnkiReview: hasCachedTranslation=$hasCachedTranslation")
 
         onTransitioningToAnki?.invoke()
         popup.dismiss()
