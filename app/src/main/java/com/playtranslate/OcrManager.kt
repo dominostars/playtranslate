@@ -279,9 +279,20 @@ class OcrManager private constructor() {
      *     of the group's left edge, OR the right edges are similarly aligned.
      */
     private fun groupLinesByProximity(blocks: List<Text.TextBlock>): List<List<Text.Line>> {
-        // Extract all lines from all blocks, sorted top-to-bottom
+        // Extract all lines from all blocks, sorted top-to-bottom.
+        // Filter out low-confidence single-character lines (e.g. game UI arrows
+        // misdetected as "く") on API 31+ where confidence is available.
         val allLines = blocks.flatMap { it.lines }
             .filter { it.boundingBox != null }
+            .filter { line ->
+                // Drop single-character lines in blocks with undetermined language
+                // (catches game UI arrows/symbols misdetected as Japanese characters).
+                if (line.text.trim().length <= 1) {
+                    val blockLang = blocks.firstOrNull { b -> line in b.lines }?.recognizedLanguage
+                    if (blockLang == "und") return@filter false
+                }
+                true
+            }
             .sortedBy { it.boundingBox!!.top }
         if (allLines.isEmpty()) return emptyList()
 
