@@ -682,6 +682,8 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         if (isFullScreen) return
 
         val btnSize = (36 * dp).toInt()
+        val touchSize = (56 * dp).toInt()
+        val touchPad = (touchSize - btnSize) / 2
         val regionRect = RectF(
             region[2] * screenW, region[0] * screenH,
             region[3] * screenW, region[1] * screenH
@@ -716,18 +718,23 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
 
         val container = FrameLayout(context).apply {
-            addView(btn, FrameLayout.LayoutParams(btnSize, btnSize))
-            addView(xLabel, FrameLayout.LayoutParams(btnSize, btnSize))
+            val innerLp = FrameLayout.LayoutParams(btnSize, btnSize).apply {
+                gravity = Gravity.CENTER
+            }
+            addView(btn, innerLp)
+            addView(xLabel, FrameLayout.LayoutParams(touchSize, touchSize).apply {
+                gravity = Gravity.CENTER
+            })
             setOnClickListener {
                 onClearRegion?.invoke()
                 onDismiss?.invoke()
             }
         }
 
-        val lp = LayoutParams(btnSize, btnSize).apply {
+        val lp = LayoutParams(touchSize, touchSize).apply {
             gravity = Gravity.TOP or Gravity.START
-            leftMargin = btnX
-            topMargin = btnY
+            leftMargin = btnX - touchPad
+            topMargin = btnY - touchPad
         }
         addView(container, lp)
         clearRegionButton = container
