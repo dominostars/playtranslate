@@ -275,6 +275,8 @@ class CaptureService : Service() {
     private var cachedOverlayScreenH = 0
     /** True until the first live capture shows the region indicator. */
     private var liveShowRegionFlash = false
+    /** Set after showing overlays — scene detection runs one OCR re-check on its next poll. */
+    private var recheckNeeded = false
 
     val isLive: Boolean get() = liveActive
 
@@ -286,6 +288,7 @@ class CaptureService : Service() {
         captureJob?.cancel()
         interactionDebounceJob?.cancel()
         liveCaptureJob?.cancel()
+        recheckNeeded = false
 
         // Buttons and touch are detected via onKeyEvent and touch sentinel.
         PlayTranslateAccessibilityService.instance
@@ -302,6 +305,7 @@ class CaptureService : Service() {
         interactionDebounceJob = null
         liveCaptureJob?.cancel()
         liveCaptureJob = null
+        recheckNeeded = false
         stopSceneChangeDetection()
         lastLiveOcrText = null
         cachedOverlayBoxes = null
@@ -317,6 +321,7 @@ class CaptureService : Service() {
         lastLiveOcrText = null
         cachedOverlayBoxes = null
         stopSceneChangeDetection()
+        recheckNeeded = false
         interactionDebounceJob?.cancel()
         liveCaptureJob?.cancel()
         liveCaptureJob = serviceScope.launch { runLiveCaptureCycle() }
@@ -429,15 +434,27 @@ class CaptureService : Service() {
                 }
 
                 if (!sceneMoving) {
-                    bitmap.recycle()
                     // Phase 1: compare against reference to detect movement start
                     val pct = pixelDiffPercent(refPixels, current)
                     if (pct >= SCENE_CHANGE_THRESHOLD) {
+                        bitmap.recycle()
                         sceneMoving = true
                         liveCaptureJob?.cancel()
+                        recheckNeeded = false
                         lastLiveOcrText = null
                         cachedOverlayBoxes = null
                         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+                    } else if (recheckNeeded) {
+                        // One-shot OCR re-check: detect new text that appeared
+                        // after the initial capture (e.g. typewriter animation).
+                        recheckNeeded = false
+                        val triggered = performOcrRecheck(bitmap, overlayBoxes)
+                        // bitmap ownership transferred to performOcrRecheck.
+                        // If it triggered a recapture or merge, exit this loop —
+                        // showLiveOverlay will start a new scene detection.
+                        if (triggered) return@launch
+                    } else {
+                        bitmap.recycle()
                     }
                 } else {
                     // Phase 2: compare consecutive frames to detect stabilization
@@ -461,6 +478,138 @@ class CaptureService : Service() {
                 hasPrev = true
                 val tmp = prev; prev = current; current = tmp
             }
+        }
+    }
+
+    /**
+     * OCR re-check using scene detection's raw bitmap. Fills overlay areas
+     * with surrounding background color, crops, OCRs, and checks for new
+     * source-language text. Triggers a clean recapture if new text is near
+     * existing overlays, or merges seamlessly if far away.
+     * Consumes and recycles [bitmap].
+     */
+    /**
+     * Returns true if it triggered a recapture or merge (caller should exit
+     * the scene detection loop since a new one will be started).
+     */
+    private suspend fun performOcrRecheck(
+        bitmap: Bitmap,
+        overlayBoxes: List<android.graphics.Rect>
+    ): Boolean {
+        val overlays = cachedOverlayBoxes
+        if (overlays == null) { bitmap.recycle(); return false }
+        val cropL = cachedOverlayCropLeft
+        val cropT = cachedOverlayCropTop
+        var colorRef: Bitmap? = null
+
+        try {
+            // Color reference BEFORE filling overlay areas
+            val colorScale = 4
+            colorRef = Bitmap.createScaledBitmap(bitmap, bitmap.width / colorScale, bitmap.height / colorScale, false)
+
+            // Fill overlay areas with surrounding background color
+            val fillPadding = 30
+            val fillPaint = Paint()
+            val colorBuffer = 10 / colorScale
+            for (box in overlays) {
+                val l = (box.bounds.left + cropL - fillPadding).coerceAtLeast(0)
+                val t = (box.bounds.top + cropT - fillPadding).coerceAtLeast(0)
+                val r = (box.bounds.right + cropL + fillPadding).coerceAtMost(bitmap.width)
+                val b = (box.bounds.bottom + cropT + fillPadding).coerceAtMost(bitmap.height)
+                val sl = l / colorScale; val st = t / colorScale
+                val sr = r / colorScale; val sb = b / colorScale
+                val bgColor = averageColor(colorRef,
+                    sl - colorBuffer, st - colorBuffer, sr + colorBuffer, sb + colorBuffer,
+                    excludeInner = android.graphics.Rect(sl, st, sr, sb))
+                fillPaint.color = bgColor
+                Canvas(bitmap).drawRect(l.toFloat(), t.toFloat(), r.toFloat(), b.toFloat(), fillPaint)
+            }
+
+            // Crop to capture region
+            val statusBarHeight = getStatusBarHeightForDisplay(gameDisplayId)
+            val top = maxOf((bitmap.height * captureTopFraction).toInt(), statusBarHeight)
+            val left = (bitmap.width * captureLeftFraction).toInt()
+            val bottom = (bitmap.height * captureBottomFraction).toInt()
+            val right = (bitmap.width * captureRightFraction).toInt()
+            val needsCrop = top > 0 || left > 0 || bottom < bitmap.height || right < bitmap.width
+            val cropped = if (needsCrop)
+                Bitmap.createBitmap(bitmap, left, top, (right - left).coerceAtLeast(1), (bottom - top).coerceAtLeast(1))
+            else bitmap
+
+            // OCR
+            val ocrResult = ocrManager.recognise(cropped, sourceLang)
+            if (cropped !== bitmap) cropped.recycle()
+            if (ocrResult == null) return false
+
+            // Filter and compare against previous clean OCR text
+            val newDedupKey = ocrResult.fullText.filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
+            if (newDedupKey.isEmpty()) return false
+            val prevText = lastLiveOcrText ?: return false
+            if (!isSignificantChange(prevText, newDedupKey)) return false
+
+            // New text found — check proximity to existing overlays
+            val anyClose = ocrResult.groupBounds.any { newRect ->
+                overlays.any { existing ->
+                    val dx = maxOf(0, maxOf(existing.bounds.left - newRect.right, newRect.left - existing.bounds.right))
+                    val dy = maxOf(0, maxOf(existing.bounds.top - newRect.bottom, newRect.top - existing.bounds.bottom))
+                    val threshold = maxOf((newRect.height() * 1.5f).toInt(), fillPadding + 15)
+                    dx < threshold && dy < threshold
+                }
+            }
+
+            if (anyClose) {
+                // New text near existing overlays → clean recapture for context
+                liveCaptureJob?.cancel()
+                liveCaptureJob = serviceScope.launch { runLiveCaptureCycle() }
+                return true
+            } else {
+                // New text far from overlays → translate and merge seamlessly
+                val newGroupTexts = ocrResult.groupTexts.filter { text ->
+                    text.any { c -> OcrManager.isSourceLangChar(c, sourceLang) }
+                }
+                if (newGroupTexts.isEmpty()) return false
+
+                val newGroupBounds = ocrResult.groupBounds.filterIndexed { i, _ ->
+                    i < ocrResult.groupTexts.size &&
+                        ocrResult.groupTexts[i].any { c -> OcrManager.isSourceLangChar(c, sourceLang) }
+                }
+
+                val perGroup = translateGroupsSeparately(newGroupTexts)
+                val buffer = 10 / colorScale
+                val cRef = colorRef ?: return false
+
+                val newOverlayBoxes = if (newGroupBounds.size == perGroup.size) {
+                    perGroup.zip(newGroupBounds).map { (tr, bounds) ->
+                        val sl = (bounds.left + left) / colorScale
+                        val st = (bounds.top + top) / colorScale
+                        val sr = (bounds.right + left) / colorScale
+                        val sb = (bounds.bottom + top) / colorScale
+                        val bg = averageColor(cRef,
+                            sl - buffer, st - buffer, sr + buffer, sb + buffer,
+                            excludeInner = android.graphics.Rect(sl, st, sr, sb))
+                        val tc = if (colorLuminance(bg) > 128)
+                            android.graphics.Color.BLACK else android.graphics.Color.WHITE
+                        TranslationOverlayView.TextBox(tr.first, bounds, bg, tc)
+                    }
+                } else emptyList()
+
+                if (newOverlayBoxes.isNotEmpty()) {
+                    val merged = overlays + newOverlayBoxes
+                    cachedOverlayBoxes = merged
+                    lastLiveOcrText = prevText + newDedupKey
+                    showLiveOverlay(merged, cropL, cropT, cachedOverlayScreenW, cachedOverlayScreenH)
+                    return true
+                }
+            }
+            return false
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            Log.w(TAG, "OCR re-check failed: ${e.message}")
+            return false
+        } finally {
+            colorRef?.recycle()
+            if (!bitmap.isRecycled) bitmap.recycle()
         }
     }
 
@@ -495,6 +644,7 @@ class CaptureService : Service() {
         // cycle always translates fresh — user input means the screen
         // likely changed, even if only a few characters differ.
         liveCaptureJob?.cancel()
+        recheckNeeded = false
         lastLiveOcrText = null
         cachedOverlayBoxes = null
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
@@ -534,6 +684,10 @@ class CaptureService : Service() {
             )
         }
         startSceneChangeDetection(fullDisplayBoxes)
+
+        // Flag for scene detection to run one OCR re-check on its next poll
+        // to detect text that appeared after our capture (e.g. typewriter finish).
+        recheckNeeded = true
     }
 
     /**
