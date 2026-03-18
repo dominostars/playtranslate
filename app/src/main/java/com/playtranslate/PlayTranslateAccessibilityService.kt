@@ -274,14 +274,14 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         regionIndicatorView = view
         regionIndicatorWm = wm
 
-        // Hold for 1 second, then fade out
+        // Brief flash, then quick fade out
         regionIndicatorHandler.postDelayed({
             view.animate()
                 .alpha(0f)
-                .setDuration(800L)
+                .setDuration(600L)
                 .withEndAction { hideRegionIndicator() }
                 .start()
-        }, 1000L)
+        }, 400L)  // 400ms solid + 600ms fade
     }
 
     fun hideRegionIndicator() {

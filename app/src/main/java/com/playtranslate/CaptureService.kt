@@ -387,10 +387,17 @@ class CaptureService : Service() {
             // Take reference frame (with overlays visible)
             val refBitmap = mgr.requestRaw(gameDisplayId) ?: return@launch
 
-            // Build sample positions, skipping overlay regions
+            // Build sample positions: only inside the capture region, skipping overlay areas.
+            // This prevents our own overlays outside the region (region indicator, etc.)
+            // from triggering false scene changes, and makes detection more relevant
+            // by only watching the area we actually OCR.
+            val regionTop = (refBitmap.height * captureTopFraction).toInt()
+            val regionBottom = (refBitmap.height * captureBottomFraction).toInt()
+            val regionLeft = (refBitmap.width * captureLeftFraction).toInt()
+            val regionRight = (refBitmap.width * captureRightFraction).toInt()
             val positions = mutableListOf<Pair<Int, Int>>()
-            for (y in 0 until refBitmap.height step 10) {
-                for (x in 0 until refBitmap.width step 10) {
+            for (y in regionTop until regionBottom step 10) {
+                for (x in regionLeft until regionRight step 10) {
                     if (overlayBoxes.none { it.contains(x, y) }) {
                         positions.add(x to y)
                     }
