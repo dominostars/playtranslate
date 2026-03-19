@@ -89,18 +89,12 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     var screenshotManager: ScreenshotManager? = null
         private set
 
-    /** Suspends live mode when screen off, restarts on screen on. */
+    /** Stops live mode when the screen turns off. */
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            val svc = CaptureService.instance ?: return
-            when (intent.action) {
-                Intent.ACTION_SCREEN_OFF -> {
-                    if (svc.isLive) svc.stopLive()
-                    hideTranslationOverlay()
-                }
-                Intent.ACTION_SCREEN_ON -> {
-                    if (MainActivity.isLiveModeActive) svc.startLive()
-                }
+            if (intent.action == Intent.ACTION_SCREEN_OFF) {
+                CaptureService.instance?.let { if (it.isLive) it.stopLive() }
+                hideTranslationOverlay()
             }
         }
     }
@@ -111,10 +105,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         serviceInfo = serviceInfo.apply {
             flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
-        registerReceiver(screenReceiver, IntentFilter().apply {
-            addAction(Intent.ACTION_SCREEN_OFF)
-            addAction(Intent.ACTION_SCREEN_ON)
-        })
+        registerReceiver(screenReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
         ensureFloatingIcon()
     }
 

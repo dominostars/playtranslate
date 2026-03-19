@@ -89,6 +89,7 @@ class CaptureService : Service() {
     var onTranslationStarted: (() -> Unit)? = null
     /** Fired during live mode when an OCR cycle finds no source-language text. */
     var onLiveNoText: (() -> Unit)? = null
+    var onLiveStopped: (() -> Unit)? = null
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -301,6 +302,7 @@ class CaptureService : Service() {
 
     fun stopLive() {
         liveActive = false
+        MainActivity.isLiveModeActive = false
         interactionDebounceJob?.cancel()
         interactionDebounceJob = null
         liveCaptureJob?.cancel()
@@ -311,6 +313,7 @@ class CaptureService : Service() {
         cachedOverlayBoxes = null
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+        onLiveStopped?.invoke()
     }
 
     /** Trigger a fresh capture cycle in live mode (e.g. after hold-release). */
@@ -737,7 +740,6 @@ class CaptureService : Service() {
             // Stop live mode so it doesn't become a zombie.
             if (liveActive) {
                 stopLive()
-                MainActivity.isLiveModeActive = false
                 onError?.invoke("Screenshot failed — live mode stopped. Check accessibility settings and try again.")
             }
             return

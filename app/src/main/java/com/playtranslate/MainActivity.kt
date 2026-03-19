@@ -554,6 +554,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         svc.onLiveNoText = {
             runOnUiThread { if (isLiveModeActive) resultFragment?.showStatus(searchingStatusText()) }
         }
+        svc.onLiveStopped = {
+            runOnUiThread { if (isLiveMode) stopLiveMode() }
+        }
 
         ensureConfigured()
     }
