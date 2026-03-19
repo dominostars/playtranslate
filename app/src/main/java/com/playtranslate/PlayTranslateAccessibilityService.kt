@@ -1189,13 +1189,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     private fun savePreCapturedScreenshot(bitmap: Bitmap): String? {
         return try {
             val dir = java.io.File(cacheDir, "screenshots").apply { mkdirs() }
-            val file = java.io.File(dir, "precapture_${System.currentTimeMillis()}.png")
-            file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
-            // Rotate: keep only the 3 most recent precapture files
-            dir.listFiles { f -> f.name.startsWith("precapture_") && f.name.endsWith(".png") }
-                ?.sortedByDescending { it.lastModified() }
-                ?.drop(3)
-                ?.forEach { it.delete() }
+            val file = java.io.File(dir, "precapture.jpg")
+            file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }
             file.absolutePath
         } catch (e: Exception) {
             Log.e(TAG, "savePreCapturedScreenshot failed: ${e.message}")

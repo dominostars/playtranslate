@@ -100,13 +100,8 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
     fun saveToCache(bitmap: Bitmap): String? {
         return try {
             val dir = File(a11y.cacheDir, "screenshots").apply { mkdirs() }
-            val file = File(dir, "capture_${System.currentTimeMillis()}.jpg")
+            val file = File(dir, "capture.jpg")
             file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-            // Rotate: keep newest 5 capture_ files only
-            dir.listFiles { f -> f.name.startsWith("capture_") }
-                ?.sortedByDescending { it.lastModified() }
-                ?.drop(5)
-                ?.forEach { it.delete() }
             lastCleanPath = file.absolutePath
             file.absolutePath
         } catch (e: Exception) {

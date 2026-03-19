@@ -611,10 +611,8 @@ class DragLookupController(
         val service = PlayTranslateAccessibilityService.instance ?: return null
         return try {
             val dir = File(service.cacheDir, "screenshots").apply { mkdirs() }
-            val file = File(dir, "drag_${System.currentTimeMillis()}.jpg")
+            val file = File(dir, "drag.jpg")
             file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-            // Keep at most 5 screenshots
-            dir.listFiles()?.sortedByDescending { it.lastModified() }?.drop(5)?.forEach { it.delete() }
             file.absolutePath
         } catch (e: Exception) {
             Log.e(TAG, "saveScreenshot failed: ${e.message}")
