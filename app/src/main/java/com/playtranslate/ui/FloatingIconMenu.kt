@@ -53,6 +53,12 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             updateLiveButton()
         }
 
+    var showDegradedWarning: Boolean = false
+        set(value) {
+            field = value
+            degradedWarningView?.visibility = if (value) View.VISIBLE else View.GONE
+        }
+
     private val dimPaint = Paint().apply {
         color = Color.argb(170, 0, 0, 0)
     }
@@ -85,6 +91,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     }
 
     private var clearRegionButton: View? = null
+    private var degradedWarningView: View? = null
 
     private val menuCard: LinearLayout
     private val instructionText: TextView
@@ -284,6 +291,37 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        })
+
+        // Degraded translation warning pill at bottom-center (initially hidden)
+        degradedWarningView = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding((14 * dp).toInt(), (8 * dp).toInt(), (14 * dp).toInt(), (8 * dp).toInt())
+            background = GradientDrawable().apply {
+                setColor(Color.argb(200, 139, 105, 20))
+                cornerRadius = 16 * dp
+            }
+            visibility = View.GONE
+            val icon = TextView(context).apply {
+                text = "⚠"
+                textSize = 14f
+                setTextColor(Color.parseColor("#EEFF00"))
+            }
+            val label = TextView(context).apply {
+                text = "  Offline — translation quality is reduced"
+                setTextColor(Color.WHITE)
+                textSize = 12f
+            }
+            addView(icon)
+            addView(label)
+        }
+        addView(degradedWarningView, LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            bottomMargin = (32 * dp).toInt()
         })
     }
 

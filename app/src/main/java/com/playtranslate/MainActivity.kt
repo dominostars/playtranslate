@@ -557,6 +557,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         svc.onLiveStopped = {
             runOnUiThread { if (isLiveMode) stopLiveMode() }
         }
+        svc.onDegradedStateChanged = { degraded ->
+            PlayTranslateAccessibilityService.instance?.floatingIcon?.degraded = degraded
+        }
 
         ensureConfigured()
     }

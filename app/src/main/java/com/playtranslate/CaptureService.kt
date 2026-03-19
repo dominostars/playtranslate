@@ -90,6 +90,17 @@ class CaptureService : Service() {
     /** Fired during live mode when an OCR cycle finds no source-language text. */
     var onLiveNoText: (() -> Unit)? = null
     var onLiveStopped: (() -> Unit)? = null
+    var onDegradedStateChanged: ((Boolean) -> Unit)? = null
+
+    /** True when translations are using ML Kit fallback (lower quality). */
+    var translationDegraded = false
+        private set
+
+    private fun setDegraded(degraded: Boolean) {
+        if (translationDegraded == degraded) return
+        translationDegraded = degraded
+        onDegradedStateChanged?.invoke(degraded)
+    }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -123,6 +134,7 @@ class CaptureService : Service() {
         onTranslationStarted = null
         onLiveNoText = null
         onLiveStopped = null
+        onDegradedStateChanged = null
         super.onDestroy()
     }
 
@@ -327,6 +339,7 @@ class CaptureService : Service() {
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
         PlayTranslateAccessibilityService.instance?.floatingIcon?.liveMode = false
+        setDegraded(false)
         onLiveStopped?.invoke()
     }
 
@@ -1157,7 +1170,7 @@ class CaptureService : Service() {
         val deepl = deeplTranslator
         if (deepl != null) {
             try {
-                return Pair(deepl.translate(text), null)
+                return Pair(deepl.translate(text), null).also { setDegraded(false) }
             } catch (e: DeepLQuotaExceededException) {
                 Log.w(TAG, "DeepL quota exceeded, trying Lingva")
             } catch (e: DeepLAuthException) {
@@ -1171,7 +1184,7 @@ class CaptureService : Service() {
         val lingva = lingvaTranslator
         if (lingva != null) {
             try {
-                return Pair(lingva.translate(text), null)
+                return Pair(lingva.translate(text), null).also { setDegraded(false) }
             } catch (e: Exception) {
                 Log.w(TAG, "Lingva failed (${e.message}), falling back to ML Kit")
             }
@@ -1183,7 +1196,10 @@ class CaptureService : Service() {
             getString(R.string.note_mlkit_service_unavailable)
         else
             getString(R.string.note_mlkit_no_internet)
-        return Pair(mlKitTranslate(text), note).also { mlKitFallbackUsed = true }
+        return Pair(mlKitTranslate(text), note).also {
+            mlKitFallbackUsed = true
+            setDegraded(true)
+        }
     }
 
     private suspend fun mlKitTranslate(text: String): String {

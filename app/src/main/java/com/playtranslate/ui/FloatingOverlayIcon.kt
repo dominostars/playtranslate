@@ -49,9 +49,14 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     var liveMode = false
         set(value) { field = value; invalidate() }
 
+    /** When true (and liveMode), the circle turns yellow to indicate degraded translation. */
+    var degraded = false
+        set(value) { field = value; invalidate() }
+
     // ── Normal mode paints ──────────────────────────────────────────────
     private val defaultCircleColor = Color.parseColor("#CC000000")
     private val liveCircleColor = Color.parseColor("#CC990000")
+    private val liveDegradedCircleColor = Color.parseColor("#CC999900")
     private val circlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = defaultCircleColor
         style = Paint.Style.FILL
@@ -217,7 +222,11 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         val center = viewSizePx / 2f
         val r = circleSizePx / 2f
-        circlePaint.color = if (liveMode) liveCircleColor else defaultCircleColor
+        circlePaint.color = when {
+            liveMode && degraded -> liveDegradedCircleColor
+            liveMode -> liveCircleColor
+            else -> defaultCircleColor
+        }
 
         if (inDragMode) {
             // Ring only (transparent inside so text is visible for screenshot)
