@@ -82,15 +82,26 @@ class DictionaryManager private constructor(private val context: Context) {
         val tokens   = Deinflector.rawTokenInfos(text)
         val surfaces = tokens.map { it.surface }
         val result   = mutableListOf<Pair<String, String>>()
-        var i = 0
 
+        // Batch-query all candidate N-grams upfront (2 queries instead of ~60)
+        val candidates = mutableSetOf<String>()
+        for (i in tokens.indices) {
+            val maxN = minOf(4, tokens.size - i)
+            for (n in maxN downTo 2) {
+                val phrase = surfaces.subList(i, i + n).joinToString("")
+                if (isLookupWorthy(phrase)) candidates.add(phrase)
+            }
+        }
+        val knownPhrases = batchCheckEntries(database, candidates)
+
+        var i = 0
         while (i < tokens.size) {
             // Try multi-token N-grams (4 down to 2) at the current position.
             var advanced = false
             val maxN = minOf(4, tokens.size - i)
             for (n in maxN downTo 2) {
                 val phrase = surfaces.subList(i, i + n).joinToString("")
-                if (isLookupWorthy(phrase) && hasEntry(database, phrase)) {
+                if (phrase in knownPhrases) {
                     result.add(phrase to phrase)
                     i += n
                     advanced = true
@@ -255,6 +266,32 @@ class DictionaryManager private constructor(private val context: Context) {
         db.rawQuery("SELECT 1 FROM reading WHERE text = ? LIMIT 1", arrayOf(word))
             .use { if (it.moveToFirst()) return true }
         return false
+    }
+
+    /**
+     * Batch existence check: returns the subset of [candidates] that exist
+     * in the kanji or reading tables. Uses 2 queries with IN (...) instead
+     * of one query per candidate.
+     */
+    private fun batchCheckEntries(db: SQLiteDatabase, candidates: Set<String>): Set<String> {
+        if (candidates.isEmpty()) return emptySet()
+        val found = mutableSetOf<String>()
+        // SQLite limit is 999 params; split into chunks if needed
+        for (chunk in candidates.chunked(500)) {
+            val placeholders = chunk.joinToString(",") { "?" }
+            val args = chunk.toTypedArray()
+            db.rawQuery("SELECT DISTINCT text FROM kanji WHERE text IN ($placeholders)", args)
+                .use { c -> while (c.moveToNext()) found.add(c.getString(0)) }
+            // Only query reading table for candidates not already found in kanji
+            val remaining = chunk.filter { it !in found }
+            if (remaining.isNotEmpty()) {
+                val ph2 = remaining.joinToString(",") { "?" }
+                val args2 = remaining.toTypedArray()
+                db.rawQuery("SELECT DISTINCT text FROM reading WHERE text IN ($ph2)", args2)
+                    .use { c -> while (c.moveToNext()) found.add(c.getString(0)) }
+            }
+        }
+        return found
     }
 
     private fun queryEntryIds(db: SQLiteDatabase, word: String): List<Long> {
