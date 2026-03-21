@@ -963,8 +963,9 @@ class CaptureService : Service() {
                 Bitmap.createBitmap(bitmap, left, top, (right - left).coerceAtLeast(1), (bottom - top).coerceAtLeast(1))
             else bitmap
 
-            val ocrResult = ocrManager.recognise(cropped, sourceLang, screenshotWidth = bitmap.width)
-            if (cropped !== bitmap) cropped.recycle()
+            val ocrBitmap = blackoutFloatingIcon(cropped, left, top)
+            val ocrResult = ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = bitmap.width)
+            if (ocrBitmap !== bitmap) ocrBitmap.recycle()
             if (ocrResult == null) return false
 
             val newDedupKey = ocrResult.fullText.filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
