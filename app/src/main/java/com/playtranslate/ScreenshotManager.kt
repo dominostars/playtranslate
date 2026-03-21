@@ -166,8 +166,10 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
                     }
                 } else {
                     val bitmap = doTakeScreenshot(displayId)
-                    if (bitmap != null) onRawFrame(bitmap)
-                    // null = timeout or failure, skip this cycle
+                    if (bitmap != null) {
+                        onRawFrame(bitmap)
+                    }
+                    // null = timeout or failure, logged by doTakeScreenshot
                 }
             }
         }

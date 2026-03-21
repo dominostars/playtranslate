@@ -556,7 +556,10 @@ class CaptureService : Service() {
      * Runs in a coroutine launched by [handleCleanFrame].
      */
     private suspend fun processCleanFrame(raw: Bitmap) {
-        if (!isConfigured) { raw.recycle(); return }
+        if (!isConfigured) {
+            DetectionLog.log("processClean: not configured, skipping")
+            raw.recycle(); return
+        }
 
         var colorRef: Bitmap? = null
         try {
@@ -583,11 +586,11 @@ class CaptureService : Service() {
             if (ocrBitmap !== raw) ocrBitmap.recycle()
 
             if (ocrResult == null) {
+                DetectionLog.log("processClean: OCR returned null")
                 lastLiveOcrText = null
                 cachedOverlayBoxes = null
                 PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
                 onLiveNoText?.invoke()
-                // Set up detection with no overlays — will detect new text via CHECK C
                 setupDetection(raw, emptyList(), emptyList())
                 return
             }
@@ -596,6 +599,7 @@ class CaptureService : Service() {
             val dedupKey = newText.filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
 
             if (dedupKey.isEmpty()) {
+                DetectionLog.log("processClean: no source-lang chars")
                 lastLiveOcrText = null
                 cachedOverlayBoxes = null
                 PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
@@ -606,6 +610,7 @@ class CaptureService : Service() {
 
             // Dedup
             if (lastLiveOcrText != null && !isSignificantChange(lastLiveOcrText!!, dedupKey)) {
+                DetectionLog.log("processClean: dedup match, re-showing cached")
                 val boxes = cachedOverlayBoxes
                 if (boxes != null) {
                     showLiveOverlay(boxes, cachedOverlayCropLeft, cachedOverlayCropTop,
@@ -617,10 +622,13 @@ class CaptureService : Service() {
                             b.bounds.right + cachedOverlayCropLeft, b.bounds.bottom + cachedOverlayCropTop
                         )
                     }, boxes)
+                } else {
+                    DetectionLog.log("processClean: dedup match but no cached boxes")
                 }
                 return
             }
             lastLiveOcrText = dedupKey
+            DetectionLog.log("processClean: new text, ${ocrResult.groupTexts.size} groups, translating...")
 
             val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
             val screenshotPath = mgr?.saveToCache(raw)
@@ -687,10 +695,13 @@ class CaptureService : Service() {
                     )
                 }
                 setupDetection(raw, fullDisplayBoxes, overlayBoxes)
+                DetectionLog.log("processClean: done, ${overlayBoxes.size} overlays shown")
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
+            DetectionLog.log("processClean: cancelled")
             throw e
         } catch (e: Throwable) {
+            DetectionLog.log("processClean: ERROR ${e.javaClass.simpleName}: ${e.message}")
             Log.e(TAG, "processCleanFrame failed: ${e.javaClass.simpleName}: ${e.message}", e)
         } finally {
             colorRef?.recycle()
