@@ -8,6 +8,7 @@ import android.view.Choreographer
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.util.concurrent.Executors
 import kotlin.coroutines.resume
@@ -138,7 +139,8 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
      */
     private suspend fun doTakeScreenshot(displayId: Int): Bitmap? {
         lastCaptureTimeMs = System.currentTimeMillis()
-        return suspendCancellableCoroutine { cont ->
+        return withTimeoutOrNull(3000L) {
+            suspendCancellableCoroutine { cont ->
             a11y.takeScreenshot(
                 displayId,
                 a11y.mainExecutor,
@@ -162,6 +164,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
                 }
             )
         }
+        }.also { if (it == null) DetectionLog.log("Screenshot timed out (3s)") }
     }
 
     /** Suspend for [frames] vsync frames (~16 ms each at 60 Hz). */
