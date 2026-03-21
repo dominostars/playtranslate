@@ -551,17 +551,25 @@ class CaptureService : Service() {
                         // GATE: Any pixels changed at all? Skip OCR if truly static.
                         val anyChange = nonOverlayDiff > 0.005f || overlayDiff > 0.005f
                         if (anyChange) {
-                            DetectionLog.log("C: Change detected (non=${"%.2f".format(nonOverlayDiff*100)}% ovr=${"%.2f".format(overlayDiff*100)}%), running OCR")
-                            // CHECK C+D: Fill-and-OCR to detect new text elsewhere
+                            DetectionLog.log("C: Change (non=${"%.2f".format(nonOverlayDiff*100)}% ovr=${"%.2f".format(overlayDiff*100)}%)")
+                            if (cachedOverlayBoxes.isNullOrEmpty()) {
+                                // No overlays on screen — raw screenshot is unobstructed.
+                                // Use it directly for OCR/translate.
+                                DetectionLog.log("C: No overlays → raw as clean")
+                                liveCaptureJob?.cancel()
+                                liveCaptureJob = serviceScope.launch {
+                                    runLiveCaptureCycle(preCaptured = bitmap)
+                                }
+                                return@launch
+                            }
                             val triggered = performOcrRecheck(bitmap, overlayBoxes)
                             if (triggered) {
-                                DetectionLog.log("D: OCR found new text → recapture/merge")
+                                DetectionLog.log("D: New text → recapture/merge")
                                 return@launch
                             } else {
-                                DetectionLog.log("C: OCR found no new text")
+                                DetectionLog.log("C: No new text found")
                             }
                         } else {
-                            // Log periodic status so user knows the loop is alive
                             DetectionLog.log("Static (non=${"%.2f".format(nonOverlayDiff*100)}% ovr=${"%.2f".format(overlayDiff*100)}%)")
                             bitmap.recycle()
                         }
@@ -803,6 +811,7 @@ class CaptureService : Service() {
      * (button press/release, touch) while live mode is active.
      */
     private fun onUserInteraction() {
+        return // TEMP: disabled for debugging detection loop
         if (!liveActive) return
 
         // Cancel any in-flight capture/translation and hide the overlay

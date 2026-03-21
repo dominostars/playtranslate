@@ -350,12 +350,12 @@ class OcrManager private constructor() {
                 val sizeMatch = prevH > 0 && run {
                     val lo = minOf(lineH, prevH)
                     val hi = maxOf(lineH, prevH)
-                    (hi - lo).toDouble() / lo <= 0.20
+                    (hi - lo).toDouble() / lo <= 0.10
                 }
                 val closeEnough = refH > 0 && gap <= (refH * 1.5f).toInt()
 
-                // Horizontal alignment: left edges or right edges within one line height
-                val alignTolerance = refH
+                // Horizontal alignment: left edges or right edges within 1.5× line height
+                val alignTolerance = (refH * 1.5f).toInt()
                 val groupLeft  = lastGroup.mapNotNull { it.boundingBox?.left }.minOrNull() ?: 0
                 val groupRight = lastGroup.mapNotNull { it.boundingBox?.right }.maxOrNull() ?: 0
                 val leftAligned  = kotlin.math.abs(lineBox.left - groupLeft) <= alignTolerance
