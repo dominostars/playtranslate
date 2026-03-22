@@ -46,3 +46,7 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 - [Kuromoji](https://github.com/atilika/kuromoji) — Japanese morphological analysis
 - [Lingva](https://github.com/thedaviddelta/lingva-translate) — online translation
 - [AnkiDroid](https://github.com/ankidroid/Anki-Android) — flashcard integration
+
+## License
+
+[GPL 3.0](LICENSE)
