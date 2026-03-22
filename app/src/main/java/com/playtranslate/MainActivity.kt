@@ -346,8 +346,8 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         RegionPickerSheet().also { sheet ->
             sheet.gameDisplay = gameDisplay
             sheet.onSaved = { _ ->
-                updateRegionButton()
                 configureService()
+                updateRegionButton()
                 withAccessibility { captureService?.captureOnce() }
             }
             sheet.onTranslateOnce = { top, bottom, left, right, label ->
@@ -527,14 +527,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             runOnUiThread {
                 editTranslationJob?.cancel()
                 editTranslationJob = null
-                // If a temporary override was active (e.g. "Translate Once"
-                // from the region picker), clear it and restore the saved
-                // region. Persistent regions (e.g. floating menu drag) don't
-                // use overrides, so they stick.
-                if (!isLiveModeActive && overrideRegion != null) {
-                    clearOverride()
-                    configureService()
-                }
                 liveProgressRing.visibility = View.GONE
                 resultFragment?.displayResult(result)
                 btnMainAddToAnki.visibility = View.VISIBLE
@@ -1025,7 +1017,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             sheet.gameDisplay = gameDisplay
             sheet.onRegionAdded = { newIndex ->
                 prefs.captureRegionIndex = newIndex
+                configureService()
                 updateRegionButton()
+                withAccessibility { captureService?.captureOnce() }
             }
             sheet.onDismissed = {}
             sheet.onTranslateOnce = { top, bottom, left, right, label ->
