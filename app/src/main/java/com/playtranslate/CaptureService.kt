@@ -831,7 +831,7 @@ class CaptureService : Service() {
 
     // Old scene-change detection removed — replaced by unified poll loop.
     // See handleRawFrame() and handleCleanFrame().
-    private val SCENE_CHANGE_THRESHOLD = 0.30f  // 30% of sampled pixels must change
+    private val SCENE_CHANGE_THRESHOLD = 0.40f  // 40% of sampled pixels must change
     private val OVERLAY_CHANGE_THRESHOLD = 0.10f // 10% of overlay pixels (per box) must change
     private val PIXEL_DIFF_THRESHOLD = 30       // per-channel RGB difference for non-overlay pixels
     private val OVERLAY_PIXEL_DIFF_THRESHOLD = 6 // lower threshold for overlay pixels (attenuated by ~90% alpha)
