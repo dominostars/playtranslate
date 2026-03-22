@@ -67,7 +67,7 @@ class DragLookupController(
         if (service != null && AnkiManager(service).isAnkiDroidInstalled()) {
             popup.showAnkiButton = true
             popup.onAnkiTap = { launchAnkiReview() }
-        } else if (!MainActivity.isInForeground) {
+        } else if (Prefs.isSingleScreen(service ?: popup.ctx) || !MainActivity.isInForeground) {
             popup.showOpenButton = true
             popup.onOpenTap = { openSentenceInApp() }
         }

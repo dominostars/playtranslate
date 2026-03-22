@@ -1,6 +1,6 @@
 # PlayTranslate
 
-A real-time game translation app, built for Android. Currently only supports Japanese → English, but more languages coming soon!
+A real-time game translation Android app, built for both language learners and people who just want to play. Currently only supports Japanese → English, but more languages coming soon!
 
 To report issues, receive support, or make requests, please join the [Discord server](https://discord.gg/DVCj6p7MUC)
 
