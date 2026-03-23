@@ -27,6 +27,7 @@ class RegionPickerSheet : DialogFragment() {
 
     var onSaved: ((Int) -> Unit)? = null
     var onTranslateOnce: ((top: Float, bottom: Float, left: Float, right: Float, label: String) -> Unit)? = null
+    var onClose: (() -> Unit)? = null
     var gameDisplay: Display? = null
 
     private lateinit var prefs: Prefs
@@ -77,7 +78,7 @@ class RegionPickerSheet : DialogFragment() {
 
         view.findViewById<View>(R.id.btnCloseRegion).setOnClickListener {
             PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
-            dismiss()
+            if (showsDialog) dismiss() else onClose?.invoke()
         }
 
         btnEdit.setOnClickListener {
@@ -86,9 +87,9 @@ class RegionPickerSheet : DialogFragment() {
 
         btnSave.setOnClickListener {
             prefs.captureRegionIndex = selectedIndex
-            onSaved?.invoke(selectedIndex)
             PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
-            dismiss()
+            onSaved?.invoke(selectedIndex)
+            if (showsDialog) dismiss()
         }
 
         rebuildList()
@@ -99,7 +100,7 @@ class RegionPickerSheet : DialogFragment() {
     override fun onStop() {
         PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
         super.onStop()
-        dismissAllowingStateLoss()
+        if (showsDialog) dismissAllowingStateLoss()
     }
 
     override fun onDismiss(dialog: DialogInterface) {
@@ -369,7 +370,7 @@ class RegionPickerSheet : DialogFragment() {
             }
             sheet.onTranslateOnce = { top, bottom, left, right, label ->
                 PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
-                dismissAllowingStateLoss()
+                if (showsDialog) dismissAllowingStateLoss()
                 onTranslateOnce?.invoke(top, bottom, left, right, label)
             }
         }.show(childFragmentManager, AddCustomRegionSheet.TAG)

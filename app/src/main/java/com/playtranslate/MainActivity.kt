@@ -74,6 +74,8 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private lateinit var menuScrim: View
     private lateinit var menuItemLiveIcon: ImageView
     private lateinit var menuItemLiveLabel: TextView
+    private lateinit var resultsContainer: View
+    private lateinit var regionPickerContainer: View
     private lateinit var onboardingContainer: View
     private lateinit var pageNotif: View
     private lateinit var pageA11y: View
@@ -305,6 +307,8 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         menuScrim            = findViewById(R.id.menuScrim)
         menuItemLiveIcon     = findViewById(R.id.menuItemLiveIcon)
         menuItemLiveLabel    = findViewById(R.id.menuItemLiveLabel)
+        resultsContainer     = findViewById(R.id.resultsContainer)
+        regionPickerContainer = findViewById(R.id.regionPickerContainer)
         onboardingContainer  = findViewById(R.id.onboardingContainer)
         pageNotif            = findViewById(R.id.pageNotif)
         pageA11y             = findViewById(R.id.pageA11y)
@@ -341,25 +345,45 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         }
     }
 
-    private fun showRegionPickerSheet() {
+    private fun showRegionPicker() {
         prefs.captureDisplayId = findGameDisplayId()
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val gameDisplay = displayManager.getDisplay(prefs.captureDisplayId) ?: return
-        RegionPickerSheet().also { sheet ->
-            sheet.gameDisplay = gameDisplay
-            sheet.onSaved = { _ ->
+
+        resultsContainer.visibility = View.GONE
+        regionPickerContainer.visibility = View.VISIBLE
+
+        val sheet = RegionPickerSheet().apply {
+            setShowsDialog(false)
+            this.gameDisplay = gameDisplay
+            onSaved = { _ ->
+                hideRegionPicker()
                 configureService()
                 updateRegionButton()
                 withAccessibility { captureService?.captureOnce() }
             }
-            sheet.onTranslateOnce = { top, bottom, left, right, label ->
+            onTranslateOnce = { top, bottom, left, right, label ->
+                hideRegionPicker()
                 overrideRegionLabel = label
                 overrideRegion = floatArrayOf(top, bottom, left, right)
                 applyOverrideIfActive()
                 updateRegionButton()
                 withAccessibility { captureService?.captureOnce() }
             }
-        }.show(supportFragmentManager, RegionPickerSheet.TAG)
+            onClose = { hideRegionPicker() }
+        }
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.regionPickerContainer, sheet, RegionPickerSheet.TAG)
+            .commit()
+    }
+
+    private fun hideRegionPicker() {
+        regionPickerContainer.visibility = View.GONE
+        resultsContainer.visibility = View.VISIBLE
+        val frag = supportFragmentManager.findFragmentByTag(RegionPickerSheet.TAG)
+        if (frag != null) {
+            supportFragmentManager.beginTransaction().remove(frag).commitAllowingStateLoss()
+        }
     }
 
     private fun updateRegionButton() {
@@ -434,13 +458,13 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                 captureService?.captureOnce()
             }
         }
-        btnCapturing.setOnClickListener { showRegionPickerSheet() }
+        btnCapturing.setOnClickListener { showRegionPicker() }
 
         btnMenu.setOnClickListener { showMenu() }
         menuScrim.setOnClickListener { dismissMenu() }
         findViewById<View>(R.id.menuItemSettings).setOnClickListener { dismissMenu(); openSettings() }
         findViewById<View>(R.id.menuItemLive).setOnClickListener { dismissMenu(); toggleLiveMode() }
-        findViewById<View>(R.id.menuItemRegion).setOnClickListener { dismissMenu() }
+        findViewById<View>(R.id.menuItemRegion).setOnClickListener { dismissMenu(); showRegionPicker() }
         findViewById<View>(R.id.menuItemTranslations).setOnClickListener { dismissMenu() }
         findViewById<View>(R.id.menuItemClose).setOnClickListener { dismissMenu() }
 
