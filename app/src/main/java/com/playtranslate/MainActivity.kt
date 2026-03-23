@@ -66,7 +66,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
     private lateinit var btnTranslate: MaterialButton
     private lateinit var btnCapturing: MaterialButton
-    private lateinit var btnChangeRegion: Button
     private lateinit var btnClear: ImageButton
     private lateinit var btnMainAddToAnki: ImageButton
     private lateinit var btnMenu: ImageButton
@@ -298,7 +297,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private fun bindViews() {
         btnTranslate         = findViewById(R.id.btnTranslate)
         btnCapturing         = findViewById(R.id.btnCapturing)
-        btnChangeRegion      = findViewById(R.id.btnChangeRegion)
         btnClear             = findViewById(R.id.btnClear)
         btnMainAddToAnki     = findViewById(R.id.btnMainAddToAnki)
         btnMenu              = findViewById(R.id.btnMenu)
@@ -321,7 +319,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         // Long press on any bottom-bar button → drag-to-select dropdown
         applyRegionDropdownGestures(btnTranslate)
         applyRegionDropdownGestures(btnCapturing)
-        applyRegionDropdownGestures(btnChangeRegion)
         applyRegionDropdownGestures(btnMenu)
     }
 
@@ -431,7 +428,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     private fun setupButtons() {
-        btnChangeRegion.setOnClickListener { showRegionPickerSheet() }
         btnTranslate.setOnClickListener {
             withAccessibility {
                 applyOverrideIfActive()
