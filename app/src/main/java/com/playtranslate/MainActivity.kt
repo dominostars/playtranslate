@@ -465,7 +465,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         findViewById<View>(R.id.menuItemSettings).setOnClickListener { dismissMenu(); openSettings() }
         findViewById<View>(R.id.menuItemLive).setOnClickListener { dismissMenu(); toggleLiveMode() }
         findViewById<View>(R.id.menuItemRegion).setOnClickListener { dismissMenu(); showRegionPicker() }
-        findViewById<View>(R.id.menuItemTranslations).setOnClickListener { dismissMenu() }
+        findViewById<View>(R.id.menuItemTranslations).setOnClickListener { dismissMenu(); hideRegionPicker() }
         findViewById<View>(R.id.menuItemClose).setOnClickListener { dismissMenu() }
 
         btnClear.setOnClickListener {
