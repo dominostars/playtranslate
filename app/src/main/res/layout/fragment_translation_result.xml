@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
@@ -60,14 +61,7 @@
             android:orientation="vertical"
             android:paddingHorizontal="14dp"
             android:paddingTop="8dp"
-            android:paddingBottom="8dp">
-
-            <!-- Divider above translation -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?attr/colorBgDivider"
-                android:layout_marginBottom="10dp" />
+            android:paddingBottom="16dp">
 
             <!-- Translation section header: label + action buttons -->
             <LinearLayout
@@ -285,6 +279,54 @@
                     android:textColor="?attr/colorTextHint"
                     android:textSize="13sp"
                     android:visibility="gone" />
+
+            </LinearLayout>
+
+            <!-- Action buttons row -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="?attr/colorBgDivider"
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="12dp" />
+
+            <LinearLayout
+                android:id="@+id/resultActionButtons"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="12dp"
+                android:visibility="gone">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnResultClear"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="8dp"
+                    android:text="Clear"
+                    android:textAllCaps="false"
+                    android:textSize="14sp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    app:strokeColor="?attr/colorTextSecondary"
+                    app:cornerRadius="6dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnResultAnki"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:text="Add to Anki"
+                    android:textAllCaps="false"
+                    android:textSize="14sp"
+                    android:backgroundTint="?attr/colorAccentPrimary"
+                    android:textColor="?attr/colorTextOnAccent"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    app:cornerRadius="6dp" />
 
             </LinearLayout>
 

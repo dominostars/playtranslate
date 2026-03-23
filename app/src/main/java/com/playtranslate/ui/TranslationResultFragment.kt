@@ -80,6 +80,9 @@ class TranslationResultFragment : Fragment() {
     private lateinit var labelTranslation: TextView
     private lateinit var tvNoWords: TextView
     private lateinit var tvTransliteration: TextView
+    private lateinit var resultActionButtons: View
+    private lateinit var btnResultClear: View
+    private lateinit var btnResultAnki: View
 
     private var wordLookupJob: Job? = null
     val mainWordResults = mutableMapOf<String, Triple<String, String, Int>>()
@@ -145,6 +148,9 @@ class TranslationResultFragment : Fragment() {
         labelTranslation     = view.findViewById(R.id.labelTranslation)
         tvNoWords            = view.findViewById(R.id.tvNoWords)
         tvTransliteration    = view.findViewById(R.id.tvTransliteration)
+        resultActionButtons  = view.findViewById(R.id.resultActionButtons)
+        btnResultClear       = view.findViewById(R.id.btnResultClear)
+        btnResultAnki        = view.findViewById(R.id.btnResultAnki)
     }
 
     private fun setupButtons() {
@@ -173,6 +179,12 @@ class TranslationResultFragment : Fragment() {
             prefs.hideWordsSection = !prefs.hideWordsSection
             applyWordsVisibility()
         }
+        btnResultClear.setOnClickListener {
+            showStatus(getString(R.string.status_idle))
+        }
+        btnResultAnki.setOnClickListener {
+            onAnkiClicked()
+        }
     }
 
     private fun applyTranslationVisibility() {
@@ -198,18 +210,6 @@ class TranslationResultFragment : Fragment() {
 
     // ── Public API ────────────────────────────────────────────────────────
 
-    /**
-     * Sets extra top padding on the results scroll content (in dp).
-     * Used by MainActivity to clear the floating action buttons that
-     * overlay the fragment. TranslationResultActivity doesn't need this
-     * because it has its own toolbar above the fragment.
-     */
-    fun setResultsTopPaddingDp(dp: Int) {
-        val px = (dp * resources.displayMetrics.density).toInt()
-        val content = resultsContent.getChildAt(0) ?: return
-        content.setPadding(content.paddingLeft, px, content.paddingRight, content.paddingBottom)
-    }
-
     fun displayResult(result: TranslationResult) {
         if (!isAdded || view == null) return
         lastResult = result
@@ -225,6 +225,7 @@ class TranslationResultFragment : Fragment() {
         labelTranslation.text = langDisplayName(selectedTargetLang())
         statusContainer.visibility = View.GONE
         resultsContent.visibility  = View.VISIBLE
+        resultActionButtons.visibility = View.VISIBLE
         resultsContent.scrollTo(0, 0)
         onAnkiEnabledChanged?.invoke(false)
         startWordLookups(result.originalText)
@@ -424,6 +425,7 @@ class TranslationResultFragment : Fragment() {
         labelTranslation.text = langDisplayName(selectedTargetLang())
         statusContainer.visibility = View.GONE
         resultsContent.visibility = View.VISIBLE
+        resultActionButtons.visibility = View.VISIBLE
         resultsContent.scrollTo(0, 0)
         onAnkiEnabledChanged?.invoke(false)
 

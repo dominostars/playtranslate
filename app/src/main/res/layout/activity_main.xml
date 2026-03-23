@@ -145,38 +145,6 @@
 
     <!-- ── Floating action buttons (top-right, drawn above all content) ─── -->
 
-    <!-- Add to Anki — visible only when results are shown -->
-    <ImageButton
-        android:id="@+id/btnMainAddToAnki"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:layout_marginTop="6dp"
-        android:layout_marginEnd="6dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Add to Anki"
-        android:src="@drawable/ic_anki"
-        android:tint="?attr/colorTextSecondary"
-        android:elevation="4dp"
-        android:visibility="gone"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <!-- Clear (X) — visible only when results are shown and not in live mode -->
-    <ImageButton
-        android:id="@+id/btnClear"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:layout_marginTop="6dp"
-        android:layout_marginEnd="4dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Clear"
-        android:src="@drawable/ic_close"
-        android:tint="?attr/colorTextSecondary"
-        android:elevation="4dp"
-        android:visibility="gone"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintEnd_toStartOf="@id/btnMainAddToAnki" />
-
     <!-- Onboarding overlay — shown until notification + capture permissions are set up -->
     <LinearLayout
         android:id="@+id/onboardingContainer"

@@ -66,8 +66,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
     private lateinit var btnTranslate: MaterialButton
     private lateinit var btnCapturing: MaterialButton
-    private lateinit var btnClear: ImageButton
-    private lateinit var btnMainAddToAnki: ImageButton
     private lateinit var btnMenu: ImageButton
     private lateinit var menuOverlay: FrameLayout
     private lateinit var menuPanel: View
@@ -233,21 +231,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
         // Wire up the fragment's edit-original listener for edit overlay
         resultFragment?.setOnEditOriginalListener { showEditOverlay() }
-        // Add extra top padding to clear the floating action buttons (settings, anki, clear).
-        // Must post because the fragment's views aren't created yet during activity onCreate.
-        supportFragmentManager.findFragmentById(R.id.resultsContainer)?.view?.post {
-            resultFragment?.setResultsTopPaddingDp(56)
-        } ?: run {
-            // Fragment not attached yet — wait for it
-            supportFragmentManager.registerFragmentLifecycleCallbacks(object : androidx.fragment.app.FragmentManager.FragmentLifecycleCallbacks() {
-                override fun onFragmentViewCreated(fm: androidx.fragment.app.FragmentManager, f: androidx.fragment.app.Fragment, v: View, savedInstanceState: Bundle?) {
-                    if (f is TranslationResultFragment) {
-                        f.setResultsTopPaddingDp(56)
-                        fm.unregisterFragmentLifecycleCallbacks(this)
-                    }
-                }
-            }, false)
-        }
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -270,7 +253,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         if (serviceConnected) wireServiceCallbacks()
         // Re-wire fragment listeners after config change
         resultFragment?.setOnEditOriginalListener { showEditOverlay() }
-        resultFragment?.onAnkiEnabledChanged = { enabled -> btnMainAddToAnki.isEnabled = enabled }
         PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
         checkOnboardingState()
         if (onboardingContainer.visibility == View.VISIBLE) return
@@ -299,8 +281,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private fun bindViews() {
         btnTranslate         = findViewById(R.id.btnTranslate)
         btnCapturing         = findViewById(R.id.btnCapturing)
-        btnClear             = findViewById(R.id.btnClear)
-        btnMainAddToAnki     = findViewById(R.id.btnMainAddToAnki)
         btnMenu              = findViewById(R.id.btnMenu)
         menuOverlay          = findViewById(R.id.menuOverlay)
         menuPanel            = findViewById(R.id.menuPanel)
@@ -419,7 +399,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         val hadPopup = PlayTranslateAccessibilityService.instance?.dragLookupController?.isPopupShowing == true
         PlayTranslateAccessibilityService.instance?.dragLookupController?.dismiss()
         updateMenuLiveItem()
-        btnClear.visibility = View.GONE
         updateRegionButton()
         resultFragment?.showStatus(searchingStatusText())
         ensureConfigured()
@@ -439,10 +418,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         captureService?.stopLive()
         updateRegionButton()
         val frag = resultFragment
-        if (frag != null && frag.isShowingResults) {
-            btnClear.visibility = View.VISIBLE
-            btnMainAddToAnki.visibility = View.VISIBLE
-        } else {
+        if (frag == null || !frag.isShowingResults) {
             frag?.showStatus(getString(R.string.status_idle))
         }
     }
@@ -468,16 +444,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         findViewById<View>(R.id.menuItemTranslations).setOnClickListener { dismissMenu(); hideRegionPicker() }
         findViewById<View>(R.id.menuItemClose).setOnClickListener { dismissMenu() }
 
-        btnClear.setOnClickListener {
-            resultFragment?.showStatus(getString(R.string.status_idle))
-            btnClear.visibility = View.GONE
-            btnMainAddToAnki.visibility = View.GONE
-        }
-
-        btnMainAddToAnki.setOnClickListener { resultFragment?.onAnkiClicked() }
-        resultFragment?.onAnkiEnabledChanged = { enabled ->
-            btnMainAddToAnki.isEnabled = enabled
-        }
     }
 
     // ── Slide-in menu ──────────────────────────────────────────────────
@@ -596,10 +562,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                 editTranslationJob?.cancel()
                 editTranslationJob = null
                 resultFragment?.displayResult(result)
-                btnMainAddToAnki.visibility = View.VISIBLE
-                if (!isLiveModeActive) {
-                    btnClear.visibility = View.VISIBLE
-                }
             }
         }
         svc.onError = { msg ->
@@ -637,8 +599,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
         val frag = resultFragment ?: return
         frag.showTranslatingPlaceholder(lineText, segments)
-        btnClear.visibility = View.VISIBLE
-        btnMainAddToAnki.visibility = View.VISIBLE
 
         val svc = captureService
         if (svc != null && svc.isConfigured) {
