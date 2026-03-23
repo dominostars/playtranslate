@@ -37,8 +37,6 @@ class RegionPickerSheet : DialogFragment() {
 
     private lateinit var listContainer: LinearLayout
     private lateinit var btnEdit: Button
-    private lateinit var btnSave: Button
-    private lateinit var dividerSave: View
 
     override fun getTheme(): Int = fullScreenDialogTheme(requireContext())
 
@@ -63,8 +61,6 @@ class RegionPickerSheet : DialogFragment() {
 
         listContainer = view.findViewById(R.id.regionListContainer)
         btnEdit       = view.findViewById(R.id.btnEditRegion)
-        btnSave       = view.findViewById(R.id.btnSaveRegion)
-        dividerSave   = view.findViewById(R.id.dividerSave)
 
         val noPreviewNotice = view.findViewById<View>(R.id.noPreviewNotice)
         if (PlayTranslateAccessibilityService.isEnabled) {
@@ -76,20 +72,16 @@ class RegionPickerSheet : DialogFragment() {
             }
         }
 
-        view.findViewById<View>(R.id.btnCloseRegion).setOnClickListener {
-            PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
-            if (showsDialog) dismiss() else onClose?.invoke()
+        view.findViewById<View>(R.id.btnAddRegion).setOnClickListener {
+            if (PlayTranslateAccessibilityService.isEnabled) {
+                openAddCustomSheet()
+            } else {
+                showCustomRegionA11yDialog()
+            }
         }
 
         btnEdit.setOnClickListener {
             if (isEditMode) exitEditMode() else enterEditMode()
-        }
-
-        btnSave.setOnClickListener {
-            prefs.captureRegionIndex = selectedIndex
-            PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
-            onSaved?.invoke(selectedIndex)
-            if (showsDialog) dismiss()
         }
 
         rebuildList()
@@ -113,8 +105,6 @@ class RegionPickerSheet : DialogFragment() {
     private fun enterEditMode() {
         isEditMode = true
         btnEdit.text = getString(R.string.label_done)
-        btnSave.visibility = View.GONE
-        dividerSave.visibility = View.GONE
         rebuildList()
     }
 
@@ -124,8 +114,6 @@ class RegionPickerSheet : DialogFragment() {
         selectedIndex = selectedIndex.coerceIn(0, (workingList.size - 1).coerceAtLeast(0))
         isEditMode = false
         btnEdit.text = getString(R.string.label_edit)
-        btnSave.visibility = View.VISIBLE
-        dividerSave.visibility = View.VISIBLE
         rebuildList()
         showOverlayForIndex(selectedIndex)
     }
@@ -138,7 +126,6 @@ class RegionPickerSheet : DialogFragment() {
             workingList.forEachIndexed { i, entry -> listContainer.addView(makeEditRow(i, entry)) }
         } else {
             workingList.forEachIndexed { i, entry -> listContainer.addView(makeNormalRow(i, entry)) }
-            listContainer.addView(makeAddFooter())
         }
     }
 
@@ -179,8 +166,10 @@ class RegionPickerSheet : DialogFragment() {
 
         row.setOnClickListener {
             selectedIndex = index
+            prefs.captureRegionIndex = selectedIndex
             val e = workingList.getOrElse(index) { Prefs.DEFAULT_REGION_LIST[0] }
             PlayTranslateAccessibilityService.instance?.updateRegionOverlay(e.top, e.bottom, e.left, e.right)
+            onSaved?.invoke(selectedIndex)
             rebuildList()
         }
 
@@ -245,31 +234,6 @@ class RegionPickerSheet : DialogFragment() {
         row.addView(btnDel)
 
         return row
-    }
-
-    private fun makeAddFooter(): View {
-        val ctx = requireContext()
-        val dp = ctx.resources.displayMetrics.density
-
-        val tv = TextView(ctx).apply {
-            text = getString(R.string.label_add_custom_region)
-            textSize = 14f
-            setTextColor(ctx.themeColor(R.attr.colorAccentPrimary))
-            typeface = Typeface.create(typeface, Typeface.BOLD)
-            setPadding((16 * dp).toInt(), (18 * dp).toInt(), (16 * dp).toInt(), (18 * dp).toInt())
-            val attrs = intArrayOf(android.R.attr.selectableItemBackground)
-            val ta = ctx.obtainStyledAttributes(attrs)
-            background = ta.getDrawable(0)
-            ta.recycle()
-            setOnClickListener {
-                if (PlayTranslateAccessibilityService.isEnabled) {
-                    openAddCustomSheet()
-                } else {
-                    showCustomRegionA11yDialog()
-                }
-            }
-        }
-        return tv
     }
 
     private fun makeTextBtn(ctx: android.content.Context, label: String, textSizePx: Int): TextView {
@@ -358,9 +322,9 @@ class RegionPickerSheet : DialogFragment() {
             sheet.gameDisplay = gameDisplay
             sheet.onRegionAdded = { newIndex ->
                 prefs.captureRegionIndex = newIndex
-                onSaved?.invoke(newIndex)
                 PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
-                dismissAllowingStateLoss()
+                onSaved?.invoke(newIndex)
+                if (showsDialog) dismissAllowingStateLoss()
             }
             sheet.onDismissed = {
                 if (isAdded && !isDetached) {

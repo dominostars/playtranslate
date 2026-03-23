@@ -35,13 +35,13 @@
             android:gravity="center" />
 
         <Button
-            android:id="@+id/btnCloseRegion"
+            android:id="@+id/btnAddRegion"
             style="@style/Widget.MaterialComponents.Button.TextButton"
             android:layout_width="72dp"
             android:layout_height="wrap_content"
-            android:text="✕"
-            android:textColor="?attr/colorTextSecondary"
-            android:textSize="18sp"
+            android:text="+"
+            android:textColor="?attr/colorAccentPrimary"
+            android:textSize="22sp"
             android:minWidth="0dp"
             android:minHeight="0dp" />
 
@@ -101,22 +101,5 @@
 
     </ScrollView>
 
-    <!-- Divider (hidden in edit mode) -->
-    <View
-        android:id="@+id/dividerSave"
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="?attr/colorBgDivider" />
-
-    <!-- Save button (hidden in edit mode) -->
-    <Button
-        android:id="@+id/btnSaveRegion"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginHorizontal="12dp"
-        android:layout_marginVertical="12dp"
-        android:text="Save"
-        android:backgroundTint="?attr/colorAccentPrimary"
-        android:textColor="?attr/colorTextOnAccent" />
 
 </LinearLayout>
