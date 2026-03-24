@@ -818,15 +818,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         menu.activeRegion = CaptureService.instance?.activeRegion
         menu.onRegionSelected = { region ->
             dismissFloatingMenu()
-            CaptureService.instance?.let { svc ->
-                val prefs = Prefs(this)
-                svc.configure(
-                    displayId  = prefs.captureDisplayId,
-                    sourceLang = prefs.sourceLang,
-                    targetLang = prefs.targetLang,
-                    region     = region
-                )
-            }
+            CaptureService.instance?.configureOverride(region)
             if (MainActivity.isLiveModeActive) {
                 hideTranslationOverlay()
                 CaptureService.instance?.refreshLiveOverlay()
@@ -846,12 +838,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             val svc = CaptureService.instance
             if (svc != null && svc.isConfigured) {
                 val entry = Prefs.DEFAULT_REGION_LIST[0]
-                svc.configure(
-                    displayId  = prefs.captureDisplayId,
-                    sourceLang = prefs.sourceLang,
-                    targetLang = prefs.targetLang,
-                    region     = entry
-                )
+                svc.configureSaved(displayId = prefs.captureDisplayId, sourceLang = prefs.sourceLang, targetLang = prefs.targetLang, region = entry)
             }
             if (MainActivity.isInForeground) {
                 sendMainActivityIntent(MainActivity.ACTION_REFRESH_REGION_LABEL)
@@ -979,15 +966,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 val dv = dragView ?: return@setOnClickListener
                 val drawnRegion = RegionEntry("Drawn Region", dv.topFraction, dv.bottomFraction, dv.leftFraction, dv.rightFraction)
                 hideRegionEditor()
-                CaptureService.instance?.let { svc ->
-                    val prefs = Prefs(this@PlayTranslateAccessibilityService)
-                    svc.configure(
-                        displayId  = prefs.captureDisplayId,
-                        sourceLang = prefs.sourceLang,
-                        targetLang = prefs.targetLang,
-                        region     = drawnRegion
-                    )
-                }
+                CaptureService.instance?.configureOverride(drawnRegion)
                 if (MainActivity.isLiveModeActive) {
                     CaptureService.instance?.refreshLiveOverlay()
                 } else {
@@ -1083,7 +1062,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 val entry = prefs.getRegionList().getOrElse(prefs.captureRegionIndex) {
                     Prefs.DEFAULT_REGION_LIST[0]
                 }
-                svc.configure(
+                svc.configureSaved(
                     displayId  = prefs.captureDisplayId,
                     sourceLang = prefs.sourceLang,
                     targetLang = prefs.targetLang,

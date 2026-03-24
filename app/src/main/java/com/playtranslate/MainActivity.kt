@@ -124,8 +124,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private val prefs by lazy { Prefs(this) }
 
     private var isLiveMode = false
-    /** Non-null while a temporary "use once" custom region is active. Cleared when saved config is restored. */
-    private var overrideRegion: RegionEntry? = null
     /** True while programmatic scrollTo(0,0) is in progress to prevent auto-pause. */
     private var suppressScrollPause = false
 
@@ -239,7 +237,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             ACTION_START_LIVE -> if (!isLiveMode) withAccessibility { startLiveMode() }
             ACTION_STOP_LIVE -> if (isLiveMode) stopLiveMode()
             ACTION_ADD_CUSTOM_REGION -> openAddCustomRegionFromDropdown()
-            ACTION_REFRESH_REGION_LABEL -> { clearOverride(); updateRegionButton() }
+            ACTION_REFRESH_REGION_LABEL -> { captureService?.clearOverride(); updateRegionButton() }
         }
     }
 
@@ -340,8 +338,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             }
             onTranslateOnce = { region ->
                 hideRegionPicker()
-                overrideRegion = region
-                applyOverrideIfActive()
+                captureService?.configureOverride(region)
                 updateRegionButton()
                 withAccessibility { captureService?.captureOnce() }
             }
@@ -365,7 +362,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         val list = prefs.getRegionList()
         val entry = list.getOrElse(prefs.captureRegionIndex) { Prefs.DEFAULT_REGION_LIST[0] }
         val serviceLabel = captureService?.activeRegion?.label?.takeIf { it.isNotEmpty() }
-        val label = overrideRegion?.label ?: serviceLabel ?: entry.label
+        val label = serviceLabel ?: entry.label
         if (isLiveMode) {
             val prefix = "Capturing "
             btnCapturing.text = SpannableStringBuilder(prefix + label).apply {
@@ -424,10 +421,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
     private fun setupButtons() {
         btnTranslate.setOnClickListener {
-            withAccessibility {
-                applyOverrideIfActive()
-                captureService?.captureOnce()
-            }
+            withAccessibility { captureService?.captureOnce() }
         }
         btnCapturing.setOnClickListener { showRegionPicker() }
 
@@ -652,28 +646,11 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         }
     }
 
-    /** Re-applies the override region config if one is active. */
-    private fun applyOverrideIfActive() {
-        val region = overrideRegion ?: return
-        captureService?.configure(
-            displayId  = prefs.captureDisplayId,
-            sourceLang = selectedSourceLang(),
-            targetLang = selectedTargetLang(),
-            region     = region
-        )
-    }
-
-    /** Clears any dragged-region override. */
-    private fun clearOverride() {
-        overrideRegion = null
-    }
-
-    /** Applies all current prefs to the capture service. */
+    /** Applies all current prefs to the capture service. Clears any override. */
     private fun configureService() {
         val svc = captureService ?: return
-        clearOverride()
         val entry = prefs.getRegionList().getOrElse(prefs.captureRegionIndex) { Prefs.DEFAULT_REGION_LIST[0] }
-        svc.configure(
+        svc.configureSaved(
             displayId  = prefs.captureDisplayId,
             sourceLang = selectedSourceLang(),
             targetLang = selectedTargetLang(),
@@ -822,7 +799,8 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         val lang = langDisplayName(selectedSourceLang())
         val regions = prefs.getRegionList()
         val entry = regions.getOrElse(prefs.captureRegionIndex) { Prefs.DEFAULT_REGION_LIST[0] }
-        val label = overrideRegion?.label ?: entry.label
+        val serviceLabel = captureService?.activeRegion?.label?.takeIf { it.isNotEmpty() }
+        val label = serviceLabel ?: entry.label
         return "Searching for $lang in the \"$label\" area"
     }
 
@@ -995,7 +973,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             return
         }
         val changedSavedRegion = dropdownHighlightedRow != dropdownRegionOrder.lastIndex
-        val hadOverride = overrideRegion != null
+        val hadOverride = captureService?.isOverride == true
         if (changedSavedRegion) {
             prefs.captureRegionIndex = selectedRegionIdx
             configureService()          // clears override
@@ -1015,7 +993,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         AddCustomRegionSheet().also { sheet ->
             sheet.gameDisplay = gameDisplay
             if (current != null && !current.isFullScreen) {
-                if (overrideRegion != null) {
+                if (captureService?.isOverride == true) {
                     sheet.initRegion(current)
                 } else {
                     sheet.initRegion(current, prefs.captureRegionIndex)
@@ -1034,8 +1012,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             }
             sheet.onDismissed = {}
             sheet.onTranslateOnce = { region ->
-                overrideRegion = region
-                applyOverrideIfActive()
+                captureService?.configureOverride(region)
                 updateRegionButton()
                 withAccessibility { captureService?.captureOnce() }
             }

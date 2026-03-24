@@ -138,7 +138,7 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
         val leftFrac   = intent.getFloatExtra(EXTRA_LEFT_FRAC, 0f)
         val rightFrac  = intent.getFloatExtra(EXTRA_RIGHT_FRAC, 1f)
 
-        svc.configure(
+        svc.configureSaved(
             displayId  = prefs.captureDisplayId,
             sourceLang = TranslateLanguage.JAPANESE,
             targetLang = TranslateLanguage.ENGLISH,
@@ -177,7 +177,7 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
         val frag = resultFragment ?: return
 
         // Ensure the service is configured for translation
-        svc.configure(
+        svc.configureSaved(
             displayId  = Prefs(this).captureDisplayId,
             sourceLang = TranslateLanguage.JAPANESE,
             targetLang = TranslateLanguage.ENGLISH

@@ -70,9 +70,13 @@ class CaptureService : Service() {
 
     private var gameDisplayId: Int = 0
     private var sourceLang: String = TranslateLanguage.JAPANESE
-    private var captureRegion = RegionEntry("", 0f, 1f)
+    private var savedRegion = RegionEntry("", 0f, 1f)
+    private var overrideRegion: RegionEntry? = null
 
-    val activeRegion: RegionEntry get() = captureRegion
+    /** The currently active region — override if set, otherwise saved. */
+    val activeRegion: RegionEntry get() = overrideRegion ?: savedRegion
+    /** True when a temporary override region is active. */
+    val isOverride: Boolean get() = overrideRegion != null
 
     // ── Callbacks to Activity ─────────────────────────────────────────────
 
@@ -133,7 +137,18 @@ class CaptureService : Service() {
 
     // ── Public API ────────────────────────────────────────────────────────
 
-    fun configure(
+    /** Apply a temporary override region. Does not change display/language/engines. */
+    fun configureOverride(region: RegionEntry) {
+        overrideRegion = region
+    }
+
+    /** Clear any temporary override, reverting to the saved region. */
+    fun clearOverride() {
+        overrideRegion = null
+    }
+
+    /** Configure the saved region and translation engines. Clears any override. */
+    fun configureSaved(
         displayId: Int,
         sourceLang: String = TranslateLanguage.JAPANESE,
         targetLang: String = TranslateLanguage.ENGLISH,
@@ -141,7 +156,8 @@ class CaptureService : Service() {
     ) {
         gameDisplayId    = displayId
         this.sourceLang  = sourceLang
-        this.captureRegion = region
+        this.savedRegion = region
+        this.overrideRegion = null
 
         // Clear translation cache when settings change — translations may
         // be in the wrong language or from a different service.
@@ -225,10 +241,10 @@ class CaptureService : Service() {
             val screenshotPath = mgr?.saveToCache(raw)
 
             val statusBarHeight = getStatusBarHeightForDisplay(gameDisplayId)
-            val top    = maxOf((raw.height * captureRegion.top).toInt(), statusBarHeight)
-            val left   = (raw.width  * captureRegion.left).toInt()
-            val bottom = (raw.height * captureRegion.bottom).toInt()
-            val right  = (raw.width  * captureRegion.right).toInt()
+            val top    = maxOf((raw.height * activeRegion.top).toInt(), statusBarHeight)
+            val left   = (raw.width  * activeRegion.left).toInt()
+            val bottom = (raw.height * activeRegion.bottom).toInt()
+            val right  = (raw.width  * activeRegion.right).toInt()
             bitmap = cropBitmap(raw, top, bottom, left, right)
 
             val ocrBitmap = blackoutFloatingIcon(bitmap, left, top)
@@ -562,10 +578,10 @@ class CaptureService : Service() {
         var colorRef: Bitmap? = null
         try {
             val statusBarHeight = getStatusBarHeightForDisplay(gameDisplayId)
-            val top    = maxOf((raw.height * captureRegion.top).toInt(), statusBarHeight)
-            val left   = (raw.width  * captureRegion.left).toInt()
-            val bottom = (raw.height * captureRegion.bottom).toInt()
-            val right  = (raw.width  * captureRegion.right).toInt()
+            val top    = maxOf((raw.height * activeRegion.top).toInt(), statusBarHeight)
+            val left   = (raw.width  * activeRegion.left).toInt()
+            val bottom = (raw.height * activeRegion.bottom).toInt()
+            val right  = (raw.width  * activeRegion.right).toInt()
             val needsCrop = top > 0 || left > 0 || bottom < raw.height || right < raw.width
             val bitmap = if (needsCrop)
                 Bitmap.createBitmap(raw, left, top, (right - left).coerceAtLeast(1), (bottom - top).coerceAtLeast(1))
@@ -717,10 +733,10 @@ class CaptureService : Service() {
         fullDisplayBoxes: List<android.graphics.Rect>,
         textBoxes: List<TranslationOverlayView.TextBox>
     ) {
-        val regionTop = (cleanRef.height * captureRegion.top).toInt()
-        val regionBottom = (cleanRef.height * captureRegion.bottom).toInt()
-        val regionLeft = (cleanRef.width * captureRegion.left).toInt()
-        val regionRight = (cleanRef.width * captureRegion.right).toInt()
+        val regionTop = (cleanRef.height * activeRegion.top).toInt()
+        val regionBottom = (cleanRef.height * activeRegion.bottom).toInt()
+        val regionLeft = (cleanRef.width * activeRegion.left).toInt()
+        val regionRight = (cleanRef.width * activeRegion.right).toInt()
 
         val nonOvrPos = mutableListOf<Pair<Int, Int>>()
         val ovrSamples = mutableListOf<OverlaySampleData>()
@@ -817,7 +833,7 @@ class CaptureService : Service() {
         val a11y = PlayTranslateAccessibilityService.instance ?: return
         val dm = getSystemService(DisplayManager::class.java)
         val display = dm.getDisplay(gameDisplayId) ?: return
-        a11y.showRegionIndicator(display, captureRegion)
+        a11y.showRegionIndicator(display, activeRegion)
     }
 
     // Old scene-change detection removed — replaced by unified poll loop.
@@ -945,10 +961,10 @@ class CaptureService : Service() {
             }
 
             val statusBarHeight = getStatusBarHeightForDisplay(gameDisplayId)
-            val top = maxOf((bitmap.height * captureRegion.top).toInt(), statusBarHeight)
-            val left = (bitmap.width * captureRegion.left).toInt()
-            val bottom = (bitmap.height * captureRegion.bottom).toInt()
-            val right = (bitmap.width * captureRegion.right).toInt()
+            val top = maxOf((bitmap.height * activeRegion.top).toInt(), statusBarHeight)
+            val left = (bitmap.width * activeRegion.left).toInt()
+            val bottom = (bitmap.height * activeRegion.bottom).toInt()
+            val right = (bitmap.width * activeRegion.right).toInt()
             val needsCrop = top > 0 || left > 0 || bottom < bitmap.height || right < bitmap.width
             val cropped = if (needsCrop)
                 Bitmap.createBitmap(bitmap, left, top, (right - left).coerceAtLeast(1), (bottom - top).coerceAtLeast(1))
@@ -1104,10 +1120,10 @@ class CaptureService : Service() {
 
         try {
             val statusBarHeight = getStatusBarHeightForDisplay(gameDisplayId)
-            val top    = maxOf((raw.height * captureRegion.top).toInt(), statusBarHeight)
-            val left   = (raw.width  * captureRegion.left).toInt()
-            val bottom = (raw.height * captureRegion.bottom).toInt()
-            val right  = (raw.width  * captureRegion.right).toInt()
+            val top    = maxOf((raw.height * activeRegion.top).toInt(), statusBarHeight)
+            val left   = (raw.width  * activeRegion.left).toInt()
+            val bottom = (raw.height * activeRegion.bottom).toInt()
+            val right  = (raw.width  * activeRegion.right).toInt()
             val needsCrop = top > 0 || left > 0 || bottom < raw.height || right < raw.width
             val bitmap = if (needsCrop)
                 Bitmap.createBitmap(raw, left, top, (right - left).coerceAtLeast(1), (bottom - top).coerceAtLeast(1))
@@ -1269,7 +1285,7 @@ class CaptureService : Service() {
     private fun noTextMessage(): String {
         val langName = java.util.Locale(sourceLang).getDisplayLanguage(java.util.Locale.ENGLISH)
             .replaceFirstChar { it.uppercase() }
-        return getString(R.string.status_no_text, langName, captureRegion.label)
+        return getString(R.string.status_no_text, langName, activeRegion.label)
     }
 
     /**
@@ -1388,10 +1404,10 @@ class CaptureService : Service() {
             flashRegionIndicator()
 
             val statusBarHeight = getStatusBarHeightForDisplay(gameDisplayId)
-            val top    = maxOf((raw.height * captureRegion.top).toInt(), statusBarHeight)
-            val left   = (raw.width  * captureRegion.left).toInt()
-            val bottom = (raw.height * captureRegion.bottom).toInt()
-            val right  = (raw.width  * captureRegion.right).toInt()
+            val top    = maxOf((raw.height * activeRegion.top).toInt(), statusBarHeight)
+            val left   = (raw.width  * activeRegion.left).toInt()
+            val bottom = (raw.height * activeRegion.bottom).toInt()
+            val right  = (raw.width  * activeRegion.right).toInt()
             bitmap = cropBitmap(raw, top, bottom, left, right)
 
             val ocrBitmap = blackoutFloatingIcon(bitmap, left, top)
