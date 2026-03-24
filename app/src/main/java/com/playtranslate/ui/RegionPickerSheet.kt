@@ -321,12 +321,8 @@ class RegionPickerSheet : DialogFragment() {
         PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
         AddCustomRegionSheet().also { sheet ->
             sheet.gameDisplay = gameDisplay
+            sheet.editRegion = entry
             sheet.editIndex = index
-            sheet.editName = entry.label
-            sheet.editTop = entry.top
-            sheet.editBottom = entry.bottom
-            sheet.editLeft = entry.left
-            sheet.editRight = entry.right
             sheet.onRegionEdited = { editedIndex ->
                 workingList = prefs.getRegionList().toMutableList()
                 selectedIndex = editedIndex

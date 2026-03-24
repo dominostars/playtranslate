@@ -24,15 +24,12 @@ class AddCustomRegionSheet : DialogFragment() {
     /** Invoked instead of [onDismissed] when "Translate Once" is tapped. */
     var onTranslateOnce: ((RegionEntry) -> Unit)? = null
 
-    /** Set to enable edit mode: index into the region list to update. */
+    /** Non-null to enable edit mode: the region to edit. */
+    var editRegion: RegionEntry? = null
+    /** Index into the saved region list (for updating in place). */
     var editIndex: Int = -1
-    var editName: String? = null
-    var editTop: Float = 0.25f
-    var editBottom: Float = 0.75f
-    var editLeft: Float = 0.25f
-    var editRight: Float = 0.75f
 
-    private val isEditMode get() = editIndex >= 0
+    private val isEditMode get() = editRegion != null
 
     private var topFraction    = 0.25f
     private var bottomFraction = 0.75f
@@ -64,13 +61,14 @@ class AddCustomRegionSheet : DialogFragment() {
         val btnClose         = view.findViewById<View>(R.id.btnCloseCustomRegion)
         val btnTranslateOnce = view.findViewById<View>(R.id.btnTranslateOnce)
 
-        if (isEditMode) {
-            topFraction = editTop
-            bottomFraction = editBottom
-            leftFraction = editLeft
-            rightFraction = editRight
-            tvTitle.text = "Edit ${editName ?: "Region"}"
-            etName.setText(editName ?: "")
+        val edit = editRegion
+        if (edit != null) {
+            topFraction = edit.top
+            bottomFraction = edit.bottom
+            leftFraction = edit.left
+            rightFraction = edit.right
+            tvTitle.text = "Edit ${edit.label}"
+            etName.setText(edit.label)
             btnTranslateOnce.visibility = View.GONE
         }
 

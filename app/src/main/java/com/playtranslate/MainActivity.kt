@@ -238,7 +238,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             ACTION_REGION_CAPTURE -> handleRegionCapture()
             ACTION_START_LIVE -> if (!isLiveMode) withAccessibility { startLiveMode() }
             ACTION_STOP_LIVE -> if (isLiveMode) stopLiveMode()
-            ACTION_ADD_CUSTOM_REGION -> openAddCustomRegionFromDropdown()
+            ACTION_ADD_CUSTOM_REGION -> openAddCustomRegionFromDropdown(intent)
             ACTION_REFRESH_REGION_LABEL -> { clearOverride(); updateRegionButton() }
         }
     }
@@ -1008,11 +1008,22 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         }
     }
 
-    private fun openAddCustomRegionFromDropdown() {
+    private fun openAddCustomRegionFromDropdown(intent: Intent? = null) {
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val gameDisplay = displayManager.getDisplay(prefs.captureDisplayId)
+        @Suppress("DEPRECATION")
+        val editRegion = intent?.getSerializableExtra("edit_region") as? RegionEntry
         AddCustomRegionSheet().also { sheet ->
             sheet.gameDisplay = gameDisplay
+            if (editRegion != null) {
+                sheet.editRegion = editRegion
+                sheet.editIndex = prefs.captureRegionIndex
+                sheet.onRegionEdited = { editedIndex ->
+                    prefs.captureRegionIndex = editedIndex
+                    configureService()
+                    updateRegionButton()
+                }
+            }
             sheet.onRegionAdded = { newIndex ->
                 prefs.captureRegionIndex = newIndex
                 configureService()
