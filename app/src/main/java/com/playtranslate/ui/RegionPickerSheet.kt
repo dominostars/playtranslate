@@ -38,6 +38,7 @@ class RegionPickerSheet : DialogFragment() {
 
     private lateinit var recyclerView: RecyclerView
     private lateinit var btnEdit: Button
+    private lateinit var tvTitle: TextView
     private lateinit var adapter: RegionAdapter
     private var itemTouchHelper: ItemTouchHelper? = null
 
@@ -64,6 +65,7 @@ class RegionPickerSheet : DialogFragment() {
 
         recyclerView = view.findViewById(R.id.regionRecyclerView)
         btnEdit      = view.findViewById(R.id.btnEditRegion)
+        tvTitle      = view.findViewById(R.id.tvRegionPickerTitle)
 
         val noPreviewNotice = view.findViewById<View>(R.id.noPreviewNotice)
         if (PlayTranslateAccessibilityService.isEnabled) {
@@ -76,6 +78,7 @@ class RegionPickerSheet : DialogFragment() {
         }
 
         view.findViewById<View>(R.id.btnAddRegion).setOnClickListener {
+            if (isEditMode) exitEditMode()
             if (PlayTranslateAccessibilityService.isEnabled) {
                 openAddCustomSheet()
             } else {
@@ -118,6 +121,7 @@ class RegionPickerSheet : DialogFragment() {
     private fun enterEditMode() {
         isEditMode = true
         btnEdit.text = getString(R.string.label_done)
+        tvTitle.text = "Editing Regions"
         adapter.submitList()
         itemTouchHelper?.attachToRecyclerView(recyclerView)
     }
@@ -126,6 +130,7 @@ class RegionPickerSheet : DialogFragment() {
         prefs.setRegionList(workingList)
         isEditMode = false
         btnEdit.text = getString(R.string.label_edit)
+        tvTitle.text = getString(R.string.label_select_region)
         itemTouchHelper?.attachToRecyclerView(null)
         adapter.submitList()
         showSelectedOverlay()
@@ -268,7 +273,12 @@ class RegionPickerSheet : DialogFragment() {
             val entry = workingList[position]
 
             holder.label.text = entry.label
-            holder.radio.isChecked = workingList.getOrNull(position)?.id == selectedId
+            val isSelected = workingList.getOrNull(position)?.id == selectedId
+            holder.radio.isChecked = isSelected
+            holder.itemView.setBackgroundColor(
+                if (isSelected && !isEditMode) holder.itemView.context.themeColor(R.attr.colorBgCard)
+                else android.graphics.Color.TRANSPARENT
+            )
 
             if (isEditMode) {
                 holder.radio.visibility = View.GONE
