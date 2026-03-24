@@ -275,9 +275,6 @@ class RegionPickerSheet : DialogFragment() {
                 holder.dragHandle.visibility = View.VISIBLE
                 holder.btnDelete.visibility = View.VISIBLE
 
-                holder.label.paintFlags = holder.label.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
-                holder.label.setOnClickListener { openEditSheet(holder.bindingAdapterPosition) }
-
                 holder.dragHandle.setOnTouchListener { _, event ->
                     if (event.actionMasked == MotionEvent.ACTION_DOWN) {
                         itemTouchHelper?.startDrag(holder)
@@ -289,13 +286,15 @@ class RegionPickerSheet : DialogFragment() {
                     val pos = holder.bindingAdapterPosition
                     if (pos != RecyclerView.NO_POSITION) deleteItem(pos)
                 }
+
+                holder.itemView.setOnClickListener {
+                    val pos = holder.bindingAdapterPosition
+                    if (pos != RecyclerView.NO_POSITION) openEditSheet(pos)
+                }
             } else {
                 holder.radio.visibility = View.VISIBLE
                 holder.dragHandle.visibility = View.GONE
                 holder.btnDelete.visibility = View.GONE
-
-                holder.label.paintFlags = holder.label.paintFlags and android.graphics.Paint.UNDERLINE_TEXT_FLAG.inv()
-                holder.label.setOnClickListener(null)
 
                 holder.itemView.setOnClickListener {
                     val pos = holder.bindingAdapterPosition
