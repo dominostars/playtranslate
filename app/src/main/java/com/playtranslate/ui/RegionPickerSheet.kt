@@ -187,6 +187,7 @@ class RegionPickerSheet : DialogFragment() {
     }
 
     private fun openEditSheet(index: Int) {
+        if (childFragmentManager.findFragmentByTag(AddCustomRegionSheet.TAG) != null) return
         val entry = workingList.getOrNull(index) ?: return
         PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
         AddCustomRegionSheet().also { sheet ->
@@ -213,6 +214,7 @@ class RegionPickerSheet : DialogFragment() {
     }
 
     private fun openAddCustomSheet() {
+        if (childFragmentManager.findFragmentByTag(AddCustomRegionSheet.TAG) != null) return
         PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
         AddCustomRegionSheet().also { sheet ->
             sheet.gameDisplay = gameDisplay
