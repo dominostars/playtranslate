@@ -328,6 +328,11 @@ class RegionPickerSheet : DialogFragment() {
                 rebuildList()
                 showOverlayForIndex(selectedIndex)
             }
+            sheet.onTranslateOnce = { region ->
+                PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+                if (showsDialog) dismissAllowingStateLoss()
+                onTranslateOnce?.invoke(region)
+            }
             sheet.onDismissed = {
                 if (isAdded && !isDetached) {
                     rebuildList()

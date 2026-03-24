@@ -75,7 +75,6 @@ class AddCustomRegionSheet : DialogFragment() {
             if (isEditMode) {
                 tvTitle.text = "Edit ${init.label}"
                 etName.setText(init.label)
-                btnTranslateOnce.visibility = View.GONE
             }
         }
 
@@ -109,7 +108,6 @@ class AddCustomRegionSheet : DialogFragment() {
 
         btnTranslateOnce.setOnClickListener {
             translateOnceRequested = true
-            translateOnceLabel = etName.text.toString().trim().ifEmpty { "Custom Region" }
             PlayTranslateAccessibilityService.instance?.hideRegionDragOverlay()
             dismiss()
         }
