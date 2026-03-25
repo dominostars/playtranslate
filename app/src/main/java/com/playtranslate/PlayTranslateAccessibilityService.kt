@@ -128,6 +128,10 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     }
 
     fun showRegionOverlay(display: Display, region: RegionEntry) {
+        // Don't show/recreate the overlay while the icon is being dragged —
+        // it would override the INVISIBLE state set by onDragStart and
+        // bringFloatingIconToFront would break the drag touch sequence.
+        if (floatingIcon?.inDragMode == true) return
         hideRegionOverlay()
         val wm = createDisplayContext(display).getSystemService(WindowManager::class.java) ?: return
         val view = RegionOverlayView(this).apply {
@@ -145,6 +149,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         wm.addView(view, params)
         overlayWm = wm
         overlayView = view
+
+        // Re-add the floating icon so it draws above the region overlay
+        bringFloatingIconToFront()
     }
 
     fun updateRegionOverlay(region: RegionEntry) {
@@ -655,14 +662,19 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             screenH = screenSize.y,
             popup = popup
         )
-        // Track whether live mode was running when the popup appeared
+        // Track whether live mode / region overlay were active when drag started
         var liveWasPausedForPopup = false
+        var overlayHiddenForDrag = false
 
-        popup.onDismiss = {
-            controller.onPopupDismissed()
-            // Resume live mode only if drag is finished (not mid-drag word change).
-            // If the user is still dragging, resumption waits for onDragEnd.
-            if (liveWasPausedForPopup && !icon.inDragMode) {
+        fun restoreRegionOverlay() {
+            if (overlayHiddenForDrag) {
+                overlayHiddenForDrag = false
+                overlayView?.visibility = View.VISIBLE
+            }
+        }
+
+        fun resumeLiveMode() {
+            if (liveWasPausedForPopup) {
                 liveWasPausedForPopup = false
                 val effectivelySingleScreen = Prefs.isSingleScreen(this) || !MainActivity.isInForeground
                 if (effectivelySingleScreen) {
@@ -672,10 +684,28 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 }
             }
         }
+
+        popup.onDismiss = {
+            controller.onPopupDismissed()
+            // Resume only if drag is finished (not mid-drag word change).
+            // If the user is still dragging, resumption waits for onDragEnd.
+            if (!icon.inDragMode) {
+                restoreRegionOverlay()
+                resumeLiveMode()
+            }
+        }
         // Called before transitioning to Anki review — prevents popup.onDismiss
         // from resuming live mode (the Anki view should handle that instead).
-        controller.onTransitioningToAnki = { liveWasPausedForPopup = false }
+        controller.onTransitioningToAnki = {
+            liveWasPausedForPopup = false
+            overlayHiddenForDrag = false
+        }
         icon.onDragStart = {
+            // Hide region preview so the user can see game text while dragging
+            if (overlayView?.visibility == View.VISIBLE) {
+                overlayHiddenForDrag = true
+                overlayView?.visibility = View.INVISIBLE
+            }
             // Pause live mode while dragging for definitions
             if (CaptureService.instance?.isLive == true) {
                 liveWasPausedForPopup = true
@@ -693,15 +723,10 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         icon.onDragMove = { rawX, rawY -> controller.onDragMove(rawX, rawY) }
         icon.onDragEnd = {
             val popupShowing = controller.onDragEnd()
-            // If no popup visible on lift, resume live mode immediately
-            if (!popupShowing && liveWasPausedForPopup) {
-                liveWasPausedForPopup = false
-                val effectivelySingleScreen = Prefs.isSingleScreen(this) || !MainActivity.isInForeground
-                if (effectivelySingleScreen) {
-                    toggleLiveDirect(true)
-                } else {
-                    sendMainActivityIntent(MainActivity.ACTION_START_LIVE)
-                }
+            // If no popup visible on lift, restore immediately
+            if (!popupShowing) {
+                restoreRegionOverlay()
+                resumeLiveMode()
             }
             popupShowing
         }
@@ -718,6 +743,19 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e(TAG, "showFloatingIcon: addView failed", e)
         }
+    }
+
+    /** Remove and re-add the floating icon so it draws above newly added overlays. */
+    private fun bringFloatingIconToFront() {
+        val icon = floatingIcon ?: return
+        val wm = floatingIconWm ?: return
+        // Never re-add the icon while it's being dragged — removing it
+        // mid-drag breaks the touch event sequence and freezes the icon.
+        if (icon.inDragMode) return
+        try {
+            wm.removeView(icon)
+            wm.addView(icon, icon.params)
+        } catch (_: Exception) {}
     }
 
     fun hideFloatingIcon() {
