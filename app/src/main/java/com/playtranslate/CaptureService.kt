@@ -61,9 +61,71 @@ class CaptureService : Service() {
     // ── Coroutines ────────────────────────────────────────────────────────
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    /** Scope for region-dependent work (OCR, translation, result delivery).
-     *  Cancelled and recreated on every region change. */
-    private var regionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    // ── Region session ───────────────────────────────────────────────────
+    //
+    // All state tied to a specific capture region lives here. On region
+    // change the old session is cancelled and replaced atomically — no
+    // field-by-field reset needed.
+
+    private inner class RegionSession(val region: RegionEntry) {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+        // Jobs
+        var captureJob: Job? = null
+        var liveCaptureJob: Job? = null
+        var cleanProcessingJob: Job? = null
+        var interactionDebounceJob: Job? = null
+
+        // Live mode / dedup
+        var lastLiveOcrText: String? = null
+        var cachedOverlayBoxes: List<TranslationOverlayView.TextBox>? = null
+        var cachedOverlayCropLeft = 0
+        var cachedOverlayCropTop = 0
+        var cachedOverlayScreenW = 0
+        var cachedOverlayScreenH = 0
+        var liveShowRegionFlash = false
+
+        // Detection
+        var sceneMoving = false
+        var forceCheckC = false
+        var detectionRefNonOverlay: IntArray? = null
+        var detectionRefOverlay: IntArray? = null
+        var detectionOverlayActive: BooleanArray? = null
+        var detectionNonOverlayPositions: List<Pair<Int, Int>> = emptyList()
+        var detectionOverlaySamples: List<OverlaySampleData> = emptyList()
+        var detectionOverlayBoxes: List<android.graphics.Rect> = emptyList()
+        var detectionPrevNonOverlay: IntArray? = null
+        var detectionHasPrev = false
+        var stabilizationFrameCount = 0
+        var detectionOverlayTextBoxes: List<TranslationOverlayView.TextBox> = emptyList()
+
+        /** Clear all cached overlay, dedup, and detection state. Keeps the scope alive. */
+        fun clearCachedState() {
+            lastLiveOcrText = null
+            cachedOverlayBoxes = null
+            sceneMoving = false
+            forceCheckC = false
+            detectionRefNonOverlay = null
+            detectionRefOverlay = null
+            detectionOverlayActive = null
+            detectionNonOverlayPositions = emptyList()
+            detectionOverlaySamples = emptyList()
+            detectionOverlayBoxes = emptyList()
+            detectionPrevNonOverlay = null
+            detectionHasPrev = false
+            stabilizationFrameCount = 0
+            detectionOverlayTextBoxes = emptyList()
+        }
+
+        /** Cancel scope and all tracked jobs. */
+        fun cancel() {
+            interactionDebounceJob?.cancel()
+            scope.cancel()
+        }
+    }
+
+    private var session = RegionSession(RegionEntry("", 0f, 1f))
 
     // ── Pipeline ──────────────────────────────────────────────────────────
 
@@ -85,9 +147,16 @@ class CaptureService : Service() {
     val isOverride: Boolean get() = overrideRegion != null
 
     private fun updateActiveRegion() {
-        regionScope.cancel()
-        regionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-        activeRegionLiveData.value = overrideRegion ?: savedRegion
+        session.cancel()
+        val newRegion = overrideRegion ?: savedRegion
+        activeRegionLiveData.value = newRegion
+        session = RegionSession(newRegion)
+
+        PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+        if (liveActive) {
+            session.liveShowRegionFlash = true
+            PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
+        }
     }
 
     // ── Callbacks to Activity ─────────────────────────────────────────────
@@ -224,11 +293,9 @@ class CaptureService : Service() {
         onStatusUpdate?.invoke(getString(R.string.status_idle))
     }
 
-    private var captureJob: Job? = null
-
     fun captureOnce() {
-        captureJob?.cancel()
-        captureJob = regionScope.launch { runCaptureCycle() }
+        session.captureJob?.cancel()
+        session.captureJob = session.scope.launch { runCaptureCycle() }
     }
 
     /**
@@ -237,8 +304,8 @@ class CaptureService : Service() {
      * (e.g. single-screen region capture from the floating menu).
      */
     fun processScreenshot(raw: Bitmap) {
-        captureJob?.cancel()
-        captureJob = regionScope.launch { runProcessCycle(raw) }
+        session.captureJob?.cancel()
+        session.captureJob = session.scope.launch { runProcessCycle(raw) }
     }
 
     private suspend fun runProcessCycle(raw: Bitmap) {
@@ -305,70 +372,17 @@ class CaptureService : Service() {
     private var liveActive: Boolean
         get() = liveModeState.value == true
         set(v) { liveModeState.value = v }
-    private var interactionDebounceJob: Job? = null
-    /** Separate from [interactionDebounceJob] so cancelling the debounce
-     *  doesn't kill an in-flight capture. */
-    private var liveCaptureJob: Job? = null
-    private var lastLiveOcrText: String? = null
-    /** Cached overlay data so dedup-unchanged frames can re-show instantly. */
-    private var cachedOverlayBoxes: List<TranslationOverlayView.TextBox>? = null
-    private var cachedOverlayCropLeft = 0
-    private var cachedOverlayCropTop = 0
-    private var cachedOverlayScreenW = 0
-    private var cachedOverlayScreenH = 0
-    /** True until the first live capture shows the region indicator. */
-    private var liveShowRegionFlash = false
-    // recheckNeeded removed — continuous detection handles this via the poll loop
-
-    // ── Detection state (used by handleRawFrame) ─────────────────────────
-    private var detectionActive = false
-    private var sceneMoving = false
-    /** Force Check C to run on the next cycle (bypass the pixel-change gate). */
-    private var forceCheckC = false
-    private var detectionRefNonOverlay: IntArray? = null
-    private var detectionRefOverlay: IntArray? = null
-    private var detectionOverlayActive: BooleanArray? = null
-    private var detectionNonOverlayPositions: List<Pair<Int, Int>> = emptyList()
-    private var detectionOverlaySamples: List<OverlaySampleData> = emptyList()
-    private var detectionOverlayBoxes: List<android.graphics.Rect> = emptyList()
-    private var detectionPrevNonOverlay: IntArray? = null
-    private var detectionHasPrev = false
-    private var stabilizationFrameCount = 0
     private val MAX_STABILIZATION_FRAMES = 10
-    private var detectionOverlayTextBoxes: List<TranslationOverlayView.TextBox> = emptyList()
-    /** Clean capture job launched from handleCleanFrame (runs async while loop continues). */
-    private var cleanProcessingJob: Job? = null
-
-    private fun resetDetectionState() {
-        detectionActive = false
-        sceneMoving = false
-        detectionRefNonOverlay = null
-        detectionRefOverlay = null
-        detectionOverlayActive = null
-        detectionNonOverlayPositions = emptyList()
-        detectionOverlaySamples = emptyList()
-        detectionOverlayBoxes = emptyList()
-        detectionPrevNonOverlay = null
-        detectionHasPrev = false
-        stabilizationFrameCount = 0
-        detectionOverlayTextBoxes = emptyList()
-        forceCheckC = false
-    }
 
     val isLive: Boolean get() = liveActive
 
     fun startLive() {
         liveActive = true
-        liveShowRegionFlash = true
+        session.liveShowRegionFlash = true
         PlayTranslateAccessibilityService.instance?.floatingIcon?.liveMode = true
-        lastLiveOcrText = null
-        cachedOverlayBoxes = null
-        captureJob?.cancel()
-        interactionDebounceJob?.cancel()
-        liveCaptureJob?.cancel()
-        cleanProcessingJob?.cancel()
-        // (recheckNeeded removed)
-        resetDetectionState()
+        session.captureJob?.cancel()
+        session.liveCaptureJob?.cancel()
+        session.cleanProcessingJob?.cancel()
 
         // Buttons and touch are detected via onKeyEvent and touch sentinel.
         PlayTranslateAccessibilityService.instance
@@ -389,16 +403,9 @@ class CaptureService : Service() {
 
     fun stopLive() {
         liveActive = false
-        regionScope.cancel()
-        regionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-        interactionDebounceJob?.cancel()
-        interactionDebounceJob = null
-        // (recheckNeeded removed)
-        resetDetectionState()
+        session.cancel()
+        session = RegionSession(activeRegion)
         PlayTranslateAccessibilityService.instance?.screenshotManager?.stopLoop()
-        // (stopSceneChangeDetection removed)
-        lastLiveOcrText = null
-        cachedOverlayBoxes = null
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
         PlayTranslateAccessibilityService.instance?.floatingIcon?.liveMode = false
@@ -413,12 +420,19 @@ class CaptureService : Service() {
      */
     private fun handleCleanFrame(raw: Bitmap) {
         DetectionLog.log("Clean frame received")
-        detectionActive = false  // pause detection until new overlays are set up
 
         // Cancel any in-flight processing from a previous clean frame
-        cleanProcessingJob?.cancel()
-        cleanProcessingJob = regionScope.launch {
-            processCleanFrame(raw)
+        session.cleanProcessingJob?.cancel()
+        session.cleanProcessingJob = session.scope.launch {
+            try {
+                processCleanFrame(raw)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                DetectionLog.log("processClean: cancelled, requesting fresh capture")
+                if (liveActive) {
+                    PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
+                }
+                throw e
+            }
         }
     }
 
@@ -427,17 +441,18 @@ class CaptureService : Service() {
      * Runs pixel diff detection synchronously — must be fast.
      */
     private fun handleRawFrame(bitmap: Bitmap) {
-        if (!detectionActive) {
-            // Detection not set up yet (still processing clean frame)
+        if (session.cleanProcessingJob?.isActive == true) {
+            // Still processing a clean frame — skip detection
             bitmap.recycle()
             return
         }
 
-        val refNonOverlay = detectionRefNonOverlay
-        val refOverlay = detectionRefOverlay
-        val overlayActive = detectionOverlayActive
-        val nonOverlayPositions = detectionNonOverlayPositions
-        val overlaySamples = detectionOverlaySamples
+        val s = session
+        val refNonOverlay = s.detectionRefNonOverlay
+        val refOverlay = s.detectionRefOverlay
+        val overlayActive = s.detectionOverlayActive
+        val nonOverlayPositions = s.detectionNonOverlayPositions
+        val overlaySamples = s.detectionOverlaySamples
 
         if (refNonOverlay == null || nonOverlayPositions.isEmpty()) {
             bitmap.recycle()
@@ -445,17 +460,17 @@ class CaptureService : Service() {
         }
 
         // First raw frame after detection setup: set overlay reference
-        if (detectionRefOverlay == null && overlaySamples.isNotEmpty()) {
+        if (s.detectionRefOverlay == null && overlaySamples.isNotEmpty()) {
             val ovrRef = IntArray(overlaySamples.size)
             val ovrActive = BooleanArray(overlaySamples.size)
             for (i in overlaySamples.indices) {
-                val s = overlaySamples[i]
-                val px = if (s.x < bitmap.width && s.y < bitmap.height) bitmap.getPixel(s.x, s.y) else 0
+                val sample = overlaySamples[i]
+                val px = if (sample.x < bitmap.width && sample.y < bitmap.height) bitmap.getPixel(sample.x, sample.y) else 0
                 ovrRef[i] = px
-                ovrActive[i] = !isColorMatch(px, s.textColor)
+                ovrActive[i] = !isColorMatch(px, sample.textColor)
             }
-            detectionRefOverlay = ovrRef
-            detectionOverlayActive = ovrActive
+            s.detectionRefOverlay = ovrRef
+            s.detectionOverlayActive = ovrActive
             val activeCount = ovrActive.count { it }
             DetectionLog.log("Overlay ref set: ${overlaySamples.size} ovr ($activeCount active)")
             bitmap.recycle()
@@ -470,21 +485,21 @@ class CaptureService : Service() {
         }
         val currentOverlay = IntArray(overlaySamples.size)
         for (i in overlaySamples.indices) {
-            val s = overlaySamples[i]
-            currentOverlay[i] = if (s.x < bitmap.width && s.y < bitmap.height) bitmap.getPixel(s.x, s.y) else 0
+            val sample = overlaySamples[i]
+            currentOverlay[i] = if (sample.x < bitmap.width && sample.y < bitmap.height) bitmap.getPixel(sample.x, sample.y) else 0
         }
 
-        if (!sceneMoving) {
+        if (!s.sceneMoving) {
             // CHECK A: Non-overlay pixel diff
             val nonOverlayDiff = pixelDiffPercent(refNonOverlay, currentNonOverlay)
             if (nonOverlayDiff >= SCENE_CHANGE_THRESHOLD) {
                 DetectionLog.log("A: Scene change (${"%.2f".format(nonOverlayDiff*100)}%)")
                 bitmap.recycle()
-                sceneMoving = true
-                detectionHasPrev = false
-                stabilizationFrameCount = 0
-                lastLiveOcrText = null
-                cachedOverlayBoxes = null
+                s.sceneMoving = true
+                s.detectionHasPrev = false
+                s.stabilizationFrameCount = 0
+                s.lastLiveOcrText = null
+                s.cachedOverlayBoxes = null
                 PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
                 return
             }
@@ -495,8 +510,8 @@ class CaptureService : Service() {
             else OverlayDiffResult(0f, emptySet())
             val overlayDiff = overlayResult.maxDiff
             if (overlayResult.triggeredBoxIndices.isNotEmpty()) {
-                val allBoxes = cachedOverlayBoxes
-                val fullBoxes = detectionOverlayBoxes
+                val allBoxes = s.cachedOverlayBoxes
+                val fullBoxes = s.detectionOverlayBoxes
                 if (allBoxes != null && fullBoxes.isNotEmpty()) {
                     val toRemove = findNearbyBoxIndices(overlayResult.triggeredBoxIndices, fullBoxes)
                     DetectionLog.log("B: Removing ${toRemove.size}/${allBoxes.size} overlays (triggered=${overlayResult.triggeredBoxIndices})")
@@ -504,22 +519,22 @@ class CaptureService : Service() {
                     val remainingBoxes = allBoxes.filterIndexed { i, _ -> i !in toRemove }
                     val remainingFullBoxes = fullBoxes.filterIndexed { i, _ -> i !in toRemove }
 
-                    cachedOverlayBoxes = remainingBoxes.ifEmpty { null }
-                    detectionOverlayBoxes = remainingFullBoxes
+                    s.cachedOverlayBoxes = remainingBoxes.ifEmpty { null }
+                    s.detectionOverlayBoxes = remainingFullBoxes
                     // Clear dedup text so the removed boxes' text is re-discovered as "new"
-                    lastLiveOcrText = null
+                    s.lastLiveOcrText = null
 
                     if (remainingBoxes.isNotEmpty()) {
-                        showLiveOverlay(remainingBoxes, cachedOverlayCropLeft, cachedOverlayCropTop,
-                            cachedOverlayScreenW, cachedOverlayScreenH)
+                        showLiveOverlay(remainingBoxes, s.cachedOverlayCropLeft, s.cachedOverlayCropTop,
+                            s.cachedOverlayScreenW, s.cachedOverlayScreenH)
                     } else {
                         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
                     }
 
-                    forceCheckC = true
-                    detectionRefOverlay = null
-                    detectionOverlayActive = null
-                    detectionOverlaySamples = detectionOverlaySamples.filter { it.boxIdx !in toRemove }
+                    s.forceCheckC = true
+                    s.detectionRefOverlay = null
+                    s.detectionOverlayActive = null
+                    s.detectionOverlaySamples = s.detectionOverlaySamples.filter { it.boxIdx !in toRemove }
 
                     bitmap.recycle()
                     return
@@ -527,20 +542,19 @@ class CaptureService : Service() {
             }
 
             // GATE: Any change at all? (forceCheckC bypasses this)
-            val anyChange = forceCheckC || nonOverlayDiff > 0.005f || overlayDiff > 0.005f
-            if (forceCheckC) forceCheckC = false
+            val anyChange = s.forceCheckC || nonOverlayDiff > 0.005f || overlayDiff > 0.005f
+            if (s.forceCheckC) s.forceCheckC = false
             if (anyChange) {
                 DetectionLog.log("C: Change (non=${"%.2f".format(nonOverlayDiff*100)}% ovr=${"%.2f".format(overlayDiff*100)}%)")
-                if (cachedOverlayBoxes.isNullOrEmpty()) {
+                if (s.cachedOverlayBoxes.isNullOrEmpty()) {
                     // No overlays — raw screenshot is unobstructed, use as clean
                     DetectionLog.log("C: No overlays → raw as clean")
-                    detectionActive = false
                     handleCleanFrame(bitmap)
                     return
                 }
                 // Fill-and-OCR to detect new text (runs async, bitmap ownership transferred)
-                val overlayBoxesCopy = detectionOverlayBoxes.toList()
-                regionScope.launch {
+                val overlayBoxesCopy = s.detectionOverlayBoxes.toList()
+                s.scope.launch {
                     val triggered = performOcrRecheck(bitmap, overlayBoxesCopy)
                     if (triggered) {
                         DetectionLog.log("D: New text → recapture/merge")
@@ -552,28 +566,26 @@ class CaptureService : Service() {
             }
         } else {
             // Phase 2: Stabilization — compare consecutive frames
-            stabilizationFrameCount++
-            val prevNonOverlay = detectionPrevNonOverlay
-            if (detectionHasPrev && prevNonOverlay != null) {
+            s.stabilizationFrameCount++
+            val prevNonOverlay = s.detectionPrevNonOverlay
+            if (s.detectionHasPrev && prevNonOverlay != null) {
                 val pct = pixelDiffPercent(prevNonOverlay, currentNonOverlay)
                 if (pct < SCENE_CHANGE_THRESHOLD) {
-                    DetectionLog.log("Stabilized (${"%.2f".format(pct*100)}%) frame $stabilizationFrameCount → clean as raw")
-                    sceneMoving = false
-                    detectionActive = false
+                    DetectionLog.log("Stabilized (${"%.2f".format(pct*100)}%) frame ${s.stabilizationFrameCount} → clean as raw")
+                    s.sceneMoving = false
                     handleCleanFrame(bitmap)
                     return
                 }
-                if (stabilizationFrameCount >= MAX_STABILIZATION_FRAMES) {
-                    DetectionLog.log("Stabilization timeout (${"%.2f".format(pct*100)}%) after $stabilizationFrameCount frames → forcing clean")
-                    sceneMoving = false
-                    detectionActive = false
+                if (s.stabilizationFrameCount >= MAX_STABILIZATION_FRAMES) {
+                    DetectionLog.log("Stabilization timeout (${"%.2f".format(pct*100)}%) after ${s.stabilizationFrameCount} frames → forcing clean")
+                    s.sceneMoving = false
                     handleCleanFrame(bitmap)
                     return
                 }
-                DetectionLog.log("Waiting to stabilize (${"%.2f".format(pct*100)}%) frame $stabilizationFrameCount/$MAX_STABILIZATION_FRAMES")
+                DetectionLog.log("Waiting to stabilize (${"%.2f".format(pct*100)}%) frame ${s.stabilizationFrameCount}/$MAX_STABILIZATION_FRAMES")
             }
-            detectionPrevNonOverlay = currentNonOverlay
-            detectionHasPrev = true
+            s.detectionPrevNonOverlay = currentNonOverlay
+            s.detectionHasPrev = true
             bitmap.recycle()
         }
     }
@@ -603,8 +615,9 @@ class CaptureService : Service() {
             val colorScale = 4
             colorRef = Bitmap.createScaledBitmap(raw, raw.width / colorScale, raw.height / colorScale, false)
 
-            if (liveShowRegionFlash) {
-                liveShowRegionFlash = false
+            val s = session
+            if (s.liveShowRegionFlash) {
+                s.liveShowRegionFlash = false
                 flashRegionIndicator()
             }
 
@@ -614,8 +627,8 @@ class CaptureService : Service() {
 
             if (ocrResult == null) {
                 DetectionLog.log("processClean: OCR returned null")
-                lastLiveOcrText = null
-                cachedOverlayBoxes = null
+                s.lastLiveOcrText = null
+                s.cachedOverlayBoxes = null
                 PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
                 onLiveNoText?.invoke()
                 setupDetection(raw, emptyList(), emptyList())
@@ -627,8 +640,8 @@ class CaptureService : Service() {
 
             if (dedupKey.isEmpty()) {
                 DetectionLog.log("processClean: no source-lang chars")
-                lastLiveOcrText = null
-                cachedOverlayBoxes = null
+                s.lastLiveOcrText = null
+                s.cachedOverlayBoxes = null
                 PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
                 onLiveNoText?.invoke()
                 setupDetection(raw, emptyList(), emptyList())
@@ -636,17 +649,17 @@ class CaptureService : Service() {
             }
 
             // Dedup
-            if (lastLiveOcrText != null && !isSignificantChange(lastLiveOcrText!!, dedupKey)) {
-                val boxes = cachedOverlayBoxes
+            if (s.lastLiveOcrText != null && !isSignificantChange(s.lastLiveOcrText!!, dedupKey)) {
+                val boxes = s.cachedOverlayBoxes
                 if (boxes != null) {
                     DetectionLog.log("processClean: dedup match, re-showing cached")
-                    showLiveOverlay(boxes, cachedOverlayCropLeft, cachedOverlayCropTop,
-                        cachedOverlayScreenW, cachedOverlayScreenH,
+                    showLiveOverlay(boxes, s.cachedOverlayCropLeft, s.cachedOverlayCropTop,
+                        s.cachedOverlayScreenW, s.cachedOverlayScreenH,
                         )
                     setupDetection(raw, boxes.map { b ->
                         android.graphics.Rect(
-                            b.bounds.left + cachedOverlayCropLeft, b.bounds.top + cachedOverlayCropTop,
-                            b.bounds.right + cachedOverlayCropLeft, b.bounds.bottom + cachedOverlayCropTop
+                            b.bounds.left + s.cachedOverlayCropLeft, b.bounds.top + s.cachedOverlayCropTop,
+                            b.bounds.right + s.cachedOverlayCropLeft, b.bounds.bottom + s.cachedOverlayCropTop
                         )
                     }, boxes)
                     return
@@ -654,7 +667,7 @@ class CaptureService : Service() {
                 // No cached boxes (e.g. all selectively removed) — fall through to re-translate
                 DetectionLog.log("processClean: dedup match but no cached boxes, re-translating")
             }
-            lastLiveOcrText = dedupKey
+            s.lastLiveOcrText = dedupKey
             DetectionLog.log("processClean: new text, ${ocrResult.groupTexts.size} groups, translating...")
 
             val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
@@ -707,11 +720,11 @@ class CaptureService : Service() {
                 val overlayBoxes = perGroup.zip(placeholderBoxes).map { (tr, placeholder) ->
                     placeholder.copy(translatedText = tr.first)
                 }
-                cachedOverlayBoxes = overlayBoxes
-                cachedOverlayCropLeft = left
-                cachedOverlayCropTop = top
-                cachedOverlayScreenW = screenshotW
-                cachedOverlayScreenH = screenshotH
+                s.cachedOverlayBoxes = overlayBoxes
+                s.cachedOverlayCropLeft = left
+                s.cachedOverlayCropTop = top
+                s.cachedOverlayScreenW = screenshotW
+                s.cachedOverlayScreenH = screenshotH
                 showLiveOverlay(overlayBoxes, left, top, screenshotW, screenshotH,
                     )
 
@@ -775,26 +788,26 @@ class CaptureService : Service() {
         }
 
         // Non-overlay: use clean capture as baseline (catches typewriter changes)
-        detectionRefNonOverlay = IntArray(nonOvrPos.size) { i ->
+        val s = session
+        s.detectionRefNonOverlay = IntArray(nonOvrPos.size) { i ->
             val (x, y) = nonOvrPos[i]
             if (x < cleanRef.width && y < cleanRef.height) cleanRef.getPixel(x, y) else 0
         }
-        detectionNonOverlayPositions = nonOvrPos
-        detectionOverlaySamples = ovrSamples
-        detectionOverlayBoxes = fullDisplayBoxes
-        detectionOverlayTextBoxes = textBoxes
+        s.detectionNonOverlayPositions = nonOvrPos
+        s.detectionOverlaySamples = ovrSamples
+        s.detectionOverlayBoxes = fullDisplayBoxes
+        s.detectionOverlayTextBoxes = textBoxes
 
         // Overlay reference will be set from the FIRST raw frame after this
         // (since we need the rendered overlays in the screenshot).
-        detectionRefOverlay = null
-        detectionOverlayActive = null
-        detectionHasPrev = false
-        detectionPrevNonOverlay = null
-        sceneMoving = false
+        s.detectionRefOverlay = null
+        s.detectionOverlayActive = null
+        s.detectionHasPrev = false
+        s.detectionPrevNonOverlay = null
+        s.sceneMoving = false
 
-        // Mark detection active — but overlay ref not set yet.
-        // handleRawFrame will set it from the first frame it sees.
-        detectionActive = true
+        // Detection resumes when cleanProcessingJob finishes (job.isActive becomes false)
+        // and these references are non-null. handleRawFrame will set overlay ref from the first frame.
         DetectionLog.log("Detection setup: ${nonOvrPos.size} non-ovr (clean), ${ovrSamples.size} ovr (waiting for raw ref)")
     }
 
@@ -802,11 +815,9 @@ class CaptureService : Service() {
     fun refreshLiveOverlay() {
         if (!liveActive) return
         Log.d(TAG, "REFRESH: refreshLiveOverlay called")
-        lastLiveOcrText = null
-        cachedOverlayBoxes = null
-        resetDetectionState()
-        interactionDebounceJob?.cancel()
-        cleanProcessingJob?.cancel()
+        session.clearCachedState()
+        session.interactionDebounceJob?.cancel()
+        session.cleanProcessingJob?.cancel()
         // Request a clean capture on the next loop iteration
         PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
     }
@@ -819,8 +830,8 @@ class CaptureService : Service() {
             mgr.requestCleanCapture()
         } else {
             // Not in loop mode — standalone capture
-            liveCaptureJob?.cancel()
-            liveCaptureJob = regionScope.launch { runLiveCaptureCycle() }
+            session.liveCaptureJob?.cancel()
+            session.liveCaptureJob = session.scope.launch { runLiveCaptureCycle() }
         }
     }
 
@@ -849,7 +860,7 @@ class CaptureService : Service() {
             holdActive = false
             refreshLiveOverlay()
         } else {
-            liveCaptureJob?.cancel()
+            session.liveCaptureJob?.cancel()
             PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
         }
     }
@@ -860,7 +871,7 @@ class CaptureService : Service() {
         if (liveActive) {
             holdActive = false
         } else {
-            liveCaptureJob?.cancel()
+            session.liveCaptureJob?.cancel()
         }
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
     }
@@ -980,10 +991,11 @@ class CaptureService : Service() {
         bitmap: Bitmap,
         overlayBoxes: List<android.graphics.Rect>
     ): Boolean {
-        val overlays = cachedOverlayBoxes
+        val s = session
+        val overlays = s.cachedOverlayBoxes
         if (overlays == null) { bitmap.recycle(); return false }
-        val cropL = cachedOverlayCropLeft
-        val cropT = cachedOverlayCropTop
+        val cropL = s.cachedOverlayCropLeft
+        val cropT = s.cachedOverlayCropTop
         var colorRef: Bitmap? = null
 
         try {
@@ -1018,7 +1030,7 @@ class CaptureService : Service() {
 
             val newDedupKey = ocrResult.fullText.filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
             if (newDedupKey.isEmpty()) return false
-            val prevText = lastLiveOcrText
+            val prevText = s.lastLiveOcrText
             // If prevText is null (e.g., after selective removal), treat all text as new.
             // Otherwise, check for significant additions.
             if (prevText != null && !hasSignificantAdditions(prevText, newDedupKey)) return false
@@ -1035,9 +1047,9 @@ class CaptureService : Service() {
             }
 
             if (anyClose) {
-                lastLiveOcrText = null
-                cachedOverlayBoxes = null
-                resetDetectionState()
+                s.lastLiveOcrText = null
+                s.cachedOverlayBoxes = null
+                s.clearCachedState()
                 PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
                 PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
                 return true
@@ -1073,9 +1085,9 @@ class CaptureService : Service() {
 
                 if (newOverlayBoxes.isNotEmpty()) {
                     val merged = overlays + newOverlayBoxes
-                    cachedOverlayBoxes = merged
-                    lastLiveOcrText = prevText + newDedupKey
-                    showLiveOverlay(merged, cropL, cropT, cachedOverlayScreenW, cachedOverlayScreenH)
+                    s.cachedOverlayBoxes = merged
+                    s.lastLiveOcrText = prevText + newDedupKey
+                    showLiveOverlay(merged, cropL, cropT, s.cachedOverlayScreenW, s.cachedOverlayScreenH)
                     // Set up detection for the merged overlays
                     // (overlay ref will be set from next raw frame)
                     return true
@@ -1101,15 +1113,13 @@ class CaptureService : Service() {
         if (!liveActive) return
 
         Log.d(TAG, "REFRESH: onUserInteraction")
-        cleanProcessingJob?.cancel()
-        lastLiveOcrText = null
-        cachedOverlayBoxes = null
-        resetDetectionState()
+        session.cleanProcessingJob?.cancel()
+        session.clearCachedState()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
 
         // Debounce until input stops, then request a clean capture
-        interactionDebounceJob?.cancel()
-        interactionDebounceJob = serviceScope.launch {
+        session.interactionDebounceJob?.cancel()
+        session.interactionDebounceJob = session.scope.launch {
             val settleMs = Prefs(this@CaptureService).captureIntervalMs
             delay(settleMs)
             while (PlayTranslateAccessibilityService.instance?.isInputActive == true) {
@@ -1174,9 +1184,10 @@ class CaptureService : Service() {
             val colorScale = 4
             colorRef = Bitmap.createScaledBitmap(raw, raw.width / colorScale, raw.height / colorScale, false)
 
+            val s = session
             // Flash region indicator AFTER screenshot is captured
-            if (liveShowRegionFlash) {
-                liveShowRegionFlash = false
+            if (s.liveShowRegionFlash) {
+                s.liveShowRegionFlash = false
                 flashRegionIndicator()
             }
 
@@ -1185,8 +1196,8 @@ class CaptureService : Service() {
             if (ocrBitmap !== raw) ocrBitmap.recycle()
 
             if (ocrResult == null) {
-                lastLiveOcrText = null
-                cachedOverlayBoxes = null
+                s.lastLiveOcrText = null
+                s.cachedOverlayBoxes = null
                 PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
                 onLiveNoText?.invoke()
                 // Start scene detection so we recapture when the game changes
@@ -1199,8 +1210,8 @@ class CaptureService : Service() {
             val dedupKey = newText.filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
 
             if (dedupKey.isEmpty()) {
-                lastLiveOcrText = null
-                cachedOverlayBoxes = null
+                s.lastLiveOcrText = null
+                s.cachedOverlayBoxes = null
                 PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
                 onLiveNoText?.invoke()
                 // Detection handled by the unified poll loop
@@ -1209,15 +1220,15 @@ class CaptureService : Service() {
 
             // Dedup: if text hasn't changed significantly, re-show cached overlay.
             // Skip dedup entirely if we have no previous text (first cycle after start/clear).
-            if (lastLiveOcrText != null && !isSignificantChange(lastLiveOcrText!!, dedupKey)) {
-                val boxes = cachedOverlayBoxes
+            if (s.lastLiveOcrText != null && !isSignificantChange(s.lastLiveOcrText!!, dedupKey)) {
+                val boxes = s.cachedOverlayBoxes
                 if (boxes != null) {
-                    showLiveOverlay(boxes, cachedOverlayCropLeft, cachedOverlayCropTop,
-                        cachedOverlayScreenW, cachedOverlayScreenH)
+                    showLiveOverlay(boxes, s.cachedOverlayCropLeft, s.cachedOverlayCropTop,
+                        s.cachedOverlayScreenW, s.cachedOverlayScreenH)
                 }
                 return
             }
-            lastLiveOcrText = dedupKey
+            s.lastLiveOcrText = dedupKey
 
             // New text — save screenshot NOW (only on actual text changes, not dedup hits)
             val screenshotPath = mgr?.saveToCache(raw)
@@ -1274,11 +1285,11 @@ class CaptureService : Service() {
                 val overlayBoxes = perGroup.zip(placeholderBoxes).map { (tr, placeholder) ->
                     placeholder.copy(translatedText = tr.first)
                 }
-                cachedOverlayBoxes = overlayBoxes
-                cachedOverlayCropLeft = left
-                cachedOverlayCropTop = top
-                cachedOverlayScreenW = screenshotW
-                cachedOverlayScreenH = screenshotH
+                s.cachedOverlayBoxes = overlayBoxes
+                s.cachedOverlayCropLeft = left
+                s.cachedOverlayCropTop = top
+                s.cachedOverlayScreenW = screenshotW
+                s.cachedOverlayScreenH = screenshotH
                 showLiveOverlay(overlayBoxes, left, top, screenshotW, screenshotH)
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
