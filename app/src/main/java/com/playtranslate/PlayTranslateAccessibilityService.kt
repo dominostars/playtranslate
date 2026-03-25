@@ -704,44 +704,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             }
             popupShowing
         }
-        icon.onHoldCancel = {
-            // Hold cancelled because user started dragging — clean up hold
-            // state. Don't hide the overlay here — let captureDisplay find
-            // it and handle the Choreographer timing for a clean capture.
-            val svc = CaptureService.instance
-            icon.showLoading = false
-            if (MainActivity.isLiveModeActive) {
-                svc?.holdActive = false
-            } else {
-                svc?.cancelOneShot()
-            }
-            hideTranslationOverlay()
-        }
-        icon.onHoldStart = {
-            val svc = CaptureService.instance
-            if (MainActivity.isLiveModeActive) {
-                // Live mode: temporarily hide overlays, suppress new ones
-                svc?.holdActive = true
-                hideTranslationOverlay()
-            } else {
-                // Not live: one-shot capture + translate + show overlay
-                icon.showLoading = true
-                svc?.showOneShotOverlay()
-            }
-        }
-        icon.onHoldEnd = {
-            val svc = CaptureService.instance
-            icon.showLoading = false
-            if (MainActivity.isLiveModeActive) {
-                // Live mode: allow overlays again, refresh
-                svc?.holdActive = false
-                svc?.refreshLiveOverlay()
-            } else {
-                // Not live: remove overlays and invalidate any in-flight one-shot
-                svc?.cancelOneShot()
-                hideTranslationOverlay()
-            }
-        }
+        icon.onHoldCancel = { CaptureService.instance?.holdCancel() }
+        icon.onHoldStart  = { CaptureService.instance?.holdStart() }
+        icon.onHoldEnd    = { CaptureService.instance?.holdEnd() }
         dragLookupController = controller
 
         try {

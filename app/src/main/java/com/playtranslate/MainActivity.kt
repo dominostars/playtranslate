@@ -418,12 +418,39 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         if (isLiveMode) stopLiveMode()
     }
 
+    private var translateHoldActive = false
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
     private fun setupButtons() {
         btnTranslate.setOnClickListener {
             hideRegionPicker()
             withAccessibility { captureService?.captureOnce() }
         }
+        btnTranslate.setOnLongClickListener {
+            translateHoldActive = true
+            withAccessibility { captureService?.holdStart() }
+            true
+        }
+        btnTranslate.setOnTouchListener { _, event ->
+            if (translateHoldActive && (event.action == MotionEvent.ACTION_UP || event.action == MotionEvent.ACTION_CANCEL)) {
+                translateHoldActive = false
+                captureService?.holdEnd()
+            }
+            false
+        }
         btnCapturing.setOnClickListener { captureService?.refreshLiveOverlay() }
+        btnCapturing.setOnLongClickListener {
+            translateHoldActive = true
+            captureService?.holdStart()
+            true
+        }
+        btnCapturing.setOnTouchListener { _, event ->
+            if (translateHoldActive && (event.action == MotionEvent.ACTION_UP || event.action == MotionEvent.ACTION_CANCEL)) {
+                translateHoldActive = false
+                captureService?.holdEnd()
+            }
+            false
+        }
 
         btnMenu.setOnClickListener { showMenu() }
         menuScrim.setOnClickListener { dismissMenu() }
@@ -574,6 +601,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         }
         svc.onDegradedStateChanged = { degraded ->
             PlayTranslateAccessibilityService.instance?.floatingIcon?.degraded = degraded
+        }
+        svc.onHoldLoadingChanged = { loading ->
+            PlayTranslateAccessibilityService.instance?.floatingIcon?.showLoading = loading
         }
 
         ensureConfigured()

@@ -88,6 +88,8 @@ class CaptureService : Service() {
     var onLiveNoText: (() -> Unit)? = null
     var onLiveStopped: (() -> Unit)? = null
     var onDegradedStateChanged: ((Boolean) -> Unit)? = null
+    /** Emitted when hold-to-preview loading state changes. */
+    var onHoldLoadingChanged: ((Boolean) -> Unit)? = null
 
     /** True when translations are using ML Kit fallback (lower quality). */
     var translationDegraded = false
@@ -132,6 +134,7 @@ class CaptureService : Service() {
         onLiveNoText = null
         onLiveStopped = null
         onDegradedStateChanged = null
+        onHoldLoadingChanged = null
         super.onDestroy()
     }
 
@@ -811,17 +814,45 @@ class CaptureService : Service() {
         }
     }
 
-    /** True while the user is holding the floating icon — suppresses overlay display. */
+    /** True while a hold gesture or modal UI is active — suppresses overlay display in live mode. */
     var holdActive = false
 
     /** Path to the last clean screenshot. Delegates to [ScreenshotManager]. */
     val lastCleanScreenshotPath: String?
         get() = PlayTranslateAccessibilityService.instance?.screenshotManager?.lastCleanPath
 
-    /** Cancel any in-flight one-shot and invalidate its results. */
-    fun cancelOneShot() {
-        liveCaptureJob?.cancel()
-        // (stopSceneChangeDetection removed)
+    /** Begin a hold-to-preview gesture. In non-live: captures and shows overlay. In live: hides overlays. */
+    fun holdStart() {
+        if (MainActivity.isLiveModeActive) {
+            holdActive = true
+            PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+        } else {
+            onHoldLoadingChanged?.invoke(true)
+            showOneShotOverlay()
+        }
+    }
+
+    /** End a hold-to-preview gesture. In non-live: removes overlay. In live: restores overlays. */
+    fun holdEnd() {
+        onHoldLoadingChanged?.invoke(false)
+        if (MainActivity.isLiveModeActive) {
+            holdActive = false
+            refreshLiveOverlay()
+        } else {
+            liveCaptureJob?.cancel()
+            PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+        }
+    }
+
+    /** Cancel a hold gesture (e.g. user started dragging). Cleans up without triggering refresh. */
+    fun holdCancel() {
+        onHoldLoadingChanged?.invoke(false)
+        if (MainActivity.isLiveModeActive) {
+            holdActive = false
+        } else {
+            liveCaptureJob?.cancel()
+        }
+        PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
     }
 
     /**
