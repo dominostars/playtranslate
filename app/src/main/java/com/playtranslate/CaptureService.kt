@@ -93,18 +93,16 @@ class CaptureService : Service() {
     var onTranslationStarted: (() -> Unit)? = null
     /** Fired during live mode when an OCR cycle finds no source-language text. */
     var onLiveNoText: (() -> Unit)? = null
-    var onDegradedStateChanged: ((Boolean) -> Unit)? = null
     /** Emitted when hold-to-preview loading state changes. */
     var onHoldLoadingChanged: ((Boolean) -> Unit)? = null
 
-    /** True when translations are using ML Kit fallback (lower quality). */
-    var translationDegraded = false
-        private set
+    /** Observable degraded translation state (ML Kit fallback). */
+    val degradedState = MutableLiveData(false)
+    val translationDegraded: Boolean get() = degradedState.value == true
 
     private fun setDegraded(degraded: Boolean) {
         if (translationDegraded == degraded) return
-        translationDegraded = degraded
-        onDegradedStateChanged?.invoke(degraded)
+        degradedState.postValue(degraded)
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -138,7 +136,6 @@ class CaptureService : Service() {
         onStatusUpdate = null
         onTranslationStarted = null
         onLiveNoText = null
-        onDegradedStateChanged = null
         onHoldLoadingChanged = null
         super.onDestroy()
     }

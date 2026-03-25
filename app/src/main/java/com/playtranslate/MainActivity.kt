@@ -604,7 +604,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             runOnUiThread { if (isLiveMode) resultFragment?.showStatus(searchingStatusText()) }
         }
         // onLiveStopped removed — LiveData observer handles live mode changes
-        svc.onDegradedStateChanged = { degraded ->
+        svc.degradedState.observe(this) { degraded ->
             PlayTranslateAccessibilityService.instance?.floatingIcon?.degraded = degraded
         }
         svc.onHoldLoadingChanged = { loading ->

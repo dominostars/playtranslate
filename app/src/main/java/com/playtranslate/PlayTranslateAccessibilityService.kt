@@ -743,7 +743,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         hideTranslationOverlay()
 
         menu.isLiveMode = CaptureService.instance?.isLive == true
-        menu.showDegradedWarning = CaptureService.instance?.translationDegraded == true
+        menu.showDegradedWarning = CaptureService.instance?.degradedState?.value == true
         menu.onHideIcon = {
             dismissFloatingMenu()
             Prefs(this).showOverlayIcon = false
