@@ -74,10 +74,16 @@ class CaptureService : Service() {
     private var savedRegion = RegionEntry("", 0f, 1f)
     private var overrideRegion: RegionEntry? = null
 
-    /** The currently active region — override if set, otherwise saved. */
-    val activeRegion: RegionEntry get() = overrideRegion ?: savedRegion
+    /** Observable active region — override if set, otherwise saved. */
+    val activeRegionLiveData = MutableLiveData(RegionEntry("", 0f, 1f))
+    /** Current active region snapshot for synchronous reads. */
+    val activeRegion: RegionEntry get() = activeRegionLiveData.value!!
     /** True when a temporary override region is active. */
     val isOverride: Boolean get() = overrideRegion != null
+
+    private fun updateActiveRegion() {
+        activeRegionLiveData.value = overrideRegion ?: savedRegion
+    }
 
     // ── Callbacks to Activity ─────────────────────────────────────────────
 
@@ -142,11 +148,13 @@ class CaptureService : Service() {
     /** Apply a temporary override region. Does not change display/language/engines. */
     fun configureOverride(region: RegionEntry) {
         overrideRegion = region
+        updateActiveRegion()
     }
 
     /** Clear any temporary override, reverting to the saved region. */
     fun clearOverride() {
         overrideRegion = null
+        updateActiveRegion()
     }
 
     /** Configure the saved region and translation engines. Clears any override. */
@@ -160,6 +168,7 @@ class CaptureService : Service() {
         this.sourceLang  = sourceLang
         this.savedRegion = region
         this.overrideRegion = null
+        updateActiveRegion()
 
         // Clear translation cache when settings change — translations may
         // be in the wrong language or from a different service.

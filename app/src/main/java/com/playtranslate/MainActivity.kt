@@ -240,7 +240,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             ACTION_START_LIVE -> if (!isLiveMode) withAccessibility { startLiveMode() }
             ACTION_STOP_LIVE -> if (isLiveMode) stopLiveMode()
             ACTION_ADD_CUSTOM_REGION -> openAddCustomRegionFromDropdown()
-            ACTION_REFRESH_REGION_LABEL -> { captureService?.clearOverride(); updateRegionButton() }
+            ACTION_REFRESH_REGION_LABEL -> captureService?.clearOverride()
         }
     }
 
@@ -341,12 +341,10 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             this.gameDisplay = gameDisplay
             onSaved = {
                 configureService()
-                updateRegionButton()
             }
             onTranslateOnce = { region ->
                 hideRegionPicker()
                 captureService?.configureOverride(region)
-                updateRegionButton()
                 withAccessibility { captureService?.captureOnce() }
             }
             onClose = { hideRegionPicker() }
@@ -366,9 +364,8 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     private fun updateRegionButton() {
-        val entry = prefs.getSelectedRegion()
-        val serviceLabel = captureService?.activeRegion?.label?.takeIf { it.isNotEmpty() }
-        val label = serviceLabel ?: entry.label
+        val region = captureService?.activeRegion ?: prefs.getSelectedRegion()
+        val label = region.label.ifEmpty { "Full screen" }
         if (isLiveMode) {
             val prefix = "Reload "
             tvCapturingTitle.text = SpannableStringBuilder(prefix + label).apply {
@@ -614,6 +611,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             PlayTranslateAccessibilityService.instance?.floatingIcon?.showLoading = loading
         }
         svc.liveModeState.observe(this) { isLive -> onLiveModeChanged(isLive) }
+        svc.activeRegionLiveData.observe(this) { _ -> updateRegionButton() }
 
         ensureConfigured()
     }
@@ -660,9 +658,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private fun handleRegionCapture() {
         if (isLiveMode) pauseLiveMode()
 
-        // The service is already configured with the dragged region
-        // by the caller — just update the UI label and capture.
-        updateRegionButton()
         captureService?.captureOnce()
     }
 
@@ -1015,13 +1010,10 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         val hadOverride = captureService?.isOverride == true
         if (changedSavedRegion) {
             prefs.selectedRegionId = dropdownRegions[selectedRegionIdx].id
-            configureService()          // clears override
-            updateRegionButton()        // now reads the saved region label
+            configureService()
             withAccessibility { captureService?.captureOnce() }
         } else if (hadOverride) {
-            // User released on the current saved region — clear the drawn override
             configureService()
-            updateRegionButton()
         }
     }
 
@@ -1041,20 +1033,17 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                     sheet.onRegionEdited = { edited ->
                         prefs.selectedRegionId = edited.id
                         configureService()
-                        updateRegionButton()
                     }
                 }
             }
             sheet.onRegionAdded = { newEntry ->
                 prefs.selectedRegionId = newEntry.id
                 configureService()
-                updateRegionButton()
                 withAccessibility { captureService?.captureOnce() }
             }
             sheet.onDismissed = {}
             sheet.onTranslateOnce = { region ->
                 captureService?.configureOverride(region)
-                updateRegionButton()
                 withAccessibility { captureService?.captureOnce() }
             }
         }.show(supportFragmentManager, AddCustomRegionSheet.TAG)
