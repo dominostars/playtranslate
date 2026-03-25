@@ -61,6 +61,9 @@ class CaptureService : Service() {
     // ── Coroutines ────────────────────────────────────────────────────────
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    /** Scope for region-dependent work (OCR, translation, result delivery).
+     *  Cancelled and recreated on every region change. */
+    private var regionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // ── Pipeline ──────────────────────────────────────────────────────────
 
@@ -82,6 +85,8 @@ class CaptureService : Service() {
     val isOverride: Boolean get() = overrideRegion != null
 
     private fun updateActiveRegion() {
+        regionScope.cancel()
+        regionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         activeRegionLiveData.value = overrideRegion ?: savedRegion
     }
 
@@ -223,7 +228,7 @@ class CaptureService : Service() {
 
     fun captureOnce() {
         captureJob?.cancel()
-        captureJob = serviceScope.launch { runCaptureCycle() }
+        captureJob = regionScope.launch { runCaptureCycle() }
     }
 
     /**
@@ -233,7 +238,7 @@ class CaptureService : Service() {
      */
     fun processScreenshot(raw: Bitmap) {
         captureJob?.cancel()
-        captureJob = serviceScope.launch { runProcessCycle(raw) }
+        captureJob = regionScope.launch { runProcessCycle(raw) }
     }
 
     private suspend fun runProcessCycle(raw: Bitmap) {
@@ -384,12 +389,10 @@ class CaptureService : Service() {
 
     fun stopLive() {
         liveActive = false
+        regionScope.cancel()
+        regionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         interactionDebounceJob?.cancel()
         interactionDebounceJob = null
-        liveCaptureJob?.cancel()
-        liveCaptureJob = null
-        cleanProcessingJob?.cancel()
-        cleanProcessingJob = null
         // (recheckNeeded removed)
         resetDetectionState()
         PlayTranslateAccessibilityService.instance?.screenshotManager?.stopLoop()
@@ -414,7 +417,7 @@ class CaptureService : Service() {
 
         // Cancel any in-flight processing from a previous clean frame
         cleanProcessingJob?.cancel()
-        cleanProcessingJob = serviceScope.launch {
+        cleanProcessingJob = regionScope.launch {
             processCleanFrame(raw)
         }
     }
@@ -537,7 +540,7 @@ class CaptureService : Service() {
                 }
                 // Fill-and-OCR to detect new text (runs async, bitmap ownership transferred)
                 val overlayBoxesCopy = detectionOverlayBoxes.toList()
-                serviceScope.launch {
+                regionScope.launch {
                     val triggered = performOcrRecheck(bitmap, overlayBoxesCopy)
                     if (triggered) {
                         DetectionLog.log("D: New text → recapture/merge")
@@ -817,7 +820,7 @@ class CaptureService : Service() {
         } else {
             // Not in loop mode — standalone capture
             liveCaptureJob?.cancel()
-            liveCaptureJob = serviceScope.launch { runLiveCaptureCycle() }
+            liveCaptureJob = regionScope.launch { runLiveCaptureCycle() }
         }
     }
 
