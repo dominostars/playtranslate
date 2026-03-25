@@ -29,7 +29,6 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.Toast
-import com.google.android.material.button.MaterialButton
 import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.RadioButton
@@ -64,8 +63,12 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
     // ── Views ─────────────────────────────────────────────────────────────
 
-    private lateinit var btnTranslate: MaterialButton
-    private lateinit var btnCapturing: MaterialButton
+    private lateinit var btnTranslate: View
+    private lateinit var btnCapturing: View
+    private lateinit var tvTranslateTitle: TextView
+    private lateinit var tvTranslateSubtitle: TextView
+    private lateinit var tvCapturingTitle: TextView
+    private lateinit var tvCapturingSubtitle: TextView
     private lateinit var btnMenu: ImageButton
     private lateinit var menuOverlay: FrameLayout
     private lateinit var menuPanel: View
@@ -277,6 +280,10 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private fun bindViews() {
         btnTranslate         = findViewById(R.id.btnTranslate)
         btnCapturing         = findViewById(R.id.btnCapturing)
+        tvTranslateTitle     = findViewById(R.id.tvTranslateTitle)
+        tvTranslateSubtitle  = findViewById(R.id.tvTranslateSubtitle)
+        tvCapturingTitle     = findViewById(R.id.tvCapturingTitle)
+        tvCapturingSubtitle  = findViewById(R.id.tvCapturingSubtitle)
         btnMenu              = findViewById(R.id.btnMenu)
         menuOverlay          = findViewById(R.id.menuOverlay)
         menuPanel            = findViewById(R.id.menuPanel)
@@ -364,16 +371,18 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         val label = serviceLabel ?: entry.label
         if (isLiveMode) {
             val prefix = "Reload "
-            btnCapturing.text = SpannableStringBuilder(prefix + label).apply {
+            tvCapturingTitle.text = SpannableStringBuilder(prefix + label).apply {
                 setSpan(StyleSpan(Typeface.BOLD), prefix.length, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
+            tvCapturingSubtitle.text = "Hold to hide translations on game screen"
             btnTranslate.visibility = View.GONE
             btnCapturing.visibility = View.VISIBLE
         } else {
             val prefix = "Translate "
-            btnTranslate.text = SpannableStringBuilder(prefix + label).apply {
+            tvTranslateTitle.text = SpannableStringBuilder(prefix + label).apply {
                 setSpan(StyleSpan(Typeface.BOLD), prefix.length, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
+            tvTranslateSubtitle.text = "Hold to show translations on game screen"
             btnCapturing.visibility = View.GONE
             btnTranslate.visibility = View.VISIBLE
         }

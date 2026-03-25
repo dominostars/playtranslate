@@ -66,32 +66,67 @@
                 android:layout_height="match_parent"
                 android:layout_weight="1">
 
-                <!-- Normal mode: filled Translate button -->
-                <com.google.android.material.button.MaterialButton
+                <!-- Normal mode: filled Translate button with subtitle -->
+                <LinearLayout
                     android:id="@+id/btnTranslate"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:backgroundTint="?attr/colorAccentPrimary"
-                    android:textColor="?attr/colorTextOnAccent"
-                    android:textSize="16sp"
-                    android:textAllCaps="false"
-                    android:insetTop="0dp"
-                    android:insetBottom="0dp"
-                    app:cornerRadius="6dp" />
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:background="@drawable/bg_translate_button"
+                    android:clickable="true"
+                    android:focusable="true">
 
-                <!-- Live mode: outlined Capturing button (same slot, toggled via visibility) -->
-                <com.google.android.material.button.MaterialButton
+                    <TextView
+                        android:id="@+id/tvTranslateTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="?attr/colorTextOnAccent"
+                        android:textSize="16sp"
+                        android:gravity="center" />
+
+                    <TextView
+                        android:id="@+id/tvTranslateSubtitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="?attr/colorTextOnAccent"
+                        android:textSize="9sp"
+                        android:alpha="0.7"
+                        android:gravity="center"
+                        android:layout_marginTop="1dp" />
+
+                </LinearLayout>
+
+                <!-- Live mode: outlined Reload button with subtitle (same slot) -->
+                <LinearLayout
                     android:id="@+id/btnCapturing"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:textSize="16sp"
-                    android:textAllCaps="false"
-                    android:insetTop="0dp"
-                    android:insetBottom="0dp"
-                    android:visibility="gone"
-                    app:strokeColor="?attr/colorTextSecondary"
-                    app:cornerRadius="6dp" />
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:background="@drawable/bg_capturing_button"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/tvCapturingTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="?attr/colorTextPrimary"
+                        android:textSize="16sp"
+                        android:gravity="center" />
+
+                    <TextView
+                        android:id="@+id/tvCapturingSubtitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="?attr/colorTextSecondary"
+                        android:textSize="9sp"
+                        android:gravity="center"
+                        android:layout_marginTop="1dp" />
+
+                </LinearLayout>
 
             </FrameLayout>
 
