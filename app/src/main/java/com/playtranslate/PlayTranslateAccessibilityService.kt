@@ -169,9 +169,10 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     /** State returned by [prepareForCleanCapture], passed to [restoreAfterCapture]. */
     data class OverlayState(
         val hadTranslation: Boolean,
-        val hadDebug: Boolean
+        val hadDebug: Boolean,
+        val hadRegionOverlay: Boolean
     ) {
-        val hadAnyOverlay get() = hadTranslation || hadDebug
+        val hadAnyOverlay get() = hadTranslation || hadDebug || hadRegionOverlay
     }
 
     /**
@@ -181,12 +182,17 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      * The region indicator is intentionally left visible — it draws outside
      * the capture region and doesn't affect OCR. It is only force-removed
      * when the region itself changes (see [CaptureService.updateActiveRegion]).
+     *
+     * The region overlay (dim mask from RegionPickerSheet) IS hidden — it
+     * obscures text outside the capture region and would break full-screen OCR.
      */
     fun prepareForCleanCapture(): OverlayState {
         val state = OverlayState(
             hadTranslation = translationOverlayView != null,
-            hadDebug = debugOverlayView != null
+            hadDebug = debugOverlayView != null,
+            hadRegionOverlay = overlayView != null
         )
+        if (state.hadRegionOverlay) overlayView?.visibility = View.INVISIBLE
         if (state.hadDebug) debugOverlayView?.visibility = View.INVISIBLE
         if (state.hadTranslation) translationOverlayView?.visibility = View.INVISIBLE
         return state
@@ -196,6 +202,11 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     fun restoreAfterCapture(state: OverlayState) {
         if (state.hadDebug) debugOverlayView?.visibility = View.VISIBLE
         if (state.hadTranslation) translationOverlayView?.visibility = View.VISIBLE
+        // Region overlay is NOT restored during drag — the drag lifecycle
+        // (overlayHiddenForDrag → restoreRegionOverlay) handles that.
+        if (state.hadRegionOverlay && floatingIcon?.inDragMode != true) {
+            overlayView?.visibility = View.VISIBLE
+        }
     }
 
     // ── Capture region indicator (brief flash) ───────────────────────────
