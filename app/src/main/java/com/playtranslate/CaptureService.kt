@@ -154,7 +154,6 @@ class CaptureService : Service() {
 
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
         if (liveActive) {
-            session.liveShowRegionFlash = true
             PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
         }
     }
