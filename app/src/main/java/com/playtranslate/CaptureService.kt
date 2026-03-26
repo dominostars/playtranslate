@@ -1196,24 +1196,14 @@ class CaptureService : Service() {
             val ocrResult = ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
             if (ocrBitmap !== raw) ocrBitmap.recycle()
 
-            if (ocrResult == null) {
+            val newText = ocrResult?.fullText
+            val dedupKey = newText?.filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
+
+            if (dedupKey.isNullOrEmpty()) {
                 s.lastLiveOcrText = null
                 s.cachedOverlayBoxes = null
                 PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
-                onLiveNoText?.invoke()
-                // Start scene detection so we recapture when the game changes
-                // (e.g. dialogue box opens). No overlay boxes to exclude.
-                // Detection handled by the unified poll loop
-                return
-            }
-
-            val newText = ocrResult.fullText
-            val dedupKey = newText.filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
-
-            if (dedupKey.isEmpty()) {
-                s.lastLiveOcrText = null
-                s.cachedOverlayBoxes = null
-                PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+                onHoldLoadingChanged?.invoke(false)
                 onLiveNoText?.invoke()
                 // Detection handled by the unified poll loop
                 return
