@@ -736,6 +736,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val icon = FloatingOverlayIcon(displayCtx).apply {
             this.wm = wm
             compactMode = prefs.compactOverlayIcon
+            liveMode = CaptureService.instance?.isLive == true
+            degraded = CaptureService.instance?.degradedState?.value == true
         }
 
         val params = WindowManager.LayoutParams(
