@@ -192,7 +192,10 @@ class CaptureService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Android requires startForeground() within 5s of startForegroundService()
         startForeground(NOTIF_ID, buildNotification())
+        // Immediately evaluate — may stopForeground if no game-screen presence yet
+        updateForegroundState()
         return START_STICKY
     }
 
@@ -375,7 +378,10 @@ class CaptureService : Service() {
     val liveModeState = MutableLiveData(false)
     private var liveActive: Boolean
         get() = liveModeState.value == true
-        set(v) { liveModeState.value = v }
+        set(v) {
+            liveModeState.value = v
+            updateForegroundState()
+        }
     private val MAX_STABILIZATION_FRAMES = 10
 
     val isLive: Boolean get() = liveActive
@@ -1667,6 +1673,23 @@ class CaptureService : Service() {
 
 
     // ── Notification ──────────────────────────────────────────────────────
+
+    /**
+     * Show the foreground notification only when the app has an active
+     * presence on the game screen (floating icon visible or live mode running).
+     *
+     * Triggered automatically by:
+     *  - [liveActive] property setter (in this class)
+     *  - [PlayTranslateAccessibilityService.floatingIcon] property setter
+     */
+    fun updateForegroundState() {
+        val iconShowing = PlayTranslateAccessibilityService.instance?.floatingIcon != null
+        if (iconShowing || liveActive) {
+            startForeground(NOTIF_ID, buildNotification())
+        } else {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        }
+    }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
