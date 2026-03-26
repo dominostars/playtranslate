@@ -63,6 +63,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         set(value) {
             field = value
             CaptureService.instance?.updateForegroundState()
+            CaptureService.instance?.syncIconState()
         }
     private var floatingIconWm: WindowManager? = null
     private var floatingIconDisplayId: Int = -1
@@ -736,8 +737,6 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val icon = FloatingOverlayIcon(displayCtx).apply {
             this.wm = wm
             compactMode = prefs.compactOverlayIcon
-            liveMode = CaptureService.instance?.isLive == true
-            degraded = CaptureService.instance?.degradedState?.value == true
         }
 
         val params = WindowManager.LayoutParams(

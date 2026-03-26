@@ -181,6 +181,16 @@ class CaptureService : Service() {
     private fun setDegraded(degraded: Boolean) {
         if (translationDegraded == degraded) return
         degradedState.postValue(degraded)
+        syncIconState()
+    }
+
+    /** Push current service state to the floating icon. Called automatically
+     *  by [liveActive] setter, [setDegraded], and when a new icon is created
+     *  (via [PlayTranslateAccessibilityService.floatingIcon] setter). */
+    fun syncIconState() {
+        val icon = PlayTranslateAccessibilityService.instance?.floatingIcon ?: return
+        icon.liveMode = isLive
+        icon.degraded = translationDegraded
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -388,6 +398,7 @@ class CaptureService : Service() {
         set(v) {
             liveModeState.value = v
             updateForegroundState()
+            syncIconState()
         }
     private val MAX_STABILIZATION_FRAMES = 10
 
@@ -396,7 +407,6 @@ class CaptureService : Service() {
     fun startLive() {
         liveActive = true
         session.liveShowRegionFlash = true
-        PlayTranslateAccessibilityService.instance?.floatingIcon?.liveMode = true
         session.captureJob?.cancel()
         session.liveCaptureJob?.cancel()
         session.cleanProcessingJob?.cancel()
@@ -425,7 +435,6 @@ class CaptureService : Service() {
         PlayTranslateAccessibilityService.instance?.screenshotManager?.stopLoop()
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
-        PlayTranslateAccessibilityService.instance?.floatingIcon?.liveMode = false
         setDegraded(false)
     }
 
