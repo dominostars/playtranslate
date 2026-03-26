@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Point
 import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Build
@@ -168,15 +169,20 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     var wm: WindowManager? = null
     var params: WindowManager.LayoutParams? = null
 
-    /** Screen dimensions derived from the icon's own window. */
-    private val windowBounds: Rect get() {
-        val rect = Rect()
-        getWindowVisibleDisplayFrame(rect)
-        android.util.Log.d("FloatingIcon", "windowBounds=$rect w=${rect.width()} h=${rect.height()}")
-        return rect
+    private fun queryScreenSize(): Point {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val wm = context.getSystemService(WindowManager::class.java)
+            val bounds = wm?.maximumWindowMetrics?.bounds
+            if (bounds != null) return Point(bounds.width(), bounds.height())
+        }
+        val size = Point()
+        @Suppress("DEPRECATION")
+        display?.getRealSize(size)
+        return size
     }
-    private val screenW: Int get() = windowBounds.width()
-    private val screenH: Int get() = windowBounds.height()
+
+    private val screenW: Int get() = queryScreenSize().x
+    private val screenH: Int get() = queryScreenSize().y
 
     private var velocityTracker: VelocityTracker? = null
     private var downRawX = 0f
