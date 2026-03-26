@@ -100,6 +100,10 @@ class CaptureService : Service() {
         var stabilizationFrameCount = 0
         var detectionOverlayTextBoxes: List<TranslationOverlayView.TextBox> = emptyList()
 
+        /** Reusable pixel buffer for batch reads in handleRawFrame/setupDetection.
+         *  Avoids per-frame allocation of a full-bitmap IntArray. */
+        var pixelBuffer: IntArray? = null
+
         /** Clear all cached overlay, dedup, and detection state. Keeps the scope alive. */
         fun clearCachedState() {
             lastLiveOcrText = null
@@ -459,13 +463,21 @@ class CaptureService : Service() {
             return
         }
 
+        // Batch-read all pixels once (single JNI call) instead of thousands of getPixel() calls
+        val w = bitmap.width
+        val h = bitmap.height
+        val bufSize = w * h
+        val allPixels = s.pixelBuffer?.takeIf { it.size >= bufSize }
+            ?: IntArray(bufSize).also { s.pixelBuffer = it }
+        bitmap.getPixels(allPixels, 0, w, 0, 0, w, h)
+
         // First raw frame after detection setup: set overlay reference
         if (s.detectionRefOverlay == null && overlaySamples.isNotEmpty()) {
             val ovrRef = IntArray(overlaySamples.size)
             val ovrActive = BooleanArray(overlaySamples.size)
             for (i in overlaySamples.indices) {
                 val sample = overlaySamples[i]
-                val px = if (sample.x < bitmap.width && sample.y < bitmap.height) bitmap.getPixel(sample.x, sample.y) else 0
+                val px = if (sample.x < w && sample.y < h) allPixels[sample.y * w + sample.x] else 0
                 ovrRef[i] = px
                 ovrActive[i] = !isColorMatch(px, sample.textColor)
             }
@@ -477,16 +489,16 @@ class CaptureService : Service() {
             return  // skip this frame, start comparing from the next
         }
 
-        // Read current pixels
+        // Read sampled pixels from the batch buffer
         val currentNonOverlay = IntArray(nonOverlayPositions.size)
         for (i in nonOverlayPositions.indices) {
             val (x, y) = nonOverlayPositions[i]
-            currentNonOverlay[i] = if (x < bitmap.width && y < bitmap.height) bitmap.getPixel(x, y) else 0
+            currentNonOverlay[i] = if (x < w && y < h) allPixels[y * w + x] else 0
         }
         val currentOverlay = IntArray(overlaySamples.size)
         for (i in overlaySamples.indices) {
             val sample = overlaySamples[i]
-            currentOverlay[i] = if (sample.x < bitmap.width && sample.y < bitmap.height) bitmap.getPixel(sample.x, sample.y) else 0
+            currentOverlay[i] = if (sample.x < w && sample.y < h) allPixels[sample.y * w + sample.x] else 0
         }
 
         if (!s.sceneMoving) {
@@ -787,11 +799,18 @@ class CaptureService : Service() {
             }
         }
 
-        // Non-overlay: use clean capture as baseline (catches typewriter changes)
+        // Batch-read all pixels from the clean reference (single JNI call)
         val s = session
+        val refW = cleanRef.width
+        val refH = cleanRef.height
+        val refPixels = s.pixelBuffer?.takeIf { it.size >= refW * refH }
+            ?: IntArray(refW * refH).also { s.pixelBuffer = it }
+        cleanRef.getPixels(refPixels, 0, refW, 0, 0, refW, refH)
+
+        // Non-overlay: use clean capture as baseline (catches typewriter changes)
         s.detectionRefNonOverlay = IntArray(nonOvrPos.size) { i ->
             val (x, y) = nonOvrPos[i]
-            if (x < cleanRef.width && y < cleanRef.height) cleanRef.getPixel(x, y) else 0
+            if (x < refW && y < refH) refPixels[y * refW + x] else 0
         }
         s.detectionNonOverlayPositions = nonOvrPos
         s.detectionOverlaySamples = ovrSamples
