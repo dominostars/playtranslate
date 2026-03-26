@@ -265,8 +265,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 if (l > 0f) canvas.drawRect(0f, t, l, b, dimPaint)
                 if (r < w) canvas.drawRect(r, t, w, b, dimPaint)
 
-                // White border around the region
-                canvas.drawRect(l, t, r, b, borderPaint)
+                // White border completely outside the capture region
+                val half = borderPaint.strokeWidth / 2f
+                canvas.drawRect(l - half, t - half, r + half, b + half, borderPaint)
 
                 // Label centered horizontally, above the region (or below if no space)
                 val cx = (l + r) / 2f
