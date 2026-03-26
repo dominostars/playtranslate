@@ -234,7 +234,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
         val view = object : View(ctx) {
             private val dimPaint = android.graphics.Paint().apply {
-                color = android.graphics.Color.argb(120, 0, 0, 0)
+                color = android.graphics.Color.argb(160, 0, 0, 0)
                 style = android.graphics.Paint.Style.FILL
             }
             private val borderPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
