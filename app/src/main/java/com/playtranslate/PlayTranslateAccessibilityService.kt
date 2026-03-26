@@ -735,8 +735,6 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val screenSize = getDisplaySize(display)
         val icon = FloatingOverlayIcon(displayCtx).apply {
             this.wm = wm
-            screenW = screenSize.x
-            screenH = screenSize.y
             compactMode = prefs.compactOverlayIcon
         }
 
@@ -753,7 +751,6 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         }
 
         icon.params = params
-        icon.setPosition(prefs.overlayIconEdge, prefs.overlayIconFraction)
 
         icon.onPositionChanged = { edge, fraction ->
             prefs.overlayIconEdge = edge
@@ -846,6 +843,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
         try {
             wm.addView(icon, params)
+            // Set position after addView so the icon can query its own window bounds
+            icon.setPosition(prefs.overlayIconEdge, prefs.overlayIconFraction)
+            wm.updateViewLayout(icon, params)
             floatingIconWm = wm
             floatingIcon = icon
             floatingIconDisplayId = display.displayId

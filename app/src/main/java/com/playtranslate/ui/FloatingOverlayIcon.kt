@@ -167,8 +167,16 @@ class FloatingOverlayIcon(context: Context) : View(context) {
 
     var wm: WindowManager? = null
     var params: WindowManager.LayoutParams? = null
-    var screenW = 0
-    var screenH = 0
+
+    /** Screen dimensions derived from the icon's own window. */
+    private val windowBounds: Rect get() {
+        val rect = Rect()
+        getWindowVisibleDisplayFrame(rect)
+        android.util.Log.d("FloatingIcon", "windowBounds=$rect w=${rect.width()} h=${rect.height()}")
+        return rect
+    }
+    private val screenW: Int get() = windowBounds.width()
+    private val screenH: Int get() = windowBounds.height()
 
     private var velocityTracker: VelocityTracker? = null
     private var downRawX = 0f
