@@ -1204,6 +1204,14 @@ class CaptureService : Service() {
                 s.cachedOverlayBoxes = null
                 PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
                 onHoldLoadingChanged?.invoke(false)
+                if (!liveActive) {
+                    val a11y = PlayTranslateAccessibilityService.instance
+                    val dm = getSystemService(DisplayManager::class.java)
+                    val display = dm.getDisplay(gameDisplayId)
+                    if (a11y != null && display != null) {
+                        a11y.showNoTextPill(display, noTextMessage())
+                    }
+                }
                 onLiveNoText?.invoke()
                 // Detection handled by the unified poll loop
                 return

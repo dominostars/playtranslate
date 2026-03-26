@@ -318,6 +318,99 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         regionIndicatorWm = null
     }
 
+    // ── No-text pill toast ────────────────────────────────────────────────
+
+    private var pillView: View? = null
+    private var pillWm: WindowManager? = null
+    private val pillHandler = Handler(Looper.getMainLooper())
+
+    /**
+     * Shows a brief pill-shaped overlay near the top of the game display
+     * with the app icon and [message]. Auto-dismisses with a fade-out.
+     */
+    fun showNoTextPill(display: Display, message: String) {
+        hideNoTextPill()
+
+        val ctx = createDisplayContext(display)
+        val wm = ctx.getSystemService(WindowManager::class.java) ?: return
+        val dp = ctx.resources.displayMetrics.density
+        val icon = ctx.packageManager.getApplicationIcon(ctx.applicationInfo)
+
+        val iconSizePx = (20 * dp).toInt()
+        val padH = (14 * dp).toInt()
+        val padV = (10 * dp).toInt()
+        val iconTextGap = (8 * dp).toInt()
+        val cornerRadius = 24 * dp
+
+        val view = object : View(ctx) {
+            private val bgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.argb(210, 30, 30, 30)
+            }
+            private val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.WHITE
+                textSize = 13 * dp
+                typeface = android.graphics.Typeface.DEFAULT
+            }
+
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                val textW = textPaint.measureText(message).toInt()
+                val w = padH + iconSizePx + iconTextGap + textW + padH
+                val h = padV + maxOf(iconSizePx, (textPaint.descent() - textPaint.ascent()).toInt()) + padV
+                setMeasuredDimension(w, h)
+            }
+
+            override fun onDraw(canvas: android.graphics.Canvas) {
+                val w = width.toFloat()
+                val h = height.toFloat()
+                canvas.drawRoundRect(0f, 0f, w, h, cornerRadius, cornerRadius, bgPaint)
+
+                val iconTop = ((h - iconSizePx) / 2f).toInt()
+                icon.setBounds(padH, iconTop, padH + iconSizePx, iconTop + iconSizePx)
+                icon.draw(canvas)
+
+                val textX = (padH + iconSizePx + iconTextGap).toFloat()
+                val textY = (h - textPaint.descent() - textPaint.ascent()) / 2f
+                canvas.drawText(message, textX, textY, textPaint)
+            }
+        }
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
+            y = (40 * dp).toInt()
+        }
+
+        wm.addView(view, params)
+        pillView = view
+        pillWm = wm
+
+        // Brief display, then fade out
+        pillHandler.postDelayed({
+            view.animate()
+                .alpha(0f)
+                .setDuration(500L)
+                .withEndAction { hideNoTextPill() }
+                .start()
+        }, 1500L)
+    }
+
+    fun hideNoTextPill() {
+        pillHandler.removeCallbacksAndMessages(null)
+        val view = pillView
+        if (view != null) {
+            view.animate().cancel()
+            try { pillWm?.removeView(view) } catch (_: Exception) {}
+        }
+        pillView = null
+        pillWm = null
+    }
+
     fun showRegionDragOverlay(
         display: Display,
         initRegion: RegionEntry = RegionEntry("", 0.25f, 0.75f, 0.25f, 0.75f),
