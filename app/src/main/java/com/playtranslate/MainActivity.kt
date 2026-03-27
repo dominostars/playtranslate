@@ -390,11 +390,12 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private fun updateRegionButton() {
         val region = captureService?.activeRegion ?: prefs.getSelectedRegion()
         val label = region.label.ifEmpty { "Full screen" }
-        val prefix = if (isLiveMode) "Reload " else "Translate "
+        val overlayLive = isLiveMode && prefs.autoTranslationMode == AutoTranslationMode.OVERLAYS
+        val prefix = if (overlayLive) "Reload " else "Translate "
         tvTranslateTitle.text = SpannableStringBuilder(prefix + label).apply {
             setSpan(StyleSpan(Typeface.BOLD), prefix.length, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        tvTranslateSubtitle.text = if (isLiveMode)
+        tvTranslateSubtitle.text = if (overlayLive)
             "Hold to hide translations on game screen"
         else
             "Hold to show translations on game screen"
