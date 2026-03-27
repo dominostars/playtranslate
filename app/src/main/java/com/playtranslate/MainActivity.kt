@@ -223,6 +223,16 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         setContentView(R.layout.activity_main)
 
         bindViews()
+
+        // Remove inline fragments that Android may have restored from saved state.
+        // We manage their lifecycle ourselves via tab selection.
+        supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG)?.let {
+            supportFragmentManager.beginTransaction().remove(it).commitNow()
+        }
+        supportFragmentManager.findFragmentByTag(RegionPickerSheet.TAG)?.let {
+            supportFragmentManager.beginTransaction().remove(it).commitNow()
+        }
+
         setupRegionButton()
         setupButtons()
         setupOnboarding()
@@ -237,6 +247,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
         // Wire up the fragment's edit-original listener for edit overlay
         resultFragment?.setOnEditOriginalListener { showEditOverlay() }
+
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -580,7 +591,11 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         selectTab(Tab.SETTINGS)
         resultsContainer.visibility = View.GONE
         settingsContainer.visibility = View.VISIBLE
+        openSettingsInline()
+    }
 
+    /** Add the settings fragment to the already-visible settings container. */
+    private fun openSettingsInline() {
         val sheet = SettingsBottomSheet.newInstance(hideDismiss = false).apply {
             setShowsDialog(false)
             onDisplayChanged = {
@@ -592,10 +607,26 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                 checkOnboardingState()
             }
             onClose = { hideSettings() }
+            onThemeChanged = { scrollY -> applyThemeInPlace(scrollY) }
         }
         supportFragmentManager.beginTransaction()
             .replace(R.id.settingsContainer, sheet, SettingsBottomSheet.TAG)
-            .commit()
+            .commitAllowingStateLoss()
+    }
+
+    /** Apply the new theme without recreating the activity. */
+    private fun applyThemeInPlace(settingsScrollY: Int) {
+        applyTheme()
+
+        // Update root-level themed views
+        val root = findViewById<View>(android.R.id.content)?.rootView
+        root?.setBackgroundColor(themeColor(R.attr.colorBgDark))
+        findViewById<View>(R.id.bottomBar)?.setBackgroundColor(themeColor(R.attr.colorBgSurface))
+        selectTab(selectedTab)
+
+        // Save scroll position and re-create the settings fragment with new theme
+        prefs.settingsScrollY = settingsScrollY
+        openSettingsInline()
     }
 
     private fun hideSettings() {

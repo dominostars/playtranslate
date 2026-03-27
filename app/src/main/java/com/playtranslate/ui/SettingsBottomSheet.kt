@@ -52,6 +52,8 @@ class SettingsBottomSheet : DialogFragment() {
     var onScreenModeChanged: (() -> Unit)? = null
     /** Called when the user taps the close button (for inline mode). */
     var onClose: (() -> Unit)? = null
+    /** Called when the user selects a new theme. Passes the scroll position to restore. */
+    var onThemeChanged: ((scrollY: Int) -> Unit)? = null
 
     private var deckEntries: List<Map.Entry<Long, String>> = emptyList()
     private var displayList: List<android.view.Display> = emptyList()
@@ -126,20 +128,21 @@ class SettingsBottomSheet : DialogFragment() {
         val llThemePicker   = view.findViewById<LinearLayout>(R.id.llThemePicker)
 
         // Restore scroll position after theme recreate.
-        // Uses onPreDrawListener so the position is set before the first frame is drawn,
-        // avoiding a visible jump from 0 to the saved position.
+        // Polls until the scroll view has been measured (container may still
+        // be sizing when the fragment is first created inline). The saved
+        // value is only cleared after a successful scroll — Android may
+        // restore a stale fragment that reads it first.
         val savedScroll = prefs.settingsScrollY
         if (savedScroll > 0) {
-            prefs.settingsScrollY = 0
-            settingsScrollView.viewTreeObserver.addOnPreDrawListener(
-                object : android.view.ViewTreeObserver.OnPreDrawListener {
-                    override fun onPreDraw(): Boolean {
-                        settingsScrollView.viewTreeObserver.removeOnPreDrawListener(this)
-                        settingsScrollView.scrollTo(0, savedScroll)
-                        return true
-                    }
+            fun tryRestore() {
+                if (settingsScrollView.height > 0) {
+                    settingsScrollView.scrollTo(0, savedScroll)
+                    prefs.settingsScrollY = 0
+                } else {
+                    settingsScrollView.postDelayed(::tryRestore, 16)
                 }
-            )
+            }
+            settingsScrollView.post { tryRestore() }
         }
 
         // ── Overlay icon toggle ──────────────────────────────────────────
@@ -653,10 +656,16 @@ class SettingsBottomSheet : DialogFragment() {
 
             col.setOnClickListener {
                 if (prefs.themeIndex != theme.index) {
-                    prefs.settingsScrollY = settingsScrollView.scrollY
-                    prefs.suppressNextTransition = true
+                    val scrollY = settingsScrollView.scrollY
                     prefs.themeIndex = theme.index
-                    activity?.recreate()
+                    if (onThemeChanged != null) {
+                        onThemeChanged?.invoke(scrollY)
+                    } else {
+                        // Fallback for dialog mode (onboarding)
+                        prefs.settingsScrollY = scrollY
+                        prefs.suppressNextTransition = true
+                        activity?.recreate()
+                    }
                 }
             }
 
