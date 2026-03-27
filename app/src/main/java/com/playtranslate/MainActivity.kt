@@ -248,6 +248,8 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         // Wire up the fragment's edit-original listener for edit overlay
         resultFragment?.setOnEditOriginalListener { showEditOverlay() }
 
+        // Default to settings tab on launch
+        openSettings()
     }
 
     override fun onNewIntent(intent: Intent?) {
