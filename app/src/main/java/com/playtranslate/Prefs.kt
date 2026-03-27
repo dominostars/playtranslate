@@ -8,6 +8,15 @@ import com.google.mlkit.nl.translate.TranslateLanguage
 import org.json.JSONArray
 import org.json.JSONObject
 
+enum class AutoTranslationMode {
+    OVERLAYS,       // Translations shown as overlays on game screen
+    IN_APP_ONLY;    // Translations shown in app UI only
+
+    companion object {
+        fun fromOrdinal(ordinal: Int) = entries.getOrElse(ordinal) { OVERLAYS }
+    }
+}
+
 /** A named capture region expressed as fractions of the screen dimensions. */
 data class RegionEntry(
     val label: String,
@@ -88,6 +97,10 @@ class Prefs(context: Context) {
     var captureMethod: String
         get() = sp.getString(KEY_CAPTURE_METHOD, "") ?: ""
         set(v) = sp.edit().putString(KEY_CAPTURE_METHOD, v).apply()
+
+    var autoTranslationMode: AutoTranslationMode
+        get() = AutoTranslationMode.fromOrdinal(sp.getInt(KEY_AUTO_TRANSLATION_MODE, 0))
+        set(v) = sp.edit().putInt(KEY_AUTO_TRANSLATION_MODE, v.ordinal).apply()
 
     /** Capture interval for live mode in seconds. */
     var captureIntervalSec: Float
@@ -197,6 +210,7 @@ class Prefs(context: Context) {
         private const val KEY_THEME_INDEX           = "theme_index"
         private const val KEY_CAPTURE_INTERVAL_SEC  = "capture_interval_sec"
         private const val KEY_CAPTURE_METHOD           = "capture_method"
+        private const val KEY_AUTO_TRANSLATION_MODE    = "auto_translation_mode"
         private const val KEY_SETTINGS_SCROLL_Y        = "settings_scroll_y"
         private const val KEY_SHOW_OVERLAY_ICON       = "show_overlay_icon"
         private const val KEY_OVERLAY_ICON_EDGE      = "overlay_icon_edge"

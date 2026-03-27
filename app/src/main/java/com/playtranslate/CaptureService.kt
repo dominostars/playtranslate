@@ -27,6 +27,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -418,6 +419,13 @@ class CaptureService : Service() {
         session.liveCaptureJob?.cancel()
         session.cleanProcessingJob?.cancel()
 
+        when (Prefs(this).autoTranslationMode) {
+            AutoTranslationMode.OVERLAYS -> startLiveOverlay()
+            AutoTranslationMode.IN_APP_ONLY -> startLiveInApp()
+        }
+    }
+
+    private fun startLiveOverlay() {
         // Buttons and touch are detected via onKeyEvent and touch sentinel.
         PlayTranslateAccessibilityService.instance
             ?.startInputMonitoring(gameDisplayId) { onUserInteraction() }
@@ -433,6 +441,28 @@ class CaptureService : Service() {
             onCleanFrame = { bitmap -> handleCleanFrame(bitmap) },
             onRawFrame = { bitmap -> handleRawFrame(bitmap) }
         )
+    }
+
+    private fun startLiveInApp() {
+        session.liveCaptureJob = session.scope.launch {
+            while (isActive) {
+                val result = runCaptureOcrTranslate()
+                if (result != null) {
+                    val dedupKey = result.originalText
+                        .filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
+                    if (session.lastLiveOcrText != null &&
+                        !isSignificantChange(session.lastLiveOcrText!!, dedupKey)) {
+                        delay(Prefs(this@CaptureService).captureIntervalMs)
+                        continue
+                    }
+                    session.lastLiveOcrText = dedupKey
+                    onResult?.invoke(result)
+                } else {
+                    onLiveNoText?.invoke()
+                }
+                delay(Prefs(this@CaptureService).captureIntervalMs)
+            }
+        }
     }
 
     fun stopLive() {
@@ -866,8 +896,11 @@ class CaptureService : Service() {
         session.clearCachedState()
         session.interactionDebounceJob?.cancel()
         session.cleanProcessingJob?.cancel()
-        // Request a clean capture on the next loop iteration
-        PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
+        when (Prefs(this).autoTranslationMode) {
+            AutoTranslationMode.OVERLAYS ->
+                PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
+            AutoTranslationMode.IN_APP_ONLY -> {} // next poll cycle re-captures (dedup cleared)
+        }
     }
 
     /** One-shot: capture, OCR, translate, show overlay (not live mode). */
@@ -1480,26 +1513,19 @@ class CaptureService : Service() {
 
     // ── Capture cycle ─────────────────────────────────────────────────────
 
-    private suspend fun runCaptureCycle() {
-        if (!isConfigured) {
-            onError?.invoke("Not configured — tap Translate to set up")
-            return
+    /**
+     * Core capture → crop → OCR → translate pipeline shared by one-shot
+     * and all live modes. Returns a [TranslationResult] or null if no text.
+     */
+    private suspend fun runCaptureOcrTranslate(): TranslationResult? {
+        val raw: Bitmap = captureScreen(gameDisplayId) ?: run {
+            onError?.invoke("Screenshot failed for display $gameDisplayId. Try a different display in Settings.")
+            return null
         }
-
-        var bitmap: Bitmap? = null
+        var bitmap: Bitmap? = raw
         try {
-            onStatusUpdate?.invoke(getString(R.string.status_capturing))
-
-            val raw: Bitmap = captureScreen(gameDisplayId) ?: run {
-                onError?.invoke("Screenshot failed for display $gameDisplayId. Try a different display in Settings.")
-                return
-            }
-            bitmap = raw
-
-            val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
-            val screenshotPath = mgr?.saveToCache(raw)
-
-            // Flash region indicator AFTER screenshot is saved — safe from contamination
+            val screenshotPath = PlayTranslateAccessibilityService.instance
+                ?.screenshotManager?.saveToCache(raw)
             flashRegionIndicator()
 
             val statusBarHeight = getStatusBarHeightForDisplay(gameDisplayId)
@@ -1510,37 +1536,45 @@ class CaptureService : Service() {
             bitmap = cropBitmap(raw, top, bottom, left, right)
 
             val ocrBitmap = blackoutFloatingIcon(bitmap, left, top)
-            bitmap = ocrBitmap // track current bitmap for finally
-            onStatusUpdate?.invoke(getString(R.string.status_ocr))
+            bitmap = ocrBitmap
             val ocrResult = ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
             ocrBitmap.recycle()
-            bitmap = null // successfully recycled
+            bitmap = null
 
-            if (ocrResult == null) {
-                onStatusUpdate?.invoke(noTextMessage())
-                return
-            }
+            if (ocrResult == null) return null
 
-            onStatusUpdate?.invoke(getString(R.string.status_translating))
             val (translated, note) = translateGroups(ocrResult.groupTexts)
-
             val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-            onResult?.invoke(
-                TranslationResult(
-                    originalText   = ocrResult.fullText,
-                    segments       = ocrResult.segments,
-                    translatedText = translated,
-                    timestamp      = timestamp,
-                    screenshotPath = screenshotPath,
-                    note           = note
-                )
-            )
 
+            return TranslationResult(
+                originalText   = ocrResult.fullText,
+                segments       = ocrResult.segments,
+                translatedText = translated,
+                timestamp      = timestamp,
+                screenshotPath = screenshotPath,
+                note           = note
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Capture cycle failed: ${e.message}", e)
             onError?.invoke(e.message ?: "Unknown error")
+            return null
         } finally {
             bitmap?.let { if (!it.isRecycled) it.recycle() }
+        }
+    }
+
+    /** One-shot capture: shows status updates and invokes [onResult]. */
+    private suspend fun runCaptureCycle() {
+        if (!isConfigured) {
+            onError?.invoke("Not configured — tap Translate to set up")
+            return
+        }
+        onStatusUpdate?.invoke(getString(R.string.status_capturing))
+        val result = runCaptureOcrTranslate()
+        if (result != null) {
+            onResult?.invoke(result)
+        } else {
+            onStatusUpdate?.invoke(noTextMessage())
         }
     }
 
@@ -1708,12 +1742,19 @@ class CaptureService : Service() {
     fun updateForegroundState() {
         val iconShowing = PlayTranslateAccessibilityService.instance?.floatingIcon != null
 
-        // If live mode is running but there's no control surface (no icon,
-        // app not in foreground), stop it — the user can't manage it.
-        if (liveActive && !iconShowing && !MainActivity.isInForeground) {
-            stopLive()
-            // stopLive() sets liveActive = false, which re-enters this method
-            return
+        // Stop live mode if the user can no longer see or manage it.
+        if (liveActive) {
+            val shouldStop = when (Prefs(this).autoTranslationMode) {
+                // In-App Only: results only visible while app is in foreground
+                AutoTranslationMode.IN_APP_ONLY -> !MainActivity.isInForeground
+                // Overlays: stop if no control surface at all (no icon, no app)
+                AutoTranslationMode.OVERLAYS -> !iconShowing && !MainActivity.isInForeground
+            }
+            if (shouldStop) {
+                stopLive()
+                // stopLive() sets liveActive = false, which re-enters this method
+                return
+            }
         }
 
         if (iconShowing || liveActive) {

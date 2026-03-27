@@ -914,18 +914,26 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         }
         menu.onToggleLive = {
             dismissFloatingMenu()
-            val effectivelySingleScreen = Prefs.isSingleScreen(this) || !MainActivity.isInForeground
             if (CaptureService.instance?.isLive == true) {
+                // Stopping: same logic regardless of mode
+                val effectivelySingleScreen = Prefs.isSingleScreen(this) || !MainActivity.isInForeground
                 if (effectivelySingleScreen) {
                     toggleLiveDirect(false)
                 } else {
                     sendMainActivityIntent(MainActivity.ACTION_STOP_LIVE)
                 }
             } else {
-                if (effectivelySingleScreen) {
-                    toggleLiveDirect(true)
-                } else {
+                // Starting: In-App Only always routes through MainActivity (brings it to foreground)
+                val prefs = Prefs(this)
+                if (prefs.autoTranslationMode == AutoTranslationMode.IN_APP_ONLY) {
                     sendMainActivityIntent(MainActivity.ACTION_START_LIVE)
+                } else {
+                    val effectivelySingleScreen = Prefs.isSingleScreen(this) || !MainActivity.isInForeground
+                    if (effectivelySingleScreen) {
+                        toggleLiveDirect(true)
+                    } else {
+                        sendMainActivityIntent(MainActivity.ACTION_START_LIVE)
+                    }
                 }
             }
         }

@@ -32,6 +32,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
 import com.playtranslate.AnkiManager
+import com.playtranslate.AutoTranslationMode
+import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.fullScreenDialogTheme
@@ -277,6 +279,35 @@ class SettingsBottomSheet : DialogFragment() {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
         refreshCaptureMethodSection()
+
+        // ── Auto translation mode toggle ─────────────────────────────────
+        val toggleAutoMode = view.findViewById<com.google.android.material.button.MaterialButtonToggleGroup>(R.id.toggleAutoMode)
+        val tvAutoModeHint = view.findViewById<TextView>(R.id.tvAutoModeHint)
+
+        fun updateAutoModeHint() {
+            tvAutoModeHint.text = when (prefs.autoTranslationMode) {
+                AutoTranslationMode.OVERLAYS -> "Translations appear as overlays on the game screen."
+                AutoTranslationMode.IN_APP_ONLY -> "Translations appear in this app. No overlays on game screen."
+            }
+        }
+
+        toggleAutoMode.check(when (prefs.autoTranslationMode) {
+            AutoTranslationMode.OVERLAYS -> R.id.btnModeOverlays
+            AutoTranslationMode.IN_APP_ONLY -> R.id.btnModeInApp
+        })
+        updateAutoModeHint()
+
+        toggleAutoMode.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            prefs.autoTranslationMode = when (checkedId) {
+                R.id.btnModeInApp -> AutoTranslationMode.IN_APP_ONLY
+                else -> AutoTranslationMode.OVERLAYS
+            }
+            updateAutoModeHint()
+            if (CaptureService.instance?.isLive == true) {
+                CaptureService.instance?.stopLive()
+            }
+        }
 
         // ── Capture interval (auto-save on text change) ───────────────────
         val minSec = Prefs.MIN_CAPTURE_INTERVAL_SEC

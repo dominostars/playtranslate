@@ -405,12 +405,34 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     private fun startLiveMode() {
-        // Dismiss any definition popup when entering live mode
+        when (prefs.autoTranslationMode) {
+            AutoTranslationMode.IN_APP_ONLY -> {
+                if (Prefs.isSingleScreen(this)) {
+                    androidx.appcompat.app.AlertDialog.Builder(this)
+                        .setTitle("Dual Screen Required")
+                        .setMessage("\"In-App Only\" mode shows translations in this app, which requires a dual screen setup so you can see both the game and translations. You can start with overlay mode instead.")
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .setPositiveButton("Start with Overlays") { _, _ ->
+                            prefs.autoTranslationMode = AutoTranslationMode.OVERLAYS
+                            doStartLive()
+                        }
+                        .show()
+                    return
+                }
+                // Dual screen: switch to translate tab so results are visible
+                hideSettings()
+                hideRegionPicker()
+                selectTab(Tab.TRANSLATE)
+                doStartLive()
+            }
+            AutoTranslationMode.OVERLAYS -> doStartLive()
+        }
+    }
+
+    private fun doStartLive() {
         val hadPopup = PlayTranslateAccessibilityService.instance?.dragLookupController?.isPopupShowing == true
         PlayTranslateAccessibilityService.instance?.dragLookupController?.dismiss()
         ensureConfigured()
-        // Delay start if a popup was just dismissed so the compositor
-        // has time to remove it before the first screenshot.
         if (hadPopup) {
             window.decorView.postDelayed({ captureService?.startLive() }, 100)
         } else {
@@ -427,6 +449,12 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         updateMenuLiveItem()
         updateRegionButton()
         if (isLive) {
+            // In-App Only: ensure we're on the translate tab so results are visible
+            if (prefs.autoTranslationMode == AutoTranslationMode.IN_APP_ONLY) {
+                hideSettings()
+                hideRegionPicker()
+                selectTab(Tab.TRANSLATE)
+            }
             resultFragment?.showStatus(searchingStatusText())
         } else {
             val frag = resultFragment
