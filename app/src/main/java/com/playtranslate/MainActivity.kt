@@ -264,7 +264,10 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             }
             ACTION_STOP_LIVE -> if (isLiveMode) stopLiveMode()
             ACTION_ADD_CUSTOM_REGION -> openAddCustomRegionFromDropdown()
-            ACTION_REFRESH_REGION_LABEL -> captureService?.clearOverride()
+            ACTION_REFRESH_REGION_LABEL -> {
+                captureService?.clearOverride()
+                refreshRegionPicker()
+            }
         }
     }
 
@@ -380,6 +383,11 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
     private fun hideRegionPicker() {
         selectTab(Tab.TRANSLATE)
+    }
+
+    private fun refreshRegionPicker() {
+        (supportFragmentManager.findFragmentByTag(RegionPickerSheet.TAG) as? RegionPickerSheet)
+            ?.refreshFromPrefs()
     }
 
     private fun updateRegionButton() {
@@ -1203,9 +1211,10 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             sheet.onRegionAdded = { newEntry ->
                 prefs.selectedRegionId = newEntry.id
                 configureService()
+                refreshRegionPicker()
                 withAccessibility { captureService?.captureOnce() }
             }
-            sheet.onDismissed = {}
+            sheet.onDismissed = { refreshRegionPicker() }
             sheet.onTranslateOnce = { region ->
                 captureService?.configureOverride(region)
                 withAccessibility { captureService?.captureOnce() }

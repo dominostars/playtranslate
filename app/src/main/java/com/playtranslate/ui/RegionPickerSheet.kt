@@ -215,6 +215,8 @@ class RegionPickerSheet : DialogFragment() {
             }
             sheet.onDismissed = {
                 if (isAdded && !isDetached) {
+                    workingList = prefs.getRegionList().toMutableList()
+                    selectedId = prefs.selectedRegionId.ifEmpty { workingList.firstOrNull()?.id ?: "" }
                     adapter.submitList()
                     showSelectedOverlay()
                 }
@@ -235,6 +237,8 @@ class RegionPickerSheet : DialogFragment() {
             }
             sheet.onDismissed = {
                 if (isAdded && !isDetached) {
+                    workingList = prefs.getRegionList().toMutableList()
+                    selectedId = prefs.selectedRegionId.ifEmpty { workingList.firstOrNull()?.id ?: "" }
                     adapter.submitList()
                     showSelectedOverlay()
                 }
@@ -245,6 +249,15 @@ class RegionPickerSheet : DialogFragment() {
                 onTranslateOnce?.invoke(region)
             }
         }.show(childFragmentManager, AddCustomRegionSheet.TAG)
+    }
+
+    /** Reload the region list from prefs and refresh the UI. */
+    fun refreshFromPrefs() {
+        if (!isAdded || isDetached) return
+        workingList = prefs.getRegionList().toMutableList()
+        selectedId = prefs.selectedRegionId.ifEmpty { workingList.firstOrNull()?.id ?: "" }
+        adapter.submitList()
+        showSelectedOverlay()
     }
 
     // ── Overlay helpers ────────────────────────────────────────────────────
