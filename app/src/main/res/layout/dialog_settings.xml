@@ -444,38 +444,6 @@
                 android:layout_marginTop="4dp"
                 android:layout_marginBottom="16dp" />
 
-            <!-- Show transliteration toggle -->
-            <LinearLayout
-                android:id="@+id/rowShowTransliteration"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginTop="8dp">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/settings_show_transliteration"
-                    android:textColor="?attr/colorTextPrimary"
-                    android:textSize="14sp" />
-
-                <Switch
-                    android:id="@+id/switchShowTransliteration"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-
-            </LinearLayout>
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/settings_show_transliteration_hint"
-                android:textColor="?attr/colorTextHint"
-                android:textSize="10sp"
-                android:layout_marginTop="4dp"
-                android:layout_marginBottom="8dp" />
 
             <!-- Theme section divider -->
             <View

@@ -482,7 +482,7 @@ class TranslationResultFragment : Fragment() {
                 tvNoWords.visibility = View.VISIBLE
                 onAnkiEnabledChanged?.invoke(true)
                 val romaji = romajiDeferred.await()
-                if (romaji.isNotBlank() && romaji != text && Prefs(requireContext()).showTransliteration) {
+                if (romaji.isNotBlank() && romaji != text && false /* transliteration disabled */) {
                     tvTransliteration.text = romaji
                     tvTransliteration.visibility = View.VISIBLE
                 }
@@ -601,7 +601,7 @@ class TranslationResultFragment : Fragment() {
             LastSentenceCache.surfaceForms = surfaces
 
             val romaji = romajiDeferred.await()
-            if (romaji.isNotBlank() && romaji != text && Prefs(requireContext()).showTransliteration) {
+            if (romaji.isNotBlank() && romaji != text && false /* transliteration disabled */) {
                 tvTransliteration.text = romaji
                 tvTransliteration.visibility = View.VISIBLE
             }
