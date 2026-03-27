@@ -478,22 +478,39 @@ class CaptureService : Service() {
         }
     }
 
-    /** Cache overlay-ready data from the last pipeline result for hold-to-preview. */
+    /** Cache pipeline data for hold-to-preview. Colors are sampled lazily on hold. */
     private fun cacheOverlayData(pipeline: PipelineResult) {
-        val boxes = pipeline.groupBounds.zip(pipeline.groupTranslations).map { (bounds, text) ->
-            TranslationOverlayView.TextBox(
-                bounds = bounds,
-                translatedText = text,
-                bgColor = android.graphics.Color.argb(200, 0, 0, 0),
-                textColor = android.graphics.Color.WHITE,
-                lineCount = 1
-            )
-        }
-        session.cachedOverlayBoxes = boxes
         session.cachedOverlayCropLeft = pipeline.cropLeft
         session.cachedOverlayCropTop = pipeline.cropTop
         session.cachedOverlayScreenW = pipeline.screenshotW
         session.cachedOverlayScreenH = pipeline.screenshotH
+        // Store bounds + translations for building overlay boxes on hold
+        session.cachedOverlayBoxes = pipeline.groupBounds.zip(pipeline.groupTranslations)
+            .map { (bounds, text) -> TranslationOverlayView.TextBox(text, bounds) }
+    }
+
+    /** Build color-matched overlay boxes from the cached screenshot and pipeline data. */
+    private fun buildColorMatchedBoxes(): List<TranslationOverlayView.TextBox>? {
+        val boxes = session.cachedOverlayBoxes ?: return null
+        val screenshotPath = lastCleanScreenshotPath ?: return null
+        val bitmap = android.graphics.BitmapFactory.decodeFile(screenshotPath) ?: return null
+        try {
+            val colorScale = 4
+            val colorRef = Bitmap.createScaledBitmap(
+                bitmap, bitmap.width / colorScale, bitmap.height / colorScale, false
+            )
+            bitmap.recycle()
+            val colors = sampleGroupColors(colorRef, boxes.map { it.bounds },
+                session.cachedOverlayCropLeft, session.cachedOverlayCropTop, colorScale)
+            colorRef.recycle()
+            return boxes.mapIndexed { idx, box ->
+                val (bg, tc) = colors[idx]
+                box.copy(bgColor = bg, textColor = tc)
+            }
+        } catch (e: Exception) {
+            bitmap.recycle()
+            return null
+        }
     }
 
     fun stopLive() {
@@ -782,18 +799,10 @@ class CaptureService : Service() {
             val liveGroupLineCounts = ocrResult.groupLineCounts
 
             // Show shimmer placeholders
-            val buffer = 10 / colorScale
             val cRef = colorRef!!
+            val colors = sampleGroupColors(cRef, liveGroupBounds, left, top, colorScale)
             val placeholderBoxes = liveGroupBounds.mapIndexed { idx, bounds ->
-                val sl = (bounds.left + left) / colorScale
-                val st = (bounds.top + top) / colorScale
-                val sr = (bounds.right + left) / colorScale
-                val sb = (bounds.bottom + top) / colorScale
-                val bgColor = averageColor(cRef,
-                    sl - buffer, st - buffer, sr + buffer, sb + buffer,
-                    excludeInner = android.graphics.Rect(sl, st, sr, sb))
-                val textColor = if (colorLuminance(bgColor) > 128)
-                    android.graphics.Color.BLACK else android.graphics.Color.WHITE
+                val (bgColor, textColor) = colors[idx]
                 val lineCount = liveGroupLineCounts.getOrElse(idx) { 1 }
                 TranslationOverlayView.TextBox("", bounds, bgColor, textColor, lineCount)
             }
@@ -960,9 +969,9 @@ class CaptureService : Service() {
             holdActive = true
             when (Prefs(this).autoTranslationMode) {
                 AutoTranslationMode.IN_APP_ONLY -> {
-                    // Show cached overlays on game screen (polling pauses via holdActive)
+                    // Show color-matched overlays from cached screenshot (polling pauses via holdActive)
                     val s = session
-                    val boxes = s.cachedOverlayBoxes
+                    val boxes = buildColorMatchedBoxes() ?: s.cachedOverlayBoxes
                     if (boxes != null) {
                         val a11y = PlayTranslateAccessibilityService.instance
                         val dm = getSystemService(DisplayManager::class.java)
@@ -1205,20 +1214,12 @@ class CaptureService : Service() {
                 }
 
                 val perGroup = translateGroupsSeparately(newGroupTexts)
-                val buffer = 10 / colorScale
                 val cRef = colorRef ?: return false
 
                 val newOverlayBoxes = if (newGroupBounds.size == perGroup.size) {
-                    perGroup.zip(newGroupBounds).map { (tr, bounds) ->
-                        val sl = (bounds.left + left) / colorScale
-                        val st = (bounds.top + top) / colorScale
-                        val sr = (bounds.right + left) / colorScale
-                        val sb = (bounds.bottom + top) / colorScale
-                        val bg = averageColor(cRef,
-                            sl - buffer, st - buffer, sr + buffer, sb + buffer,
-                            excludeInner = android.graphics.Rect(sl, st, sr, sb))
-                        val tc = if (colorLuminance(bg) > 128)
-                            android.graphics.Color.BLACK else android.graphics.Color.WHITE
+                    val colors = sampleGroupColors(cRef, newGroupBounds, left, top, colorScale)
+                    perGroup.zip(newGroupBounds).mapIndexed { idx, (tr, bounds) ->
+                        val (bg, tc) = colors[idx]
                         TranslationOverlayView.TextBox(tr.first, bounds, bg, tc)
                     }
                 } else emptyList()
@@ -1379,21 +1380,10 @@ class CaptureService : Service() {
 
             // Sample colors and show skeleton placeholders immediately
             // so the user sees overlay positions while translations load.
-            val buffer = 10 / colorScale
             val cRef = colorRef!!
+            val colors = sampleGroupColors(cRef, liveGroupBounds, left, top, colorScale)
             val placeholderBoxes = liveGroupBounds.mapIndexed { idx, bounds ->
-                val sl = (bounds.left + left) / colorScale
-                val st = (bounds.top + top) / colorScale
-                val sr = (bounds.right + left) / colorScale
-                val sb = (bounds.bottom + top) / colorScale
-
-                val bgColor = averageColor(cRef,
-                    sl - buffer, st - buffer, sr + buffer, sb + buffer,
-                    excludeInner = android.graphics.Rect(sl, st, sr, sb))
-
-                val textColor = if (colorLuminance(bgColor) > 128)
-                    android.graphics.Color.BLACK else android.graphics.Color.WHITE
-
+                val (bgColor, textColor) = colors[idx]
                 val lineCount = liveGroupLineCounts.getOrElse(idx) { 1 }
                 TranslationOverlayView.TextBox("", bounds, bgColor, textColor, lineCount)
             }
@@ -1438,6 +1428,31 @@ class CaptureService : Service() {
             // Guarantee cleanup on all paths (normal, cancellation, exception)
             colorRef?.recycle()
             if (!raw.isRecycled) raw.recycle()
+        }
+    }
+
+    /**
+     * Sample background and text colors for each group bound from a scaled-down
+     * reference bitmap. Returns (bgColor, textColor) per group.
+     */
+    private fun sampleGroupColors(
+        colorRef: Bitmap,
+        groupBounds: List<android.graphics.Rect>,
+        cropLeft: Int, cropTop: Int,
+        colorScale: Int
+    ): List<Pair<Int, Int>> {
+        val buffer = 10 / colorScale
+        return groupBounds.map { bounds ->
+            val sl = (bounds.left + cropLeft) / colorScale
+            val st = (bounds.top + cropTop) / colorScale
+            val sr = (bounds.right + cropLeft) / colorScale
+            val sb = (bounds.bottom + cropTop) / colorScale
+            val bgColor = averageColor(colorRef,
+                sl - buffer, st - buffer, sr + buffer, sb + buffer,
+                excludeInner = android.graphics.Rect(sl, st, sr, sb))
+            val textColor = if (colorLuminance(bgColor) > 128)
+                android.graphics.Color.BLACK else android.graphics.Color.WHITE
+            Pair(bgColor, textColor)
         }
     }
 
