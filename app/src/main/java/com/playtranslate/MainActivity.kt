@@ -331,7 +331,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     private fun showRegionPicker() {
-        prefs.captureDisplayId = findGameDisplayId()
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val gameDisplay = displayManager.getDisplay(prefs.captureDisplayId) ?: return
 
@@ -921,7 +920,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         val regions = prefs.getRegionList()
         if (regions.isEmpty()) return
 
-        prefs.captureDisplayId = findGameDisplayId()
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val gameDisplay = displayManager.getDisplay(prefs.captureDisplayId)
 
