@@ -415,6 +415,7 @@ class CaptureService : Service() {
     fun startLive() {
         liveActive = true
         session.liveShowRegionFlash = true
+        session.clearCachedState()
         session.captureJob?.cancel()
         session.liveCaptureJob?.cancel()
         session.cleanProcessingJob?.cancel()
