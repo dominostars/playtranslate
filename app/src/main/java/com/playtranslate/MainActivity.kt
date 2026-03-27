@@ -64,11 +64,10 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     // ── Views ─────────────────────────────────────────────────────────────
 
     private lateinit var btnTranslate: View
-    private lateinit var btnCapturing: View
+    private lateinit var btnSettings: View
+    private lateinit var btnRegions: View
     private lateinit var tvTranslateTitle: TextView
     private lateinit var tvTranslateSubtitle: TextView
-    private lateinit var tvCapturingTitle: TextView
-    private lateinit var tvCapturingSubtitle: TextView
     private lateinit var btnLiveToggle: View
     private lateinit var ivLiveToggle: ImageView
     private lateinit var tvLiveToggle: TextView
@@ -79,6 +78,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private lateinit var menuItemLiveLabel: TextView
     private lateinit var resultsContainer: View
     private lateinit var regionPickerContainer: View
+    private lateinit var settingsContainer: View
     private lateinit var onboardingContainer: View
     private lateinit var pageNotif: View
     private lateinit var pageA11y: View
@@ -125,6 +125,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     // ── State ─────────────────────────────────────────────────────────────
+
+    private enum class Tab { TRANSLATE, SETTINGS, REGIONS }
+    private var selectedTab = Tab.TRANSLATE
 
     private val prefs by lazy { Prefs(this) }
 
@@ -283,11 +286,10 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
     private fun bindViews() {
         btnTranslate         = findViewById(R.id.btnTranslate)
-        btnCapturing         = findViewById(R.id.btnCapturing)
+        btnSettings          = findViewById(R.id.btnSettings)
+        btnRegions           = findViewById(R.id.btnRegions)
         tvTranslateTitle     = findViewById(R.id.tvTranslateTitle)
         tvTranslateSubtitle  = findViewById(R.id.tvTranslateSubtitle)
-        tvCapturingTitle     = findViewById(R.id.tvCapturingTitle)
-        tvCapturingSubtitle  = findViewById(R.id.tvCapturingSubtitle)
         btnLiveToggle        = findViewById(R.id.btnLiveToggle)
         ivLiveToggle         = findViewById(R.id.ivLiveToggle)
         tvLiveToggle         = findViewById(R.id.tvLiveToggle)
@@ -298,6 +300,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         menuItemLiveLabel    = findViewById(R.id.menuItemLiveLabel)
         resultsContainer     = findViewById(R.id.resultsContainer)
         regionPickerContainer = findViewById(R.id.regionPickerContainer)
+        settingsContainer    = findViewById(R.id.settingsContainer)
         onboardingContainer  = findViewById(R.id.onboardingContainer)
         pageNotif            = findViewById(R.id.pageNotif)
         pageA11y             = findViewById(R.id.pageA11y)
@@ -311,7 +314,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
         // Long press on any bottom-bar button → drag-to-select dropdown
         applyRegionDropdownGestures(btnTranslate)
-        applyRegionDropdownGestures(btnCapturing)
         applyRegionDropdownGestures(btnLiveToggle)
     }
 
@@ -335,9 +337,15 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     private fun showRegionPicker() {
+        if (regionPickerContainer.visibility == View.VISIBLE) {
+            hideRegionPicker()
+            return
+        }
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val gameDisplay = displayManager.getDisplay(prefs.captureDisplayId) ?: return
 
+        hideSettings()
+        selectTab(Tab.REGIONS)
         resultsContainer.visibility = View.GONE
         regionPickerContainer.visibility = View.VISIBLE
 
@@ -362,6 +370,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private fun hideRegionPicker() {
         regionPickerContainer.visibility = View.GONE
         resultsContainer.visibility = View.VISIBLE
+        selectTab(Tab.TRANSLATE)
         val frag = supportFragmentManager.findFragmentByTag(RegionPickerSheet.TAG)
         if (frag != null) {
             supportFragmentManager.beginTransaction().remove(frag).commitAllowingStateLoss()
@@ -371,23 +380,14 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private fun updateRegionButton() {
         val region = captureService?.activeRegion ?: prefs.getSelectedRegion()
         val label = region.label.ifEmpty { "Full screen" }
-        if (isLiveMode) {
-            val prefix = "Reload "
-            tvCapturingTitle.text = SpannableStringBuilder(prefix + label).apply {
-                setSpan(StyleSpan(Typeface.BOLD), prefix.length, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-            }
-            tvCapturingSubtitle.text = "Hold to hide translations on game screen"
-            btnTranslate.visibility = View.GONE
-            btnCapturing.visibility = View.VISIBLE
-        } else {
-            val prefix = "Translate "
-            tvTranslateTitle.text = SpannableStringBuilder(prefix + label).apply {
-                setSpan(StyleSpan(Typeface.BOLD), prefix.length, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-            }
-            tvTranslateSubtitle.text = "Hold to show translations on game screen"
-            btnCapturing.visibility = View.GONE
-            btnTranslate.visibility = View.VISIBLE
+        val prefix = if (isLiveMode) "Reload " else "Translate "
+        tvTranslateTitle.text = SpannableStringBuilder(prefix + label).apply {
+            setSpan(StyleSpan(Typeface.BOLD), prefix.length, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
+        tvTranslateSubtitle.text = if (isLiveMode)
+            "Hold to hide translations on game screen"
+        else
+            "Hold to show translations on game screen"
     }
 
     private fun toggleLiveMode() {
@@ -436,11 +436,21 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private fun setupButtons() {
         btnTranslate.setOnClickListener {
             hideRegionPicker()
-            withAccessibility { captureService?.captureOnce() }
+            hideSettings()
+            selectTab(Tab.TRANSLATE)
+            if (isLiveMode) {
+                captureService?.refreshLiveOverlay()
+            } else {
+                withAccessibility { captureService?.captureOnce() }
+            }
         }
         btnTranslate.setOnLongClickListener {
             translateHoldActive = true
-            withAccessibility { captureService?.holdStart() }
+            if (isLiveMode) {
+                captureService?.holdStart()
+            } else {
+                withAccessibility { captureService?.holdStart() }
+            }
             true
         }
         btnTranslate.setOnTouchListener { _, event ->
@@ -450,22 +460,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             }
             false
         }
-        btnCapturing.setOnClickListener { captureService?.refreshLiveOverlay() }
-        btnCapturing.setOnLongClickListener {
-            translateHoldActive = true
-            captureService?.holdStart()
-            true
-        }
-        btnCapturing.setOnTouchListener { _, event ->
-            if (translateHoldActive && (event.action == MotionEvent.ACTION_UP || event.action == MotionEvent.ACTION_CANCEL)) {
-                translateHoldActive = false
-                captureService?.holdEnd()
-            }
-            false
-        }
 
-        findViewById<View>(R.id.btnSettings).setOnClickListener { openSettings() }
-        findViewById<View>(R.id.btnRegions).setOnClickListener { showRegionPicker() }
+        btnSettings.setOnClickListener { openSettings() }
+        btnRegions.setOnClickListener { showRegionPicker() }
         btnLiveToggle.setOnClickListener { toggleLiveMode() }
         menuScrim.setOnClickListener { dismissMenu() }
         findViewById<View>(R.id.menuItemSettings).setOnClickListener { dismissMenu(); openSettings() }
@@ -526,6 +523,43 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         }
     }
 
+    private fun selectTab(tab: Tab) {
+        selectedTab = tab
+        val accentColor = themeColor(R.attr.colorTextOnAccent)
+        val normalColor = themeColor(R.attr.colorTextPrimary)
+
+        // Settings
+        val settingsSelected = tab == Tab.SETTINGS
+        btnSettings.setBackgroundResource(
+            if (settingsSelected) R.drawable.bg_translate_button else R.drawable.bg_capturing_button
+        )
+        findViewById<ImageView>(R.id.ivSettings).imageTintList =
+            android.content.res.ColorStateList.valueOf(if (settingsSelected) accentColor else normalColor)
+        findViewById<TextView>(R.id.tvSettings).setTextColor(
+            if (settingsSelected) accentColor else normalColor
+        )
+
+        // Regions
+        val regionsSelected = tab == Tab.REGIONS
+        btnRegions.setBackgroundResource(
+            if (regionsSelected) R.drawable.bg_translate_button else R.drawable.bg_capturing_button
+        )
+        findViewById<ImageView>(R.id.ivRegions).imageTintList =
+            android.content.res.ColorStateList.valueOf(if (regionsSelected) accentColor else normalColor)
+        findViewById<TextView>(R.id.tvRegions).setTextColor(
+            if (regionsSelected) accentColor else normalColor
+        )
+
+        // Translate
+        val translateSelected = tab == Tab.TRANSLATE
+        btnTranslate.setBackgroundResource(
+            if (translateSelected) R.drawable.bg_translate_button else R.drawable.bg_capturing_button
+        )
+        tvTranslateTitle.setTextColor(if (translateSelected) accentColor else normalColor)
+        tvTranslateSubtitle.setTextColor(if (translateSelected) accentColor else normalColor)
+        tvTranslateSubtitle.alpha = if (translateSelected) 0.7f else 1f
+    }
+
     private fun applyTheme() {
         val idx = getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
             .getInt("theme_index", 0)
@@ -538,10 +572,43 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     private fun openSettings() {
-        showSettingsSheet(hideDismiss = false)
+        if (settingsContainer.visibility == View.VISIBLE) {
+            hideSettings()
+            return
+        }
+        hideRegionPicker()
+        selectTab(Tab.SETTINGS)
+        resultsContainer.visibility = View.GONE
+        settingsContainer.visibility = View.VISIBLE
+
+        val sheet = SettingsBottomSheet.newInstance(hideDismiss = false).apply {
+            setShowsDialog(false)
+            onDisplayChanged = {
+                captureService?.resetConfiguration()
+                configureService()
+                PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
+            }
+            onScreenModeChanged = {
+                checkOnboardingState()
+            }
+            onClose = { hideSettings() }
+        }
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.settingsContainer, sheet, SettingsBottomSheet.TAG)
+            .commit()
     }
 
-    /** Creates and shows a SettingsBottomSheet with all callbacks wired. */
+    private fun hideSettings() {
+        settingsContainer.visibility = View.GONE
+        resultsContainer.visibility = View.VISIBLE
+        selectTab(Tab.TRANSLATE)
+        val frag = supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG)
+        if (frag != null) {
+            supportFragmentManager.beginTransaction().remove(frag).commitAllowingStateLoss()
+        }
+    }
+
+    /** Creates and shows a SettingsBottomSheet as a dialog (for onboarding). */
     private fun showSettingsSheet(hideDismiss: Boolean) {
         val sheet = SettingsBottomSheet.newInstance(hideDismiss = hideDismiss).apply {
             onDisplayChanged = {
@@ -553,8 +620,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                 checkOnboardingState()
             }
         }
-        // Use commitAllowingStateLoss to avoid crashing when called
-        // from display listeners while the Activity is in a saved state.
         val ft = supportFragmentManager.beginTransaction()
         ft.add(sheet, SettingsBottomSheet.TAG)
         ft.commitAllowingStateLoss()

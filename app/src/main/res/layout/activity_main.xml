@@ -35,6 +35,17 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- ── Settings container (replaces results when active) ───────── -->
+    <androidx.fragment.app.FragmentContainerView
+        android:id="@+id/settingsContainer"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/bottomBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
     <!-- ── Bottom action bar ─────────────────────────────────────────────── -->
     <LinearLayout
         android:id="@+id/bottomBar"
@@ -67,23 +78,25 @@
                 android:layout_height="match_parent"
                 android:orientation="vertical"
                 android:gravity="center"
-                android:background="@drawable/bg_live_play"
+                android:background="@drawable/bg_capturing_button"
                 android:clickable="true"
                 android:focusable="true"
                 android:layout_marginEnd="6dp">
 
                 <ImageView
+                    android:id="@+id/ivSettings"
                     android:layout_width="20dp"
                     android:layout_height="20dp"
                     android:src="@drawable/ic_settings"
-                    android:tint="?attr/colorTextOnAccent"
+                    android:tint="?attr/colorTextPrimary"
                     android:scaleType="centerInside" />
 
                 <TextView
+                    android:id="@+id/tvSettings"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Settings"
-                    android:textColor="?attr/colorTextOnAccent"
+                    android:textColor="?attr/colorTextPrimary"
                     android:textSize="8sp"
                     android:layout_marginTop="2dp" />
 
@@ -96,97 +109,61 @@
                 android:layout_height="match_parent"
                 android:orientation="vertical"
                 android:gravity="center"
-                android:background="@drawable/bg_live_play"
+                android:background="@drawable/bg_capturing_button"
                 android:clickable="true"
                 android:focusable="true"
                 android:layout_marginEnd="6dp">
 
                 <ImageView
+                    android:id="@+id/ivRegions"
                     android:layout_width="20dp"
                     android:layout_height="20dp"
                     android:src="@drawable/ic_crop"
-                    android:tint="?attr/colorTextOnAccent"
+                    android:tint="?attr/colorTextPrimary"
                     android:scaleType="centerInside" />
 
                 <TextView
+                    android:id="@+id/tvRegions"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Regions"
-                    android:textColor="?attr/colorTextOnAccent"
+                    android:textColor="?attr/colorTextPrimary"
                     android:textSize="8sp"
                     android:layout_marginTop="2dp" />
 
             </LinearLayout>
 
-            <!-- FrameLayout so btnTranslate and btnCapturing occupy the same slot -->
-            <FrameLayout
+            <!-- Translate button -->
+            <LinearLayout
+                android:id="@+id/btnTranslate"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
-                android:layout_weight="1">
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@drawable/bg_translate_button"
+                android:clickable="true"
+                android:focusable="true">
 
-                <!-- Normal mode: filled Translate button with subtitle -->
-                <LinearLayout
-                    android:id="@+id/btnTranslate"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:orientation="vertical"
+                <TextView
+                    android:id="@+id/tvTranslateTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="?attr/colorTextOnAccent"
+                    android:textSize="16sp"
+                    android:gravity="center" />
+
+                <TextView
+                    android:id="@+id/tvTranslateSubtitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="?attr/colorTextOnAccent"
+                    android:textSize="9sp"
+                    android:alpha="0.7"
                     android:gravity="center"
-                    android:background="@drawable/bg_translate_button"
-                    android:clickable="true"
-                    android:focusable="true">
+                    android:layout_marginTop="1dp" />
 
-                    <TextView
-                        android:id="@+id/tvTranslateTitle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="?attr/colorTextOnAccent"
-                        android:textSize="16sp"
-                        android:gravity="center" />
-
-                    <TextView
-                        android:id="@+id/tvTranslateSubtitle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="?attr/colorTextOnAccent"
-                        android:textSize="9sp"
-                        android:alpha="0.7"
-                        android:gravity="center"
-                        android:layout_marginTop="1dp" />
-
-                </LinearLayout>
-
-                <!-- Live mode: outlined Reload button with subtitle (same slot) -->
-                <LinearLayout
-                    android:id="@+id/btnCapturing"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:orientation="vertical"
-                    android:gravity="center"
-                    android:background="@drawable/bg_capturing_button"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:visibility="gone">
-
-                    <TextView
-                        android:id="@+id/tvCapturingTitle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="?attr/colorTextPrimary"
-                        android:textSize="16sp"
-                        android:gravity="center" />
-
-                    <TextView
-                        android:id="@+id/tvCapturingSubtitle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="?attr/colorTextSecondary"
-                        android:textSize="9sp"
-                        android:gravity="center"
-                        android:layout_marginTop="1dp" />
-
-                </LinearLayout>
-
-            </FrameLayout>
+            </LinearLayout>
 
             <!-- Live mode play/pause toggle -->
             <LinearLayout
