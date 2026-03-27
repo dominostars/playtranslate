@@ -286,8 +286,8 @@ class SettingsBottomSheet : DialogFragment() {
 
         fun updateAutoModeHint() {
             tvAutoModeHint.text = when (prefs.autoTranslationMode) {
-                AutoTranslationMode.OVERLAYS -> "Translations appear as overlays on the game screen."
-                AutoTranslationMode.IN_APP_ONLY -> "Translations appear in this app. No overlays on game screen."
+                AutoTranslationMode.OVERLAYS -> "Auto translations appear as overlays on the game screen"
+                AutoTranslationMode.IN_APP_ONLY -> "DUAL-SCREEN ONLY: Only show auto translations in app, not over game screen"
             }
         }
 
