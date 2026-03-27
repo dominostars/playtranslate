@@ -13,7 +13,9 @@ import android.app.Service
 import android.content.Intent
 import android.os.Binder
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.playtranslate.model.TranslationResult
@@ -178,10 +180,15 @@ class CaptureService : Service() {
     val degradedState = MutableLiveData(false)
     val translationDegraded: Boolean get() = degradedState.value == true
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     private fun setDegraded(degraded: Boolean) {
         if (translationDegraded == degraded) return
         degradedState.postValue(degraded)
-        syncIconState()
+        // Post to main thread: setDegraded is called from background coroutines,
+        // and syncIconState sets View properties. Posting also ensures postValue's
+        // update has been applied before we read degradedState.value.
+        mainHandler.post { syncIconState() }
     }
 
     /** Push current service state to the floating icon. Called automatically
