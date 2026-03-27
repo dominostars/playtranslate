@@ -446,13 +446,19 @@ class CaptureService : Service() {
     private fun startLiveInApp() {
         session.liveCaptureJob = session.scope.launch {
             while (isActive) {
-                val result = runCaptureOcrTranslate()
+                // Pause polling while hold-to-preview is active (overlays on screen)
+                if (holdActive) {
+                    delay(100)
+                    continue
+                }
+
+                val pipeline = runCaptureOcrTranslate()
                 if (session.liveShowRegionFlash) {
                     session.liveShowRegionFlash = false
                     flashRegionIndicator()
                 }
-                if (result != null) {
-                    val dedupKey = result.originalText
+                if (pipeline != null) {
+                    val dedupKey = pipeline.result.originalText
                         .filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
                     if (session.lastLiveOcrText != null &&
                         !isSignificantChange(session.lastLiveOcrText!!, dedupKey)) {
@@ -460,13 +466,34 @@ class CaptureService : Service() {
                         continue
                     }
                     session.lastLiveOcrText = dedupKey
-                    onResult?.invoke(result)
+                    onResult?.invoke(pipeline.result)
+
+                    // Cache overlay data for hold-to-preview
+                    cacheOverlayData(pipeline)
                 } else {
                     onLiveNoText?.invoke()
                 }
                 delay(Prefs(this@CaptureService).captureIntervalMs)
             }
         }
+    }
+
+    /** Cache overlay-ready data from the last pipeline result for hold-to-preview. */
+    private fun cacheOverlayData(pipeline: PipelineResult) {
+        val boxes = pipeline.groupBounds.zip(pipeline.groupTranslations).map { (bounds, text) ->
+            TranslationOverlayView.TextBox(
+                bounds = bounds,
+                translatedText = text,
+                bgColor = android.graphics.Color.argb(200, 0, 0, 0),
+                textColor = android.graphics.Color.WHITE,
+                lineCount = 1
+            )
+        }
+        session.cachedOverlayBoxes = boxes
+        session.cachedOverlayCropLeft = pipeline.cropLeft
+        session.cachedOverlayCropTop = pipeline.cropTop
+        session.cachedOverlayScreenW = pipeline.screenshotW
+        session.cachedOverlayScreenH = pipeline.screenshotH
     }
 
     fun stopLive() {
@@ -927,11 +954,30 @@ class CaptureService : Service() {
     val lastCleanScreenshotPath: String?
         get() = PlayTranslateAccessibilityService.instance?.screenshotManager?.lastCleanPath
 
-    /** Begin a hold-to-preview gesture. In non-live: captures and shows overlay. In live: hides overlays. */
+    /** Begin a hold-to-preview gesture. */
     fun holdStart() {
         if (liveActive) {
             holdActive = true
-            PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+            when (Prefs(this).autoTranslationMode) {
+                AutoTranslationMode.IN_APP_ONLY -> {
+                    // Show cached overlays on game screen (polling pauses via holdActive)
+                    val s = session
+                    val boxes = s.cachedOverlayBoxes
+                    if (boxes != null) {
+                        val a11y = PlayTranslateAccessibilityService.instance
+                        val dm = getSystemService(DisplayManager::class.java)
+                        val display = dm.getDisplay(gameDisplayId)
+                        if (a11y != null && display != null) {
+                            a11y.showTranslationOverlay(display, boxes,
+                                s.cachedOverlayCropLeft, s.cachedOverlayCropTop,
+                                s.cachedOverlayScreenW, s.cachedOverlayScreenH)
+                        }
+                    }
+                }
+                AutoTranslationMode.OVERLAYS -> {
+                    PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+                }
+            }
         } else {
             onHoldLoadingChanged?.invoke(true)
             showOneShotOverlay()
@@ -939,12 +985,20 @@ class CaptureService : Service() {
         }
     }
 
-    /** End a hold-to-preview gesture. In non-live: removes overlay. In live: restores overlays. */
+    /** End a hold-to-preview gesture. */
     fun holdEnd() {
         onHoldLoadingChanged?.invoke(false)
         if (liveActive) {
             holdActive = false
-            refreshLiveOverlay()
+            when (Prefs(this).autoTranslationMode) {
+                AutoTranslationMode.IN_APP_ONLY -> {
+                    // Hide overlays, polling resumes via holdActive check
+                    PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+                }
+                AutoTranslationMode.OVERLAYS -> {
+                    refreshLiveOverlay()
+                }
+            }
         } else {
             session.liveCaptureJob?.cancel()
             PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
@@ -1517,11 +1571,20 @@ class CaptureService : Service() {
 
     // ── Capture cycle ─────────────────────────────────────────────────────
 
+    /** Full output from the shared capture pipeline, including overlay-ready data. */
+    private class PipelineResult(
+        val result: TranslationResult,
+        val groupBounds: List<android.graphics.Rect>,
+        val groupTranslations: List<String>,
+        val cropLeft: Int, val cropTop: Int,
+        val screenshotW: Int, val screenshotH: Int
+    )
+
     /**
      * Core capture → crop → OCR → translate pipeline shared by one-shot
-     * and all live modes. Returns a [TranslationResult] or null if no text.
+     * and all live modes. Returns a [PipelineResult] or null if no text.
      */
-    private suspend fun runCaptureOcrTranslate(): TranslationResult? {
+    private suspend fun runCaptureOcrTranslate(): PipelineResult? {
         val raw: Bitmap = captureScreen(gameDisplayId) ?: run {
             onError?.invoke("Screenshot failed for display $gameDisplayId. Try a different display in Settings.")
             return null
@@ -1546,16 +1609,24 @@ class CaptureService : Service() {
 
             if (ocrResult == null) return null
 
-            val (translated, note) = translateGroups(ocrResult.groupTexts)
+            val perGroup = translateGroupsSeparately(ocrResult.groupTexts)
+            val translated = perGroup.joinToString("\n\n") { it.first }
+            val note = perGroup.mapNotNull { it.second }.firstOrNull()
             val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
 
-            return TranslationResult(
-                originalText   = ocrResult.fullText,
-                segments       = ocrResult.segments,
-                translatedText = translated,
-                timestamp      = timestamp,
-                screenshotPath = screenshotPath,
-                note           = note
+            return PipelineResult(
+                result = TranslationResult(
+                    originalText   = ocrResult.fullText,
+                    segments       = ocrResult.segments,
+                    translatedText = translated,
+                    timestamp      = timestamp,
+                    screenshotPath = screenshotPath,
+                    note           = note
+                ),
+                groupBounds = ocrResult.groupBounds,
+                groupTranslations = perGroup.map { it.first },
+                cropLeft = left, cropTop = top,
+                screenshotW = raw.width, screenshotH = raw.height
             )
         } catch (e: Exception) {
             Log.e(TAG, "Capture cycle failed: ${e.message}", e)
@@ -1573,10 +1644,10 @@ class CaptureService : Service() {
             return
         }
         onStatusUpdate?.invoke(getString(R.string.status_capturing))
-        val result = runCaptureOcrTranslate()
+        val pipeline = runCaptureOcrTranslate()
         flashRegionIndicator()
-        if (result != null) {
-            onResult?.invoke(result)
+        if (pipeline != null) {
+            onResult?.invoke(pipeline.result)
         } else {
             onStatusUpdate?.invoke(noTextMessage())
         }
