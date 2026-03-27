@@ -635,6 +635,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         val root = findViewById<View>(android.R.id.content)?.rootView
         root?.setBackgroundColor(themeColor(R.attr.colorBgDark))
         findViewById<View>(R.id.bottomBar)?.setBackgroundColor(themeColor(R.attr.colorBgSurface))
+        val textColor = themeColor(R.attr.colorTextPrimary)
+        ivLiveToggle.imageTintList = android.content.res.ColorStateList.valueOf(textColor)
+        tvLiveToggle.setTextColor(textColor)
         selectTab(selectedTab)
 
         // Save scroll position and re-create the settings fragment with new theme
