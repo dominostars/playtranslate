@@ -479,6 +479,14 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         }
         btnTranslate.setOnLongClickListener {
             translateHoldActive = true
+            val holdColor = themeColor(R.attr.colorTextTranslation)
+            val radius = 6f * resources.displayMetrics.density
+            btnTranslate.background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = radius
+                setColor(holdColor)
+            }
+            tvTranslateTitle.setTextColor(themeColor(R.attr.colorTextOnAccent))
+            tvTranslateSubtitle.setTextColor(themeColor(R.attr.colorTextOnAccent))
             if (isLiveMode) {
                 captureService?.holdStart()
             } else {
@@ -490,6 +498,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             if (translateHoldActive && (event.action == MotionEvent.ACTION_UP || event.action == MotionEvent.ACTION_CANCEL)) {
                 translateHoldActive = false
                 captureService?.holdEnd()
+                selectTab(selectedTab) // restore button colors
             }
             false
         }
