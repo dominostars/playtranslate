@@ -31,6 +31,7 @@
         <item name="android:navigationBarColor">?attr/colorBgDark</item>
         <item name="android:textColor">?attr/colorTextPrimary</item>
         <item name="android:fontFamily">sans-serif</item>
+        <item name="materialSwitchStyle">@style/Widget.PlayTranslate.MaterialSwitch</item>
     </style>
 
     <!-- ── White theme ────────────────────────────────────────────────────── -->
@@ -63,6 +64,7 @@
         <item name="android:navigationBarColor">?attr/colorBgDark</item>
         <item name="android:textColor">?attr/colorTextPrimary</item>
         <item name="android:fontFamily">sans-serif</item>
+        <item name="materialSwitchStyle">@style/Widget.PlayTranslate.MaterialSwitch</item>
     </style>
 
     <!-- ── Rainbow / Granite theme ────────────────────────────────────────── -->
@@ -95,6 +97,7 @@
         <item name="android:navigationBarColor">?attr/colorBgDark</item>
         <item name="android:textColor">?attr/colorTextPrimary</item>
         <item name="android:fontFamily">sans-serif</item>
+        <item name="materialSwitchStyle">@style/Widget.PlayTranslate.MaterialSwitch</item>
     </style>
 
     <!-- ── Purple theme ───────────────────────────────────────────────────── -->
@@ -127,6 +130,7 @@
         <item name="android:navigationBarColor">?attr/colorBgDark</item>
         <item name="android:textColor">?attr/colorTextPrimary</item>
         <item name="android:fontFamily">sans-serif</item>
+        <item name="materialSwitchStyle">@style/Widget.PlayTranslate.MaterialSwitch</item>
     </style>
 
     <!-- ── Full-screen dialog overlays (one per theme) ────────────────────── -->
@@ -159,6 +163,10 @@
     </style>
 
     <!-- ── Widget styles (reference attrs, resolve at inflation time) ───── -->
+
+    <style name="Widget.PlayTranslate.MaterialSwitch" parent="Widget.Material3.CompoundButton.MaterialSwitch">
+        <item name="thumbTint">@color/switch_thumb</item>
+    </style>
 
     <style name="Widget.PlayTranslate.SegmentedButton" parent="Widget.Material3.Button.OutlinedButton">
         <item name="backgroundTint">@color/segmented_button_bg</item>
