@@ -332,6 +332,21 @@ class SettingsBottomSheet : DialogFragment() {
                 prefs.captureIntervalSec = v
             }
         })
+        etCaptureInterval.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                etCaptureInterval.clearFocus()
+                val imm = requireContext().getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+                    as android.view.inputmethod.InputMethodManager
+                imm.hideSoftInputFromWindow(etCaptureInterval.windowToken, 0)
+                true
+            } else false
+        }
+        view.findViewById<View>(R.id.rowCaptureInterval).setOnClickListener {
+            etCaptureInterval.requestFocus()
+            val imm = requireContext().getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+                as android.view.inputmethod.InputMethodManager
+            imm.showSoftInput(etCaptureInterval, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+        }
 
 
         // ── Theme picker ──────────────────────────────────────────────────

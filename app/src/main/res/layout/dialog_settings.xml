@@ -220,7 +220,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Small icon"
+                    android:text="Minimize icon"
                     android:textColor="?attr/colorTextPrimary"
                     android:textSize="16sp"
                     android:textStyle="bold" />
@@ -290,25 +290,45 @@
 
             <!-- Capture interval -->
             <LinearLayout
+                android:id="@+id/rowCaptureInterval"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:gravity="center_vertical">
 
-                <TextView
+                <!-- Left: title + hint stacked -->
+                <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Capture interval"
-                    android:textColor="?attr/colorTextPrimary"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
+                    android:orientation="vertical">
 
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Capture interval"
+                        android:textColor="?attr/colorTextPrimary"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvCaptureIntervalHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text=""
+                        android:textColor="?attr/colorTextHint"
+                        android:textSize="14sp"
+                        android:layout_marginTop="1dp" />
+
+                </LinearLayout>
+
+                <!-- Right: input + suffix -->
                 <EditText
                     android:id="@+id/etCaptureInterval"
                     android:layout_width="56dp"
                     android:layout_height="wrap_content"
-                    android:inputType="number"
+                    android:inputType="numberDecimal"
+                    android:imeOptions="actionDone"
                     android:textSize="14sp"
                     android:textColor="?attr/colorTextPrimary"
                     android:background="?attr/colorBgCard"
@@ -326,15 +346,6 @@
                     android:textSize="14sp" />
 
             </LinearLayout>
-
-            <TextView
-                android:id="@+id/tvCaptureIntervalHint"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text=""
-                android:textColor="?attr/colorTextHint"
-                android:textSize="14sp"
-                android:layout_marginTop="4dp" />
 
             <!-- ═══════════════════════════════════════════════════════════ -->
             <!-- CAPTURE DISPLAY                                             -->
