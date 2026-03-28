@@ -95,14 +95,17 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private val resultFragment: TranslationResultFragment?
         get() = supportFragmentManager.findFragmentById(R.id.resultsContainer) as? TranslationResultFragment
 
-    // ── Region quick-dropdown state ────────────────────────────────────────
+    // ── Drag-to-select dropdown state ────────────────────────────────────
     private var inDragMode = false
     private var dropdownPopup: PopupWindow? = null
     private var dropdownHighlightedRow = 0
-    private var dropdownRegionOrder = listOf<Int>()
     private var dropdownRows = listOf<View>()
     private var dropdownItemHeightPx = 0f
     private var dropdownTopY = 0f
+    private var dropdownCommitAction: (() -> Unit)? = null
+
+    // Region-specific dropdown state
+    private var dropdownRegionOrder = listOf<Int>()
     private var dropdownGameDisplay: Display? = null
     private var dropdownRegions = listOf<RegionEntry>()
 
@@ -331,22 +334,28 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
     private fun setupRegionButton() {
         updateRegionButton()
-        applyRegionDropdownGestures(btnRegions)
+        applyDragDropdownGestures(btnRegions) { showRegionDropdown(it) }
     }
 
-    /** Attaches long-press + drag-to-select region picker gestures to [btn]. */
-    private fun applyRegionDropdownGestures(btn: View) {
+    /** Attaches long-press + drag-to-select gestures to [btn]. */
+    private fun applyDragDropdownGestures(btn: View, showDropdown: (View) -> Unit) {
         btn.setOnLongClickListener {
             inDragMode = true
             btn.isPressed = false
-            showRegionDropdown(btn)
+            showDropdown(btn)
             true
         }
         btn.setOnTouchListener { _, event ->
             if (!inDragMode) return@setOnTouchListener false
             when (event.actionMasked) {
                 MotionEvent.ACTION_MOVE   -> { updateDropdownHighlight(event.rawY); true }
-                MotionEvent.ACTION_UP     -> { commitDropdownSelection(); true }
+                MotionEvent.ACTION_UP     -> {
+                    val action = dropdownCommitAction
+                    dismissDropdown()
+                    inDragMode = false
+                    action?.invoke()
+                    true
+                }
                 MotionEvent.ACTION_CANCEL -> { dismissDropdown(); inDragMode = false; false }
                 else -> false
             }
@@ -505,6 +514,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         btnSettings.setOnClickListener { openSettings() }
         btnRegions.setOnClickListener { showRegionPicker() }
         btnLiveToggle.setOnClickListener { toggleLiveMode() }
+        applyDragDropdownGestures(btnLiveToggle) { showAutoModeDropdown(it) }
         menuScrim.setOnClickListener { dismissMenu() }
         findViewById<View>(R.id.menuItemSettings).setOnClickListener { dismissMenu(); openSettings() }
         findViewById<View>(R.id.menuItemLive).setOnClickListener { dismissMenu(); toggleLiveMode() }
@@ -1080,6 +1090,59 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         }
     }
 
+    // ── Auto mode quick-dropdown ────────────────────────────────────────────
+
+    private fun showAutoModeDropdown(anchor: View) {
+        dismissDropdown()
+        val currentMode = prefs.autoTranslationMode
+        val modes = AutoTranslationMode.entries
+
+        val dp = resources.displayMetrics.density
+        dropdownItemHeightPx = 48 * dp
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(themeColor(R.attr.colorBgSurface))
+            elevation = 8 * dp
+        }
+        val rows = mutableListOf<View>()
+        modes.forEachIndexed { idx, mode ->
+            val row = buildDropdownRow(mode.displayName, mode == currentMode)
+            container.addView(row)
+            rows.add(row)
+        }
+        dropdownRows = rows
+        dropdownHighlightedRow = modes.indexOf(currentMode).coerceAtLeast(0)
+        dropdownHighlightListener = null
+        dropdownCommitAction = {
+            val selectedMode = modes[dropdownHighlightedRow]
+            if (prefs.autoTranslationMode != selectedMode) {
+                prefs.autoTranslationMode = selectedMode
+            }
+            if (isLiveMode) {
+                captureService?.stopLive()
+                withAccessibility { doStartLive() }
+            } else {
+                withAccessibility { startLiveMode() }
+            }
+        }
+
+        val anchorLoc = intArrayOf(0, 0)
+        anchor.getLocationOnScreen(anchorLoc)
+        val popupHeight = (modes.size * dropdownItemHeightPx).toInt()
+        val popupTop = maxOf(0, anchorLoc[1] - popupHeight)
+        dropdownTopY = popupTop.toFloat()
+
+        val screenWidth = resources.displayMetrics.widthPixels
+        val popupMarginH = (12 * dp).toInt()
+        val popupWidth = screenWidth - 2 * popupMarginH
+        val popup = PopupWindow(container, popupWidth, LinearLayout.LayoutParams.WRAP_CONTENT, false)
+        popup.isTouchable = false
+        popup.isOutsideTouchable = false
+        popup.showAtLocation(anchor, Gravity.NO_GRAVITY, popupMarginH, popupTop)
+        dropdownPopup = popup
+    }
+
     // ── Region quick-dropdown ──────────────────────────────────────────────
 
     private fun showRegionDropdown(anchor: View) {
@@ -1117,6 +1180,13 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             rows.add(row)
         }
         dropdownRows = rows
+        dropdownHighlightListener = { rowIdx ->
+            val regionIdx = dropdownRegionOrder[rowIdx]
+            if (regionIdx >= 0) {
+                PlayTranslateAccessibilityService.instance?.updateRegionOverlay(dropdownRegions[regionIdx])
+            }
+        }
+        dropdownCommitAction = { commitRegionDropdownSelection() }
 
         val anchorLoc = intArrayOf(0, 0)
         anchor.getLocationOnScreen(anchorLoc)
@@ -1139,24 +1209,22 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         }
     }
 
+    private var dropdownHighlightListener: ((Int) -> Unit)? = null
+
     private fun updateDropdownHighlight(rawY: Float) {
+        if (dropdownRows.isEmpty()) return
         val relativeY = rawY - dropdownTopY
         val rowIdx = (relativeY / dropdownItemHeightPx).toInt()
-            .coerceIn(0, dropdownRegionOrder.size - 1)
+            .coerceIn(0, dropdownRows.size - 1)
         if (rowIdx == dropdownHighlightedRow) return
 
         updateRowHighlight(dropdownRows[dropdownHighlightedRow], false)
         updateRowHighlight(dropdownRows[rowIdx], true)
         dropdownHighlightedRow = rowIdx
-
-        val regionIdx = dropdownRegionOrder[rowIdx]
-        if (regionIdx >= 0) {
-            val entry = dropdownRegions[regionIdx]
-            PlayTranslateAccessibilityService.instance?.updateRegionOverlay(entry)
-        }
+        dropdownHighlightListener?.invoke(rowIdx)
     }
 
-    private fun commitDropdownSelection() {
+    private fun commitRegionDropdownSelection() {
         val selectedRegionIdx = dropdownRegionOrder[dropdownHighlightedRow]
         dismissDropdown()
         inDragMode = false
@@ -1225,6 +1293,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private fun dismissDropdown() {
         dropdownPopup?.dismiss()
         dropdownPopup = null
+        dropdownRows = emptyList()
+        dropdownCommitAction = null
+        dropdownHighlightListener = null
         PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
     }
 

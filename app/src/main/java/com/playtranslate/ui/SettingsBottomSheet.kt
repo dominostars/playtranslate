@@ -283,6 +283,10 @@ class SettingsBottomSheet : DialogFragment() {
         // ── Auto translation mode toggle ─────────────────────────────────
         val toggleAutoMode = view.findViewById<com.google.android.material.button.MaterialButtonToggleGroup>(R.id.toggleAutoMode)
         val tvAutoModeHint = view.findViewById<TextView>(R.id.tvAutoModeHint)
+        val btnModeOverlays = view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnModeOverlays)
+        val btnModeInApp = view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnModeInApp)
+        btnModeOverlays.text = AutoTranslationMode.OVERLAYS.displayName
+        btnModeInApp.text = AutoTranslationMode.IN_APP_ONLY.displayName
 
         fun updateAutoModeHint() {
             tvAutoModeHint.text = when (prefs.autoTranslationMode) {

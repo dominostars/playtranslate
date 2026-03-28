@@ -8,9 +8,9 @@ import com.google.mlkit.nl.translate.TranslateLanguage
 import org.json.JSONArray
 import org.json.JSONObject
 
-enum class AutoTranslationMode {
-    OVERLAYS,       // Translations shown as overlays on game screen
-    IN_APP_ONLY;    // Translations shown in app UI only
+enum class AutoTranslationMode(val displayName: String) {
+    OVERLAYS("Overlays"),
+    IN_APP_ONLY("In-App Only");
 
     companion object {
         fun fromOrdinal(ordinal: Int) = entries.getOrElse(ordinal) { OVERLAYS }
