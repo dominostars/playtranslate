@@ -61,6 +61,7 @@ class SettingsBottomSheet : DialogFragment() {
     private var displayList: List<android.view.Display> = emptyList()
     private var selectedDisplayIdx = 0
     private val displayThumbnails = HashMap<Int, Bitmap?>()
+    private var currentView: View? = null
     private var ivIconPreview: android.widget.ImageView? = null
 
     private lateinit var llDisplayOptions: LinearLayout
@@ -97,7 +98,24 @@ class SettingsBottomSheet : DialogFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        currentView = view
+        setupViews(view)
+    }
 
+    /** Re-inflate the content in place (used for theme changes in dialog mode). */
+    fun reinflateContent() {
+        val old = currentView ?: return
+        val parent = old.parent as? ViewGroup ?: return
+        val index = parent.indexOfChild(old)
+        parent.removeView(old)
+        val newView = LayoutInflater.from(requireActivity())
+            .inflate(R.layout.dialog_settings, parent, false)
+        parent.addView(newView, index)
+        currentView = newView
+        setupViews(newView)
+    }
+
+    private fun setupViews(view: View) {
         val hideDismiss = arguments?.getBoolean(ARG_HIDE_DISMISS, false) ?: false
         val isDialog = showsDialog
 

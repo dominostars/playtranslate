@@ -724,6 +724,11 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             onScreenModeChanged = {
                 checkOnboardingState()
             }
+            onThemeChanged = { scrollY ->
+                applyTheme()
+                prefs.settingsScrollY = scrollY
+                reinflateContent()
+            }
         }
         val ft = supportFragmentManager.beginTransaction()
         ft.add(sheet, SettingsBottomSheet.TAG)
