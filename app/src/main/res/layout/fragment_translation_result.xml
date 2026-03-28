@@ -342,7 +342,7 @@
         <ImageView
             android:layout_width="20dp"
             android:layout_height="20dp"
-            android:src="@android:drawable/ic_input_add"
+            android:src="@drawable/ic_anki_cards"
             android:tint="?attr/colorTextOnAccent"
             android:scaleType="centerInside" />
 

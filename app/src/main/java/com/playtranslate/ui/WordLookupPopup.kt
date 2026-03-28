@@ -337,7 +337,7 @@ class WordLookupPopup(
                 }
             })
 
-            val iconRes = if (showAnkiButton) R.drawable.ic_anki else R.drawable.ic_open_in_new
+            val iconRes = if (showAnkiButton) R.drawable.ic_anki_cards else R.drawable.ic_open_in_new
             val onTap = if (showAnkiButton) onAnkiTap else onOpenTap
             val icon = ImageView(ctx).apply {
                 val drawable = AppCompatResources.getDrawable(ctx, iconRes)?.mutate()
@@ -345,7 +345,7 @@ class WordLookupPopup(
                     DrawableCompat.setTint(drawable, Color.parseColor("#A0A0A0"))
                     setImageDrawable(drawable)
                 }
-                setPadding(dp(4), dp(4), dp(4), dp(4))
+                setPadding(dp(7), dp(4), dp(1), dp(4))
                 layoutParams = LinearLayout.LayoutParams(ankiColumnW - dp(13), LinearLayout.LayoutParams.MATCH_PARENT).apply {
                     gravity = Gravity.CENTER_VERTICAL
                 }
