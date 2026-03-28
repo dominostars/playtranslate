@@ -529,6 +529,10 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         hideSpinnerWindow()
-        iconBitmap.recycle()
+    }
+
+    /** Call when the icon is permanently removed, not just temporarily detached. */
+    fun destroy() {
+        if (!iconBitmap.isRecycled) iconBitmap.recycle()
     }
 }

@@ -871,6 +871,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     fun hideFloatingIcon() {
         dragLookupController?.destroy()
         dragLookupController = null
+        floatingIcon?.destroy()
         try { floatingIcon?.let { floatingIconWm?.removeView(it) } } catch (_: Exception) {}
         floatingIcon = null
         floatingIconWm = null
