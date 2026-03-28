@@ -184,15 +184,6 @@ class SettingsBottomSheet : DialogFragment() {
         )
         // Make subtext same color as title (both modes)
         tvOverlayIconHint.setTextColor(requireContext().themeColor(R.attr.colorTextPrimary))
-        // Double text sizes in single-screen mode
-        if (isSingle) {
-            tvOverlayIconTitle.textSize = 21f
-            tvOverlayIconHint.textSize = 15f
-            val rowOverlayIcon = view.findViewById<LinearLayout>(R.id.rowOverlayIcon)
-            val dp = resources.displayMetrics.density
-            val pad = (18 * dp).toInt()
-            rowOverlayIcon.setPadding(pad, pad, pad, pad)
-        }
         switchOverlayIcon.isChecked = prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled
         switchOverlayIcon.setOnCheckedChangeListener { _, checked ->
             if (checked && !PlayTranslateAccessibilityService.isEnabled) {
