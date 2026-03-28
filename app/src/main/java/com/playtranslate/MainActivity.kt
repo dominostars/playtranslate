@@ -1097,6 +1097,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         val currentMode = prefs.autoTranslationMode
         val modes = AutoTranslationMode.entries
 
+        // Current mode at bottom, others above
+        val ordered = modes.filter { it != currentMode } + currentMode
+
         val dp = resources.displayMetrics.density
         dropdownItemHeightPx = 48 * dp
 
@@ -1106,16 +1109,16 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             elevation = 8 * dp
         }
         val rows = mutableListOf<View>()
-        modes.forEachIndexed { idx, mode ->
+        ordered.forEach { mode ->
             val row = buildDropdownRow(mode.displayName, mode == currentMode)
             container.addView(row)
             rows.add(row)
         }
         dropdownRows = rows
-        dropdownHighlightedRow = modes.indexOf(currentMode).coerceAtLeast(0)
+        dropdownHighlightedRow = ordered.lastIndex
         dropdownHighlightListener = null
         dropdownCommitAction = {
-            val selectedMode = modes[dropdownHighlightedRow]
+            val selectedMode = ordered[dropdownHighlightedRow]
             if (prefs.autoTranslationMode != selectedMode) {
                 prefs.autoTranslationMode = selectedMode
             }
