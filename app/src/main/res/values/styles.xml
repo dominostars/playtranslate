@@ -171,7 +171,7 @@
     <style name="Widget.PlayTranslate.TranslationText" parent="Widget.MaterialComponents.TextView">
         <item name="android:textSize">24sp</item>
         <item name="android:textColor">?attr/colorTextTranslation</item>
-        <item name="android:lineSpacingMultiplier">1.5</item>
+        <item name="android:lineSpacingMultiplier">1</item>
     </style>
 
     <!-- Transparent bridge activity (no color theming needed) -->

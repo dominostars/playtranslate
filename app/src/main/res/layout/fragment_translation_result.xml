@@ -198,7 +198,7 @@
                     android:layout_marginTop="4dp"
                     android:textSize="20sp"
                     android:textColor="?attr/colorTextHint"
-                    android:lineSpacingMultiplier="1.4" />
+                    android:lineSpacingMultiplier="1" />
 
                 <TextView
                     android:id="@+id/tvTransliteration"
