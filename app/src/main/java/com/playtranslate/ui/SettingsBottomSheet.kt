@@ -292,12 +292,6 @@ class SettingsBottomSheet : DialogFragment() {
         // ── Anki section ─────────────────────────────────────────────────
         refreshAnkiSection()
 
-        // ── Capture method section (hidden when accessibility is enabled) ─
-        view.findViewById<View>(R.id.btnCaptureMethodOpenA11y).setOnClickListener {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-        }
-        refreshCaptureMethodSection()
-
         // ── Auto translation mode toggle ─────────────────────────────────
         val toggleAutoMode = view.findViewById<com.google.android.material.button.MaterialButtonToggleGroup>(R.id.toggleAutoMode)
         val tvAutoModeHint = view.findViewById<TextView>(R.id.tvAutoModeHint)
@@ -411,7 +405,6 @@ class SettingsBottomSheet : DialogFragment() {
     override fun onResume() {
         super.onResume()
         refreshAnkiSection()
-        refreshCaptureMethodSection()
         refreshOverlayIconSwitch()
 
         val ctx = context ?: return
@@ -436,15 +429,6 @@ class SettingsBottomSheet : DialogFragment() {
         val prefs = Prefs(ctx)
         val sw = v.findViewById<MaterialSwitch>(R.id.switchOverlayIcon) ?: return
         sw.isChecked = prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled
-    }
-
-    // ── Capture method section ────────────────────────────────────────────
-
-    private fun refreshCaptureMethodSection() {
-        val v = view ?: return
-        val llCaptureMethodSection = v.findViewById<LinearLayout>(R.id.llCaptureMethodSection)
-        llCaptureMethodSection.visibility =
-            if (PlayTranslateAccessibilityService.isEnabled) View.GONE else View.VISIBLE
     }
 
     // ── Anki section ──────────────────────────────────────────────────────
