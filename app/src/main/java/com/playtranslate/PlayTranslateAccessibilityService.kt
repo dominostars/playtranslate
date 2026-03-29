@@ -1037,7 +1037,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
         if (Prefs.isSingleScreen(this)) {
             builder.setTitle("Disable $appName?")
-                .setMessage("Re-enable in the $appName settings")
+                .setMessage("Re-enable in $appName app")
                 .addButton("Turn Off", android.graphics.Color.parseColor("#E04040")) {
                     Prefs(this).showOverlayIcon = false
                     hideFloatingIcon()
