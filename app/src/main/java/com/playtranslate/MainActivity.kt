@@ -270,7 +270,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             ACTION_START_LIVE -> if (!isLiveMode) {
                 // Post so onResume sets isInForeground before startLive triggers
                 // updateForegroundState — otherwise In-App Only mode immediately stops.
-                window.decorView.post { withAccessibility { startLiveMode() } }
+                window.decorView.post {
+                    if (!isDestroyed && !isFinishing) withAccessibility { startLiveMode() }
+                }
             }
             ACTION_STOP_LIVE -> if (isLiveMode) stopLiveMode()
             ACTION_ADD_CUSTOM_REGION -> openAddCustomRegionFromDropdown()
