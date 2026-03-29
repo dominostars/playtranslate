@@ -484,10 +484,23 @@ class SettingsBottomSheet : DialogFragment() {
             !ankiManager.hasPermission() -> {
                 tvAnkiTitle.text = "ANKI"
                 llAnkiPermission.removeAllViews()
+                val permanentlyDenied = !shouldShowRequestPermissionRationale(AnkiManager.PERMISSION)
                 addActionRow(llAnkiPermission, "Grant AnkiDroid Access",
-                    "To add flashcards to Anki, ${getString(R.string.app_name)} needs permission to access AnkiDroid.",
+                    if (permanentlyDenied)
+                        "Permission was denied. Tap to open app settings, then go to:\n\nPermissions → Additional Permissions → Enable \"Read and write to the AnkiDroid database\""
+                    else
+                        "To add flashcards to Anki, ${getString(R.string.app_name)} needs permission to access AnkiDroid.",
                     R.drawable.ic_lock,
-                    onClick = { requestAnkiPermission.launch(AnkiManager.PERMISSION) })
+                    onClick = {
+                        if (permanentlyDenied) {
+                            val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = android.net.Uri.fromParts("package", requireContext().packageName, null)
+                            }
+                            startActivity(intent)
+                        } else {
+                            requestAnkiPermission.launch(AnkiManager.PERMISSION)
+                        }
+                    })
                 llAnkiPermission.visibility = View.VISIBLE
                 spinnerAnkiDeck.visibility = View.GONE
             }
