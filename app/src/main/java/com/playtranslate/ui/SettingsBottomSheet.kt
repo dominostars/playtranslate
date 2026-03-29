@@ -113,6 +113,15 @@ class SettingsBottomSheet : DialogFragment() {
         parent.addView(newView, index)
         currentView = newView
         setupViews(newView)
+        // Update the dialog window's system bar colors to match the new theme
+        val ctx = requireActivity()
+        val bgColor = ctx.themeColor(R.attr.colorBgDark)
+        dialog?.window?.apply {
+            statusBarColor = bgColor
+            navigationBarColor = bgColor
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(
+                ctx.themeColor(R.attr.colorBgSurface)))
+        }
     }
 
     private fun setupViews(view: View) {
