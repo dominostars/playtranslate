@@ -1600,11 +1600,12 @@ class CaptureService : Service() {
      * Core capture → crop → OCR → translate pipeline shared by one-shot
      * and all live modes. Returns a [PipelineResult] or null if no text.
      */
-    private suspend fun runCaptureOcrTranslate(): PipelineResult? {
+    private suspend fun runCaptureOcrTranslate(onScreenshotTaken: (() -> Unit)? = null): PipelineResult? {
         val raw: Bitmap = captureScreen(gameDisplayId) ?: run {
             onError?.invoke("Screenshot failed for display $gameDisplayId. Try a different display in Settings.")
             return null
         }
+        onScreenshotTaken?.invoke()
         var bitmap: Bitmap? = raw
         try {
             val screenshotPath = PlayTranslateAccessibilityService.instance
@@ -1660,8 +1661,7 @@ class CaptureService : Service() {
             return
         }
         onStatusUpdate?.invoke(getString(R.string.status_capturing))
-        val pipeline = runCaptureOcrTranslate()
-        flashRegionIndicator()
+        val pipeline = runCaptureOcrTranslate(onScreenshotTaken = { flashRegionIndicator() })
         if (pipeline != null) {
             onResult?.invoke(pipeline.result)
         } else {
