@@ -19,6 +19,9 @@
     <string name="accessibility_dialog_title">Accessibility permission needed</string>
     <string name="accessibility_dialog_message">PlayTranslate needs the Accessibility permission to capture screenshots of the game screen on the top display while staying open on the bottom display.\n\nPlayTranslate does not read any UI content, monitor input, or access any personal data — it only takes screenshots when you tap Translate or start live mode.\n\nGo to Settings → Accessibility → Installed apps → PlayTranslate → Enable.</string>
     <string name="accessibility_dialog_open">Open Accessibility Settings</string>
+    <string name="inapp_dual_screen_title">Dual screen required</string>
+    <string name="inapp_dual_screen_message">In-App Only mode shows translations in the app, which requires a dual screen setup so you can see both the game and translations.\n\nYou can start with overlay mode instead.</string>
+    <string name="inapp_start_with_overlays">Start with Overlays</string>
     <string name="status_accessibility_needed">Enable PlayTranslate in Accessibility Settings first</string>
 
     <!-- Status messages -->

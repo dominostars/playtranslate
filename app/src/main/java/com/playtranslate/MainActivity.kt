@@ -437,13 +437,13 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             AutoTranslationMode.IN_APP_ONLY -> {
                 if (Prefs.isSingleScreen(this)) {
                     androidx.appcompat.app.AlertDialog.Builder(this)
-                        .setTitle("Dual Screen Required")
-                        .setMessage("\"In-App Only\" mode shows translations in this app, which requires a dual screen setup so you can see both the game and translations. You can start with overlay mode instead.")
-                        .setNegativeButton(android.R.string.cancel, null)
-                        .setPositiveButton("Start with Overlays") { _, _ ->
+                        .setTitle(R.string.inapp_dual_screen_title)
+                        .setMessage(R.string.inapp_dual_screen_message)
+                        .setPositiveButton(R.string.inapp_start_with_overlays) { _, _ ->
                             prefs.autoTranslationMode = AutoTranslationMode.OVERLAYS
                             doStartLive()
                         }
+                        .setNegativeButton(android.R.string.cancel, null)
                         .show()
                     return
                 }

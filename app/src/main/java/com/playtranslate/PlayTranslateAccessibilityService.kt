@@ -24,6 +24,7 @@ import android.view.accessibility.AccessibilityEvent
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.playtranslate.ui.DimController
+import com.playtranslate.ui.OverlayAlert
 import com.playtranslate.ui.DragLookupController
 import com.playtranslate.ui.FloatingIconMenu
 import com.playtranslate.ui.FloatingOverlayIcon
@@ -926,9 +927,24 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                     sendMainActivityIntent(MainActivity.ACTION_STOP_LIVE)
                 }
             } else {
-                // Starting: In-App Only always routes through MainActivity (brings it to foreground)
+                // Starting
                 val prefs = Prefs(this)
-                if (prefs.autoTranslationMode == AutoTranslationMode.IN_APP_ONLY) {
+                if (prefs.autoTranslationMode == AutoTranslationMode.IN_APP_ONLY
+                    && Prefs.isSingleScreen(this)) {
+                    // Single-screen + In-App Only: show overlay alert
+                    val displayCtx = createDisplayContext(display)
+                    val overlayWm = displayCtx.getSystemService(WindowManager::class.java)
+                    if (overlayWm != null) OverlayAlert.Builder(displayCtx, overlayWm)
+                        .setTitle("Dual screen required")
+                        .setMessage("In-App Only mode shows translations in the app, which requires a dual screen setup.\n\nYou can start with overlay mode instead.")
+                        .addButton("Start with Overlays", android.graphics.Color.parseColor("#D4A020")) {
+                            prefs.autoTranslationMode = AutoTranslationMode.OVERLAYS
+                            toggleLiveDirect(true)
+                        }
+                        .addCancelButton()
+                        .show()
+                } else if (prefs.autoTranslationMode == AutoTranslationMode.IN_APP_ONLY) {
+                    // Dual screen: bring app to foreground for In-App Only
                     sendMainActivityIntent(MainActivity.ACTION_START_LIVE)
                 } else {
                     val effectivelySingleScreen = Prefs.isSingleScreen(this) || !MainActivity.isInForeground
