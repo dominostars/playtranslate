@@ -38,6 +38,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
 
     var onHideIcon: (() -> Unit)? = null
     var onHideTemporary: (() -> Unit)? = null
+    var onCloseRequested: (() -> Unit)? = null
     var onDismiss: (() -> Unit)? = null
     var onRegionSelected: ((RegionEntry) -> Unit)? = null
     var onClearRegion: (() -> Unit)? = null
@@ -96,7 +97,6 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
 
     private val menuCard: LinearLayout
     private val instructionText: TextView
-    private var confirmDialog: LinearLayout? = null
     private val appName: String = context.getString(R.string.app_name)
 
     private lateinit var liveIcon: TextView
@@ -233,7 +233,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
-            setOnClickListener { showConfirmDialog() }
+            setOnClickListener { onCloseRequested?.invoke() }
         }
         val hideIcon = TextView(context).apply {
             text = "\u2715"
@@ -375,24 +375,6 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        // Don't intercept while confirmation dialog is showing
-        if (confirmDialog != null) {
-            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                val activeView = confirmDialog ?: return false
-                val loc = IntArray(2)
-                activeView.getLocationOnScreen(loc)
-                val rect = RectF(
-                    loc[0].toFloat(), loc[1].toFloat(),
-                    loc[0].toFloat() + activeView.width, loc[1].toFloat() + activeView.height
-                )
-                if (!rect.contains(event.rawX, event.rawY)) {
-                    onDismiss?.invoke()
-                    return true
-                }
-            }
-            return super.onTouchEvent(event)
-        }
-
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 val loc = IntArray(2)
@@ -459,215 +441,6 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             }
         }
         return super.onTouchEvent(event)
-    }
-
-    // ── Confirmation dialog ──────────────────────────────────────────────
-
-    private fun showConfirmDialog() {
-        menuCard.visibility = View.GONE
-        instructionText.visibility = View.GONE
-
-        val dialog = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#F0222222"))
-                cornerRadius = 16 * dp
-            }
-            elevation = 12 * dp
-            gravity = Gravity.CENTER_HORIZONTAL
-            val pad = (24 * dp).toInt()
-            setPadding(pad, pad, pad, (16 * dp).toInt())
-        }
-
-        val circleSize = (56 * dp).toInt()
-        val imgSize = (circleSize * 1.5f).toInt()
-        val offset = (circleSize - imgSize) / 2
-        val iconFrame = FrameLayout(context).apply {
-            layoutParams = LinearLayout.LayoutParams(circleSize, circleSize).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-                bottomMargin = (16 * dp).toInt()
-            }
-            clipToOutline = true
-            outlineProvider = object : android.view.ViewOutlineProvider() {
-                override fun getOutline(view: View, outline: android.graphics.Outline) {
-                    outline.setOval(0, 0, view.width, view.height)
-                }
-            }
-        }
-        val icon = ImageView(context).apply {
-            setImageResource(R.mipmap.ic_launcher_img)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            layoutParams = FrameLayout.LayoutParams(imgSize, imgSize).apply {
-                leftMargin = offset
-                topMargin = offset
-            }
-        }
-        iconFrame.addView(icon)
-        dialog.addView(iconFrame)
-
-        val hPad = (20 * dp).toInt()
-        val vPad = (10 * dp).toInt()
-        val btnLp = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-
-        if (isSingleScreen) {
-            // Single screen: "Disable PlayTranslate?"
-            dialog.addView(TextView(context).apply {
-                text = "Disable $appName?"
-                setTextColor(Color.WHITE)
-                textSize = 17f
-                gravity = Gravity.CENTER
-                setTypeface(null, Typeface.BOLD)
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    gravity = Gravity.CENTER_HORIZONTAL
-                    bottomMargin = (8 * dp).toInt()
-                }
-            })
-
-            dialog.addView(TextView(context).apply {
-                text = "Re-enable in the $appName settings"
-                setTextColor(Color.parseColor("#AAAAAA"))
-                textSize = 13f
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    gravity = Gravity.CENTER_HORIZONTAL
-                    bottomMargin = (20 * dp).toInt()
-                }
-            })
-
-            val btnTurnOff = Button(context).apply {
-                text = "Turn Off"
-                setTextColor(Color.WHITE)
-                textSize = 14f
-                background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#E04040"))
-                    cornerRadius = 8 * dp
-                }
-                isAllCaps = false
-                setPadding(hPad, vPad, hPad, vPad)
-                layoutParams = LinearLayout.LayoutParams(btnLp).apply {
-                    bottomMargin = (8 * dp).toInt()
-                }
-                setOnClickListener { onHideIcon?.invoke() }
-            }
-
-            val btnCancel = Button(context).apply {
-                text = "Cancel"
-                setTextColor(Color.parseColor("#AAAAAA"))
-                textSize = 14f
-                setBackgroundColor(Color.TRANSPARENT)
-                isAllCaps = false
-                setPadding(hPad, vPad, hPad, vPad)
-                layoutParams = LinearLayout.LayoutParams(btnLp)
-                setOnClickListener { onDismiss?.invoke() }
-            }
-
-            dialog.addView(btnTurnOff)
-            dialog.addView(btnCancel)
-        } else {
-            // Dual screen: "Hide PlayTranslate game screen controls?"
-            dialog.addView(TextView(context).apply {
-                text = "Hide $appName game screen controls?"
-                setTextColor(Color.WHITE)
-                textSize = 17f
-                gravity = Gravity.CENTER
-                setTypeface(null, Typeface.BOLD)
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    gravity = Gravity.CENTER_HORIZONTAL
-                    bottomMargin = (8 * dp).toInt()
-                }
-            })
-
-            dialog.addView(TextView(context).apply {
-                text = "\u201CHide for Now\u201D brings it back next time you open $appName. \u201CTurn Off\u201D disables it until re-enabled in settings."
-                setTextColor(Color.parseColor("#AAAAAA"))
-                textSize = 13f
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    gravity = Gravity.CENTER_HORIZONTAL
-                    bottomMargin = (20 * dp).toInt()
-                }
-            })
-
-            val btnHideForNow = Button(context).apply {
-                text = "Hide for Now"
-                setTextColor(Color.WHITE)
-                textSize = 14f
-                background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#D4A020"))
-                    cornerRadius = 8 * dp
-                }
-                isAllCaps = false
-                setPadding(hPad, vPad, hPad, vPad)
-                layoutParams = LinearLayout.LayoutParams(btnLp).apply {
-                    bottomMargin = (8 * dp).toInt()
-                }
-                setOnClickListener { onHideTemporary?.invoke() }
-            }
-
-            val btnTurnOff = Button(context).apply {
-                text = "Turn Off"
-                setTextColor(Color.WHITE)
-                textSize = 14f
-                background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#E04040"))
-                    cornerRadius = 8 * dp
-                }
-                isAllCaps = false
-                setPadding(hPad, vPad, hPad, vPad)
-                layoutParams = LinearLayout.LayoutParams(btnLp).apply {
-                    bottomMargin = (8 * dp).toInt()
-                }
-                setOnClickListener { onHideIcon?.invoke() }
-            }
-
-            val btnCancel = Button(context).apply {
-                text = "Cancel"
-                setTextColor(Color.parseColor("#AAAAAA"))
-                textSize = 14f
-                setBackgroundColor(Color.TRANSPARENT)
-                isAllCaps = false
-                setPadding(hPad, vPad, hPad, vPad)
-                layoutParams = LinearLayout.LayoutParams(btnLp)
-                setOnClickListener { onDismiss?.invoke() }
-            }
-
-            dialog.addView(btnHideForNow)
-            dialog.addView(btnTurnOff)
-            dialog.addView(btnCancel)
-        }
-
-        val maxW = (280 * dp).toInt()
-        val dlp = LayoutParams(maxW, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            gravity = Gravity.CENTER
-        }
-        addView(dialog, dlp)
-        confirmDialog = dialog
-
-        dialog.alpha = 0f
-        dialog.scaleX = 0.9f
-        dialog.scaleY = 0.9f
-        dialog.animate()
-            .alpha(1f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .setDuration(150)
-            .setInterpolator(DecelerateInterpolator())
-            .start()
     }
 
     // ── Positioning ──────────────────────────────────────────────────────

@@ -906,6 +906,10 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             dismissFloatingMenu()
             hideFloatingIcon()
         }
+        menu.onCloseRequested = {
+            dismissFloatingMenu()
+            showHideConfirmAlert(display)
+        }
         menu.onDismiss = {
             // Only refresh if the menu is still showing — other handlers
             // (onRegionSelected, onToggleLive, etc.) call dismissFloatingMenu
@@ -1022,6 +1026,37 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         if (wasShowing) {
             CaptureService.instance?.holdActive = false
         }
+    }
+
+    private fun showHideConfirmAlert(display: android.view.Display) {
+        val displayCtx = createDisplayContext(display)
+        val overlayWm = displayCtx.getSystemService(WindowManager::class.java) ?: return
+        val appName = getString(R.string.app_name)
+
+        val builder = OverlayAlert.Builder(displayCtx, overlayWm)
+
+        if (Prefs.isSingleScreen(this)) {
+            builder.setTitle("Disable $appName?")
+                .setMessage("Re-enable in the $appName settings")
+                .addButton("Turn Off", android.graphics.Color.parseColor("#E04040")) {
+                    Prefs(this).showOverlayIcon = false
+                    hideFloatingIcon()
+                }
+                .addCancelButton()
+        } else {
+            builder.setTitle("Hide $appName game screen controls?")
+                .setMessage("\u201CHide for Now\u201D brings it back next time you open $appName. \u201CTurn Off\u201D disables it until re-enabled in settings.")
+                .addButton("Hide for Now", android.graphics.Color.parseColor("#D4A020")) {
+                    hideFloatingIcon()
+                }
+                .addButton("Turn Off", android.graphics.Color.parseColor("#E04040")) {
+                    Prefs(this).showOverlayIcon = false
+                    hideFloatingIcon()
+                }
+                .addCancelButton()
+        }
+
+        builder.show()
     }
 
     // ── Single-screen region editor ─────────────────────────────────────
