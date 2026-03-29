@@ -458,13 +458,11 @@
                 android:orientation="vertical"
                 android:visibility="gone" />
 
-            <TextView
-                android:id="@+id/tvAnkiStatus"
+            <LinearLayout
+                android:id="@+id/llAnkiPermission"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textColor="?attr/colorTextHint"
-                android:textSize="14sp"
-                android:layout_marginTop="4dp"
+                android:orientation="vertical"
                 android:visibility="gone" />
 
             <Spinner
@@ -476,16 +474,6 @@
                 android:layout_marginTop="4dp"
                 android:visibility="gone" />
 
-            <Button
-                android:id="@+id/btnGrantAnkiPermission"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:layout_marginTop="8dp"
-                android:text="@string/btn_grant_anki_permission"
-                android:backgroundTint="?attr/colorAccentPrimary"
-                android:textColor="?attr/colorTextOnAccent"
-                android:textSize="12sp"
-                android:visibility="gone" />
 
             <!-- ═══════════════════════════════════════════════════════════ -->
             <!-- THEME                                                       -->

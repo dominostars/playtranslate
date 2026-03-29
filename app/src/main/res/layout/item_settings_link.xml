@@ -33,6 +33,7 @@
                 android:textStyle="bold" />
 
             <ImageView
+                android:id="@+id/ivLinkIcon"
                 android:layout_width="16dp"
                 android:layout_height="16dp"
                 android:src="@drawable/ic_open_in_new"

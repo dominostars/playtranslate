@@ -456,31 +456,29 @@ class SettingsBottomSheet : DialogFragment() {
 
     private fun refreshAnkiSection() {
         val v = currentView ?: view ?: return
-        val ankiManager    = AnkiManager(requireContext())
-        val llAnkiGetApp   = v.findViewById<LinearLayout>(R.id.llAnkiGetApp)
-        val tvAnkiStatus   = v.findViewById<TextView>(R.id.tvAnkiStatus)
-        val btnGrantAnki   = v.findViewById<Button>(R.id.btnGrantAnkiPermission)
+        val ankiManager       = AnkiManager(requireContext())
+        val llAnkiGetApp      = v.findViewById<LinearLayout>(R.id.llAnkiGetApp)
+        val llAnkiPermission  = v.findViewById<LinearLayout>(R.id.llAnkiPermission)
 
         val installed = ankiManager.isAnkiDroidInstalled()
         llAnkiGetApp.visibility = if (installed) View.GONE else View.VISIBLE
 
         when {
             !installed -> {
-                tvAnkiStatus.visibility = View.GONE
-                btnGrantAnki.visibility = View.GONE
+                llAnkiPermission.visibility = View.GONE
                 spinnerAnkiDeck.visibility = View.GONE
             }
             !ankiManager.hasPermission() -> {
-                tvAnkiStatus.text = getString(R.string.anki_permission_needed)
-                tvAnkiStatus.visibility = View.VISIBLE
+                llAnkiPermission.removeAllViews()
+                addActionRow(llAnkiPermission, "Grant AnkiDroid Access",
+                    "To add flashcards to Anki, ${getString(R.string.app_name)} needs permission to access AnkiDroid.",
+                    R.drawable.ic_lock,
+                    onClick = { requestAnkiPermission.launch(AnkiManager.PERMISSION) })
+                llAnkiPermission.visibility = View.VISIBLE
                 spinnerAnkiDeck.visibility = View.GONE
-                btnGrantAnki.visibility = View.VISIBLE
-                btnGrantAnki.setOnClickListener {
-                    requestAnkiPermission.launch(AnkiManager.PERMISSION)
-                }
             }
             else -> {
-                btnGrantAnki.visibility = View.GONE
+                llAnkiPermission.visibility = View.GONE
                 if (spinnerAnkiDeck.visibility != View.VISIBLE) loadAnkiDecks()
             }
         }
@@ -590,21 +588,17 @@ class SettingsBottomSheet : DialogFragment() {
     // ── Anki decks ────────────────────────────────────────────────────────
 
     private fun loadAnkiDecks() {
-        val view = view ?: return
-        val tvAnkiStatus = view.findViewById<TextView>(R.id.tvAnkiStatus)
-        val btnGrantAnki = view.findViewById<Button>(R.id.btnGrantAnkiPermission)
+        val view = currentView ?: view ?: return
+        val llAnkiPermission = view.findViewById<LinearLayout>(R.id.llAnkiPermission)
         val prefs = Prefs(requireContext())
 
-        tvAnkiStatus.text       = getString(R.string.anki_loading_decks)
-        tvAnkiStatus.visibility = View.VISIBLE
+        llAnkiPermission.visibility = View.GONE
         spinnerAnkiDeck.visibility = View.GONE
-        btnGrantAnki.visibility    = View.GONE
 
         viewLifecycleOwner.lifecycleScope.launch {
             val decks = withContext(Dispatchers.IO) { AnkiManager(requireContext()).getDecks() }
 
             if (decks.isEmpty()) {
-                tvAnkiStatus.text = getString(R.string.anki_no_deck_selected)
                 return@launch
             }
 
@@ -628,29 +622,40 @@ class SettingsBottomSheet : DialogFragment() {
                 override fun onNothingSelected(parent: AdapterView<*>?) = Unit
             }
 
-            tvAnkiStatus.visibility    = View.GONE
             spinnerAnkiDeck.visibility = View.VISIBLE
         }
     }
 
     // ── Link rows ─────────────────────────────────────────────────────────
 
+    /** Add a link row that opens a URL. Long-press copies the URL. */
     private fun addLinkRow(container: LinearLayout, title: String, subtitle: String, url: String) {
+        addActionRow(container, title, subtitle, R.drawable.ic_open_in_new,
+            onClick = { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))) },
+            onLongClick = {
+                val ctx = requireContext()
+                val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("URL", url))
+                android.widget.Toast.makeText(ctx, "Link copied", android.widget.Toast.LENGTH_SHORT).show()
+            })
+    }
+
+    /** Add a styled action row with configurable icon and click behavior. */
+    private fun addActionRow(
+        container: LinearLayout, title: String, subtitle: String,
+        iconRes: Int, onClick: () -> Unit, onLongClick: (() -> Unit)? = null
+    ): View {
         val row = LayoutInflater.from(requireContext())
             .inflate(R.layout.item_settings_link, container, false)
         row.findViewById<TextView>(R.id.tvLinkTitle).text = title
         row.findViewById<TextView>(R.id.tvLinkSubtitle).text = subtitle
-        row.setOnClickListener {
-            startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
-        }
-        row.setOnLongClickListener {
-            val ctx = requireContext()
-            val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("URL", url))
-            android.widget.Toast.makeText(ctx, "Link copied", android.widget.Toast.LENGTH_SHORT).show()
-            true
+        row.findViewById<ImageView>(R.id.ivLinkIcon).setImageResource(iconRes)
+        row.setOnClickListener { onClick() }
+        if (onLongClick != null) {
+            row.setOnLongClickListener { onLongClick(); true }
         }
         container.addView(row)
+        return row
     }
 
     // ── Theme picker ──────────────────────────────────────────────────────
