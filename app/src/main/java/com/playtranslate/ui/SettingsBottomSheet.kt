@@ -468,6 +468,7 @@ class SettingsBottomSheet : DialogFragment() {
     private fun refreshAnkiSection() {
         val v = currentView ?: view ?: return
         val ankiManager       = AnkiManager(requireContext())
+        val tvAnkiTitle       = v.findViewById<TextView>(R.id.tvAnkiSectionTitle)
         val llAnkiGetApp      = v.findViewById<LinearLayout>(R.id.llAnkiGetApp)
         val llAnkiPermission  = v.findViewById<LinearLayout>(R.id.llAnkiPermission)
 
@@ -476,10 +477,12 @@ class SettingsBottomSheet : DialogFragment() {
 
         when {
             !installed -> {
+                tvAnkiTitle.text = "ANKI"
                 llAnkiPermission.visibility = View.GONE
                 spinnerAnkiDeck.visibility = View.GONE
             }
             !ankiManager.hasPermission() -> {
+                tvAnkiTitle.text = "ANKI"
                 llAnkiPermission.removeAllViews()
                 addActionRow(llAnkiPermission, "Grant AnkiDroid Access",
                     "To add flashcards to Anki, ${getString(R.string.app_name)} needs permission to access AnkiDroid.",
@@ -489,6 +492,7 @@ class SettingsBottomSheet : DialogFragment() {
                 spinnerAnkiDeck.visibility = View.GONE
             }
             else -> {
+                tvAnkiTitle.text = "ANKI DECK"
                 llAnkiPermission.visibility = View.GONE
                 if (spinnerAnkiDeck.visibility != View.VISIBLE) loadAnkiDecks()
             }
