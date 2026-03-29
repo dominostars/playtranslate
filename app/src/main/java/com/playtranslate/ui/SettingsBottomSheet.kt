@@ -377,6 +377,16 @@ class SettingsBottomSheet : DialogFragment() {
         // ── Theme picker ──────────────────────────────────────────────────
         buildThemePicker(llThemePicker, prefs)
 
+        // ── Support links ───────────────────────────────────────────────
+        val llSupportLinks = view.findViewById<LinearLayout>(R.id.llSupportLinks)
+        val appName = getString(R.string.app_name)
+        addLinkRow(llSupportLinks, "Join Discord",
+            "Feedback, bugs, requests, updates!",
+            "https://go.playtranslate.com/discord")
+        addLinkRow(llSupportLinks, "Support Me",
+            getString(R.string.support_donate_subtitle, appName),
+            "https://go.playtranslate.com/donate")
+
         // ── Debug section (debug builds only) ────────────────────────────
         val llDebugSection = view.findViewById<LinearLayout>(R.id.llDebugSection)
         if (com.playtranslate.BuildConfig.DEBUG) {
@@ -626,6 +636,26 @@ class SettingsBottomSheet : DialogFragment() {
             tvAnkiStatus.visibility    = View.GONE
             spinnerAnkiDeck.visibility = View.VISIBLE
         }
+    }
+
+    // ── Link rows ─────────────────────────────────────────────────────────
+
+    private fun addLinkRow(container: LinearLayout, title: String, subtitle: String, url: String) {
+        val row = LayoutInflater.from(requireContext())
+            .inflate(R.layout.item_settings_link, container, false)
+        row.findViewById<TextView>(R.id.tvLinkTitle).text = title
+        row.findViewById<TextView>(R.id.tvLinkSubtitle).text = subtitle
+        row.setOnClickListener {
+            startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+        }
+        row.setOnLongClickListener {
+            val ctx = requireContext()
+            val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("URL", url))
+            android.widget.Toast.makeText(ctx, "Link copied", android.widget.Toast.LENGTH_SHORT).show()
+            true
+        }
+        container.addView(row)
     }
 
     // ── Theme picker ──────────────────────────────────────────────────────

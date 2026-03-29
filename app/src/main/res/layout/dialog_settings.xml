@@ -526,6 +526,32 @@
                 android:orientation="horizontal" />
 
             <!-- ═══════════════════════════════════════════════════════════ -->
+            <!-- SUPPORT                                                      -->
+            <!-- ═══════════════════════════════════════════════════════════ -->
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="?attr/colorBgDivider"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="16dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="SUPPORT"
+                android:textColor="?attr/colorTextSecondary"
+                android:textSize="11sp"
+                android:letterSpacing="0.15"
+                android:layout_marginBottom="8dp" />
+
+            <LinearLayout
+                android:id="@+id/llSupportLinks"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <!-- ═══════════════════════════════════════════════════════════ -->
             <!-- DEBUG (only in debug builds)                                -->
             <!-- ═══════════════════════════════════════════════════════════ -->
 

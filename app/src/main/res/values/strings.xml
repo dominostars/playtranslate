@@ -2,6 +2,9 @@
 <resources>
     <string name="app_name">PlayTranslate</string>
 
+    <!-- Support -->
+    <string name="support_donate_subtitle">You can support %1$s on Ko-Fi</string>
+
     <!-- Actions -->
     <string name="btn_translate">Translate</string>
     <string name="btn_translate_once">Use Without Saving</string>
