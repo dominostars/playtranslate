@@ -645,11 +645,25 @@ class SettingsBottomSheet : DialogFragment() {
         container: LinearLayout, title: String, subtitle: String,
         iconRes: Int, onClick: () -> Unit, onLongClick: (() -> Unit)? = null
     ): View {
-        val row = LayoutInflater.from(requireContext())
+        val ctx = requireContext()
+        val row = LayoutInflater.from(ctx)
             .inflate(R.layout.item_settings_link, container, false)
         row.findViewById<TextView>(R.id.tvLinkTitle).text = title
         row.findViewById<TextView>(R.id.tvLinkSubtitle).text = subtitle
         row.findViewById<ImageView>(R.id.ivLinkIcon).setImageResource(iconRes)
+        // Tint background with a very light wash of the accent color
+        val accent = ctx.themeColor(R.attr.colorAccentPrimary)
+        val tinted = android.graphics.Color.argb(15,
+            android.graphics.Color.red(accent),
+            android.graphics.Color.green(accent),
+            android.graphics.Color.blue(accent))
+        val bg = row.background
+        if (bg is android.graphics.drawable.RippleDrawable) {
+            val shape = bg.findDrawableByLayerId(0) as? android.graphics.drawable.GradientDrawable
+                ?: (bg.getDrawable(0) as? android.graphics.drawable.GradientDrawable)
+            shape?.setColor(tinted)
+            shape?.setStroke((1 * ctx.resources.displayMetrics.density).toInt(), accent)
+        }
         row.setOnClickListener { onClick() }
         if (onLongClick != null) {
             row.setOnLongClickListener { onLongClick(); true }
