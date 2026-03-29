@@ -495,9 +495,10 @@ class CaptureService : Service() {
         val boxes = session.cachedOverlayBoxes ?: return null
         val screenshotPath = lastCleanScreenshotPath ?: return null
         val bitmap = android.graphics.BitmapFactory.decodeFile(screenshotPath) ?: return null
+        var colorRef: Bitmap? = null
         try {
             val colorScale = 4
-            val colorRef = Bitmap.createScaledBitmap(
+            colorRef = Bitmap.createScaledBitmap(
                 bitmap, bitmap.width / colorScale, bitmap.height / colorScale, false
             )
             bitmap.recycle()
@@ -509,8 +510,10 @@ class CaptureService : Service() {
                 box.copy(bgColor = bg, textColor = tc)
             }
         } catch (e: Exception) {
-            bitmap.recycle()
             return null
+        } finally {
+            if (bitmap.isRecycled.not()) bitmap.recycle()
+            colorRef?.let { if (!it.isRecycled) it.recycle() }
         }
     }
 

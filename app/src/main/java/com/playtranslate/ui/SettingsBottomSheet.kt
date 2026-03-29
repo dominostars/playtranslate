@@ -59,6 +59,7 @@ class SettingsBottomSheet : DialogFragment() {
 
     private var deckEntries: List<Map.Entry<Long, String>> = emptyList()
     private var displayList: List<android.view.Display> = emptyList()
+    private var displayListener: DisplayManager.DisplayListener? = null
     private var selectedDisplayIdx = 0
     private val displayThumbnails = HashMap<Int, Bitmap?>()
     private var currentView: View? = null
@@ -81,6 +82,11 @@ class SettingsBottomSheet : DialogFragment() {
         ivIconPreview = null
         displayThumbnails.values.forEach { it?.recycle() }
         displayThumbnails.clear()
+        displayListener?.let {
+            val dm = context?.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+            dm?.unregisterDisplayListener(it)
+        }
+        displayListener = null
         super.onDestroyView()
     }
 
@@ -270,12 +276,14 @@ class SettingsBottomSheet : DialogFragment() {
 
         buildDisplayRows(prefs)
 
-        // Reload settings when displays change
-        displayManager.registerDisplayListener(object : DisplayManager.DisplayListener {
+        // Reload settings when displays change (unregister old listener first)
+        displayListener?.let { displayManager.unregisterDisplayListener(it) }
+        displayListener = object : DisplayManager.DisplayListener {
             override fun onDisplayAdded(displayId: Int) { reinflateIfDisplayCountChanged(displayManager) }
             override fun onDisplayRemoved(displayId: Int) { reinflateIfDisplayCountChanged(displayManager) }
             override fun onDisplayChanged(displayId: Int) {}
-        }, null)
+        }
+        displayManager.registerDisplayListener(displayListener, null)
 
         val myDisplayId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             requireActivity().display?.displayId ?: android.view.Display.DEFAULT_DISPLAY
