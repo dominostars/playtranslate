@@ -451,24 +451,12 @@
                 android:letterSpacing="0.15"
                 android:layout_marginBottom="4dp" />
 
-            <TextView
-                android:id="@+id/tvAnkiDescription"
+            <LinearLayout
+                android:id="@+id/llAnkiGetApp"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/anki_section_description"
-                android:textColor="?attr/colorTextHint"
-                android:textSize="14sp"
-                android:lineSpacingMultiplier="1.3" />
-
-            <TextView
-                android:id="@+id/tvAnkiPlayStoreLink"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/anki_play_store_link"
-                android:textColor="?attr/colorAccentPrimary"
-                android:textSize="14sp"
-                android:layout_marginTop="2dp"
-                android:layout_marginBottom="6dp" />
+                android:orientation="vertical"
+                android:visibility="gone" />
 
             <TextView
                 android:id="@+id/tvAnkiStatus"

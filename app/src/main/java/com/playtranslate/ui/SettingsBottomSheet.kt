@@ -296,13 +296,11 @@ class SettingsBottomSheet : DialogFragment() {
             }
         }
 
-        // ── AnkiDroid Play Store link ─────────────────────────────────────
-        view.findViewById<TextView>(R.id.tvAnkiPlayStoreLink).setOnClickListener {
-            val uri = android.net.Uri.parse(getString(R.string.anki_play_store_url))
-            startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, uri))
-        }
-
         // ── Anki section ─────────────────────────────────────────────────
+        val llAnkiGetApp = view.findViewById<LinearLayout>(R.id.llAnkiGetApp)
+        addLinkRow(llAnkiGetApp, "Get AnkiDroid free on Google Play",
+            getString(R.string.anki_section_description, getString(R.string.app_name)),
+            getString(R.string.anki_play_store_url))
         refreshAnkiSection()
 
         // ── Auto translation mode toggle ─────────────────────────────────
@@ -457,17 +455,14 @@ class SettingsBottomSheet : DialogFragment() {
     // ── Anki section ──────────────────────────────────────────────────────
 
     private fun refreshAnkiSection() {
-        val v = view ?: return
+        val v = currentView ?: view ?: return
         val ankiManager    = AnkiManager(requireContext())
-        val tvDescription  = v.findViewById<TextView>(R.id.tvAnkiDescription)
-        val tvPlayStore    = v.findViewById<TextView>(R.id.tvAnkiPlayStoreLink)
+        val llAnkiGetApp   = v.findViewById<LinearLayout>(R.id.llAnkiGetApp)
         val tvAnkiStatus   = v.findViewById<TextView>(R.id.tvAnkiStatus)
         val btnGrantAnki   = v.findViewById<Button>(R.id.btnGrantAnkiPermission)
 
         val installed = ankiManager.isAnkiDroidInstalled()
-        // Show description + Play Store link only when AnkiDroid is not installed
-        tvDescription.visibility = if (installed) View.GONE else View.VISIBLE
-        tvPlayStore.visibility   = if (installed) View.GONE else View.VISIBLE
+        llAnkiGetApp.visibility = if (installed) View.GONE else View.VISIBLE
 
         when {
             !installed -> {

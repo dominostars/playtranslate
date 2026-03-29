@@ -128,7 +128,7 @@
     <string name="anki_not_installed_title">Create flashcard for review</string>
     <string name="anki_not_installed_message">Save words you discover while playing and review them later.\n\nPlayTranslate can save translated sentences, vocabulary, and screenshots directly to AnkiDroid, a free spaced-repetition flashcard app.</string>
     <string name="anki_not_installed_get">Get AnkiDroid</string>
-    <string name="anki_section_description">AnkiDroid is a free spaced-repetition flashcard app. Connect it to PlayTranslate to save translated sentences and vocabulary — with the original text, translation, and a screenshot — directly to your Anki decks.</string>
+    <string name="anki_section_description">Are you a language learner? Create flashcards in %1$s from unknown words and sentences, and review them later using AnkiDroid, a free and popular spaced-repetition flashcard app.</string>
     <string name="anki_play_store_url">https://play.google.com/store/apps/details?id=com.ichi2.anki</string>
     <string name="anki_play_store_link">Get AnkiDroid on Google Play →</string>
     <string name="anki_permission_rationale_title">AnkiDroid permission needed</string>
