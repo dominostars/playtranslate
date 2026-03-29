@@ -355,38 +355,46 @@
             </LinearLayout>
 
             <!-- ═══════════════════════════════════════════════════════════ -->
-            <!-- CAPTURE DISPLAY                                             -->
+            <!-- CAPTURE DISPLAY (hidden when only one display)              -->
             <!-- ═══════════════════════════════════════════════════════════ -->
 
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?attr/colorBgDivider"
-                android:layout_marginTop="16dp"
-                android:layout_marginBottom="16dp" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="CAPTURE DISPLAY"
-                android:textColor="?attr/colorTextSecondary"
-                android:textSize="11sp"
-                android:letterSpacing="0.15"
-                android:layout_marginBottom="8dp" />
-
             <LinearLayout
-                android:id="@+id/llDisplayOptions"
+                android:id="@+id/llCaptureDisplaySection"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical" />
+                android:orientation="vertical">
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/settings_display_hint"
-                android:textColor="?attr/colorTextHint"
-                android:textSize="14sp"
-                android:layout_marginTop="4dp" />
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="?attr/colorBgDivider"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginBottom="16dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="CAPTURE DISPLAY"
+                    android:textColor="?attr/colorTextSecondary"
+                    android:textSize="11sp"
+                    android:letterSpacing="0.15"
+                    android:layout_marginBottom="8dp" />
+
+                <LinearLayout
+                    android:id="@+id/llDisplayOptions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_display_hint"
+                    android:textColor="?attr/colorTextHint"
+                    android:textSize="14sp"
+                    android:layout_marginTop="4dp" />
+
+            </LinearLayout>
 
             <!-- ═══════════════════════════════════════════════════════════ -->
             <!-- TRANSLATION SERVICE                                         -->

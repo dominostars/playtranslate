@@ -261,10 +261,21 @@ class SettingsBottomSheet : DialogFragment() {
 
         val displayManager = requireContext().getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         displayList = displayManager.displays.toList()
+        lastDisplayCount = displayList.size
         selectedDisplayIdx = displayList.indexOfFirst { it.displayId == prefs.captureDisplayId }
             .takeIf { it >= 0 } ?: 0
 
+        val llCaptureDisplaySection = view.findViewById<View>(R.id.llCaptureDisplaySection)
+        llCaptureDisplaySection.visibility = if (displayList.size <= 1) View.GONE else View.VISIBLE
+
         buildDisplayRows(prefs)
+
+        // Reload settings when displays change
+        displayManager.registerDisplayListener(object : DisplayManager.DisplayListener {
+            override fun onDisplayAdded(displayId: Int) { reinflateIfDisplayCountChanged(displayManager) }
+            override fun onDisplayRemoved(displayId: Int) { reinflateIfDisplayCountChanged(displayManager) }
+            override fun onDisplayChanged(displayId: Int) {}
+        }, null)
 
         val myDisplayId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             requireActivity().display?.displayId ?: android.view.Display.DEFAULT_DISPLAY
@@ -623,6 +634,16 @@ class SettingsBottomSheet : DialogFragment() {
             }
 
             spinnerAnkiDeck.visibility = View.VISIBLE
+        }
+    }
+
+    private var lastDisplayCount = 0
+
+    private fun reinflateIfDisplayCountChanged(dm: DisplayManager) {
+        val newCount = dm.displays.size
+        if (newCount != lastDisplayCount && isAdded) {
+            lastDisplayCount = newCount
+            reinflateContent()
         }
     }
 
