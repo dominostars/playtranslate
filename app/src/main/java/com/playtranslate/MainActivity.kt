@@ -286,6 +286,11 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         dimController?.onInteraction()
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) dimController?.onInteraction()
+    }
+
     override fun onResume() {
         super.onResume()
         isInForeground = true
