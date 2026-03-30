@@ -536,8 +536,11 @@ class CaptureService : Service() {
      * Build furigana (hiragana reading) overlay boxes positioned above kanji words.
      *
      * Uses dictionary readings (same source as in-app word taps) with okurigana
-     * stripping so readings align to kanji portions only. Per-line bounding boxes
-     * provide proportional character positioning (Japanese text is roughly monospaced).
+     * stripping so readings align to kanji portions only.
+     *
+     * Positioning: when ML Kit provides fine-grained per-element boxes (avg ≤ 3
+     * chars), maps character offsets to actual element bounds for precise placement.
+     * Falls back to proportional character division within the line bounds.
      */
     private suspend fun buildFuriganaBoxes(
         ocrResult: OcrManager.OcrResult
@@ -553,12 +556,25 @@ class CaptureService : Service() {
                 if (line.text.isEmpty()) continue
                 val furiganaTokens = dict.tokenizeForFurigana(line.text)
 
-                for (ft in furiganaTokens) {
-                    // Proportional horizontal position within line bounds
+                // Map character offsets to pixel positions using element boxes.
+                // If elements are coarse (full line = one element), this naturally
+                // degrades to proportional positioning within the line bounds.
+                val positionMapper: (Int, Int) -> Pair<Int, Int> = if (line.elements.isNotEmpty()) {
+                    buildCharToElementMapper(line.elements)
+                } else {
+                    // No element boxes — proportional within line bounds
                     val lineW = line.bounds.width().toFloat()
                     val charCount = line.text.length.toFloat()
-                    val left = line.bounds.left + (ft.startOffset / charCount * lineW).toInt()
-                    val right = line.bounds.left + (ft.endOffset / charCount * lineW).toInt()
+                    val lineLeft = line.bounds.left
+                    fun(s: Int, e: Int): Pair<Int, Int> {
+                        val l = lineLeft + (s / charCount * lineW).toInt()
+                        val r = lineLeft + (e / charCount * lineW).toInt()
+                        return l to r
+                    }
+                }
+
+                for (ft in furiganaTokens) {
+                    val (left, right) = positionMapper(ft.startOffset, ft.endOffset)
 
                     val furiganaHeight = (line.bounds.height() * 0.75f).toInt().coerceAtLeast(1)
                     val furiganaBounds = android.graphics.Rect(
@@ -578,6 +594,49 @@ class CaptureService : Service() {
             }
         }
         return boxes
+    }
+
+    /**
+     * Build a mapper from (startCharOffset, endCharOffset) → (left, right) pixel positions,
+     * using actual element bounding boxes. Characters within multi-char elements are
+     * positioned proportionally within that element's bounds.
+     */
+    private fun buildCharToElementMapper(
+        elements: List<OcrManager.ElementBox>
+    ): (Int, Int) -> Pair<Int, Int> {
+        // Build char-index → (elementIdx, offsetWithinElement)
+        data class CharMapping(val elemIdx: Int, val offsetInElem: Int)
+        val charMap = mutableListOf<CharMapping>()
+        for ((ei, elem) in elements.withIndex()) {
+            for (ci in elem.text.indices) {
+                charMap += CharMapping(ei, ci)
+            }
+        }
+
+        return { startOffset: Int, endOffset: Int ->
+            val safeStart = startOffset.coerceIn(0, charMap.size - 1)
+            val safeEnd = (endOffset - 1).coerceIn(0, charMap.size - 1)
+
+            val startMapping = charMap[safeStart]
+            val endMapping = charMap[safeEnd]
+
+            val startElem = elements[startMapping.elemIdx]
+            val endElem = elements[endMapping.elemIdx]
+
+            // Left edge: interpolate within the start element
+            val startElemW = startElem.bounds.width().toFloat()
+            val startElemChars = startElem.text.length.toFloat()
+            val left = startElem.bounds.left +
+                (startMapping.offsetInElem / startElemChars * startElemW).toInt()
+
+            // Right edge: interpolate within the end element (end of the character)
+            val endElemW = endElem.bounds.width().toFloat()
+            val endElemChars = endElem.text.length.toFloat()
+            val right = endElem.bounds.left +
+                ((endMapping.offsetInElem + 1) / endElemChars * endElemW).toInt()
+
+            left to right
+        }
     }
 
     /** Return the appropriate cached overlay boxes for the current overlay mode. */

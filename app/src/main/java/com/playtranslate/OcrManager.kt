@@ -53,6 +53,12 @@ class OcrManager private constructor() {
         val scaleFactor: Float
     )
 
+    /** A single OCR element's text and bounding box within a line. */
+    data class ElementBox(
+        val text: String,
+        val bounds: Rect
+    )
+
     /** A per-line bounding box with its processed text and group association. */
     data class LineBox(
         /** Processed text of this line (decorations stripped, pipes trimmed). */
@@ -60,7 +66,9 @@ class OcrManager private constructor() {
         /** Bounding box in original (pre-scale) bitmap coordinates. */
         val bounds: Rect,
         /** Index of the group this line belongs to. */
-        val groupIndex: Int
+        val groupIndex: Int,
+        /** Per-element bounding boxes within this line (for precise character positioning). */
+        val elements: List<ElementBox> = emptyList()
     )
 
     data class OcrResult(
@@ -129,6 +137,7 @@ class OcrManager private constructor() {
                     segments += TextSegment("\n", isSeparator = true)
                 }
                 val lineBuilder = StringBuilder()
+                val lineElements = mutableListOf<ElementBox>()
                 line.elements.forEachIndexed { ei, element ->
                     if (!isUiDecoration(element.text)) {
                         var text = element.text
@@ -140,6 +149,18 @@ class OcrManager private constructor() {
                             groupBuilder.append(text)
                             lineBuilder.append(text)
                             segments += TextSegment(text)
+                            // Collect element bounding box for precise furigana positioning
+                            element.boundingBox?.let { ebb ->
+                                lineElements += ElementBox(
+                                    text = text,
+                                    bounds = Rect(
+                                        (ebb.left / scaleFactor).toInt(),
+                                        (ebb.top / scaleFactor).toInt(),
+                                        (ebb.right / scaleFactor).toInt(),
+                                        (ebb.bottom / scaleFactor).toInt()
+                                    )
+                                )
+                            }
                         }
                     }
                 }
@@ -155,7 +176,8 @@ class OcrManager private constructor() {
                                 (bb.right / scaleFactor).toInt(),
                                 (bb.bottom / scaleFactor).toInt()
                             ),
-                            groupIndex = gi
+                            groupIndex = gi,
+                            elements = lineElements
                         )
                     }
                 }
