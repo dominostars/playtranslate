@@ -2,7 +2,9 @@ package com.playtranslate.ui
 
 import android.animation.ValueAnimator
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
@@ -115,23 +117,31 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
         val displayH = height.toFloat()
 
         // Map OCR bounds to screen coordinates, expanded by boxPadding
+        // (furigana boxes skip padding — they're small labels, not text blocks)
         val screenRects = boxes.map { box ->
             val r = mapRect(box.bounds)
-            RectF(
-                (r.left - boxPadding).coerceAtLeast(0f),
-                (r.top - boxPadding).coerceAtLeast(0f),
-                (r.right + boxPadding).coerceAtMost(displayW),
-                (r.bottom + boxPadding).coerceAtMost(displayH)
-            )
+            if (box.isFurigana) {
+                RectF(r.left, r.top, r.right, r.bottom)
+            } else {
+                RectF(
+                    (r.left - boxPadding).coerceAtLeast(0f),
+                    (r.top - boxPadding).coerceAtLeast(0f),
+                    (r.right + boxPadding).coerceAtMost(displayW),
+                    (r.bottom + boxPadding).coerceAtMost(displayH)
+                )
+            }
         }
 
         // Resolve vertical overlaps: trim shared edge to midpoint
+        // (skip furigana boxes — they're small labels that shouldn't be squished)
         val finalRects = screenRects.map { RectF(it) }
         val sortedIndices = finalRects.indices.sortedBy { finalRects[it].top }
         for (a in sortedIndices.indices) {
+            if (boxes[sortedIndices[a]].isFurigana) continue
             for (b in a + 1 until sortedIndices.size) {
                 val i = sortedIndices[a]
                 val j = sortedIndices[b]
+                if (boxes[j].isFurigana) continue
                 val ri = finalRects[i]
                 val rj = finalRects[j]
                 if (ri.bottom > rj.top && ri.left < rj.right && ri.right > rj.left) {
@@ -152,19 +162,16 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
                 // Skeleton placeholder: matched bg with text-colored bars
                 buildSkeletonView(rectW, rectH, box.lineCount, box.bgColor, box.textColor)
             } else if (box.isFurigana) {
-                // Furigana: small text with semi-transparent pill background
-                TextView(context).apply {
+                // Furigana: outlined text (no background, stroke outline for readability)
+                OutlinedTextView(context).apply {
                     text = box.translatedText
                     setTextColor(Color.WHITE)
+                    outlineColor = Color.argb(220, 34, 34, 34)
+                    outlineWidth = 1.5f * dp
                     typeface = Typeface.DEFAULT_BOLD
                     gravity = Gravity.CENTER
-                    val hPad = (4f * dp).toInt()
-                    val vPad = (1f * dp).toInt()
-                    setPadding(hPad, vPad, hPad, vPad)
-                    background = GradientDrawable().apply {
-                        setColor(Color.argb(160, 0, 0, 0))
-                        cornerRadius = 4f * dp
-                    }
+                    setPadding(0, 0, 0, 0)
+                    includeFontPadding = false
                     TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
                         this, minTextSizeSp, maxTextSizeSp, 1, TypedValue.COMPLEX_UNIT_SP
                     )
@@ -243,6 +250,26 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
                 }
             }
             start()
+        }
+    }
+
+    /** TextView that draws a stroke outline behind the text for readability without a background. */
+    private class OutlinedTextView(context: android.content.Context) : TextView(context) {
+        var outlineColor: Int = Color.argb(220, 34, 34, 34)
+        var outlineWidth: Float = 0f
+
+        override fun onDraw(canvas: Canvas) {
+            if (outlineWidth > 0f) {
+                val savedColor = currentTextColor
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = outlineWidth
+                paint.strokeJoin = Paint.Join.ROUND
+                setTextColor(outlineColor)
+                super.onDraw(canvas)
+                paint.style = Paint.Style.FILL
+                setTextColor(savedColor)
+            }
+            super.onDraw(canvas)
         }
     }
 }
