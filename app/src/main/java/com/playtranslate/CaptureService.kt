@@ -939,8 +939,30 @@ class CaptureService : Service() {
             val liveGroupTexts = ocrResult.groupTexts
             val liveGroupBounds = ocrResult.groupBounds
             val liveGroupLineCounts = ocrResult.groupLineCounts
+            val isFuriganaMode = Prefs(this@CaptureService).overlayMode == OverlayMode.FURIGANA
 
-            // Show shimmer placeholders
+            // In furigana mode: build and show furigana immediately (no shimmer, no translation wait)
+            if (isFuriganaMode) {
+                val furigana = buildFuriganaBoxes(ocrResult)
+                s.cachedFuriganaBoxes = furigana
+                s.cachedOcrResult = ocrResult
+                s.cachedOverlayCropLeft = left
+                s.cachedOverlayCropTop = top
+                s.cachedOverlayScreenW = screenshotW
+                s.cachedOverlayScreenH = screenshotH
+                if (furigana.isNotEmpty()) {
+                    showLiveOverlay(furigana, left, top, screenshotW, screenshotH)
+                    val fullDisplayBoxes = furigana.map { b ->
+                        android.graphics.Rect(
+                            b.bounds.left + left, b.bounds.top + top,
+                            b.bounds.right + left, b.bounds.bottom + top
+                        )
+                    }
+                    setupDetection(raw, fullDisplayBoxes, furigana)
+                }
+            }
+
+            // Show shimmer placeholders (translation mode only)
             val cRef = colorRef!!
             val colors = sampleGroupColors(cRef, liveGroupBounds, left, top, colorScale)
             val placeholderBoxes = liveGroupBounds.mapIndexed { idx, bounds ->
@@ -948,10 +970,11 @@ class CaptureService : Service() {
                 val lineCount = liveGroupLineCounts.getOrElse(idx) { 1 }
                 TranslationOverlayView.TextBox("", bounds, bgColor, textColor, lineCount)
             }
-            showLiveOverlay(placeholderBoxes, left, top, screenshotW, screenshotH,
-                )
+            if (!isFuriganaMode) {
+                showLiveOverlay(placeholderBoxes, left, top, screenshotW, screenshotH)
+            }
 
-            // Translate
+            // Translate (for in-app panel in all modes, overlays in translation mode)
             onTranslationStarted?.invoke()
             val perGroup = translateGroupsSeparately(liveGroupTexts)
             val translated = perGroup.joinToString("\n\n") { it.first }
@@ -968,34 +991,28 @@ class CaptureService : Service() {
                 )
             )
 
-            // Show final overlays and set up detection
+            // Cache translation boxes and show overlays (translation mode)
             if (liveGroupBounds.size == perGroup.size) {
                 val translationBoxes = perGroup.zip(placeholderBoxes).map { (tr, placeholder) ->
                     placeholder.copy(translatedText = tr.first)
                 }
                 s.cachedOverlayBoxes = translationBoxes
-                s.cachedOcrResult = ocrResult
-                s.cachedOverlayCropLeft = left
-                s.cachedOverlayCropTop = top
-                s.cachedOverlayScreenW = screenshotW
-                s.cachedOverlayScreenH = screenshotH
-
-                val overlayBoxes = if (Prefs(this@CaptureService).overlayMode == OverlayMode.FURIGANA) {
-                    val furigana = buildFuriganaBoxes(ocrResult)
-                    s.cachedFuriganaBoxes = furigana
-                    furigana.ifEmpty { translationBoxes }
-                } else translationBoxes
-                showLiveOverlay(overlayBoxes, left, top, screenshotW, screenshotH,
-                    )
-
-                val fullDisplayBoxes = overlayBoxes.map { b ->
-                    android.graphics.Rect(
-                        b.bounds.left + left, b.bounds.top + top,
-                        b.bounds.right + left, b.bounds.bottom + top
-                    )
+                if (!isFuriganaMode) {
+                    s.cachedOcrResult = ocrResult
+                    s.cachedOverlayCropLeft = left
+                    s.cachedOverlayCropTop = top
+                    s.cachedOverlayScreenW = screenshotW
+                    s.cachedOverlayScreenH = screenshotH
+                    showLiveOverlay(translationBoxes, left, top, screenshotW, screenshotH)
+                    val fullDisplayBoxes = translationBoxes.map { b ->
+                        android.graphics.Rect(
+                            b.bounds.left + left, b.bounds.top + top,
+                            b.bounds.right + left, b.bounds.bottom + top
+                        )
+                    }
+                    setupDetection(raw, fullDisplayBoxes, translationBoxes)
                 }
-                setupDetection(raw, fullDisplayBoxes, overlayBoxes)
-                DetectionLog.log("processClean: done, ${overlayBoxes.size} overlays shown")
+                DetectionLog.log("processClean: done, ${translationBoxes.size} translation boxes cached")
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             DetectionLog.log("processClean: cancelled")
@@ -1535,9 +1552,23 @@ class CaptureService : Service() {
             val liveGroupTexts = ocrResult.groupTexts
             val liveGroupBounds = ocrResult.groupBounds
             val liveGroupLineCounts = ocrResult.groupLineCounts
+            val isFuriganaMode = Prefs(this@CaptureService).overlayMode == OverlayMode.FURIGANA
 
-            // Sample colors and show skeleton placeholders immediately
-            // so the user sees overlay positions while translations load.
+            // In furigana mode: build and show immediately (no shimmer, no translation wait)
+            if (isFuriganaMode) {
+                val furigana = buildFuriganaBoxes(ocrResult)
+                s.cachedFuriganaBoxes = furigana
+                s.cachedOcrResult = ocrResult
+                s.cachedOverlayCropLeft = left
+                s.cachedOverlayCropTop = top
+                s.cachedOverlayScreenW = screenshotW
+                s.cachedOverlayScreenH = screenshotH
+                if (furigana.isNotEmpty()) {
+                    showLiveOverlay(furigana, left, top, screenshotW, screenshotH)
+                }
+            }
+
+            // Sample colors and show shimmer placeholders (translation mode only)
             val cRef = colorRef!!
             val colors = sampleGroupColors(cRef, liveGroupBounds, left, top, colorScale)
             val placeholderBoxes = liveGroupBounds.mapIndexed { idx, bounds ->
@@ -1545,11 +1576,11 @@ class CaptureService : Service() {
                 val lineCount = liveGroupLineCounts.getOrElse(idx) { 1 }
                 TranslationOverlayView.TextBox("", bounds, bgColor, textColor, lineCount)
             }
-            showLiveOverlay(placeholderBoxes, left, top, screenshotW, screenshotH,
-                )
+            if (!isFuriganaMode) {
+                showLiveOverlay(placeholderBoxes, left, top, screenshotW, screenshotH)
+            }
 
-            // Translate (cancellation-safe — if liveCaptureJob is cancelled,
-            // this coroutine is cancelled too)
+            // Translate (for in-app panel in all modes, overlays in translation mode)
             onTranslationStarted?.invoke()
             val perGroup = translateGroupsSeparately(liveGroupTexts)
             val translated = perGroup.joinToString("\n\n") { it.first }
@@ -1566,24 +1597,20 @@ class CaptureService : Service() {
                 )
             )
 
-            // Update overlay with translated text (or furigana)
+            // Cache translation boxes and show overlays (translation mode)
             if (liveGroupBounds.size == perGroup.size) {
                 val translationBoxes = perGroup.zip(placeholderBoxes).map { (tr, placeholder) ->
                     placeholder.copy(translatedText = tr.first)
                 }
                 s.cachedOverlayBoxes = translationBoxes
-                s.cachedOcrResult = ocrResult
-                s.cachedOverlayCropLeft = left
-                s.cachedOverlayCropTop = top
-                s.cachedOverlayScreenW = screenshotW
-                s.cachedOverlayScreenH = screenshotH
-
-                val overlayBoxes = if (Prefs(this@CaptureService).overlayMode == OverlayMode.FURIGANA) {
-                    val furigana = buildFuriganaBoxes(ocrResult)
-                    s.cachedFuriganaBoxes = furigana
-                    furigana.ifEmpty { translationBoxes }
-                } else translationBoxes
-                showLiveOverlay(overlayBoxes, left, top, screenshotW, screenshotH)
+                if (!isFuriganaMode) {
+                    s.cachedOcrResult = ocrResult
+                    s.cachedOverlayCropLeft = left
+                    s.cachedOverlayCropTop = top
+                    s.cachedOverlayScreenW = screenshotW
+                    s.cachedOverlayScreenH = screenshotH
+                    showLiveOverlay(translationBoxes, left, top, screenshotW, screenshotH)
+                }
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
