@@ -560,7 +560,7 @@ class CaptureService : Service() {
                     val left = line.bounds.left + (ft.startOffset / charCount * lineW).toInt()
                     val right = line.bounds.left + (ft.endOffset / charCount * lineW).toInt()
 
-                    val furiganaHeight = (line.bounds.height() * 0.5f).toInt().coerceAtLeast(1)
+                    val furiganaHeight = (line.bounds.height() * 0.75f).toInt().coerceAtLeast(1)
                     val furiganaBounds = android.graphics.Rect(
                         left,
                         (line.bounds.top - furiganaHeight).coerceAtLeast(0),

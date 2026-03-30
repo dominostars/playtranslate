@@ -116,11 +116,11 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
         val displayW = width.toFloat()
         val displayH = height.toFloat()
 
-        // Map OCR bounds to screen coordinates, expanded by boxPadding
-        // (furigana boxes skip padding — they're small labels, not text blocks)
+        // Map OCR bounds to screen coordinates
         val screenRects = boxes.map { box ->
             val r = mapRect(box.bounds)
             if (box.isFurigana) {
+                // Furigana: exact position, no padding or overlap adjustment
                 RectF(r.left, r.top, r.right, r.bottom)
             } else {
                 RectF(
@@ -132,16 +132,14 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
             }
         }
 
-        // Resolve vertical overlaps: trim shared edge to midpoint
-        // (skip furigana boxes — they're small labels that shouldn't be squished)
+        // Resolve vertical overlaps for non-furigana boxes only
         val finalRects = screenRects.map { RectF(it) }
-        val sortedIndices = finalRects.indices.sortedBy { finalRects[it].top }
-        for (a in sortedIndices.indices) {
-            if (boxes[sortedIndices[a]].isFurigana) continue
-            for (b in a + 1 until sortedIndices.size) {
-                val i = sortedIndices[a]
-                val j = sortedIndices[b]
-                if (boxes[j].isFurigana) continue
+        val nonFuriganaIndices = boxes.indices.filter { !boxes[it].isFurigana }
+            .sortedBy { finalRects[it].top }
+        for (a in nonFuriganaIndices.indices) {
+            for (b in a + 1 until nonFuriganaIndices.size) {
+                val i = nonFuriganaIndices[a]
+                val j = nonFuriganaIndices[b]
                 val ri = finalRects[i]
                 val rj = finalRects[j]
                 if (ri.bottom > rj.top && ri.left < rj.right && ri.right > rj.left) {
@@ -155,47 +153,53 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
         val hasPlaceholders = boxes.any { it.translatedText.isEmpty() }
 
         boxes.zip(finalRects).forEach { (box, rect) ->
-            val rectW = rect.width().toInt().coerceAtLeast(1)
-            val rectH = rect.height().toInt().coerceAtLeast(1)
-
-            val child: View = if (box.translatedText.isEmpty()) {
-                // Skeleton placeholder: matched bg with text-colored bars
-                buildSkeletonView(rectW, rectH, box.lineCount, box.bgColor, box.textColor)
-            } else if (box.isFurigana) {
-                // Furigana: outlined text (no background, stroke outline for readability)
-                OutlinedTextView(context).apply {
+            if (box.isFurigana) {
+                // Furigana: outlined text, no box constraint, sized from line height
+                val textSizePx = (rect.height() * 0.7f).coerceAtLeast(4f)
+                val child = OutlinedTextView(context).apply {
                     text = box.translatedText
                     setTextColor(Color.WHITE)
-                    outlineColor = Color.argb(220, 34, 34, 34)
+                    outlineColor = Color.BLACK
                     outlineWidth = 1.5f * dp
                     typeface = Typeface.DEFAULT_BOLD
-                    gravity = Gravity.CENTER
-                    setPadding(0, 0, 0, 0)
                     includeFontPadding = false
-                    TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-                        this, minTextSizeSp, maxTextSizeSp, 1, TypedValue.COMPLEX_UNIT_SP
-                    )
+                    setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
+                }
+                addView(child, LayoutParams(
+                    LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
+                ))
+                // Position after measurement: centered over kanji, bottom at text top
+                child.post {
+                    val cx = (rect.left + rect.right) / 2f
+                    child.translationX = cx - child.measuredWidth / 2f
+                    child.translationY = rect.bottom - child.measuredHeight
                 }
             } else {
-                // Translated text
-                TextView(context).apply {
-                    text = box.translatedText
-                    setTextColor(box.textColor)
-                    typeface = Typeface.DEFAULT_BOLD
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(textMargin, textMargin, textMargin, textMargin)
-                    setBackgroundColor(box.bgColor)
-                    TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-                        this, minTextSizeSp, maxTextSizeSp, 1, TypedValue.COMPLEX_UNIT_SP
-                    )
-                }
-            }
+                val rectW = rect.width().toInt().coerceAtLeast(1)
+                val rectH = rect.height().toInt().coerceAtLeast(1)
 
-            val lp = LayoutParams(rectW, rectH).apply {
-                leftMargin = rect.left.toInt()
-                topMargin = rect.top.toInt()
+                val child: View = if (box.translatedText.isEmpty()) {
+                    buildSkeletonView(rectW, rectH, box.lineCount, box.bgColor, box.textColor)
+                } else {
+                    TextView(context).apply {
+                        text = box.translatedText
+                        setTextColor(box.textColor)
+                        typeface = Typeface.DEFAULT_BOLD
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(textMargin, textMargin, textMargin, textMargin)
+                        setBackgroundColor(box.bgColor)
+                        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                            this, minTextSizeSp, maxTextSizeSp, 1, TypedValue.COMPLEX_UNIT_SP
+                        )
+                    }
+                }
+
+                val lp = LayoutParams(rectW, rectH).apply {
+                    leftMargin = rect.left.toInt()
+                    topMargin = rect.top.toInt()
+                }
+                addView(child, lp)
             }
-            addView(child, lp)
         }
 
         if (hasPlaceholders) startShimmer()
