@@ -160,7 +160,7 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
                     text = box.translatedText
                     setTextColor(Color.WHITE)
                     outlineColor = Color.BLACK
-                    outlineWidth = 1.5f * dp
+                    outlineWidth = 3f * dp
                     typeface = Typeface.DEFAULT_BOLD
                     includeFontPadding = false
                     setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
