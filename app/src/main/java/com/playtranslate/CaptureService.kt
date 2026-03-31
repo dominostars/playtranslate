@@ -74,39 +74,6 @@ class CaptureService : Service() {
     // change the old session is cancelled and replaced atomically — no
     // field-by-field reset needed.
 
-    private inner class RegionSession(val region: RegionEntry) {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-
-        // Jobs (used by one-shot path)
-        var captureJob: Job? = null
-        var liveCaptureJob: Job? = null
-
-        // One-shot dedup / cache (used by runLiveCaptureCycle for hold-to-preview)
-        var lastLiveOcrText: String? = null
-        var cachedOverlayBoxes: List<TranslationOverlayView.TextBox>? = null
-        var cachedFuriganaBoxes: List<TranslationOverlayView.TextBox>? = null
-        var cachedOcrResult: OcrManager.OcrResult? = null
-        var cachedOverlayCropLeft = 0
-        var cachedOverlayCropTop = 0
-        var cachedOverlayScreenW = 0
-        var cachedOverlayScreenH = 0
-        var liveShowRegionFlash = false
-
-        fun clearCachedState() {
-            lastLiveOcrText = null
-            cachedOverlayBoxes = null
-            cachedFuriganaBoxes = null
-            cachedOcrResult = null
-        }
-
-        /** Cancel scope and all tracked jobs. */
-        fun cancel() {
-            scope.cancel()
-        }
-    }
-
-    private var session = RegionSession(RegionEntry("", 0f, 1f))
-
     // ── Pipeline ──────────────────────────────────────────────────────────
 
     /** TextPaint for measuring relative character widths (furigana positioning). */
@@ -135,15 +102,16 @@ class CaptureService : Service() {
     val isOverride: Boolean get() = overrideRegion != null
 
     private fun updateActiveRegion() {
-        session.cancel()
         val newRegion = overrideRegion ?: savedRegion
         activeRegionLiveData.value = newRegion
-        session = RegionSession(newRegion)
 
         PlayTranslateAccessibilityService.instance?.hideRegionIndicator()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+        oneShotCaptureJob?.cancel()
+        oneShotManager.cancel()
         if (liveActive) {
-            PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
+            liveMode?.stop()
+            startLive()
         }
     }
 
@@ -307,8 +275,8 @@ class CaptureService : Service() {
     }
 
     fun captureOnce() {
-        session.captureJob?.cancel()
-        session.captureJob = session.scope.launch { runCaptureCycle() }
+        oneShotCaptureJob?.cancel()
+        oneShotCaptureJob = serviceScope.launch { runCaptureCycle() }
     }
 
     /**
@@ -317,8 +285,8 @@ class CaptureService : Service() {
      * (e.g. single-screen region capture from the floating menu).
      */
     fun processScreenshot(raw: Bitmap) {
-        session.captureJob?.cancel()
-        session.captureJob = session.scope.launch { runProcessCycle(raw) }
+        oneShotCaptureJob?.cancel()
+        oneShotCaptureJob = serviceScope.launch { runProcessCycle(raw) }
     }
 
     private suspend fun runProcessCycle(raw: Bitmap) {
@@ -393,14 +361,13 @@ class CaptureService : Service() {
     val isLive: Boolean get() = liveActive
 
     internal var liveMode: LiveMode? = null
+    private val oneShotManager = OneShotManager(this)
+    private var oneShotCaptureJob: Job? = null
 
     fun startLive() {
         liveActive = true
         liveMode?.stop()
-        session.liveShowRegionFlash = true
-        session.clearCachedState()
-        session.captureJob?.cancel()
-        session.liveCaptureJob?.cancel()
+        oneShotCaptureJob?.cancel()
 
         val prefs = Prefs(this)
         when (prefs.autoTranslationMode) {
@@ -422,8 +389,6 @@ class CaptureService : Service() {
         liveMode?.stop()
         liveMode = null
         liveActive = false
-        session.cancel()
-        session = RegionSession(activeRegion)
         PlayTranslateAccessibilityService.instance?.screenshotManager?.stopLoop()
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
@@ -436,26 +401,10 @@ class CaptureService : Service() {
     fun refreshLiveOverlay() {
         if (!liveActive) return
         Log.d(TAG, "REFRESH: refreshLiveOverlay called")
-        val mode = liveMode
-        if (mode != null) {
-            mode.refresh()
-        } else {
-            session.clearCachedState()
-        }
+        liveMode?.refresh()
     }
 
     /** One-shot: capture, OCR, translate, show overlay (not live mode). */
-    fun showOneShotOverlay() {
-        val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
-        if (mgr != null && mgr.isLoopRunning) {
-            // Loop is active — request a clean frame through it
-            mgr.requestCleanCapture()
-        } else {
-            // Not in loop mode — standalone capture
-            session.liveCaptureJob?.cancel()
-            session.liveCaptureJob = session.scope.launch { runLiveCaptureCycle() }
-        }
-    }
 
     /** True while a hold gesture or modal UI is active — suppresses overlay display in live mode. */
     var holdActive = false
@@ -477,8 +426,7 @@ class CaptureService : Service() {
             }
         } else {
             onHoldLoadingChanged?.invoke(true)
-            showOneShotOverlay()
-            flashRegionIndicator()
+            oneShotManager.runHoldOverlay()
         }
     }
 
@@ -508,18 +456,15 @@ class CaptureService : Service() {
                 PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
             }
         } else {
-            session.liveCaptureJob?.cancel()
-            PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+            oneShotManager.cancel()
         }
     }
 
-    /** Cancel a hold gesture (e.g. user started dragging). Cleans up without triggering refresh. */
+    /** Cancel a hold gesture (e.g. user started dragging). */
     fun holdCancel() {
         onHoldLoadingChanged?.invoke(false)
         holdActive = false
-        if (!liveActive) {
-            session.liveCaptureJob?.cancel()
-        }
+        if (!liveActive) oneShotManager.cancel()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
     }
 
@@ -596,7 +541,7 @@ class CaptureService : Service() {
     /**
      * Captures a clean screenshot via [ScreenshotManager].
      */
-    private suspend fun captureScreen(displayId: Int): Bitmap? {
+    internal suspend fun captureScreen(displayId: Int): Bitmap? {
         val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
         return mgr?.requestClean(displayId)
     }
@@ -605,146 +550,6 @@ class CaptureService : Service() {
      * @param preCaptured If non-null, use this bitmap instead of taking a new
      *   screenshot. Used by scene detection which already has a clean frame.
      */
-    private suspend fun runLiveCaptureCycle(preCaptured: Bitmap? = null) {
-        DetectionLog.log("Capture cycle starting${if (preCaptured != null) " (pre-captured)" else ""}")
-        if (!isConfigured) { preCaptured?.recycle(); return }
-        val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
-
-        val raw: Bitmap = preCaptured ?: captureScreen(gameDisplayId) ?: run {
-            // Manager already retried once — persistent failure.
-            // Stop live mode so it doesn't become a zombie.
-            if (liveActive) {
-                stopLive()
-                onError?.invoke("Screenshot failed — live mode stopped. Check accessibility settings and try again.")
-            }
-            return
-        }
-        var colorRef: Bitmap? = null
-
-        try {
-            val statusBarHeight = getStatusBarHeightForDisplay(gameDisplayId)
-            val top    = maxOf((raw.height * activeRegion.top).toInt(), statusBarHeight)
-            val left   = (raw.width  * activeRegion.left).toInt()
-            val bottom = (raw.height * activeRegion.bottom).toInt()
-            val right  = (raw.width  * activeRegion.right).toInt()
-            val needsCrop = top > 0 || left > 0 || bottom < raw.height || right < raw.width
-            val bitmap = if (needsCrop)
-                Bitmap.createBitmap(raw, left, top, (right - left).coerceAtLeast(1), (bottom - top).coerceAtLeast(1))
-            else raw
-
-            // Create color reference for adaptive overlay colors
-            val colorScale = 4
-            colorRef = Bitmap.createScaledBitmap(raw, raw.width / colorScale, raw.height / colorScale, false)
-
-            val s = session
-            // Flash region indicator AFTER screenshot is captured
-            if (s.liveShowRegionFlash) {
-                s.liveShowRegionFlash = false
-                flashRegionIndicator()
-            }
-
-            val ocrBitmap = blackoutFloatingIcon(bitmap, left, top)
-            val ocrResult = ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
-            if (ocrBitmap !== raw) ocrBitmap.recycle()
-
-            val newText = ocrResult?.fullText
-            val dedupKey = newText?.filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
-
-            if (dedupKey.isNullOrEmpty()) {
-                s.lastLiveOcrText = null
-                s.cachedOverlayBoxes = null
-                s.cachedFuriganaBoxes = null
-                PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
-                onHoldLoadingChanged?.invoke(false)
-                if (!liveActive) {
-                    val a11y = PlayTranslateAccessibilityService.instance
-                    val dm = getSystemService(DisplayManager::class.java)
-                    val display = dm.getDisplay(gameDisplayId)
-                    if (a11y != null && display != null) {
-                        a11y.showNoTextPill(display, noTextMessage())
-                    }
-                }
-                onLiveNoText?.invoke()
-                // Detection handled by the unified poll loop
-                return
-            }
-
-            // Dedup: if text hasn't changed significantly, re-show cached overlay.
-            // Skip dedup entirely if we have no previous text (first cycle after start/clear).
-            if (s.lastLiveOcrText != null && !OverlayToolkit.isSignificantChange(s.lastLiveOcrText!!, dedupKey)) {
-                val boxes = liveMode?.getCachedState()?.boxes
-                if (boxes != null) {
-                    showLiveOverlay(boxes, s.cachedOverlayCropLeft, s.cachedOverlayCropTop,
-                        s.cachedOverlayScreenW, s.cachedOverlayScreenH)
-                }
-                return
-            }
-            s.lastLiveOcrText = dedupKey
-
-            // New text — save screenshot NOW (only on actual text changes, not dedup hits)
-            val screenshotPath = mgr?.saveToCache(raw)
-            val screenshotW = raw.width
-            val screenshotH = raw.height
-
-            val liveGroupTexts = ocrResult.groupTexts
-            val liveGroupBounds = ocrResult.groupBounds
-            val liveGroupLineCounts = ocrResult.groupLineCounts
-            val isFuriganaMode = Prefs(this@CaptureService).overlayMode == OverlayMode.FURIGANA
-
-            // In furigana mode: build and show immediately (no shimmer, no translation wait)
-            if (isFuriganaMode) {
-                val furigana = OverlayToolkit.buildFuriganaBoxes(ocrResult, com.playtranslate.dictionary.DictionaryManager.get(this@CaptureService), furiganaPaint)
-                s.cachedFuriganaBoxes = furigana
-                s.cachedOcrResult = ocrResult
-                s.cachedOverlayCropLeft = left
-                s.cachedOverlayCropTop = top
-                s.cachedOverlayScreenW = screenshotW
-                s.cachedOverlayScreenH = screenshotH
-                if (furigana.isNotEmpty()) {
-                    showLiveOverlay(furigana, left, top, screenshotW, screenshotH)
-                }
-            }
-
-            if (isFuriganaMode) {
-                // Furigana mode: translate for in-app panel only
-                translateAndSendToPanel(ocrResult, screenshotPath)
-            } else {
-                // Translation mode: shimmer → translate → show translation overlays
-                val cRef = colorRef!!
-                val colors = OverlayToolkit.sampleGroupColors(cRef, liveGroupBounds, left, top, colorScale)
-                val placeholderBoxes = liveGroupBounds.mapIndexed { idx, bounds ->
-                    val (bgColor, textColor) = colors[idx]
-                    val lineCount = liveGroupLineCounts.getOrElse(idx) { 1 }
-                    TranslationOverlayView.TextBox("", bounds, bgColor, textColor, lineCount)
-                }
-                showLiveOverlay(placeholderBoxes, left, top, screenshotW, screenshotH)
-
-                val perGroup = translateAndSendToPanel(ocrResult, screenshotPath, forceShow = true)
-
-                if (perGroup != null && liveGroupBounds.size == perGroup.size) {
-                    val translationBoxes = perGroup.zip(placeholderBoxes).map { (tr, placeholder) ->
-                        placeholder.copy(translatedText = tr.first)
-                    }
-                    s.cachedOverlayBoxes = translationBoxes
-                    s.cachedOcrResult = ocrResult
-                    s.cachedOverlayCropLeft = left
-                    s.cachedOverlayCropTop = top
-                    s.cachedOverlayScreenW = screenshotW
-                    s.cachedOverlayScreenH = screenshotH
-                    showLiveOverlay(translationBoxes, left, top, screenshotW, screenshotH)
-                }
-            }
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            Log.e(TAG, "Live capture cycle failed: ${e.javaClass.simpleName}: ${e.message}", e)
-        } finally {
-            // Guarantee cleanup on all paths (normal, cancellation, exception)
-            colorRef?.recycle()
-            if (!raw.isRecycled) raw.recycle()
-        }
-    }
-
     companion object {
 
         /** Process-scoped reference for in-process callers (e.g. DragLookupController). */
