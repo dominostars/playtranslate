@@ -205,7 +205,7 @@ class CaptureService : Service() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    private fun setDegraded(degraded: Boolean) {
+    internal fun setDegraded(degraded: Boolean) {
         if (translationDegraded == degraded) return
         degradedState.postValue(degraded)
         // Post to main thread: setDegraded is called from background coroutines,
@@ -447,11 +447,12 @@ class CaptureService : Service() {
         val prefs = Prefs(this)
         when (prefs.autoTranslationMode) {
             AutoTranslationMode.OVERLAYS -> {
-                if (prefs.overlayMode == OverlayMode.FURIGANA) {
-                    liveMode = FuriganaMode(this).also { it.start() }
+                liveMode = if (prefs.overlayMode == OverlayMode.FURIGANA) {
+                    FuriganaMode(this)
                 } else {
-                    startLiveOverlay()
+                    TranslationOverlayMode(this)
                 }
+                liveMode?.start()
             }
             AutoTranslationMode.IN_APP_ONLY -> {
                 liveMode = InAppOnlyMode(this).also { it.start() }
