@@ -553,7 +553,7 @@ class CaptureService : Service() {
             }
 
             // Dedup: if text unchanged and we have cached furigana, re-show and keep cleanRef
-            if (s.lastLiveOcrText != null && !isSignificantChange(s.lastLiveOcrText!!, dedupKey)) {
+            if (s.lastLiveOcrText != null && !OverlayToolkit.isSignificantChange(s.lastLiveOcrText!!, dedupKey)) {
                 val boxes = s.cachedFuriganaBoxes
                 if (boxes != null) {
                     showLiveOverlay(boxes, s.cachedOverlayCropLeft, s.cachedOverlayCropTop,
@@ -697,7 +697,7 @@ class CaptureService : Service() {
                     val dedupKey = pipeline.result.originalText
                         .filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
                     if (session.lastLiveOcrText != null &&
-                        !isSignificantChange(session.lastLiveOcrText!!, dedupKey)) {
+                        !OverlayToolkit.isSignificantChange(session.lastLiveOcrText!!, dedupKey)) {
                         delay(Prefs(this@CaptureService).captureIntervalMs)
                         continue
                     }
@@ -745,7 +745,7 @@ class CaptureService : Service() {
                 bitmap, bitmap.width / colorScale, bitmap.height / colorScale, false
             )
             bitmap.recycle()
-            val colors = sampleGroupColors(colorRef, boxes.map { it.bounds },
+            val colors = OverlayToolkit.sampleGroupColors(colorRef, boxes.map { it.bounds },
                 session.cachedOverlayCropLeft, session.cachedOverlayCropTop, colorScale)
             colorRef.recycle()
             return boxes.mapIndexed { idx, box ->
@@ -1166,7 +1166,7 @@ class CaptureService : Service() {
             }
 
             // Dedup
-            if (s.lastLiveOcrText != null && !isSignificantChange(s.lastLiveOcrText!!, dedupKey)) {
+            if (s.lastLiveOcrText != null && !OverlayToolkit.isSignificantChange(s.lastLiveOcrText!!, dedupKey)) {
                 val boxes = getCachedBoxesForMode()
                 if (boxes != null) {
                     DetectionLog.log("processClean: dedup match, re-showing cached")
@@ -1242,7 +1242,7 @@ class CaptureService : Service() {
             } else {
                 // Translation mode: shimmer → translate → show translation overlays
                 val cRef = colorRef!!
-                val colors = sampleGroupColors(cRef, liveGroupBounds, left, top, colorScale)
+                val colors = OverlayToolkit.sampleGroupColors(cRef, liveGroupBounds, left, top, colorScale)
                 val placeholderBoxes = liveGroupBounds.mapIndexed { idx, bounds ->
                     val (bgColor, textColor) = colors[idx]
                     val lineCount = liveGroupLineCounts.getOrElse(idx) { 1 }
@@ -1411,21 +1411,12 @@ class CaptureService : Service() {
     fun holdStart() {
         if (liveActive) {
             holdActive = true
-            when (Prefs(this).autoTranslationMode) {
-                AutoTranslationMode.IN_APP_ONLY -> {
-                    // Show overlays from cached data (polling pauses via holdActive)
-                    val s = session
-                    if (Prefs(this).overlayMode == OverlayMode.FURIGANA) {
-                        val boxes = s.cachedFuriganaBoxes
-                        if (boxes != null && boxes.isNotEmpty()) showHoldOverlay(s, boxes)
-                    } else {
-                        val boxes = buildColorMatchedBoxes() ?: s.cachedOverlayBoxes
-                        if (boxes != null) showHoldOverlay(s, boxes)
-                    }
-                }
-                AutoTranslationMode.OVERLAYS -> {
-                    PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
-                }
+            if (Prefs(this).autoTranslationMode == AutoTranslationMode.OVERLAYS) {
+                // Overlays already on screen — hide them so user sees clean game
+                PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+            } else {
+                // In-app only — show cached boxes as preview on game screen
+                liveMode?.getCachedState()?.let { showHoldOverlay(it) }
             }
         } else {
             onHoldLoadingChanged?.invoke(true)
@@ -1434,15 +1425,14 @@ class CaptureService : Service() {
         }
     }
 
-    /** Show overlay boxes on the game display (shared by hold-to-preview paths). */
-    private fun showHoldOverlay(s: RegionSession, boxes: List<TranslationOverlayView.TextBox>) {
+    /** Show overlay boxes on the game display for hold-to-preview. */
+    private fun showHoldOverlay(state: CachedOverlayState) {
         val a11y = PlayTranslateAccessibilityService.instance
         val dm = getSystemService(DisplayManager::class.java)
         val display = dm.getDisplay(gameDisplayId)
         if (a11y != null && display != null) {
-            a11y.showTranslationOverlay(display, boxes,
-                s.cachedOverlayCropLeft, s.cachedOverlayCropTop,
-                s.cachedOverlayScreenW, s.cachedOverlayScreenH)
+            a11y.showTranslationOverlay(display, state.boxes,
+                state.cropLeft, state.cropTop, state.screenshotW, state.screenshotH)
         }
     }
 
@@ -1451,14 +1441,14 @@ class CaptureService : Service() {
         onHoldLoadingChanged?.invoke(false)
         if (liveActive) {
             holdActive = false
-            when (Prefs(this).autoTranslationMode) {
-                AutoTranslationMode.IN_APP_ONLY -> {
-                    // Hide overlays, polling resumes via holdActive check
-                    PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
-                }
-                AutoTranslationMode.OVERLAYS -> {
-                    refreshLiveOverlay()
-                }
+            if (Prefs(this).autoTranslationMode == AutoTranslationMode.OVERLAYS) {
+                // Re-show cached boxes immediately (no visible gap)
+                liveMode?.getCachedState()?.let { showHoldOverlay(it) }
+                // Refresh in background to catch any scene changes during hold
+                refreshLiveOverlay()
+            } else {
+                // Remove in-app preview
+                PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
             }
         } else {
             session.liveCaptureJob?.cancel()
@@ -1469,9 +1459,8 @@ class CaptureService : Service() {
     /** Cancel a hold gesture (e.g. user started dragging). Cleans up without triggering refresh. */
     fun holdCancel() {
         onHoldLoadingChanged?.invoke(false)
-        if (liveActive) {
-            holdActive = false
-        } else {
+        holdActive = false
+        if (!liveActive) {
             session.liveCaptureJob?.cancel()
         }
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
@@ -1677,7 +1666,7 @@ class CaptureService : Service() {
                 val cRef = colorRef ?: return false
 
                 val newOverlayBoxes = if (newGroupBounds.size == perGroup.size) {
-                    val colors = sampleGroupColors(cRef, newGroupBounds, left, top, colorScale)
+                    val colors = OverlayToolkit.sampleGroupColors(cRef, newGroupBounds, left, top, colorScale)
                     perGroup.zip(newGroupBounds).mapIndexed { idx, (tr, bounds) ->
                         val (bg, tc) = colors[idx]
                         TranslationOverlayView.TextBox(tr.first, bounds, bg, tc)
@@ -1820,7 +1809,7 @@ class CaptureService : Service() {
 
             // Dedup: if text hasn't changed significantly, re-show cached overlay.
             // Skip dedup entirely if we have no previous text (first cycle after start/clear).
-            if (s.lastLiveOcrText != null && !isSignificantChange(s.lastLiveOcrText!!, dedupKey)) {
+            if (s.lastLiveOcrText != null && !OverlayToolkit.isSignificantChange(s.lastLiveOcrText!!, dedupKey)) {
                 val boxes = getCachedBoxesForMode()
                 if (boxes != null) {
                     showLiveOverlay(boxes, s.cachedOverlayCropLeft, s.cachedOverlayCropTop,
@@ -1842,7 +1831,7 @@ class CaptureService : Service() {
 
             // In furigana mode: build and show immediately (no shimmer, no translation wait)
             if (isFuriganaMode) {
-                val furigana = buildFuriganaBoxes(ocrResult)
+                val furigana = OverlayToolkit.buildFuriganaBoxes(ocrResult, com.playtranslate.dictionary.DictionaryManager.get(this@CaptureService), furiganaPaint)
                 s.cachedFuriganaBoxes = furigana
                 s.cachedOcrResult = ocrResult
                 s.cachedOverlayCropLeft = left
@@ -1877,7 +1866,7 @@ class CaptureService : Service() {
             } else {
                 // Translation mode: shimmer → translate → show translation overlays
                 val cRef = colorRef!!
-                val colors = sampleGroupColors(cRef, liveGroupBounds, left, top, colorScale)
+                val colors = OverlayToolkit.sampleGroupColors(cRef, liveGroupBounds, left, top, colorScale)
                 val placeholderBoxes = liveGroupBounds.mapIndexed { idx, bounds ->
                     val (bgColor, textColor) = colors[idx]
                     val lineCount = liveGroupLineCounts.getOrElse(idx) { 1 }
@@ -1929,7 +1918,7 @@ class CaptureService : Service() {
      * Sample background and text colors for each group bound from a scaled-down
      * reference bitmap. Returns (bgColor, textColor) per group.
      */
-    private fun sampleGroupColors(
+    private fun OverlayToolkit.sampleGroupColors(
         colorRef: Bitmap,
         groupBounds: List<android.graphics.Rect>,
         cropLeft: Int, cropTop: Int,
