@@ -168,11 +168,11 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
             return
         }
 
-        // Patch: copy overlay regions from clean reference into raw frame
-        val patched: Bitmap
+        // Patch: copy overlay regions from clean reference into raw frame.
+        // Ensure bitmap is mutable for Canvas drawing.
+        val patched = if (bitmap.isMutable) bitmap
+            else bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, true).also { bitmap.recycle() }
         try {
-            patched = if (bitmap.isMutable) bitmap
-                else bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, true).also { bitmap.recycle() }
             val canvas = Canvas(patched)
             for (box in boxes) {
                 val srcRect = android.graphics.Rect(
@@ -187,8 +187,7 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
                 ), null)
             }
         } catch (e: Exception) {
-            // Ensure patched bitmap isn't leaked if patching fails
-            if (!bitmap.isRecycled) bitmap.recycle()
+            if (!patched.isRecycled) patched.recycle()
             return
         }
 
