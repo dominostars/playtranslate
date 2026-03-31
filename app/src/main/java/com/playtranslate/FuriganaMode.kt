@@ -169,26 +169,32 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
         }
 
         // Patch: copy overlay regions from clean reference into raw frame
-        val patched = if (bitmap.isMutable) bitmap
-            else bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, true).also { bitmap.recycle() }
-        val canvas = Canvas(patched)
-        for (box in boxes) {
-            val srcRect = android.graphics.Rect(
-                box.bounds.left + cropLeft, box.bounds.top + cropTop,
-                box.bounds.right + cropLeft, box.bounds.bottom + cropTop
-            )
-            srcRect.inset(-4, -4)
-            srcRect.intersect(0, 0, ref.width, ref.height)
-            canvas.drawBitmap(ref, srcRect, RectF(
-                srcRect.left.toFloat(), srcRect.top.toFloat(),
-                srcRect.right.toFloat(), srcRect.bottom.toFloat()
-            ), null)
+        val patched: Bitmap
+        try {
+            patched = if (bitmap.isMutable) bitmap
+                else bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, true).also { bitmap.recycle() }
+            val canvas = Canvas(patched)
+            for (box in boxes) {
+                val srcRect = android.graphics.Rect(
+                    box.bounds.left + cropLeft, box.bounds.top + cropTop,
+                    box.bounds.right + cropLeft, box.bounds.bottom + cropTop
+                )
+                srcRect.inset(-4, -4)
+                srcRect.intersect(0, 0, ref.width, ref.height)
+                canvas.drawBitmap(ref, srcRect, RectF(
+                    srcRect.left.toFloat(), srcRect.top.toFloat(),
+                    srcRect.right.toFloat(), srcRect.bottom.toFloat()
+                ), null)
+            }
+        } catch (e: Exception) {
+            // Ensure patched bitmap isn't leaked if patching fails
+            if (!bitmap.isRecycled) bitmap.recycle()
+            return
         }
 
-        // OCR the patched frame asynchronously
+        // OCR the patched frame asynchronously (ownership transferred to coroutine)
         scope.launch {
             try {
-                // OCR the patched frame (same pipeline as clean frames)
                 val pipeline = service.runOcr(patched)
                 if (pipeline != null) {
                     val prevText = lastOcrText

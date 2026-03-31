@@ -34,6 +34,7 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var cleanProcessingJob: Job? = null
     private var interactionDebounceJob: Job? = null
+    private var recheckJob: Job? = null
 
     // ── Detection constants ───────────────────────────────────────────────
 
@@ -95,6 +96,7 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
     override fun stop() {
         cleanProcessingJob?.cancel()
         interactionDebounceJob?.cancel()
+        recheckJob?.cancel()
         scope.cancel()
         PlayTranslateAccessibilityService.instance?.screenshotManager?.stopLoop()
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
@@ -362,7 +364,8 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
                     return
                 }
                 val overlayBoxesCopy = detectionOverlayBoxes.toList()
-                scope.launch {
+                recheckJob?.cancel()
+                recheckJob = scope.launch {
                     val triggered = performOcrRecheck(bitmap, overlayBoxesCopy)
                     if (triggered) {
                         DetectionLog.log("D: New text → recapture/merge")
@@ -589,13 +592,14 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
 
             val fillPadding = OverlayToolkit.FILL_PADDING
             val fillPaint = Paint()
+            val fillCanvas = Canvas(bitmap)
             for (box in overlays) {
                 val l = (box.bounds.left + cropLeft - fillPadding).coerceAtLeast(0)
                 val t = (box.bounds.top + cropTop - fillPadding).coerceAtLeast(0)
                 val r = (box.bounds.right + cropLeft + fillPadding).coerceAtMost(bitmap.width)
                 val b = (box.bounds.bottom + cropTop + fillPadding).coerceAtMost(bitmap.height)
                 fillPaint.color = box.bgColor or (0xFF shl 24)
-                Canvas(bitmap).drawRect(l.toFloat(), t.toFloat(), r.toFloat(), b.toFloat(), fillPaint)
+                fillCanvas.drawRect(l.toFloat(), t.toFloat(), r.toFloat(), b.toFloat(), fillPaint)
             }
 
             // OCR the filled bitmap using shared pipeline (crop → blackout → OCR)

@@ -179,7 +179,7 @@ object OverlayToolkit {
      * Build a mapper from (startCharOffset, endCharOffset) → (left, right) pixel positions,
      * using TextPaint-weighted character widths within OCR element bounds.
      */
-    fun buildCharToElementMapper(
+    private fun buildCharToElementMapper(
         elements: List<OcrManager.ElementBox>,
         furiganaPaint: TextPaint
     ): (Int, Int) -> Pair<Int, Int> {

@@ -762,24 +762,11 @@ class CaptureService : Service() {
      * @param cropLeft Left offset of the crop in full-screen coordinates.
      * @param cropTop  Top offset of the crop in full-screen coordinates.
      */
-    internal fun blackoutFloatingIcon(bitmap: Bitmap, cropLeft: Int = 0, cropTop: Int = 0): Bitmap {
-        // In compact mode the icon is a tiny sliver at the edge — skip blackout
-        if (Prefs(this).compactOverlayIcon) return bitmap
-        val iconRect = PlayTranslateAccessibilityService.instance?.getFloatingIconRect()
-            ?: return bitmap
-        // Shift icon rect into the cropped bitmap's coordinate space
-        val left = (iconRect.left - cropLeft).coerceAtLeast(0)
-        val top = (iconRect.top - cropTop).coerceAtLeast(0)
-        val right = (iconRect.right - cropLeft).coerceAtMost(bitmap.width)
-        val bottom = (iconRect.bottom - cropTop).coerceAtMost(bitmap.height)
-        if (left >= right || top >= bottom) return bitmap  // icon not in this crop
-        val mutable = if (bitmap.isMutable) bitmap
-            else bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, true).also { bitmap.recycle() }
-        Canvas(mutable).drawRect(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat(), blackoutPaint)
-        return mutable
-    }
-
-    private val blackoutPaint = Paint().apply { color = Color.BLACK }
+    /** Convenience: blackout floating icon using current service state. Delegates to OverlayToolkit. */
+    private fun blackoutFloatingIcon(bitmap: Bitmap, cropLeft: Int = 0, cropTop: Int = 0): Bitmap =
+        OverlayToolkit.blackoutFloatingIcon(bitmap, cropLeft, cropTop,
+            PlayTranslateAccessibilityService.instance?.getFloatingIconRect(),
+            Prefs(this).compactOverlayIcon)
 
     fun resetConfiguration() {
         translationManager?.close()
