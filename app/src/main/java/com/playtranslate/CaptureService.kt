@@ -542,7 +542,7 @@ class CaptureService : Service() {
      * chars), maps character offsets to actual element bounds for precise placement.
      * Falls back to proportional character division within the line bounds.
      */
-    private suspend fun buildFuriganaBoxes(
+    private fun buildFuriganaBoxes(
         ocrResult: OcrManager.OcrResult
     ): List<TranslationOverlayView.TextBox> {
         val boxes = mutableListOf<TranslationOverlayView.TextBox>()
