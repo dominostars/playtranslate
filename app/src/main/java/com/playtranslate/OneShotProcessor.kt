@@ -52,10 +52,14 @@ class TranslationOneShotProcessor(
         val colorRef = Bitmap.createScaledBitmap(
             raw, raw.width / colorScale, raw.height / colorScale, false
         )
-        val colors = OverlayToolkit.sampleGroupColors(
-            colorRef, ocrResult.groupBounds, cropLeft, cropTop, colorScale
-        )
-        colorRef.recycle()
+        val colors: List<Pair<Int, Int>>
+        try {
+            colors = OverlayToolkit.sampleGroupColors(
+                colorRef, ocrResult.groupBounds, cropLeft, cropTop, colorScale
+            )
+        } finally {
+            colorRef.recycle()
+        }
 
         // Show shimmer placeholders while translating
         val placeholders = ocrResult.groupBounds.mapIndexed { idx, bounds ->

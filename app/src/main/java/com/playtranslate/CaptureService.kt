@@ -712,10 +712,6 @@ class CaptureService : Service() {
         return groupTexts.map { translationCache[it] ?: freshTranslations[it]!! }
     }
 
-    /**
-     * Translates each group in parallel and joins results with double-newline.
-     * Returns the combined translated text and an optional note (from ML Kit fallback).
-     */
     private suspend fun translateGroups(groupTexts: List<String>): Pair<String, String?> {
         val results = translateGroupsSeparately(groupTexts)
         val translated = results.joinToString("\n\n") { it.first }
