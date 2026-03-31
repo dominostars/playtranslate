@@ -114,21 +114,30 @@ object OverlayToolkit {
 
     // ── Furigana box building ─────────────────────────────────────────────
 
+    /** A group of furigana boxes with their source OCR group text and bounds. */
+    data class FuriganaGroup(
+        val groupText: String,
+        val groupBounds: Rect,
+        val boxes: List<TranslationOverlayView.TextBox>
+    )
+
     /**
-     * Build furigana (hiragana reading) overlay boxes from OCR result.
-     * Uses TextPaint-weighted positioning within OCR element bounds.
+     * Build furigana boxes grouped by OCR group, for selective invalidation.
+     * Each group carries its source text and bounds so FuriganaMode can track
+     * which groups changed and remove only their furigana.
      */
-    fun buildFuriganaBoxes(
+    fun buildFuriganaBoxesByGroup(
         ocrResult: OcrManager.OcrResult,
         dictionary: DictionaryManager,
         furiganaPaint: TextPaint
-    ): List<TranslationOverlayView.TextBox> {
-        val boxes = mutableListOf<TranslationOverlayView.TextBox>()
+    ): List<FuriganaGroup> {
+        val groups = mutableListOf<FuriganaGroup>()
 
         for (groupIdx in ocrResult.groupTexts.indices) {
             val lines = ocrResult.lineBoxes.filter { it.groupIndex == groupIdx }
             if (lines.isEmpty()) continue
 
+            val groupBoxes = mutableListOf<TranslationOverlayView.TextBox>()
             for (line in lines) {
                 if (line.text.isEmpty()) continue
                 val furiganaTokens = dictionary.tokenizeForFurigana(line.text)
@@ -163,7 +172,7 @@ object OverlayToolkit {
                         right,
                         line.bounds.top
                     )
-                    boxes += TranslationOverlayView.TextBox(
+                    groupBoxes += TranslationOverlayView.TextBox(
                         translatedText = ft.reading,
                         bounds = furiganaBounds,
                         lineCount = 1,
@@ -171,8 +180,39 @@ object OverlayToolkit {
                     )
                 }
             }
+
+            if (groupBoxes.isNotEmpty() && groupIdx < ocrResult.groupBounds.size) {
+                groups += FuriganaGroup(
+                    groupText = ocrResult.groupTexts[groupIdx],
+                    groupBounds = ocrResult.groupBounds[groupIdx],
+                    boxes = groupBoxes
+                )
+            }
         }
-        return boxes
+        return groups
+    }
+
+    /** Convenience: build flat list of furigana boxes (for callers that don't need group tracking). */
+    fun buildFuriganaBoxes(
+        ocrResult: OcrManager.OcrResult,
+        dictionary: DictionaryManager,
+        furiganaPaint: TextPaint
+    ): List<TranslationOverlayView.TextBox> =
+        buildFuriganaBoxesByGroup(ocrResult, dictionary, furiganaPaint).flatMap { it.boxes }
+
+    /** Check if two OCR groups match (same text at same approximate location). */
+    fun groupsMatch(
+        oldText: String, oldBounds: Rect,
+        newText: String, newBounds: Rect
+    ): Boolean {
+        if (isSignificantChange(oldText, newText)) return false
+        val tolerance = maxOf(
+            oldBounds.width(), oldBounds.height(),
+            newBounds.width(), newBounds.height()
+        ) / 3
+        val dx = Math.abs((oldBounds.left + oldBounds.right) / 2 - (newBounds.left + newBounds.right) / 2)
+        val dy = Math.abs((oldBounds.top + oldBounds.bottom) / 2 - (newBounds.top + newBounds.bottom) / 2)
+        return dx < tolerance && dy < tolerance
     }
 
     /**

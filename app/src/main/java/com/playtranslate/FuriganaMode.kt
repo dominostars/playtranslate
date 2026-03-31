@@ -30,6 +30,7 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
 
     // ── Mode-owned state ──────────────────────────────────────────────────
 
+    private var furiganaGroups: List<OverlayToolkit.FuriganaGroup> = emptyList()
     private var cachedFuriganaBoxes: List<TranslationOverlayView.TextBox>? = null
     private var cleanRefBitmap: Bitmap? = null
     private var lastOcrText: String? = null
@@ -65,6 +66,7 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
     }
 
     override fun refresh() {
+        furiganaGroups = emptyList()
         cachedFuriganaBoxes = null
         cleanRefBitmap?.recycle()
         cleanRefBitmap = null
@@ -121,28 +123,33 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
             if (lastOcrText != null && !OverlayToolkit.isSignificantChange(lastOcrText!!, dedupKey)) {
                 val boxes = cachedFuriganaBoxes
                 if (boxes != null) {
+                    android.util.Log.d("FuriganaDbg", "DEDUP HIT: re-showing ${boxes.size} cached boxes")
                     service.showLiveOverlay(boxes, cropLeft, cropTop, screenshotW, screenshotH)
-                    // Restore clean reference if it was cleared by a false-positive text change
                     if (cleanRefBitmap == null) {
                         cleanRefBitmap = raw.copy(raw.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
                     }
                     return
                 }
+                android.util.Log.w("FuriganaDbg", "DEDUP HIT but cachedBoxes=null — falling through to rebuild")
             }
 
             lastOcrText = dedupKey
 
-            // Build and show furigana
+            // Build and show furigana (grouped for selective invalidation)
             val dict = DictionaryManager.get(service)
-            val furigana = OverlayToolkit.buildFuriganaBoxes(ocrResult, dict, service.furiganaPaint)
+            furiganaGroups = OverlayToolkit.buildFuriganaBoxesByGroup(ocrResult, dict, service.furiganaPaint)
+            val furigana = furiganaGroups.flatMap { it.boxes }
             cachedFuriganaBoxes = furigana
             this@FuriganaMode.cropLeft = left
             this@FuriganaMode.cropTop = top
             this@FuriganaMode.screenshotW = raw.width
             this@FuriganaMode.screenshotH = raw.height
 
+            android.util.Log.d("FuriganaDbg", "REBUILD: ${furiganaGroups.size} groups, ${furigana.size} boxes")
             if (furigana.isNotEmpty()) {
                 service.showLiveOverlay(furigana, left, top, raw.width, raw.height)
+            } else {
+                android.util.Log.w("FuriganaDbg", "REBUILD: 0 boxes — nothing to show!")
             }
 
             // Save clean reference for patching raw frames
@@ -218,6 +225,28 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
                     if (prevText != null && OverlayToolkit.isSignificantChange(prevText, pipeline.dedupKey)) {
                         android.util.Log.w("FuriganaDbg", "TEXT CHANGED: requesting clean capture")
                         DetectionLog.log("Furigana: text changed, requesting clean capture")
+
+                        // Selective invalidation: remove furigana for changed groups, keep the rest
+                        val newOcrGroups = pipeline.ocrResult.groupTexts.zip(pipeline.ocrResult.groupBounds)
+                        val surviving = furiganaGroups.filter { old ->
+                            newOcrGroups.any { (newText, newBounds) ->
+                                OverlayToolkit.groupsMatch(old.groupText, old.groupBounds, newText, newBounds)
+                            }
+                        }
+                        val removed = furiganaGroups.size - surviving.size
+                        android.util.Log.d("FuriganaDbg", "  Groups: ${furiganaGroups.size} total, $removed changed, ${surviving.size} kept")
+                        furiganaGroups = surviving
+                        cachedFuriganaBoxes = surviving.flatMap { it.boxes }.ifEmpty { null }
+                        lastOcrText = null  // force full rebuild on next clean frame
+
+                        // Re-show surviving furigana (unchanged groups stay visible)
+                        val boxes = cachedFuriganaBoxes
+                        if (boxes != null) {
+                            service.showLiveOverlay(boxes, cropLeft, cropTop, screenshotW, screenshotH)
+                        } else {
+                            PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+                        }
+
                         cleanRefBitmap?.recycle()
                         cleanRefBitmap = null
                         PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()

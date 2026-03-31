@@ -531,10 +531,13 @@ class CaptureService : Service() {
         cropLeft: Int, cropTop: Int,
         screenshotW: Int, screenshotH: Int
     ) {
-        if (holdActive) return
-        val a11y = PlayTranslateAccessibilityService.instance ?: return
+        if (holdActive) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: holdActive=true"); return }
+        val a11y = PlayTranslateAccessibilityService.instance
+        if (a11y == null) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: a11y=null"); return }
         val dm = getSystemService(DisplayManager::class.java)
-        val display = dm.getDisplay(gameDisplayId) ?: return
+        val display = dm.getDisplay(gameDisplayId)
+        if (display == null) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: display=null for id=$gameDisplayId"); return }
+        Log.d("FuriganaDbg", "showLiveOverlay: ${boxes.size} boxes, crop=($cropLeft,$cropTop), screen=${screenshotW}x$screenshotH")
         a11y.showTranslationOverlay(display, boxes, cropLeft, cropTop, screenshotW, screenshotH)
     }
 
