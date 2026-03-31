@@ -169,21 +169,24 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
             if (box.isFurigana) {
                 // Furigana: outlined text, no box constraint, sized from line height
                 val textSizePx = (rect.height() * 0.7f).coerceAtLeast(4f)
+                val strokeW = 3f * dp
+                val strokePad = (strokeW / 2f + 0.5f).toInt()
                 val child = OutlinedTextView(context).apply {
                     text = box.translatedText
                     setTextColor(Color.WHITE)
                     outlineColor = Color.BLACK
-                    outlineWidth = 3f * dp
+                    outlineWidth = strokeW
                     typeface = Typeface.DEFAULT_BOLD
                     includeFontPadding = false
+                    setPadding(strokePad, strokePad, strokePad, strokePad)
                     setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
                 }
                 addView(child, LayoutParams(
                     LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
                 ))
-                // Position after measurement: centered over kanji, bottom at text top
+                // Position after measurement, offset by stroke padding to keep text aligned
                 child.post {
-                    child.translationX = rect.left
+                    child.translationX = rect.left - strokePad
                     child.translationY = rect.bottom - child.measuredHeight
                 }
             } else {
