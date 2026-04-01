@@ -158,7 +158,7 @@ object OverlayToolkit {
                                 translatedText = ft.reading,
                                 bounds = Rect(
                                     first.bounds.left,
-                                    (first.bounds.top - furiganaHeight).coerceAtLeast(0),
+                                    first.bounds.top - furiganaHeight,
                                     last.bounds.right,
                                     first.bounds.top
                                 ),
@@ -195,7 +195,7 @@ object OverlayToolkit {
                         val furiganaHeight = (line.bounds.height() * 0.75f).toInt().coerceAtLeast(1)
                         val furiganaBounds = Rect(
                             left,
-                            (line.bounds.top - furiganaHeight).coerceAtLeast(0),
+                            line.bounds.top - furiganaHeight,
                             right,
                             line.bounds.top
                         )
