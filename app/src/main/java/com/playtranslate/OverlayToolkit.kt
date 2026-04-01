@@ -141,6 +141,7 @@ object OverlayToolkit {
             for (line in lines) {
                 if (line.text.isEmpty()) continue
                 val furiganaTokens = dictionary.tokenizeForFurigana(line.text)
+                val lineBoxes = mutableListOf<TranslationOverlayView.TextBox>()
 
                 if (line.symbols.isNotEmpty()) {
                     // Symbol-based positioning: use exact ML Kit character bounds
@@ -153,7 +154,7 @@ object OverlayToolkit {
                             searchFrom = matchStart + ft.kanjiSurface.length
 
                             val furiganaHeight = (first.bounds.height() * 0.75f).toInt().coerceAtLeast(1)
-                            groupBoxes += TranslationOverlayView.TextBox(
+                            lineBoxes += TranslationOverlayView.TextBox(
                                 translatedText = ft.reading,
                                 bounds = Rect(
                                     first.bounds.left,
@@ -198,7 +199,7 @@ object OverlayToolkit {
                             right,
                             line.bounds.top
                         )
-                        groupBoxes += TranslationOverlayView.TextBox(
+                        lineBoxes += TranslationOverlayView.TextBox(
                             translatedText = ft.reading,
                             bounds = furiganaBounds,
                             lineCount = 1,
@@ -206,6 +207,8 @@ object OverlayToolkit {
                         )
                     }
                 }
+
+                groupBoxes += mergeOverlappingFurigana(lineBoxes, furiganaPaint)
             }
 
             if (groupBoxes.isNotEmpty() && groupIdx < ocrResult.groupBounds.size) {
@@ -240,6 +243,60 @@ object OverlayToolkit {
         val dx = Math.abs((oldBounds.left + oldBounds.right) / 2 - (newBounds.left + newBounds.right) / 2)
         val dy = Math.abs((oldBounds.top + oldBounds.bottom) / 2 - (newBounds.top + newBounds.bottom) / 2)
         return dx < tolerance && dy < tolerance
+    }
+
+    /**
+     * Merge adjacent furigana boxes whose rendered text would overlap.
+     * The furigana reading is often wider than the kanji it sits above (e.g., "わたし"
+     * over "私"), so we estimate the rendered text width to detect visual collisions
+     * rather than just checking OCR bounds.
+     */
+    private fun mergeOverlappingFurigana(
+        boxes: List<TranslationOverlayView.TextBox>,
+        furiganaPaint: TextPaint
+    ): List<TranslationOverlayView.TextBox> {
+        if (boxes.size <= 1) return boxes
+        val sorted = boxes.sortedBy { it.bounds.left }
+        val merged = mutableListOf<TranslationOverlayView.TextBox>()
+        var current = sorted[0]
+        var currentRight = estimateFuriganaRight(current, furiganaPaint)
+        for (i in 1 until sorted.size) {
+            val next = sorted[i]
+            if (next.bounds.left < currentRight) {
+                current = TranslationOverlayView.TextBox(
+                    translatedText = current.translatedText + next.translatedText,
+                    bounds = Rect(
+                        current.bounds.left,
+                        minOf(current.bounds.top, next.bounds.top),
+                        maxOf(current.bounds.right, next.bounds.right),
+                        maxOf(current.bounds.bottom, next.bounds.bottom)
+                    ),
+                    lineCount = 1,
+                    isFurigana = true
+                )
+                currentRight = estimateFuriganaRight(current, furiganaPaint)
+            } else {
+                merged += current
+                current = next
+                currentRight = estimateFuriganaRight(current, furiganaPaint)
+            }
+        }
+        merged += current
+        return merged
+    }
+
+    /**
+     * Estimate the right edge of a furigana label as it would be rendered.
+     * The text is rendered at 0.7× the box height, positioned from box.left.
+     * Returns the greater of the bounds right edge or the estimated text right edge.
+     */
+    private fun estimateFuriganaRight(box: TranslationOverlayView.TextBox, paint: TextPaint): Int {
+        val textSizePx = (box.bounds.height() * 0.7f).coerceAtLeast(4f)
+        val savedSize = paint.textSize
+        paint.textSize = textSizePx
+        val textWidth = paint.measureText(box.translatedText)
+        paint.textSize = savedSize
+        return maxOf(box.bounds.right, (box.bounds.left + textWidth).toInt())
     }
 
     /**
