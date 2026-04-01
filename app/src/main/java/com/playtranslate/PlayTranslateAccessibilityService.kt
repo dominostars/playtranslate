@@ -593,6 +593,11 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         translationOverlayDisplayId = -1
     }
 
+    /** Remove specific overlay boxes without rebuilding the entire view. */
+    fun removeOverlayBoxes(toRemove: List<TranslationOverlayView.TextBox>) {
+        translationOverlayView?.removeBoxesByContent(toRemove)
+    }
+
     // ── Floating overlay icon ─────────────────────────────────────────────
 
     // ── Input monitoring for live mode ──────────────────────────────────

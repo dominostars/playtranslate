@@ -15,6 +15,7 @@ import android.view.View
 import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import android.widget.TextView
+import androidx.core.view.doOnLayout
 import androidx.core.widget.TextViewCompat
 
 /**
@@ -70,6 +71,10 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
         cropLeft: Int, cropTop: Int,
         screenshotW: Int, screenshotH: Int
     ) {
+        // Skip rebuild if content is identical (avoids flash on false-positive recaptures)
+        if (this.boxes == boxes && cropOffsetX == cropLeft && cropOffsetY == cropTop
+            && this.screenshotW == screenshotW && this.screenshotH == screenshotH) return
+
         this.boxes = boxes
         cropOffsetX = cropLeft
         cropOffsetY = cropTop
@@ -79,6 +84,19 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
             updateScales()
             rebuildChildren()
         }
+    }
+
+    /** Remove specific boxes by content match. Removes only the corresponding
+     *  child views — surviving children stay in place with no rebuild. */
+    fun removeBoxesByContent(toRemove: List<TextBox>) {
+        if (toRemove.isEmpty()) return
+        val removeSet = toRemove.toSet()
+        for (i in (childCount - 1) downTo 0) {
+            if (i < boxes.size && boxes[i] in removeSet) {
+                removeViewAt(i)
+            }
+        }
+        boxes = boxes.filter { it !in removeSet }
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -156,21 +174,24 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
             if (box.isFurigana) {
                 // Furigana: outlined text, no box constraint, sized from line height
                 val textSizePx = (rect.height() * 0.7f).coerceAtLeast(4f)
+                val strokeW = 3f * dp
+                val strokePad = (strokeW / 2f + 0.5f).toInt()
                 val child = OutlinedTextView(context).apply {
                     text = box.translatedText
                     setTextColor(Color.WHITE)
                     outlineColor = Color.BLACK
-                    outlineWidth = 3f * dp
+                    outlineWidth = strokeW
                     typeface = Typeface.DEFAULT_BOLD
                     includeFontPadding = false
+                    setPadding(strokePad, strokePad, strokePad, strokePad)
                     setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
                 }
                 addView(child, LayoutParams(
                     LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
                 ))
-                // Position after measurement: centered over kanji, bottom at text top
-                child.post {
-                    child.translationX = rect.left
+                // Position after measurement but before draw — no (0,0) flash
+                child.doOnLayout {
+                    child.translationX = rect.left - strokePad
                     child.translationY = rect.bottom - child.measuredHeight
                 }
             } else {
