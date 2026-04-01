@@ -258,7 +258,15 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
                         PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
                     }
                 } else {
-                    android.util.Log.w("FuriganaDbg", "RAW OCR: pipeline null (OCR failed on patched frame)")
+                    // No text detected — scene changed to non-text screen
+                    android.util.Log.d("FuriganaDbg", "RAW OCR: no text, clearing overlays")
+                    furiganaGroups = emptyList()
+                    cachedFuriganaBoxes = null
+                    lastOcrText = null
+                    cleanRefBitmap?.recycle()
+                    cleanRefBitmap = null
+                    PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+                    service.onLiveNoText?.invoke()
                 }
             } finally {
                 if (!patched.isRecycled) patched.recycle()
