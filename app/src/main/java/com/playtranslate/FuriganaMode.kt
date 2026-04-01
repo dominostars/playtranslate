@@ -187,8 +187,9 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
         val ref = cleanRefBitmap
         val boxes = cachedFuriganaBoxes
         if (ref == null || boxes.isNullOrEmpty()) {
-            android.util.Log.w("FuriganaDbg", "RAW SKIP: ref=${ref != null} boxes=${boxes?.size ?: 0}")
-            bitmap.recycle()
+            // No overlay on screen — raw frame is inherently clean, process it directly
+            android.util.Log.d("FuriganaDbg", "RAW→CLEAN: no overlay, processing as clean frame")
+            handleCleanFrame(bitmap)
             return
         }
 
