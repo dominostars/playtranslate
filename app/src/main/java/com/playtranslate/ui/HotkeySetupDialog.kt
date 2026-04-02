@@ -61,6 +61,12 @@ class HotkeySetupDialog : DialogFragment() {
         return dialog
     }
 
+    override fun onStart() {
+        super.onStart()
+        val screenWidth = resources.displayMetrics.widthPixels
+        dialog?.window?.setLayout(screenWidth / 2, ViewGroup.LayoutParams.WRAP_CONTENT)
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View = inflater.inflate(R.layout.dialog_hotkey_setup, container, false)
