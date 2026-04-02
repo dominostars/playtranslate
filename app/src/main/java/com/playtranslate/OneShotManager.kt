@@ -13,9 +13,11 @@ import kotlinx.coroutines.launch
 class OneShotManager(private val service: CaptureService) {
 
     private var currentJob: Job? = null
+    private var forcedMode: OverlayMode? = null
 
     /** Start a one-shot capture cycle. Cancels any previous in-flight cycle. */
-    fun runHoldOverlay() {
+    fun runHoldOverlay(forceMode: OverlayMode? = null) {
+        forcedMode = forceMode
         currentJob?.cancel()
         currentJob = service.serviceScope.launch {
             runCycle()
@@ -74,7 +76,7 @@ class OneShotManager(private val service: CaptureService) {
     }
 
     private fun createProcessor(): OneShotProcessor {
-        return when (Prefs(service).overlayMode) {
+        return when (forcedMode ?: Prefs(service).overlayMode) {
             OverlayMode.FURIGANA -> FuriganaOneShotProcessor(
                 DictionaryManager.get(service),
                 service.furiganaPaint

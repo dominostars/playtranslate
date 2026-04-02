@@ -156,6 +156,9 @@ class CaptureService : Service() {
         super.onCreate()
         instance = this
         createNotificationChannel()
+
+        // Register hotkey callbacks (whichever service started first)
+        PlayTranslateAccessibilityService.instance?.registerHotkeyCallbacks()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -185,6 +188,8 @@ class CaptureService : Service() {
         onTranslationStarted = null
         onLiveNoText = null
         onHoldLoadingChanged = null
+        PlayTranslateAccessibilityService.instance?.onHotkeyActivated = null
+        PlayTranslateAccessibilityService.instance?.onHotkeyReleased = null
         super.onDestroy()
     }
 
@@ -466,6 +471,44 @@ class CaptureService : Service() {
         holdActive = false
         if (!liveActive) oneShotManager.cancel()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+    }
+
+    // ── Hotkey hold ─────────────────────────────────────────────────────
+
+    private var hotkeyActive = false
+    private var savedLiveState: CachedOverlayState? = null
+
+    /** Begin a hotkey hold-to-preview with a forced overlay mode. */
+    fun hotkeyHoldStart(mode: OverlayMode) {
+        Log.d("HotkeyDbg", "hotkeyHoldStart: mode=$mode isConfigured=$isConfigured liveActive=$liveActive")
+        if (hotkeyActive) return
+        hotkeyActive = true
+
+        // Pause live capture loop so it doesn't overwrite the one-shot overlays
+        if (liveActive) {
+            savedLiveState = liveMode?.getCachedState()
+            PlayTranslateAccessibilityService.instance?.screenshotManager?.stopLoop()
+            PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+        }
+
+        oneShotManager.runHoldOverlay(forceMode = mode)
+    }
+
+    /** End a hotkey hold-to-preview. */
+    fun hotkeyHoldEnd() {
+        if (!hotkeyActive) return
+        hotkeyActive = false
+
+        oneShotManager.cancel()
+
+        // Resume live mode if it was active
+        if (liveActive) {
+            // Re-show cached state immediately so there's no gap
+            savedLiveState?.let { showHoldOverlay(it) }
+            savedLiveState = null
+            // Restart the live capture loop (start re-registers callbacks and begins loop)
+            liveMode?.start()
+        }
     }
 
     /**

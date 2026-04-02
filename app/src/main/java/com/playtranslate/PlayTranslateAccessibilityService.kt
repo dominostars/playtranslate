@@ -114,6 +114,14 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         }
         registerReceiver(screenReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
         ensureFloatingIcon()
+        registerHotkeyCallbacks()
+    }
+
+    /** Wire hotkey callbacks to CaptureService. Safe to call multiple times. */
+    fun registerHotkeyCallbacks() {
+        val svc = CaptureService.instance ?: return
+        onHotkeyActivated = { mode -> svc.hotkeyHoldStart(mode) }
+        onHotkeyReleased = { svc.hotkeyHoldEnd() }
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
@@ -695,7 +703,61 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     /** Temporary listener for key event capture (e.g., hotkey setup dialog). Takes priority over normal handling. */
     var onKeyEventListener: ((KeyEvent) -> Boolean)? = null
 
+    // ── Hotkey combo detection ──────────────────────────────────────────
+
+    private val heldKeyCodes = mutableSetOf<Int>()
+    private var activeHotkeyMode: OverlayMode? = null
+
+    /** Callback when a hotkey combo becomes fully held. */
+    var onHotkeyActivated: ((OverlayMode) -> Unit)? = null
+    /** Callback when the active hotkey combo is released. */
+    var onHotkeyReleased: (() -> Unit)? = null
+
+    private fun parseCombo(stored: String): Set<Int> {
+        if (stored.isBlank()) return emptySet()
+        return stored.split("+").mapNotNull { it.toIntOrNull() }.toSet()
+    }
+
+    private fun checkHotkeyCombos() {
+        val prefs = Prefs(this)
+        val translationCombo = parseCombo(prefs.hotkeyTranslation)
+        val furiganaCombo = parseCombo(prefs.hotkeyFurigana)
+
+        android.util.Log.d("HotkeyDbg", "checkCombos: held=$heldKeyCodes translation=$translationCombo furigana=$furiganaCombo active=$activeHotkeyMode callback=${onHotkeyActivated != null}")
+
+        if (activeHotkeyMode != null) {
+            // Check if the active combo is still held
+            val activeCombo = when (activeHotkeyMode) {
+                OverlayMode.TRANSLATION -> translationCombo
+                OverlayMode.FURIGANA -> furiganaCombo
+                else -> emptySet()
+            }
+            if (!heldKeyCodes.containsAll(activeCombo)) {
+                android.util.Log.d("HotkeyDbg", "RELEASED: $activeHotkeyMode")
+                activeHotkeyMode = null
+                onHotkeyReleased?.invoke()
+            }
+        } else {
+            // Check if any combo just became active (longer combo first for priority)
+            val combos = listOf(
+                translationCombo to OverlayMode.TRANSLATION,
+                furiganaCombo to OverlayMode.FURIGANA
+            ).filter { it.first.isNotEmpty() }.sortedByDescending { it.first.size }
+
+            for ((combo, mode) in combos) {
+                if (heldKeyCodes.containsAll(combo)) {
+                    android.util.Log.d("HotkeyDbg", "ACTIVATED: $mode (combo=$combo)")
+                    activeHotkeyMode = mode
+                    onHotkeyActivated?.invoke(mode)
+                    break
+                }
+            }
+        }
+    }
+
     override fun onKeyEvent(event: KeyEvent): Boolean {
+        android.util.Log.d("HotkeyDbg", "onKeyEvent: keyCode=${event.keyCode} action=${event.action} source=0x${event.source.toString(16)}")
+
         // If a key event listener is active (e.g., hotkey setup), let it handle first
         onKeyEventListener?.let { listener ->
             if (listener(event)) return true
@@ -710,15 +772,19 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 KeyEvent.ACTION_DOWN -> {
                     lastKeyEventTime = System.currentTimeMillis()
                     buttonHeld = true
+                    heldKeyCodes.add(event.keyCode)
                     if (dragLookupController?.isPopupShowing == true) {
                         dragLookupController?.dismiss()
                     }
                     onGameInput?.invoke()
+                    checkHotkeyCombos()
                 }
                 KeyEvent.ACTION_UP -> {
                     buttonHeld = false
+                    heldKeyCodes.remove(event.keyCode)
                     lastKeyEventTime = System.currentTimeMillis()
                     onGameInput?.invoke()
+                    checkHotkeyCombos()
                 }
             }
         }
