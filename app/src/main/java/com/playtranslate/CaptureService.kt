@@ -503,10 +503,8 @@ class CaptureService : Service() {
 
         // Resume live mode if it was active
         if (liveActive) {
-            // Re-show cached state immediately so there's no gap
             savedLiveState?.let { showHoldOverlay(it) }
             savedLiveState = null
-            // Restart the live capture loop (start re-registers callbacks and begins loop)
             liveMode?.start()
         }
     }

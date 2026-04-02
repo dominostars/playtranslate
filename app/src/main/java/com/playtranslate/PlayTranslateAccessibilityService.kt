@@ -186,9 +186,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val hadTranslation: Boolean,
         val hadDebug: Boolean,
         val hadRegionOverlay: Boolean
-    ) {
-        val hadAnyOverlay get() = hadTranslation || hadDebug || hadRegionOverlay
-    }
+    )
 
     /**
      * Hides overlays so they don't appear in a clean screenshot.

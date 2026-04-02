@@ -31,6 +31,7 @@ class OneShotManager(private val service: CaptureService) {
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
     }
 
+
     private suspend fun runCycle() {
         if (!service.isConfigured) return
 

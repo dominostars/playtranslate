@@ -68,10 +68,8 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
         awaitScreenshotInterval()
 
         val state = a11y.prepareForCleanCapture()
-        // Always wait at least 1 vsync frame to ensure the compositor has
-        // a clean frame (e.g. after popup dismiss, icon mode change).
-        // Wait 2 frames if we just hid overlays.
-        waitVsync(if (state.hadAnyOverlay) 2 else 1)
+        // Wait 2 vsync frames for the compositor to flush the overlay-free frame.
+        waitVsync(2)
 
         var bitmap = doTakeScreenshot(displayId)
 
@@ -155,7 +153,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
                     cleanRequested = false
                     DetectionLog.log("Loop: taking clean screenshot...")
                     val state = a11y.prepareForCleanCapture()
-                    waitVsync(if (state.hadAnyOverlay) 2 else 1)
+                    waitVsync(2)
                     val bitmap = doTakeScreenshot(displayId)
                     a11y.restoreAfterCapture(state)
                     if (bitmap != null) {
