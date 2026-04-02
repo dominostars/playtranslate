@@ -382,6 +382,14 @@ class SettingsBottomSheet : DialogFragment() {
             updateOverlayModeHint()
         }
 
+        // ── Hotkey rows ─────────────────────────────────────────────────────
+        setupHotkeyRow(view,
+            R.id.rowHotkeyTranslation, R.id.switchHotkeyTranslation, R.id.tvHotkeyTranslationHint,
+            { prefs.hotkeyTranslation }, { prefs.hotkeyTranslation = it })
+        setupHotkeyRow(view,
+            R.id.rowHotkeyFurigana, R.id.switchHotkeyFurigana, R.id.tvHotkeyFuriganaHint,
+            { prefs.hotkeyFurigana }, { prefs.hotkeyFurigana = it })
+
         // ── Capture interval (auto-save on text change) ───────────────────
         val minSec = Prefs.MIN_CAPTURE_INTERVAL_SEC
         val minLabel = if (minSec == minSec.toLong().toFloat()) "${minSec.toLong()}" else "%.1f".format(minSec)
@@ -951,4 +959,45 @@ class SettingsBottomSheet : DialogFragment() {
         }
         return bmp
     }
+
+    // ── Hotkey helpers ──────────────────────────────────────────────────────
+
+    private fun setupHotkeyRow(
+        view: android.view.View,
+        rowId: Int, switchId: Int, hintId: Int,
+        getHotkey: () -> String,
+        setHotkey: (String) -> Unit
+    ) {
+        val switch = view.findViewById<com.google.android.material.materialswitch.MaterialSwitch>(switchId)
+        val hint = view.findViewById<TextView>(hintId)
+        val hotkey = getHotkey()
+
+        switch.isChecked = hotkey.isNotEmpty()
+        hint.text = if (hotkey.isNotEmpty()) formatHotkey(hotkey) else "Not set"
+
+        switch.setOnCheckedChangeListener { _, checked ->
+            if (checked) {
+                val dialog = HotkeySetupDialog.newInstance()
+                dialog.onHotkeySet = { keyCodes ->
+                    val combo = keyCodes.joinToString("+")
+                    setHotkey(combo)
+                    hint.text = formatHotkey(combo)
+                }
+                dialog.onCancelled = {
+                    switch.isChecked = false
+                }
+                dialog.show(childFragmentManager, "hotkey_setup")
+            } else {
+                setHotkey("")
+                hint.text = "Not set"
+            }
+        }
+
+        view.findViewById<android.view.View>(rowId).setOnClickListener { switch.toggle() }
+    }
+
+    private fun formatHotkey(stored: String): String =
+        stored.split("+")
+            .map { android.view.KeyEvent.keyCodeToString(it.toInt()).removePrefix("KEYCODE_") }
+            .joinToString(" + ")
 }

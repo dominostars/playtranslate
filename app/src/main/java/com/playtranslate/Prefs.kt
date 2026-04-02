@@ -115,6 +115,16 @@ class Prefs(context: Context) {
         get() = OverlayMode.fromOrdinal(sp.getInt(KEY_OVERLAY_MODE, 0))
         set(v) = sp.edit().putInt(KEY_OVERLAY_MODE, v.ordinal).apply()
 
+    /** Hotkey combo for hold-to-show translations. Empty = not set. Format: keyCodes joined by "+". */
+    var hotkeyTranslation: String
+        get() = sp.getString(KEY_HOTKEY_TRANSLATION, "") ?: ""
+        set(v) = sp.edit().putString(KEY_HOTKEY_TRANSLATION, v).apply()
+
+    /** Hotkey combo for hold-to-show furigana. Empty = not set. Format: keyCodes joined by "+". */
+    var hotkeyFurigana: String
+        get() = sp.getString(KEY_HOTKEY_FURIGANA, "") ?: ""
+        set(v) = sp.edit().putString(KEY_HOTKEY_FURIGANA, v).apply()
+
     /** Capture interval for live mode in seconds. */
     var captureIntervalSec: Float
         get() = sp.getFloat(KEY_CAPTURE_INTERVAL_SEC, DEFAULT_CAPTURE_INTERVAL_SEC).coerceAtLeast(MIN_CAPTURE_INTERVAL_SEC)
@@ -237,6 +247,8 @@ class Prefs(context: Context) {
         private const val KEY_DEBUG_FORCE_SINGLE_SCREEN      = "debug_force_single_screen"
         private const val KEY_DEBUG_SHOW_OCR_BOXES           = "debug_show_ocr_boxes"
         private const val KEY_DEBUG_SHOW_DETECTION_LOG      = "debug_show_detection_log"
+        private const val KEY_HOTKEY_TRANSLATION           = "hotkey_translation"
+        private const val KEY_HOTKEY_FURIGANA              = "hotkey_furigana"
 
         /** Single source of truth for single-screen detection. */
         fun isSingleScreen(context: Context): Boolean {
