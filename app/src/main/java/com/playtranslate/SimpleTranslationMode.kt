@@ -32,6 +32,9 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
     private var showRegionFlash = true
 
     override fun start() {
+        PlayTranslateAccessibilityService.instance
+            ?.startInputMonitoring(service.gameDisplayId) { onButtonDown() }
+
         pollingJob = scope.launch {
             while (isActive) {
                 if (!service.holdActive) {
@@ -45,7 +48,14 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
     override fun stop() {
         pollingJob?.cancel()
         scope.cancel()
+        PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+    }
+
+    private fun onButtonDown() {
+        PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+        // Clear dedup so next cycle re-captures fresh
+        lastOcrText = null
     }
 
     override fun refresh() {
