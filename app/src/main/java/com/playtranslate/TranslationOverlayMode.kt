@@ -613,6 +613,7 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
             if (prevText != null && !OverlayToolkit.hasSignificantAdditions(prevText, newDedupKey)) return false
 
             // Find which existing overlays are near any new text and remove them
+            // Find which existing overlays are near any new text
             val nearbyIndices = mutableSetOf<Int>()
             for (newRect in ocrResult.groupBounds) {
                 val newFullRect = Rect(newRect.left + left, newRect.top + top,
@@ -626,12 +627,25 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
                     }
                 }
             }
-            val surviving = if (nearbyIndices.isNotEmpty()) {
-                DetectionLog.log("D: Removing ${nearbyIndices.size}/${overlays.size} nearby overlays, merging new text")
-                overlays.filterIndexed { i, _ -> i !in nearbyIndices }
-            } else overlays
 
-            // Translate new groups and merge with surviving overlays
+            if (nearbyIndices.isNotEmpty()) {
+                // New text near existing overlays (typewriter text, partial sentence growing).
+                // Remove the nearby overlays and recapture clean to get the full sentence.
+                val remaining = overlays.filterIndexed { i, _ -> i !in nearbyIndices }
+                DetectionLog.log("D: Removing ${nearbyIndices.size}/${overlays.size} nearby overlays, recapturing")
+                cachedOverlayBoxes = remaining.ifEmpty { null }
+                lastOcrText = null
+                clearDetectionState()
+                if (remaining.isNotEmpty()) {
+                    service.showLiveOverlay(remaining, cropLeft, cropTop, screenshotW, screenshotH)
+                } else {
+                    PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+                }
+                PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
+                return true
+            }
+
+            // New text far from existing overlays — translate and merge
             val newGroupTexts = ocrResult.groupTexts.filter { text ->
                 text.any { c -> OcrManager.isSourceLangChar(c, service.sourceLang) }
             }
@@ -653,16 +667,11 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
                 }
             } else emptyList()
 
-            if (newOverlayBoxes.isNotEmpty() || nearbyIndices.isNotEmpty()) {
-                val merged = surviving + newOverlayBoxes
-                cachedOverlayBoxes = merged.ifEmpty { null }
+            if (newOverlayBoxes.isNotEmpty()) {
+                val merged = overlays + newOverlayBoxes
+                cachedOverlayBoxes = merged
                 lastOcrText = (prevText ?: "") + newDedupKey
-                if (merged.isNotEmpty()) {
-                    service.showLiveOverlay(merged, cropLeft, cropTop, screenshotW, screenshotH)
-                } else {
-                    PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
-                }
-                // Reset detection for the new overlay layout
+                service.showLiveOverlay(merged, cropLeft, cropTop, screenshotW, screenshotH)
                 forceCheckC = true
                 detectionRefOverlay = null
                 detectionOverlayActive = null
