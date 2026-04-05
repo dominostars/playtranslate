@@ -106,7 +106,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         // Pinhole overlays if present, otherwise screenshot is naturally clean
         if (hasOverlays) {
             a11y.translationOverlayView?.switchToPinhole()
-            waitVsync(3)
+            waitVsync(5)
         }
 
         // Capture — restore solid in the onCaptured callback (before bitmap copy)
@@ -139,7 +139,16 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                 updateCleanRef(raw, ref)
             }
 
-            val pipeline = service.runOcr(imageForOcr ?: raw)
+            try {
+                val f = java.io.File("/sdcard/Download/ocr_raw.png")
+                java.io.FileOutputStream(f).use { raw.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            } catch (_: Exception) {}
+            val ocrImage = imageForOcr ?: raw
+            try {
+                val f = java.io.File("/sdcard/Download/ocr_input.png")
+                java.io.FileOutputStream(f).use { ocrImage.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            } catch (_: Exception) {}
+            val pipeline = service.runOcr(ocrImage)
             imageForOcr?.recycle()
 
             if (pipeline == null) {
