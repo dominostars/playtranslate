@@ -192,7 +192,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                 service.showLiveOverlay(boxes, left, top, sw, sh)
 
                 // Generate shadow mask after overlay renders
-                waitForOverlayLayout()
+                waitVsync(2)
                 shadowMask?.recycle()
                 shadowMask = a11y.translationOverlayView?.generateShadowMask()
                 overlayScreenRects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
@@ -216,7 +216,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                     if (remaining.isNotEmpty()) {
                         service.showLiveOverlay(remaining, cropLeft, cropTop, screenshotW, screenshotH)
                         // Update mask and rects for remaining overlays
-                        waitForOverlayLayout()
+                        waitVsync(2)
                         shadowMask?.recycle()
                         shadowMask = a11y.translationOverlayView?.generateShadowMask()
                         overlayScreenRects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
@@ -238,7 +238,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                         displayedGroupTexts = displayedGroupTexts + matchResult.newGroups.map { it.first }
                         service.showLiveOverlay(merged, cropLeft, cropTop, screenshotW, screenshotH)
 
-                        waitForOverlayLayout()
+                        waitVsync(2)
                         shadowMask?.recycle()
                         shadowMask = a11y.translationOverlayView?.generateShadowMask()
                         overlayScreenRects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
@@ -545,17 +545,6 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
 
     // ── Utility ─────────────────────────────────────────────────────────
 
-
-    private suspend fun waitForOverlayLayout() {
-        // Wait 2 vsync frames for the overlay to be laid out and rendered
-        repeat(2) {
-            suspendCancellableCoroutine<Unit> { cont ->
-                Choreographer.getInstance().postFrameCallback {
-                    if (cont.isActive) cont.resume(Unit)
-                }
-            }
-        }
-    }
 
     private suspend fun waitVsync(frames: Int) {
         repeat(frames) {
