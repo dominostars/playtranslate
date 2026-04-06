@@ -78,6 +78,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     internal var translationOverlayView: TranslationOverlayView? = null
     private var translationOverlayWm: WindowManager? = null
     private var translationOverlayDisplayId: Int = -1
+
+    internal var dirtyOverlayView: TranslationOverlayView? = null
+    private var dirtyOverlayWm: WindowManager? = null
     private var touchSentinelView: View? = null
     private var touchSentinelWm: WindowManager? = null
     private var regionEditorBar: View? = null
@@ -590,6 +593,23 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         translationOverlayWm = wm
         translationOverlayView = view
         translationOverlayDisplayId = display.displayId
+
+        // Create persistent dirty overlay window (always present, empty when not dirty)
+        val dirtyView = TranslationOverlayView(themedCtx).apply {
+            pinholeEnabled = false
+        }
+        val dirtyParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        )
+        wm.addView(dirtyView, dirtyParams)
+        dirtyOverlayWm = wm
+        dirtyOverlayView = dirtyView
     }
 
     fun hideTranslationOverlay() {
@@ -597,6 +617,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         translationOverlayView = null
         translationOverlayWm = null
         translationOverlayDisplayId = -1
+        try { dirtyOverlayView?.let { dirtyOverlayWm?.removeView(it) } } catch (_: Exception) {}
+        dirtyOverlayView = null
+        dirtyOverlayWm = null
     }
 
     /** Remove specific overlay boxes without rebuilding the entire view. */

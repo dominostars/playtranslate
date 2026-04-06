@@ -77,6 +77,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         cleanRefBitmap = null
         overlayBitmap?.recycle()
         overlayBitmap = null
+
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
     }
@@ -87,6 +88,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         cleanRefBitmap = null
         overlayBitmap?.recycle()
         overlayBitmap = null
+
     }
 
     override fun getCachedState(): CachedOverlayState? {
@@ -101,6 +103,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         overlayBitmap?.recycle()
         overlayBitmap = null
         cachedBoxes = null
+
     }
 
     // ── Unified Cycle ───────────────────────────────────────────────────
@@ -111,19 +114,18 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager ?: return
         val a11y = PlayTranslateAccessibilityService.instance ?: return
         val prefs = Prefs(service)
-        val overlay = a11y.translationOverlayView
-        DetectionLog.log("CYCLE: start cachedBoxes=${cachedBoxes?.size} dirty=${cachedBoxes?.count { it.dirty } ?: 0}")
+        val dirtyView = a11y.dirtyOverlayView
+        val hasDirty = cachedBoxes?.any { it.dirty } == true
 
-        // 1. Hide dirty children before capture (no-op if none dirty)
-        val hadDirty = overlay?.hideDirtyChildren() == true
-        if (hadDirty) {
+        // 1. Hide dirty overlay window before capture (window-level, fast + reliable)
+        if (hasDirty) {
+            dirtyView?.visibility = android.view.View.INVISIBLE
             waitVsync(5)
         }
 
-        // 2. Capture raw screenshot — restore dirty children in the capture callback
-        //    (overlay only needs to be hidden until the OS grabs the frame buffer)
+        // 2. Capture — restore dirty window in callback (before bitmap copy)
         val raw = mgr.requestRaw(service.gameDisplayId) {
-            if (hadDirty) overlay?.restoreDirtyChildren()
+            if (hasDirty) dirtyView?.visibility = android.view.View.VISIBLE
         }
 
         if (raw == null) {
@@ -137,12 +139,17 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                 service.flashRegionIndicator()
             }
 
+            // 3. After dirty capture, clear dirty view
+            if (hasDirty) {
+                dirtyView?.setBoxes(emptyList(), cropLeft, cropTop, screenshotW, screenshotH)
+            }
+
             // 4. Update clean ref: patch non-overlay pixels from raw
             if (hasOverlays()) {
                 cleanRefBitmap?.let { updateCleanRef(raw, it) }
             }
 
-            // 6. Prepare OCR image: fill overlay regions with bgColor
+            // 5. Prepare OCR image: fill overlay regions with bgColor
             val ocrImage: Bitmap
             if (hasOverlays()) {
                 ocrImage = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
@@ -151,7 +158,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                 ocrImage = raw
             }
 
-            // 4. OCR
+            // 6. OCR
             val pipeline = service.runOcr(ocrImage)
             if (ocrImage !== raw && !ocrImage.isRecycled) ocrImage.recycle()
 
@@ -174,14 +181,13 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
             val boxes = cachedBoxes ?: emptyList()
             val rects = overlayScreenRects ?: emptyList()
 
-            // 5. Classify OCR results: near existing overlay (stale) or far (new text)
+            // 7. Classify OCR results: near existing overlay (stale) or far (new text)
             val staleOverlayIndices = mutableSetOf<Int>()
             data class FarGroup(val text: String, val bounds: Rect, val lineCount: Int)
             val farOcrGroups = mutableListOf<FarGroup>()
 
             if (pipeline != null) {
                 val (ocrResult, _, left, top, _, _) = pipeline
-                DetectionLog.log("OCR found ${ocrResult.groupTexts.size} groups with ${boxes.size} overlays")
                 for (ocrIdx in ocrResult.groupTexts.indices) {
                     if (ocrIdx >= ocrResult.groupBounds.size) continue
                     val ocrBound = ocrResult.groupBounds[ocrIdx]
@@ -192,73 +198,70 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                     var nearExisting = false
                     for (boxIdx in boxes.indices) {
                         if (boxIdx >= rects.size) continue
-                        if (boxes[boxIdx].dirty) continue // don't compare against dirty overlays
+                        if (boxes[boxIdx].dirty) continue
                         if (areRectsNearby(rects[boxIdx], ocrFullRect)) {
                             nearExisting = true
                             staleOverlayIndices.add(boxIdx)
-                            DetectionLog.log("  OCR[$ocrIdx] \"${ocrResult.groupTexts[ocrIdx].take(30)}\" NEAR overlay[$boxIdx]")
                         }
                     }
                     if (!nearExisting) {
                         val lc = ocrResult.groupLineCounts.getOrElse(ocrIdx) { 1 }
                         farOcrGroups.add(FarGroup(ocrResult.groupTexts[ocrIdx], ocrBound, lc))
-                        DetectionLog.log("  OCR[$ocrIdx] \"${ocrResult.groupTexts[ocrIdx].take(30)}\" → new text")
                     }
                 }
-            } else if (!isFirstCapture) {
-                DetectionLog.log("OCR returned null (fill covered all text) — skipping to pinhole detection")
             }
 
-            // 6. Pinhole change detection for existing overlays
+            // 8. Pinhole change detection — DIRTY moves overlays to dirty window
             val cleanRef = cleanRefBitmap
             val pinholeRemovals = mutableSetOf<Int>()
+            val pinholeDirty = mutableSetOf<Int>()
             if (cleanRef != null) {
                 for ((idx, box) in boxes.withIndex()) {
                     if (idx >= rects.size) continue
-                    if (box.dirty) continue // dirty overlays already handled
+                    if (box.dirty) continue
                     if (idx in staleOverlayIndices) continue
                     when (checkPinholes(raw, cleanRef, rects[idx])) {
                         PinholeResult.REMOVE -> pinholeRemovals.add(idx)
-                        PinholeResult.DIRTY -> {
-                            if (!box.dirty) {
-                                DetectionLog.log("  → marking overlay[$idx] DIRTY")
-                                cachedBoxes = cachedBoxes?.toMutableList()?.also {
-                                    it[idx] = box.copy(dirty = true)
-                                }
-                                overlay?.markChildDirty(idx)
-                            }
-                        }
+                        PinholeResult.DIRTY -> pinholeDirty.add(idx)
                         PinholeResult.KEEP -> {}
                     }
                 }
             }
 
-            // 7. Apply removals (keep dirty overlays visible — they'll be replaced in step 9)
-            DetectionLog.log("POST-PINHOLE: cachedBoxes=${cachedBoxes?.size} dirty=${cachedBoxes?.count { it.dirty } ?: 0}")
+            // 9. Mark dirty boxes, move to dirty window, remove from clean window
+            if (pinholeDirty.isNotEmpty()) {
+                cachedBoxes = cachedBoxes?.toMutableList()?.also { list ->
+                    for (idx in pinholeDirty) list[idx] = list[idx].copy(dirty = true)
+                }
+                val dirtyBoxes = cachedBoxes?.filter { it.dirty } ?: emptyList()
+                dirtyView?.setBoxes(dirtyBoxes, cropLeft, cropTop, screenshotW, screenshotH)
+                a11y.translationOverlayView?.removeBoxesByContent(dirtyBoxes)
+            }
+
+            // 10. Apply REMOVE/stale removals
             val allRemovals = staleOverlayIndices + pinholeRemovals
             if (allRemovals.isNotEmpty()) {
                 anyRemoved = true
-                DetectionLog.log("Removing ${allRemovals.size} overlays: stale=${staleOverlayIndices.size} pinhole=${pinholeRemovals.size}")
                 val remaining = boxes.filterIndexed { i, _ -> i !in allRemovals }
                 cachedBoxes = remaining.ifEmpty { null }
 
                 if (remaining.isNotEmpty()) {
+                    DetectionLog.log("VIS: clean window REBUILD ${remaining.size} boxes ")
                     showOverlayAndCapture(a11y, remaining, cropLeft, cropTop, screenshotW, screenshotH)
                 } else {
+                    DetectionLog.log("VIS: clean window HIDDEN ")
                     a11y.hideTranslationOverlay()
                     overlayScreenRects = emptyList()
                 }
             }
 
-            // 8. On first capture, set cleanRef before showing overlays
+            // 11. On first capture, set cleanRef before showing overlays
             if (isFirstCapture) {
                 cleanRefBitmap?.recycle()
                 cleanRefBitmap = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
             }
 
-            // 9. Translate new text, strip dirty, show in single rebuild
-            val cleanBoxes = (cachedBoxes ?: emptyList()).filter { !it.dirty }
-            DetectionLog.log("PRE-STEP9: cachedBoxes=${cachedBoxes?.size} dirty=${cachedBoxes?.count { it.dirty } ?: 0} cleanBoxes=${cleanBoxes.size} farOcr=${farOcrGroups.size}")
+            // 12. Show new text (with skeletons for uncached, instant for cached)
             if (farOcrGroups.isNotEmpty()) {
                 val farTexts = farOcrGroups.map { it.text }
                 val farBounds = farOcrGroups.map { it.bounds }
@@ -266,29 +269,33 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                 val placeholders = buildPlaceholderBoxes(farTexts, farBounds, farLineCounts, raw, cropLeft, cropTop)
 
                 if (placeholders.isNotEmpty()) {
-                    // Fill cached translations immediately, leave uncached as skeletons
                     val partial = placeholders.mapIndexed { i, ph ->
                         val cached = translationCache[farTexts[i]]
                         if (cached != null) ph.copy(translatedText = cached) else ph
                     }
                     val anyUncached = partial.any { it.translatedText.isEmpty() }
 
-                    // Show what we have (translated + skeletons for uncached)
+                    // Strip dirty boxes, replace with new detections
+                    val cleanBoxes = (cachedBoxes ?: emptyList()).filter { !it.dirty }
                     val merged = cleanBoxes + partial
                     cachedBoxes = merged
+                    dirtyView?.setBoxes(emptyList(), cropLeft, cropTop, screenshotW, screenshotH)
+            
                     showOverlayAndCapture(a11y, merged, cropLeft, cropTop, screenshotW, screenshotH)
 
-                    // If any were uncached, translate and rebuild with final text
                     if (anyUncached) {
                         val translated = translatePlaceholders(placeholders, farTexts)
-                        val mergedFinal = cleanBoxes + translated
+                        val existing = cachedBoxes?.dropLast(placeholders.size) ?: emptyList()
+                        val mergedFinal = existing + translated
                         cachedBoxes = mergedFinal
+                        DetectionLog.log("VIS: clean window UPDATE ${mergedFinal.size} boxes ")
                         showOverlayAndCapture(a11y, mergedFinal, cropLeft, cropTop, screenshotW, screenshotH)
                     }
+
                 }
             }
 
-            // 10. First-capture post-processing: save to cache, update in-app panel
+            // 13. First-capture post-processing
             if (isFirstCapture && cachedBoxes != null) {
                 mgr.saveToCache(raw)
                 pipeline?.let { (ocrResult, _, _, _, _, _) ->
@@ -296,8 +303,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                 }
             }
 
-            // 9. Timing
-            DetectionLog.log("CYCLE: before delay, cachedBoxes=${cachedBoxes?.size} anyRemoved=$anyRemoved")
+            // 14. Timing
             if (anyRemoved) {
                 delay(mgr.MIN_SCREENSHOT_INTERVAL_MS)
             } else {
@@ -330,7 +336,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         val paint = android.graphics.Paint()
         val canvas = Canvas(bitmap)
         for (box in boxes) {
-            if (box.dirty) continue // dirty regions were hidden for capture — don't fill
+            if (box.dirty) continue
             val l = (box.bounds.left + cropLeft - fillPadding).coerceAtLeast(0)
             val t = (box.bounds.top + cropTop - fillPadding).coerceAtLeast(0)
             val r = (box.bounds.right + cropLeft + fillPadding).coerceAtMost(bitmap.width)
@@ -405,9 +411,6 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
 
                 if (dr > SPLATTER_THRESHOLD || dg > SPLATTER_THRESHOLD || db > SPLATTER_THRESHOLD) {
                     changedPinholes++
-                    if (changedPinholes <= 3) {
-                        DetectionLog.log("  H1: changed pinhole@(${left+px},${top+py}) raw=(${Color.red(rawPx)},${Color.green(rawPx)},${Color.blue(rawPx)}) pred=($predR,$predG,$predB) ref=(${Color.red(refPx)},${Color.green(refPx)},${Color.blue(refPx)}) ov=(${Color.red(ovPx)},${Color.green(ovPx)},${Color.blue(ovPx)}) delta=($dr,$dg,$db)")
-                    }
                 }
             }
         }
@@ -419,7 +422,6 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
             pct >= PINHOLE_DIRTY_PCT -> PinholeResult.DIRTY
             else -> PinholeResult.KEEP
         }
-        DetectionLog.log("H1: pinhole rect=$screenRect total=$totalPinholes changed=$changedPinholes (${(pct * 100).toInt()}%) maxDelta=$maxDelta → $result")
         return result
     }
 

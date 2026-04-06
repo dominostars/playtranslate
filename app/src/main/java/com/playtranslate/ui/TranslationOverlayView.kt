@@ -105,17 +105,17 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
         }
     }
 
-    /** Remove specific boxes by content match. Removes only the corresponding
-     *  child views — surviving children stay in place with no rebuild. */
+    /** Remove specific boxes by content match (text + bounds). Removes only the
+     *  corresponding child views — surviving children stay in place with no rebuild. */
     fun removeBoxesByContent(toRemove: List<TextBox>) {
         if (toRemove.isEmpty()) return
-        val removeSet = toRemove.toSet()
+        fun matches(a: TextBox, b: TextBox) = a.translatedText == b.translatedText && a.bounds == b.bounds
         for (i in (childCount - 1) downTo 0) {
-            if (i < boxes.size && boxes[i] in removeSet) {
+            if (i < boxes.size && toRemove.any { matches(boxes[i], it) }) {
                 removeViewAt(i)
             }
         }
-        boxes = boxes.filter { it !in removeSet }
+        boxes = boxes.filter { box -> !toRemove.any { matches(box, it) } }
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -255,7 +255,6 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
                         // Without pinholes, use native alpha (~224 = 88% opaque).
                         setBackgroundColor(if (pinholeEnabled) box.bgColor or 0xFF000000.toInt() else box.bgColor)
                         setTag(R.id.tag_bg_color, box.bgColor)
-                        setTag(R.id.tag_dirty, box.dirty)
                         TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
                             this, minTextSizeSp, maxTextSizeSp, 1, TypedValue.COMPLEX_UNIT_SP
                         )
@@ -345,69 +344,6 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
             rects += Rect(location[0], location[1], location[0] + child.width, location[1] + child.height)
         }
         return rects
-    }
-
-    // ── Dirty overlay management ──────────────────────────────────────
-
-    /** Mark a text-box child as dirty by its index among tagged children. */
-    fun markChildDirty(index: Int) {
-        var taggedIdx = 0
-        for (i in 0 until childCount) {
-            val child = getChildAt(i)
-            if (child.getTag(R.id.tag_bg_color) == null) continue
-            if (taggedIdx == index) {
-                child.setTag(R.id.tag_dirty, true)
-                return
-            }
-            taggedIdx++
-        }
-    }
-
-    /** Hide dirty children (INVISIBLE). Returns true if any were hidden. */
-    fun hideDirtyChildren(): Boolean {
-        var anyHidden = false
-        for (i in 0 until childCount) {
-            val child = getChildAt(i)
-            if (child.getTag(R.id.tag_dirty) == true) {
-                child.visibility = View.INVISIBLE
-                anyHidden = true
-            }
-        }
-        return anyHidden
-    }
-
-    /** Restore dirty children to VISIBLE. */
-    fun restoreDirtyChildren() {
-        for (i in 0 until childCount) {
-            val child = getChildAt(i)
-            if (child.getTag(R.id.tag_dirty) == true) {
-                child.visibility = View.VISIBLE
-            }
-        }
-    }
-
-    /** Remove dirty children from the view and boxes list. Returns remaining boxes. */
-    fun removeDirtyChildren(): List<TextBox> {
-        val dirtyViewIndices = mutableListOf<Int>()
-        val dirtyTaggedIndices = mutableSetOf<Int>()
-        var taggedIdx = 0
-        for (i in 0 until childCount) {
-            val child = getChildAt(i)
-            if (child.getTag(R.id.tag_bg_color) == null) continue
-            if (child.getTag(R.id.tag_dirty) == true) {
-                dirtyViewIndices.add(i)
-                dirtyTaggedIndices.add(taggedIdx)
-            }
-            taggedIdx++
-        }
-        if (dirtyViewIndices.isEmpty()) return boxes
-
-        // Remove views in reverse order to preserve indices
-        for (i in dirtyViewIndices.reversed()) {
-            removeViewAt(i)
-        }
-        boxes = boxes.filterIndexed { idx, _ -> idx !in dirtyTaggedIndices }
-        return boxes
     }
 
     /**
