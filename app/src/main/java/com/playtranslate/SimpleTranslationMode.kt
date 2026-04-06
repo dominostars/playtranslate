@@ -147,125 +147,112 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
             }
 
             var anyRemoved = false
+            val isFirstCapture = !hasOverlays()
 
-            if (!hasOverlays()) {
-                // 5a. No overlays: show placeholders → translate → update
-                val (ocrResult, _, left, top, sw, sh) = pipeline!!
-                val placeholders = buildPlaceholderBoxes(
-                    ocrResult.groupTexts, ocrResult.groupBounds,
-                    ocrResult.groupLineCounts, raw, left, top
-                )
-                if (placeholders.isEmpty()) {
-                    delay(prefs.captureIntervalMs)
-                    return
-                }
-
+            // On first capture, set crop/screenshot dimensions from pipeline
+            if (isFirstCapture && pipeline != null) {
+                val (_, _, left, top, sw, sh) = pipeline
                 cropLeft = left; cropTop = top; screenshotW = sw; screenshotH = sh
+            }
 
-                // Show skeleton placeholders immediately
-                cachedBoxes = placeholders
-                showOverlayAndCapture(a11y, placeholders, left, top, sw, sh)
+            val boxes = cachedBoxes ?: emptyList()
+            val rects = overlayScreenRects ?: emptyList()
 
+            // 5. Classify OCR results: near existing overlay (stale) or far (new text)
+            val staleOverlayIndices = mutableSetOf<Int>()
+            data class FarGroup(val text: String, val bounds: Rect, val lineCount: Int)
+            val farOcrGroups = mutableListOf<FarGroup>()
+
+            if (pipeline != null) {
+                val (ocrResult, _, left, top, _, _) = pipeline
+                DetectionLog.log("OCR found ${ocrResult.groupTexts.size} groups with ${boxes.size} overlays")
+                for (ocrIdx in ocrResult.groupTexts.indices) {
+                    if (ocrIdx >= ocrResult.groupBounds.size) continue
+                    val ocrBound = ocrResult.groupBounds[ocrIdx]
+                    val ocrFullRect = Rect(
+                        ocrBound.left + left, ocrBound.top + top,
+                        ocrBound.right + left, ocrBound.bottom + top
+                    )
+                    var nearExisting = false
+                    for (boxIdx in boxes.indices) {
+                        if (boxIdx >= rects.size) continue
+                        if (areRectsNearby(rects[boxIdx], ocrFullRect)) {
+                            nearExisting = true
+                            staleOverlayIndices.add(boxIdx)
+                            DetectionLog.log("  OCR[$ocrIdx] \"${ocrResult.groupTexts[ocrIdx].take(30)}\" NEAR overlay[$boxIdx]")
+                        }
+                    }
+                    if (!nearExisting) {
+                        val lc = ocrResult.groupLineCounts.getOrElse(ocrIdx) { 1 }
+                        farOcrGroups.add(FarGroup(ocrResult.groupTexts[ocrIdx], ocrBound, lc))
+                        DetectionLog.log("  OCR[$ocrIdx] \"${ocrResult.groupTexts[ocrIdx].take(30)}\" → new text")
+                    }
+                }
+            } else if (!isFirstCapture) {
+                DetectionLog.log("OCR returned null (fill covered all text) — skipping to pinhole detection")
+            }
+
+            // 6. Pinhole change detection for existing overlays
+            val cleanRef = cleanRefBitmap
+            val pinholeRemovals = mutableSetOf<Int>()
+            if (cleanRef != null) {
+                for ((idx, box) in boxes.withIndex()) {
+                    if (idx >= rects.size) continue
+                    if (idx in staleOverlayIndices) continue
+                    if (isPinholeChanged(raw, cleanRef, rects[idx])) {
+                        pinholeRemovals.add(idx)
+                    }
+                }
+            }
+
+            // 7. Apply removals
+            val allRemovals = staleOverlayIndices + pinholeRemovals
+            if (allRemovals.isNotEmpty()) {
+                anyRemoved = true
+                DetectionLog.log("Removing ${allRemovals.size} overlays: stale=${staleOverlayIndices.size} pinhole=${pinholeRemovals.size}")
+                val remaining = boxes.filterIndexed { i, _ -> i !in allRemovals }
+                cachedBoxes = remaining.ifEmpty { null }
+
+                if (remaining.isNotEmpty()) {
+                    showOverlayAndCapture(a11y, remaining, cropLeft, cropTop, screenshotW, screenshotH)
+                } else {
+                    a11y.hideTranslationOverlay()
+                    overlayScreenRects = emptyList()
+                }
+            }
+
+            // 8. On first capture, set cleanRef before showing overlays
+            if (isFirstCapture) {
                 cleanRefBitmap?.recycle()
                 cleanRefBitmap = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
+            }
 
-                // Translate and replace placeholders with text
-                val finalBoxes = translatePlaceholders(placeholders, ocrResult.groupTexts)
-                cachedBoxes = finalBoxes
-                showOverlayAndCapture(a11y, finalBoxes, left, top, sw, sh)
+            // 9. Show placeholders for new text, translate, update
+            if (farOcrGroups.isNotEmpty()) {
+                DetectionLog.log("New text groups: ${farOcrGroups.size}, showing placeholders")
+                val farTexts = farOcrGroups.map { it.text }
+                val farBounds = farOcrGroups.map { it.bounds }
+                val farLineCounts = farOcrGroups.map { it.lineCount }
+                val placeholders = buildPlaceholderBoxes(farTexts, farBounds, farLineCounts, raw, cropLeft, cropTop)
 
+                if (placeholders.isNotEmpty()) {
+                    val mergedWithPlaceholders = (cachedBoxes ?: emptyList()) + placeholders
+                    cachedBoxes = mergedWithPlaceholders
+                    showOverlayAndCapture(a11y, mergedWithPlaceholders, cropLeft, cropTop, screenshotW, screenshotH)
+
+                    val translated = translatePlaceholders(placeholders, farTexts)
+                    val existing = cachedBoxes?.dropLast(placeholders.size) ?: emptyList()
+                    val mergedFinal = existing + translated
+                    cachedBoxes = mergedFinal
+                    showOverlayAndCapture(a11y, mergedFinal, cropLeft, cropTop, screenshotW, screenshotH)
+                }
+            }
+
+            // 10. First-capture post-processing: save to cache, update in-app panel
+            if (isFirstCapture && cachedBoxes != null) {
                 mgr.saveToCache(raw)
-                service.translateAndSendToPanel(ocrResult, mgr.lastCleanPath)
-                DetectionLog.log("CYCLE: end of !hasOverlays branch, cachedBoxes=${cachedBoxes?.size}")
-            } else {
-                val boxes = cachedBoxes ?: emptyList()
-                val rects = overlayScreenRects ?: emptyList()
-
-                // 5b. Process OCR results (if any) for new/stale text detection
-                val staleOverlayIndices = mutableSetOf<Int>()
-                data class FarGroup(val text: String, val bounds: Rect, val lineCount: Int)
-                val farOcrGroups = mutableListOf<FarGroup>()
-
-                if (pipeline != null) {
-                    val (ocrResult, _, left, top, _, _) = pipeline
-                    DetectionLog.log("OCR found ${ocrResult.groupTexts.size} groups with ${boxes.size} overlays filled")
-                    for (ocrIdx in ocrResult.groupTexts.indices) {
-                        if (ocrIdx >= ocrResult.groupBounds.size) continue
-                        val ocrBound = ocrResult.groupBounds[ocrIdx]
-                        val ocrFullRect = Rect(
-                            ocrBound.left + left, ocrBound.top + top,
-                            ocrBound.right + left, ocrBound.bottom + top
-                        )
-                        DetectionLog.log("  OCR[$ocrIdx] \"${ocrResult.groupTexts[ocrIdx].take(40)}\" bounds=$ocrFullRect")
-                        var nearExisting = false
-                        for (boxIdx in boxes.indices) {
-                            if (boxIdx >= rects.size) continue
-                            if (areRectsNearby(rects[boxIdx], ocrFullRect)) {
-                                nearExisting = true
-                                staleOverlayIndices.add(boxIdx)
-                                DetectionLog.log("    NEAR overlay[$boxIdx] rect=${rects[boxIdx]} → marking stale")
-                            }
-                        }
-                        if (!nearExisting) {
-                            val lc = ocrResult.groupLineCounts.getOrElse(ocrIdx) { 1 }
-                            farOcrGroups.add(FarGroup(ocrResult.groupTexts[ocrIdx], ocrBound, lc))
-                            DetectionLog.log("    NOT near any overlay → new text")
-                        }
-                    }
-                } else {
-                    DetectionLog.log("OCR returned null (fill covered all text) — skipping to pinhole detection")
-                }
-
-                // 6. Pinhole change detection for existing overlays
-                val cleanRef = cleanRefBitmap
-                val pinholeRemovals = mutableSetOf<Int>()
-                if (cleanRef != null) {
-                    for ((idx, box) in boxes.withIndex()) {
-                        if (idx >= rects.size) continue
-                        if (idx in staleOverlayIndices) continue // already marked for removal
-                        if (isPinholeChanged(raw, cleanRef, rects[idx])) {
-                            pinholeRemovals.add(idx)
-                        }
-                    }
-                }
-
-                // 7. Apply all removals
-                val allRemovals = staleOverlayIndices + pinholeRemovals
-                if (allRemovals.isNotEmpty()) {
-                    anyRemoved = true
-                    DetectionLog.log("Removing ${allRemovals.size} overlays: stale=${staleOverlayIndices.size} pinhole=${pinholeRemovals.size}")
-                    val remaining = boxes.filterIndexed { i, _ -> i !in allRemovals }
-                    cachedBoxes = remaining.ifEmpty { null }
-
-                    if (remaining.isNotEmpty()) {
-                        showOverlayAndCapture(a11y, remaining, cropLeft, cropTop, screenshotW, screenshotH)
-                    } else {
-                        a11y.hideTranslationOverlay()
-                        overlayScreenRects = emptyList()
-                    }
-                }
-
-                // 8. Merge new far-away text: show placeholders → translate → update
-                if (farOcrGroups.isNotEmpty()) {
-                    DetectionLog.log("New text groups: ${farOcrGroups.size}, showing placeholders")
-                    val farTexts = farOcrGroups.map { it.text }
-                    val farBounds = farOcrGroups.map { it.bounds }
-                    val farLineCounts = farOcrGroups.map { it.lineCount }
-                    val placeholders = buildPlaceholderBoxes(farTexts, farBounds, farLineCounts, raw, cropLeft, cropTop)
-
-                    if (placeholders.isNotEmpty()) {
-                        // Show skeletons merged with existing overlays
-                        val mergedWithPlaceholders = (cachedBoxes ?: emptyList()) + placeholders
-                        cachedBoxes = mergedWithPlaceholders
-                        showOverlayAndCapture(a11y, mergedWithPlaceholders, cropLeft, cropTop, screenshotW, screenshotH)
-
-                        // Translate and replace placeholders
-                        val translated = translatePlaceholders(placeholders, farTexts)
-                        val existing = cachedBoxes?.dropLast(placeholders.size) ?: emptyList()
-                        val mergedFinal = existing + translated
-                        cachedBoxes = mergedFinal
-                        showOverlayAndCapture(a11y, mergedFinal, cropLeft, cropTop, screenshotW, screenshotH)
-                    }
+                pipeline?.let { (ocrResult, _, _, _, _, _) ->
+                    service.translateAndSendToPanel(ocrResult, mgr.lastCleanPath)
                 }
             }
 
