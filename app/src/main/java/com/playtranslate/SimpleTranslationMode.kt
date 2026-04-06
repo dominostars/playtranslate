@@ -262,21 +262,21 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                 val placeholders = buildPlaceholderBoxes(farTexts, farBounds, farLineCounts, raw, cropLeft, cropTop)
 
                 if (placeholders.isNotEmpty()) {
-                    // Translate first — if cached, no skeleton needed
-                    val translated = translatePlaceholders(placeholders, farTexts)
-                    val allCached = translated.all { it.translatedText.isNotEmpty() }
+                    // Fill cached translations immediately, leave uncached as skeletons
+                    val partial = placeholders.mapIndexed { i, ph ->
+                        val cached = translationCache[farTexts[i]]
+                        if (cached != null) ph.copy(translatedText = cached) else ph
+                    }
+                    val anyUncached = partial.any { it.translatedText.isEmpty() }
 
-                    if (allCached) {
-                        // All translations cached — single rebuild, no skeleton flash
-                        val merged = cleanBoxes + translated
-                        cachedBoxes = merged
-                        showOverlayAndCapture(a11y, merged, cropLeft, cropTop, screenshotW, screenshotH)
-                    } else {
-                        // Some translations pending — show skeletons first
-                        val mergedWithPlaceholders = cleanBoxes + placeholders
-                        cachedBoxes = mergedWithPlaceholders
-                        showOverlayAndCapture(a11y, mergedWithPlaceholders, cropLeft, cropTop, screenshotW, screenshotH)
+                    // Show what we have (translated + skeletons for uncached)
+                    val merged = cleanBoxes + partial
+                    cachedBoxes = merged
+                    showOverlayAndCapture(a11y, merged, cropLeft, cropTop, screenshotW, screenshotH)
 
+                    // If any were uncached, translate and rebuild with final text
+                    if (anyUncached) {
+                        val translated = translatePlaceholders(placeholders, farTexts)
                         val mergedFinal = cleanBoxes + translated
                         cachedBoxes = mergedFinal
                         showOverlayAndCapture(a11y, mergedFinal, cropLeft, cropTop, screenshotW, screenshotH)
