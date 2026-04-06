@@ -35,7 +35,6 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
     // State
     private var cachedBoxes: List<TranslationOverlayView.TextBox>? = null
     private var cleanRefBitmap: Bitmap? = null
-    private var shadowMask: Bitmap? = null
     private var overlayScreenRects: List<Rect>? = null
     private var cropLeft = 0
     private var cropTop = 0
@@ -46,11 +45,11 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
     // Translation cache: source text → translated text
     private val translationCache = mutableMapOf<String, String>()
 
-    /** Per-channel delta threshold for morphological splatter. */
+    /** Per-channel delta threshold for pinhole pixel change detection. */
     private val SPLATTER_THRESHOLD = 80
 
-    // OCR text per displayed group for change detection
-    private var displayedGroupTexts: List<String> = emptyList()
+    /** Fraction of pinholes in an overlay that must change to trigger removal. */
+    private val PINHOLE_CHANGE_PCT = 0.10f
 
     override fun start() {
         // TODO: temporarily disabled for change detection testing
@@ -70,8 +69,6 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         scope.cancel()
         cleanRefBitmap?.recycle()
         cleanRefBitmap = null
-        shadowMask?.recycle()
-        shadowMask = null
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
     }
@@ -80,9 +77,6 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         cachedBoxes = null
         cleanRefBitmap?.recycle()
         cleanRefBitmap = null
-        shadowMask?.recycle()
-        shadowMask = null
-        displayedGroupTexts = emptyList()
     }
 
     override fun getCachedState(): CachedOverlayState? {
@@ -94,10 +88,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
         cleanRefBitmap?.recycle()
         cleanRefBitmap = null
-        shadowMask?.recycle()
-        shadowMask = null
         cachedBoxes = null
-        displayedGroupTexts = emptyList()
     }
 
     // ── Unified Cycle ───────────────────────────────────────────────────
@@ -106,12 +97,12 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager ?: return
         val a11y = PlayTranslateAccessibilityService.instance ?: return
         val hasOverlays = cachedBoxes != null
+        val prefs = Prefs(service)
 
-        // Capture — pinholes are always on, no switching needed
+        // 1. Capture raw screenshot (overlays visible with parent-level pinholes)
         val raw = mgr.requestRaw(service.gameDisplayId)
-
         if (raw == null) {
-            delay(Prefs(service).captureIntervalMs)
+            delay(prefs.captureIntervalMs)
             return
         }
 
@@ -121,256 +112,225 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                 service.flashRegionIndicator()
             }
 
-            // Build composite if we have a clean reference, otherwise use raw directly
+            // 2. Update clean ref: copy non-overlay pixels from raw
             val ref = cleanRefBitmap
-            val imageForOcr = if (hasOverlays && ref != null) {
-                buildComposite(raw, ref)
-            } else null
-
-            // Update clean ref: raw frame has fresh game content in non-overlay areas.
-            // Patch overlay areas from old ref into a mutable copy of raw → new clean ref.
-            if (hasOverlays && ref != null) {
+            if (!hasOverlays || ref == null) {
+                cleanRefBitmap?.recycle()
+                cleanRefBitmap = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
+            } else {
                 updateCleanRef(raw, ref)
             }
 
-            try {
-                val f = java.io.File("/sdcard/Download/ocr_raw.png")
-                java.io.FileOutputStream(f).use { raw.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            } catch (_: Exception) {}
-            cleanRefBitmap?.let { cr ->
-                try {
-                    val f = java.io.File("/sdcard/Download/ocr_cleanref.png")
-                    java.io.FileOutputStream(f).use { cr.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                } catch (_: Exception) {}
+            // 3. Prepare OCR image: fill overlay regions with bgColor
+            val ocrImage: Bitmap
+            if (hasOverlays) {
+                ocrImage = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
+                fillOverlayRegions(ocrImage)
+            } else {
+                ocrImage = raw
             }
-            val ocrImage = imageForOcr ?: raw
-            try {
-                val f = java.io.File("/sdcard/Download/ocr_input.png")
-                java.io.FileOutputStream(f).use { ocrImage.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            } catch (_: Exception) {}
+
+            // 4. OCR
             val pipeline = service.runOcr(ocrImage)
-            imageForOcr?.recycle()
+            if (ocrImage !== raw && !ocrImage.isRecycled) ocrImage.recycle()
 
             if (pipeline == null) {
                 if (hasOverlays) {
-                    // Had overlays but no text found — scene changed
                     service.handleNoTextDetected()
                     cachedBoxes = null
-                    displayedGroupTexts = emptyList()
                     cleanRefBitmap?.recycle()
                     cleanRefBitmap = null
-                    shadowMask?.recycle()
-                    shadowMask = null
                 } else {
                     service.handleNoTextDetected()
                 }
-                delay(Prefs(service).captureIntervalMs)
+                delay(prefs.captureIntervalMs)
                 return
             }
 
             val (ocrResult, _, left, top, sw, sh) = pipeline
+            var anyRemoved = false
 
             if (!hasOverlays) {
-                // No overlays — this is a clean capture. Translate and show.
+                // 5a. No overlays: translate everything, show overlays
                 val boxes = translateAndBuildBoxes(ocrResult, raw, left, top)
                 if (boxes.isEmpty()) {
-                    delay(Prefs(service).captureIntervalMs)
+                    delay(prefs.captureIntervalMs)
                     return
                 }
 
                 cachedBoxes = boxes
                 cropLeft = left; cropTop = top; screenshotW = sw; screenshotH = sh
-                displayedGroupTexts = ocrResult.groupTexts.toList()
 
-                // Store clean reference (mutable so we can update it from pinhole cycles)
                 cleanRefBitmap?.recycle()
                 cleanRefBitmap = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
 
                 service.showLiveOverlay(boxes, left, top, sw, sh)
-
-                // Generate shadow mask after overlay renders
+                a11y.translationOverlayView?.pinholeEnabled = true
                 waitVsync(2)
-                shadowMask?.recycle()
-                shadowMask = a11y.translationOverlayView?.generateShadowMask()
                 overlayScreenRects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
 
-                // Send to in-app panel
                 mgr.saveToCache(raw)
                 service.translateAndSendToPanel(ocrResult, mgr.lastCleanPath)
             } else {
-                // Had overlays — compare composite OCR against displayed text
-                val matchResult = matchOcrToDisplayed(ocrResult)
+                val boxes = cachedBoxes ?: emptyList()
+                val rects = overlayScreenRects ?: emptyList()
 
-                if (matchResult.removedIndices.isNotEmpty()) {
-                    DetectionLog.log("Pinhole: ${matchResult.removedIndices.size}/${displayedGroupTexts.size} overlays changed/disappeared")
-                    for (idx in matchResult.removedIndices) {
-                        DetectionLog.log("  REMOVED[$idx]: \"${displayedGroupTexts.getOrNull(idx)?.take(30)}\"")
+                // 5b. Process OCR results: check spatial proximity to existing overlays
+                val staleOverlayIndices = mutableSetOf<Int>()
+                val farOcrGroups = mutableListOf<Pair<String, Rect>>()
+
+                for (ocrIdx in ocrResult.groupTexts.indices) {
+                    if (ocrIdx >= ocrResult.groupBounds.size) continue
+                    val ocrBound = ocrResult.groupBounds[ocrIdx]
+                    val ocrFullRect = Rect(
+                        ocrBound.left + left, ocrBound.top + top,
+                        ocrBound.right + left, ocrBound.bottom + top
+                    )
+                    var nearExisting = false
+                    for (boxIdx in boxes.indices) {
+                        if (boxIdx >= rects.size) continue
+                        if (areRectsNearby(rects[boxIdx], ocrFullRect)) {
+                            nearExisting = true
+                            staleOverlayIndices.add(boxIdx)
+                        }
                     }
-                    val remaining = cachedBoxes!!.filterIndexed { i, _ -> i !in matchResult.removedIndices }
-                    cachedBoxes = remaining.ifEmpty { null }
-                    displayedGroupTexts = displayedGroupTexts.filterIndexed { i, _ -> i !in matchResult.removedIndices }
-
-                    if (remaining.isNotEmpty()) {
-                        service.showLiveOverlay(remaining, cropLeft, cropTop, screenshotW, screenshotH)
-                        // Update mask and rects for remaining overlays
-                        waitVsync(2)
-                        shadowMask?.recycle()
-                        shadowMask = a11y.translationOverlayView?.generateShadowMask()
-                        overlayScreenRects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
-                    } else {
-                        a11y.hideTranslationOverlay()
-                        shadowMask?.recycle()
-                        shadowMask = null
+                    if (!nearExisting) {
+                        farOcrGroups.add(ocrResult.groupTexts[ocrIdx] to ocrBound)
                     }
                 }
 
-                if (matchResult.newGroups.isNotEmpty()) {
-                    DetectionLog.log("Pinhole: ${matchResult.newGroups.size} new text groups, translating")
-                    val newBoxes = translateNewGroups(matchResult.newGroups, raw)
+                // 6. Pinhole change detection for existing overlays
+                val cleanRef = cleanRefBitmap
+                val pinholeRemovals = mutableSetOf<Int>()
+                if (cleanRef != null) {
+                    for ((idx, box) in boxes.withIndex()) {
+                        if (idx >= rects.size) continue
+                        if (idx in staleOverlayIndices) continue // already marked for removal
+                        if (isPinholeChanged(raw, cleanRef, rects[idx], box.bgColor)) {
+                            pinholeRemovals.add(idx)
+                        }
+                    }
+                }
+
+                // 7. Apply all removals
+                val allRemovals = staleOverlayIndices + pinholeRemovals
+                if (allRemovals.isNotEmpty()) {
+                    anyRemoved = true
+                    DetectionLog.log("Removing ${allRemovals.size} overlays: stale=${staleOverlayIndices.size} pinhole=${pinholeRemovals.size}")
+                    val remaining = boxes.filterIndexed { i, _ -> i !in allRemovals }
+                    cachedBoxes = remaining.ifEmpty { null }
+
+                    if (remaining.isNotEmpty()) {
+                        service.showLiveOverlay(remaining, cropLeft, cropTop, screenshotW, screenshotH)
+                        waitVsync(2)
+                        overlayScreenRects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
+                    } else {
+                        a11y.hideTranslationOverlay()
+                        overlayScreenRects = emptyList()
+                    }
+                }
+
+                // 8. Merge new far-away text
+                if (farOcrGroups.isNotEmpty()) {
+                    DetectionLog.log("New text groups: ${farOcrGroups.size}, translating")
+                    val newBoxes = translateNewGroups(farOcrGroups, raw)
                     if (newBoxes.isNotEmpty()) {
                         val merged = (cachedBoxes ?: emptyList()) + newBoxes
                         cachedBoxes = merged
-                        displayedGroupTexts = displayedGroupTexts + matchResult.newGroups.map { it.first }
                         service.showLiveOverlay(merged, cropLeft, cropTop, screenshotW, screenshotH)
-
                         waitVsync(2)
-                        shadowMask?.recycle()
-                        shadowMask = a11y.translationOverlayView?.generateShadowMask()
                         overlayScreenRects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
                     }
                 }
             }
 
-            delay(Prefs(service).captureIntervalMs)
+            // 9. Timing
+            if (anyRemoved) {
+                delay(mgr.MIN_SCREENSHOT_INTERVAL_MS)
+            } else {
+                delay(prefs.captureIntervalMs)
+            }
         } finally {
             if (!raw.isRecycled) raw.recycle()
         }
     }
 
-    // ── Composite Image Construction ────────────────────────────────────
+    // ── Detection Helpers ───────────────────────────────────────────────
 
-    private fun buildComposite(raw: Bitmap, cleanRef: Bitmap): Bitmap {
-        val composite = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
-        val rects = overlayScreenRects ?: return composite
-        val mask = shadowMask
+    /** Fill overlay regions in a mutable bitmap with their background color. */
+    private fun fillOverlayRegions(bitmap: Bitmap) {
+        val boxes = cachedBoxes ?: return
+        val fillPadding = OverlayToolkit.FILL_PADDING
+        val paint = android.graphics.Paint()
+        val canvas = Canvas(bitmap)
+        for (box in boxes) {
+            val l = (box.bounds.left + cropLeft - fillPadding).coerceAtLeast(0)
+            val t = (box.bounds.top + cropTop - fillPadding).coerceAtLeast(0)
+            val r = (box.bounds.right + cropLeft + fillPadding).coerceAtMost(bitmap.width)
+            val b = (box.bounds.bottom + cropTop + fillPadding).coerceAtMost(bitmap.height)
+            paint.color = box.bgColor or 0xFF000000.toInt()
+            canvas.drawRect(l.toFloat(), t.toFloat(), r.toFloat(), b.toFloat(), paint)
+        }
+    }
 
+    /** Check if two rects are spatially near each other. */
+    private fun areRectsNearby(a: Rect, b: Rect): Boolean {
+        val dx = maxOf(0, maxOf(a.left - b.right, b.left - a.right))
+        val dy = maxOf(0, maxOf(a.top - b.bottom, b.top - a.bottom))
+        val refHeight = maxOf(a.height(), b.height())
+        val threshold = maxOf((refHeight * 1.5f).toInt(), OverlayToolkit.FILL_PADDING + 15)
+        return dx < threshold && dy < threshold
+    }
+
+    /** Check if pinhole pixels in an overlay region have changed vs alpha-predicted values. */
+    private fun isPinholeChanged(
+        raw: Bitmap, cleanRef: Bitmap, screenRect: Rect, bgColor: Int
+    ): Boolean {
         val spacing = TranslationOverlayView.PINHOLE_SPACING
-        val w = composite.width
-        val h = composite.height
+        val bgR = Color.red(bgColor)
+        val bgG = Color.green(bgColor)
+        val bgB = Color.blue(bgColor)
 
-        // Read full-view mask pixels once (mask is in overlay view coordinates = screen coordinates)
-        val maskBytes: ByteArray? = if (mask != null && mask.width > 0 && mask.height > 0) {
-            ByteArray(mask.width * mask.height).also {
-                mask.copyPixelsToBuffer(java.nio.ByteBuffer.wrap(it))
-            }
-        } else null
-        val maskW = mask?.width ?: 0
+        val left = screenRect.left.coerceIn(0, raw.width)
+        val top = screenRect.top.coerceIn(0, raw.height)
+        val right = screenRect.right.coerceIn(0, raw.width)
+        val bottom = screenRect.bottom.coerceIn(0, raw.height)
+        val regionW = right - left
+        val regionH = bottom - top
+        if (regionW <= 0 || regionH <= 0) return false
 
-        // Diagnostic: check if overlay view has a background and its screen position
-        val overlayView = PlayTranslateAccessibilityService.instance?.translationOverlayView
-        if (overlayView != null) {
-            val viewLoc = IntArray(2)
-            overlayView.getLocationOnScreen(viewLoc)
-            DetectionLog.log("DIAG: overlayView pos=(${viewLoc[0]},${viewLoc[1]}) size=${overlayView.width}x${overlayView.height} bg=${overlayView.background}")
-        }
+        val rawPixels = IntArray(regionW * regionH)
+        raw.getPixels(rawPixels, 0, regionW, left, top, regionW, regionH)
+        val refPixels = IntArray(regionW * regionH)
+        cleanRef.getPixels(refPixels, 0, regionW, left, top, regionW, regionH)
 
-        val boxes = cachedBoxes ?: emptyList()
-        for ((rectIdx, rect) in rects.withIndex()) {
-            val left = rect.left.coerceIn(0, w)
-            val top = rect.top.coerceIn(0, h)
-            val right = rect.right.coerceIn(0, w)
-            val bottom = rect.bottom.coerceIn(0, h)
-            val regionW = right - left
-            val regionH = bottom - top
-            if (regionW <= 0 || regionH <= 0) continue
+        var totalPinholes = 0
+        var changedPinholes = 0
 
-            // Get bgColor for this overlay (for pinhole alpha compensation)
-            val bgColor = boxes.getOrNull(rectIdx)?.bgColor ?: Color.argb(224, 0, 0, 0)
-            val bgR = Color.red(bgColor)
-            val bgG = Color.green(bgColor)
-            val bgB = Color.blue(bgColor)
+        for (py in 0 until regionH) {
+            for (px in 0 until regionW) {
+                // Use absolute coordinates to match parent-level pinhole mask
+                if (!isPinholePosition(left + px, top + py, spacing)) continue
+                totalPinholes++
 
-            val compositePixels = IntArray(regionW * regionH)
-            composite.getPixels(compositePixels, 0, regionW, left, top, regionW, regionH)
-            val refPixels = IntArray(regionW * regionH)
-            cleanRef.getPixels(refPixels, 0, regionW, left, top, regionW, regionH)
+                val refPx = refPixels[py * regionW + px]
+                val predR = ((Color.red(refPx) * 0.5f + bgR * 0.5f).toInt()).coerceIn(0, 255)
+                val predG = ((Color.green(refPx) * 0.5f + bgG * 0.5f).toInt()).coerceIn(0, 255)
+                val predB = ((Color.blue(refPx) * 0.5f + bgB * 0.5f).toInt()).coerceIn(0, 255)
 
-            // First pass: replace non-pinhole and text-covered pinhole pixels with clean ref
-            for (py in 0 until regionH) {
-                for (px in 0 until regionW) {
-                    val screenX = left + px
-                    val screenY = top + py
-                    val isPinhole = isPinholePosition(px, py, spacing)
-                    val isText = maskBytes != null && screenX < maskW && screenY < (mask?.height ?: 0)
-                        && maskBytes[screenY * maskW + screenX].toInt() != 0
+                val rawPx = rawPixels[py * regionW + px]
+                val dr = kotlin.math.abs(Color.red(rawPx) - predR)
+                val dg = kotlin.math.abs(Color.green(rawPx) - predG)
+                val db = kotlin.math.abs(Color.blue(rawPx) - predB)
 
-                    if (!isPinhole || isText) {
-                        compositePixels[py * regionW + px] = refPixels[py * regionW + px]
-                    }
+                if (dr > SPLATTER_THRESHOLD || dg > SPLATTER_THRESHOLD || db > SPLATTER_THRESHOLD) {
+                    changedPinholes++
                 }
             }
-
-            // Second pass: splatter + per-pinhole delta logging
-            val deltas = StringBuilder()
-            var splatCount = 0
-            for (py in 0 until regionH) {
-                for (px in 0 until regionW) {
-                    if (!isPinholePosition(px, py, spacing)) continue
-                    val screenX = left + px
-                    val screenY = top + py
-                    val isText = maskBytes != null && screenX < maskW && screenY < (mask?.height ?: 0)
-                        && maskBytes[screenY * maskW + screenX].toInt() != 0
-                    if (isText) continue
-
-                    val rawPx = compositePixels[py * regionW + px]
-                    val refPx = refPixels[py * regionW + px]
-                    // Predict what the pinhole pixel should look like:
-                    // game_content * 0.5 + bgColor * 0.5
-                    val predR = ((Color.red(refPx) * 0.5f + bgR * 0.5f).toInt()).coerceIn(0, 255)
-                    val predG = ((Color.green(refPx) * 0.5f + bgG * 0.5f).toInt()).coerceIn(0, 255)
-                    val predB = ((Color.blue(refPx) * 0.5f + bgB * 0.5f).toInt()).coerceIn(0, 255)
-                    val dr = kotlin.math.abs(Color.red(rawPx) - predR)
-                    val dg = kotlin.math.abs(Color.green(rawPx) - predG)
-                    val db = kotlin.math.abs(Color.blue(rawPx) - predB)
-                    val delta = maxOf(dr, dg, db)
-                    if (deltas.isNotEmpty()) deltas.append(",")
-                    deltas.append(delta)
-                    // Detailed diagnostic for high-delta pinholes (first 3 per rect)
-                    if (delta > 10 && splatCount == 0 && deltas.count { it == ',' } < 500) {
-                        val rawR = Color.red(rawPx); val rawG = Color.green(rawPx); val rawB = Color.blue(rawPx)
-                        val refR = Color.red(refPx); val refG = Color.green(refPx); val refB = Color.blue(refPx)
-                        val maskVal = if (maskBytes != null && screenX < maskW && screenY < (mask?.height ?: 0))
-                            (maskBytes[screenY * maskW + screenX].toInt() and 0xFF) else -1
-                        DetectionLog.log("DIAG px($px,$py) screen($screenX,$screenY): raw=($rawR,$rawG,$rawB) ref=($refR,$refG,$refB) bg=($bgR,$bgG,$bgB) pred=($predR,$predG,$predB) mask=$maskVal delta=$delta")
-                    }
-                    if (dr > SPLATTER_THRESHOLD || dg > SPLATTER_THRESHOLD || db > SPLATTER_THRESHOLD) {
-                        splatCount++
-                        for (sy in -2..2) {
-                            for (sx in -2..2) {
-                                val tx = px + sx
-                                val ty = py + sy
-                                if (tx in 0 until regionW && ty in 0 until regionH) {
-                                    compositePixels[ty * regionW + tx] = rawPx
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            // Log in chunks to avoid logcat line limit
-            val deltaStr = deltas.toString()
-            DetectionLog.log("PINHOLE rect=($left,$top ${regionW}x$regionH) splatters=$splatCount")
-            var offset = 0
-            while (offset < deltaStr.length) {
-                val end = minOf(offset + 3000, deltaStr.length)
-                DetectionLog.log("  deltas: ${deltaStr.substring(offset, end)}")
-                offset = end
-            }
-
-            composite.setPixels(compositePixels, 0, regionW, left, top, regionW, regionH)
         }
 
-        return composite
+        if (totalPinholes == 0) return false
+        return changedPinholes.toFloat() / totalPinholes >= PINHOLE_CHANGE_PCT
     }
 
     /**
@@ -402,122 +362,11 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         cleanRefBitmap = newRef
     }
 
-    private fun isPinholePosition(localX: Int, localY: Int, spacing: Int): Boolean {
-        if (localY % spacing != 0) return false
-        val rowGroup = (localY / spacing) % 2
+    private fun isPinholePosition(x: Int, y: Int, spacing: Int): Boolean {
+        if (y % spacing != 0) return false
+        val rowGroup = (y / spacing) % 2
         val xOffset = if (rowGroup == 0) 0 else spacing / 2
-        return (localX - xOffset) % spacing == 0 && localX >= xOffset
-    }
-
-    // ── Change Detection (text-content matching, no spatial overlap) ────
-
-    private data class MatchResult(
-        /** Indices of displayed overlays whose source text no longer appears in OCR. */
-        val removedIndices: Set<Int>,
-        /** New OCR groups not matching any displayed overlay and not overlapping existing OCR boxes. */
-        val newGroups: List<Pair<String, Rect>>
-    )
-
-    private fun matchOcrToDisplayed(ocrResult: OcrManager.OcrResult): MatchResult {
-        val ocrTexts = ocrResult.groupTexts
-        val ocrBounds = ocrResult.groupBounds
-
-        // Track which displayed groups still have a match in the new OCR
-        val matchedDisplayIndices = mutableSetOf<Int>()
-        val matchedOcrIndices = mutableSetOf<Int>()
-
-        // For each displayed source text, find a matching OCR text by content AND position.
-        // Text must match within 20% char tolerance AND bounds must be in roughly the same
-        // location — prevents matching a speaker name label against an NPC floating label
-        // with the same text at a different position.
-        val boxes = cachedBoxes ?: emptyList()
-        for ((displayIdx, displayText) in displayedGroupTexts.withIndex()) {
-            val displayBounds = boxes.getOrNull(displayIdx)?.bounds
-            for ((ocrIdx, ocrText) in ocrTexts.withIndex()) {
-                if (ocrIdx in matchedOcrIndices) continue
-                if (!isPinholeMatch(displayText, ocrText)) continue
-                // Text matches — check spatial proximity
-                val ocrBound = ocrBounds.getOrNull(ocrIdx)
-                if (displayBounds != null && ocrBound != null) {
-                    val tolerance = maxOf(displayBounds.height(), ocrBound.height(), 50)
-                    val dx = kotlin.math.abs(displayBounds.centerX() - ocrBound.centerX())
-                    val dy = kotlin.math.abs(displayBounds.centerY() - ocrBound.centerY())
-                    if (dx > tolerance || dy > tolerance) continue // same text, different location
-                }
-                matchedDisplayIndices.add(displayIdx)
-                matchedOcrIndices.add(ocrIdx)
-                break
-            }
-        }
-
-        // Determine which displayed overlays are unmatched (candidates for removal)
-        val unmatchedDisplay = displayedGroupTexts.indices.filter { it !in matchedDisplayIndices }.toSet()
-
-        // Get the bounds of unmatched displayed overlays (for filtering splatter artifacts)
-        val removedOverlayBounds = unmatchedDisplay.mapNotNull { idx ->
-            boxes.getOrNull(idx)?.bounds
-        }
-
-        // New OCR groups: not matched to any displayed overlay,
-        // not overlapping matched OCR boxes, and not overlapping removed overlay bounds
-        // (the latter filters out splatter artifacts from the composite)
-        val newGroups = mutableListOf<Pair<String, Rect>>()
-        for ((ocrIdx, ocrText) in ocrTexts.withIndex()) {
-            if (ocrIdx in matchedOcrIndices) continue
-            if (ocrIdx >= ocrBounds.size) continue
-
-            val newBounds = ocrBounds[ocrIdx]
-            val overlapsMatched = matchedOcrIndices.any { matchedIdx ->
-                matchedIdx < ocrBounds.size && Rect.intersects(newBounds, ocrBounds[matchedIdx])
-            }
-            val overlapsSplatter = removedOverlayBounds.any { removedBounds ->
-                Rect.intersects(newBounds, removedBounds)
-            }
-            if (!overlapsMatched && !overlapsSplatter) {
-                newGroups.add(ocrText to newBounds)
-            }
-        }
-
-        // Displayed overlays with no match → flag as removed if:
-        // - there are new groups (genuine new text appeared), OR
-        // - no displayed texts matched at all (everything changed)
-        val removedIndices = if (newGroups.isNotEmpty() || matchedDisplayIndices.isEmpty()) {
-            unmatchedDisplay
-        } else {
-            emptySet()
-        }
-
-        DetectionLog.log("MATCH: displayed=${displayedGroupTexts.size} ocrGroups=${ocrTexts.size} matched=${matchedDisplayIndices.size} unmatched=${unmatchedDisplay.size} newGroups=${newGroups.size} removed=${removedIndices.size}")
-        for ((i, t) in displayedGroupTexts.withIndex()) {
-            val matched = i in matchedDisplayIndices
-            DetectionLog.log("  DISP[$i] ${if (matched) "✓" else "✗"}: \"${t.take(40)}\"")
-        }
-        for ((i, t) in ocrTexts.withIndex()) {
-            val matched = i in matchedOcrIndices
-            DetectionLog.log("  OCR[$i] ${if (matched) "✓" else "✗"}: \"${t.take(40)}\"")
-        }
-
-        return MatchResult(removedIndices, newGroups)
-    }
-
-    /**
-     * Lenient text matching for pinhole composite comparisons.
-     * Pinholes introduce OCR noise (dropped characters, punctuation changes).
-     * Returns true if texts are similar enough to be the same game text.
-     */
-    private fun isPinholeMatch(a: String, b: String): Boolean {
-        if (a == b) return true
-        val maxLen = maxOf(a.length, b.length)
-        if (maxLen == 0) return true
-        val freqA = a.groupingBy { it }.eachCount()
-        val freqB = b.groupingBy { it }.eachCount()
-        var diff = 0
-        for (c in (freqA.keys + freqB.keys).toSet()) {
-            diff += kotlin.math.abs((freqA[c] ?: 0) - (freqB[c] ?: 0))
-        }
-        // Allow up to 20% character difference (vs 30% in isSignificantChange)
-        // but no absolute minimum — long texts with a few dropped chars should still match
-        return diff.toFloat() / maxLen <= 0.20f
+        return (x - xOffset) % spacing == 0 && x >= xOffset
     }
 
     // ── Translation Helpers ─────────────────────────────────────────────

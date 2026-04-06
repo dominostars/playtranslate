@@ -40,7 +40,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
     private var lastCaptureTimeMs = 0L
 
     /** Absolute minimum between takeScreenshot calls (Android API rate limit). */
-    private val MIN_SCREENSHOT_INTERVAL_MS = 500L
+    internal val MIN_SCREENSHOT_INTERVAL_MS = 500L
 
     /** User-configurable poll interval for the loop. Read from Prefs on each cycle. */
     private fun pollIntervalMs(): Long {

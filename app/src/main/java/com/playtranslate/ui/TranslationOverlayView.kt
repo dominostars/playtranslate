@@ -9,8 +9,8 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.Bitmap
-import android.graphics.Shader
-import android.graphics.drawable.BitmapDrawable
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
 import android.view.Gravity
@@ -70,6 +70,19 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
 
     private var shimmerAnimator: ValueAnimator? = null
 
+    /** When true, dispatchDraw punches pinhole holes through all children. */
+    var pinholeEnabled: Boolean = false
+        set(value) {
+            if (field != value) { field = value; invalidate() }
+        }
+
+    /** Cached full-view pinhole mask bitmap. Created on size change, recycled on detach. */
+    private var pinholeMaskBitmap: Bitmap? = null
+
+    private val dstOutPaint = Paint().apply {
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
+    }
+
     fun setBoxes(
         boxes: List<TextBox>,
         cropLeft: Int, cropTop: Int,
@@ -106,6 +119,8 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         updateScales()
+        pinholeMaskBitmap?.recycle()
+        pinholeMaskBitmap = if (w > 0 && h > 0) createPinholeMask(w, h) else null
         post { rebuildChildren() }
     }
 
@@ -113,6 +128,20 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
         super.onDetachedFromWindow()
         shimmerAnimator?.cancel()
         shimmerAnimator = null
+        pinholeMaskBitmap?.recycle()
+        pinholeMaskBitmap = null
+    }
+
+    override fun dispatchDraw(canvas: Canvas) {
+        val mask = pinholeMaskBitmap
+        if (!pinholeEnabled || mask == null) {
+            super.dispatchDraw(canvas)
+            return
+        }
+        val layer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
+        super.dispatchDraw(canvas)
+        canvas.drawBitmap(mask, 0f, 0f, dstOutPaint)
+        canvas.restoreToCount(layer)
     }
 
     private fun updateScales() {
@@ -220,7 +249,7 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
                         typeface = Typeface.DEFAULT_BOLD
                         gravity = Gravity.CENTER_VERTICAL
                         setPadding(textMargin, textMargin, textMargin, textMargin)
-                        background = createPinholeBackground(rectW, rectH, box.bgColor)
+                        setBackgroundColor(box.bgColor or 0xFF000000.toInt())
                         setTag(R.id.tag_bg_color, box.bgColor)
                         TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
                             this, minTextSizeSp, maxTextSizeSp, 1, TypedValue.COMPLEX_UNIT_SP
@@ -276,46 +305,24 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
     private val skeletonBars = mutableListOf<View>()
 
     /**
-     * Build a full-size pinhole background bitmap manually, pixel by pixel.
-     * Bypasses BitmapShader/GPU tiling entirely — guarantees isPinholePosition
-     * matches the actual transparent pixels exactly.
+     * Build a full-view pinhole mask. Pinhole positions have alpha=128 (50%),
+     * all other pixels are fully transparent. Drawn with DST_OUT in dispatchDraw
+     * to punch 50% holes through all children.
      */
-    private fun createPinholeBackground(width: Int, height: Int, bgColor: Int): BitmapDrawable {
+    private fun createPinholeMask(w: Int, h: Int): Bitmap {
         val spacing = PINHOLE_SPACING
-        val pixels = IntArray(width * height)
-        for (y in 0 until height) {
+        val pixels = IntArray(w * h) // all 0 = fully transparent
+        for (y in 0 until h) {
             val rowGroup = (y / spacing) % 2
             val xOffset = if (rowGroup == 0) 0 else spacing / 2
-            for (x in 0 until width) {
-                val isPinhole = (y % spacing == 0) && ((x - xOffset) % spacing == 0) && (x >= xOffset)
-                pixels[y * width + x] = if (isPinhole) ((bgColor and 0x00FFFFFF) or (128 shl 24)) else (bgColor or (0xFF shl 24))
+            if (y % spacing != 0) continue
+            var x = xOffset
+            while (x < w) {
+                pixels[y * w + x] = 0x80000000.toInt() // alpha=128, RGB=0
+                x += spacing
             }
         }
-        val bitmap = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
-        bitmap.density = android.util.DisplayMetrics.DENSITY_DEVICE_STABLE
-        return BitmapDrawable(context.resources, bitmap).apply {
-            isFilterBitmap = false
-        }
-    }
-
-    /** Switch all text box backgrounds to pinhole pattern (for shadow mask capture). */
-    fun switchToPinhole() {
-        for (i in 0 until childCount) {
-            val child = getChildAt(i)
-            val bgColor = child.getTag(R.id.tag_bg_color) as? Int ?: continue
-            if (child.width > 0 && child.height > 0) {
-                child.background = createPinholeBackground(child.width, child.height, bgColor)
-            }
-        }
-    }
-
-    /** Restore all text box backgrounds to solid (after capture). */
-    fun switchToSolid() {
-        for (i in 0 until childCount) {
-            val child = getChildAt(i)
-            val bgColor = child.getTag(R.id.tag_bg_color) as? Int ?: continue
-            child.setBackgroundColor(bgColor)
-        }
+        return Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888)
     }
 
     /**
@@ -335,49 +342,8 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
         return rects
     }
 
-    /**
-     * Generate a full-view shadow mask showing which pixels contain rendered text.
-     * Returns an ALPHA_8 bitmap the same size as this view. Non-zero pixels = text.
-     * Call after layout completes (doOnLayout).
-     */
-    fun generateShadowMask(): Bitmap? {
-        if (width <= 0 || height <= 0) return null
-        val mask = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8)
-        val canvas = Canvas(mask)
-
-        // Strip backgrounds so only text glyphs are drawn
-        val savedBackgrounds = mutableListOf<android.graphics.drawable.Drawable?>()
-        val savedColors = mutableListOf<android.content.res.ColorStateList?>()
-        for (i in 0 until childCount) {
-            val child = getChildAt(i)
-            savedBackgrounds += child.background
-            child.background = null
-            if (child is TextView) {
-                savedColors += child.textColors
-                child.setTextColor(Color.WHITE)
-            } else {
-                savedColors += null
-            }
-        }
-
-        // Draw the entire view — children render at their layout positions
-        draw(canvas)
-
-        // Restore
-        for (i in 0 until childCount) {
-            val child = getChildAt(i)
-            child.background = savedBackgrounds.getOrNull(i)
-            val colors = savedColors.getOrNull(i)
-            if (child is TextView && colors != null) {
-                child.setTextColor(colors)
-            }
-        }
-
-        return mask
-    }
-
     companion object {
-        const val PINHOLE_SPACING = 2
+        const val PINHOLE_SPACING = 4
     }
 
     private fun startShimmer() {
