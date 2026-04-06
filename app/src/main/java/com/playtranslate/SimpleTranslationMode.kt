@@ -221,9 +221,11 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                         PinholeResult.REMOVE -> pinholeRemovals.add(idx)
                         PinholeResult.DIRTY -> {
                             if (!box.dirty) {
+                                DetectionLog.log("  → marking overlay[$idx] DIRTY")
                                 cachedBoxes = cachedBoxes?.toMutableList()?.also {
                                     it[idx] = box.copy(dirty = true)
                                 }
+                                overlay?.markChildDirty(idx)
                             }
                         }
                         PinholeResult.KEEP -> {}
@@ -232,6 +234,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
             }
 
             // 7. Apply removals (keep dirty overlays visible — they'll be replaced in step 9)
+            DetectionLog.log("POST-PINHOLE: cachedBoxes=${cachedBoxes?.size} dirty=${cachedBoxes?.count { it.dirty } ?: 0}")
             val allRemovals = staleOverlayIndices + pinholeRemovals
             if (allRemovals.isNotEmpty()) {
                 anyRemoved = true
@@ -255,6 +258,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
 
             // 9. Translate new text, strip dirty, show in single rebuild
             val cleanBoxes = (cachedBoxes ?: emptyList()).filter { !it.dirty }
+            DetectionLog.log("PRE-STEP9: cachedBoxes=${cachedBoxes?.size} dirty=${cachedBoxes?.count { it.dirty } ?: 0} cleanBoxes=${cleanBoxes.size} farOcr=${farOcrGroups.size}")
             if (farOcrGroups.isNotEmpty()) {
                 val farTexts = farOcrGroups.map { it.text }
                 val farBounds = farOcrGroups.map { it.bounds }
@@ -281,16 +285,6 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                         cachedBoxes = mergedFinal
                         showOverlayAndCapture(a11y, mergedFinal, cropLeft, cropTop, screenshotW, screenshotH)
                     }
-                }
-            } else if (cleanBoxes.size != (cachedBoxes?.size ?: 0)) {
-                // No new text but dirty overlays need to be stripped
-                DetectionLog.log("Stripping ${(cachedBoxes?.size ?: 0) - cleanBoxes.size} dirty overlays")
-                cachedBoxes = cleanBoxes.ifEmpty { null }
-                if (cleanBoxes.isNotEmpty()) {
-                    showOverlayAndCapture(a11y, cleanBoxes, cropLeft, cropTop, screenshotW, screenshotH)
-                } else {
-                    a11y.hideTranslationOverlay()
-                    overlayScreenRects = emptyList()
                 }
             }
 
