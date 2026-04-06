@@ -146,22 +146,33 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
             var anyRemoved = false
 
             if (!hasOverlays()) {
-                // 5a. No overlays: translate everything, show overlays
+                // 5a. No overlays: show placeholders → translate → update
                 val (ocrResult, _, left, top, sw, sh) = pipeline!!
-                val boxes = translateAndBuildBoxes(ocrResult, raw, left, top)
-                if (boxes.isEmpty()) {
+                val placeholders = buildPlaceholderBoxes(
+                    ocrResult.groupTexts, ocrResult.groupBounds,
+                    ocrResult.groupLineCounts, raw, left, top
+                )
+                if (placeholders.isEmpty()) {
                     delay(prefs.captureIntervalMs)
                     return
                 }
 
-                cachedBoxes = boxes
-                DetectionLog.log("CYCLE: set cachedBoxes=${boxes.size}")
                 cropLeft = left; cropTop = top; screenshotW = sw; screenshotH = sh
+
+                // Show skeleton placeholders immediately
+                cachedBoxes = placeholders
+                service.showLiveOverlay(placeholders, left, top, sw, sh)
+                a11y.translationOverlayView?.pinholeEnabled = true
+                waitVsync(2)
+                overlayScreenRects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
 
                 cleanRefBitmap?.recycle()
                 cleanRefBitmap = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
 
-                service.showLiveOverlay(boxes, left, top, sw, sh)
+                // Translate and replace placeholders with text
+                val finalBoxes = translatePlaceholders(placeholders, ocrResult.groupTexts)
+                cachedBoxes = finalBoxes
+                service.showLiveOverlay(finalBoxes, left, top, sw, sh)
                 a11y.translationOverlayView?.pinholeEnabled = true
                 waitVsync(2)
                 overlayScreenRects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
@@ -175,7 +186,8 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
 
                 // 5b. Process OCR results (if any) for new/stale text detection
                 val staleOverlayIndices = mutableSetOf<Int>()
-                val farOcrGroups = mutableListOf<Pair<String, Rect>>()
+                data class FarGroup(val text: String, val bounds: Rect, val lineCount: Int)
+                val farOcrGroups = mutableListOf<FarGroup>()
 
                 if (pipeline != null) {
                     val (ocrResult, _, left, top, _, _) = pipeline
@@ -198,7 +210,8 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                             }
                         }
                         if (!nearExisting) {
-                            farOcrGroups.add(ocrResult.groupTexts[ocrIdx] to ocrBound)
+                            val lc = ocrResult.groupLineCounts.getOrElse(ocrIdx) { 1 }
+                            farOcrGroups.add(FarGroup(ocrResult.groupTexts[ocrIdx], ocrBound, lc))
                             DetectionLog.log("    NOT near any overlay → new text")
                         }
                     }
@@ -238,14 +251,29 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                     }
                 }
 
-                // 8. Merge new far-away text
+                // 8. Merge new far-away text: show placeholders → translate → update
                 if (farOcrGroups.isNotEmpty()) {
-                    DetectionLog.log("New text groups: ${farOcrGroups.size}, translating")
-                    val newBoxes = translateNewGroups(farOcrGroups, raw)
-                    if (newBoxes.isNotEmpty()) {
-                        val merged = (cachedBoxes ?: emptyList()) + newBoxes
-                        cachedBoxes = merged
-                        service.showLiveOverlay(merged, cropLeft, cropTop, screenshotW, screenshotH)
+                    DetectionLog.log("New text groups: ${farOcrGroups.size}, showing placeholders")
+                    val farTexts = farOcrGroups.map { it.text }
+                    val farBounds = farOcrGroups.map { it.bounds }
+                    val farLineCounts = farOcrGroups.map { it.lineCount }
+                    val placeholders = buildPlaceholderBoxes(farTexts, farBounds, farLineCounts, raw, cropLeft, cropTop)
+
+                    if (placeholders.isNotEmpty()) {
+                        // Show skeletons merged with existing overlays
+                        val mergedWithPlaceholders = (cachedBoxes ?: emptyList()) + placeholders
+                        cachedBoxes = mergedWithPlaceholders
+                        service.showLiveOverlay(mergedWithPlaceholders, cropLeft, cropTop, screenshotW, screenshotH)
+                        a11y.translationOverlayView?.pinholeEnabled = true
+                        waitVsync(2)
+                        overlayScreenRects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
+
+                        // Translate and replace placeholders
+                        val translated = translatePlaceholders(placeholders, farTexts)
+                        val existing = cachedBoxes?.dropLast(placeholders.size) ?: emptyList()
+                        val mergedFinal = existing + translated
+                        cachedBoxes = mergedFinal
+                        service.showLiveOverlay(mergedFinal, cropLeft, cropTop, screenshotW, screenshotH)
                         a11y.translationOverlayView?.pinholeEnabled = true
                         waitVsync(2)
                         overlayScreenRects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
@@ -389,63 +417,33 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
 
     // ── Translation Helpers ─────────────────────────────────────────────
 
-    private suspend fun translateAndBuildBoxes(
-        ocrResult: OcrManager.OcrResult, raw: Bitmap,
-        left: Int, top: Int
+    /** Build placeholder TextBoxes with empty text (skeleton indicators). Instant, no network. */
+    private fun buildPlaceholderBoxes(
+        texts: List<String>, bounds: List<Rect>, lineCounts: List<Int>,
+        raw: Bitmap, left: Int, top: Int
     ): List<TranslationOverlayView.TextBox> {
-        // Check cache for each group
-        val uncachedIndices = mutableListOf<Int>()
-        val uncachedTexts = mutableListOf<String>()
-        val translations = Array(ocrResult.groupTexts.size) { "" }
-
-        for ((idx, text) in ocrResult.groupTexts.withIndex()) {
-            val cached = translationCache[text]
-            if (cached != null) {
-                translations[idx] = cached
-            } else {
-                uncachedIndices.add(idx)
-                uncachedTexts.add(text)
-            }
-        }
-
-        // Translate uncached groups
-        if (uncachedTexts.isNotEmpty()) {
-            val results = service.translateGroupsSeparately(uncachedTexts)
-            for ((i, idx) in uncachedIndices.withIndex()) {
-                val translated = results.getOrNull(i)?.first ?: ""
-                translations[idx] = translated
-                translationCache[ocrResult.groupTexts[idx]] = translated
-            }
-        }
-
-        // Color sample + build boxes
         val colorScale = 4
         val colorRef = Bitmap.createScaledBitmap(raw, raw.width / colorScale, raw.height / colorScale, false)
         val colors: List<Pair<Int, Int>>
         try {
-            colors = OverlayToolkit.sampleGroupColors(colorRef, ocrResult.groupBounds, left, top, colorScale)
+            colors = OverlayToolkit.sampleGroupColors(colorRef, bounds, left, top, colorScale)
         } finally {
             colorRef.recycle()
         }
-
-        return if (ocrResult.groupBounds.size == translations.size) {
-            translations.mapIndexed { idx, text ->
-                val (bg, tc) = colors.getOrElse(idx) { Pair(Color.argb(224, 0, 0, 0), Color.WHITE) }
-                TranslationOverlayView.TextBox(text, ocrResult.groupBounds[idx], bg, tc)
-            }
-        } else emptyList()
+        return bounds.mapIndexed { idx, rect ->
+            val (bg, tc) = colors.getOrElse(idx) { Pair(Color.argb(224, 0, 0, 0), Color.WHITE) }
+            TranslationOverlayView.TextBox("", rect, bg, tc, lineCounts.getOrElse(idx) { 1 })
+        }
     }
 
-    private suspend fun translateNewGroups(
-        groups: List<Pair<String, Rect>>, raw: Bitmap
+    /** Translate texts and return placeholders with filled translatedText. */
+    private suspend fun translatePlaceholders(
+        placeholders: List<TranslationOverlayView.TextBox>, texts: List<String>
     ): List<TranslationOverlayView.TextBox> {
-        val texts = groups.map { it.first }
-        val bounds = groups.map { it.second }
-
-        // Check cache
         val uncachedIndices = mutableListOf<Int>()
         val uncachedTexts = mutableListOf<String>()
         val translations = Array(texts.size) { "" }
+
         for ((idx, text) in texts.withIndex()) {
             val cached = translationCache[text]
             if (cached != null) {
@@ -455,6 +453,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                 uncachedTexts.add(text)
             }
         }
+
         if (uncachedTexts.isNotEmpty()) {
             val results = service.translateGroupsSeparately(uncachedTexts)
             for ((i, idx) in uncachedIndices.withIndex()) {
@@ -464,18 +463,8 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
             }
         }
 
-        val colorScale = 4
-        val colorRef = Bitmap.createScaledBitmap(raw, raw.width / colorScale, raw.height / colorScale, false)
-        val colors: List<Pair<Int, Int>>
-        try {
-            colors = OverlayToolkit.sampleGroupColors(colorRef, bounds, cropLeft, cropTop, colorScale)
-        } finally {
-            colorRef.recycle()
-        }
-
-        return translations.mapIndexed { idx, text ->
-            val (bg, tc) = colors.getOrElse(idx) { Pair(Color.argb(224, 0, 0, 0), Color.WHITE) }
-            TranslationOverlayView.TextBox(text, bounds[idx], bg, tc)
+        return placeholders.mapIndexed { idx, ph ->
+            ph.copy(translatedText = translations.getOrElse(idx) { "" })
         }
     }
 
