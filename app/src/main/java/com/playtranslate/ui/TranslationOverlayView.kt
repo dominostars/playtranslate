@@ -329,7 +329,7 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
             if (y % spacing != 0) continue
             var x = xOffset
             while (x < w) {
-                pixels[y * w + x] = 0xFF000000.toInt() // alpha=255, fully transparent pinhole
+                pixels[y * w + x] = 0x80000000.toInt() // alpha=128, 50% transparent pinhole
                 x += spacing
             }
         }
@@ -353,8 +353,26 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
         return rects
     }
 
+    /**
+     * Render the overlay to an offscreen bitmap WITHOUT pinholes.
+     * Returns the exact pixel-for-pixel content of the overlay (bg + text + outlines).
+     * Used for pinhole change detection — provides the overlay_rendered term in:
+     *   predicted = clean_ref * 0.5 + overlay_rendered * 0.5
+     * Call after layout completes.
+     */
+    fun renderToOffscreen(): Bitmap? {
+        if (width <= 0 || height <= 0) return null
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val wasPinholeEnabled = pinholeEnabled
+        pinholeEnabled = false
+        draw(canvas)
+        pinholeEnabled = wasPinholeEnabled
+        return bitmap
+    }
+
     companion object {
-        const val PINHOLE_SPACING = 4
+        const val PINHOLE_SPACING = 3
     }
 
     private fun startShimmer() {

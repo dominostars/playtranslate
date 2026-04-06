@@ -35,6 +35,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
     // State
     private var cachedBoxes: List<TranslationOverlayView.TextBox>? = null
     private var cleanRefBitmap: Bitmap? = null
+    private var overlayBitmap: Bitmap? = null
     private var overlayScreenRects: List<Rect>? = null
     private var cropLeft = 0
     private var cropTop = 0
@@ -69,6 +70,8 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         scope.cancel()
         cleanRefBitmap?.recycle()
         cleanRefBitmap = null
+        overlayBitmap?.recycle()
+        overlayBitmap = null
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
     }
@@ -77,6 +80,8 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         cachedBoxes = null
         cleanRefBitmap?.recycle()
         cleanRefBitmap = null
+        overlayBitmap?.recycle()
+        overlayBitmap = null
     }
 
     override fun getCachedState(): CachedOverlayState? {
@@ -88,6 +93,8 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
         cleanRefBitmap?.recycle()
         cleanRefBitmap = null
+        overlayBitmap?.recycle()
+        overlayBitmap = null
         cachedBoxes = null
     }
 
@@ -161,10 +168,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
 
                 // Show skeleton placeholders immediately
                 cachedBoxes = placeholders
-                service.showLiveOverlay(placeholders, left, top, sw, sh)
-                a11y.translationOverlayView?.pinholeEnabled = true
-                waitVsync(2)
-                overlayScreenRects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
+                showOverlayAndCapture(a11y, placeholders, left, top, sw, sh)
 
                 cleanRefBitmap?.recycle()
                 cleanRefBitmap = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
@@ -172,10 +176,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                 // Translate and replace placeholders with text
                 val finalBoxes = translatePlaceholders(placeholders, ocrResult.groupTexts)
                 cachedBoxes = finalBoxes
-                service.showLiveOverlay(finalBoxes, left, top, sw, sh)
-                a11y.translationOverlayView?.pinholeEnabled = true
-                waitVsync(2)
-                overlayScreenRects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
+                showOverlayAndCapture(a11y, finalBoxes, left, top, sw, sh)
 
                 mgr.saveToCache(raw)
                 service.translateAndSendToPanel(ocrResult, mgr.lastCleanPath)
@@ -226,7 +227,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                     for ((idx, box) in boxes.withIndex()) {
                         if (idx >= rects.size) continue
                         if (idx in staleOverlayIndices) continue // already marked for removal
-                        if (isPinholeChanged(raw, cleanRef, rects[idx], box.bgColor)) {
+                        if (isPinholeChanged(raw, cleanRef, rects[idx])) {
                             pinholeRemovals.add(idx)
                         }
                     }
@@ -241,10 +242,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                     cachedBoxes = remaining.ifEmpty { null }
 
                     if (remaining.isNotEmpty()) {
-                        service.showLiveOverlay(remaining, cropLeft, cropTop, screenshotW, screenshotH)
-                        a11y.translationOverlayView?.pinholeEnabled = true
-                        waitVsync(2)
-                        overlayScreenRects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
+                        showOverlayAndCapture(a11y, remaining, cropLeft, cropTop, screenshotW, screenshotH)
                     } else {
                         a11y.hideTranslationOverlay()
                         overlayScreenRects = emptyList()
@@ -263,20 +261,14 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                         // Show skeletons merged with existing overlays
                         val mergedWithPlaceholders = (cachedBoxes ?: emptyList()) + placeholders
                         cachedBoxes = mergedWithPlaceholders
-                        service.showLiveOverlay(mergedWithPlaceholders, cropLeft, cropTop, screenshotW, screenshotH)
-                        a11y.translationOverlayView?.pinholeEnabled = true
-                        waitVsync(2)
-                        overlayScreenRects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
+                        showOverlayAndCapture(a11y, mergedWithPlaceholders, cropLeft, cropTop, screenshotW, screenshotH)
 
                         // Translate and replace placeholders
                         val translated = translatePlaceholders(placeholders, farTexts)
                         val existing = cachedBoxes?.dropLast(placeholders.size) ?: emptyList()
                         val mergedFinal = existing + translated
                         cachedBoxes = mergedFinal
-                        service.showLiveOverlay(mergedFinal, cropLeft, cropTop, screenshotW, screenshotH)
-                        a11y.translationOverlayView?.pinholeEnabled = true
-                        waitVsync(2)
-                        overlayScreenRects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
+                        showOverlayAndCapture(a11y, mergedFinal, cropLeft, cropTop, screenshotW, screenshotH)
                     }
                 }
             }
@@ -293,7 +285,20 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         }
     }
 
-    // ── Detection Helpers ───────────────────────────────────────────────
+    /** Show overlay, enable pinholes, wait for layout, capture screen rects and overlay render. */
+    private suspend fun showOverlayAndCapture(
+        a11y: PlayTranslateAccessibilityService, boxes: List<TranslationOverlayView.TextBox>,
+        left: Int, top: Int, sw: Int, sh: Int
+    ) {
+        service.showLiveOverlay(boxes, left, top, sw, sh)
+        a11y.translationOverlayView?.pinholeEnabled = true
+        waitVsync(2)
+        overlayScreenRects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
+        overlayBitmap?.recycle()
+        overlayBitmap = a11y.translationOverlayView?.renderToOffscreen()
+    }
+
+    // ── Detection Helpers ───────────���───────────────────────────────────
 
     /** Fill overlay regions in a mutable bitmap with their background color. */
     private fun fillOverlayRegions(bitmap: Bitmap) {
@@ -320,14 +325,12 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         return dx < threshold && dy < threshold
     }
 
-    /** Check if pinhole pixels in an overlay region have changed vs alpha-predicted values. */
+    /** Check if pinhole pixels in an overlay region have changed vs offscreen-rendered prediction. */
     private fun isPinholeChanged(
-        raw: Bitmap, cleanRef: Bitmap, screenRect: Rect, bgColor: Int
+        raw: Bitmap, cleanRef: Bitmap, screenRect: Rect
     ): Boolean {
+        val overlay = overlayBitmap ?: return false
         val spacing = TranslationOverlayView.PINHOLE_SPACING
-        val bgR = Color.red(bgColor)
-        val bgG = Color.green(bgColor)
-        val bgB = Color.blue(bgColor)
 
         val left = screenRect.left.coerceIn(0, raw.width)
         val top = screenRect.top.coerceIn(0, raw.height)
@@ -342,31 +345,44 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         val refPixels = IntArray(regionW * regionH)
         cleanRef.getPixels(refPixels, 0, regionW, left, top, regionW, regionH)
 
+        // Overlay bitmap is in view coordinates (same as screen coordinates for full-screen overlay)
+        val ovLeft = left.coerceIn(0, overlay.width)
+        val ovTop = top.coerceIn(0, overlay.height)
+        val ovRight = right.coerceIn(0, overlay.width)
+        val ovBottom = bottom.coerceIn(0, overlay.height)
+        val ovW = ovRight - ovLeft
+        val ovH = ovBottom - ovTop
+        if (ovW != regionW || ovH != regionH) return false
+        val ovPixels = IntArray(regionW * regionH)
+        overlay.getPixels(ovPixels, 0, regionW, ovLeft, ovTop, regionW, regionH)
+
         var totalPinholes = 0
         var changedPinholes = 0
+        var maxDelta = 0
 
         for (py in 0 until regionH) {
             for (px in 0 until regionW) {
-                // Use absolute coordinates to match parent-level pinhole mask
                 if (!isPinholePosition(left + px, top + py, spacing)) continue
                 totalPinholes++
 
                 val refPx = refPixels[py * regionW + px]
-                // Pinholes are fully transparent — raw pixel = pure game content = clean ref
-                val predR = Color.red(refPx)
-                val predG = Color.green(refPx)
-                val predB = Color.blue(refPx)
+                val ovPx = ovPixels[py * regionW + px]
+                // predicted = clean_ref * 0.5 + overlay_rendered * 0.5
+                val predR = ((Color.red(refPx) + Color.red(ovPx)) / 2).coerceIn(0, 255)
+                val predG = ((Color.green(refPx) + Color.green(ovPx)) / 2).coerceIn(0, 255)
+                val predB = ((Color.blue(refPx) + Color.blue(ovPx)) / 2).coerceIn(0, 255)
 
                 val rawPx = rawPixels[py * regionW + px]
                 val dr = kotlin.math.abs(Color.red(rawPx) - predR)
                 val dg = kotlin.math.abs(Color.green(rawPx) - predG)
                 val db = kotlin.math.abs(Color.blue(rawPx) - predB)
+                val delta = maxOf(dr, dg, db)
+                if (delta > maxDelta) maxDelta = delta
 
                 if (dr > SPLATTER_THRESHOLD || dg > SPLATTER_THRESHOLD || db > SPLATTER_THRESHOLD) {
                     changedPinholes++
-                    // H1: log first 3 changed pinholes per overlay for diagnosis
                     if (changedPinholes <= 3) {
-                        DetectionLog.log("  H1: changed pinhole@(${left+px},${top+py}) raw=(${Color.red(rawPx)},${Color.green(rawPx)},${Color.blue(rawPx)}) pred=($predR,$predG,$predB) ref=(${Color.red(refPx)},${Color.green(refPx)},${Color.blue(refPx)}) bg=($bgR,$bgG,$bgB) delta=($dr,$dg,$db)")
+                        DetectionLog.log("  H1: changed pinhole@(${left+px},${top+py}) raw=(${Color.red(rawPx)},${Color.green(rawPx)},${Color.blue(rawPx)}) pred=($predR,$predG,$predB) ref=(${Color.red(refPx)},${Color.green(refPx)},${Color.blue(refPx)}) ov=(${Color.red(ovPx)},${Color.green(ovPx)},${Color.blue(ovPx)}) delta=($dr,$dg,$db)")
                     }
                 }
             }
@@ -375,7 +391,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         if (totalPinholes == 0) return false
         val pct = changedPinholes.toFloat() / totalPinholes
         val triggered = pct >= PINHOLE_CHANGE_PCT
-        DetectionLog.log("H1: pinhole rect=$screenRect total=$totalPinholes changed=$changedPinholes (${(pct * 100).toInt()}%) threshold=${(PINHOLE_CHANGE_PCT * 100).toInt()}% → ${if (triggered) "REMOVE" else "keep"}")
+        DetectionLog.log("H1: pinhole rect=$screenRect total=$totalPinholes changed=$changedPinholes (${(pct * 100).toInt()}%) maxDelta=$maxDelta threshold=${(PINHOLE_CHANGE_PCT * 100).toInt()}% → ${if (triggered) "REMOVE" else "keep"}")
         return triggered
     }
 
