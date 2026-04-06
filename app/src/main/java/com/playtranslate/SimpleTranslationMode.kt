@@ -266,7 +266,16 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         } else null
         val maskW = mask?.width ?: 0
 
-        for (rect in rects) {
+        // Diagnostic: check if overlay view has a background and its screen position
+        val overlayView = PlayTranslateAccessibilityService.instance?.translationOverlayView
+        if (overlayView != null) {
+            val viewLoc = IntArray(2)
+            overlayView.getLocationOnScreen(viewLoc)
+            DetectionLog.log("DIAG: overlayView pos=(${viewLoc[0]},${viewLoc[1]}) size=${overlayView.width}x${overlayView.height} bg=${overlayView.background}")
+        }
+
+        val boxes = cachedBoxes ?: emptyList()
+        for ((rectIdx, rect) in rects.withIndex()) {
             val left = rect.left.coerceIn(0, w)
             val top = rect.top.coerceIn(0, h)
             val right = rect.right.coerceIn(0, w)
@@ -274,6 +283,12 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
             val regionW = right - left
             val regionH = bottom - top
             if (regionW <= 0 || regionH <= 0) continue
+
+            // Get bgColor for this overlay (for pinhole alpha compensation)
+            val bgColor = boxes.getOrNull(rectIdx)?.bgColor ?: Color.argb(224, 0, 0, 0)
+            val bgR = Color.red(bgColor)
+            val bgG = Color.green(bgColor)
+            val bgB = Color.blue(bgColor)
 
             val compositePixels = IntArray(regionW * regionH)
             composite.getPixels(compositePixels, 0, regionW, left, top, regionW, regionH)
@@ -295,9 +310,9 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                 }
             }
 
-            // Second pass: splatter — if a background pinhole pixel differs significantly
-            // from the clean ref, draw a 4x4 block of the new color to structurally
-            // damage old text for OCR detection.
+            // Second pass: splatter + per-pinhole delta logging
+            val deltas = StringBuilder()
+            var splatCount = 0
             for (py in 0 until regionH) {
                 for (px in 0 until regionW) {
                     if (!isPinholePosition(px, py, spacing)) continue
@@ -309,10 +324,27 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
 
                     val rawPx = compositePixels[py * regionW + px]
                     val refPx = refPixels[py * regionW + px]
-                    val dr = kotlin.math.abs(Color.red(rawPx) - Color.red(refPx))
-                    val dg = kotlin.math.abs(Color.green(rawPx) - Color.green(refPx))
-                    val db = kotlin.math.abs(Color.blue(rawPx) - Color.blue(refPx))
+                    // Predict what the pinhole pixel should look like:
+                    // game_content * 0.5 + bgColor * 0.5
+                    val predR = ((Color.red(refPx) * 0.5f + bgR * 0.5f).toInt()).coerceIn(0, 255)
+                    val predG = ((Color.green(refPx) * 0.5f + bgG * 0.5f).toInt()).coerceIn(0, 255)
+                    val predB = ((Color.blue(refPx) * 0.5f + bgB * 0.5f).toInt()).coerceIn(0, 255)
+                    val dr = kotlin.math.abs(Color.red(rawPx) - predR)
+                    val dg = kotlin.math.abs(Color.green(rawPx) - predG)
+                    val db = kotlin.math.abs(Color.blue(rawPx) - predB)
+                    val delta = maxOf(dr, dg, db)
+                    if (deltas.isNotEmpty()) deltas.append(",")
+                    deltas.append(delta)
+                    // Detailed diagnostic for high-delta pinholes (first 3 per rect)
+                    if (delta > 10 && splatCount == 0 && deltas.count { it == ',' } < 500) {
+                        val rawR = Color.red(rawPx); val rawG = Color.green(rawPx); val rawB = Color.blue(rawPx)
+                        val refR = Color.red(refPx); val refG = Color.green(refPx); val refB = Color.blue(refPx)
+                        val maskVal = if (maskBytes != null && screenX < maskW && screenY < (mask?.height ?: 0))
+                            (maskBytes[screenY * maskW + screenX].toInt() and 0xFF) else -1
+                        DetectionLog.log("DIAG px($px,$py) screen($screenX,$screenY): raw=($rawR,$rawG,$rawB) ref=($refR,$refG,$refB) bg=($bgR,$bgG,$bgB) pred=($predR,$predG,$predB) mask=$maskVal delta=$delta")
+                    }
                     if (dr > SPLATTER_THRESHOLD || dg > SPLATTER_THRESHOLD || db > SPLATTER_THRESHOLD) {
+                        splatCount++
                         for (sy in -2..2) {
                             for (sx in -2..2) {
                                 val tx = px + sx
@@ -324,6 +356,15 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                         }
                     }
                 }
+            }
+            // Log in chunks to avoid logcat line limit
+            val deltaStr = deltas.toString()
+            DetectionLog.log("PINHOLE rect=($left,$top ${regionW}x$regionH) splatters=$splatCount")
+            var offset = 0
+            while (offset < deltaStr.length) {
+                val end = minOf(offset + 3000, deltaStr.length)
+                DetectionLog.log("  deltas: ${deltaStr.substring(offset, end)}")
+                offset = end
             }
 
             composite.setPixels(compositePixels, 0, regionW, left, top, regionW, regionH)

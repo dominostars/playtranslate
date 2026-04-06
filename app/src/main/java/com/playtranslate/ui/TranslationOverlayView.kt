@@ -215,13 +215,11 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
                     OutlinedTextView(context).apply {
                         text = box.translatedText
                         setTextColor(box.textColor)
-                        outlineColor = box.bgColor or (0xFF shl 24)
-                        outlineWidth = 3f * dp
+                        outlineColor = box.textColor xor 0x00FFFFFF  // invert RGB, keep alpha
+                        outlineWidth = 1f * dp
                         typeface = Typeface.DEFAULT_BOLD
                         gravity = Gravity.CENTER_VERTICAL
-                        val strokePad = (outlineWidth / 2f + 0.5f).toInt()
-                        setPadding(maxOf(textMargin, strokePad), maxOf(textMargin, strokePad),
-                            maxOf(textMargin, strokePad), maxOf(textMargin, strokePad))
+                        setPadding(textMargin, textMargin, textMargin, textMargin)
                         background = createPinholeBackground(rectW, rectH, box.bgColor)
                         setTag(R.id.tag_bg_color, box.bgColor)
                         TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
@@ -290,7 +288,7 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
             val xOffset = if (rowGroup == 0) 0 else spacing / 2
             for (x in 0 until width) {
                 val isPinhole = (y % spacing == 0) && ((x - xOffset) % spacing == 0) && (x >= xOffset)
-                pixels[y * width + x] = if (isPinhole) Color.TRANSPARENT else bgColor
+                pixels[y * width + x] = if (isPinhole) ((bgColor and 0x00FFFFFF) or (128 shl 24)) else (bgColor or (0xFF shl 24))
             }
         }
         val bitmap = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
@@ -379,7 +377,7 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
     }
 
     companion object {
-        const val PINHOLE_SPACING = 4
+        const val PINHOLE_SPACING = 2
     }
 
     private fun startShimmer() {
