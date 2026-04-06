@@ -260,7 +260,9 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
                         typeface = Typeface.DEFAULT_BOLD
                         gravity = Gravity.CENTER_VERTICAL
                         setPadding(textMargin, textMargin, textMargin, textMargin)
-                        setBackgroundColor(box.bgColor or 0xFF000000.toInt())
+                        // Pinholes need opaque bg (pinholes handle transparency).
+                        // Without pinholes, use native alpha (~224 = 88% opaque).
+                        setBackgroundColor(if (pinholeEnabled) box.bgColor or 0xFF000000.toInt() else box.bgColor)
                         setTag(R.id.tag_bg_color, box.bgColor)
                         TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
                             this, minTextSizeSp, maxTextSizeSp, 1, TypedValue.COMPLEX_UNIT_SP
