@@ -733,13 +733,17 @@ class CaptureService : Service() {
     /** Cache of original text → (translated text, note). Avoids retranslating
      *  groups that haven't changed between live mode cycles (e.g. persistent
      *  UI labels while only the dialogue updates). Cleared on language change. */
-    private val translationCache = object : LinkedHashMap<String, Pair<String, String?>>(50, 0.75f, true) {
+    private val translationCache = object : LinkedHashMap<String, Pair<String, String?>>(500, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<String, String?>>?) =
-            size > 50
+            size > 500
     }
     /** Set by [translate] when ML Kit fallback is used, so [translateGroupsSeparately]
      *  knows not to cache the lower-quality result. */
     private var mlKitFallbackUsed = false
+
+    /** Synchronous cache lookup for previously translated text. Returns null if not cached. */
+    fun getCachedTranslation(sourceText: String): String? =
+        translationCache[sourceText]?.first
 
     /**
      * Translates each group in parallel, using cached results for groups

@@ -42,9 +42,6 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
     private var screenshotH = 0
     private var showRegionFlash = true
 
-    // Translation cache: source text → translated text
-    private val translationCache = mutableMapOf<String, String>()
-
     /** Per-channel delta threshold for pinhole pixel change detection. */
     private val SPLATTER_THRESHOLD = 60
 
@@ -86,7 +83,6 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         cleanRefBitmap = null
         overlayBitmap?.recycle()
         overlayBitmap = null
-        translationCache.clear()
     }
 
     override fun getCachedState(): CachedOverlayState? {
@@ -279,7 +275,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
 
                 if (placeholders.isNotEmpty()) {
                     val partial = placeholders.mapIndexed { i, ph ->
-                        val cached = translationCache[farTexts[i]]
+                        val cached = service.getCachedTranslation(farTexts[i])
                         if (cached != null) ph.copy(translatedText = cached) else ph
                     }
                     val anyUncached = partial.any { it.translatedText.isEmpty() }
@@ -515,7 +511,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         val translations = Array(texts.size) { "" }
 
         for ((idx, text) in texts.withIndex()) {
-            val cached = translationCache[text]
+            val cached = service.getCachedTranslation(text)
             if (cached != null) {
                 translations[idx] = cached
             } else {
@@ -527,9 +523,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         if (uncachedTexts.isNotEmpty()) {
             val results = service.translateGroupsSeparately(uncachedTexts)
             for ((i, idx) in uncachedIndices.withIndex()) {
-                val translated = results.getOrNull(i)?.first ?: ""
-                translations[idx] = translated
-                translationCache[texts[idx]] = translated
+                translations[idx] = results.getOrNull(i)?.first ?: ""
             }
         }
 
