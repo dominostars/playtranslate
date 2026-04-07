@@ -227,29 +227,35 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                 }
             }
 
-            // 9. Mark dirty boxes, move to dirty window, remove from clean window
-            if (pinholeDirty.isNotEmpty()) {
-                cachedBoxes = cachedBoxes?.toMutableList()?.also { list ->
-                    for (idx in pinholeDirty) list[idx] = list[idx].copy(dirty = true)
+            // 9. Resolve: compute final state from immutable snapshot in one pass
+            val allRemovals = staleOverlayIndices + pinholeRemovals
+            val nextBoxes = boxes.mapIndexedNotNull { i, box ->
+                when {
+                    i in allRemovals -> null
+                    i in pinholeDirty -> box.copy(dirty = true)
+                    else -> box
                 }
-                val dirtyBoxes = cachedBoxes?.filter { it.dirty } ?: emptyList()
-                dirtyView?.setBoxes(dirtyBoxes, cropLeft, cropTop, screenshotW, screenshotH)
-                a11y.translationOverlayView?.removeBoxesByContent(dirtyBoxes)
             }
 
-            // 10. Apply REMOVE/stale removals
-            val allRemovals = staleOverlayIndices + pinholeRemovals
-            if (allRemovals.isNotEmpty()) {
-                anyRemoved = true
-                val remaining = boxes.filterIndexed { i, _ -> i !in allRemovals }
-                cachedBoxes = remaining.ifEmpty { null }
+            val cleanBoxes = nextBoxes.filter { !it.dirty }
+            val dirtyBoxes = nextBoxes.filter { it.dirty }
+            cachedBoxes = nextBoxes.ifEmpty { null }
+            val anyChanged = allRemovals.isNotEmpty() || pinholeDirty.isNotEmpty()
 
-                if (remaining.isNotEmpty()) {
-                    DetectionLog.log("VIS: clean window REBUILD ${remaining.size} boxes ")
-                    showOverlayAndCapture(a11y, remaining, cropLeft, cropTop, screenshotW, screenshotH)
-                } else {
-                    DetectionLog.log("VIS: clean window HIDDEN ")
+            // 10. Apply to views — single commit point
+            dirtyView?.setBoxes(dirtyBoxes, cropLeft, cropTop, screenshotW, screenshotH)
+
+            if (anyChanged) {
+                anyRemoved = allRemovals.isNotEmpty()
+                if (cleanBoxes.isNotEmpty()) {
+                    showOverlayAndCapture(a11y, cleanBoxes, cropLeft, cropTop, screenshotW, screenshotH)
+                } else if (dirtyBoxes.isEmpty()) {
                     a11y.hideTranslationOverlay()
+                } else {
+                    // Only dirty boxes remain — clear clean window content
+                    a11y.translationOverlayView?.setBoxes(
+                        emptyList(), cropLeft, cropTop, screenshotW, screenshotH
+                    )
                 }
             }
 
@@ -273,16 +279,18 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                     }
                     val anyUncached = partial.any { it.translatedText.isEmpty() }
 
-                    val merged = (cachedBoxes ?: emptyList()) + partial
+                    val currentClean = (cachedBoxes ?: emptyList()).filter { !it.dirty }
+                    val merged = currentClean + partial
                     cachedBoxes = merged
                     showOverlayAndCapture(a11y, merged, cropLeft, cropTop, screenshotW, screenshotH)
+                    // Dirty window cleared — clean window now has replacements
+                    dirtyView?.setBoxes(emptyList(), cropLeft, cropTop, screenshotW, screenshotH)
 
                     if (anyUncached) {
                         val translated = translatePlaceholders(placeholders, farTexts)
                         val existing = cachedBoxes?.dropLast(placeholders.size) ?: emptyList()
                         val mergedFinal = existing + translated
                         cachedBoxes = mergedFinal
-                        DetectionLog.log("VIS: clean window UPDATE ${mergedFinal.size} boxes ")
                         showOverlayAndCapture(a11y, mergedFinal, cropLeft, cropTop, screenshotW, screenshotH)
                     }
 
