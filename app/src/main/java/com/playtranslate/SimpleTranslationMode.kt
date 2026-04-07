@@ -68,10 +68,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
     override fun stop() {
         mainJob?.cancel()
         scope.cancel()
-        cleanRefBitmap?.recycle()
-        cleanRefBitmap = null
-        overlayBitmap?.recycle()
-        overlayBitmap = null
+        refresh()
 
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
@@ -92,12 +89,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
 
     private fun onButtonDown() {
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
-        cleanRefBitmap?.recycle()
-        cleanRefBitmap = null
-        overlayBitmap?.recycle()
-        overlayBitmap = null
-        cachedBoxes = null
-
+        refresh()
     }
 
     // ── Unified Cycle ───────────────────────────────────────────────────
