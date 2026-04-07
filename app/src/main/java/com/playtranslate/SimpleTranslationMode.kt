@@ -253,8 +253,29 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                 }
             }
 
+            // 8b. Cascade stale to neighbors
+            val cascadedRemovals = staleOverlayIndices.toMutableSet()
+            if (cascadedRemovals.isNotEmpty()) {
+                var expanded = true
+                while (expanded) {
+                    expanded = false
+                    for (i in boxes.indices) {
+                        if (i in cascadedRemovals || boxes[i].dirty) continue
+                        if (i >= rects.size) continue
+                        for (removeIdx in cascadedRemovals.toSet()) {
+                            if (removeIdx >= rects.size) continue
+                            if (areRectsNearby(rects[removeIdx], rects[i])) {
+                                cascadedRemovals.add(i)
+                                expanded = true
+                                break
+                            }
+                        }
+                    }
+                }
+            }
+
             // 9. Resolve: compute final state from immutable snapshot in one pass
-            val allRemovals = staleOverlayIndices + pinholeRemovals + contentMatchRemovals
+            val allRemovals = cascadedRemovals + pinholeRemovals + contentMatchRemovals
             val nextBoxes = boxes.mapIndexedNotNull { i, box ->
                 when {
                     i in allRemovals -> null
