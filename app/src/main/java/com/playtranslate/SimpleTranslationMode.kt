@@ -36,7 +36,6 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
     private var cachedBoxes: List<TranslationOverlayView.TextBox>? = null
     private var cleanRefBitmap: Bitmap? = null
     private var overlayBitmap: Bitmap? = null
-    private var overlayScreenRects: List<Rect>? = null
     private var cropLeft = 0
     private var cropTop = 0
     private var screenshotW = 0
@@ -179,7 +178,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
             }
 
             val boxes = cachedBoxes ?: emptyList()
-            val rects = overlayScreenRects ?: emptyList()
+            val rects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
 
             // 7. Classify OCR results: near existing overlay (stale) or far (new text)
             val staleOverlayIndices = mutableSetOf<Int>()
@@ -251,7 +250,6 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                 } else {
                     DetectionLog.log("VIS: clean window HIDDEN ")
                     a11y.hideTranslationOverlay()
-                    overlayScreenRects = emptyList()
                 }
             }
 
@@ -322,7 +320,6 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         service.showLiveOverlay(boxes, left, top, sw, sh)
         a11y.translationOverlayView?.pinholeEnabled = true
         waitVsync(2)
-        overlayScreenRects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
         overlayBitmap?.recycle()
         overlayBitmap = a11y.translationOverlayView?.renderToOffscreen()
     }
@@ -431,7 +428,8 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
      * content from before overlays were shown, not pinhole-contaminated pixels).
      */
     private fun updateCleanRef(raw: Bitmap, ref: Bitmap) {
-        val rects = overlayScreenRects ?: return
+        val rects = PlayTranslateAccessibilityService.instance
+            ?.translationOverlayView?.getChildScreenRects() ?: return
         val w = ref.width
         val h = ref.height
 
