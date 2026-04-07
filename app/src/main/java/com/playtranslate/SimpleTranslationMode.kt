@@ -49,17 +49,16 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
     private val SPLATTER_THRESHOLD = 60
 
     /** Fraction of pinholes that must change to mark dirty (minor change). */
-    private val PINHOLE_DIRTY_PCT = 0.01f
+    private val PINHOLE_DIRTY_PCT = 0.03f
 
     /** Fraction of pinholes that must change to remove immediately (major change). */
-    private val PINHOLE_CHANGE_PCT = 1.00f
+    private val PINHOLE_CHANGE_PCT = 0.10f
 
     private enum class PinholeResult { KEEP, DIRTY, REMOVE }
 
     override fun start() {
-        // TODO: temporarily disabled for change detection testing
-        // PlayTranslateAccessibilityService.instance
-        //     ?.startInputMonitoring(service.gameDisplayId) { onButtonDown() }
+        PlayTranslateAccessibilityService.instance
+            ?.startInputMonitoring(service.gameDisplayId) { onButtonDown() }
 
         mainJob = scope.launch {
             while (isActive) {
