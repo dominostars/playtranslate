@@ -178,6 +178,11 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
             }
 
             val boxes = cachedBoxes ?: emptyList()
+            // NOTE: screen rects are used as bitmap pixel coordinates. This assumes
+            // screenshot resolution == display resolution (scale 1.0), which holds for
+            // AccessibilityService.takeScreenshot. Would need a full rethink for
+            // MediaProjection with a different virtual display resolution — pinhole
+            // detection fundamentally assumes 1:1 pixel correspondence.
             val rects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
 
             // 7. Classify OCR results: near existing overlay (stale) or far (new text)
@@ -356,7 +361,9 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         return dx < threshold && dy < threshold
     }
 
-    /** Check pinhole pixels: KEEP (no change), DIRTY (minor), or REMOVE (major). */
+    /** Check pinhole pixels: KEEP (no change), DIRTY (minor), or REMOVE (major).
+     *  screenRect is used to index into raw, cleanRef, AND overlayBitmap — assumes
+     *  all three are at the same resolution (screenshot == display == view). See note above. */
     private fun checkPinholes(
         raw: Bitmap, cleanRef: Bitmap, screenRect: Rect
     ): PinholeResult {
@@ -431,6 +438,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
      * existing cleanRef. Overlay areas are preserved (they contain clean game
      * content from before overlays were shown, not pinhole-contaminated pixels).
      */
+    /** Update clean ref in-place. Uses screen rects as bitmap coordinates (see scale note above). */
     private fun updateCleanRef(raw: Bitmap, ref: Bitmap) {
         val rects = PlayTranslateAccessibilityService.instance
             ?.translationOverlayView?.getChildScreenRects() ?: return
