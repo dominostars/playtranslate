@@ -414,16 +414,12 @@ class CaptureService : Service() {
 
     /** Begin a hold-to-preview gesture. */
     fun holdStart() {
-        if (liveActive) {
+        if (liveActive && Prefs(this).autoTranslationMode != AutoTranslationMode.IN_APP_ONLY) {
+            // Overlay modes: overlays already on screen — hide them so user sees clean game
             holdActive = true
-            if (Prefs(this).autoTranslationMode == AutoTranslationMode.IN_APP_ONLY) {
-                // In-app only — show cached boxes as preview on game screen
-                liveMode?.getCachedState()?.let { showHoldOverlay(it) }
-            } else {
-                // Overlays already on screen — hide them so user sees clean game
-                PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
-            }
+            PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
         } else {
+            // Not live, or In-App Only: one-shot capture based on Hold Button Action setting
             onHoldLoadingChanged?.invoke(true)
             oneShotManager.runHoldOverlay()
         }
@@ -443,18 +439,13 @@ class CaptureService : Service() {
     /** End a hold-to-preview gesture. */
     fun holdEnd() {
         onHoldLoadingChanged?.invoke(false)
-        if (liveActive) {
+        if (liveActive && Prefs(this).autoTranslationMode != AutoTranslationMode.IN_APP_ONLY) {
+            // Overlay modes: re-show cached boxes immediately (no visible gap)
             holdActive = false
-            if (Prefs(this).autoTranslationMode == AutoTranslationMode.IN_APP_ONLY) {
-                // Remove in-app preview
-                PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
-            } else {
-                // Re-show cached boxes immediately (no visible gap)
-                liveMode?.getCachedState()?.let { showHoldOverlay(it) }
-                // Refresh in background to catch any scene changes during hold
-                refreshLiveOverlay()
-            }
+            liveMode?.getCachedState()?.let { showHoldOverlay(it) }
+            refreshLiveOverlay()
         } else {
+            // Not live, or In-App Only: cancel one-shot
             oneShotManager.cancel()
         }
     }
