@@ -16,7 +16,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -35,7 +34,7 @@ import kotlin.coroutines.resume
 class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var mainJob: Job? = null
+    private var currentJob: Job? = null
 
     // State
     private var cachedBoxes: List<TranslationOverlayView.TextBox>? = null
@@ -61,30 +60,38 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
     override fun start() {
         PlayTranslateAccessibilityService.instance
             ?.startInputMonitoring(service.gameDisplayId) { onButtonDown() }
+        scheduleNextCycle()
+    }
 
-        mainJob = scope.launch {
-            while (isActive) {
-                if (service.holdActive) { delay(100); continue }
-                runCycle()
-            }
+    private fun scheduleNextCycle(delayMs: Long = 0) {
+        currentJob = scope.launch {
+            if (delayMs > 0) delay(delayMs)
+            val nextDelay = runCycle()
+            scheduleNextCycle(nextDelay)
         }
     }
 
     override fun stop() {
-        mainJob?.cancel()
+        currentJob?.cancel()
         scope.cancel()
-        refresh()
+        cachedBoxes = null
+        cleanRefBitmap?.recycle()
+        cleanRefBitmap = null
+        overlayBitmap?.recycle()
+        overlayBitmap = null
 
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
     }
 
     override fun refresh() {
+        currentJob?.cancel()
         cachedBoxes = null
         cleanRefBitmap?.recycle()
         cleanRefBitmap = null
         overlayBitmap?.recycle()
         overlayBitmap = null
+        scheduleNextCycle()
     }
 
     override fun getCachedState(): CachedOverlayState? {
@@ -101,10 +108,12 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
 
     private fun hasOverlays(): Boolean = cachedBoxes != null
 
-    private suspend fun runCycle() {
-        val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager ?: return
-        val a11y = PlayTranslateAccessibilityService.instance ?: return
+    /** Run one capture-detect-translate cycle. Returns the delay (ms) before the next cycle. */
+    private suspend fun runCycle(): Long {
         val prefs = Prefs(service)
+        if (service.holdActive) return 100L
+        val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager ?: return prefs.captureIntervalMs
+        val a11y = PlayTranslateAccessibilityService.instance ?: return prefs.captureIntervalMs
         val dirtyView = a11y.dirtyOverlayView
         val hasDirty = cachedBoxes?.any { it.dirty } == true
 
@@ -114,8 +123,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
                 val committed = hideAndAwaitCommit(dirtyView)
                 if (!committed) {
                     // View detached or timed out — skip this capture
-                    delay(prefs.captureIntervalMs)
-                    return
+                    return prefs.captureIntervalMs
                 }
                 waitVsync(2)
             } else {
@@ -130,8 +138,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
         }
 
         if (raw == null) {
-            delay(prefs.captureIntervalMs)
-            return
+            return prefs.captureIntervalMs
         }
 
         try {
@@ -167,8 +174,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
             // No text on screen and no overlays → nothing to do
             if (pipeline == null && !hasOverlays()) {
                 service.handleNoTextDetected()
-                delay(prefs.captureIntervalMs)
-                return
+                return prefs.captureIntervalMs
             }
 
             var anyRemoved = false
@@ -357,11 +363,7 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
             }
 
             // 14. Timing
-            if (anyRemoved) {
-                delay(mgr.MIN_SCREENSHOT_INTERVAL_MS)
-            } else {
-                delay(prefs.captureIntervalMs)
-            }
+            return if (anyRemoved) mgr.MIN_SCREENSHOT_INTERVAL_MS else prefs.captureIntervalMs
         } finally {
             if (!raw.isRecycled) raw.recycle()
         }
