@@ -72,25 +72,15 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
     }
 
     override fun stop() {
-        currentJob?.cancel()
         scope.cancel()
-        cachedBoxes = null
-        cleanRefBitmap?.recycle()
-        cleanRefBitmap = null
-        overlayBitmap?.recycle()
-        overlayBitmap = null
+        resetState()
 
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
     }
 
     override fun refresh() {
-        currentJob?.cancel()
-        cachedBoxes = null
-        cleanRefBitmap?.recycle()
-        cleanRefBitmap = null
-        overlayBitmap?.recycle()
-        overlayBitmap = null
+        resetState()
         scheduleNextCycle()
     }
 
@@ -101,7 +91,17 @@ class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
 
     private fun onButtonDown() {
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
-        refresh()
+        resetState()
+        scheduleNextCycle(Prefs(service).captureIntervalMs)
+    }
+
+    private fun resetState() {
+        currentJob?.cancel()
+        cachedBoxes = null
+        cleanRefBitmap?.recycle()
+        cleanRefBitmap = null
+        overlayBitmap?.recycle()
+        overlayBitmap = null
     }
 
     // ── Unified Cycle ───────────────────────────────────────────────────
