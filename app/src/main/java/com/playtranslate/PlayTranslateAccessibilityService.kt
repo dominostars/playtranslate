@@ -596,7 +596,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
         // Create persistent dirty overlay window (always present, empty when not dirty)
         val dirtyView = TranslationOverlayView(themedCtx).apply {
-            pinholeEnabled = false
+            pinholeEnabled = true
         }
         val dirtyParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
