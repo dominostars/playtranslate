@@ -31,7 +31,7 @@ import kotlin.coroutines.resume
  * Overlays only disappear on button press or when game text changes.
  * No constant flicker from hide/show cycles.
  */
-class SimpleTranslationMode(private val service: CaptureService) : LiveMode {
+class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var currentJob: Job? = null

@@ -385,7 +385,7 @@ class CaptureService : Service() {
                 liveMode?.start()
             }
             AutoTranslationMode.SIMPLE -> {
-                liveMode = SimpleTranslationMode(this).also { it.start() }
+                liveMode = PinholeOverlayMode(this).also { it.start() }
             }
             AutoTranslationMode.IN_APP_ONLY -> {
                 liveMode = InAppOnlyMode(this).also { it.start() }
