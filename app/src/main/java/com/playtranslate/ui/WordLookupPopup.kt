@@ -47,6 +47,12 @@ class WordLookupPopup(
     /** Whether to show the "open in app" button (set before first show). */
     var showOpenButton = false
 
+    /** Use TYPE_APPLICATION_PANEL instead of TYPE_ACCESSIBILITY_OVERLAY (for in-app use). */
+    var useActivityWindow = false
+
+    /** Vertical gap between finger position and popup edge (dp). Default 40. */
+    var verticalMarginDp = 40
+
     /** The word currently displayed — used to skip redundant redraws. */
     var currentWord: String? = null
         private set
@@ -81,7 +87,7 @@ class WordLookupPopup(
         val popupW = if (hasRightButton) baseW + ankiColumnW else baseW
         val maxCardH = dp(160)
         val minCardH = dp(64)
-        val margin = dp(40)
+        val margin = dp(verticalMarginDp)
 
         // Build card first so we can measure its desired height
         val card = buildCardView(word, reading, senses, freqScore, isCommon, popupW)
@@ -128,10 +134,14 @@ class WordLookupPopup(
                 } else false
             }
         }
+        val windowType = if (useActivityWindow)
+            WindowManager.LayoutParams.TYPE_APPLICATION_PANEL
+        else
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
         val backdropParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            windowType,
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
@@ -169,7 +179,7 @@ class WordLookupPopup(
 
         val popupParams = WindowManager.LayoutParams(
             popupW, totalH,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            windowType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT

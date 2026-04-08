@@ -122,6 +122,7 @@ class TranslationResultFragment : Fragment() {
 
     override fun onDestroyView() {
         dismissFurigana()
+        dismissWordPopup()
         wordLookupJob?.cancel()
         super.onDestroyView()
     }
@@ -164,10 +165,11 @@ class TranslationResultFragment : Fragment() {
         }
         btnEditOriginal.setOnClickListener {
             dismissFurigana()
+            dismissWordPopup()
             onEditOriginalListener?.invoke()
         }
         resultsContent.setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
-            if (scrollY != oldScrollY) dismissFurigana()
+            if (scrollY != oldScrollY) { dismissFurigana(); dismissWordPopup() }
         }
         btnToggleTranslation.setOnClickListener {
             prefs.hideTranslationSection = !prefs.hideTranslationSection
@@ -307,9 +309,72 @@ class TranslationResultFragment : Fragment() {
         dismissFurigana()
         // Find which word span the tap falls in
         val span = wordSpans.firstOrNull { offset in it.first } ?: return
+        val lookupForm = span.second
         val reading = span.third
-        if (reading.isEmpty()) return
-        showFurigana(span.first, reading)
+
+        // Look up in dictionary and show the floating popup
+        val ctx = context ?: return
+        val activity = activity ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val dict = DictionaryManager.get(ctx.applicationContext)
+                val response = withContext(Dispatchers.IO) {
+                    dict.lookup(lookupForm, reading.ifEmpty { null })
+                }
+                val entry = response?.data?.firstOrNull() ?: return@launch
+
+                val form = entry.japanese.firstOrNull()
+                val word = form?.word ?: form?.reading ?: entry.slug
+                val senses = entry.senses.map { sense ->
+                    WordLookupPopup.SenseDisplay(
+                        pos = sense.partsOfSpeech.joinToString(", "),
+                        definition = sense.englishDefinitions.joinToString("; ")
+                    )
+                }
+
+                // Calculate position: center on the tapped word, above it
+                val layout = tvOriginal.layout ?: return@launch
+                val lineStart = layout.getLineForOffset(span.first.first)
+                val xStart = layout.getPrimaryHorizontal(span.first.first)
+                val xEnd = layout.getPrimaryHorizontal(span.first.last + 1)
+                val wordCenterX = ((xStart + xEnd) / 2).toInt() + tvOriginal.paddingLeft
+                val lineTop = layout.getLineTop(lineStart) - tvOriginal.scrollY + tvOriginal.paddingTop
+
+                val loc = IntArray(2)
+                tvOriginal.getLocationOnScreen(loc)
+                val screenX = loc[0] + wordCenterX
+                val screenY = loc[1] + lineTop
+
+                val dm = resources.displayMetrics
+                dismissWordPopup()
+                val lookupReading = reading.ifEmpty { null }
+                wordPopup = WordLookupPopup(activity, activity.windowManager).apply {
+                    useActivityWindow = true
+                    verticalMarginDp = 5
+                    showOpenButton = true
+                    onOpenTap = {
+                        dismissWordPopup()
+                        host?.onInteraction()
+                        host?.onWordTapped(
+                            word, lookupReading,
+                            lastResult?.screenshotPath,
+                            lastResult?.originalText,
+                            lastResult?.translatedText,
+                            mainWordResults.toMap()
+                        )
+                    }
+                }
+                wordPopup?.show(word, lookupReading, senses, entry.freqScore,
+                    entry.isCommon == true, screenX, screenY, dm.widthPixels, dm.heightPixels)
+            } catch (_: Exception) {}
+        }
+    }
+
+    private var wordPopup: WordLookupPopup? = null
+
+    private fun dismissWordPopup() {
+        wordPopup?.dismiss()
+        wordPopup = null
     }
 
     private fun showFurigana(range: IntRange, reading: String) {
@@ -487,6 +552,7 @@ class TranslationResultFragment : Fragment() {
         mainWordResults.clear()
         wordSpans.clear()
         dismissFurigana()
+        dismissWordPopup()
         tvMainWordsLoading.visibility = View.VISIBLE
         tvMainWordsLoading.text = getString(R.string.words_loading)
         tvNoWords.visibility = View.GONE
