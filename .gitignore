@@ -26,5 +26,10 @@ img/
 *.iml
 .DS_Store
 
+# Debug screenshots and session logs
+dirty_*.png
+ocr_*.png
+session_*.jsonl
+
 # OS
 Thumbs.db

@@ -61,12 +61,12 @@ class OneShotManager(private val service: CaptureService) {
             val processor = createProcessor()
             val boxes = processor.buildBoxes(ocrResult, raw, cropLeft, cropTop, screenshotW, screenshotH) {
                 // Callback for intermediate display (shimmer placeholders)
-                service.showLiveOverlay(it, cropLeft, cropTop, screenshotW, screenshotH)
+                service.showLiveOverlay(it, cropLeft, cropTop, screenshotW, screenshotH, force = true)
             }
 
             // 6. Show final overlay
             if (boxes.isNotEmpty()) {
-                service.showLiveOverlay(boxes, cropLeft, cropTop, screenshotW, screenshotH)
+                service.showLiveOverlay(boxes, cropLeft, cropTop, screenshotW, screenshotH, force = true)
             }
 
             // 7. Send translation to in-app panel (if visible)

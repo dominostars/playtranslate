@@ -419,7 +419,8 @@ class CaptureService : Service() {
             holdActive = true
             PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
         } else {
-            // Not live, or In-App Only: one-shot capture based on Hold Button Action setting
+            // Not live, or In-App Only: pause live loop and one-shot capture
+            holdActive = true
             onHoldLoadingChanged?.invoke(true)
             oneShotManager.runHoldOverlay()
         }
@@ -445,8 +446,12 @@ class CaptureService : Service() {
             liveMode?.getCachedState()?.let { showHoldOverlay(it) }
             refreshLiveOverlay()
         } else {
-            // Not live, or In-App Only: cancel one-shot
+            // Not live, or In-App Only: cancel one-shot and resume live loop
+            holdActive = false
             oneShotManager.cancel()
+            if (liveActive) {
+                liveMode?.refresh()
+            }
         }
     }
 
@@ -454,7 +459,9 @@ class CaptureService : Service() {
     fun holdCancel() {
         onHoldLoadingChanged?.invoke(false)
         holdActive = false
-        if (!liveActive) oneShotManager.cancel()
+        if (!liveActive) {
+            oneShotManager.cancel()
+        }
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
     }
 
@@ -568,9 +575,10 @@ class CaptureService : Service() {
     internal fun showLiveOverlay(
         boxes: List<TranslationOverlayView.TextBox>,
         cropLeft: Int, cropTop: Int,
-        screenshotW: Int, screenshotH: Int
+        screenshotW: Int, screenshotH: Int,
+        force: Boolean = false
     ) {
-        if (holdActive) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: holdActive=true"); return }
+        if (!force && holdActive) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: holdActive=true"); return }
         val a11y = PlayTranslateAccessibilityService.instance
         if (a11y == null) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: a11y=null"); return }
         val dm = getSystemService(DisplayManager::class.java)
