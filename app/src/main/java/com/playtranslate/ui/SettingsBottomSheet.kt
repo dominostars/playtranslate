@@ -365,8 +365,8 @@ class SettingsBottomSheet : DialogFragment() {
 
         fun updateOverlayModeHint() {
             tvOverlayModeHint.text = when (prefs.overlayMode) {
-                OverlayMode.TRANSLATION -> "Show translated text over game text"
-                OverlayMode.FURIGANA -> "Show hiragana readings above kanji"
+                OverlayMode.TRANSLATION -> "Hold to show translated text over game"
+                OverlayMode.FURIGANA -> "Hold to show hiragana readings above kanji"
             }
         }
 

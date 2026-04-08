@@ -321,11 +321,11 @@
                 android:layout_marginTop="4dp"
                 android:layout_marginBottom="12dp" />
 
-            <!-- Overlay mode toggle -->
+            <!-- Hold button action toggle -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Overlay mode"
+                android:text="Hold Button Action"
                 android:textColor="?attr/colorTextPrimary"
                 android:textSize="16sp"
                 android:textStyle="bold"
