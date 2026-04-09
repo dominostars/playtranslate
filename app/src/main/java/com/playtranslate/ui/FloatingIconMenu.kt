@@ -142,7 +142,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
         liveBtn = FrameLayout(context).apply {
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#40A040"))
+                setColor(Color.parseColor("#00BCD4"))
                 cornerRadius = 14 * dp
             }
             layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
@@ -152,7 +152,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
         liveIcon = TextView(context).apply {
             text = "\u25B6"
-            setTextColor(Color.WHITE)
+            setTextColor(Color.BLACK)
             textSize = 26f
             gravity = Gravity.CENTER
         }
@@ -187,7 +187,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
         val regionBtn = FrameLayout(context).apply {
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#3070B0"))
+                setColor(Color.parseColor("#00BCD4"))
                 cornerRadius = 14 * dp
             }
             layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
@@ -197,7 +197,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
         val regionIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_crop)
-            imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+            imageTintList = android.content.res.ColorStateList.valueOf(Color.BLACK)
             scaleType = ImageView.ScaleType.CENTER
         }
         regionBtn.addView(regionIcon, LayoutParams(
@@ -227,7 +227,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
         val hideBtn = FrameLayout(context).apply {
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#E04040"))
+                setColor(Color.parseColor("#555555"))
                 cornerRadius = 14 * dp
             }
             layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
@@ -237,7 +237,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
         val hideIcon = TextView(context).apply {
             text = "\u2715"
-            setTextColor(Color.WHITE)
+            setTextColor(Color.BLACK)
             textSize = 24f
             gravity = Gravity.CENTER
         }
@@ -329,13 +329,17 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         if (isLiveMode) {
             liveIcon.text = "\u275A\u275A" // ❚❚ pause
             liveIcon.textSize = 20f
+            liveIcon.setTextColor(Color.BLACK)
+            liveIcon.setPadding(0, 0, 0, 0)
             liveLabel.text = "Pause Auto"
-            (liveBtn.background as? GradientDrawable)?.setColor(Color.parseColor("#D4A020"))
+            (liveBtn.background as? GradientDrawable)?.setColor(Color.parseColor("#C95050"))
         } else {
             liveIcon.text = "\u25B6" // ▶ play
             liveIcon.textSize = 26f
+            liveIcon.setTextColor(Color.BLACK)
+            liveIcon.setPadding((2 * dp).toInt(), 0, 0, (1 * dp).toInt())
             liveLabel.text = "Auto Translate"
-            (liveBtn.background as? GradientDrawable)?.setColor(Color.parseColor("#40A040"))
+            (liveBtn.background as? GradientDrawable)?.setColor(Color.parseColor("#00BCD4"))
         }
     }
 
