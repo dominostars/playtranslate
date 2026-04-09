@@ -53,6 +53,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     var onClearRegion: (() -> Unit)? = null
     var onToggleLive: (() -> Unit)? = null
     var onCaptureRegion: (() -> Unit)? = null
+    var onSettings: (() -> Unit)? = null
     var isSingleScreen: Boolean = false
 
     /** Current active capture region as fractional coordinates (top, bottom, left, right).
@@ -105,6 +106,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private var degradedWarningView: View? = null
 
     private val menuCard: LinearLayout
+    private val settingsBtn: View
     private val instructionText: TextView
     private val appName: String = context.getString(R.string.app_name)
 
@@ -332,6 +334,26 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
             bottomMargin = (32 * dp).toInt()
         })
+
+        // Gear icon for settings — positioned above/below menu card in positionNearIcon
+        val gearSize = (48 * dp).toInt()
+        val gearIcon = ImageView(context).apply {
+            setImageResource(R.drawable.ic_settings)
+            imageTintList = android.content.res.ColorStateList.valueOf(textColor)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            val pad = (10 * dp).toInt()
+            setPadding(pad, pad, pad, pad)
+        }
+        settingsBtn = FrameLayout(context).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.argb(0xD9, Color.red(bgColor), Color.green(bgColor), Color.blue(bgColor)))
+            }
+            addView(gearIcon, LayoutParams(gearSize, gearSize))
+            setOnClickListener { onSettings?.invoke() }
+            visibility = View.INVISIBLE
+        }
+        addView(settingsBtn, LayoutParams(gearSize, gearSize))
     }
 
     private fun updateLiveButton() {
@@ -495,6 +517,27 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 .setDuration(150)
                 .setInterpolator(DecelerateInterpolator())
                 .start()
+
+            // Position gear icon centered above (or below) the menu card
+            val gearSize = (48 * dp).toInt()
+            val gearGap = (8 * dp).toInt()
+            val gearX = menuX + (mw - gearSize) / 2
+            val gearAboveY = menuY - gearSize - gearGap
+            val gearBelowY = menuY + mh + gearGap
+            val gearY = if (gearAboveY >= 0) gearAboveY else gearBelowY
+            val glp = settingsBtn.layoutParams as LayoutParams
+            glp.gravity = Gravity.TOP or Gravity.START
+            glp.leftMargin = gearX
+            glp.topMargin = gearY
+            settingsBtn.layoutParams = glp
+            settingsBtn.visibility = View.VISIBLE
+            settingsBtn.alpha = 0f
+            settingsBtn.scaleX = 0.8f
+            settingsBtn.scaleY = 0.8f
+            settingsBtn.animate()
+                .alpha(1f).scaleX(1f).scaleY(1f)
+                .setDuration(150)
+                .setInterpolator(DecelerateInterpolator()).start()
 
             // Show red X button to clear region (if a custom region is active)
             showClearRegionButton(iconEdge, screenW, screenH)

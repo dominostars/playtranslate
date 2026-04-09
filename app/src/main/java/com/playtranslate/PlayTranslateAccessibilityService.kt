@@ -1105,6 +1105,10 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 sendMainActivityIntent(MainActivity.ACTION_ADD_CUSTOM_REGION)
             }
         }
+        menu.onSettings = {
+            dismissFloatingMenu()
+            sendMainActivityIntent(MainActivity.ACTION_OPEN_SETTINGS)
+        }
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,

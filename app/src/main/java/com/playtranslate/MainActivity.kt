@@ -280,6 +280,10 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                 captureService?.clearOverride()
                 refreshRegionPicker()
             }
+            ACTION_OPEN_SETTINGS -> {
+                selectTab(Tab.SETTINGS)
+                openSettingsInline()
+            }
         }
     }
 
@@ -611,6 +615,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     private fun selectTab(tab: Tab) {
+        if (selectedTab == tab) return
         selectedTab = tab
 
         // ── Container visibility ──
@@ -1396,6 +1401,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         const val ACTION_STOP_LIVE = "com.playtranslate.ACTION_STOP_LIVE"
         const val ACTION_ADD_CUSTOM_REGION = "com.playtranslate.ACTION_ADD_CUSTOM_REGION"
         const val ACTION_REFRESH_REGION_LABEL = "com.playtranslate.ACTION_REFRESH_REGION_LABEL"
+        const val ACTION_OPEN_SETTINGS = "com.playtranslate.ACTION_OPEN_SETTINGS"
 
         @Volatile
         var isInForeground = false
