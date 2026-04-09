@@ -987,7 +987,14 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         dismissFloatingMenu()
         val wm = createDisplayContext(display).getSystemService(WindowManager::class.java) ?: return
         val screenSize = getDisplaySize(display)
-        val menu = FloatingIconMenu(createDisplayContext(display))
+        val themeRes = when (Prefs(this).themeIndex) {
+            1    -> R.style.Theme_PlayTranslate_White
+            2    -> R.style.Theme_PlayTranslate_Rainbow
+            3    -> R.style.Theme_PlayTranslate_Purple
+            else -> R.style.Theme_PlayTranslate
+        }
+        val themedCtx = android.view.ContextThemeWrapper(createDisplayContext(display), themeRes)
+        val menu = FloatingIconMenu(themedCtx)
         menu.isSingleScreen = Prefs.isSingleScreen(this)
 
         // Suppress live captures while menu is open — the menu darkens

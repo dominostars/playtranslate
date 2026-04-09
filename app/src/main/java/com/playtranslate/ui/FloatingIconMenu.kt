@@ -22,6 +22,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.playtranslate.R
 import com.playtranslate.RegionEntry
+import com.playtranslate.themeColor
 
 /**
  * Full-screen overlay that dims the screen and shows a small popup menu
@@ -35,6 +36,14 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
 
     private val dp = resources.displayMetrics.density
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+
+    // Theme colors resolved from the user's selected palette
+    private val accentColor: Int = context.themeColor(R.attr.colorAccentPrimary).takeIf { it != 0 } ?: Color.parseColor("#00BCD4")
+    private val onAccentColor: Int = context.themeColor(R.attr.colorTextOnAccent).takeIf { it != 0 } ?: Color.BLACK
+    private val hideColor: Int = context.themeColor(R.attr.colorTextHint).takeIf { it != 0 } ?: Color.parseColor("#606060")
+    private val textColor: Int = context.themeColor(R.attr.colorTextPrimary).takeIf { it != 0 } ?: Color.parseColor("#CCFFFFFF")
+    private val bgColor: Int = context.themeColor(R.attr.colorBgDark).takeIf { it != 0 } ?: Color.parseColor("#0D0D0D")
+    private val pauseColor: Int = Color.parseColor("#C95050")
 
     var onHideIcon: (() -> Unit)? = null
     var onHideTemporary: (() -> Unit)? = null
@@ -120,7 +129,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         menuCard = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#D9222222"))
+                setColor(Color.argb(0xD9, Color.red(bgColor), Color.green(bgColor), Color.blue(bgColor)))
                 cornerRadius = 20 * dp
             }
             elevation = 12 * dp
@@ -142,7 +151,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
         liveBtn = FrameLayout(context).apply {
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#00BCD4"))
+                setColor(accentColor)
                 cornerRadius = 14 * dp
             }
             layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
@@ -152,7 +161,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
         liveIcon = TextView(context).apply {
             text = "\u25B6"
-            setTextColor(Color.BLACK)
+            setTextColor(onAccentColor)
             textSize = 26f
             gravity = Gravity.CENTER
         }
@@ -162,7 +171,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         ))
         liveLabel = TextView(context).apply {
             text = "Auto Translate"
-            setTextColor(Color.parseColor("#CCFFFFFF"))
+            setTextColor(textColor)
             textSize = 9f
             gravity = Gravity.CENTER_HORIZONTAL
             setTypeface(null, Typeface.BOLD)
@@ -187,7 +196,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
         val regionBtn = FrameLayout(context).apply {
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#00BCD4"))
+                setColor(accentColor)
                 cornerRadius = 14 * dp
             }
             layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
@@ -197,7 +206,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
         val regionIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_crop)
-            imageTintList = android.content.res.ColorStateList.valueOf(Color.BLACK)
+            imageTintList = android.content.res.ColorStateList.valueOf(onAccentColor)
             scaleType = ImageView.ScaleType.CENTER
         }
         regionBtn.addView(regionIcon, LayoutParams(
@@ -206,7 +215,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         ))
         val regionLabel = TextView(context).apply {
             text = "Capture\nRegion"
-            setTextColor(Color.parseColor("#CCFFFFFF"))
+            setTextColor(textColor)
             textSize = 9f
             gravity = Gravity.CENTER_HORIZONTAL
             setTypeface(null, Typeface.BOLD)
@@ -227,7 +236,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
         val hideBtn = FrameLayout(context).apply {
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#555555"))
+                setColor(hideColor)
                 cornerRadius = 14 * dp
             }
             layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
@@ -247,7 +256,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         ))
         val hideLabel = TextView(context).apply {
             text = "Hide"
-            setTextColor(Color.parseColor("#CCFFFFFF"))
+            setTextColor(textColor)
             textSize = 9f
             gravity = Gravity.CENTER_HORIZONTAL
             setTypeface(null, Typeface.BOLD)
@@ -329,17 +338,17 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         if (isLiveMode) {
             liveIcon.text = "\u275A\u275A" // ❚❚ pause
             liveIcon.textSize = 20f
-            liveIcon.setTextColor(Color.BLACK)
+            liveIcon.setTextColor(Color.parseColor("#E8E8E8"))
             liveIcon.setPadding(0, 0, 0, 0)
             liveLabel.text = "Pause Auto"
-            (liveBtn.background as? GradientDrawable)?.setColor(Color.parseColor("#C95050"))
+            (liveBtn.background as? GradientDrawable)?.setColor(pauseColor)
         } else {
             liveIcon.text = "\u25B6" // ▶ play
             liveIcon.textSize = 26f
-            liveIcon.setTextColor(Color.BLACK)
+            liveIcon.setTextColor(onAccentColor)
             liveIcon.setPadding((2 * dp).toInt(), 0, 0, (1 * dp).toInt())
             liveLabel.text = "Auto Translate"
-            (liveBtn.background as? GradientDrawable)?.setColor(Color.parseColor("#00BCD4"))
+            (liveBtn.background as? GradientDrawable)?.setColor(accentColor)
         }
     }
 
