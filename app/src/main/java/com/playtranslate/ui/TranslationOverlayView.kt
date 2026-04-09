@@ -96,6 +96,11 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
         if (this.boxes == boxes && cropOffsetX == cropLeft && cropOffsetY == cropTop
             && this.screenshotW == screenshotW && this.screenshotH == screenshotH) return
 
+        // Skip rebuild if only bounds jittered within tolerance (OCR noise)
+        if (cropOffsetX == cropLeft && cropOffsetY == cropTop
+            && this.screenshotW == screenshotW && this.screenshotH == screenshotH
+            && boxesMatchFuzzy(this.boxes, boxes)) return
+
         this.boxes = boxes
         cropOffsetX = cropLeft
         cropOffsetY = cropTop
@@ -105,6 +110,25 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
             updateScales()
             rebuildChildren()
         }
+    }
+
+    /** Fuzzy comparison: same text content, bounds within tolerance (OCR jitter). */
+    private fun boxesMatchFuzzy(
+        a: List<TextBox>, b: List<TextBox>, tolerance: Int = 20
+    ): Boolean {
+        if (a.size != b.size) return false
+        for (i in a.indices) {
+            val ba = a[i]; val bb = b[i]
+            if (ba.translatedText != bb.translatedText) return false
+            if (ba.isFurigana != bb.isFurigana) return false
+            if (ba.sourceText != bb.sourceText) return false
+            val ra = ba.bounds; val rb = bb.bounds
+            if (Math.abs(ra.left - rb.left) > tolerance ||
+                Math.abs(ra.top - rb.top) > tolerance ||
+                Math.abs(ra.right - rb.right) > tolerance ||
+                Math.abs(ra.bottom - rb.bottom) > tolerance) return false
+        }
+        return true
     }
 
     /** Remove specific boxes by content match (text + bounds). Removes only the

@@ -122,6 +122,7 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
                 processCleanFrame(raw)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 if (service.liveActive) {
+                    android.util.Log.w("FuriganaDbg", "CLEAN JOB CANCELLED — re-requesting clean capture")
                     PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
                 }
                 throw e
@@ -163,6 +164,9 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
                 android.util.Log.w("FuriganaDbg", "DEDUP HIT but cachedBoxes=null — falling through to rebuild")
             }
 
+            if (lastOcrText != null) {
+                android.util.Log.w("FuriganaDbg", "DEDUP MISS: prev=\"${lastOcrText!!.take(50)}\" new=\"${dedupKey.take(50)}\"")
+            }
             lastOcrText = dedupKey
 
             // Build and show furigana (grouped for selective invalidation)
@@ -253,8 +257,10 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
                 val pipeline = service.runOcr(patched)
                 if (pipeline != null) {
                     val prevText = lastOcrText
-                    if (prevText != null && OverlayToolkit.isSignificantChange(prevText, pipeline.dedupKey)) {
-                        android.util.Log.w("FuriganaDbg", "TEXT CHANGED: \"${prevText.take(40)}\" → \"${pipeline.dedupKey.take(40)}\"")
+                    val kanjiChanged = prevText != null && OverlayToolkit.isSignificantChange(
+                        kanjiOnly(prevText), kanjiOnly(pipeline.dedupKey))
+                    if (kanjiChanged) {
+                        android.util.Log.w("FuriganaDbg", "TEXT CHANGED (kanji): \"${prevText!!.take(40)}\" → \"${pipeline.dedupKey.take(40)}\"")
                         DetectionLog.log("Furigana: text changed, requesting clean capture")
 
                         // Selective invalidation: remove furigana for changed groups, keep the rest
@@ -298,4 +304,9 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
             }
         }
     }
+
+    /** Keep only CJK Unified Ideographs (kanji) — changes in kana/ascii are
+     *  irrelevant for furigana overlay staleness. */
+    private fun kanjiOnly(s: String): String =
+        s.filter { it in '\u4E00'..'\u9FFF' || it in '\u3400'..'\u4DBF' || it in '\uF900'..'\uFAFF' }
 }
