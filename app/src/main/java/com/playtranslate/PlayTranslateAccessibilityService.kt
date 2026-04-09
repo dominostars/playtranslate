@@ -1302,7 +1302,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
         // Instruction label at top center
         val label = android.widget.TextView(ctx).apply {
-            text = "Restrict screen captures to this region"
+            text = "Drag edges to restrict screen captures to this region"
             setTextColor(android.graphics.Color.WHITE)
             textSize = 14f
             gravity = Gravity.CENTER
@@ -1312,9 +1312,16 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 cornerRadius = 12 * dp
             }
         }
+        val screenW = getDisplaySize(display).x
+        val maxLabelW = screenW - (32 * dp).toInt()
+        label.setSingleLine(true)
+        label.measure(
+            View.MeasureSpec.makeMeasureSpec(maxLabelW, View.MeasureSpec.AT_MOST),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
         val labelParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            label.measuredWidth,
+            label.measuredHeight,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
