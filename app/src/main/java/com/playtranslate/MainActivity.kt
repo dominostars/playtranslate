@@ -253,8 +253,16 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         // Wire up the fragment's edit-original listener for edit overlay
         resultFragment?.setOnEditOriginalListener { showEditOverlay() }
 
-        // Default to translation tab on launch
-        selectTab(Tab.TRANSLATE)
+        // Restore previously selected tab (survives recreate for theme changes)
+        val restoredTab = Tab.entries.getOrElse(
+            savedInstanceState?.getInt("selected_tab", 0) ?: 0
+        ) { Tab.TRANSLATE }
+        selectTab(restoredTab)
+        when (restoredTab) {
+            Tab.SETTINGS -> openSettingsInline()
+            Tab.REGIONS -> openRegionPickerInline()
+            else -> {}
+        }
 
         // Start dim controller on dual-screen when not in live mode
         if (!isSingleScreen() && !isLiveMode) {
@@ -315,6 +323,11 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         updateActionButtonState()
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt("selected_tab", selectedTab.ordinal)
+    }
+
     override fun onStop() {
         super.onStop()
         isInForeground = false
@@ -325,7 +338,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         dimController = null
         (getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
             .unregisterDisplayListener(displayListener)
-        if (isLiveMode) captureService?.stopLive()
+        if (isLiveMode && !isChangingConfigurations) captureService?.stopLive()
         if (serviceConnected) unbindService(serviceConnection)
         editTranslationManager?.close()
         super.onDestroy()
@@ -393,10 +406,14 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             selectTab(Tab.TRANSLATE)
             return
         }
-        val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-        val gameDisplay = displayManager.getDisplay(prefs.captureDisplayId) ?: return
-
         selectTab(Tab.REGIONS)
+        openRegionPickerInline()
+    }
+
+    private fun openRegionPickerInline() {
+        val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        val gameDisplay = displayManager.getDisplay(prefs.captureDisplayId)
+        if (gameDisplay == null) { selectTab(Tab.TRANSLATE); return }
 
         val sheet = RegionPickerSheet().apply {
             setShowsDialog(false)
@@ -721,26 +738,10 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             .commitAllowingStateLoss()
     }
 
-    /** Apply the new theme without recreating the activity. */
+    /** Apply the new theme by recreating the activity. */
     private fun applyThemeInPlace(settingsScrollY: Int) {
-        applyTheme()
-
-        // Update root-level themed views
-        val root = findViewById<android.view.ViewGroup>(android.R.id.content)?.getChildAt(0)
-        root?.setBackgroundColor(themeColor(R.attr.colorBgDark))
-        findViewById<View>(R.id.bottomBar)?.setBackgroundColor(themeColor(R.attr.colorBgSurface))
-        updateMenuLiveItem()
-        selectTab(selectedTab)
-
-        // Re-create the result fragment so it picks up the new theme
-        supportFragmentManager.beginTransaction()
-            .replace(R.id.resultsContainer, TranslationResultFragment())
-            .commitNow()
-        resultFragment?.setOnEditOriginalListener { showEditOverlay() }
-
-        // Save scroll position and re-create the settings fragment with new theme
         prefs.settingsScrollY = settingsScrollY
-        openSettingsInline()
+        recreate()
     }
 
     private fun hideSettings() {

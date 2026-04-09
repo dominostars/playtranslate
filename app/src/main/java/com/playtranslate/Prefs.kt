@@ -183,6 +183,7 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_SUPPRESS_TRANSITION, false)
         set(v) = sp.edit().putBoolean(KEY_SUPPRESS_TRANSITION, v).apply()
 
+
     /** 0 = Black, 1 = White, 2 = Rainbow, 3 = Purple */
     var themeIndex: Int
         get() = sp.getInt(KEY_THEME_INDEX, 0)
