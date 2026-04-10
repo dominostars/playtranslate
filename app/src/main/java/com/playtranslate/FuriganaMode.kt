@@ -103,8 +103,16 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
     override fun refresh() {
         cleanProcessingJob?.cancel()
         rawOcrJob?.cancel()
+        restartJob?.cancel()
         clearState()
-        PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
+        val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager ?: return
+        if (mgr.isLoopRunning) {
+            mgr.requestCleanCapture()
+        } else {
+            // Loop was stopped (e.g. via hotkeyHoldStart). Restart it; startLoop
+            // itself calls requestCleanCapture so the next frame comes in clean.
+            startLoop(mgr)
+        }
     }
 
     private fun startLoop(mgr: ScreenshotManager) {

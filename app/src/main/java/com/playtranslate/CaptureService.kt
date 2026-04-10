@@ -433,32 +433,13 @@ class CaptureService : Service() {
         }
     }
 
-    /** Show overlay boxes on the game display for hold-to-preview. */
-    private fun showHoldOverlay(state: CachedOverlayState) {
-        val a11y = PlayTranslateAccessibilityService.instance
-        val dm = getSystemService(DisplayManager::class.java)
-        val display = dm.getDisplay(gameDisplayId)
-        if (a11y != null && display != null) {
-            a11y.showTranslationOverlay(display, state.boxes,
-                state.cropLeft, state.cropTop, state.screenshotW, state.screenshotH)
-        }
-    }
-
     /** End a hold-to-preview gesture. */
     fun holdEnd() {
         onHoldLoadingChanged?.invoke(false)
-        if (liveActive && liveMode is PinholeOverlayMode) {
-            // Pinhole: re-show cached boxes immediately (no visible gap)
-            holdActive = false
-            liveMode?.getCachedState()?.let { showHoldOverlay(it) }
-            refreshLiveOverlay()
-        } else {
-            // Furigana one-shot, In-App Only one-shot, or not live: cancel and resume
-            holdActive = false
-            oneShotManager.cancel()
-            if (liveActive) {
-                liveMode?.refresh()
-            }
+        holdActive = false
+        oneShotManager.cancel()
+        if (liveActive) {
+            liveMode?.refresh()
         }
     }
 
@@ -475,7 +456,6 @@ class CaptureService : Service() {
     // ── Hotkey hold ─────────────────────────────────────────────────────
 
     private var hotkeyActive = false
-    private var savedLiveState: CachedOverlayState? = null
 
     /** Begin a hotkey hold-to-preview with a forced overlay mode. */
     fun hotkeyHoldStart(mode: OverlayMode) {
@@ -483,10 +463,14 @@ class CaptureService : Service() {
         Log.d("HotkeyDbg", "hotkeyHoldStart: mode=$mode isConfigured=$isConfigured liveActive=$liveActive")
         if (hotkeyActive) return
         hotkeyActive = true
+        // Gate live-mode overlay display AND pause PinholeOverlayMode's cycle
+        // (which polls service.holdActive). stopLoop() below only affects
+        // modes that use ScreenshotManager.startLoop — Pinhole calls
+        // requestRaw directly and would otherwise keep running.
+        holdActive = true
 
-        // Pause live capture loop so it doesn't overwrite the one-shot overlays
+        // Pause live capture loop and hide overlays so the one-shot renders cleanly
         if (liveActive) {
-            savedLiveState = liveMode?.getCachedState()
             PlayTranslateAccessibilityService.instance?.screenshotManager?.stopLoop()
             PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
         }
@@ -501,12 +485,12 @@ class CaptureService : Service() {
         DetectionLog.log("Hotkey END (live=$liveActive)")
 
         oneShotManager.cancel()
+        // Clear unconditionally so the flag doesn't stay latched if the
+        // hotkey preview was used with live mode off.
+        holdActive = false
 
-        // Resume live mode if it was active
         if (liveActive) {
-            savedLiveState?.let { showHoldOverlay(it) }
-            savedLiveState = null
-            liveMode?.start()
+            liveMode?.refresh()
         }
     }
 

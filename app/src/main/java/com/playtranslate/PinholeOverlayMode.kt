@@ -58,6 +58,7 @@ class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
     private enum class PinholeResult { KEEP, DIRTY, REMOVE }
 
     override fun start() {
+        currentJob?.cancel()
         PlayTranslateAccessibilityService.instance
             ?.startInputMonitoring(service.gameDisplayId) { onButtonDown() }
         scheduleNextCycle()
@@ -106,7 +107,14 @@ class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
 
     // ── Unified Cycle ───────────────────────────────────────────────────
 
-    private fun hasOverlays(): Boolean = cachedBoxes != null
+    /** True only when cached boxes are actually rendered on screen. An external
+     *  hideTranslationOverlay (e.g. holdCancel) can null the overlay windows
+     *  without clearing cachedBoxes — in that state this returns false so
+     *  fillOverlayRegions, updateCleanRef, and the isFirstCapture branch all
+     *  skip correctly. */
+    private fun hasOverlays(): Boolean =
+        cachedBoxes != null &&
+        PlayTranslateAccessibilityService.instance?.translationOverlayView != null
 
     /** Run one capture-detect-translate cycle. Returns the delay (ms) before the next cycle. */
     private suspend fun runCycle(): Long {
