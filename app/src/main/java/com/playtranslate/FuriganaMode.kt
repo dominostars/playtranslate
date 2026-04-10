@@ -2,6 +2,7 @@ package com.playtranslate
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Rect
 import android.graphics.RectF
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.ui.TranslationOverlayView
@@ -14,6 +15,17 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val TAG = "FuriganaMode"
+
+/** After this many consecutive empty-screenRects frames with boxes cached,
+ *  assume showLiveOverlay was blocked and force state recovery. Each frame
+ *  is ~500ms (capture interval), so 3 frames = ~1.5s grace period. */
+private const val STALL_RECOVERY_FRAMES = 3
+
+/** Safety net: after this many consecutive raw frames without a detected change,
+ *  force a clean capture to refresh the ref. Prevents stale ref content from
+ *  silently masking real scene changes via overlay-region bleed-through.
+ *  At ~500ms per frame, 20 frames ≈ 10 seconds max stall before self-heal. */
+private const val STALE_REF_REFRESH_FRAMES = 20
 
 /**
  * Live furigana overlay mode. Shows hiragana readings above kanji on the
@@ -42,6 +54,15 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
     private var screenshotW = 0
     private var screenshotH = 0
     private var showRegionFlash = true
+    /** Consecutive frames where boxes were cached but overlay screen rects were empty.
+     *  Used to detect a stuck state where [showLiveOverlay] was blocked (holdActive,
+     *  a11y not ready, etc.) so cachedFuriganaBoxes is set but no view is attached. */
+    private var emptyRectsStallCount = 0
+
+    /** Consecutive raw frames processed without detecting a change. Used as a safety
+     *  net to periodically refresh the clean ref so stale ref content can't silently
+     *  mask real scene changes (especially via bleed-through in overlay regions). */
+    private var noChangeRawFrameCount = 0
 
     /** Reset all mode-owned state. Does NOT hide overlays or notify UI. */
     private fun clearState() {
@@ -50,6 +71,8 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
         lastOcrText = null
         cleanRefBitmap?.recycle()
         cleanRefBitmap = null
+        emptyRectsStallCount = 0
+        noChangeRawFrameCount = 0
     }
 
     // ── LiveMode interface ────────────────────────────────────────────────
@@ -114,15 +137,12 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
     // ── Clean frame handling ──────────────────────────────────────────────
 
     private fun handleCleanFrame(raw: Bitmap) {
-        android.util.Log.e("FuriganaDbg", "CLEAN FRAME received (ocrCount=$rawFrameOcrCount)")
-        rawFrameOcrCount = 0
         cleanProcessingJob?.cancel()
         cleanProcessingJob = scope.launch {
             try {
                 processCleanFrame(raw)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 if (service.liveActive) {
-                    android.util.Log.e("FuriganaDbg", "CLEAN JOB CANCELLED — re-requesting clean capture")
                     PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
                 }
                 throw e
@@ -149,32 +169,19 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
             }
 
             val (ocrResult, dedupKey, left, top, _, _) = pipeline
-            android.util.Log.e("FuriganaDbg", "CLEAN OCR: ${ocrResult.groupTexts.size} groups: ${ocrResult.groupTexts.map { "\"${it.take(30)}\"" }}")
 
             // Dedup: if text unchanged and we have cached furigana, re-show
             if (lastOcrText != null && !OverlayToolkit.isSignificantChange(lastOcrText!!, dedupKey)) {
                 val boxes = cachedFuriganaBoxes
                 if (boxes != null) {
-                    android.util.Log.e("FuriganaDbg", "DEDUP HIT: re-showing ${boxes.size} cached boxes")
                     service.showLiveOverlay(boxes, cropLeft, cropTop, screenshotW, screenshotH)
                     if (cleanRefBitmap == null) {
-                        cleanRefBitmap = raw.copy(raw.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
+                        cleanRefBitmap = raw.copy(raw.config ?: android.graphics.Bitmap.Config.ARGB_8888, true)
                     }
                     return
                 }
-                android.util.Log.e("FuriganaDbg", "DEDUP HIT but cachedBoxes=null — falling through to rebuild")
             }
 
-            if (lastOcrText != null) {
-                val prev = lastOcrText!!
-                val freqA = prev.groupingBy { it }.eachCount()
-                val freqB = dedupKey.groupingBy { it }.eachCount()
-                var diff = 0
-                for (c in (freqA.keys + freqB.keys)) diff += kotlin.math.abs((freqA[c] ?: 0) - (freqB[c] ?: 0))
-                android.util.Log.e("FuriganaDbg", "DEDUP MISS: diff=$diff len=${prev.length}→${dedupKey.length} prev=\"${prev.take(50)}\" new=\"${dedupKey.take(50)}\"")
-            } else {
-                android.util.Log.e("FuriganaDbg", "FIRST CLEAN: text=\"${dedupKey.take(50)}\"")
-            }
             lastOcrText = dedupKey
 
             // Build and show furigana (grouped for selective invalidation)
@@ -187,91 +194,103 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
             this@FuriganaMode.screenshotW = raw.width
             this@FuriganaMode.screenshotH = raw.height
 
-            android.util.Log.e("FuriganaDbg", "REBUILD: ${furiganaGroups.size} groups, ${furigana.size} boxes")
             if (furigana.isNotEmpty()) {
                 service.showLiveOverlay(furigana, left, top, raw.width, raw.height)
-            } else {
-                android.util.Log.e("FuriganaDbg", "REBUILD: 0 boxes — nothing to show!")
             }
 
-            // Save clean reference for patching raw frames
+            // Save clean reference for patching raw frames (mutable for updateCleanRef)
             cleanRefBitmap?.recycle()
-            cleanRefBitmap = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, false)
+            cleanRefBitmap = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
 
             // Save screenshot for Anki + send translation to in-app panel
             val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
             mgr?.saveToCache(raw)
             val screenshotPath = mgr?.lastCleanPath
-            android.util.Log.e("FuriganaDbg", "CLEAN: furigana shown, starting translation for panel...")
             service.translateAndSendToPanel(ocrResult, screenshotPath)
-            android.util.Log.e("FuriganaDbg", "CLEAN: translation complete, cleanJob finishing")
         } finally {
             if (!raw.isRecycled) raw.recycle()
         }
     }
 
     // ── Raw frame handling (OCR-based change detection) ───────────────────
-
-    private var rawFrameSkipCount = 0
-    private var rawFrameOcrCount = 0
+    //
+    // NOTE: Screen rects from getChildScreenRects() are used as bitmap pixel
+    // coordinates against the screenshot. This assumes screenshot resolution ==
+    // display resolution (scale 1.0), which holds for AccessibilityService
+    // .takeScreenshot but would need coordinate conversion if MediaProjection
+    // with a different virtual display resolution is ever added.
 
     private fun handleRawFrame(bitmap: Bitmap) {
         if (cleanProcessingJob?.isActive == true || rawOcrJob?.isActive == true) {
-            rawFrameSkipCount++
-            if (rawFrameSkipCount % 10 == 1) {
-                android.util.Log.e("FuriganaDbg", "RAW SKIP: job active ($rawFrameSkipCount skipped)")
-            }
             bitmap.recycle()
             return
         }
-        rawFrameSkipCount = 0
 
         val ref = cleanRefBitmap
         val boxes = cachedFuriganaBoxes
+        val overlayView = PlayTranslateAccessibilityService.instance?.translationOverlayView
+        val screenRects = overlayView?.getChildScreenRects() ?: emptyList()
+
         if (ref == null || boxes.isNullOrEmpty()) {
-            // No overlay on screen — raw frame is inherently clean, process it directly
-            android.util.Log.e("FuriganaDbg", "RAW→CLEAN: no overlay, processing as clean frame")
+            // No overlay exists — raw frame is inherently clean, process it directly
+            emptyRectsStallCount = 0
             handleCleanFrame(bitmap)
             return
         }
 
-        // Patch: copy overlay regions from clean reference into raw frame.
-        android.util.Log.e("FuriganaDbg", "PATCH: ${boxes.size} boxes, crop=($cropLeft,$cropTop), ref=${ref.width}x${ref.height}")
-        // Ensure bitmap is mutable for Canvas drawing.
+        if (screenRects.isEmpty()) {
+            // Boxes are cached but no overlay view rects exist. Usually a transient
+            // layout-pending state, but could indicate a stall if showLiveOverlay
+            // was blocked (holdActive, missing display, a11y not ready).
+            bitmap.recycle()
+            emptyRectsStallCount++
+            if (emptyRectsStallCount >= STALL_RECOVERY_FRAMES) {
+                // Too long without a rendered overlay — force recovery
+                emptyRectsStallCount = 0
+                clearState()
+                PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+                PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
+            }
+            return
+        }
+        emptyRectsStallCount = 0
+
+        // Screenshot dimensions changed (display resize, rotation, inset change):
+        // every geometry-dependent field is stale. Clear all cached state, hide
+        // the old overlay (positions don't map to the new size), and request a
+        // fresh clean capture to rebuild from scratch.
+        if (bitmap.width != ref.width || bitmap.height != ref.height) {
+            clearState()
+            PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+            PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
+            bitmap.recycle()
+            return
+        }
+
+        // Patch raw frame: overwrite overlay regions with clean ref pixels so OCR
+        // doesn't read the rendered furigana text. Uses Canvas.drawBitmap (hardware-
+        // accelerated when possible) to avoid full-frame pixel array allocations.
         val patched = if (bitmap.isMutable) bitmap
             else bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, true).also { bitmap.recycle() }
         try {
             val canvas = Canvas(patched)
-            val measurePaint = android.graphics.Paint().apply {
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-            }
-            for (box in boxes) {
-                val srcRect = android.graphics.Rect(
-                    box.bounds.left + cropLeft, box.bounds.top + cropTop,
-                    box.bounds.right + cropLeft, box.bounds.bottom + cropTop
-                )
-                if (box.isFurigana && box.translatedText.isNotEmpty()) {
-                    // Expand patch to cover the full rendered furigana text width
-                    measurePaint.textSize = box.bounds.height() * 0.7f
-                    val textWidth = measurePaint.measureText(box.translatedText)
-                    val extra = ((textWidth - box.bounds.width()) / 2f).coerceAtLeast(0f).toInt() + 8
-                    srcRect.inset(-extra, -4)
-                } else {
-                    srcRect.inset(-4, -4)
-                }
-                srcRect.intersect(0, 0, ref.width, ref.height)
-                canvas.drawBitmap(ref, srcRect, RectF(
-                    srcRect.left.toFloat(), srcRect.top.toFloat(),
-                    srcRect.right.toFloat(), srcRect.bottom.toFloat()
-                ), null)
+            val margin = 12  // covers stroke/shadow extension beyond view bounds
+            for (rect in screenRects) {
+                val left = (rect.left - margin).coerceAtLeast(0)
+                val top = (rect.top - margin).coerceAtLeast(0)
+                val right = (rect.right + margin).coerceAtMost(patched.width)
+                val bottom = (rect.bottom + margin).coerceAtMost(patched.height)
+                if (right <= left || bottom <= top) continue
+                val src = Rect(left, top, right, bottom)
+                val dst = RectF(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat())
+                canvas.drawBitmap(ref, src, dst, null)
             }
         } catch (e: Exception) {
             if (!patched.isRecycled) patched.recycle()
             return
         }
 
-        // OCR the patched frame asynchronously (ownership transferred to coroutine)
-        rawFrameOcrCount++
+        // OCR the patched frame asynchronously
         rawOcrJob = scope.launch {
             try {
                 val pipeline = service.runOcr(patched)
@@ -280,9 +299,8 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
                     val prevKanji = if (prevText != null) kanjiOnly(prevText) else ""
                     val newKanji = kanjiOnly(pipeline.dedupKey)
                     val kanjiChanged = prevText != null && OverlayToolkit.isSignificantChange(prevKanji, newKanji)
-                    android.util.Log.e("FuriganaDbg", "RAW OCR: ${pipeline.ocrResult.groupTexts.size} groups: ${pipeline.ocrResult.groupTexts.map { "\"${it.take(30)}\"" }}")
                     if (kanjiChanged) {
-                        android.util.Log.e("FuriganaDbg", "KANJI DIFF: prev=\"${prevKanji}\" new=\"${newKanji}\"")
+                        noChangeRawFrameCount = 0
                         DetectionLog.log("Furigana: text changed, requesting clean capture")
 
                         // Selective invalidation: remove furigana for changed groups, keep the rest
@@ -297,27 +315,40 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
                                 OverlayToolkit.groupsMatch(old.groupText, old.groupBounds, newText, newBounds)
                             }
                         }
-                        android.util.Log.e("FuriganaDbg", "  Kept: ${surviving.map { "\"${it.groupText.take(20)}\"" }}")
-                        android.util.Log.e("FuriganaDbg", "  Removed: ${removed.map { "\"${it.groupText.take(20)}\"" }}")
-                        // Remove only the changed groups' child views — survivors stay in place
                         val removedBoxes = removed.flatMap { it.boxes }
                         service.removeOverlayBoxes(removedBoxes)
 
                         furiganaGroups = surviving
                         cachedFuriganaBoxes = surviving.flatMap { it.boxes }.ifEmpty { null }
-                        lastOcrText = null  // force full rebuild on next clean frame
+                        // Null lastOcrText forces the rebuild path in processCleanFrame.
+                        // Don't clear cleanRefBitmap here: doing so races with the screenshot
+                        // loop — if another raw frame arrives before the clean capture lands,
+                        // handleRawFrame would fall into the "treat as clean" path and OCR
+                        // a bitmap that still has furigana visible on screen. Leaving the old
+                        // ref in place keeps raw-frame patching working until processCleanFrame
+                        // replaces the ref on the next clean frame.
+                        lastOcrText = null
 
                         if (cachedFuriganaBoxes == null) {
                             PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
                         }
 
-                        cleanRefBitmap?.recycle()
-                        cleanRefBitmap = null
                         PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
+                    } else {
+                        // No change detected. Periodically force a clean capture to refresh
+                        // the ref — stale ref content in overlay regions can mask real scene
+                        // changes via bleed-through, creating a self-reinforcing stall.
+                        noChangeRawFrameCount++
+                        if (noChangeRawFrameCount >= STALE_REF_REFRESH_FRAMES) {
+                            noChangeRawFrameCount = 0
+                            DetectionLog.log("Furigana: safety-net clean capture (stale ref refresh)")
+                            // Force rebuild path in processCleanFrame. Don't clear cleanRefBitmap
+                            // here — see race comment above.
+                            lastOcrText = null
+                            PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
+                        }
                     }
                 } else {
-                    // No text detected — scene changed to non-text screen
-                    android.util.Log.e("FuriganaDbg", "RAW OCR: no text, clearing overlays")
                     clearState()
                     service.handleNoTextDetected()
                 }

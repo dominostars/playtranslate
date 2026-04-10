@@ -260,6 +260,7 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
                     setShadowLayer(strokeW, 0f, 0f, Color.TRANSPARENT)
                     setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
                 }
+                child.setTag(R.id.tag_bg_color, Color.BLACK)
                 addView(child, LayoutParams(
                     LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
                 ))
