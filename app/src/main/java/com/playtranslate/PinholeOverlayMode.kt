@@ -171,9 +171,13 @@ class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
                 ocrImage = raw
             }
 
-            // 6. OCR
-            val pipeline = service.runOcr(ocrImage)
-            if (ocrImage !== raw && !ocrImage.isRecycled) ocrImage.recycle()
+            // 6. OCR — try/finally ensures the copy is recycled even if runOcr
+            //          throws (e.g. CancellationException from resetState).
+            val pipeline = try {
+                service.runOcr(ocrImage)
+            } finally {
+                if (ocrImage !== raw && !ocrImage.isRecycled) ocrImage.recycle()
+            }
 
             // After OCR, clear dirty state — dirty overlays have been captured and evaluated
             cachedBoxes = cachedBoxes?.filter { !it.dirty }?.ifEmpty { null }
