@@ -375,14 +375,18 @@ class CaptureService : Service() {
         oneShotCaptureJob?.cancel()
 
         val prefs = Prefs(this)
-        liveMode = when (prefs.autoTranslationMode) {
-            AutoTranslationMode.TRANSLATE -> PinholeOverlayMode(this)
-            AutoTranslationMode.TRANSLATE_LEGACY -> TranslationOverlayMode(this)
+        liveMode = if (prefs.hideGameOverlays && !Prefs.isSingleScreen(this)) {
+            InAppOnlyMode(this)
+        } else when (prefs.autoTranslationMode) {
             AutoTranslationMode.FURIGANA -> FuriganaMode(this)
-            AutoTranslationMode.IN_APP_ONLY -> InAppOnlyMode(this)
+            else -> PinholeOverlayMode(this)
         }
         liveMode?.start()
     }
+
+    /** True when the active live mode is In-App Only. */
+    val isInAppOnly: Boolean
+        get() = liveActive && liveMode is InAppOnlyMode
 
     fun stopLive() {
         liveMode?.stop()
@@ -414,13 +418,16 @@ class CaptureService : Service() {
 
     /** Begin a hold-to-preview gesture. */
     fun holdStart() {
-        if (liveActive && Prefs(this).autoTranslationMode != AutoTranslationMode.IN_APP_ONLY) {
-            // Overlay modes: overlays already on screen — hide them so user sees clean game
-            holdActive = true
+        holdActive = true
+        if (liveActive && liveMode is FuriganaMode) {
+            // Furigana active: one-shot translation overlay
+            onHoldLoadingChanged?.invoke(true)
+            oneShotManager.runHoldOverlay(forceMode = OverlayMode.TRANSLATION)
+        } else if (liveActive && !isInAppOnly) {
+            // Overlay modes (Pinhole): hide overlays so user sees clean game
             PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
         } else {
-            // Not live, or In-App Only: pause live loop and one-shot capture
-            holdActive = true
+            // Not live, or In-App Only: one-shot with selected overlay mode
             onHoldLoadingChanged?.invoke(true)
             oneShotManager.runHoldOverlay()
         }
@@ -440,13 +447,13 @@ class CaptureService : Service() {
     /** End a hold-to-preview gesture. */
     fun holdEnd() {
         onHoldLoadingChanged?.invoke(false)
-        if (liveActive && Prefs(this).autoTranslationMode != AutoTranslationMode.IN_APP_ONLY) {
-            // Overlay modes: re-show cached boxes immediately (no visible gap)
+        if (liveActive && liveMode is PinholeOverlayMode) {
+            // Pinhole: re-show cached boxes immediately (no visible gap)
             holdActive = false
             liveMode?.getCachedState()?.let { showHoldOverlay(it) }
             refreshLiveOverlay()
         } else {
-            // Not live, or In-App Only: cancel one-shot and resume live loop
+            // Furigana one-shot, In-App Only one-shot, or not live: cancel and resume
             holdActive = false
             oneShotManager.cancel()
             if (liveActive) {
@@ -886,12 +893,12 @@ class CaptureService : Service() {
 
         // Stop live mode if the user can no longer see or manage it.
         if (liveActive) {
-            val shouldStop = when (Prefs(this).autoTranslationMode) {
+            val shouldStop = if (isInAppOnly) {
                 // In-App Only: results only visible while app is in foreground
-                AutoTranslationMode.IN_APP_ONLY -> !MainActivity.isInForeground
+                !MainActivity.isInForeground
+            } else {
                 // Overlay modes: stop if no control surface at all (no icon, no app)
-                AutoTranslationMode.TRANSLATE, AutoTranslationMode.TRANSLATE_LEGACY,
-                AutoTranslationMode.FURIGANA -> !iconShowing && !MainActivity.isInForeground
+                !iconShowing && !MainActivity.isInForeground
             }
             if (shouldStop) {
                 stopLive()

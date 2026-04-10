@@ -215,6 +215,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     override fun onCreate(savedInstanceState: Bundle?) {
         applyTheme()
         super.onCreate(savedInstanceState)
+        prefs.migrateInAppOnlyMode()
         // Suppress the window transition that would otherwise flash when recreating for a theme change
         if (prefs.suppressNextTransition) {
             prefs.suppressNextTransition = false
@@ -445,7 +446,8 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private fun updateRegionButton() {
         val region = captureService?.activeRegion ?: prefs.getSelectedRegion()
         val label = region.label.ifEmpty { "Full screen" }
-        val overlayLive = isLiveMode && prefs.autoTranslationMode != AutoTranslationMode.IN_APP_ONLY
+        val isInAppOnly = prefs.hideGameOverlays && !isSingleScreen()
+        val overlayLive = isLiveMode && !isInAppOnly
         val prefix = if (overlayLive) "Reload " else "Translate "
         tvTranslateTitle.text = SpannableStringBuilder(prefix + label).apply {
             setSpan(StyleSpan(Typeface.BOLD), prefix.length, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -461,27 +463,12 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     private fun startLiveMode() {
-        when (prefs.autoTranslationMode) {
-            AutoTranslationMode.IN_APP_ONLY -> {
-                if (Prefs.isSingleScreen(this)) {
-                    androidx.appcompat.app.AlertDialog.Builder(this)
-                        .setTitle(R.string.inapp_dual_screen_title)
-                        .setMessage(R.string.inapp_dual_screen_message)
-                        .setPositiveButton(R.string.inapp_start_with_overlays) { _, _ ->
-                            prefs.autoTranslationMode = AutoTranslationMode.TRANSLATE
-                            doStartLive()
-                        }
-                        .setNegativeButton(android.R.string.cancel, null)
-                        .show()
-                    return
-                }
-                // Dual screen: switch to translate tab so results are visible
-                selectTab(Tab.TRANSLATE)
-                doStartLive()
-            }
-            AutoTranslationMode.TRANSLATE, AutoTranslationMode.TRANSLATE_LEGACY,
-            AutoTranslationMode.FURIGANA -> doStartLive()
+        val willBeInAppOnly = prefs.hideGameOverlays && !isSingleScreen()
+        if (willBeInAppOnly) {
+            // Dual screen + hide overlays: switch to translate tab so results are visible
+            selectTab(Tab.TRANSLATE)
         }
+        doStartLive()
     }
 
     private fun doStartLive() {
@@ -632,27 +619,28 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     private fun selectTab(tab: Tab) {
-        if (selectedTab == tab) return
-        selectedTab = tab
+        if (selectedTab != tab) {
+            selectedTab = tab
 
-        // ── Container visibility ──
-        resultsContainer.visibility = if (tab == Tab.TRANSLATE) View.VISIBLE else View.GONE
-        settingsContainer.visibility = if (tab == Tab.SETTINGS) View.VISIBLE else View.GONE
-        regionPickerContainer.visibility = if (tab == Tab.REGIONS) View.VISIBLE else View.GONE
+            // ── Container visibility ──
+            resultsContainer.visibility = if (tab == Tab.TRANSLATE) View.VISIBLE else View.GONE
+            settingsContainer.visibility = if (tab == Tab.SETTINGS) View.VISIBLE else View.GONE
+            regionPickerContainer.visibility = if (tab == Tab.REGIONS) View.VISIBLE else View.GONE
 
-        // Remove inline fragments for tabs we're leaving
-        if (tab != Tab.SETTINGS) {
-            supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG)?.let {
-                supportFragmentManager.beginTransaction().remove(it).commitAllowingStateLoss()
+            // Remove inline fragments for tabs we're leaving
+            if (tab != Tab.SETTINGS) {
+                supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG)?.let {
+                    supportFragmentManager.beginTransaction().remove(it).commitAllowingStateLoss()
+                }
+            }
+            if (tab != Tab.REGIONS) {
+                supportFragmentManager.findFragmentByTag(RegionPickerSheet.TAG)?.let {
+                    supportFragmentManager.beginTransaction().remove(it).commitAllowingStateLoss()
+                }
             }
         }
-        if (tab != Tab.REGIONS) {
-            supportFragmentManager.findFragmentByTag(RegionPickerSheet.TAG)?.let {
-                supportFragmentManager.beginTransaction().remove(it).commitAllowingStateLoss()
-            }
-        }
 
-        // ── Button visuals ──
+        // ── Button visuals (always re-applied) ──
         val accentBg = themeColor(R.attr.colorAccentPrimary)
         val accentText = themeColor(R.attr.colorTextOnAccent)
         val normalText = themeColor(R.attr.colorTextPrimary)
@@ -1135,7 +1123,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private fun showAutoModeDropdown(anchor: View) {
         dismissDropdown()
         val currentMode = prefs.autoTranslationMode
-        val modes = AutoTranslationMode.entries
+        val modes = listOf(AutoTranslationMode.TRANSLATE, AutoTranslationMode.FURIGANA)
 
         // Current mode at bottom, others above
         val ordered = modes.filter { it != currentMode } + currentMode

@@ -259,17 +259,17 @@
                 android:letterSpacing="0.15"
                 android:layout_marginBottom="8dp" />
 
-            <!-- Mode title -->
+            <!-- Overlay Mode title -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Mode"
+                android:text="Overlay Mode"
                 android:textColor="?attr/colorTextPrimary"
                 android:textSize="16sp"
                 android:textStyle="bold"
                 android:layout_marginBottom="6dp" />
 
-            <!-- Mode toggle -->
+            <!-- Overlay Mode toggle -->
             <com.google.android.material.button.MaterialButtonToggleGroup
                 android:id="@+id/toggleAutoMode"
                 android:layout_width="match_parent"
@@ -284,22 +284,6 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="Translate" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnModeTranslateLegacy"
-                    style="@style/Widget.PlayTranslate.SegmentedButton"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Translate (Legacy)" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnModeInApp"
-                    style="@style/Widget.PlayTranslate.SegmentedButton"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="In-App Only" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnModeFurigana"
@@ -321,50 +305,47 @@
                 android:layout_marginTop="4dp"
                 android:layout_marginBottom="12dp" />
 
-            <!-- Hold button action toggle -->
-            <TextView
+            <!-- Hide game screen overlays toggle (multi-screen only) -->
+            <LinearLayout
+                android:id="@+id/rowHideOverlays"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Hold Button Action"
-                android:textColor="?attr/colorTextPrimary"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="6dp" />
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="6dp"
+                android:visibility="gone">
 
-            <com.google.android.material.button.MaterialButtonToggleGroup
-                android:id="@+id/toggleOverlayMode"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:singleSelection="true"
-                app:selectionRequired="true">
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnOverlayTranslation"
-                    style="@style/Widget.PlayTranslate.SegmentedButton"
+                <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Translation" />
+                    android:orientation="vertical">
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnOverlayFurigana"
-                    style="@style/Widget.PlayTranslate.SegmentedButton"
-                    android:layout_width="0dp"
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Hide game screen overlays"
+                        android:textColor="?attr/colorTextPrimary"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Translations will only appear in PlayTranslate"
+                        android:textColor="?attr/colorTextHint"
+                        android:textSize="12sp"
+                        android:layout_marginTop="2dp" />
+
+                </LinearLayout>
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/switchHideOverlays"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Furigana" />
+                    android:layout_marginStart="8dp" />
 
-            </com.google.android.material.button.MaterialButtonToggleGroup>
-
-            <TextView
-                android:id="@+id/tvOverlayModeHint"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:textColor="?attr/colorTextHint"
-                android:textSize="14sp"
-                android:layout_marginTop="4dp"
-                android:layout_marginBottom="12dp" />
+            </LinearLayout>
 
             <!-- Hotkey: hold to show translations -->
             <LinearLayout

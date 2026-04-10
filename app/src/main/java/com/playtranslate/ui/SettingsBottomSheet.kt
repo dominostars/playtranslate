@@ -323,37 +323,27 @@ class SettingsBottomSheet : DialogFragment() {
             getString(R.string.anki_play_store_url))
         refreshAnkiSection()
 
-        // ── Auto translation mode toggle ─────────────────────────────────
+        // ── Overlay mode toggle ─────────────────────────────────────────
         val toggleAutoMode = view.findViewById<com.google.android.material.button.MaterialButtonToggleGroup>(R.id.toggleAutoMode)
         val tvAutoModeHint = view.findViewById<TextView>(R.id.tvAutoModeHint)
-        view.findViewById<View>(R.id.btnModeTranslateLegacy)?.visibility = View.GONE
-        if (Prefs.isSingleScreen(requireContext())) {
-            view.findViewById<View>(R.id.btnModeInApp)?.visibility = View.GONE
-        }
 
         fun updateAutoModeHint() {
             tvAutoModeHint.text = when (prefs.autoTranslationMode) {
                 AutoTranslationMode.TRANSLATE -> "Overlay translations automatically on the game screen"
-                AutoTranslationMode.TRANSLATE_LEGACY -> "Overlay translations with pixel-diff change detection"
-                AutoTranslationMode.IN_APP_ONLY -> "DUAL-SCREEN ONLY: Only show auto translations in app, not over game screen"
                 AutoTranslationMode.FURIGANA -> "Show hiragana readings above kanji"
+                else -> "Overlay translations automatically on the game screen"
             }
         }
 
         toggleAutoMode.check(when (prefs.autoTranslationMode) {
-            AutoTranslationMode.TRANSLATE -> R.id.btnModeTranslate
-            AutoTranslationMode.TRANSLATE_LEGACY -> R.id.btnModeTranslateLegacy
-            AutoTranslationMode.IN_APP_ONLY -> R.id.btnModeInApp
             AutoTranslationMode.FURIGANA -> R.id.btnModeFurigana
+            else -> R.id.btnModeTranslate
         })
         updateAutoModeHint()
 
         toggleAutoMode.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener
             prefs.autoTranslationMode = when (checkedId) {
-                R.id.btnModeTranslate -> AutoTranslationMode.TRANSLATE
-                R.id.btnModeTranslateLegacy -> AutoTranslationMode.TRANSLATE_LEGACY
-                R.id.btnModeInApp -> AutoTranslationMode.IN_APP_ONLY
                 R.id.btnModeFurigana -> AutoTranslationMode.FURIGANA
                 else -> AutoTranslationMode.TRANSLATE
             }
@@ -363,30 +353,19 @@ class SettingsBottomSheet : DialogFragment() {
             }
         }
 
-        // ── Overlay mode toggle ────────────────────────────────────────────
-        val toggleOverlayMode = view.findViewById<com.google.android.material.button.MaterialButtonToggleGroup>(R.id.toggleOverlayMode)
-        val tvOverlayModeHint = view.findViewById<TextView>(R.id.tvOverlayModeHint)
-
-        fun updateOverlayModeHint() {
-            tvOverlayModeHint.text = when (prefs.overlayMode) {
-                OverlayMode.TRANSLATION -> "Hold to show translated text over game"
-                OverlayMode.FURIGANA -> "Hold to show hiragana readings above kanji"
+        // ── Hide game screen overlays toggle (multi-screen only) ─────────
+        val rowHideOverlays = view.findViewById<View>(R.id.rowHideOverlays)
+        val switchHideOverlays = view.findViewById<com.google.android.material.materialswitch.MaterialSwitch>(R.id.switchHideOverlays)
+        if (!Prefs.isSingleScreen(requireContext())) {
+            rowHideOverlays.visibility = View.VISIBLE
+            switchHideOverlays.isChecked = prefs.hideGameOverlays
+            switchHideOverlays.setOnCheckedChangeListener { _, checked ->
+                prefs.hideGameOverlays = checked
+                if (CaptureService.instance?.isLive == true) {
+                    CaptureService.instance?.stopLive()
+                }
             }
-        }
-
-        toggleOverlayMode.check(when (prefs.overlayMode) {
-            OverlayMode.TRANSLATION -> R.id.btnOverlayTranslation
-            OverlayMode.FURIGANA -> R.id.btnOverlayFurigana
-        })
-        updateOverlayModeHint()
-
-        toggleOverlayMode.addOnButtonCheckedListener { _, checkedId, isChecked ->
-            if (!isChecked) return@addOnButtonCheckedListener
-            prefs.overlayMode = when (checkedId) {
-                R.id.btnOverlayFurigana -> OverlayMode.FURIGANA
-                else -> OverlayMode.TRANSLATION
-            }
-            updateOverlayModeHint()
+            rowHideOverlays.setOnClickListener { switchHideOverlays.toggle() }
         }
 
         // ── Hotkey rows ─────────────────────────────────────────────────────
@@ -542,10 +521,8 @@ class SettingsBottomSheet : DialogFragment() {
         val ctx = context ?: return
         val toggle = v.findViewById<com.google.android.material.button.MaterialButtonToggleGroup>(R.id.toggleAutoMode) ?: return
         val checkedId = when (Prefs(ctx).autoTranslationMode) {
-            AutoTranslationMode.TRANSLATE -> R.id.btnModeTranslate
-            AutoTranslationMode.TRANSLATE_LEGACY -> R.id.btnModeTranslateLegacy
-            AutoTranslationMode.IN_APP_ONLY -> R.id.btnModeInApp
             AutoTranslationMode.FURIGANA -> R.id.btnModeFurigana
+            else -> R.id.btnModeTranslate
         }
         if (toggle.checkedButtonId != checkedId) toggle.check(checkedId)
     }

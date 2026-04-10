@@ -121,6 +121,18 @@ class Prefs(context: Context) {
         get() = OverlayMode.fromOrdinal(sp.getInt(KEY_OVERLAY_MODE, 0))
         set(v) = sp.edit().putInt(KEY_OVERLAY_MODE, v.ordinal).apply()
 
+    var hideGameOverlays: Boolean
+        get() = sp.getBoolean("hide_game_overlays", false)
+        set(v) = sp.edit().putBoolean("hide_game_overlays", v).apply()
+
+    /** Migrate legacy IN_APP_ONLY mode to the new hideGameOverlays toggle. */
+    fun migrateInAppOnlyMode() {
+        if (autoTranslationMode == AutoTranslationMode.IN_APP_ONLY) {
+            hideGameOverlays = true
+            autoTranslationMode = AutoTranslationMode.TRANSLATE
+        }
+    }
+
     /** Hotkey combo for hold-to-show translations. Empty = not set. Format: keyCodes joined by "+". */
     var hotkeyTranslation: String
         get() = sp.getString(KEY_HOTKEY_TRANSLATION, "") ?: ""
