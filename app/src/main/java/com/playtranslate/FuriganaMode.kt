@@ -222,11 +222,11 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
 
     // ── Raw frame handling (OCR-based change detection) ───────────────────
     //
-    // NOTE: Screen rects from getChildScreenRects() are used as bitmap pixel
-    // coordinates against the screenshot. This assumes screenshot resolution ==
-    // display resolution (scale 1.0), which holds for AccessibilityService
-    // .takeScreenshot but would need coordinate conversion if MediaProjection
-    // with a different virtual display resolution is ever added.
+    // View-space rects from getChildScreenRects() are converted to bitmap
+    // pixel coordinates via FrameCoordinates.viewToBitmap before indexing
+    // the raw/ref bitmaps. At identity scale (our only currently supported
+    // case), the conversion is a no-op via reference short-circuit; see
+    // FrameCoordinates KDoc for details on the coordinate spaces.
 
     private fun handleRawFrame(bitmap: Bitmap) {
         if (cleanProcessingJob?.isActive == true || rawOcrJob?.isActive == true) {
@@ -275,6 +275,33 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
             return
         }
 
+        // Build the coordinate context for this raw frame. FuriganaMode only
+        // uses view→bitmap (the drawBitmap call below); ocrToBitmap isn't
+        // exercised here since OCR results are fed straight to a full-frame
+        // overlay rebuild by handleCleanFrame, not indexed into raw.
+        //
+        // Unlike PinholeOverlayMode, FuriganaMode's raw-frame patching is
+        // coordinate-scale-agnostic: it's a region-based bulk copy from
+        // cleanRef to patched via Canvas.drawBitmap, not a per-pixel blend.
+        // At non-identity scale viewToBitmap still produces the correct
+        // physical region (just with potential 1-pixel truncation at the
+        // edges), and the patch operation copies the right bytes. So
+        // Furigana does NOT fail-closed at non-identity scale here; it
+        // will keep running and you'll see the FrameCoordinates log-once
+        // warning as a diagnostic signal only. Note that this is an
+        // asymmetry with PinholeOverlayMode, which does fail-closed at
+        // non-identity because its pinhole detection math breaks — see
+        // PinholeOverlayMode.checkPinholes KDoc for the full story.
+        val coords = FrameCoordinates(
+            bitmapWidth = bitmap.width,
+            bitmapHeight = bitmap.height,
+            viewWidth = overlayView?.width ?: 0,
+            viewHeight = overlayView?.height ?: 0,
+            cropLeft = cropLeft,
+            cropTop = cropTop,
+        )
+        val bitmapRects = coords.viewListToBitmap(screenRects)
+
         // Patch raw frame: overwrite overlay regions with clean ref pixels so OCR
         // doesn't read the rendered furigana text. Uses Canvas.drawBitmap (hardware-
         // accelerated when possible) to avoid full-frame pixel array allocations.
@@ -283,11 +310,11 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
         try {
             val canvas = Canvas(patched)
             val margin = 12  // covers stroke/shadow extension beyond view bounds
-            for (rect in screenRects) {
-                val left = (rect.left - margin).coerceAtLeast(0)
-                val top = (rect.top - margin).coerceAtLeast(0)
-                val right = (rect.right + margin).coerceAtMost(patched.width)
-                val bottom = (rect.bottom + margin).coerceAtMost(patched.height)
+            for (bitmapRect in bitmapRects) {
+                val left = (bitmapRect.left - margin).coerceAtLeast(0)
+                val top = (bitmapRect.top - margin).coerceAtLeast(0)
+                val right = (bitmapRect.right + margin).coerceAtMost(patched.width)
+                val bottom = (bitmapRect.bottom + margin).coerceAtMost(patched.height)
                 if (right <= left || bottom <= top) continue
                 val src = Rect(left, top, right, bottom)
                 val dst = RectF(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat())

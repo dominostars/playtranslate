@@ -345,6 +345,15 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
      * Build a full-view pinhole mask. Pinhole positions have alpha=128 (50%),
      * all other pixels are fully transparent. Drawn with DST_OUT in dispatchDraw
      * to punch 50% holes through all children.
+     *
+     * **Scale note:** The mask is generated at VIEW resolution, with pinhole
+     * positions on a fixed [PINHOLE_SPACING]-pixel grid in view coordinates.
+     * Pinhole detection (`PinholeOverlayMode.checkPinholes`) assumes the
+     * mask spacing is also valid in screenshot-bitmap coordinates, which
+     * requires view dims == screenshot dims (identity scale). At non-
+     * identity scale the sparse mask pattern is smeared by bitmap
+     * downsampling and the `predicted = (ref + overlay) / 2` math no
+     * longer holds. See `FrameCoordinates` KDoc for the full explanation.
      */
     private fun createPinholeMask(w: Int, h: Int): Bitmap {
         val spacing = PINHOLE_SPACING
@@ -381,10 +390,18 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
 
     /**
      * Render the overlay to an offscreen bitmap WITHOUT pinholes.
-     * Returns the exact pixel-for-pixel content of the overlay (bg + text + outlines).
-     * Used for pinhole change detection — provides the overlay_rendered term in:
+     * Returns the exact pixel-for-pixel content of the overlay (bg + text +
+     * outlines), at the view's current dimensions. Used for pinhole change
+     * detection — provides the overlay_rendered term in:
      *   predicted = clean_ref * 0.5 + overlay_rendered * 0.5
      * Call after layout completes.
+     *
+     * **Scale assumption:** the output is at **view dimensions**. Pinhole
+     * detection assumes view dims == screenshot dims (identity scale).
+     * See [com.playtranslate.FrameCoordinates] KDoc and
+     * [com.playtranslate.PinholeOverlayMode.checkPinholes] for why
+     * non-identity scale is not a supported configuration; the live modes
+     * fail-closed at non-identity before calling this.
      */
     fun renderToOffscreen(): Bitmap? {
         if (width <= 0 || height <= 0) return null

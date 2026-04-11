@@ -164,23 +164,89 @@ class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
         }
 
         try {
+            // Mid-cycle dimension changes (rotation, display resize) invalidate
+            // cleanRef and the cached state. Mirrors FuriganaMode.handleRawFrame's
+            // mid-cycle recovery. Clear state inline — do NOT call resetState()
+            // from here, because resetState cancels currentJob (which IS the
+            // currently-running job). Self-cancellation works via cooperative
+            // cancellation but is subtle; inline clearing is clearer.
+            val existingRef = cleanRefBitmap
+            if (existingRef != null &&
+                (raw.width != existingRef.width || raw.height != existingRef.height)) {
+                Log.w(
+                    "PinholeOverlayMode",
+                    "Capture dims changed (${existingRef.width}x${existingRef.height} → " +
+                        "${raw.width}x${raw.height}), clearing cached state"
+                )
+                cachedBoxes = null
+                cleanRefBitmap?.recycle()
+                cleanRefBitmap = null
+                overlayBitmap?.recycle()
+                overlayBitmap = null
+                PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+                return prefs.captureIntervalMs
+            }
+
             if (showRegionFlash) {
                 showRegionFlash = false
                 service.flashRegionIndicator()
             }
 
+            // Build FrameCoordinates for this cycle. At identity scale
+            // (accessibility takeScreenshot on standard displays, the only
+            // configuration this mode supports), viewToBitmap is a no-op via
+            // reference short-circuit and bitmapRects share instances with
+            // rects. See FrameCoordinates KDoc for details on the coordinate
+            // spaces and why non-identity is fail-closed below.
+            val overlayView = a11y.translationOverlayView
+            val rects = overlayView?.getChildScreenRects() ?: emptyList()
+            val coords = FrameCoordinates(
+                bitmapWidth = raw.width,
+                bitmapHeight = raw.height,
+                viewWidth = overlayView?.width ?: 0,
+                viewHeight = overlayView?.height ?: 0,
+                cropLeft = cropLeft,
+                cropTop = cropTop,
+            )
+
+            // Non-identity scale is not supported. The pinhole detection math
+            // in [checkPinholes] assumes the sparse view-resolution pinhole
+            // mask translates 1:1 into bitmap pixels — which holds only when
+            // screenshot dims == view dims. At non-identity scale:
+            //   1. The pinhole mask's 3-pixel spacing is defined in view
+            //      coordinates, but checkPinholes samples every 3 BITMAP
+            //      pixels. At any scale != 1 the sampling grid no longer
+            //      aligns with actual pinhole positions.
+            //   2. More fundamentally, the `predicted = (ref + overlay) / 2`
+            //      math assumes there EXIST bitmap positions where the raw
+            //      pixel is a 50/50 blend of game and overlay. Under bitmap
+            //      downsampling (e.g. MediaProjection virtual display), the
+            //      sparse pinhole pattern smears across multiple view pixels
+            //      per bitmap pixel; the averaged alpha becomes ~87% overlay
+            //      uniformly and no 50/50 blend exists anywhere.
+            //
+            // Fail-closed rather than silently producing wrong results. To
+            // actually support non-identity scale we'd need to rework the
+            // pinhole pattern and detection math (see FrameCoordinates KDoc
+            // for the full story).
+            if (!coords.isIdentityScale) {
+                return prefs.captureIntervalMs * 3
+            }
+
+            val bitmapRects = coords.viewListToBitmap(rects)
+
             // 3. Dirty view stays visible until after OCR results
 
             // 4. Update clean ref: patch non-overlay pixels from raw
             if (hasOverlays()) {
-                cleanRefBitmap?.let { updateCleanRef(raw, it) }
+                cleanRefBitmap?.let { updateCleanRef(raw, it, bitmapRects) }
             }
 
             // 5. Prepare OCR image: fill overlay regions with bgColor
             val ocrImage: Bitmap
             if (hasOverlays()) {
                 ocrImage = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
-                fillOverlayRegions(ocrImage)
+                fillOverlayRegions(ocrImage, coords)
             } else {
                 ocrImage = raw
             }
@@ -218,12 +284,6 @@ class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
             }
 
             val boxes = cachedBoxes ?: emptyList()
-            // NOTE: screen rects are used as bitmap pixel coordinates. This assumes
-            // screenshot resolution == display resolution (scale 1.0), which holds for
-            // AccessibilityService.takeScreenshot. Would need a full rethink for
-            // MediaProjection with a different virtual display resolution — pinhole
-            // detection fundamentally assumes 1:1 pixel correspondence.
-            val rects = a11y.translationOverlayView?.getChildScreenRects() ?: emptyList()
 
             // 7. Classify OCR results: content match, stale, or far (new text)
             val staleOverlayIndices = mutableSetOf<Int>()
@@ -232,7 +292,27 @@ class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
             val farOcrGroups = mutableListOf<FarGroup>()
 
             if (pipeline != null) {
-                val (ocrResult, _, left, top, _, _) = pipeline
+                val (ocrResult, _, pipeCropLeft, pipeCropTop, _, _) = pipeline
+
+                // Use the pipeline's crop offset (this frame's current values)
+                // rather than the instance fields (which are only refreshed on
+                // first-capture and can drift if statusBarHeight toggles mid-
+                // session). Pre-refactor code used pipeline.left/pipeline.top
+                // directly for ocrFullRect; we preserve that by constructing
+                // a classify-time FrameCoordinates whose cropLeft/cropTop are
+                // the current pipeline values. The outer `coords` is still
+                // used for fillOverlayRegions and bitmapRects — both correct
+                // with instance values, because cached boxes were placed
+                // relative to the instance crop via the view's last setBoxes.
+                val classifyCoords = FrameCoordinates(
+                    bitmapWidth = raw.width,
+                    bitmapHeight = raw.height,
+                    viewWidth = overlayView?.width ?: 0,
+                    viewHeight = overlayView?.height ?: 0,
+                    cropLeft = pipeCropLeft,
+                    cropTop = pipeCropTop,
+                )
+
                 for (ocrIdx in ocrResult.groupTexts.indices) {
                     if (ocrIdx >= ocrResult.groupBounds.size) continue
                     val ocrText = ocrResult.groupTexts[ocrIdx]
@@ -259,16 +339,13 @@ class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
                     if (contentMatched) continue
 
                     // 7b. Proximity check: near existing overlay → stale
-                    val ocrFullRect = Rect(
-                        ocrBound.left + left, ocrBound.top + top,
-                        ocrBound.right + left, ocrBound.bottom + top
-                    )
+                    val ocrFullRect = classifyCoords.ocrToBitmap(ocrBound)
                     var nearExisting = false
                     for (boxIdx in boxes.indices) {
-                        if (boxIdx >= rects.size) continue
+                        if (boxIdx >= bitmapRects.size) continue
                         if (boxes[boxIdx].dirty) continue
                         if (boxIdx in contentMatchRemovals) continue
-                        if (OcrManager.wouldGroup(rects[boxIdx], ocrFullRect)) {
+                        if (OcrManager.wouldGroup(bitmapRects[boxIdx], ocrFullRect)) {
                             nearExisting = true
                             staleOverlayIndices.add(boxIdx)
                         }
@@ -286,10 +363,10 @@ class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
             val pinholeDirty = mutableSetOf<Int>()
             if (cleanRef != null) {
                 for ((idx, box) in boxes.withIndex()) {
-                    if (idx >= rects.size) continue
+                    if (idx >= bitmapRects.size) continue
                     if (box.dirty) continue
                     if (idx in staleOverlayIndices) continue
-                    when (checkPinholes(raw, cleanRef, rects[idx])) {
+                    when (checkPinholes(raw, cleanRef, bitmapRects[idx])) {
                         PinholeResult.REMOVE -> pinholeRemovals.add(idx)
                         PinholeResult.DIRTY -> pinholeDirty.add(idx)
                         PinholeResult.KEEP -> {}
@@ -305,10 +382,10 @@ class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
                     expanded = false
                     for (i in boxes.indices) {
                         if (i in cascadedRemovals || boxes[i].dirty) continue
-                        if (i >= rects.size) continue
+                        if (i >= bitmapRects.size) continue
                         for (removeIdx in cascadedRemovals.toSet()) {
-                            if (removeIdx >= rects.size) continue
-                            if (OcrManager.wouldGroup(rects[removeIdx], rects[i])) {
+                            if (removeIdx >= bitmapRects.size) continue
+                            if (OcrManager.wouldGroup(bitmapRects[removeIdx], bitmapRects[i])) {
                                 cascadedRemovals.add(i)
                                 expanded = true
                                 break
@@ -400,7 +477,11 @@ class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
         }
     }
 
-    /** Show overlay, enable pinholes, wait for layout, capture screen rects and overlay render. */
+    /** Show overlay, enable pinholes, wait for layout, capture screen rects and
+     *  overlay render. The `overlayBitmap` produced here is at view dimensions;
+     *  [checkPinholes] assumes view dims == screenshot dims (identity scale)
+     *  and [runCycle] fails closed before reaching here if that assumption
+     *  doesn't hold. */
     private suspend fun showOverlayAndCapture(
         a11y: PlayTranslateAccessibilityService, boxes: List<TranslationOverlayView.TextBox>,
         left: Int, top: Int, sw: Int, sh: Int
@@ -414,36 +495,103 @@ class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
 
     // ── Detection Helpers ───────────────────────────────────────────────
 
-    /** Fill non-dirty overlay regions in a mutable bitmap with their background color. */
-    private fun fillOverlayRegions(bitmap: Bitmap) {
+    /** Fill non-dirty overlay regions in a mutable bitmap with their background
+     *  color. Uses [coords] to convert each cached box's OCR-crop-space bounds
+     *  to bitmap pixel coordinates. */
+    private fun fillOverlayRegions(bitmap: Bitmap, coords: FrameCoordinates) {
         val boxes = cachedBoxes ?: return
         val fillPadding = OverlayToolkit.FILL_PADDING
         val paint = android.graphics.Paint()
         val canvas = Canvas(bitmap)
         for (box in boxes) {
             if (box.dirty) continue
-            val l = (box.bounds.left + cropLeft - fillPadding).coerceAtLeast(0)
-            val t = (box.bounds.top + cropTop - fillPadding).coerceAtLeast(0)
-            val r = (box.bounds.right + cropLeft + fillPadding).coerceAtMost(bitmap.width)
-            val b = (box.bounds.bottom + cropTop + fillPadding).coerceAtMost(bitmap.height)
+            val bitmapBounds = coords.ocrToBitmap(box.bounds)
+            val l = (bitmapBounds.left - fillPadding).coerceAtLeast(0)
+            val t = (bitmapBounds.top - fillPadding).coerceAtLeast(0)
+            val r = (bitmapBounds.right + fillPadding).coerceAtMost(bitmap.width)
+            val b = (bitmapBounds.bottom + fillPadding).coerceAtMost(bitmap.height)
             paint.color = box.bgColor or 0xFF000000.toInt()
             canvas.drawRect(l.toFloat(), t.toFloat(), r.toFloat(), b.toFloat(), paint)
         }
     }
 
-    /** Check pinhole pixels: KEEP (no change), DIRTY (minor), or REMOVE (major).
-     *  screenRect is used to index into raw, cleanRef, AND overlayBitmap — assumes
-     *  all three are at the same resolution (screenshot == display == view). See note above. */
+    /**
+     * Check pinhole pixels in the given rect: KEEP (no change), DIRTY (minor
+     * change), or REMOVE (major change).
+     *
+     * [bitmapRect] indexes into raw, cleanRef, and overlayBitmap — all three
+     * are expected to be at the same resolution. Callers should pre-convert
+     * view-space rects via [FrameCoordinates.viewToBitmap] before passing in.
+     *
+     * ## Scale assumption (important)
+     *
+     * This function is only valid at identity scale (screenshot dims == view
+     * dims). [runCycle] fails closed at non-identity scale before reaching
+     * here; do not call this at non-identity scale without re-reading the
+     * following and reworking the math.
+     *
+     * The core detection math is:
+     *
+     *     predicted[i] = (cleanRef[i] + overlayBitmap[i]) / 2
+     *     delta[i]     = |raw[i] - predicted[i]|
+     *
+     * This assumes that AT PINHOLE POSITIONS, the raw on-screen pixel is a
+     * 50/50 blend of the clean game background (cleanRef) and the solid
+     * overlay rendering (overlayBitmap). That's true because:
+     *
+     *   1. [TranslationOverlayView.createPinholeMask] generates a mask with
+     *      alpha=128 (50%) at sparse pinhole positions spaced
+     *      [TranslationOverlayView.PINHOLE_SPACING] apart, 0 elsewhere.
+     *   2. [TranslationOverlayView.dispatchDraw] composites that mask via
+     *      DST_OUT on the rendered children, punching 50% holes at the mask
+     *      positions and leaving non-pinhole positions fully opaque.
+     *   3. The final on-screen pixel at a pinhole is therefore
+     *      50% overlay + 50% game.
+     *
+     * The sampling loop iterates every pixel in the region and skips non-
+     * pinhole positions via [isPinholePosition], which uses BITMAP
+     * coordinates with a fixed spacing. The mask is generated at VIEW
+     * coordinates with the same spacing. **At identity scale the two
+     * coordinate systems are identical**, so the sampler hits real pinhole
+     * positions.
+     *
+     * ## Why this breaks at non-identity scale
+     *
+     * At non-identity scale (e.g. MediaProjection with a scaled virtual
+     * display, producing a bitmap smaller than the view):
+     *
+     *   - The mask's 3-view-pixel spacing no longer corresponds to 3-bitmap-
+     *     pixel spacing. Sampling every 3 bitmap pixels hits positions that
+     *     aren't actually pinholes.
+     *   - More fundamentally: bitmap downsampling averages multiple view
+     *     pixels per bitmap pixel. A 2x2 view block contains ~1 pinhole
+     *     pixel at 50% alpha and ~3 non-pinhole pixels at 100% alpha,
+     *     averaging to ~87% alpha. No bitmap pixel corresponds to a 50%
+     *     blend; every bitmap pixel is at ~87% overlay uniformly. The
+     *     `predicted = (ref + overlay) / 2` math never matches raw; every
+     *     position reports a large delta and the classifier over-flags.
+     *
+     * Supporting non-identity scale would require, at minimum:
+     *   - A pinhole pattern that survives downsampling (e.g. larger mask
+     *     elements, not single pixels), OR
+     *   - Generating the mask at bitmap resolution and compositing it
+     *     directly into `overlayBitmap` so detection has a known-position
+     *     pinhole pattern in bitmap space, AND
+     *   - Re-tuning [SPLATTER_THRESHOLD], [PINHOLE_DIRTY_PCT], and
+     *     [PINHOLE_CHANGE_PCT] for whatever new blend ratio results.
+     *
+     * None of this is done today. Identity scale only.
+     */
     private fun checkPinholes(
-        raw: Bitmap, cleanRef: Bitmap, screenRect: Rect
+        raw: Bitmap, cleanRef: Bitmap, bitmapRect: Rect
     ): PinholeResult {
         val overlay = overlayBitmap ?: return PinholeResult.KEEP
         val spacing = TranslationOverlayView.PINHOLE_SPACING
 
-        val left = screenRect.left.coerceIn(0, raw.width)
-        val top = screenRect.top.coerceIn(0, raw.height)
-        val right = screenRect.right.coerceIn(0, raw.width)
-        val bottom = screenRect.bottom.coerceIn(0, raw.height)
+        val left = bitmapRect.left.coerceIn(0, raw.width)
+        val top = bitmapRect.top.coerceIn(0, raw.height)
+        val right = bitmapRect.right.coerceIn(0, raw.width)
+        val bottom = bitmapRect.bottom.coerceIn(0, raw.height)
         val regionW = right - left
         val regionH = bottom - top
         if (regionW <= 0 || regionH <= 0) return PinholeResult.KEEP
@@ -510,16 +658,19 @@ class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
      * while everything else — including dirty positions — is refreshed from
      * raw. Raw is safe to copy because the dirty view was hidden before the
      * capture, so dirty positions contain current clean game pixels.
-     * Uses screen rects as bitmap coordinates (see scale note above).
+     *
+     * Takes pre-converted bitmap-space [bitmapRects] from the caller (built
+     * via [FrameCoordinates.viewListToBitmap]). The caller is responsible for
+     * the view-to-bitmap conversion so this function doesn't need to know
+     * about the view at all.
      */
-    private fun updateCleanRef(raw: Bitmap, ref: Bitmap) {
-        val rects = PlayTranslateAccessibilityService.instance
-            ?.translationOverlayView?.getChildScreenRects() ?: return
+    private fun updateCleanRef(raw: Bitmap, ref: Bitmap, bitmapRects: List<Rect>) {
+        if (bitmapRects.isEmpty()) return
         val w = ref.width
         val h = ref.height
 
         // Save overlay region pixels from ref (clean game content)
-        val savedRegions = rects.map { rect ->
+        val savedRegions = bitmapRects.map { rect ->
             val left = rect.left.coerceIn(0, w)
             val top = rect.top.coerceIn(0, h)
             val right = rect.right.coerceIn(0, w)
@@ -538,7 +689,7 @@ class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
         ref.setPixels(allPixels, 0, w, 0, 0, w, h)
 
         // Restore overlay regions from saved pixels
-        for ((i, rect) in rects.withIndex()) {
+        for ((i, rect) in bitmapRects.withIndex()) {
             val pixels = savedRegions[i] ?: continue
             val left = rect.left.coerceIn(0, w)
             val top = rect.top.coerceIn(0, h)
