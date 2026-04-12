@@ -27,6 +27,8 @@ To report issues, receive support, or make requests, please join the [Discord se
 
 To report issues, receive support, or make requests, please join the [Discord server](https://discord.gg/DVCj6p7MUC)
 
+You can support PlayTranslate on Ko-fi at https://ko-fi.com/playtranslate
+
 ## Optional: DeepL API Key
 
 By default, translation uses [Lingva](https://github.com/thedaviddelta/lingva-translate) with ML Kit as an offline fallback. For higher quality translations, get a free DeepL API key at [deepl.com/en/pro#developer](https://www.deepl.com/en/pro#developer) and enter it in **Settings → DeepL API Key**.
