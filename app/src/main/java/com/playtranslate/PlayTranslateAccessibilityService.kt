@@ -96,6 +96,20 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     var screenshotManager: ScreenshotManager? = null
         private set
 
+    /** Repositions the floating icon when display properties change (e.g. rotation). */
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) {}
+        override fun onDisplayRemoved(displayId: Int) {}
+        override fun onDisplayChanged(displayId: Int) {
+            if (displayId != floatingIconDisplayId) return
+            val icon = floatingIcon ?: return
+            val p = icon.params ?: return
+            val prefs = Prefs(this@PlayTranslateAccessibilityService)
+            icon.setPosition(prefs.overlayIconEdge, prefs.overlayIconFraction)
+            try { floatingIconWm?.updateViewLayout(icon, p) } catch (_: Exception) {}
+        }
+    }
+
     /** Stops live mode when the screen turns off. */
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -113,11 +127,15 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
         registerReceiver(screenReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
+        (getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
+            .registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
         ensureFloatingIcon()
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
         try { unregisterReceiver(screenReceiver) } catch (_: Exception) {}
+        (getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
+            .unregisterDisplayListener(displayListener)
         stopInputMonitoring()
         stopDebugOcrLoop()
         hideTranslationOverlay()
@@ -735,7 +753,6 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val displayCtx = createDisplayContext(display)
         val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
 
-        val screenSize = getDisplaySize(display)
         val icon = FloatingOverlayIcon(displayCtx).apply {
             this.wm = wm
             compactMode = prefs.compactOverlayIcon
@@ -767,8 +784,6 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val popup = WordLookupPopup(displayCtx, wm)
         val controller = DragLookupController(
             displayId = display.displayId,
-            screenW = screenSize.x,
-            screenH = screenSize.y,
             popup = popup
         )
         // Track whether live mode / region overlay were active when drag started
