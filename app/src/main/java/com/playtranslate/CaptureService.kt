@@ -434,6 +434,35 @@ class CaptureService : Service() {
     val isInAppOnly: Boolean
         get() = liveActive && liveMode is InAppOnlyMode
 
+    /**
+     * Called from MainActivity.onMultiWindowModeChanged after the multi-window
+     * companion var has been updated. The viewport-level predicate
+     * [Prefs.isSingleScreen] re-evaluates on every call, so UI routing fixes
+     * itself automatically — but the live-mode class selection at [startLive]
+     * is sticky, computed once at live-start time. A running Pinhole/Furigana
+     * session entering split-screen with `hideGameOverlays` enabled wants
+     * InAppOnlyMode instead; a running InAppOnlyMode exiting to fullscreen
+     * wants an overlay mode. This entry point performs that mode-class swap
+     * when needed, and otherwise refreshes the current mode to clear the
+     * now-stale clean-reference bitmap (which would otherwise flicker
+     * through scene-change recovery on its own).
+     */
+    fun onMultiWindowChanged() {
+        if (!liveActive) return
+        val prefs = Prefs(this)
+        val shouldBeInAppOnly =
+            prefs.hideGameOverlays && !Prefs.isSingleScreen(this)
+        val isCurrentlyInAppOnly = liveMode is InAppOnlyMode
+        if (shouldBeInAppOnly != isCurrentlyInAppOnly) {
+            Log.d(TAG, "onMultiWindowChanged: mode class swap (inAppOnly $isCurrentlyInAppOnly -> $shouldBeInAppOnly)")
+            stopLive()
+            startLive()
+        } else {
+            Log.d(TAG, "onMultiWindowChanged: refreshing ${liveMode?.javaClass?.simpleName}")
+            liveMode?.refresh()
+        }
+    }
+
     fun stopLive() {
         getSystemService(DisplayManager::class.java)?.unregisterDisplayListener(displayListener)
         liveMode?.stop()

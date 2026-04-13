@@ -347,6 +347,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
         super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
         MainActivity.isInMultiWindowMode = isInMultiWindowMode
+        // Let a running live session adapt if the viewport predicate flipped.
+        // No-op if live mode isn't active.
+        CaptureService.instance?.onMultiWindowChanged()
     }
 
     override fun onDestroy() {
