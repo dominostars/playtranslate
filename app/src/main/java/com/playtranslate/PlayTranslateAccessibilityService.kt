@@ -744,13 +744,32 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
     // ── Hotkey combo detection ──────────────────────────────────────────
 
+    /**
+     * Window to wait on a "shadowed" combo (one that is a proper subset of
+     * another configured combo) before firing it. Prevents chord presses
+     * like A+B from being misread as just A when A arrives a few ms before
+     * B. Humans pressing two buttons simultaneously land within ~20-40ms of
+     * each other; 60ms is comfortably above that and still below the point
+     * at which players typically feel input latency.
+     */
+    private val HOTKEY_COMBO_WINDOW_MS = 60L
+
     private val heldKeyCodes = mutableSetOf<Int>()
     private var activeHotkeyMode: OverlayMode? = null
+    private var pendingActivationMode: OverlayMode? = null
 
     /** Callback when a hotkey combo becomes fully held. */
     var onHotkeyActivated: ((OverlayMode) -> Unit)? = null
     /** Callback when the active hotkey combo is released. */
     var onHotkeyReleased: (() -> Unit)? = null
+
+    private val pendingActivationRunnable = Runnable {
+        val mode = pendingActivationMode ?: return@Runnable
+        pendingActivationMode = null
+        activeHotkeyMode = mode
+        android.util.Log.d("HotkeyDbg", "ACTIVATED (deferred): $mode")
+        onHotkeyActivated?.invoke(mode)
+    }
 
     private fun parseCombo(stored: String): Set<Int> {
         if (stored.isBlank()) return emptySet()
@@ -759,37 +778,52 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
     private fun checkHotkeyCombos() {
         val prefs = Prefs(this)
-        val translationCombo = parseCombo(prefs.hotkeyTranslation)
-        val furiganaCombo = parseCombo(prefs.hotkeyFurigana)
+        val combos = listOf(
+            HotkeyCombo(parseCombo(prefs.hotkeyTranslation), OverlayMode.TRANSLATION),
+            HotkeyCombo(parseCombo(prefs.hotkeyFurigana), OverlayMode.FURIGANA),
+        ).filter { it.keys.isNotEmpty() }
 
-        android.util.Log.d("HotkeyDbg", "checkCombos: held=$heldKeyCodes translation=$translationCombo furigana=$furiganaCombo active=$activeHotkeyMode callback=${onHotkeyActivated != null}")
+        val state = HotkeyState(activeHotkeyMode, pendingActivationMode)
+        val action = decideHotkeyAction(heldKeyCodes, state, combos)
 
-        if (activeHotkeyMode != null) {
-            // Check if the active combo is still held
-            val activeCombo = when (activeHotkeyMode) {
-                OverlayMode.TRANSLATION -> translationCombo
-                OverlayMode.FURIGANA -> furiganaCombo
-                else -> emptySet()
+        android.util.Log.d(
+            "HotkeyDbg",
+            "checkCombos: held=$heldKeyCodes combos=$combos state=$state → $action"
+        )
+
+        when (action) {
+            is HotkeyAction.NoChange -> Unit
+
+            is HotkeyAction.ActivateNow -> {
+                debugHandler.removeCallbacks(pendingActivationRunnable)
+                pendingActivationMode = null
+                activeHotkeyMode = action.mode
+                android.util.Log.d("HotkeyDbg", "ACTIVATED: ${action.mode}")
+                onHotkeyActivated?.invoke(action.mode)
             }
-            if (!heldKeyCodes.containsAll(activeCombo)) {
-                android.util.Log.d("HotkeyDbg", "RELEASED: $activeHotkeyMode")
+
+            is HotkeyAction.DeferActivation -> {
+                debugHandler.removeCallbacks(pendingActivationRunnable)
+                pendingActivationMode = action.mode
+                android.util.Log.d(
+                    "HotkeyDbg",
+                    "DEFERRED: ${action.mode} (waiting ${HOTKEY_COMBO_WINDOW_MS}ms for possible superset)"
+                )
+                debugHandler.postDelayed(pendingActivationRunnable, HOTKEY_COMBO_WINDOW_MS)
+            }
+
+            HotkeyAction.Release -> {
+                val released = activeHotkeyMode
                 activeHotkeyMode = null
+                android.util.Log.d("HotkeyDbg", "RELEASED: $released")
                 onHotkeyReleased?.invoke()
             }
-        } else {
-            // Check if any combo just became active (longer combo first for priority)
-            val combos = listOf(
-                translationCombo to OverlayMode.TRANSLATION,
-                furiganaCombo to OverlayMode.FURIGANA
-            ).filter { it.first.isNotEmpty() }.sortedByDescending { it.first.size }
 
-            for ((combo, mode) in combos) {
-                if (heldKeyCodes.containsAll(combo)) {
-                    android.util.Log.d("HotkeyDbg", "ACTIVATED: $mode (combo=$combo)")
-                    activeHotkeyMode = mode
-                    onHotkeyActivated?.invoke(mode)
-                    break
-                }
+            HotkeyAction.ClearPending -> {
+                debugHandler.removeCallbacks(pendingActivationRunnable)
+                val cleared = pendingActivationMode
+                pendingActivationMode = null
+                android.util.Log.d("HotkeyDbg", "PENDING CLEARED: $cleared")
             }
         }
     }
