@@ -8,6 +8,7 @@ import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.os.IBinder
 import android.view.View
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -91,6 +92,10 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
         applyTheme()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_translation_result)
+
+        // Hide our own UI from accessibility screenshots (see MainActivity
+        // for the full rationale — prevents OCR feedback loop in multi-window).
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
         findViewById<android.widget.ImageButton>(R.id.btnBack).setOnClickListener { finish() }
 

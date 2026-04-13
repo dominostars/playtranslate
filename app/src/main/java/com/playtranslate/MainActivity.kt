@@ -17,6 +17,7 @@ import android.view.Display
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager
 import android.graphics.Typeface
 import android.text.Spannable
 import android.text.SpannableStringBuilder
@@ -228,6 +229,18 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             }
         }
         setContentView(R.layout.activity_main)
+
+        // Prevent PlayTranslate's own UI from appearing in screenshots
+        // (including the accessibility takeScreenshot path used by the
+        // capture loop). In Android multi-window mode both the game and
+        // this app share one display; without FLAG_SECURE the OCR would
+        // read the translated text we just rendered and try to translate
+        // it again, creating a feedback loop. SurfaceFlinger enforces
+        // FLAG_SECURE in all capture paths, so this is a complete fix.
+        // Cost: system screenshot tools can't capture PlayTranslate's own
+        // UI — users who want to share their translator UI would have to
+        // screenshot externally, which is acceptable for a translation tool.
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
         // Seed the companion var from the Activity's own multi-window state.
         // onMultiWindowModeChanged does NOT fire on a launch-into-split-screen

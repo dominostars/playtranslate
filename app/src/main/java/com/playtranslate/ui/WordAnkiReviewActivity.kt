@@ -2,6 +2,7 @@ package com.playtranslate.ui
 
 import android.content.DialogInterface
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.playtranslate.AnkiManager
@@ -17,6 +18,10 @@ class WordAnkiReviewActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         applyTheme()
         super.onCreate(savedInstanceState)
+
+        // Hide our own UI from accessibility screenshots (see MainActivity
+        // for the full rationale — prevents OCR feedback loop in multi-window).
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
         if (savedInstanceState != null) {
             // Sheet is already restored by the FragmentManager — attach dismiss listener
