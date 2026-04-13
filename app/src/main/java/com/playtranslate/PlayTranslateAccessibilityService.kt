@@ -742,6 +742,19 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     /** Temporary listener for key event capture (e.g., hotkey setup dialog). Takes priority over normal handling. */
     var onKeyEventListener: ((KeyEvent) -> Boolean)? = null
 
+    /**
+     * True when the user has some visible indication the app is listening:
+     * either the floating icon is on screen or MainActivity is foregrounded.
+     * Used to gate hotkey activation so a user who has hidden the icon and
+     * backgrounded the app doesn't get "ghost" hotkey triggers with no
+     * feedback. Differs from the foreground-notification rule
+     * ([CaptureService.updateForegroundState]) which intentionally omits
+     * `foregrounded` — the notification is redundant while the app is on
+     * screen, but hotkeys obviously must still work then.
+     */
+    fun isUserReachable(): Boolean =
+        floatingIcon != null || MainActivity.isInForeground
+
     // ── Hotkey combo detection ──────────────────────────────────────────
 
     /**
@@ -766,6 +779,12 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     private val pendingActivationRunnable = Runnable {
         val mode = pendingActivationMode ?: return@Runnable
         pendingActivationMode = null
+        // Re-check reachability: the gate may have closed during the
+        // deferral window (user backgrounded the app while mid-chord).
+        if (!isUserReachable()) {
+            android.util.Log.d("HotkeyDbg", "DEFERRED cancelled (gate closed): $mode")
+            return@Runnable
+        }
         activeHotkeyMode = mode
         android.util.Log.d("HotkeyDbg", "ACTIVATED (deferred): $mode")
         onHotkeyActivated?.invoke(mode)
@@ -784,7 +803,12 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         ).filter { it.keys.isNotEmpty() }
 
         val state = HotkeyState(activeHotkeyMode, pendingActivationMode)
-        val action = decideHotkeyAction(heldKeyCodes, state, combos)
+        val action = decideHotkeyAction(
+            held = heldKeyCodes,
+            state = state,
+            combos = combos,
+            reachable = isUserReachable(),
+        )
 
         android.util.Log.d(
             "HotkeyDbg",

@@ -60,12 +60,27 @@ sealed class HotkeyAction {
  *   held, the pending combo is superseded by the larger one, which itself
  *   is either activated immediately or re-deferred depending on whether it
  *   is also shadowed.
+ * - If [reachable] is false (the user has no visible indication the app is
+ *   listening — icon hidden and app backgrounded), new activations are
+ *   suppressed. Release of an already-active combo still flows through so
+ *   state cannot latch across a gate closure.
  */
 fun decideHotkeyAction(
     held: Set<Int>,
     state: HotkeyState,
     combos: List<HotkeyCombo>,
+    reachable: Boolean = true,
 ): HotkeyAction {
+    // 0. Gate: if the user can't see the app and no combo is currently
+    //    active, ignore new presses. A pending activation must be cleared
+    //    so the deferred runnable does not fire into empty space. An
+    //    already-active combo is allowed to flow through so it can release
+    //    cleanly — otherwise state would latch until the service restarts.
+    if (!reachable && state.activeMode == null) {
+        return if (state.pendingMode != null) HotkeyAction.ClearPending
+            else HotkeyAction.NoChange
+    }
+
     // 1. If a combo is already active, only check whether it is still held.
     //    We deliberately do not upgrade to a larger combo mid-hold.
     state.activeMode?.let { active ->

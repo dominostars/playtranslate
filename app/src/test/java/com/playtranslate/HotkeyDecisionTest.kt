@@ -262,4 +262,79 @@ class HotkeyDecisionTest {
         )
         assertEquals(HotkeyAction.ActivateNow(FURIGANA), action)
     }
+
+    // ── Reachability gate ──────────────────────────────────────────────
+
+    @Test
+    fun `unreachable with no active combo and no pending suppresses activation`() {
+        // Icon hidden, app backgrounded, user presses a hotkey. Should
+        // drop the event rather than fire a ghost overlay.
+        val action = decideHotkeyAction(
+            held = setOf(1),
+            state = HotkeyState(activeMode = null, pendingMode = null),
+            combos = listOf(combo(TRANSLATION, 1)),
+            reachable = false,
+        )
+        assertEquals(HotkeyAction.NoChange, action)
+    }
+
+    @Test
+    fun `unreachable with pending activation clears it`() {
+        // User started a chord while reachable, then gate closed before
+        // the deferral window expired. Pending must be cleared.
+        val action = decideHotkeyAction(
+            held = setOf(1),
+            state = HotkeyState(activeMode = null, pendingMode = TRANSLATION),
+            combos = listOf(
+                combo(TRANSLATION, 1),
+                combo(FURIGANA, 1, 2),
+            ),
+            reachable = false,
+        )
+        assertEquals(HotkeyAction.ClearPending, action)
+    }
+
+    @Test
+    fun `unreachable with active combo still held returns NoChange`() {
+        // Combo was activated while reachable, then gate closed. User is
+        // still holding the combo. Must not latch — state should flow
+        // normally so release can clean up.
+        val action = decideHotkeyAction(
+            held = setOf(1, 2),
+            state = HotkeyState(activeMode = FURIGANA, pendingMode = null),
+            combos = listOf(
+                combo(TRANSLATION, 1),
+                combo(FURIGANA, 1, 2),
+            ),
+            reachable = false,
+        )
+        assertEquals(HotkeyAction.NoChange, action)
+    }
+
+    @Test
+    fun `unreachable with active combo released returns Release`() {
+        // Critical: if the gate closed while a combo was held, releasing
+        // it must still fire Release. Otherwise activeMode latches forever.
+        val action = decideHotkeyAction(
+            held = emptySet(),
+            state = HotkeyState(activeMode = FURIGANA, pendingMode = null),
+            combos = listOf(
+                combo(TRANSLATION, 1),
+                combo(FURIGANA, 1, 2),
+            ),
+            reachable = false,
+        )
+        assertEquals(HotkeyAction.Release, action)
+    }
+
+    @Test
+    fun `unreachable with empty held and no state returns NoChange`() {
+        val action = decideHotkeyAction(
+            held = emptySet(),
+            state = HotkeyState(activeMode = null, pendingMode = null),
+            combos = listOf(combo(TRANSLATION, 1)),
+            reachable = false,
+        )
+        assertEquals(HotkeyAction.NoChange, action)
+    }
 }
