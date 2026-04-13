@@ -18,7 +18,7 @@ To report issues, receive support, or make requests, please join the [Discord se
 
 ## How to Use
 
-1. [Download the latest release by clicking here](../../releases/download/v1.1.0/PlayTranslate-1.1.0.apk)
+1. [Download the latest release by clicking here](../../releases/download/v1.1.1/PlayTranslate-1.1.1.apk)
 2. On your Android, enable **Settings → Security → Install unknown apps** for your file manager or browser
 3. Open the APK and tap Install
 4. On first launch, follow the onboarding steps to grant the necessary permissions
@@ -26,6 +26,8 @@ To report issues, receive support, or make requests, please join the [Discord se
 ## Support
 
 To report issues, receive support, or make requests, please join the [Discord server](https://discord.gg/DVCj6p7MUC)
+
+You can support PlayTranslate on Ko-fi at https://ko-fi.com/playtranslate
 
 ## Optional: DeepL API Key
 

@@ -1,8 +1,12 @@
 package com.playtranslate.ui
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Point
 import android.graphics.Rect
+import android.os.Build
+import android.view.WindowManager
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -29,8 +33,6 @@ import kotlin.math.abs
  */
 class DragLookupController(
     private val displayId: Int,
-    private val screenW: Int,
-    private val screenH: Int,
     private val popup: WordLookupPopup
 ) {
     private val handler = Handler(Looper.getMainLooper())
@@ -97,6 +99,18 @@ class DragLookupController(
 
     private val wobbleRadiusPx: Float by lazy {
         WOBBLE_RADIUS_DP * popup.ctx.resources.displayMetrics.density
+    }
+
+    private fun queryScreenSize(): Point {
+        val wm = popup.ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+        if (wm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = wm.currentWindowMetrics.bounds
+            return Point(bounds.width(), bounds.height())
+        }
+        val size = Point()
+        @Suppress("DEPRECATION")
+        popup.ctx.display?.getRealSize(size)
+        return size
     }
 
     // ── Public API (called from FloatingOverlayIcon callbacks) ───────────
@@ -443,6 +457,7 @@ class DragLookupController(
             )
         }
 
+        val screen = queryScreenSize()
         popup.show(
             word = word,
             reading = reading,
@@ -451,8 +466,8 @@ class DragLookupController(
             isCommon = entry.isCommon == true,
             screenX = fingerX,
             screenY = fingerY,
-            screenW = screenW,
-            screenH = screenH
+            screenW = screen.x,
+            screenH = screen.y
         )
     }
 
