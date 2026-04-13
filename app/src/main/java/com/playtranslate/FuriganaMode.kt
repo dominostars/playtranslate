@@ -141,6 +141,15 @@ class FuriganaMode(
         restartJob?.cancel()
         restartJob = scope.launch {
             delay(Prefs(service).captureIntervalMs)
+            // A hotkey combo routes through onKeyEvent → onGameInput → here
+            // BEFORE checkHotkeyCombos sets holdActive, so we can't gate the
+            // scheduling itself. Instead, skip the restart if a hold-preview
+            // is now in progress — hotkeyHoldEnd's refresh() will restart the
+            // loop cleanly on release.
+            if (service.holdActive) {
+                DetectionLog.log("onButtonDown restart skipped (holdActive)")
+                return@launch
+            }
             startLoop(mgr)
         }
     }
