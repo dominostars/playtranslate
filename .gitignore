@@ -14,6 +14,7 @@ app/build/
 
 # Local scratch / test data (not committed)
 local/
+scripts/thor-wifi-connect.sh
 
 # Release APK (distributed via GitHub Releases, not committed)
 *.apk
