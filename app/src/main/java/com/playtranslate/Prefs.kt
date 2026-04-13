@@ -270,14 +270,29 @@ class Prefs(context: Context) {
         private const val KEY_HOTKEY_TRANSLATION           = "hotkey_translation"
         private const val KEY_HOTKEY_FURIGANA              = "hotkey_furigana"
 
+        /**
+         * True when the device has more than one physical display connected.
+         *
+         * This is the narrow "physical topology" predicate — use it only at
+         * call sites where the decision truly depends on display count
+         * (e.g., the dim overlay that covers the app's own window, or
+         * cosmetic text that describes which display the icon lives on).
+         * For "can the user see both the app and the game at once?", use
+         * [isSingleScreen] instead — that predicate also accounts for
+         * Android multi-window mode.
+         */
+        fun hasMultipleDisplays(context: Context): Boolean {
+            val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+            return dm.displays.size > 1
+        }
+
         /** Single source of truth for single-screen detection. */
         fun isSingleScreen(context: Context): Boolean {
             if (BuildConfig.DEBUG) {
                 val sp = context.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
                 if (sp.getBoolean(KEY_DEBUG_FORCE_SINGLE_SCREEN, false)) return true
             }
-            val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-            return dm.displays.size <= 1
+            return !hasMultipleDisplays(context)
         }
 
         val DEFAULT_REGION_LIST: List<RegionEntry> = listOf(

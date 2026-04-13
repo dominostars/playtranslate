@@ -1209,7 +1209,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
         val builder = OverlayAlert.Builder(displayCtx, overlayWm)
 
-        if (Prefs.isSingleScreen(this)) {
+        if (!Prefs.hasMultipleDisplays(this)) {
             builder.setTitle("Disable $appName?")
                 .setMessage("Re-enable in $appName app")
             if (!alreadyCompact) {

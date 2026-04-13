@@ -266,7 +266,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         }
 
         // Start dim controller on dual-screen when not in live mode
-        if (!isSingleScreen() && !isLiveMode) {
+        if (Prefs.hasMultipleDisplays(this) && !isLiveMode) {
             dimController = DimController(findViewById(R.id.dimOverlay))
         }
     }
@@ -493,7 +493,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         // Dim controller: cancel on any live mode change, recreate only when stopping
         dimController?.cancel()
         dimController = null
-        if (!isLive && !isSingleScreen()) {
+        if (!isLive && Prefs.hasMultipleDisplays(this)) {
             dimController = DimController(findViewById(R.id.dimOverlay))
         }
         if (isLive) {
@@ -918,7 +918,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
         val a11yEnabled = PlayTranslateAccessibilityService.isEnabled
-        val singleScreen = isSingleScreen()
+        val singleScreen = !Prefs.hasMultipleDisplays(this)
         val existingSheet = supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG) as? SettingsBottomSheet
 
         // Notification permission always comes first regardless of screen mode

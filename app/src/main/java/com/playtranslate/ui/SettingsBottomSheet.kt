@@ -139,7 +139,7 @@ class SettingsBottomSheet : DialogFragment() {
         if (isDialog) {
             view.findViewById<View>(R.id.settingsToolbar).visibility = View.VISIBLE
             view.findViewById<View>(R.id.settingsToolbarDivider).visibility = View.VISIBLE
-            if (Prefs.isSingleScreen(requireContext())) {
+            if (!Prefs.hasMultipleDisplays(requireContext())) {
                 view.findViewById<TextView>(R.id.tvSettingsTitle).text = getString(R.string.app_name)
             }
             val closeBtn = view.findViewById<View>(R.id.btnCloseSettings)
@@ -189,7 +189,7 @@ class SettingsBottomSheet : DialogFragment() {
         ivIconPreview = view.findViewById(R.id.ivFloatingIconPreview)
         ivIconPreview?.setImageBitmap(createFloatingIconPreview(prefs.compactOverlayIcon))
 
-        val isSingle = Prefs.isSingleScreen(requireContext())
+        val isSingle = !Prefs.hasMultipleDisplays(requireContext())
         tvOverlayIconTitle.setText(
             if (isSingle) R.string.settings_show_overlay_icon_single
             else R.string.settings_show_overlay_icon
