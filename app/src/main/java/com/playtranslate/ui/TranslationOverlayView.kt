@@ -20,6 +20,7 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.core.view.doOnLayout
 import androidx.core.widget.TextViewCompat
+import com.playtranslate.PinholeCalibration
 import com.playtranslate.R
 
 /**
@@ -342,21 +343,27 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
     private val skeletonBars = mutableListOf<View>()
 
     /**
-     * Build a full-view pinhole mask. Pinhole positions have alpha=128 (50%),
-     * all other pixels are fully transparent. Drawn with DST_OUT in dispatchDraw
-     * to punch 50% holes through all children.
+     * Build a full-view pinhole mask. Pinhole positions have alpha
+     * [PinholeCalibration.MASK_ALPHA], all other pixels are fully transparent.
+     * Drawn with DST_OUT in dispatchDraw to punch partially-transparent holes
+     * through all children.
+     *
+     * See [PinholeCalibration] for why the mask alpha and spacing are
+     * tightly coupled to `PinholeOverlayMode.checkPinholes` — editing them
+     * here without re-tuning the detection thresholds silently breaks
+     * pinhole detection.
      *
      * **Scale note:** The mask is generated at VIEW resolution, with pinhole
-     * positions on a fixed [PINHOLE_SPACING]-pixel grid in view coordinates.
-     * Pinhole detection (`PinholeOverlayMode.checkPinholes`) assumes the
-     * mask spacing is also valid in screenshot-bitmap coordinates, which
-     * requires view dims == screenshot dims (identity scale). At non-
-     * identity scale the sparse mask pattern is smeared by bitmap
-     * downsampling and the `predicted = (ref + overlay) / 2` math no
-     * longer holds. See `FrameCoordinates` KDoc for the full explanation.
+     * positions on a fixed [PinholeCalibration.PINHOLE_SPACING]-pixel grid
+     * in view coordinates. Pinhole detection assumes the mask spacing is
+     * also valid in screenshot-bitmap coordinates, which requires view dims
+     * == screenshot dims (identity scale). At non-identity scale the sparse
+     * mask pattern is smeared by bitmap downsampling and the
+     * `predicted = (ref + overlay) / 2` math no longer holds. See
+     * [com.playtranslate.FrameCoordinates] KDoc for the full explanation.
      */
     private fun createPinholeMask(w: Int, h: Int): Bitmap {
-        val spacing = PINHOLE_SPACING
+        val spacing = PinholeCalibration.PINHOLE_SPACING
         val pixels = IntArray(w * h) // all 0 = fully transparent
         for (y in 0 until h) {
             val rowGroup = (y / spacing) % 2
@@ -364,7 +371,7 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
             if (y % spacing != 0) continue
             var x = xOffset
             while (x < w) {
-                pixels[y * w + x] = 0x80000000.toInt() // alpha=128, 50% transparent pinhole
+                pixels[y * w + x] = PinholeCalibration.MASK_PIXEL
                 x += spacing
             }
         }
@@ -414,9 +421,6 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
         return bitmap
     }
 
-    companion object {
-        const val PINHOLE_SPACING = 3
-    }
 
     private fun startShimmer() {
         shimmerAnimator = ValueAnimator.ofFloat(0.8f, 0.3f).apply {

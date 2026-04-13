@@ -63,15 +63,6 @@ class PinholeOverlayMode(
     private var screenshotH = 0
     private var showRegionFlash = true
 
-    /** Per-channel delta threshold for pinhole pixel change detection. */
-    private val SPLATTER_THRESHOLD = 60
-
-    /** Fraction of pinholes that must change to mark dirty (minor change). */
-    private val PINHOLE_DIRTY_PCT = 0.03f
-
-    /** Fraction of pinholes that must change to remove immediately (major change). */
-    private val PINHOLE_CHANGE_PCT = 0.10f
-
     private enum class PinholeResult { KEEP, DIRTY, REMOVE }
 
     override fun start() {
@@ -491,8 +482,9 @@ class PinholeOverlayMode(
      * overlay rendering (overlayBitmap). That's true because:
      *
      *   1. [TranslationOverlayView.createPinholeMask] generates a mask with
-     *      alpha=128 (50%) at sparse pinhole positions spaced
-     *      [TranslationOverlayView.PINHOLE_SPACING] apart, 0 elsewhere.
+     *      alpha [PinholeCalibration.MASK_ALPHA] (50%) at sparse pinhole
+     *      positions spaced [PinholeCalibration.PINHOLE_SPACING] apart, 0
+     *      elsewhere.
      *   2. [TranslationOverlayView.dispatchDraw] composites that mask via
      *      DST_OUT on the rendered children, punching 50% holes at the mask
      *      positions and leaving non-pinhole positions fully opaque.
@@ -528,8 +520,10 @@ class PinholeOverlayMode(
      *   - Generating the mask at bitmap resolution and compositing it
      *     directly into `overlayBitmap` so detection has a known-position
      *     pinhole pattern in bitmap space, AND
-     *   - Re-tuning [SPLATTER_THRESHOLD], [PINHOLE_DIRTY_PCT], and
-     *     [PINHOLE_CHANGE_PCT] for whatever new blend ratio results.
+     *   - Re-tuning [PinholeCalibration.SPLATTER_THRESHOLD],
+     *     [PinholeCalibration.PINHOLE_DIRTY_PCT], and
+     *     [PinholeCalibration.PINHOLE_CHANGE_PCT] for whatever new blend
+     *     ratio results.
      *
      * None of this is done today. Identity scale only.
      */
@@ -537,7 +531,7 @@ class PinholeOverlayMode(
         raw: Bitmap, cleanRef: Bitmap, bitmapRect: Rect
     ): PinholeResult {
         val overlay = overlayBitmap ?: return PinholeResult.KEEP
-        val spacing = TranslationOverlayView.PINHOLE_SPACING
+        val spacing = PinholeCalibration.PINHOLE_SPACING
 
         val left = bitmapRect.left.coerceIn(0, raw.width)
         val top = bitmapRect.top.coerceIn(0, raw.height)
@@ -586,7 +580,9 @@ class PinholeOverlayMode(
                 val delta = maxOf(dr, dg, db)
                 if (delta > maxDelta) maxDelta = delta
 
-                if (dr > SPLATTER_THRESHOLD || dg > SPLATTER_THRESHOLD || db > SPLATTER_THRESHOLD) {
+                if (dr > PinholeCalibration.SPLATTER_THRESHOLD ||
+                    dg > PinholeCalibration.SPLATTER_THRESHOLD ||
+                    db > PinholeCalibration.SPLATTER_THRESHOLD) {
                     changedPinholes++
                 }
             }
@@ -595,8 +591,8 @@ class PinholeOverlayMode(
         if (totalPinholes == 0) return PinholeResult.KEEP
         val pct = changedPinholes.toFloat() / totalPinholes
         val result = when {
-            pct >= PINHOLE_CHANGE_PCT -> PinholeResult.REMOVE
-            pct >= PINHOLE_DIRTY_PCT -> PinholeResult.DIRTY
+            pct >= PinholeCalibration.PINHOLE_CHANGE_PCT -> PinholeResult.REMOVE
+            pct >= PinholeCalibration.PINHOLE_DIRTY_PCT -> PinholeResult.DIRTY
             else -> PinholeResult.KEEP
         }
         return result

@@ -61,7 +61,7 @@ import android.util.Log
  *      blend, so `predicted` never matches `raw` and the detector over-
  *      flags every position as changed.
  *   3. **The detection thresholds
- *      ([com.playtranslate.PinholeOverlayMode.SPLATTER_THRESHOLD] etc.) are
+ *      ([com.playtranslate.PinholeCalibration.SPLATTER_THRESHOLD] etc.) are
  *      calibrated against the 50/50 blend assumption** and would need to
  *      be re-tuned for any new scheme.
  *
