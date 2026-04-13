@@ -298,25 +298,18 @@ class PinholeOverlayMode(
 
             val boxes = cachedBoxes ?: emptyList()
 
-            // 7. Classify OCR results: content match, stale, or far (new text)
-            val staleOverlayIndices = mutableSetOf<Int>()
-            val contentMatchRemovals = mutableSetOf<Int>()
-            data class FarGroup(val text: String, val bounds: Rect, val lineCount: Int)
-            val farOcrGroups = mutableListOf<FarGroup>()
-
-            if (pipeline != null) {
+            // 7. Classify OCR results: content match, stale, or far (new text).
+            //    The actual logic lives in Classification.kt as pure functions
+            //    so it can be unit-tested without a live capture pipeline.
+            val classification = if (pipeline != null) {
                 val (ocrResult, _, pipeCropLeft, pipeCropTop, _, _) = pipeline
-
-                // Use the pipeline's crop offset (this frame's current values)
-                // rather than the instance fields (which are only refreshed on
-                // first-capture and can drift if statusBarHeight toggles mid-
-                // session). Pre-refactor code used pipeline.left/pipeline.top
-                // directly for ocrFullRect; we preserve that by constructing
-                // a classify-time FrameCoordinates whose cropLeft/cropTop are
-                // the current pipeline values. The outer `coords` is still
-                // used for fillOverlayRegions and bitmapRects — both correct
-                // with instance values, because cached boxes were placed
-                // relative to the instance crop via the view's last setBoxes.
+                // Classification uses the pipeline's crop offset (this frame's
+                // current values), not the instance fields which are only
+                // refreshed on first-capture and can drift if statusBarHeight
+                // toggles mid-session. Pre-refactor code used pipeline.left /
+                // pipeline.top directly for the ocrFullRect used in the
+                // proximity check; we preserve that by passing a classify-time
+                // FrameCoordinates whose cropLeft/cropTop come from the pipeline.
                 val classifyCoords = FrameCoordinates(
                     bitmapWidth = raw.width,
                     bitmapHeight = raw.height,
@@ -325,50 +318,13 @@ class PinholeOverlayMode(
                     cropLeft = pipeCropLeft,
                     cropTop = pipeCropTop,
                 )
-
-                for (ocrIdx in ocrResult.groupTexts.indices) {
-                    if (ocrIdx >= ocrResult.groupBounds.size) continue
-                    val ocrText = ocrResult.groupTexts[ocrIdx]
-                    val ocrBound = ocrResult.groupBounds[ocrIdx]
-                    val ocrH = ocrBound.height()
-
-                    // 7a. Content match: same source text + similar size → position update
-                    var contentMatched = false
-                    for ((boxIdx, box) in boxes.withIndex()) {
-                        if (box.dirty) continue
-                        if (boxIdx in contentMatchRemovals) continue
-                        if (box.sourceText.isNotEmpty() && !OverlayToolkit.isSignificantChange(ocrText, box.sourceText)) {
-                            val boxH = box.bounds.height()
-                            val maxH = maxOf(ocrH, boxH)
-                            if (maxH > 0 && kotlin.math.abs(ocrH - boxH) < maxH * 0.5) {
-                                contentMatchRemovals.add(boxIdx)
-                                val lc = ocrResult.groupLineCounts.getOrElse(ocrIdx) { 1 }
-                                farOcrGroups.add(FarGroup(ocrText, ocrBound, lc))
-                                contentMatched = true
-                                break
-                            }
-                        }
-                    }
-                    if (contentMatched) continue
-
-                    // 7b. Proximity check: near existing overlay → stale
-                    val ocrFullRect = classifyCoords.ocrToBitmap(ocrBound)
-                    var nearExisting = false
-                    for (boxIdx in boxes.indices) {
-                        if (boxIdx >= bitmapRects.size) continue
-                        if (boxes[boxIdx].dirty) continue
-                        if (boxIdx in contentMatchRemovals) continue
-                        if (OcrManager.wouldGroup(bitmapRects[boxIdx], ocrFullRect)) {
-                            nearExisting = true
-                            staleOverlayIndices.add(boxIdx)
-                        }
-                    }
-                    if (!nearExisting) {
-                        val lc = ocrResult.groupLineCounts.getOrElse(ocrIdx) { 1 }
-                        farOcrGroups.add(FarGroup(ocrText, ocrBound, lc))
-                    }
-                }
+                classifyOcrResults(ocrResult, boxes, bitmapRects, classifyCoords)
+            } else {
+                ClassificationResult(emptySet(), emptySet(), emptyList())
             }
+            val contentMatchRemovals = classification.contentMatchRemovals
+            val staleOverlayIndices = classification.staleOverlayIndices
+            val farOcrGroups = classification.farOcrGroups
 
             // 8. Pinhole change detection — DIRTY moves overlays to dirty window
             val cleanRef = cleanRefBitmap
@@ -387,26 +343,8 @@ class PinholeOverlayMode(
                 }
             }
 
-            // 8b. Cascade stale to neighbors
-            val cascadedRemovals = staleOverlayIndices.toMutableSet()
-            if (cascadedRemovals.isNotEmpty()) {
-                var expanded = true
-                while (expanded) {
-                    expanded = false
-                    for (i in boxes.indices) {
-                        if (i in cascadedRemovals || boxes[i].dirty) continue
-                        if (i >= bitmapRects.size) continue
-                        for (removeIdx in cascadedRemovals.toSet()) {
-                            if (removeIdx >= bitmapRects.size) continue
-                            if (OcrManager.wouldGroup(bitmapRects[removeIdx], bitmapRects[i])) {
-                                cascadedRemovals.add(i)
-                                expanded = true
-                                break
-                            }
-                        }
-                    }
-                }
-            }
+            // 8b. Cascade stale to neighbors. See cascadeStaleRemovals in Classification.kt.
+            val cascadedRemovals = cascadeStaleRemovals(staleOverlayIndices, boxes, bitmapRects)
 
             // 9. Resolve: compute final state from immutable snapshot in one pass
             val allRemovals = cascadedRemovals + pinholeRemovals + contentMatchRemovals
