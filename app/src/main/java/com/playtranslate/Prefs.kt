@@ -286,13 +286,28 @@ class Prefs(context: Context) {
             return dm.displays.size > 1
         }
 
-        /** Single source of truth for single-screen detection. */
+        /**
+         * True when the user has only one visible viewport into PlayTranslate
+         * and the game combined — i.e., NOT (two physical displays OR
+         * MainActivity in Android multi-window mode alongside the game).
+         *
+         * Despite the name this is a viewport-count predicate, not a
+         * physical-display predicate. Use [hasMultipleDisplays] if you
+         * specifically need the physical topology.
+         */
         fun isSingleScreen(context: Context): Boolean {
             if (BuildConfig.DEBUG) {
                 val sp = context.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
                 if (sp.getBoolean(KEY_DEBUG_FORCE_SINGLE_SCREEN, false)) return true
             }
-            return !hasMultipleDisplays(context)
+            if (hasMultipleDisplays(context)) return false
+            // Multi-window mode counts as two viewports (app + game visible
+            // together), but only while MainActivity is actually foregrounded.
+            // Otherwise a stale companion var from a killed activity could
+            // latch a misleading "split-screen" signal after the user has
+            // clearly left the app.
+            if (MainActivity.isInForeground && MainActivity.isInMultiWindowMode) return false
+            return true
         }
 
         val DEFAULT_REGION_LIST: List<RegionEntry> = listOf(

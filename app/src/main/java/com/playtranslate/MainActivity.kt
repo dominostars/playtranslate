@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.Bundle
@@ -228,6 +229,15 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         }
         setContentView(R.layout.activity_main)
 
+        // Seed the companion var from the Activity's own multi-window state.
+        // onMultiWindowModeChanged does NOT fire on a launch-into-split-screen
+        // start (the state didn't "change" — it just began in that state), so
+        // we must read it here. The explicit receivers disambiguate between
+        // the Activity method (this.isInMultiWindowMode) and the companion
+        // var (MainActivity.isInMultiWindowMode) — same name, different
+        // things.
+        MainActivity.isInMultiWindowMode = this.isInMultiWindowMode
+
         bindViews()
 
         // Remove inline fragments that Android may have restored from saved state.
@@ -334,9 +344,19 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         isInForeground = false
     }
 
+    override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
+        super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
+        MainActivity.isInMultiWindowMode = isInMultiWindowMode
+    }
+
     override fun onDestroy() {
         dimController?.cancel()
         dimController = null
+        // Defensive clear so a stale companion var can't lie to a predicate
+        // that runs after the activity is gone. The real safety net is the
+        // isInForeground gate inside Prefs.isSingleScreen, but explicit is
+        // better than implicit.
+        MainActivity.isInMultiWindowMode = false
         (getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
             .unregisterDisplayListener(displayListener)
         if (isLiveMode && !isChangingConfigurations) captureService?.stopLive()
@@ -1398,6 +1418,16 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                 field = value
                 CaptureService.instance?.updateForegroundState()
             }
+
+        /**
+         * True when MainActivity is currently in Android multi-window /
+         * split-screen mode. Combined with [isInForeground] to widen the
+         * definition of "the user can see both app and game simultaneously"
+         * inside [Prefs.isSingleScreen]. Updated from [onCreate] (for the
+         * launch-into-split-screen case) and [onMultiWindowModeChanged].
+         */
+        @Volatile
+        var isInMultiWindowMode = false
 
     }
 }
