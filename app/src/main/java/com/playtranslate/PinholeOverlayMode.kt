@@ -33,7 +33,22 @@ import kotlin.coroutines.resume
  * Overlays only disappear on button press or when game text changes.
  * No constant flicker from hide/show cycles.
  */
-class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
+/**
+ * @param service the enclosing capture service (for state access and coordinator calls)
+ * @param a11y the accessibility service instance, captured at mode construction time.
+ *   Previously fetched via [PlayTranslateAccessibilityService.instance] scattered
+ *   throughout this class; now injected so the dependency is explicit and the
+ *   mode is unit-testable with a mocked service. If the accessibility service is
+ *   torn down mid-session the cached reference becomes stale, but every internal
+ *   field access we do through it (`screenshotManager`, `translationOverlayView`,
+ *   etc.) is already nullable and null-checked inline, so stale references
+ *   degrade gracefully to the same "nothing happens" behavior the pre-injection
+ *   `instance?.` pattern produced.
+ */
+class PinholeOverlayMode(
+    private val service: CaptureService,
+    private val a11y: PlayTranslateAccessibilityService,
+) : LiveMode {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var currentJob: Job? = null
@@ -61,8 +76,7 @@ class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
 
     override fun start() {
         currentJob?.cancel()
-        PlayTranslateAccessibilityService.instance
-            ?.startInputMonitoring(service.gameDisplayId) { onButtonDown() }
+        a11y.startInputMonitoring(service.gameDisplayId) { onButtonDown() }
         scheduleNextCycle()
     }
 
@@ -90,8 +104,8 @@ class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
         scope.cancel()
         resetState()
 
-        PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
-        PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+        a11y.stopInputMonitoring()
+        a11y.hideTranslationOverlay()
     }
 
     override fun refresh() {
@@ -105,7 +119,7 @@ class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
     }
 
     private fun onButtonDown() {
-        PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+        a11y.hideTranslationOverlay()
         resetState()
         scheduleNextCycle(Prefs(service).captureIntervalMs)
     }
@@ -128,14 +142,13 @@ class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
      *  skip correctly. */
     private fun hasOverlays(): Boolean =
         cachedBoxes != null &&
-        PlayTranslateAccessibilityService.instance?.translationOverlayView != null
+        a11y.translationOverlayView != null
 
     /** Run one capture-detect-translate cycle. Returns the delay (ms) before the next cycle. */
     private suspend fun runCycle(): Long {
         val prefs = Prefs(service)
         if (service.holdActive) return 100L
-        val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager ?: return prefs.captureIntervalMs
-        val a11y = PlayTranslateAccessibilityService.instance ?: return prefs.captureIntervalMs
+        val mgr = a11y.screenshotManager ?: return prefs.captureIntervalMs
         val dirtyView = a11y.dirtyOverlayView
         val hasDirty = cachedBoxes?.any { it.dirty } == true
 
@@ -183,7 +196,7 @@ class PinholeOverlayMode(private val service: CaptureService) : LiveMode {
                 cleanRefBitmap = null
                 overlayBitmap?.recycle()
                 overlayBitmap = null
-                PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+                a11y.hideTranslationOverlay()
                 return prefs.captureIntervalMs
             }
 

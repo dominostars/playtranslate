@@ -36,7 +36,16 @@ private const val STALE_REF_REFRESH_FRAMES = 20
  * Owns ALL its mutable state. When stopped, scope is cancelled and all
  * state (including cleanRefBitmap) is released.
  */
-class FuriganaMode(private val service: CaptureService) : LiveMode {
+/**
+ * @param service the enclosing capture service (for state access and coordinator calls)
+ * @param a11y the accessibility service instance, captured at mode construction.
+ *   Injected so the dependency is explicit and the mode is unit-testable. See
+ *   PinholeOverlayMode's equivalent KDoc for the rationale — same pattern.
+ */
+class FuriganaMode(
+    private val service: CaptureService,
+    private val a11y: PlayTranslateAccessibilityService,
+) : LiveMode {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var cleanProcessingJob: Job? = null
@@ -78,13 +87,12 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
     // ── LiveMode interface ────────────────────────────────────────────────
 
     override fun start() {
-        val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
+        val mgr = a11y.screenshotManager
         if (mgr == null) {
             DetectionLog.log("ERROR: screenshotManager is null, can't start furigana loop")
             return
         }
-        PlayTranslateAccessibilityService.instance
-            ?.startInputMonitoring(service.gameDisplayId) { onButtonDown() }
+        a11y.startInputMonitoring(service.gameDisplayId) { onButtonDown() }
         DetectionLog.log("Starting furigana loop on display ${service.gameDisplayId}")
         startLoop(mgr)
     }
@@ -95,9 +103,9 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
         restartJob?.cancel()
         clearState()
         scope.cancel()
-        PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
-        PlayTranslateAccessibilityService.instance?.screenshotManager?.stopLoop()
-        PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+        a11y.stopInputMonitoring()
+        a11y.screenshotManager?.stopLoop()
+        a11y.hideTranslationOverlay()
     }
 
     override fun refresh() {
@@ -105,7 +113,7 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
         rawOcrJob?.cancel()
         restartJob?.cancel()
         clearState()
-        val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager ?: return
+        val mgr = a11y.screenshotManager ?: return
         if (mgr.isLoopRunning) {
             mgr.requestCleanCapture()
         } else {
@@ -124,11 +132,11 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
     }
 
     private fun onButtonDown() {
-        val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager ?: return
+        val mgr = a11y.screenshotManager ?: return
         cleanProcessingJob?.cancel()
         rawOcrJob?.cancel()
         mgr.stopLoop()
-        PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+        a11y.hideTranslationOverlay()
         clearState()
         restartJob?.cancel()
         restartJob = scope.launch {
@@ -151,7 +159,7 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
                 processCleanFrame(raw)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 if (service.liveActive) {
-                    PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
+                    a11y.screenshotManager?.requestCleanCapture()
                 }
                 throw e
             }
@@ -211,7 +219,7 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
             cleanRefBitmap = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
 
             // Save screenshot for Anki + send translation to in-app panel
-            val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
+            val mgr = a11y.screenshotManager
             mgr?.saveToCache(raw)
             val screenshotPath = mgr?.lastCleanPath
             service.translateAndSendToPanel(ocrResult, screenshotPath)
@@ -236,7 +244,7 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
 
         val ref = cleanRefBitmap
         val boxes = cachedFuriganaBoxes
-        val overlayView = PlayTranslateAccessibilityService.instance?.translationOverlayView
+        val overlayView = a11y.translationOverlayView
         val screenRects = overlayView?.getChildScreenRects() ?: emptyList()
 
         if (ref == null || boxes.isNullOrEmpty()) {
@@ -256,8 +264,8 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
                 // Too long without a rendered overlay — force recovery
                 emptyRectsStallCount = 0
                 clearState()
-                PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
-                PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
+                a11y.hideTranslationOverlay()
+                a11y.screenshotManager?.requestCleanCapture()
             }
             return
         }
@@ -269,8 +277,8 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
         // fresh clean capture to rebuild from scratch.
         if (bitmap.width != ref.width || bitmap.height != ref.height) {
             clearState()
-            PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
-            PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
+            a11y.hideTranslationOverlay()
+            a11y.screenshotManager?.requestCleanCapture()
             bitmap.recycle()
             return
         }
@@ -365,10 +373,10 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
                         lastOcrText = null
 
                         if (cachedFuriganaBoxes == null) {
-                            PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+                            a11y.hideTranslationOverlay()
                         }
 
-                        PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
+                        a11y.screenshotManager?.requestCleanCapture()
                     } else {
                         // No change detected. Periodically force a clean capture to refresh
                         // the ref — stale ref content in overlay regions can mask real scene
@@ -380,7 +388,7 @@ class FuriganaMode(private val service: CaptureService) : LiveMode {
                             // Force rebuild path in processCleanFrame. Don't clear cleanRefBitmap
                             // here — see race comment above.
                             lastOcrText = null
-                            PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
+                            a11y.screenshotManager?.requestCleanCapture()
                         }
                     }
                 } else {

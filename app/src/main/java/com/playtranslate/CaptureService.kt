@@ -395,11 +395,30 @@ class CaptureService : Service() {
         oneShotCaptureJob?.cancel()
 
         val prefs = Prefs(this)
-        liveMode = if (prefs.hideGameOverlays && !Prefs.isSingleScreen(this)) {
+        val useInAppOnly = prefs.hideGameOverlays && !Prefs.isSingleScreen(this)
+        liveMode = if (useInAppOnly) {
+            // InAppOnlyMode doesn't use PlayTranslateAccessibilityService directly
+            // (no overlay windows, no input monitoring, no screenshotManager fetch)
+            // so it keeps the single-argument constructor. PinholeOverlayMode and
+            // FuriganaMode take an explicit a11y reference; if accessibility isn't
+            // connected, bail out of live mode rather than constructing a mode
+            // that can't function.
             InAppOnlyMode(this)
-        } else when (prefs.autoTranslationMode) {
-            AutoTranslationMode.FURIGANA -> FuriganaMode(this)
-            else -> PinholeOverlayMode(this)
+        } else {
+            val a11y = PlayTranslateAccessibilityService.instance
+            if (a11y == null) {
+                Log.w(
+                    TAG,
+                    "startLive: accessibility service not connected; cannot start " +
+                        "${prefs.autoTranslationMode}. Live mode aborted."
+                )
+                liveActive = false
+                return
+            }
+            when (prefs.autoTranslationMode) {
+                AutoTranslationMode.FURIGANA -> FuriganaMode(this, a11y)
+                else -> PinholeOverlayMode(this, a11y)
+            }
         }
         liveMode?.start()
 
