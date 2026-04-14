@@ -833,6 +833,18 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
     }
 
+    /**
+     * Kept as a method rather than inlined in the observer lambda so the
+     * lambda captures `this@MainActivity` and is compiled as a per-instance
+     * object rather than a singleton. A singleton observer registered with
+     * different Activity lifecycle owners (e.g. after the process survives
+     * between MainActivity instances) throws IllegalArgumentException from
+     * LiveData.observe.
+     */
+    private fun onDegradedStateChanged(degraded: Boolean) {
+        PlayTranslateAccessibilityService.instance?.floatingIcon?.degraded = degraded
+    }
+
     private fun wireServiceCallbacks() {
         val svc = captureService ?: return
         svc.onResult = { result ->
@@ -856,7 +868,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         }
         // onLiveStopped removed — LiveData observer handles live mode changes
         svc.degradedState.observe(this) { degraded ->
-            PlayTranslateAccessibilityService.instance?.floatingIcon?.degraded = degraded
+            onDegradedStateChanged(degraded)
         }
         svc.onHoldLoadingChanged = { loading ->
             PlayTranslateAccessibilityService.instance?.floatingIcon?.showLoading = loading
