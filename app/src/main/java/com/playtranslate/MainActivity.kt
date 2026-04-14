@@ -490,10 +490,16 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         tvTranslateTitle.text = SpannableStringBuilder(prefix + label).apply {
             setSpan(StyleSpan(Typeface.BOLD), prefix.length, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        tvTranslateSubtitle.text = if (overlayLive)
-            "Hold to hide translations on game screen"
-        else
-            "Hold to show translations on game screen"
+        tvTranslateSubtitle.text = when (captureService?.holdBehavior) {
+            CaptureService.HoldBehavior.HIDE_TRANSLATIONS ->
+                "Hold to hide translations on game screen"
+            CaptureService.HoldBehavior.SHOW_TRANSLATIONS_OVER_FURIGANA ->
+                "Hold to show translations instead of furigana"
+            CaptureService.HoldBehavior.SHOW_FURIGANA ->
+                "Hold to show furigana on game screen"
+            else ->
+                "Hold to show translations on game screen"
+        }
     }
 
     private fun toggleLiveMode() {
@@ -758,6 +764,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             }
             onClose = { hideSettings() }
             onThemeChanged = { scrollY -> applyThemeInPlace(scrollY) }
+            onOverlayModeChanged = { updateRegionButton() }
         }
         supportFragmentManager.beginTransaction()
             .replace(R.id.settingsContainer, sheet, SettingsBottomSheet.TAG)
@@ -790,6 +797,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                 prefs.settingsScrollY = scrollY
                 reinflateContent()
             }
+            onOverlayModeChanged = { updateRegionButton() }
         }
         val ft = supportFragmentManager.beginTransaction()
         ft.add(sheet, SettingsBottomSheet.TAG)

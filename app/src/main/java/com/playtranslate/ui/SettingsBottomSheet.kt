@@ -57,6 +57,8 @@ class SettingsBottomSheet : DialogFragment() {
     var onClose: (() -> Unit)? = null
     /** Called when the user selects a new theme. Passes the scroll position to restore. */
     var onThemeChanged: ((scrollY: Int) -> Unit)? = null
+    /** Called when the user toggles the overlay mode (translation ↔ furigana). */
+    var onOverlayModeChanged: (() -> Unit)? = null
 
     private var deckEntries: List<Map.Entry<Long, String>> = emptyList()
     private var displayList: List<android.view.Display> = emptyList()
@@ -340,6 +342,7 @@ class SettingsBottomSheet : DialogFragment() {
             if (CaptureService.instance?.isLive == true) {
                 CaptureService.instance?.stopLive()
             }
+            onOverlayModeChanged?.invoke()
         }
 
         // ── Hide game screen overlays toggle (multi-screen only) ─────────
