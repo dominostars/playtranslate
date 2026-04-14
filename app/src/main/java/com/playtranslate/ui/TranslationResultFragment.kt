@@ -360,15 +360,41 @@ class TranslationResultFragment : Fragment() {
                 val response = withContext(Dispatchers.IO) {
                     dict.lookup(lookupForm, reading.ifEmpty { null })
                 }
-                val entry = response?.data?.firstOrNull() ?: return@launch
+                val entry = response?.data?.firstOrNull()
 
-                val form = entry.japanese.firstOrNull()
-                val word = form?.word ?: form?.reading ?: entry.slug
-                val senses = entry.senses.map { sense ->
-                    WordLookupPopup.SenseDisplay(
-                        pos = sense.partsOfSpeech.joinToString(", "),
-                        definition = sense.englishDefinitions.joinToString("; ")
+                // Build popup data from the JMdict entry when we have one,
+                // or fall back to a reading-only display when the tokenizer
+                // produced a reading but no dictionary entry exists (proper
+                // nouns live in ENAMDICT, which isn't bundled — same for
+                // other out-of-dictionary tokens). If we don't even have a
+                // reading there's nothing meaningful to show, so return.
+                val word: String
+                val senses: List<WordLookupPopup.SenseDisplay>
+                val freqScore: Int
+                val isCommon: Boolean
+                if (entry != null) {
+                    val form = entry.japanese.firstOrNull()
+                    word = form?.word ?: form?.reading ?: entry.slug
+                    senses = entry.senses.map { sense ->
+                        WordLookupPopup.SenseDisplay(
+                            pos = sense.partsOfSpeech.joinToString(", "),
+                            definition = sense.englishDefinitions.joinToString("; ")
+                        )
+                    }
+                    freqScore = entry.freqScore
+                    isCommon = entry.isCommon == true
+                } else if (reading.isNotEmpty()) {
+                    word = lookupForm
+                    senses = listOf(
+                        WordLookupPopup.SenseDisplay(
+                            pos = "",
+                            definition = "Not in dictionary, may be a name"
+                        )
                     )
+                    freqScore = 0
+                    isCommon = false
+                } else {
+                    return@launch
                 }
 
                 // Calculate position: center on the tapped word, above it
@@ -391,7 +417,9 @@ class TranslationResultFragment : Fragment() {
                 wordPopup = WordLookupPopup(activity, activity.windowManager).apply {
                     useActivityWindow = true
                     verticalMarginDp = 5
-                    showOpenButton = true
+                    // Open-in-app would just re-run the same failing lookup,
+                    // so suppress the button when we're in the fallback path.
+                    showOpenButton = entry != null
                     onOpenTap = {
                         dismissWordPopup()
                         host?.onInteraction()
@@ -404,8 +432,8 @@ class TranslationResultFragment : Fragment() {
                         )
                     }
                 }
-                wordPopup?.show(word, lookupReading, senses, entry.freqScore,
-                    entry.isCommon == true, screenX, screenY, dm.widthPixels, dm.heightPixels,
+                wordPopup?.show(word, lookupReading, senses, freqScore,
+                    isCommon, screenX, screenY, dm.widthPixels, dm.heightPixels,
                     anchorHeight = lineH)
             } catch (_: Exception) {}
         }
@@ -733,8 +761,14 @@ class TranslationResultFragment : Fragment() {
             }
             wordSpans.clear()
             for ((range, surface, lookupForm) in pendingSpans) {
+                // Fall back to readingByToken (the tokenizer's direct Kuromoji
+                // reading) when the JMdict lookup didn't produce one — this is
+                // what lets proper nouns and other out-of-dictionary tokens
+                // still carry a reading into the tap-popup fallback below.
                 val reading = lookupToReading[lookupForm]
-                    ?: lookupToReading[surface] ?: ""
+                    ?: lookupToReading[surface]
+                    ?: readingByToken[lookupForm]
+                    ?: ""
                 wordSpans.add(Triple(range, lookupForm, reading))
             }
 
