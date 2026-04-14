@@ -267,6 +267,14 @@
                 android:textColor="?attr/colorTextPrimary"
                 android:textSize="16sp"
                 android:textStyle="bold"
+                android:layout_marginBottom="2dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="What overlays to show during &quot;auto&quot; mode or hold-to-preview."
+                android:textColor="?attr/colorTextHint"
+                android:textSize="14sp"
                 android:layout_marginBottom="6dp" />
 
             <!-- Overlay Mode toggle -->
@@ -274,6 +282,7 @@
                 android:id="@+id/toggleAutoMode"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
                 app:singleSelection="true"
                 app:selectionRequired="true">
 
@@ -283,7 +292,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Translate" />
+                    android:text="Translation" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnModeFurigana"
@@ -294,16 +303,6 @@
                     android:text="Furigana" />
 
             </com.google.android.material.button.MaterialButtonToggleGroup>
-
-            <TextView
-                android:id="@+id/tvAutoModeHint"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:textColor="?attr/colorTextHint"
-                android:textSize="14sp"
-                android:layout_marginTop="4dp"
-                android:layout_marginBottom="12dp" />
 
             <!-- Hide game screen overlays toggle (multi-screen only) -->
             <LinearLayout
@@ -324,7 +323,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Hide game screen overlays"
+                        android:text="Hide overlays during &quot;auto&quot; mode"
                         android:textColor="?attr/colorTextPrimary"
                         android:textSize="16sp"
                         android:textStyle="bold" />
