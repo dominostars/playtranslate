@@ -349,14 +349,54 @@ class DragLookupController(
         if (lookupForm == lastWord && popup.isShowing) return true
 
         // Dictionary lookup using the base/dictionary form + reading hint
-        val response = dict.lookup(lookupForm, matchedToken?.reading) ?: return false
-        val entry = response.data.firstOrNull() ?: return false
+        val response = dict.lookup(lookupForm, matchedToken?.reading)
+        val entry = response?.data?.firstOrNull()
+
+        // Build popup data. If JMdict has the token, use its entry. Otherwise
+        // fall back to a reading-only "Not in dictionary, may be a name"
+        // popup when the tokenizer gave us a reading (proper nouns live in
+        // ENAMDICT, not JMdict). If neither, there's nothing to show.
+        val reading = matchedToken?.reading
+        val popupData: PopupData = when {
+            entry != null -> {
+                val form = entry.japanese.firstOrNull()
+                PopupData(
+                    word = form?.word ?: form?.reading ?: entry.slug,
+                    reading = form?.reading,
+                    senses = entry.senses.map { sense ->
+                        WordLookupPopup.SenseDisplay(
+                            pos = sense.partsOfSpeech.joinToString(", "),
+                            definition = sense.englishDefinitions.joinToString("; ")
+                        )
+                    },
+                    freqScore = entry.freqScore,
+                    isCommon = entry.isCommon == true,
+                    entry = entry
+                )
+            }
+            !reading.isNullOrEmpty() -> {
+                PopupData(
+                    word = lookupForm,
+                    reading = reading,
+                    senses = listOf(
+                        WordLookupPopup.SenseDisplay(
+                            pos = "",
+                            definition = "Not in dictionary, may be a name"
+                        )
+                    ),
+                    freqScore = 0,
+                    isCommon = false,
+                    entry = null
+                )
+            }
+            else -> return false
+        }
 
         // Estimate the word's center X in screen coordinates (using surface span position)
         val tokenCenterIdx = matchedIdx + matchedSurface.length / 2f
         val wordCenterX = (hitLine.bounds.left + tokenCenterIdx * charWidth).toInt()
 
-        Log.d(TAG, "Found: $matchedSurface ($lookupForm) → ${entry.slug}")
+        Log.d(TAG, "Found: $matchedSurface ($lookupForm) → ${entry?.slug ?: "(fallback)"}")
         lastWord = lookupForm
 
         // Use the pre-built group text (same combination logic as the main OCR pipeline)
@@ -367,7 +407,7 @@ class DragLookupController(
         prefetchWordLookups(sentence)
 
         withContext(Dispatchers.Main) {
-            showPopup(entry, wordCenterX, fingerY)
+            showPopup(popupData, wordCenterX, fingerY)
             if (sentence != lastSentSentence) {
                 lastSentSentence = sentence
                 sendLineToMainApp(sentence)
@@ -375,6 +415,17 @@ class DragLookupController(
         }
         return true
     }
+
+    /** Resolved data for a single showPopup call — either a real JMdict entry
+     *  or a reading-only fallback for tokens missing from the dictionary. */
+    private data class PopupData(
+        val word: String,
+        val reading: String?,
+        val senses: List<WordLookupPopup.SenseDisplay>,
+        val freqScore: Int,
+        val isCommon: Boolean,
+        val entry: JishoWord?
+    )
 
     private fun findLineAt(x: Int, y: Int, lines: List<OcrManager.OcrLine>): OcrManager.OcrLine? {
         // Try progressively wider search areas
@@ -444,31 +495,30 @@ class DragLookupController(
         return nearest?.let { it.token to it.idx }
     }
 
-    private fun showPopup(entry: JishoWord, fingerX: Int, fingerY: Int) {
-        currentEntry = entry
-        val form = entry.japanese.firstOrNull()
-        val word = form?.word ?: form?.reading ?: entry.slug
-        val reading = form?.reading
+    private fun showPopup(data: PopupData, fingerX: Int, fingerY: Int) {
+        currentEntry = data.entry
 
-        val senses = entry.senses.map { sense ->
-            WordLookupPopup.SenseDisplay(
-                pos = sense.partsOfSpeech.joinToString(", "),
-                definition = sense.englishDefinitions.joinToString("; ")
-            )
-        }
+        // Suppress the Anki button for fallback popups — launchAnkiReview
+        // guards on currentEntry and would silently no-op, which is worse
+        // UX than just hiding the button. Save and restore so the next
+        // real-entry popup still shows it.
+        val savedShowAnki = popup.showAnkiButton
+        if (data.entry == null) popup.showAnkiButton = false
 
         val screen = queryScreenSize()
         popup.show(
-            word = word,
-            reading = reading,
-            senses = senses,
-            freqScore = entry.freqScore,
-            isCommon = entry.isCommon == true,
+            word = data.word,
+            reading = data.reading,
+            senses = data.senses,
+            freqScore = data.freqScore,
+            isCommon = data.isCommon,
             screenX = fingerX,
             screenY = fingerY,
             screenW = screen.x,
             screenH = screen.y
         )
+
+        popup.showAnkiButton = savedShowAnki
     }
 
     /**
