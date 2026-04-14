@@ -34,7 +34,6 @@ class WordLookupPopup(
     private val wm: WindowManager
 ) {
     private var popupView: View? = null
-    private var backdropView: View? = null
     var onDismiss: (() -> Unit)? = null
     var onAnkiTap: (() -> Unit)? = null
     var onOpenTap: (() -> Unit)? = null
@@ -111,17 +110,37 @@ class WordLookupPopup(
 
         val arrowRelX = (screenX - x).coerceIn(arrowSizePx, popupW - arrowSizePx)
 
-        // Backdrop
-        val backdrop = View(ctx).apply {
+        val windowType = if (useActivityWindow)
+            WindowManager.LayoutParams.TYPE_APPLICATION_PANEL
+        else
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+
+        // Build popup with arrow. The popup window itself receives
+        // ACTION_OUTSIDE for taps landing beyond its bounds (via
+        // FLAG_WATCH_OUTSIDE_TOUCH on the window params below). That
+        // outside notification is non-consuming — the real touch still
+        // flows through to the underlying activity window, so tapping a
+        // new word in ClickableTextView dismisses the current popup AND
+        // selects the new word in a single tap.
+        val container = FrameLayout(ctx).apply {
             isFocusable = true
             isFocusableInTouchMode = true
             setOnTouchListener { _, event ->
-                if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                    dismiss()
-                    true
-                } else true
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_OUTSIDE -> {
+                        dismiss()
+                        // Do not consume — the real touch continues to the
+                        // underlying window.
+                        false
+                    }
+                    // Touches inside the popup bounds fall through to the
+                    // child views so buttons (Anki / Open) still register.
+                    else -> false
+                }
             }
-            // Dismiss on joystick movement (analog stick beyond dead zone)
+            // Dismiss on joystick movement (analog stick beyond dead zone).
+            // Requires the container to have window focus, so the popup
+            // window below is marked focusable.
             setOnGenericMotionListener { _, event ->
                 if (event.source and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK
                     && event.action == MotionEvent.ACTION_MOVE
@@ -134,26 +153,6 @@ class WordLookupPopup(
                     } else false
                 } else false
             }
-        }
-        val windowType = if (useActivityWindow)
-            WindowManager.LayoutParams.TYPE_APPLICATION_PANEL
-        else
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-        val backdropParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            windowType,
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-            PixelFormat.TRANSLUCENT
-        )
-        wm.addView(backdrop, backdropParams)
-        backdrop.requestFocus()
-        backdropView = backdrop
-
-        // Build popup with arrow
-        val container = FrameLayout(ctx).apply {
-            setOnTouchListener { _, _ -> true }
         }
 
         // Arrow view
@@ -181,8 +180,14 @@ class WordLookupPopup(
         val popupParams = WindowManager.LayoutParams(
             popupW, totalH,
             windowType,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            // FLAG_NOT_TOUCH_MODAL is REQUIRED alongside
+            // FLAG_WATCH_OUTSIDE_TOUCH. Without it, a focusable window is
+            // touch-modal by default and captures every touch system-wide,
+            // locking the app. The outside-touch notification is an
+            // orthogonal mechanism from touch modality.
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -191,14 +196,15 @@ class WordLookupPopup(
         }
 
         wm.addView(container, popupParams)
+        // Request window focus so onGenericMotionListener receives joystick
+        // events (the previous architecture got focus via the backdrop).
+        container.requestFocus()
         popupView = container
     }
 
     fun dismiss() {
         try { popupView?.let { wm.removeView(it) } } catch (_: Exception) {}
-        try { backdropView?.let { wm.removeView(it) } } catch (_: Exception) {}
         popupView = null
-        backdropView = null
         currentWord = null
         if (!suppressDismissCallback) onDismiss?.invoke()
     }
