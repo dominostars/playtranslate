@@ -954,7 +954,13 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
         val a11yEnabled = PlayTranslateAccessibilityService.isEnabled
-        val singleScreen = !Prefs.hasMultipleDisplays(this)
+        // Use the viewport predicate (not hasMultipleDisplays) so split-screen
+        // users don't fall into the forced non-dismissible settings sheet
+        // below. The sheet exists because in pure single-screen fullscreen
+        // mode the user has no other UI surface to manage the app from; that
+        // rationale doesn't apply in split-screen where the app half is
+        // visible alongside the game.
+        val singleScreen = Prefs.isSingleScreen(this)
         val existingSheet = supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG) as? SettingsBottomSheet
 
         // Notification permission always comes first regardless of screen mode
