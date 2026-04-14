@@ -30,7 +30,6 @@ class InAppOnlyMode(private val service: CaptureService) : LiveMode {
     private var cropTop = 0
     private var screenshotW = 0
     private var screenshotH = 0
-    private var showRegionFlash = true
 
     // ── LiveMode interface ────────────────────────────────────────────────
 
@@ -44,10 +43,6 @@ class InAppOnlyMode(private val service: CaptureService) : LiveMode {
                 }
 
                 val pipeline = service.runCaptureOcrTranslate()
-                if (showRegionFlash) {
-                    showRegionFlash = false
-                    service.flashRegionIndicator()
-                }
                 if (pipeline != null) {
                     val dedupKey = pipeline.result.originalText
                         .filter { c -> OcrManager.isSourceLangChar(c, service.sourceLang) }

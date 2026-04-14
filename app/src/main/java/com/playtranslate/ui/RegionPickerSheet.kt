@@ -271,12 +271,6 @@ class RegionPickerSheet : DialogFragment() {
         PlayTranslateAccessibilityService.instance?.showRegionOverlay(display, e)
     }
 
-    private fun flashSelectedIndicator() {
-        val display = gameDisplay ?: return
-        val e = workingList.find { it.id == selectedId } ?: workingList.firstOrNull() ?: return
-        PlayTranslateAccessibilityService.instance?.showRegionIndicator(display, e)
-    }
-
     // ── RecyclerView Adapter ──────────────────────────────────────────────
 
     private inner class RegionAdapter : RecyclerView.Adapter<RegionAdapter.VH>() {
@@ -349,9 +343,6 @@ class RegionPickerSheet : DialogFragment() {
                         gameDisplay?.let { d -> PlayTranslateAccessibilityService.instance?.showRegionOverlay(d, e) }
                     }
                     onSaved?.invoke()
-                    if (isLive) {
-                        flashSelectedIndicator()
-                    }
                     submitList()
                 }
             }

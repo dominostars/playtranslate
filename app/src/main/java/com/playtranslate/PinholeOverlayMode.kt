@@ -61,7 +61,6 @@ class PinholeOverlayMode(
     private var cropTop = 0
     private var screenshotW = 0
     private var screenshotH = 0
-    private var showRegionFlash = true
 
     private enum class PinholeResult { KEEP, DIRTY, REMOVE }
 
@@ -189,11 +188,6 @@ class PinholeOverlayMode(
                 overlayBitmap = null
                 a11y.hideTranslationOverlay()
                 return prefs.captureIntervalMs
-            }
-
-            if (showRegionFlash) {
-                showRegionFlash = false
-                service.flashRegionIndicator()
             }
 
             // Build FrameCoordinates for this cycle. At identity scale

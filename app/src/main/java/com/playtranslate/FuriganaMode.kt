@@ -62,7 +62,6 @@ class FuriganaMode(
     private var cropTop = 0
     private var screenshotW = 0
     private var screenshotH = 0
-    private var showRegionFlash = true
     /** Consecutive frames where boxes were cached but overlay screen rects were empty.
      *  Used to detect a stuck state where [showLiveOverlay] was blocked (holdActive,
      *  a11y not ready, etc.) so cachedFuriganaBoxes is set but no view is attached. */
@@ -179,11 +178,6 @@ class FuriganaMode(
         if (!service.isConfigured) { raw.recycle(); return }
 
         try {
-            if (showRegionFlash) {
-                showRegionFlash = false
-                service.flashRegionIndicator()
-            }
-
             // Shared OCR pipeline: crop → blackout icon → OCR → filter source chars
             val pipeline = service.runOcr(raw)
 
