@@ -602,14 +602,16 @@ class CaptureService : Service() {
         endHoldPreview()
     }
 
-    /** Cancel a hold gesture (e.g. user started dragging). */
+    /**
+     * Cancel a hold gesture (e.g. user started dragging on the floating icon).
+     * Delegates to [endHoldPreview] so any in-flight one-shot (furigana live,
+     * in-app-only live, or not-live mode) is cancelled before it can repaint
+     * an overlay the user already dismissed, and so live mode is refreshed
+     * back to its normal render cycle.
+     */
     fun holdCancel() {
         onHoldLoadingChanged?.invoke(false)
-        holdActive = false
-        if (!liveActive) {
-            oneShotManager.cancel()
-        }
-        PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+        endHoldPreview()
     }
 
     // ── Hotkey hold ─────────────────────────────────────────────────────
