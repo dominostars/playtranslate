@@ -756,9 +756,14 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         val sheet = SettingsBottomSheet.newInstance(hideDismiss = false).apply {
             setShowsDialog(false)
             onDisplayChanged = {
+                val wasLive = captureService?.isLive == true
                 captureService?.resetConfiguration()
                 configureService()
                 PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
+                if (wasLive) {
+                    captureService?.stopLive()
+                    withAccessibility { doStartLive() }
+                }
             }
             onScreenModeChanged = {
                 checkOnboardingState()
@@ -786,9 +791,14 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private fun showSettingsSheet(hideDismiss: Boolean) {
         val sheet = SettingsBottomSheet.newInstance(hideDismiss = hideDismiss).apply {
             onDisplayChanged = {
+                val wasLive = captureService?.isLive == true
                 captureService?.resetConfiguration()
                 configureService()
                 PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
+                if (wasLive) {
+                    captureService?.stopLive()
+                    withAccessibility { doStartLive() }
+                }
             }
             onScreenModeChanged = {
                 checkOnboardingState()
