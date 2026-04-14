@@ -342,6 +342,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         resultFragment?.setOnEditOriginalListener { showEditOverlay() }
         PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
         checkOnboardingState()
+        maybeCheckForUpdates()
         if (onboardingContainer.visibility == View.VISIBLE) return
         if (isSingleScreen()) return
         initLiveHintText()
@@ -967,6 +968,45 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
+    }
+
+    private fun maybeCheckForUpdates() {
+        if (onboardingContainer.visibility == View.VISIBLE) return
+        lifecycleScope.launch {
+            val release = UpdateChecker.maybeCheck(this@MainActivity) ?: return@launch
+            if (!isInForeground || isFinishing || isDestroyed) return@launch
+            if (onboardingContainer.visibility == View.VISIBLE) return@launch
+            showUpdatePopup(release)
+        }
+    }
+
+    private fun showUpdatePopup(release: UpdateChecker.Release) {
+        OverlayAlert.Builder(this)
+            .setTitle("Update available")
+            .setMessage("PlayTranslate ${release.tag} is available on GitHub.")
+            .addButton("View release", android.graphics.Color.parseColor("#5DB2EB")) {
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(release.url)))
+                } catch (_: Exception) {
+                    Toast.makeText(this, "No browser available", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .addButton(
+                "Ask again later",
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Color.parseColor("#AAAAAA")
+            ) {
+                // 24h debounce timestamp was already committed inside
+                // UpdateChecker.maybeCheck — no extra bookkeeping needed.
+            }
+            .addButton(
+                "Skip this version",
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Color.parseColor("#AAAAAA")
+            ) {
+                prefs.updateCheckSkippedTag = release.tag
+            }
+            .showInActivity(this)
     }
 
     private fun showRestrictedSettingsDialog() {

@@ -195,6 +195,17 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_SUPPRESS_TRANSITION, false)
         set(v) = sp.edit().putBoolean(KEY_SUPPRESS_TRANSITION, v).apply()
 
+    /** Timestamp (ms) of the most recent GitHub release check. Debounced to 24h. */
+    var lastUpdateCheckTime: Long
+        get() = sp.getLong(KEY_LAST_UPDATE_CHECK, 0L)
+        set(v) = sp.edit().putLong(KEY_LAST_UPDATE_CHECK, v).apply()
+
+    /** Tag (e.g. "v1.2.0") the user explicitly skipped; suppresses re-prompting
+     *  until a newer tag is published. */
+    var updateCheckSkippedTag: String
+        get() = sp.getString(KEY_UPDATE_SKIP_TAG, "") ?: ""
+        set(v) = sp.edit().putString(KEY_UPDATE_SKIP_TAG, v).apply()
+
 
     /** 0 = Black, 1 = White, 2 = Rainbow, 3 = Purple */
     var themeIndex: Int
@@ -269,6 +280,8 @@ class Prefs(context: Context) {
         private const val KEY_DEBUG_SHOW_DETECTION_LOG      = "debug_show_detection_log"
         private const val KEY_HOTKEY_TRANSLATION           = "hotkey_translation"
         private const val KEY_HOTKEY_FURIGANA              = "hotkey_furigana"
+        private const val KEY_LAST_UPDATE_CHECK            = "last_update_check"
+        private const val KEY_UPDATE_SKIP_TAG              = "update_skip_tag"
 
         /**
          * True when the device has more than one physical display connected.
