@@ -325,21 +325,11 @@ class SettingsBottomSheet : DialogFragment() {
 
         // ── Overlay mode toggle ─────────────────────────────────────────
         val toggleAutoMode = view.findViewById<com.google.android.material.button.MaterialButtonToggleGroup>(R.id.toggleAutoMode)
-        val tvAutoModeHint = view.findViewById<TextView>(R.id.tvAutoModeHint)
-
-        fun updateAutoModeHint() {
-            tvAutoModeHint.text = when (prefs.autoTranslationMode) {
-                AutoTranslationMode.TRANSLATE -> "Overlay translations automatically on the game screen"
-                AutoTranslationMode.FURIGANA -> "Show hiragana readings above kanji"
-                else -> "Overlay translations automatically on the game screen"
-            }
-        }
 
         toggleAutoMode.check(when (prefs.autoTranslationMode) {
             AutoTranslationMode.FURIGANA -> R.id.btnModeFurigana
             else -> R.id.btnModeTranslate
         })
-        updateAutoModeHint()
 
         toggleAutoMode.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener
@@ -347,7 +337,6 @@ class SettingsBottomSheet : DialogFragment() {
                 R.id.btnModeFurigana -> AutoTranslationMode.FURIGANA
                 else -> AutoTranslationMode.TRANSLATE
             }
-            updateAutoModeHint()
             if (CaptureService.instance?.isLive == true) {
                 CaptureService.instance?.stopLive()
             }
