@@ -32,9 +32,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
 import com.playtranslate.AnkiManager
-import com.playtranslate.AutoTranslationMode
-import com.playtranslate.CaptureService
 import com.playtranslate.OverlayMode
+import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.fullScreenDialogTheme
@@ -328,16 +327,16 @@ class SettingsBottomSheet : DialogFragment() {
         // ── Overlay mode toggle ─────────────────────────────────────────
         val toggleAutoMode = view.findViewById<com.google.android.material.button.MaterialButtonToggleGroup>(R.id.toggleAutoMode)
 
-        toggleAutoMode.check(when (prefs.autoTranslationMode) {
-            AutoTranslationMode.FURIGANA -> R.id.btnModeFurigana
+        toggleAutoMode.check(when (prefs.overlayMode) {
+            OverlayMode.FURIGANA -> R.id.btnModeFurigana
             else -> R.id.btnModeTranslate
         })
 
         toggleAutoMode.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener
-            prefs.autoTranslationMode = when (checkedId) {
-                R.id.btnModeFurigana -> AutoTranslationMode.FURIGANA
-                else -> AutoTranslationMode.TRANSLATE
+            prefs.overlayMode = when (checkedId) {
+                R.id.btnModeFurigana -> OverlayMode.FURIGANA
+                else -> OverlayMode.TRANSLATION
             }
             if (CaptureService.instance?.isLive == true) {
                 CaptureService.instance?.stopLive()
@@ -512,8 +511,8 @@ class SettingsBottomSheet : DialogFragment() {
         val v = currentView ?: view ?: return
         val ctx = context ?: return
         val toggle = v.findViewById<com.google.android.material.button.MaterialButtonToggleGroup>(R.id.toggleAutoMode) ?: return
-        val checkedId = when (Prefs(ctx).autoTranslationMode) {
-            AutoTranslationMode.FURIGANA -> R.id.btnModeFurigana
+        val checkedId = when (Prefs(ctx).overlayMode) {
+            OverlayMode.FURIGANA -> R.id.btnModeFurigana
             else -> R.id.btnModeTranslate
         }
         if (toggle.checkedButtonId != checkedId) toggle.check(checkedId)

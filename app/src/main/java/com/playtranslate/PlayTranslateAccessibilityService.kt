@@ -1075,7 +1075,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         CaptureService.instance?.holdActive = true
         hideTranslationOverlay()
 
-        menu.isFuriganaMode = Prefs(this).autoTranslationMode == AutoTranslationMode.FURIGANA
+        menu.isFuriganaMode = Prefs(this).overlayMode == OverlayMode.FURIGANA
         menu.isLiveMode = CaptureService.instance?.isLive == true
         menu.showDegradedWarning = CaptureService.instance?.degradedState?.value == true
         menu.onHideIcon = {

@@ -8,23 +8,20 @@ import com.google.mlkit.nl.translate.TranslateLanguage
 import org.json.JSONArray
 import org.json.JSONObject
 
-enum class AutoTranslationMode(val displayName: String) {
-    TRANSLATE("Translate"),
-    TRANSLATE_LEGACY("Translate (Legacy)"),
-    IN_APP_ONLY("In-App Only"),
-    FURIGANA("Furigana");
-
-    companion object {
-        fun fromOrdinal(ordinal: Int) = entries.getOrElse(ordinal) { TRANSLATE }
-    }
-}
-
+/**
+ * Which overlay the live-mode loop and hold-to-preview gesture should render
+ * when the user doesn't force a specific mode via hotkey. Persisted as the
+ * enum *name* (not ordinal) so the stored value survives future enum edits;
+ * the old ordinal-based `auto_translation_mode` pref is handled in
+ * [Prefs.migrateLegacyPrefs].
+ */
 enum class OverlayMode(val displayName: String) {
     TRANSLATION("Translation"),
     FURIGANA("Furigana");
 
     companion object {
-        fun fromOrdinal(ordinal: Int) = entries.getOrElse(ordinal) { TRANSLATION }
+        fun fromStorageName(name: String?): OverlayMode =
+            entries.find { it.name == name } ?: TRANSLATION
     }
 }
 
@@ -113,24 +110,41 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_CAPTURE_METHOD, "") ?: ""
         set(v) = sp.edit().putString(KEY_CAPTURE_METHOD, v).apply()
 
-    var autoTranslationMode: AutoTranslationMode
-        get() = AutoTranslationMode.fromOrdinal(sp.getInt(KEY_AUTO_TRANSLATION_MODE, 0))
-        set(v) = sp.edit().putInt(KEY_AUTO_TRANSLATION_MODE, v.ordinal).apply()
-
     var overlayMode: OverlayMode
-        get() = OverlayMode.fromOrdinal(sp.getInt(KEY_OVERLAY_MODE, 0))
-        set(v) = sp.edit().putInt(KEY_OVERLAY_MODE, v.ordinal).apply()
+        get() = OverlayMode.fromStorageName(sp.getString(KEY_OVERLAY_MODE, null))
+        set(v) = sp.edit().putString(KEY_OVERLAY_MODE, v.name).apply()
 
     var hideGameOverlays: Boolean
         get() = sp.getBoolean("hide_game_overlays", false)
         set(v) = sp.edit().putBoolean("hide_game_overlays", v).apply()
 
-    /** Migrate legacy IN_APP_ONLY mode to the new hideGameOverlays toggle. */
-    fun migrateInAppOnlyMode() {
-        if (autoTranslationMode == AutoTranslationMode.IN_APP_ONLY) {
-            hideGameOverlays = true
-            autoTranslationMode = AutoTranslationMode.TRANSLATE
+    /**
+     * One-shot migration of the legacy `auto_translation_mode` ordinal pref
+     * (used on the shipped `main` branch, where 0 = OVERLAYS and
+     * 1 = IN_APP_ONLY). If an upgrading user had IN_APP_ONLY selected, flip
+     * the new [hideGameOverlays] toggle on. The legacy key is then removed
+     * so this only runs once. Idempotent and safe to call from multiple
+     * entry points (MainActivity.onCreate and CaptureService.startLive).
+     *
+     * The new overlay-mode pref is a separate key ([KEY_OVERLAY_MODE],
+     * string-backed by [OverlayMode.name]) that defaults to TRANSLATION for
+     * everyone on upgrade; Furigana is new in v1.2.0, so no existing
+     * user on a released build could have selected it. Pre-release v1.2.0
+     * testers lose their Furigana preference across this migration — an
+     * acceptable cost given the internal audience.
+     */
+    fun migrateLegacyPrefs() {
+        val legacyKey = "auto_translation_mode"
+        if (!sp.contains(legacyKey)) return
+        val legacyOrdinal = try {
+            sp.getInt(legacyKey, 0)
+        } catch (_: ClassCastException) {
+            0
         }
+        if (legacyOrdinal == 1) {
+            hideGameOverlays = true
+        }
+        sp.edit().remove(legacyKey).apply()
     }
 
     /** Hotkey combo for hold-to-show translations. Empty = not set. Format: keyCodes joined by "+". */
@@ -263,7 +277,6 @@ class Prefs(context: Context) {
         private const val KEY_THEME_INDEX           = "theme_index"
         private const val KEY_CAPTURE_INTERVAL_SEC  = "capture_interval_sec"
         private const val KEY_CAPTURE_METHOD           = "capture_method"
-        private const val KEY_AUTO_TRANSLATION_MODE    = "auto_translation_mode"
         private const val KEY_OVERLAY_MODE               = "overlay_mode"
         private const val KEY_SETTINGS_SCROLL_Y        = "settings_scroll_y"
         private const val KEY_SHOW_OVERLAY_ICON       = "show_overlay_icon"

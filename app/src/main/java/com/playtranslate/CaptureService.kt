@@ -387,11 +387,12 @@ class CaptureService : Service() {
         oneShotCaptureJob?.cancel()
 
         val prefs = Prefs(this)
-        // Migrate legacy IN_APP_ONLY here too so users upgrading from an
-        // old build who start live from the floating icon/hotkey before
-        // ever opening MainActivity still get the correct mode class. The
-        // MainActivity.onCreate call is the primary path; this is defensive.
-        prefs.migrateInAppOnlyMode()
+        // Migrate legacy ordinal-based auto_translation_mode here too so
+        // users upgrading from an old build who start live from the floating
+        // icon/hotkey before ever opening MainActivity still get the correct
+        // mode class. The MainActivity.onCreate call is the primary path;
+        // this is defensive.
+        prefs.migrateLegacyPrefs()
         val useInAppOnly = prefs.hideGameOverlays && !Prefs.isSingleScreen(this)
         val newMode: LiveMode = if (useInAppOnly) {
             // InAppOnlyMode doesn't use PlayTranslateAccessibilityService directly
@@ -407,14 +408,14 @@ class CaptureService : Service() {
                 Log.w(
                     TAG,
                     "startLive: accessibility service not connected; cannot start " +
-                        "${prefs.autoTranslationMode}. Live mode aborted."
+                        "${prefs.overlayMode}. Live mode aborted."
                 )
                 liveMode = null
                 liveActive = false
                 return
             }
-            when (prefs.autoTranslationMode) {
-                AutoTranslationMode.FURIGANA -> FuriganaMode(this, a11y)
+            when (prefs.overlayMode) {
+                OverlayMode.FURIGANA -> FuriganaMode(this, a11y)
                 else -> PinholeOverlayMode(this, a11y)
             }
         }
@@ -472,9 +473,9 @@ class CaptureService : Service() {
                 return HoldBehavior.SHOW_TRANSLATIONS_OVER_FURIGANA
             }
             // Not live, or InAppOnly live → hold runs a one-shot in the
-            // user's currently-selected auto mode
-            return when (Prefs(this).autoTranslationMode) {
-                AutoTranslationMode.FURIGANA -> HoldBehavior.SHOW_FURIGANA
+            // user's currently-selected overlay mode
+            return when (Prefs(this).overlayMode) {
+                OverlayMode.FURIGANA -> HoldBehavior.SHOW_FURIGANA
                 else -> HoldBehavior.SHOW_TRANSLATIONS
             }
         }

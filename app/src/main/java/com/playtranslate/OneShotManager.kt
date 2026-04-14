@@ -77,10 +77,7 @@ class OneShotManager(private val service: CaptureService) {
     }
 
     private fun createProcessor(): OneShotProcessor {
-        val mode = forcedMode ?: when (Prefs(service).autoTranslationMode) {
-            AutoTranslationMode.FURIGANA -> OverlayMode.FURIGANA
-            else -> OverlayMode.TRANSLATION
-        }
+        val mode = forcedMode ?: Prefs(service).overlayMode
         return when (mode) {
             OverlayMode.FURIGANA -> FuriganaOneShotProcessor(
                 DictionaryManager.get(service),

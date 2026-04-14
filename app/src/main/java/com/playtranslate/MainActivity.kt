@@ -219,7 +219,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     override fun onCreate(savedInstanceState: Bundle?) {
         applyTheme()
         super.onCreate(savedInstanceState)
-        prefs.migrateInAppOnlyMode()
+        prefs.migrateLegacyPrefs()
         // Suppress the window transition that would otherwise flash when recreating for a theme change
         if (prefs.suppressNextTransition) {
             prefs.suppressNextTransition = false
@@ -1246,8 +1246,8 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
     private fun showAutoModeDropdown(anchor: View) {
         dismissDropdown()
-        val currentMode = prefs.autoTranslationMode
-        val modes = listOf(AutoTranslationMode.TRANSLATE, AutoTranslationMode.FURIGANA)
+        val currentMode = prefs.overlayMode
+        val modes = listOf(OverlayMode.TRANSLATION, OverlayMode.FURIGANA)
 
         // Current mode at bottom, others above
         val ordered = modes.filter { it != currentMode } + currentMode
@@ -1271,8 +1271,8 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         dropdownHighlightListener = null
         dropdownCommitAction = {
             val selectedMode = ordered[dropdownHighlightedRow]
-            if (prefs.autoTranslationMode != selectedMode) {
-                prefs.autoTranslationMode = selectedMode
+            if (prefs.overlayMode != selectedMode) {
+                prefs.overlayMode = selectedMode
             }
             if (isLiveMode) {
                 captureService?.stopLive()
