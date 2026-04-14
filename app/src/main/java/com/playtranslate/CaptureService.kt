@@ -387,6 +387,11 @@ class CaptureService : Service() {
         oneShotCaptureJob?.cancel()
 
         val prefs = Prefs(this)
+        // Migrate legacy IN_APP_ONLY here too so users upgrading from an
+        // old build who start live from the floating icon/hotkey before
+        // ever opening MainActivity still get the correct mode class. The
+        // MainActivity.onCreate call is the primary path; this is defensive.
+        prefs.migrateInAppOnlyMode()
         val useInAppOnly = prefs.hideGameOverlays && !Prefs.isSingleScreen(this)
         val newMode: LiveMode = if (useInAppOnly) {
             // InAppOnlyMode doesn't use PlayTranslateAccessibilityService directly
