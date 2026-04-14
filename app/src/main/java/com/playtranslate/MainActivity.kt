@@ -1323,8 +1323,8 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             configureService()
             if (!isLiveMode) {
                 selectTab(Tab.TRANSLATE)
+                withAccessibility { captureService?.captureOnce() }
             }
-            withAccessibility { captureService?.captureOnce() }
         } else if (hadOverride) {
             configureService()
         }

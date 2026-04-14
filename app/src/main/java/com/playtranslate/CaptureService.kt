@@ -271,13 +271,6 @@ class CaptureService : Service() {
         }
 
         onStatusUpdate?.invoke(getString(R.string.status_idle))
-
-        // If live mode is running, restart it so the screenshot loop
-        // picks up the new gameDisplayId.
-        if (liveActive) {
-            stopLive()
-            startLive()
-        }
     }
 
     fun captureOnce() {
@@ -421,6 +414,12 @@ class CaptureService : Service() {
             }
         }
         liveMode?.start()
+        // Flash the region indicator immediately — synchronous wm.addView so
+        // the indicator is on screen within ~1 frame. Previously each mode's
+        // first capture cycle fired this flag, but the screenshot loop's
+        // rate-limit carry-over from the prior cycle delayed the flash by
+        // ~600ms on region change during live mode.
+        flashRegionIndicator()
 
         // Register after start() so stopLive's unregister is a matching pair.
         // Unregister first defensively in case startLive was called while
