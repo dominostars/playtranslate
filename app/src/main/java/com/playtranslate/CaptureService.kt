@@ -383,13 +383,12 @@ class CaptureService : Service() {
     }
 
     fun startLive() {
-        liveActive = true
         liveMode?.stop()
         oneShotCaptureJob?.cancel()
 
         val prefs = Prefs(this)
         val useInAppOnly = prefs.hideGameOverlays && !Prefs.isSingleScreen(this)
-        liveMode = if (useInAppOnly) {
+        val newMode: LiveMode = if (useInAppOnly) {
             // InAppOnlyMode doesn't use PlayTranslateAccessibilityService directly
             // (no overlay windows, no input monitoring, no screenshotManager fetch)
             // so it keeps the single-argument constructor. PinholeOverlayMode and
@@ -405,6 +404,7 @@ class CaptureService : Service() {
                     "startLive: accessibility service not connected; cannot start " +
                         "${prefs.autoTranslationMode}. Live mode aborted."
                 )
+                liveMode = null
                 liveActive = false
                 return
             }
@@ -413,7 +413,13 @@ class CaptureService : Service() {
                 else -> PinholeOverlayMode(this, a11y)
             }
         }
-        liveMode?.start()
+        // Assign liveMode BEFORE flipping liveActive so LiveData observers
+        // (e.g. MainActivity.updateRegionButton) see the new mode identity
+        // synchronously — setter on liveActive dispatches to observers before
+        // this function returns.
+        liveMode = newMode
+        liveActive = true
+        newMode.start()
         // Flash the region indicator immediately — synchronous wm.addView so
         // the indicator is on screen within ~1 frame. Previously each mode's
         // first capture cycle fired this flag, but the screenshot loop's
@@ -432,6 +438,41 @@ class CaptureService : Service() {
     /** True when the active live mode is In-App Only. */
     val isInAppOnly: Boolean
         get() = liveActive && liveMode is InAppOnlyMode
+
+    /**
+     * Describes what a hold gesture will do in the current state. Mirrors the
+     * branching in [holdStart] + [OneShotManager.createProcessor] so the UI
+     * subtext can describe the actual behavior. Used by
+     * [MainActivity.updateRegionButton].
+     */
+    enum class HoldBehavior {
+        /** Live translation overlay is visible; hold peeks through. */
+        HIDE_TRANSLATIONS,
+        /** Live furigana overlay is visible; hold forces a translation one-shot. */
+        SHOW_TRANSLATIONS_OVER_FURIGANA,
+        /** Default: hold shows a translation one-shot (auto mode = translation). */
+        SHOW_TRANSLATIONS,
+        /** Default: hold shows a furigana one-shot (auto mode = furigana). */
+        SHOW_FURIGANA,
+    }
+
+    val holdBehavior: HoldBehavior
+        get() {
+            // Visible translation overlay → hold peeks through it
+            if (liveActive && liveMode !is FuriganaMode && !isInAppOnly) {
+                return HoldBehavior.HIDE_TRANSLATIONS
+            }
+            // Visible furigana overlay → hold forces a translation one-shot
+            if (liveActive && liveMode is FuriganaMode) {
+                return HoldBehavior.SHOW_TRANSLATIONS_OVER_FURIGANA
+            }
+            // Not live, or InAppOnly live → hold runs a one-shot in the
+            // user's currently-selected auto mode
+            return when (Prefs(this).autoTranslationMode) {
+                AutoTranslationMode.FURIGANA -> HoldBehavior.SHOW_FURIGANA
+                else -> HoldBehavior.SHOW_TRANSLATIONS
+            }
+        }
 
     /**
      * Called from MainActivity.onMultiWindowModeChanged after the multi-window
