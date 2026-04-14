@@ -47,6 +47,8 @@ import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.ui.ClickableTextView
 import com.playtranslate.ui.DimController
+import com.playtranslate.ui.OverlayAlert
+import android.net.Uri
 import com.playtranslate.AnkiManager
 import com.playtranslate.TranslationManager
 import com.playtranslate.ui.AddCustomRegionSheet
@@ -947,6 +949,23 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             .show()
     }
 
+    private fun showRestrictedSettingsDialog() {
+        OverlayAlert.Builder(this)
+            .setTitle(getString(R.string.restricted_settings_title))
+            .setMessage(getString(R.string.restricted_settings_message))
+            .addButton(
+                getString(R.string.btn_open_app_settings),
+                android.graphics.Color.parseColor("#5DB2EB")
+            ) {
+                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.fromParts("package", packageName, null)
+                }
+                startActivity(intent)
+            }
+            .addCancelButton()
+            .showInActivity(this)
+    }
+
     private fun isSingleScreen(): Boolean = Prefs.isSingleScreen(this)
 
     private fun checkOnboardingState() {
@@ -1014,6 +1033,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         pageA11ySingle.findViewById<View>(R.id.btnOpenA11ySingle).setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
+        val cantEnableClick = View.OnClickListener { showRestrictedSettingsDialog() }
+        pageA11y.findViewById<View>(R.id.btnCantEnableA11y).setOnClickListener(cantEnableClick)
+        pageA11ySingle.findViewById<View>(R.id.btnCantEnableA11ySingle).setOnClickListener(cantEnableClick)
         // Highlight "PlayTranslate" in the hint text with the theme accent color
         val accentColor = themeColor(R.attr.colorTextTranslation)
         colorizeAppName(pageA11y.findViewById(R.id.tvA11yHintDual), accentColor)

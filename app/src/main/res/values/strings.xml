@@ -53,6 +53,10 @@
     <string name="onboarding_a11y_alt">Screen recording works, but region preview and custom regions won\'t be available.</string>
     <string name="btn_grant_permission">Grant Permission</string>
     <string name="btn_open_a11y_settings">Open Accessibility Settings</string>
+    <string name="btn_cant_enable_a11y">Can\'t enable?</string>
+    <string name="restricted_settings_title">Allow Restricted Settings</string>
+    <string name="restricted_settings_message">From PlayTranslate\'s Android settings page, select the button on the top right with three dots (⋮) and then select \"Allow restricted settings\". After authenticating, you should be able to turn on accessibility permissions.</string>
+    <string name="btn_open_app_settings">Open PlayTranslate Settings</string>
     <string name="btn_use_screen_recording">Use screen recording instead</string>
     <string name="settings_capture_method">Capture Method</string>
     <string name="settings_capture_a11y_active">Accessibility enabled — full functionality</string>

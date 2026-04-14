@@ -361,6 +361,17 @@
                 android:textColor="?attr/colorTextOnAccent"
                 app:cornerRadius="8dp" />
 
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCantEnableA11ySingle"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/btn_cant_enable_a11y"
+                android:textSize="14sp"
+                android:textAllCaps="false"
+                android:textColor="?attr/colorTextSecondary" />
+
         </LinearLayout>
 
         <!-- Page 2b: Accessibility / screen recording choice (multi-screen) -->
@@ -422,6 +433,17 @@
                 android:backgroundTint="?attr/colorAccentPrimary"
                 android:textColor="?attr/colorTextOnAccent"
                 app:cornerRadius="8dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCantEnableA11y"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/btn_cant_enable_a11y"
+                android:textSize="14sp"
+                android:textAllCaps="false"
+                android:textColor="?attr/colorTextSecondary" />
 
         </LinearLayout>
 

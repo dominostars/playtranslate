@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import android.app.Activity
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -17,12 +18,13 @@ import android.widget.TextView
 import com.playtranslate.R
 
 /**
- * A reusable overlay alert dialog that shows as a TYPE_ACCESSIBILITY_OVERLAY.
- * Matches the visual style of the floating icon hide confirmation dialog.
+ * A reusable alert dialog that can be attached either to a WindowManager
+ * (as a TYPE_ACCESSIBILITY_OVERLAY from an accessibility service) or to an
+ * Activity's decorView. Matches the visual style of the floating icon hide
+ * confirmation dialog.
  */
 class OverlayAlert private constructor(
     private val context: Context,
-    private val wm: WindowManager,
     private val title: String,
     private val message: String?,
     private val buttons: List<ButtonConfig>
@@ -35,10 +37,16 @@ class OverlayAlert private constructor(
         val onClick: () -> Unit
     )
 
-    class Builder(private val context: Context, private val wm: WindowManager) {
+    class Builder(private val context: Context) {
         private var title = ""
         private var message: String? = null
         private val buttons = mutableListOf<ButtonConfig>()
+
+        constructor(context: Context, wm: WindowManager) : this(context) {
+            this.wm = wm
+        }
+
+        private var wm: WindowManager? = null
 
         fun setTitle(title: String) = apply { this.title = title }
         fun setMessage(message: String) = apply { this.message = message }
@@ -53,16 +61,27 @@ class OverlayAlert private constructor(
             })
         }
 
+        /** Shows via WindowManager as an accessibility overlay. */
         fun show(): OverlayAlert {
-            val alert = OverlayAlert(context, wm, title, message, buttons)
-            alert.show()
+            val alert = OverlayAlert(context, title, message, buttons)
+            alert.showAsAccessibilityOverlay(
+                wm ?: error("OverlayAlert.Builder.show() requires a WindowManager")
+            )
+            return alert
+        }
+
+        /** Shows attached to the given Activity's decorView. */
+        fun showInActivity(activity: Activity): OverlayAlert {
+            val alert = OverlayAlert(activity, title, message, buttons)
+            alert.showInActivity(activity)
             return alert
         }
     }
 
     private var scrim: FrameLayout? = null
+    private var dismissAction: (() -> Unit)? = null
 
-    private fun show() {
+    private fun buildScrim(): FrameLayout {
         val dp = context.resources.displayMetrics.density
 
         // Full-screen scrim
@@ -184,17 +203,6 @@ class OverlayAlert private constructor(
         }
         scrimView.addView(dialog, dlp)
 
-        // Add to window manager
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        )
-        wm.addView(scrimView, params)
-        scrim = scrimView
-
         // Animate in
         dialog.alpha = 0f
         dialog.scaleX = 0.9f
@@ -206,10 +214,39 @@ class OverlayAlert private constructor(
             .setDuration(150)
             .setInterpolator(DecelerateInterpolator())
             .start()
+
+        return scrimView
+    }
+
+    private fun showAsAccessibilityOverlay(wm: WindowManager) {
+        val scrimView = buildScrim()
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        )
+        wm.addView(scrimView, params)
+        scrim = scrimView
+        dismissAction = { try { wm.removeView(scrimView) } catch (_: Exception) {} }
+    }
+
+    private fun showInActivity(activity: Activity) {
+        val scrimView = buildScrim()
+        val decor = activity.window.decorView as ViewGroup
+        val lp = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        )
+        decor.addView(scrimView, lp)
+        scrim = scrimView
+        dismissAction = { try { decor.removeView(scrimView) } catch (_: Exception) {} }
     }
 
     fun dismiss() {
-        try { scrim?.let { wm.removeView(it) } } catch (_: Exception) {}
+        dismissAction?.invoke()
+        dismissAction = null
         scrim = null
     }
 }
