@@ -5,7 +5,6 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Point
 import android.graphics.Rect
-import android.os.Build
 import android.view.WindowManager
 import android.os.Handler
 import android.os.Looper
@@ -103,14 +102,9 @@ class DragLookupController(
 
     private fun queryScreenSize(): Point {
         val wm = popup.ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
-        if (wm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val bounds = wm.currentWindowMetrics.bounds
-            return Point(bounds.width(), bounds.height())
-        }
-        val size = Point()
-        @Suppress("DEPRECATION")
-        popup.ctx.display?.getRealSize(size)
-        return size
+            ?: return Point()
+        val bounds = wm.currentWindowMetrics.bounds
+        return Point(bounds.width(), bounds.height())
     }
 
     // ── Public API (called from FloatingOverlayIcon callbacks) ───────────

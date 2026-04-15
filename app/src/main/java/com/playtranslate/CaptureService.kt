@@ -14,7 +14,6 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.os.Binder
-import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -964,26 +963,17 @@ class CaptureService : Service() {
 
     /**
      * Returns the status bar height in pixels for [displayId], or 0 if there is no
-     * status bar or it cannot be determined. Uses window insets on API 30+ and falls
-     * back to comparing real vs. usable display metrics on older versions.
+     * status bar or it cannot be determined.
      */
     internal fun getStatusBarHeightForDisplay(displayId: Int): Int {
         val dm = getSystemService(android.hardware.display.DisplayManager::class.java) ?: return 0
         val display = dm.getDisplay(displayId) ?: return 0
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            try {
-                val displayContext = createDisplayContext(display)
-                val wm = displayContext.getSystemService(android.view.WindowManager::class.java) ?: return 0
-                wm.currentWindowMetrics.windowInsets
-                    .getInsets(android.view.WindowInsets.Type.statusBars()).top
-            } catch (_: Exception) { 0 }
-        } else {
-            val real   = android.util.DisplayMetrics()
-            val usable = android.util.DisplayMetrics()
-            display.getRealMetrics(real)
-            @Suppress("DEPRECATION") display.getMetrics(usable)
-            (real.heightPixels - usable.heightPixels).coerceAtLeast(0)
-        }
+        return try {
+            val displayContext = createDisplayContext(display)
+            val wm = displayContext.getSystemService(android.view.WindowManager::class.java) ?: return 0
+            wm.currentWindowMetrics.windowInsets
+                .getInsets(android.view.WindowInsets.Type.statusBars()).top
+        } catch (_: Exception) { 0 }
     }
 
     private fun isNetworkAvailable(): Boolean {
@@ -1046,14 +1036,12 @@ class CaptureService : Service() {
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                getString(R.string.notif_channel_name),
-                NotificationManager.IMPORTANCE_MIN
-            ).apply { setShowBadge(false) }
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-        }
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            getString(R.string.notif_channel_name),
+            NotificationManager.IMPORTANCE_MIN
+        ).apply { setShowBadge(false) }
+        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
     private fun buildNotification(): Notification {

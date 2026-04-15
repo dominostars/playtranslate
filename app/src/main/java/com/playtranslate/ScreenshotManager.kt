@@ -2,7 +2,6 @@ package com.playtranslate
 
 import android.accessibilityservice.AccessibilityService
 import android.graphics.Bitmap
-import android.os.Build
 import android.util.Log
 import android.view.Choreographer
 import kotlinx.coroutines.CancellableContinuation
@@ -64,7 +63,6 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
      * overlays. The caller owns the returned [Bitmap] and must recycle it.
      */
     suspend fun requestClean(displayId: Int): Bitmap? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
         awaitScreenshotInterval()
 
         val hideStart = System.currentTimeMillis()
@@ -105,7 +103,6 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
      * that need retry must re-prepare UI state and call again.
      */
     suspend fun requestRaw(displayId: Int, onCaptured: (() -> Unit)? = null): Bitmap? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
         awaitScreenshotInterval()
         val bitmap = doTakeScreenshot(displayId, onCaptured)
         if (bitmap == null) DetectionLog.log("Raw capture failed")

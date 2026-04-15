@@ -10,7 +10,6 @@ import android.graphics.Paint
 import android.graphics.Point
 import android.graphics.Rect
 import android.graphics.RectF
-import android.os.Build
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
@@ -171,28 +170,18 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     var wm: WindowManager? = null
     var params: WindowManager.LayoutParams? = null
 
-    /** Context tied to this overlay's display + window type. Needed on API 30+
-     *  so that WindowMetrics returns the correct display's dimensions. */
+    /** Context tied to this overlay's display + window type, so that
+     *  WindowMetrics returns the correct display's dimensions. */
     private val overlayContext: Context by lazy {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            context.createWindowContext(
-                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, null
-            )
-        } else {
-            context
-        }
+        context.createWindowContext(
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, null
+        )
     }
 
     private fun queryScreenSize(): Point {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val wm = overlayContext.getSystemService(WindowManager::class.java)
-            val bounds = wm?.currentWindowMetrics?.bounds
-            if (bounds != null) return Point(bounds.width(), bounds.height())
-        }
-        val size = Point()
-        @Suppress("DEPRECATION") // getRealSize: only option on API 26-29
-        display?.getRealSize(size)
-        return size
+        val wm = overlayContext.getSystemService(WindowManager::class.java) ?: return Point()
+        val bounds = wm.currentWindowMetrics.bounds
+        return Point(bounds.width(), bounds.height())
     }
 
     private val screenW: Int get() = queryScreenSize().x
@@ -242,9 +231,7 @@ class FloatingOverlayIcon(context: Context) : View(context) {
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            systemGestureExclusionRects = listOf(Rect(0, 0, width, height))
-        }
+        systemGestureExclusionRects = listOf(Rect(0, 0, width, height))
     }
 
     override fun onDraw(canvas: Canvas) {

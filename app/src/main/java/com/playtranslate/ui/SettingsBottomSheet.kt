@@ -5,7 +5,6 @@ import android.content.SharedPreferences
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.hardware.display.DisplayManager
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -289,12 +288,7 @@ class SettingsBottomSheet : DialogFragment() {
         }
         displayManager.registerDisplayListener(displayListener, null)
 
-        val myDisplayId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            requireActivity().display?.displayId ?: android.view.Display.DEFAULT_DISPLAY
-        } else {
-            @Suppress("DEPRECATION")
-            requireActivity().windowManager.defaultDisplay.displayId
-        }
+        val myDisplayId = requireActivity().display?.displayId ?: android.view.Display.DEFAULT_DISPLAY
 
         displayList.forEach { display ->
             val mgr = com.playtranslate.PlayTranslateAccessibilityService.instance?.screenshotManager
@@ -617,7 +611,6 @@ class SettingsBottomSheet : DialogFragment() {
     }
 
     private fun captureActivityWindow(onReady: (Bitmap?) -> Unit) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) { onReady(null); return }
         val activity = activity ?: run { onReady(null); return }
         val decorView = activity.window.decorView
         val w = decorView.width.takeIf  { it > 0 } ?: run { onReady(null); return }

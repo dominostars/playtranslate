@@ -1179,12 +1179,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     // ── Display detection ─────────────────────────────────────────────────
 
     private fun findGameDisplayId(): Int {
-        val myDisplayId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            display?.displayId ?: Display.DEFAULT_DISPLAY
-        } else {
-            @Suppress("DEPRECATION")
-            windowManager.defaultDisplay.displayId
-        }
+        val myDisplayId = display?.displayId ?: Display.DEFAULT_DISPLAY
 
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         return displayManager.displays

@@ -5,7 +5,6 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
-import android.os.Build
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.abs
@@ -76,9 +75,7 @@ class RegionDragView(context: Context) : View(context) {
     // Exclude the whole view from Android's system gesture areas (back/forward swipes)
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            systemGestureExclusionRects = listOf(Rect(0, 0, width, height))
-        }
+        systemGestureExclusionRects = listOf(Rect(0, 0, width, height))
     }
 
     override fun onDraw(canvas: Canvas) {

@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Rect
-import android.os.Build
 import android.util.Log
 import android.view.Choreographer
 import android.view.View
@@ -144,17 +143,12 @@ class PinholeOverlayMode(
 
         // 1. Hide dirty overlay window before capture (hardware layer alpha + frame commit sync)
         if (hasDirty && dirtyView != null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val committed = hideAndAwaitCommit(dirtyView)
-                if (!committed) {
-                    // View detached or timed out — skip this capture
-                    return prefs.captureIntervalMs
-                }
-                waitVsync(2)
-            } else {
-                dirtyView.alpha = 0f
-                waitVsync(5)
+            val committed = hideAndAwaitCommit(dirtyView)
+            if (!committed) {
+                // View detached or timed out — skip this capture
+                return prefs.captureIntervalMs
             }
+            waitVsync(2)
         }
 
         // 2. Capture — restore dirty window in callback (before bitmap copy)
