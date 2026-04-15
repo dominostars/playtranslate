@@ -245,13 +245,13 @@ class OcrManager private constructor() {
             val lineBoxes = mutableListOf<DebugBox>()
             val elementBoxes = mutableListOf<DebugBox>()
             for (block in visionText.textBlocks) {
-                block.boundingBox?.let { blockBoxes += DebugBox(it, text = block.text, lang = block.recognizedLanguage ?: "") }
+                block.boundingBox?.let { blockBoxes += DebugBox(it, text = block.text, lang = block.recognizedLanguage) }
                 for (line in block.lines) {
                     val lineConf = if (android.os.Build.VERSION.SDK_INT >= 31) line.confidence else -1f
-                    line.boundingBox?.let { lineBoxes += DebugBox(it, lineConf, text = line.text, lang = line.recognizedLanguage ?: "") }
+                    line.boundingBox?.let { lineBoxes += DebugBox(it, lineConf, text = line.text, lang = line.recognizedLanguage) }
                     for (element in line.elements) {
                         val elemConf = if (android.os.Build.VERSION.SDK_INT >= 31) element.confidence else -1f
-                        element.boundingBox?.let { elementBoxes += DebugBox(it, elemConf, text = element.text, lang = element.recognizedLanguage ?: "") }
+                        element.boundingBox?.let { elementBoxes += DebugBox(it, elemConf, text = element.text, lang = element.recognizedLanguage) }
                     }
                 }
             }

@@ -442,7 +442,7 @@ object OverlayToolkit {
         val bottom = (iconRect.bottom - cropTop).coerceAtMost(bitmap.height)
         if (left >= right || top >= bottom) return bitmap
         val mutable = if (bitmap.isMutable) bitmap
-            else bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, true).also { bitmap.recycle() }
+            else bitmap.copy(bitmap.config, true).also { bitmap.recycle() }
         Canvas(mutable).drawRect(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat(), blackoutPaint)
         return mutable
     }

@@ -584,7 +584,7 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
         if (overlays == null) { rawBitmap.recycle(); return false }
         // Ensure bitmap is mutable for Canvas drawing (raw frames may be immutable)
         val bitmap = if (rawBitmap.isMutable) rawBitmap
-            else rawBitmap.copy(rawBitmap.config ?: android.graphics.Bitmap.Config.ARGB_8888, true)
+            else rawBitmap.copy(rawBitmap.config, true)
                 .also { rawBitmap.recycle() }
         var colorRef: Bitmap? = null
 
@@ -657,7 +657,7 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
             }
 
             val perGroup = service.translateGroupsSeparately(newGroupTexts)
-            val cRef = colorRef ?: return false
+            val cRef = colorRef
 
             val newOverlayBoxes = if (newGroupBounds.size == perGroup.size) {
                 val colors = OverlayToolkit.sampleGroupColors(cRef, newGroupBounds, left, top, colorScale)
