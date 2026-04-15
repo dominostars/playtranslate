@@ -16,7 +16,7 @@ import com.playtranslate.OcrManager
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.Prefs
 import com.playtranslate.dictionary.DictionaryManager
-import com.playtranslate.model.JishoWord
+import com.playtranslate.model.DictionaryEntry
 import kotlinx.coroutines.*
 import java.io.File
 import kotlin.math.abs
@@ -49,7 +49,7 @@ class DragLookupController(
     /** Called before transitioning to Anki review so live mode isn't resumed on popup dismiss. */
     var onTransitioningToAnki: (() -> Unit)? = null
     /** Current dictionary entry shown in the popup — used for Anki export. */
-    private var currentEntry: JishoWord? = null
+    private var currentEntry: DictionaryEntry? = null
     /** Path to the screenshot captured at drag start — used for Anki export. */
     private var screenshotPath: String? = null
     private var currentSentence: String? = null
@@ -344,7 +344,7 @@ class DragLookupController(
 
         // Dictionary lookup using the base/dictionary form + reading hint
         val response = dict.lookup(lookupForm, matchedToken?.reading)
-        val entry = response?.data?.firstOrNull()
+        val entry = response?.entries?.firstOrNull()
 
         // Build popup data. If JMdict has the token, use its entry. Otherwise
         // fall back to a reading-only "Not in dictionary, may be a name"
@@ -353,14 +353,14 @@ class DragLookupController(
         val reading = matchedToken?.reading
         val popupData: PopupData = when {
             entry != null -> {
-                val form = entry.japanese.firstOrNull()
+                val form = entry.headwords.firstOrNull()
                 PopupData(
-                    word = form?.word ?: form?.reading ?: entry.slug,
+                    word = form?.written ?: form?.reading ?: entry.slug,
                     reading = form?.reading,
                     senses = entry.senses.map { sense ->
                         WordLookupPopup.SenseDisplay(
                             pos = sense.partsOfSpeech.joinToString(", "),
-                            definition = sense.englishDefinitions.joinToString("; ")
+                            definition = sense.targetDefinitions.joinToString("; ")
                         )
                     },
                     freqScore = entry.freqScore,
@@ -418,7 +418,7 @@ class DragLookupController(
         val senses: List<WordLookupPopup.SenseDisplay>,
         val freqScore: Int,
         val isCommon: Boolean,
-        val entry: JishoWord?
+        val entry: DictionaryEntry?
     )
 
     private fun findLineAt(x: Int, y: Int, lines: List<OcrManager.OcrLine>): OcrManager.OcrLine? {
@@ -599,16 +599,16 @@ class DragLookupController(
         val entry = currentEntry ?: return
         val service = PlayTranslateAccessibilityService.instance ?: return
 
-        val form = entry.japanese.firstOrNull()
-        val word = form?.word ?: form?.reading ?: entry.slug
+        val form = entry.headwords.firstOrNull()
+        val word = form?.written ?: form?.reading ?: entry.slug
         val reading = form?.reading?.takeIf { it != word } ?: ""
         val pos = entry.senses.firstOrNull()?.partsOfSpeech
             ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
         val definition = entry.senses
-            .filter { it.englishDefinitions.isNotEmpty() }
+            .filter { it.targetDefinitions.isNotEmpty() }
             .mapIndexed { i, sense ->
                 val prefix = if (entry.senses.size > 1) "${i + 1}. " else ""
-                prefix + sense.englishDefinitions.joinToString("; ")
+                prefix + sense.targetDefinitions.joinToString("; ")
             }
             .joinToString("\n")
 

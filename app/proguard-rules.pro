@@ -1,6 +1,6 @@
 # ── GameLens-specific keeps ───────────────────────────────────────────────────
 
-# Data classes passed as TranslationResult / JishoResponse through callbacks
+# Data classes passed as TranslationResult / DictionaryResponse through callbacks
 -keep class com.gamelens.model.** { *; }
 
 # DeepL response is parsed by Gson reflection — field names must survive obfuscation

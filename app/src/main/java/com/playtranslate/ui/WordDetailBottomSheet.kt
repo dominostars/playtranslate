@@ -18,7 +18,7 @@ import com.playtranslate.AnkiManager
 import com.playtranslate.R
 import com.playtranslate.fullScreenDialogTheme
 import com.playtranslate.dictionary.DictionaryManager
-import com.playtranslate.model.JishoWord
+import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.KanjiDetail
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -94,7 +94,7 @@ class WordDetailBottomSheet : DialogFragment() {
         lifecycleScope.launch {
             val dict = DictionaryManager.get(requireContext())
             val response = withContext(Dispatchers.IO) { dict.lookup(word, readingHint) }
-            val entry = response?.data?.firstOrNull()
+            val entry = response?.entries?.firstOrNull()
             if (!isAdded) return@launch
             if (entry == null) {
                 addText(content, getString(R.string.word_detail_not_found, word), 14f, R.color.text_hint)
@@ -116,7 +116,7 @@ class WordDetailBottomSheet : DialogFragment() {
         }
     }
 
-    private fun openWordAnkiReview(word: String, entry: JishoWord, screenshotPath: String?) {
+    private fun openWordAnkiReview(word: String, entry: DictionaryEntry, screenshotPath: String?) {
         if (!AnkiManager(requireContext()).hasPermission()) {
             AlertDialog.Builder(requireContext())
                 .setTitle(R.string.anki_permission_rationale_title)
@@ -133,17 +133,17 @@ class WordDetailBottomSheet : DialogFragment() {
             return
         }
 
-        val reading = entry.japanese.firstOrNull()?.reading
-            ?.takeIf { it != entry.japanese.firstOrNull()?.word } ?: ""
+        val reading = entry.headwords.firstOrNull()?.reading
+            ?.takeIf { it != entry.headwords.firstOrNull()?.written } ?: ""
 
         val pos = entry.senses.firstOrNull()?.partsOfSpeech
             ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
 
         val definition = entry.senses
-            .filter { it.englishDefinitions.isNotEmpty() }
+            .filter { it.targetDefinitions.isNotEmpty() }
             .mapIndexed { i, sense ->
                 val prefix = if (entry.senses.size > 1) "${i + 1}. " else ""
-                prefix + sense.englishDefinitions.joinToString("; ")
+                prefix + sense.targetDefinitions.joinToString("; ")
             }
             .joinToString("\n")
 
@@ -174,10 +174,10 @@ class WordDetailBottomSheet : DialogFragment() {
         ).show(childFragmentManager, WordAnkiReviewSheet.TAG)
     }
 
-    private suspend fun buildContent(content: LinearLayout, entry: JishoWord, dict: DictionaryManager) {
+    private suspend fun buildContent(content: LinearLayout, entry: DictionaryEntry, dict: DictionaryManager) {
         // ── Readings ─────────────────────────────────────────────────────
-        val allReadings = entry.japanese.mapNotNull { f ->
-            f.reading?.takeIf { it != f.word }
+        val allReadings = entry.headwords.mapNotNull { f ->
+            f.reading?.takeIf { it != f.written }
         }.distinct()
         if (allReadings.isNotEmpty()) {
             addText(content, allReadings.joinToString("  /  "), 15f, R.color.text_hint)
@@ -195,7 +195,7 @@ class WordDetailBottomSheet : DialogFragment() {
         addDivider(content, topMargin = 14)
 
         // ── Senses ────────────────────────────────────────────────────────
-        val senses = entry.senses.filter { it.englishDefinitions.isNotEmpty() }
+        val senses = entry.senses.filter { it.targetDefinitions.isNotEmpty() }
         senses.forEachIndexed { idx, sense ->
             val posFiltered = sense.partsOfSpeech.filter { it.isNotBlank() }
             if (posFiltered.isNotEmpty()) {
@@ -210,7 +210,7 @@ class WordDetailBottomSheet : DialogFragment() {
             val prefix = if (senses.size > 1) "${idx + 1}.  " else ""
             addText(
                 content,
-                prefix + sense.englishDefinitions.joinToString("; "),
+                prefix + sense.targetDefinitions.joinToString("; "),
                 16f, R.color.text_primary, topMargin = 4
             )
 
@@ -221,7 +221,7 @@ class WordDetailBottomSheet : DialogFragment() {
         }
 
         // ── Kanji breakdown ───────────────────────────────────────────────
-        val cjkChars = (entry.japanese.firstOrNull()?.word ?: entry.slug)
+        val cjkChars = (entry.headwords.firstOrNull()?.written ?: entry.slug)
             .filter { c -> c.code in 0x4E00..0x9FFF || c.code in 0x3400..0x4DBF }
             .toList().distinct()
 

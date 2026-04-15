@@ -360,7 +360,7 @@ class TranslationResultFragment : Fragment() {
                 val response = withContext(Dispatchers.IO) {
                     dict.lookup(lookupForm, reading.ifEmpty { null })
                 }
-                val entry = response?.data?.firstOrNull()
+                val entry = response?.entries?.firstOrNull()
 
                 // Build popup data from the JMdict entry when we have one,
                 // or fall back to a reading-only display when the tokenizer
@@ -373,12 +373,12 @@ class TranslationResultFragment : Fragment() {
                 val freqScore: Int
                 val isCommon: Boolean
                 if (entry != null) {
-                    val form = entry.japanese.firstOrNull()
-                    word = form?.word ?: form?.reading ?: entry.slug
+                    val form = entry.headwords.firstOrNull()
+                    word = form?.written ?: form?.reading ?: entry.slug
                     senses = entry.senses.map { sense ->
                         WordLookupPopup.SenseDisplay(
                             pos = sense.partsOfSpeech.joinToString(", "),
-                            definition = sense.englishDefinitions.joinToString("; ")
+                            definition = sense.targetDefinitions.joinToString("; ")
                         )
                     }
                     freqScore = entry.freqScore
@@ -694,15 +694,15 @@ class TranslationResultFragment : Fragment() {
                             val response = withContext(Dispatchers.IO) {
                                 DictionaryManager.get(appCtx).lookup(word, readingByToken[word])
                             }
-                            if (response != null && response.data.isNotEmpty()) {
-                                val entry   = response.data.first()
-                                val primary = entry.japanese.firstOrNull()
-                                displayWord = primary?.word ?: primary?.reading ?: word
+                            if (response != null && response.entries.isNotEmpty()) {
+                                val entry   = response.entries.first()
+                                val primary = entry.headwords.firstOrNull()
+                                displayWord = primary?.written ?: primary?.reading ?: word
                                 tvWord.text = displayWord
-                                reading = primary?.reading?.takeIf { it != primary.word } ?: ""
+                                reading = primary?.reading?.takeIf { it != primary.written } ?: ""
                                 freqScore = entry.freqScore
                                 meaning = entry.senses.mapIndexed { i, sense ->
-                                    val glosses = sense.englishDefinitions.joinToString("; ")
+                                    val glosses = sense.targetDefinitions.joinToString("; ")
                                     if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
                                 }.joinToString("\n")
                             }

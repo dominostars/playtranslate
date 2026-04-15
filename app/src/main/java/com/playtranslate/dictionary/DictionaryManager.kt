@@ -4,12 +4,11 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.util.Log
-import com.playtranslate.model.JapaneseForm
-import com.playtranslate.model.JishoMeta
-import com.playtranslate.model.JishoResponse
-import com.playtranslate.model.JishoSense
-import com.playtranslate.model.JishoWord
+import com.playtranslate.model.DictionaryEntry
+import com.playtranslate.model.DictionaryResponse
+import com.playtranslate.model.Headword
 import com.playtranslate.model.KanjiDetail
+import com.playtranslate.model.Sense
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -46,9 +45,9 @@ data class FuriganaToken(
  * as an app asset.  The database is copied from assets to internal storage
  * on first use, then re-used on every subsequent launch.
  *
- * Drop-in replacement for JishoClient: [lookup] returns a [JishoResponse]
- * using the same model classes, so the UI bottom sheets need no changes
- * other than swapping the call site.
+ * Drop-in replacement for the legacy JishoClient: [lookup] returns a
+ * [DictionaryResponse] whose shape matches what the UI bottom sheets expect,
+ * so no consumer changes beyond the call site.
  *
  * Obtain via [DictionaryManager.get] — one instance is kept for the lifetime
  * of the process.
@@ -216,7 +215,7 @@ class DictionaryManager private constructor(private val context: Context) {
      *
      * This is a suspend function; do NOT call on the main thread.
      */
-    suspend fun lookup(word: String, reading: String? = null): JishoResponse? = withContext(Dispatchers.IO) {
+    suspend fun lookup(word: String, reading: String? = null): DictionaryResponse? = withContext(Dispatchers.IO) {
         val database = ensureOpen() ?: return@withContext null
 
         // 1. Exact match narrowed by reading (if available)
@@ -406,12 +405,12 @@ class DictionaryManager private constructor(private val context: Context) {
         db: SQLiteDatabase,
         entryIds: List<Long>,
         inflectionNote: String? = null
-    ): JishoResponse {
-        val words = entryIds.mapNotNull { buildWord(db, it, inflectionNote) }
-        return JishoResponse(meta = JishoMeta(200), data = words)
+    ): DictionaryResponse {
+        val entries = entryIds.mapNotNull { buildEntry(db, it, inflectionNote) }
+        return DictionaryResponse(entries = entries)
     }
 
-    private fun buildWord(db: SQLiteDatabase, id: Long, inflectionNote: String?): JishoWord? {
+    private fun buildEntry(db: SQLiteDatabase, id: Long, inflectionNote: String?): DictionaryEntry? {
         val idStr = id.toString()
 
         var isCommon = false
@@ -435,16 +434,16 @@ class DictionaryManager private constructor(private val context: Context) {
             arrayOf(idStr)
         ).use { c -> while (c.moveToNext()) readingForms.add(c.getString(0)) }
 
-        val japanese = if (kanjiForms.isNotEmpty()) {
+        val headwords = if (kanjiForms.isNotEmpty()) {
             kanjiForms.mapIndexed { i, k ->
-                JapaneseForm(word = k, reading = readingForms.getOrNull(i) ?: readingForms.firstOrNull())
+                Headword(written = k, reading = readingForms.getOrNull(i) ?: readingForms.firstOrNull())
             }
         } else {
-            readingForms.map { JapaneseForm(word = null, reading = it) }
+            readingForms.map { Headword(written = null, reading = it) }
         }
-        if (japanese.isEmpty()) return null
+        if (headwords.isEmpty()) return null
 
-        val senses = mutableListOf<JishoSense>()
+        val senses = mutableListOf<Sense>()
         db.rawQuery(
             "SELECT pos, glosses, misc FROM sense WHERE entry_id=? ORDER BY position LIMIT 8",
             arrayOf(idStr)
@@ -458,8 +457,8 @@ class DictionaryManager private constructor(private val context: Context) {
                 else
                     posList
                 senses.add(
-                    JishoSense(
-                        englishDefinitions = glossList,
+                    Sense(
+                        targetDefinitions = glossList,
                         partsOfSpeech = finalPos,
                         tags = emptyList(),
                         restrictions = emptyList(),
@@ -471,12 +470,12 @@ class DictionaryManager private constructor(private val context: Context) {
         }
         if (senses.isEmpty()) return null
 
-        return JishoWord(
+        return DictionaryEntry(
             slug = kanjiForms.firstOrNull() ?: readingForms.firstOrNull() ?: idStr,
             isCommon = isCommon,
             tags = emptyList(),
             jlpt = emptyList(),   // JMdict doesn't reliably carry JLPT levels
-            japanese = japanese,
+            headwords = headwords,
             senses = senses,
             freqScore = freqScore
         )

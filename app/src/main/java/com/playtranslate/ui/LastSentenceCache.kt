@@ -42,13 +42,13 @@ object LastSentenceCache {
         for (tok in tokenResults) {
             try {
                 val response = dict.lookup(tok.lookupForm, tok.reading)
-                if (response != null && response.data.isNotEmpty()) {
-                    val entry = response.data.first()
-                    val primary = entry.japanese.firstOrNull()
-                    val displayWord = primary?.word ?: primary?.reading ?: tok.lookupForm
-                    val reading = primary?.reading?.takeIf { it != primary.word } ?: ""
+                if (response != null && response.entries.isNotEmpty()) {
+                    val entry = response.entries.first()
+                    val primary = entry.headwords.firstOrNull()
+                    val displayWord = primary?.written ?: primary?.reading ?: tok.lookupForm
+                    val reading = primary?.reading?.takeIf { it != primary.written } ?: ""
                     val meaning = entry.senses.mapIndexed { i, sense ->
-                        val glosses = sense.englishDefinitions.joinToString("; ")
+                        val glosses = sense.targetDefinitions.joinToString("; ")
                         if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
                     }.joinToString("\n")
                     if (meaning.isNotEmpty()) {
