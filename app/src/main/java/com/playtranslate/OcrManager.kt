@@ -6,14 +6,14 @@ import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import android.graphics.Rect
-import com.playtranslate.model.TextSegment
-import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
+import com.playtranslate.language.OcrBackend
+import com.playtranslate.language.ScreenTextRecognizer
+import com.playtranslate.language.ScreenTextRecognizerFactory
+import com.playtranslate.language.SourceLangId
+import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.model.TextSegment
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Wraps ML Kit's Japanese text recogniser.
@@ -29,9 +29,19 @@ import kotlin.coroutines.resumeWithException
  */
 class OcrManager private constructor() {
 
-    private val recognizer = TextRecognition.getClient(
-        JapaneseTextRecognizerOptions.Builder().build()
-    )
+    // Lazy cache of recognizers keyed by OCR backend. Phase 1 only ever
+    // populates the OcrBackend.MLKitJapanese entry, identical to the old
+    // single-recognizer pattern. Later phases use this map to switch
+    // backends per source language.
+    private val recognizers = ConcurrentHashMap<OcrBackend, ScreenTextRecognizer>()
+
+    private fun recognizerFor(sourceLang: String): ScreenTextRecognizer {
+        val profile = SourceLanguageProfiles.forCode(sourceLang)
+            ?: SourceLanguageProfiles[SourceLangId.JA]
+        return recognizers.getOrPut(profile.ocrBackend) {
+            ScreenTextRecognizerFactory.create(profile.ocrBackend)
+        }
+    }
 
 
     /** A bounding box with optional confidence for debug overlay. */
@@ -101,11 +111,7 @@ class OcrManager private constructor() {
         val scaleFactor = processed.width.toFloat() / bitmap.width
 
         val visionText: Text = try {
-            suspendCancellableCoroutine { cont ->
-                recognizer.process(InputImage.fromBitmap(processed, 0))
-                    .addOnSuccessListener { cont.resume(it) }
-                    .addOnFailureListener { cont.resumeWithException(it) }
-            }
+            recognizerFor(sourceLang).recognize(processed)
         } finally {
             if (processed !== bitmap) processed.recycle()
         }
@@ -529,11 +535,7 @@ class OcrManager private constructor() {
         val scaleFactor = processed.width.toFloat() / bitmap.width
 
         val visionText: Text = try {
-            suspendCancellableCoroutine { cont ->
-                recognizer.process(InputImage.fromBitmap(processed, 0))
-                    .addOnSuccessListener { cont.resume(it) }
-                    .addOnFailureListener { cont.resumeWithException(it) }
-            }
+            recognizerFor(sourceLang).recognize(processed)
         } finally {
             if (processed !== bitmap) processed.recycle()
         }
