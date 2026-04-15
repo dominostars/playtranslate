@@ -46,6 +46,10 @@ class RegionDragView(context: Context) : View(context) {
         isAntiAlias = true
     }
 
+    // Scratch reused in onLayout — allocating per frame is lint DrawAllocation.
+    private val gestureRect = Rect()
+    private val gestureRectList = listOf(gestureRect)
+
     private enum class DragTarget {
         NONE, MIDDLE,
         TOP, BOTTOM, LEFT, RIGHT,
@@ -75,7 +79,8 @@ class RegionDragView(context: Context) : View(context) {
     // Exclude the whole view from Android's system gesture areas (back/forward swipes)
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
-        systemGestureExclusionRects = listOf(Rect(0, 0, width, height))
+        gestureRect.set(0, 0, width, height)
+        systemGestureExclusionRects = gestureRectList
     }
 
     override fun onDraw(canvas: Canvas) {

@@ -73,6 +73,11 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val iconBitmap: Bitmap = BitmapFactory.decodeResource(resources, R.drawable.ic_floating_icon)
 
+    // Scratch objects reused in onLayout/onDraw — allocating per frame is lint DrawAllocation.
+    private val gestureRect = Rect()
+    private val gestureRectList = listOf(gestureRect)
+    private val dstRect = RectF()
+
     // ── Loading spinner (separate overlay window) ──────────────────────
     private var spinnerView: View? = null
     private var spinnerWm: WindowManager? = null
@@ -231,7 +236,8 @@ class FloatingOverlayIcon(context: Context) : View(context) {
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
-        systemGestureExclusionRects = listOf(Rect(0, 0, width, height))
+        gestureRect.set(0, 0, width, height)
+        systemGestureExclusionRects = gestureRectList
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -273,8 +279,8 @@ class FloatingOverlayIcon(context: Context) : View(context) {
             val scale = targetH / iconBitmap.height
             val drawW = iconBitmap.width * scale
             val drawH = targetH
-            val dst = RectF(cx - drawW / 2f, center - drawH / 2f, cx + drawW / 2f, center + drawH / 2f)
-            canvas.drawBitmap(iconBitmap, null, dst, bitmapPaint)
+            dstRect.set(cx - drawW / 2f, center - drawH / 2f, cx + drawW / 2f, center + drawH / 2f)
+            canvas.drawBitmap(iconBitmap, null, dstRect, bitmapPaint)
         }
     }
 
