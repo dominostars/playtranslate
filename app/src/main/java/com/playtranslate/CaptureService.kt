@@ -709,7 +709,8 @@ class CaptureService : Service() {
         boxes: List<TranslationOverlayView.TextBox>,
         cropLeft: Int, cropTop: Int,
         screenshotW: Int, screenshotH: Int,
-        force: Boolean = false
+        force: Boolean = false,
+        pinholeMode: Boolean = false
     ) {
         if (!force && holdActive) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: holdActive=true"); return }
         val a11y = PlayTranslateAccessibilityService.instance
@@ -718,7 +719,7 @@ class CaptureService : Service() {
         val display = dm.getDisplay(gameDisplayId)
         if (display == null) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: display=null for id=$gameDisplayId"); return }
         Log.d("FuriganaDbg", "showLiveOverlay: ${boxes.size} boxes, crop=($cropLeft,$cropTop), screen=${screenshotW}x$screenshotH")
-        a11y.showTranslationOverlay(display, boxes, cropLeft, cropTop, screenshotW, screenshotH)
+        a11y.showTranslationOverlay(display, boxes, cropLeft, cropTop, screenshotW, screenshotH, pinholeMode)
     }
 
     /**

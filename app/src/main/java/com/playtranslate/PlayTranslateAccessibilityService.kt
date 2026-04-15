@@ -581,21 +581,28 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         display: Display,
         boxes: List<TranslationOverlayView.TextBox>,
         cropLeft: Int, cropTop: Int,
-        screenshotW: Int, screenshotH: Int
+        screenshotW: Int, screenshotH: Int,
+        pinholeMode: Boolean = false
     ) {
         // Overlay is appearing — dismiss loading spinner
         floatingIcon?.showLoading = false
 
-        // Reuse existing view if on the same display; otherwise recreate
-        if (translationOverlayView != null && translationOverlayDisplayId == display.displayId) {
-            translationOverlayView?.setBoxes(boxes, cropLeft, cropTop, screenshotW, screenshotH)
+        // Reuse existing view only if it's on the same display AND was
+        // constructed with the same pinhole mode; otherwise recreate so the
+        // view's pinhole-related bakes (child bg opacity, dispatchDraw mask
+        // punching) match what the caller expects.
+        val existing = translationOverlayView
+        if (existing != null
+            && translationOverlayDisplayId == display.displayId
+            && existing.pinholeMode == pinholeMode) {
+            existing.setBoxes(boxes, cropLeft, cropTop, screenshotW, screenshotH)
             return
         }
         hideTranslationOverlay()
         val displayCtx = createDisplayContext(display)
         val themedCtx = android.view.ContextThemeWrapper(displayCtx, android.R.style.Theme_DeviceDefault)
         val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
-        val view = TranslationOverlayView(themedCtx).apply {
+        val view = TranslationOverlayView(themedCtx, pinholeMode = pinholeMode).apply {
             setBoxes(boxes, cropLeft, cropTop, screenshotW, screenshotH)
         }
         val params = WindowManager.LayoutParams(
@@ -613,9 +620,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         translationOverlayDisplayId = display.displayId
 
         // Create persistent dirty overlay window (always present, empty when not dirty)
-        val dirtyView = TranslationOverlayView(themedCtx).apply {
-            pinholeEnabled = true
-        }
+        val dirtyView = TranslationOverlayView(themedCtx, pinholeMode = true)
         val dirtyParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
