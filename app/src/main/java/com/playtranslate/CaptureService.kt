@@ -310,12 +310,17 @@ class CaptureService : Service() {
             val right  = (raw.width  * activeRegion.right).toInt()
             bitmap = cropBitmap(raw, top, bottom, left, right)
 
+            // blackoutFloatingIcon may recycle its input (immutable path),
+            // so `bitmap` may be stale after this call. A nested try/finally
+            // on ocrBitmap keeps its cleanup local and survives OCR exceptions
+            // without the outer finally having to follow ownership transfers.
             val ocrBitmap = blackoutFloatingIcon(bitmap, left, top)
-            bitmap = ocrBitmap // track current bitmap for finally
-            onStatusUpdate?.invoke(getString(R.string.status_ocr))
-            val ocrResult = ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
-            ocrBitmap.recycle()
-            bitmap = raw // already recycled by cropBitmap or ocrBitmap.recycle()
+            val ocrResult = try {
+                onStatusUpdate?.invoke(getString(R.string.status_ocr))
+                ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
+            } finally {
+                if (!ocrBitmap.isRecycled) ocrBitmap.recycle()
+            }
 
             if (ocrResult == null) {
                 onStatusUpdate?.invoke(noTextMessage())
@@ -805,11 +810,14 @@ class CaptureService : Service() {
             val right  = (raw.width  * activeRegion.right).toInt()
             bitmap = cropBitmap(raw, top, bottom, left, right)
 
+            // See runProcessCycle for the ownership rationale behind the
+            // nested try/finally.
             val ocrBitmap = blackoutFloatingIcon(bitmap, left, top)
-            bitmap = ocrBitmap
-            val ocrResult = ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
-            ocrBitmap.recycle()
-            bitmap = null
+            val ocrResult = try {
+                ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
+            } finally {
+                if (!ocrBitmap.isRecycled) ocrBitmap.recycle()
+            }
 
             if (ocrResult == null) return null
 
