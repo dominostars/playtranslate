@@ -34,7 +34,20 @@ import com.playtranslate.R
  * are shown with a pulsing animation until text arrives via a subsequent
  * [setBoxes] call.
  */
-class TranslationOverlayView(context: Context) : FrameLayout(context) {
+/**
+ * @param pinholeMode Fixed at construction. When true, [dispatchDraw] punches
+ *   pinhole holes through all children and [rebuildChildren] forces child
+ *   backgrounds to full opacity so [PinholeOverlayMode]'s change-detection
+ *   math (`predicted = clean_ref * 0.5 + overlay_rendered * 0.5` at pinhole
+ *   pixels) holds. Pinhole mode cannot be toggled on an existing view —
+ *   creating a new view is required, which matches the lifecycle anyway
+ *   since each `LiveMode` class tears down and recreates the overlay on
+ *   start/stop.
+ */
+class TranslationOverlayView(
+    context: Context,
+    val pinholeMode: Boolean = false,
+) : FrameLayout(context) {
 
     init {
         clipChildren = false
@@ -79,12 +92,6 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
     private var screenshotH = 1
 
     private var shimmerAnimator: ValueAnimator? = null
-
-    /** When true, dispatchDraw punches pinhole holes through all children. */
-    var pinholeEnabled: Boolean = false
-        set(value) {
-            if (field != value) { field = value; invalidate() }
-        }
 
     /** Cached full-view pinhole mask bitmap. Created on size change, recycled on detach. */
     private var pinholeMaskBitmap: Bitmap? = null
@@ -168,7 +175,7 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
 
     override fun dispatchDraw(canvas: Canvas) {
         val mask = pinholeMaskBitmap
-        if (!pinholeEnabled || mask == null) {
+        if (!pinholeMode || mask == null) {
             super.dispatchDraw(canvas)
             return
         }
@@ -287,7 +294,7 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
                         setPadding(textMargin, textMargin, textMargin, textMargin)
                         // Pinholes need opaque bg (pinholes handle transparency).
                         // Without pinholes, use native alpha (~224 = 88% opaque).
-                        setBackgroundColor(if (pinholeEnabled) box.bgColor or 0xFF000000.toInt() else box.bgColor)
+                        setBackgroundColor(if (pinholeMode) box.bgColor or 0xFF000000.toInt() else box.bgColor)
                         TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
                             this, minTextSizeSp, maxTextSizeSp, 1, TypedValue.COMPLEX_UNIT_SP
                         )
@@ -414,10 +421,21 @@ class TranslationOverlayView(context: Context) : FrameLayout(context) {
         if (width <= 0 || height <= 0) return null
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val wasPinholeEnabled = pinholeEnabled
-        pinholeEnabled = false
-        draw(canvas)
-        pinholeEnabled = wasPinholeEnabled
+        // Draw each child directly. This deliberately sidesteps our own
+        // [dispatchDraw] override (which would punch pinhole holes when
+        // [pinholeMode] is true) so the resulting bitmap is the "what the
+        // overlay would look like without holes" reference used by
+        // [PinholeOverlayMode.checkPinholes]. This view never uses custom
+        // z-order, disappearing-child animations, or `getChildDrawingOrder`,
+        // so iterating in child index order is equivalent to
+        // `super.dispatchDraw` minus the mask.
+        val drawingTime = drawingTime
+        for (i in 0 until childCount) {
+            val child = getChildAt(i)
+            if (child.visibility == VISIBLE) {
+                drawChild(canvas, child, drawingTime)
+            }
+        }
         return bitmap
     }
 

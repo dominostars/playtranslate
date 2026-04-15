@@ -431,17 +431,19 @@ class PinholeOverlayMode(
         }
     }
 
-    /** Show overlay, enable pinholes, wait for layout, capture screen rects and
+    /** Show overlay in pinhole mode, wait for layout, capture screen rects and
      *  overlay render. The `overlayBitmap` produced here is at view dimensions;
      *  [checkPinholes] assumes view dims == screenshot dims (identity scale)
      *  and [runCycle] fails closed before reaching here if that assumption
-     *  doesn't hold. */
+     *  doesn't hold. Pinhole mode is set at view construction via
+     *  [PlayTranslateAccessibilityService.showTranslationOverlay]'s
+     *  `pinholeMode` parameter, which eliminates the ordering/timing race
+     *  between flipping a mutable flag and [TranslationOverlayView.rebuildChildren]. */
     private suspend fun showOverlayAndCapture(
         a11y: PlayTranslateAccessibilityService, boxes: List<TranslationOverlayView.TextBox>,
         left: Int, top: Int, sw: Int, sh: Int
     ) {
-        service.showLiveOverlay(boxes, left, top, sw, sh)
-        a11y.translationOverlayView?.pinholeEnabled = true
+        service.showLiveOverlay(boxes, left, top, sw, sh, pinholeMode = true)
         waitVsync(2)
         overlayBitmap?.recycle()
         overlayBitmap = a11y.translationOverlayView?.renderToOffscreen()
