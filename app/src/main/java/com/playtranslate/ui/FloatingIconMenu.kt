@@ -104,6 +104,9 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         setShadowLayer(4f * dp, 0f, 0f, Color.BLACK)
     }
 
+    // Scratch RectF reused in onDraw — allocating per frame is lint DrawAllocation.
+    private val regionRect = RectF()
+
     private var clearRegionButton: View? = null
     private var degradedWarningView: View? = null
 
@@ -391,7 +394,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 // Show the active capture region as a clear window
                 val w = width.toFloat()
                 val h = height.toFloat()
-                val regionRect = RectF(
+                regionRect.set(
                     region.left * w, region.top * h,
                     region.right * w, region.bottom * h
                 )

@@ -473,13 +473,13 @@ class TranslationResultFragment : Fragment() {
         // Small triangle arrow pointing down
         val arrowView = object : View(ctx) {
             private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = bgColor }
+            private val path = android.graphics.Path()
             override fun onDraw(canvas: android.graphics.Canvas) {
-                val path = android.graphics.Path().apply {
-                    moveTo(0f, 0f)
-                    lineTo(width.toFloat(), 0f)
-                    lineTo(width / 2f, height.toFloat())
-                    close()
-                }
+                path.rewind()
+                path.moveTo(0f, 0f)
+                path.lineTo(width.toFloat(), 0f)
+                path.lineTo(width / 2f, height.toFloat())
+                path.close()
                 canvas.drawPath(path, paint)
             }
         }
