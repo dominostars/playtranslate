@@ -21,7 +21,6 @@ import com.playtranslate.RegionEntry
 import com.playtranslate.R
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
-import com.google.mlkit.nl.translate.TranslateLanguage
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -147,8 +146,8 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
 
         svc.configureSaved(
             displayId  = prefs.captureDisplayId,
-            sourceLang = TranslateLanguage.JAPANESE,
-            targetLang = TranslateLanguage.ENGLISH,
+            sourceLang = prefs.sourceLang,
+            targetLang = prefs.targetLang,
             region     = RegionEntry("Drawn Region", topFrac, bottomFrac, leftFrac, rightFrac)
         )
 
@@ -182,12 +181,13 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
         val screenshotPath = intent.getStringExtra(EXTRA_SCREENSHOT_PATH)
         val segments = sentenceText.map { TextSegment(it.toString()) }
         val frag = resultFragment ?: return
+        val prefs = Prefs(this)
 
         // Ensure the service is configured for translation
         svc.configureSaved(
-            displayId  = Prefs(this).captureDisplayId,
-            sourceLang = TranslateLanguage.JAPANESE,
-            targetLang = TranslateLanguage.ENGLISH
+            displayId  = prefs.captureDisplayId,
+            sourceLang = prefs.sourceLang,
+            targetLang = prefs.targetLang
         )
 
         frag.showTranslatingPlaceholder(sentenceText, segments)

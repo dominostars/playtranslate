@@ -90,6 +90,9 @@ class CaptureService : Service() {
     private var lingvaTranslator: LingvaTranslator? = null      // always present after configure()
 
     internal var gameDisplayId: Int = 0
+    // Dead initializer: overwritten on every configureSaved() call before any
+    // capture path reads this field. Left as a non-null placeholder to avoid
+    // converting the field to lateinit (scope creep for Phase 1).
     internal var sourceLang: String = TranslateLanguage.JAPANESE
     private var savedRegion = RegionEntry("", 0f, 1f)
     private var overrideRegion: RegionEntry? = null
@@ -214,8 +217,8 @@ class CaptureService : Service() {
     /** Configure the saved region and translation engines. Clears any override. */
     fun configureSaved(
         displayId: Int,
-        sourceLang: String = TranslateLanguage.JAPANESE,
-        targetLang: String = TranslateLanguage.ENGLISH,
+        sourceLang: String,
+        targetLang: String,
         region: RegionEntry = RegionEntry("", 0f, 1f)
     ) {
         gameDisplayId    = displayId

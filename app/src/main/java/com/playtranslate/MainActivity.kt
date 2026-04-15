@@ -42,8 +42,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.playtranslate.BuildConfig
 import com.playtranslate.diagnostics.LogExporter
-import com.playtranslate.dictionary.Deinflector
-import com.playtranslate.dictionary.DictionaryManager
+import com.playtranslate.language.SourceLanguageEngines
+import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.ui.ClickableTextView
@@ -59,7 +59,6 @@ import com.playtranslate.ui.SettingsBottomSheet
 import com.playtranslate.ui.LastSentenceCache
 import com.playtranslate.ui.TranslationResultFragment
 import com.playtranslate.ui.WordDetailBottomSheet
-import com.google.mlkit.nl.translate.TranslateLanguage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -275,8 +274,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         (getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
             .registerDisplayListener(displayListener, null)
         lifecycleScope.launch(Dispatchers.IO) {
-            DictionaryManager.get(applicationContext).preload()
-            Deinflector.preload()
+            SourceLanguageEngines.get(applicationContext, prefs.sourceLangId).preload()
         }
 
         // Wire up the fragment's edit-original listener for edit overlay
@@ -1190,8 +1188,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
     // ── Helpers ───────────────────────────────────────────────────────────
 
-    private fun selectedSourceLang() = TranslateLanguage.JAPANESE
-    private fun selectedTargetLang() = TranslateLanguage.ENGLISH
+    private fun selectedSourceLang() =
+        SourceLanguageProfiles[prefs.sourceLangId].translationCode
+    private fun selectedTargetLang() = prefs.targetLang
 
     /**
      * Sets tvLiveHint text with an inline play icon ImageSpan.
