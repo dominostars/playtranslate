@@ -1,11 +1,14 @@
-# ── GameLens-specific keeps ───────────────────────────────────────────────────
+# ── PlayTranslate-specific keeps ──────────────────────────────────────────────
 
 # Data classes passed as TranslationResult / DictionaryResponse through callbacks
--keep class com.gamelens.model.** { *; }
+-keep class com.playtranslate.model.** { *; }
 
-# DeepL response is parsed by Gson reflection — field names must survive obfuscation
--keep class com.gamelens.DeepLTranslator$DeepLResponse { *; }
--keep class com.gamelens.DeepLTranslator$Translation { *; }
+# DeepL response is parsed by Gson reflection — field names must survive
+# obfuscation. DeepLResponse is private-nested in DeepLTranslator; Translation
+# is nested one level deeper inside DeepLResponse (so the JVM class name is
+# DeepLTranslator$DeepLResponse$Translation, NOT DeepLTranslator$Translation).
+-keep class com.playtranslate.DeepLTranslator$DeepLResponse { *; }
+-keep class com.playtranslate.DeepLTranslator$DeepLResponse$Translation { *; }
 
 # ── ML Kit ────────────────────────────────────────────────────────────────────
 -keep class com.google.mlkit.** { *; }
