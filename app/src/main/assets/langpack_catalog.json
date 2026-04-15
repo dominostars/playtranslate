@@ -1,0 +1,24 @@
+{
+  "catalogVersion": 1,
+  "packs": {
+    "ja": {
+      "display": "Japanese",
+      "script": "CJK_JAPANESE",
+      "bundled": true,
+      "packVersion": 1,
+      "size": 46000000,
+      "licenses": [
+        {
+          "component": "JMdict",
+          "license": "CC-BY-SA-4.0",
+          "attribution": "© EDRDG, https://www.edrdg.org/jmdict/edict_doc.html"
+        },
+        {
+          "component": "KANJIDIC2",
+          "license": "CC-BY-SA-4.0",
+          "attribution": "© EDRDG"
+        }
+      ]
+    }
+  }
+}

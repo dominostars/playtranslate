@@ -4,6 +4,9 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.util.Log
+import com.playtranslate.language.LanguagePackCatalogLoader
+import com.playtranslate.language.LanguagePackStore
+import com.playtranslate.language.SourceLangId
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.DictionaryResponse
 import com.playtranslate.model.Headword
@@ -278,7 +281,32 @@ class DictionaryManager private constructor(private val context: Context) {
     private suspend fun ensureOpen(): SQLiteDatabase? = mutex.withLock {
         db?.let { return@withLock it }
 
-        val dbFile = context.getDatabasePath(DB_ASSET)
+        val dbFile = LanguagePackStore.dictDbFor(context, SourceLangId.JA)
+
+        // One-time upgrade migration: if the legacy path holds the DB and the
+        // new pack path is empty, move it in place instead of re-copying 46 MB
+        // from assets. Falls back to a byte-copy-then-delete if rename fails
+        // (cross-mount, permission, or race); falls back again to
+        // copyFromAssets below if both fail.
+        val legacyDbFile = context.getDatabasePath(DB_ASSET)
+        if (!dbFile.exists() && legacyDbFile.exists()) {
+            dbFile.parentFile?.mkdirs()
+            val renamed = try { legacyDbFile.renameTo(dbFile) } catch (_: Exception) { false }
+            if (renamed) {
+                Log.d(TAG, "Migrated JMdict ${legacyDbFile.absolutePath} -> ${dbFile.absolutePath}")
+            } else {
+                try {
+                    legacyDbFile.inputStream().use { src ->
+                        dbFile.outputStream().use { dst -> src.copyTo(dst) }
+                    }
+                    legacyDbFile.delete()
+                    Log.d(TAG, "Copied JMdict ${legacyDbFile.absolutePath} -> ${dbFile.absolutePath} (rename failed)")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Legacy migration failed: ${e.message}; falling back to assets copy")
+                    // dbFile remains nonexistent → copyFromAssets below handles it
+                }
+            }
+        }
 
         if (dbFile.exists() && !isSchemaUpToDate(dbFile)) {
             Log.d(TAG, "JMdict schema outdated — re-copying from assets")
@@ -296,6 +324,19 @@ class DictionaryManager private constructor(private val context: Context) {
             Log.e(TAG, "Failed to open JMdict: ${e.message}")
             null
         }
+
+        // Bootstrap the bundled-pack manifest once the DB is known-good.
+        // Idempotent — writeManifestIfMissing no-ops on subsequent boots.
+        if (db != null) {
+            LanguagePackCatalogLoader.entryFor(context, SourceLangId.JA)?.let { entry ->
+                try {
+                    LanguagePackStore.writeManifestIfMissing(context, SourceLangId.JA, entry)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Manifest write failed: ${e.message}")
+                }
+            }
+        }
+
         db
     }
 
