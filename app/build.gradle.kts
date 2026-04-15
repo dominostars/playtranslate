@@ -74,6 +74,14 @@ android {
     }
 }
 
+// Provisions the JDK via Gradle's toolchain API so the build doesn't depend on
+// whichever JDK the user has on PATH. Combined with the foojay-resolver plugin
+// in settings.gradle.kts and `auto-download=true` in gradle.properties, Gradle
+// fetches and caches a JDK 17 under ~/.gradle/jdks if one is not installed.
+kotlin {
+    jvmToolchain(17)
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
