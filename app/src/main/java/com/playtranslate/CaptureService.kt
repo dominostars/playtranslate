@@ -155,6 +155,7 @@ class CaptureService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        Log.i(TAG, "onCreate")
         instance = this
         createNotificationChannel()
 
@@ -163,6 +164,7 @@ class CaptureService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.i(TAG, "onStartCommand action=${intent?.action}")
         // Android requires startForeground() within 5s of startForegroundService()
         startForeground(NOTIF_ID, buildNotification())
         // Immediately evaluate — may stopForeground if no game-screen presence yet
@@ -171,11 +173,13 @@ class CaptureService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
+        Log.w(TAG, "onTaskRemoved")
         super.onTaskRemoved(rootIntent)
-        PlayTranslateAccessibilityService.instance?.hideFloatingIcon()
+        PlayTranslateAccessibilityService.instance?.hideFloatingIcon("task_removed")
     }
 
     override fun onDestroy() {
+        Log.w(TAG, "onDestroy")
         instance = null
         stopLive()
         serviceScope.cancel()
