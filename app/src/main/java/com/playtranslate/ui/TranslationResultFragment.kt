@@ -21,12 +21,12 @@ import androidx.lifecycle.lifecycleScope
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
+import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.R
 import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.themeColor
-import com.google.mlkit.nl.translate.TranslateLanguage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -799,8 +799,10 @@ class TranslationResultFragment : Fragment() {
         Deinflector.toKanaTokens(text).joinToString(" ") { t.transliterate(it) }
     }
 
-    private fun selectedSourceLang() = TranslateLanguage.JAPANESE
-    private fun selectedTargetLang() = TranslateLanguage.ENGLISH
+    private fun selectedSourceLang() =
+        SourceLanguageProfiles[Prefs(requireContext().applicationContext).sourceLangId].translationCode
+    private fun selectedTargetLang() =
+        Prefs(requireContext().applicationContext).targetLang
 
     private fun langDisplayName(langCode: String): String =
         Locale(langCode).getDisplayLanguage(Locale.ENGLISH)

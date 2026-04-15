@@ -146,7 +146,7 @@ class DragLookupController(
         val lines = withContext(Dispatchers.Default) {
             try {
                 screenshotPath = path
-                ocrManager.recogniseWithPositions(bitmap, "ja")
+                ocrManager.recogniseWithPositions(bitmap, Prefs(popup.ctx).sourceLang)
             } finally {
                 bitmap.recycle()
             }
@@ -277,7 +277,7 @@ class DragLookupController(
             try {
                 // Save screenshot for potential Anki export
                 screenshotPath = saveScreenshot(bitmap)
-                ocrManager.recogniseWithPositions(bitmap, "ja")
+                ocrManager.recogniseWithPositions(bitmap, Prefs(service).sourceLang)
             } finally {
                 bitmap.recycle()
             }
