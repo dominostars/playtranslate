@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.hardware.display.DisplayManager
 import com.playtranslate.BuildConfig
 import com.google.mlkit.nl.translate.TranslateLanguage
+import com.playtranslate.language.SourceLangId
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -52,6 +53,24 @@ class Prefs(context: Context) {
     var targetLang: String
         get() = sp.getString(KEY_TARGET_LANG, TranslateLanguage.ENGLISH) ?: TranslateLanguage.ENGLISH
         set(v) = sp.edit().putString(KEY_TARGET_LANG, v).apply()
+
+    /**
+     * Profile-aware view of [sourceLang]. Derives a [SourceLangId] from the raw
+     * ML Kit code; falls back to [SourceLangId.JA] on unknown/blank values and
+     * logs a warning on non-blank fallback so any future language-code
+     * mismatch is visible in the log-export pipeline (e.g. a user downgrading
+     * from a Phase 3 build with `sourceLang = "en"` stored to a Phase 1 build
+     * that only knows JA).
+     */
+    val sourceLangId: SourceLangId
+        get() {
+            val raw = sourceLang
+            val resolved = SourceLangId.fromCode(raw)
+            if (resolved == null && raw.isNotBlank()) {
+                android.util.Log.w("Prefs", "sourceLangId fallback to JA (raw=\"$raw\")")
+            }
+            return resolved ?: SourceLangId.JA
+        }
 
     var captureDisplayId: Int
         get() = sp.getInt(KEY_DISPLAY_ID, 0)
