@@ -31,11 +31,13 @@ import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
+import android.widget.Toast
 import com.playtranslate.AnkiManager
 import com.playtranslate.OverlayMode
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.diagnostics.LogExporter
 import com.playtranslate.fullScreenDialogTheme
 import com.playtranslate.themeColor
 import android.content.Intent
@@ -243,7 +245,7 @@ class SettingsBottomSheet : DialogFragment() {
             ivIconPreview?.setImageBitmap(createFloatingIconPreview(checked))
             // Force recreate the icon to apply compact mode
             val a11y = PlayTranslateAccessibilityService.instance
-            a11y?.hideFloatingIcon()
+            a11y?.hideFloatingIcon("settings_compact_recreate")
             a11y?.ensureFloatingIcon()
         }
         view.findViewById<View>(R.id.rowCompactIcon).setOnClickListener {
@@ -428,6 +430,35 @@ class SettingsBottomSheet : DialogFragment() {
             setPadding(0, (12 * resources.displayMetrics.density).toInt(), 0, 0)
         })
 
+        // ── Diagnostics ─────────────────────────────────────────────────
+        val btnExportLogs = view.findViewById<Button>(R.id.btnExportLogs)
+        val rowExportLogs = view.findViewById<View>(R.id.rowExportLogs)
+        val exportClick = View.OnClickListener {
+            val activity = activity ?: return@OnClickListener
+            btnExportLogs.isEnabled = false
+            lifecycleScope.launch {
+                val files = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val logFile = LogExporter.exportLogcat(activity)
+                        listOf(logFile) + LogExporter.getCrashFiles(activity)
+                    }
+                }
+                btnExportLogs.isEnabled = true
+                files.fold(
+                    onSuccess = { LogExporter.shareFiles(activity, it, "PlayTranslate logs") },
+                    onFailure = {
+                        Toast.makeText(
+                            activity,
+                            "Failed to export logs: ${it.javaClass.simpleName}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                )
+            }
+        }
+        btnExportLogs.setOnClickListener(exportClick)
+        rowExportLogs.setOnClickListener(exportClick)
+
         // ── Debug section (debug builds only) ────────────────────────────
         val llDebugSection = view.findViewById<LinearLayout>(R.id.llDebugSection)
         if (com.playtranslate.BuildConfig.DEBUG) {
@@ -463,6 +494,12 @@ class SettingsBottomSheet : DialogFragment() {
             view.findViewById<View>(R.id.rowDetectionLog).setOnClickListener {
                 switchDetectionLog.toggle()
             }
+            val btnForceCrash = view.findViewById<Button>(R.id.btnForceCrash)
+            val crashClick = View.OnClickListener {
+                throw RuntimeException("Forced crash from Settings → Debug → Force crash")
+            }
+            btnForceCrash.setOnClickListener(crashClick)
+            view.findViewById<View>(R.id.rowForceCrash).setOnClickListener(crashClick)
         }
     }
 

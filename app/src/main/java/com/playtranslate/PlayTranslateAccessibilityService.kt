@@ -124,6 +124,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     }
 
     override fun onServiceConnected() {
+        Log.i(TAG, "onServiceConnected")
         instance = this
         screenshotManager = ScreenshotManager(this)
         serviceInfo = serviceInfo.apply {
@@ -144,6 +145,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
+        Log.w(TAG, "onUnbind: tearing down overlays and cancelling scope", Throwable("onUnbind callsite"))
         try { unregisterReceiver(screenReceiver) } catch (_: Exception) {}
         (getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
             .unregisterDisplayListener(displayListener)
@@ -155,7 +157,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         hideRegionEditor()
         hideRegionDragOverlay()
         dismissFloatingMenu()
-        hideFloatingIcon()
+        hideFloatingIcon("unbind")
         screenshotManager?.destroy()
         screenshotManager = null
         serviceScope.cancel()
@@ -742,7 +744,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
-    override fun onInterrupt() {}
+    override fun onInterrupt() {
+        Log.w(TAG, "onInterrupt")
+    }
 
     /** Temporary listener for key event capture (e.g., hotkey setup dialog). Takes priority over normal handling. */
     var onKeyEventListener: ((KeyEvent) -> Boolean)? = null
@@ -902,7 +906,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     fun ensureFloatingIcon() {
         val prefs = Prefs(this)
         if (!prefs.showOverlayIcon) {
-            hideFloatingIcon()
+            hideFloatingIcon("pref_disabled")
             return
         }
         val display = findIconDisplay(prefs) ?: return
@@ -912,7 +916,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     }
 
     private fun showFloatingIcon(display: Display, prefs: Prefs) {
-        hideFloatingIcon()
+        hideFloatingIcon("recreating")
         val displayCtx = createDisplayContext(display)
         val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
 
@@ -1049,7 +1053,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         } catch (_: Exception) {}
     }
 
-    fun hideFloatingIcon() {
+    fun hideFloatingIcon(reason: String = "unspecified") {
+        Log.i(TAG, "hideFloatingIcon: $reason")
         dragLookupController?.destroy()
         dragLookupController = null
         floatingIcon?.destroy()
@@ -1086,11 +1091,11 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         menu.onHideIcon = {
             dismissFloatingMenu()
             Prefs(this).showOverlayIcon = false
-            hideFloatingIcon()
+            hideFloatingIcon("menu_turn_off")
         }
         menu.onHideTemporary = {
             dismissFloatingMenu()
-            hideFloatingIcon()
+            hideFloatingIcon("menu_hide_temporary")
         }
         menu.onCloseRequested = {
             dismissFloatingMenu()
@@ -1220,13 +1225,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             if (!alreadyCompact) {
                 builder.addButton("Minimize Icon", android.graphics.Color.parseColor("#5DB2EB")) {
                     prefs.compactOverlayIcon = true
-                    hideFloatingIcon()
+                    hideFloatingIcon("confirm_minimize_single")
                     ensureFloatingIcon()
                 }
             }
             builder.addButton("Turn Off", android.graphics.Color.parseColor("#E04040")) {
                     prefs.showOverlayIcon = false
-                    hideFloatingIcon()
+                    hideFloatingIcon("confirm_turn_off_single")
                 }
                 .addCancelButton()
         } else {
@@ -1235,18 +1240,18 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 builder.setMessage("\u201CMinimize Icon\u201D shrinks the floating icon. \u201CTurn Off\u201D disables it until re-enabled in settings.")
                     .addButton("Minimize Icon", android.graphics.Color.parseColor("#5DB2EB")) {
                         prefs.compactOverlayIcon = true
-                        hideFloatingIcon()
+                        hideFloatingIcon("confirm_minimize_multi")
                         ensureFloatingIcon()
                     }
             } else {
                 builder.setMessage("\u201CHide for Now\u201D brings it back next time you open $appName. \u201CTurn Off\u201D disables it until re-enabled in settings.")
                     .addButton("Hide for Now", android.graphics.Color.parseColor("#5DB2EB")) {
-                        hideFloatingIcon()
+                        hideFloatingIcon("confirm_hide_for_now")
                     }
             }
             builder.addButton("Turn Off", android.graphics.Color.parseColor("#E04040")) {
                     prefs.showOverlayIcon = false
-                    hideFloatingIcon()
+                    hideFloatingIcon("confirm_turn_off_multi")
                 }
                 .addCancelButton()
         }

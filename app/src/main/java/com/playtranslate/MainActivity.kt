@@ -41,6 +41,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.playtranslate.BuildConfig
+import com.playtranslate.diagnostics.LogExporter
 import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.model.TextSegment
@@ -62,6 +63,7 @@ import com.google.mlkit.nl.translate.TranslateLanguage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationResultHost {
@@ -220,6 +222,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         applyTheme()
         super.onCreate(savedInstanceState)
         prefs.migrateLegacyPrefs()
+        maybePromptForCrashShare()
         // Suppress the window transition that would otherwise flash when recreating for a theme change
         if (prefs.suppressNextTransition) {
             prefs.suppressNextTransition = false
@@ -978,6 +981,48 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
+    }
+
+    private fun maybePromptForCrashShare() {
+        val crashFiles = LogExporter.getCrashFiles(this)
+        if (crashFiles.isEmpty()) return
+        OverlayAlert.Builder(this)
+            .setTitle("PlayTranslate crashed previously")
+            .setMessage("Send the crash report to the developer? It includes a stack trace, recent app logs, and any text PlayTranslate has recently OCR'd or looked up. No account info.")
+            .addButton("Send", android.graphics.Color.parseColor("#5DB2EB")) {
+                lifecycleScope.launch {
+                    val files = withContext(Dispatchers.IO) {
+                        runCatching {
+                            crashFiles + LogExporter.exportLogcat(this@MainActivity)
+                        }.getOrElse { crashFiles }
+                    }
+                    val subject = "PlayTranslate crash – v${BuildConfig.VERSION_NAME}"
+                    val body = buildString {
+                        appendLine("Steps to reproduce:")
+                        appendLine()
+                        appendLine("(Optional — describe what you were doing when this happened.)")
+                        appendLine()
+                        appendLine("Device info is included in the attached file.")
+                    }
+                    LogExporter.emailFiles(this@MainActivity, files, subject, body)
+                    LogExporter.deleteCrashFiles(this@MainActivity)
+                }
+            }
+            .addButton(
+                "Later",
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Color.parseColor("#AAAAAA")
+            ) {
+                // No action — files remain, prompt re-fires next launch.
+            }
+            .addButton(
+                "Discard",
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Color.parseColor("#AAAAAA")
+            ) {
+                LogExporter.deleteCrashFiles(this)
+            }
+            .showInActivity(this)
     }
 
     private fun maybeCheckForUpdates() {
