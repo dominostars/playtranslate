@@ -57,6 +57,8 @@
     <!-- Settings -->
     <string name="settings_title">Settings</string>
     <string name="settings_language_hint">Only Japanese → English is currently supported. More languages coming soon.</string>
+    <string name="lang_state_installed">Installed</string>
+    <string name="lang_state_not_installed">Not installed</string>
     <string name="settings_display_hint">Select the display that shows the game. Usually Display 0 is the main/top screen.</string>
     <string name="settings_no_displays_found">No displays found</string>
     <string name="hint_deepl_key">Paste your DeepL API key here</string>

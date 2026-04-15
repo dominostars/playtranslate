@@ -38,6 +38,10 @@ import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.diagnostics.LogExporter
 import com.playtranslate.fullScreenDialogTheme
+import com.playtranslate.language.CatalogEntry
+import com.playtranslate.language.LanguagePackCatalogLoader
+import com.playtranslate.language.LanguagePackStore
+import com.playtranslate.language.SourceLangId
 import com.playtranslate.themeColor
 import android.content.Intent
 import android.provider.Settings
@@ -69,6 +73,7 @@ class SettingsBottomSheet : DialogFragment() {
     private var ivIconPreview: android.widget.ImageView? = null
 
     private lateinit var llDisplayOptions: LinearLayout
+    private lateinit var llLanguageList: LinearLayout
     private lateinit var spinnerAnkiDeck: android.widget.Spinner
     private lateinit var settingsScrollView: android.widget.ScrollView
 
@@ -160,6 +165,7 @@ class SettingsBottomSheet : DialogFragment() {
 
         val prefs           = Prefs(requireContext())
         llDisplayOptions    = view.findViewById(R.id.llDisplayOptions)
+        llLanguageList      = view.findViewById(R.id.llLanguageList)
         settingsScrollView  = view.findViewById(R.id.settingsScrollView)
         val etDeeplKey      = view.findViewById<EditText>(R.id.etDeeplKey)
         spinnerAnkiDeck     = view.findViewById(R.id.spinnerAnkiDeck)
@@ -277,6 +283,7 @@ class SettingsBottomSheet : DialogFragment() {
         val llCaptureDisplaySection = view.findViewById<View>(R.id.llCaptureDisplaySection)
         llCaptureDisplaySection.visibility = if (displayList.size <= 1) View.GONE else View.VISIBLE
 
+        buildLanguageRows()
         buildDisplayRows(prefs)
 
         // Reload settings when displays change (unregister old listener first)
@@ -620,6 +627,78 @@ class SettingsBottomSheet : DialogFragment() {
             if (result == PixelCopy.SUCCESS) onReady(scaleThumbnail(bmp))
             else { bmp.recycle(); onReady(null) }
         }, Handler(Looper.getMainLooper()))
+    }
+
+    // ── Language rows ─────────────────────────────────────────────────────
+
+    private fun buildLanguageRows() {
+        if (!isAdded) return
+        val ctx = requireContext()
+        llLanguageList.removeAllViews()
+        val catalog = try {
+            LanguagePackCatalogLoader.load(ctx)
+        } catch (e: Exception) {
+            android.util.Log.w("SettingsBottomSheet", "Catalog load failed: ${e.message}")
+            return
+        }
+        // Walk SourceLangId in enum order so the list has a stable presentation
+        // regardless of JSON key ordering.
+        SourceLangId.entries.forEach { id ->
+            val entry = catalog.packs[id.code] ?: return@forEach
+            llLanguageList.addView(buildLanguageRow(ctx, id, entry))
+        }
+    }
+
+    private fun buildLanguageRow(ctx: Context, id: SourceLangId, entry: CatalogEntry): View {
+        val dp = ctx.resources.displayMetrics.density
+        val installed = LanguagePackStore.isInstalled(ctx, id)
+
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(
+                (12 * dp).toInt(), (8 * dp).toInt(),
+                (12 * dp).toInt(), (8 * dp).toInt()
+            )
+            background = GradientDrawable().apply {
+                setColor(ctx.themeColor(R.attr.colorBgSurface))
+                setStroke((1 * dp).toInt(), ctx.themeColor(R.attr.colorTextHint))
+                cornerRadius = 8 * dp
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).also { it.bottomMargin = (4 * dp).toInt() }
+        }
+
+        val name = TextView(ctx).apply {
+            text = entry.display
+            textSize = 15f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setTextColor(ctx.themeColor(R.attr.colorTextPrimary))
+            layoutParams = LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+            )
+        }
+
+        val badge = TextView(ctx).apply {
+            text = getString(
+                if (installed) R.string.lang_state_installed
+                else R.string.lang_state_not_installed
+            )
+            textSize = 12f
+            setTextColor(
+                ctx.themeColor(
+                    if (installed) R.attr.colorAccentPrimary else R.attr.colorTextHint
+                )
+            )
+        }
+
+        row.addView(name)
+        row.addView(badge)
+        // No click handler in Phase 2 — the row is informational. Phase 3
+        // adds download/delete/select semantics here.
+        return row
     }
 
     // ── Display rows ──────────────────────────────────────────────────────
