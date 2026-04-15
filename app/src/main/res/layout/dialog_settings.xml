@@ -78,43 +78,10 @@
                 android:layout_marginBottom="8dp" />
 
             <LinearLayout
+                android:id="@+id/llLanguageList"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:alpha="0.38">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Japanese"
-                    android:textColor="?attr/colorTextPrimary"
-                    android:textSize="14sp"
-                    android:background="?attr/colorBgCard"
-                    android:paddingHorizontal="10dp"
-                    android:paddingVertical="10dp" />
-
-                <ImageView
-                    android:layout_width="18dp"
-                    android:layout_height="18dp"
-                    android:src="@drawable/ic_arrow_right"
-                    app:tint="?attr/colorTextPrimary"
-                    android:scaleType="centerInside"
-                    android:layout_marginHorizontal="8dp" />
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="English"
-                    android:textColor="?attr/colorTextPrimary"
-                    android:textSize="14sp"
-                    android:background="?attr/colorBgCard"
-                    android:paddingHorizontal="10dp"
-                    android:paddingVertical="10dp" />
-
-            </LinearLayout>
+                android:orientation="vertical" />
 
             <TextView
                 android:layout_width="match_parent"
