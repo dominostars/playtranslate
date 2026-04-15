@@ -1,30 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Background palette -->
-    <color name="bg_dark">#0D0D0D</color>
-    <color name="bg_surface">#1A1A1A</color>
     <color name="bg_card">#242424</color>
     <color name="bg_divider">#2E2E2E</color>
-
-    <!-- Primary accent (teal) -->
-    <color name="accent_primary">#00BCD4</color>
-    <color name="accent_primary_dark">#0097A7</color>
-    <color name="accent_secondary">#80DEEA</color>
 
     <!-- Text -->
     <color name="text_primary">#EFEFEF</color>
     <color name="text_secondary">#A0A0A0</color>
     <color name="text_hint">#606060</color>
-    <color name="text_link">#00BCD4</color>
-    <color name="text_translation">#E8C07A</color>
 
     <!-- Status colours -->
-    <color name="status_live">#4CAF50</color>
     <color name="status_error">#F44336</color>
-
-    <!-- Mode toggle -->
-    <color name="mode_selected_bg">#00BCD4</color>
-    <color name="mode_selected_text">#000000</color>
-    <color name="mode_unselected_bg">#2A2A2A</color>
-    <color name="mode_unselected_text">#A0A0A0</color>
 </resources>

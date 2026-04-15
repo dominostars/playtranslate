@@ -1,5 +1,6 @@
 package com.playtranslate.dictionary
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.util.Log
@@ -484,6 +485,10 @@ class DictionaryManager private constructor(private val context: Context) {
     // ── Singleton ─────────────────────────────────────────────────────────
 
     companion object {
+        // The stored context is context.applicationContext, which lives for
+        // the entire process lifetime and cannot leak an Activity — so the
+        // StaticFieldLeak warning here is a false positive.
+        @SuppressLint("StaticFieldLeak")
         @Volatile private var instance: DictionaryManager? = null
 
         fun get(context: Context): DictionaryManager =

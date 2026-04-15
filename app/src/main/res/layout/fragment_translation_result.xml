@@ -87,7 +87,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Copy translation"
                     android:src="@drawable/ic_copy"
-                    android:tint="?attr/colorTextSecondary" />
+                    app:tint="?attr/colorTextSecondary" />
 
                 <ImageButton
                     android:id="@+id/btnToggleTranslation"
@@ -96,7 +96,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Toggle translation visibility"
                     android:src="@drawable/ic_visibility"
-                    android:tint="?attr/colorTextSecondary" />
+                    app:tint="?attr/colorTextSecondary" />
 
             </LinearLayout>
 
@@ -161,7 +161,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Toggle inline furigana"
                     android:src="@drawable/ic_furigana"
-                    android:tint="?attr/colorTextSecondary" />
+                    app:tint="?attr/colorTextSecondary" />
 
                 <ImageButton
                     android:id="@+id/btnEditOriginal"
@@ -171,7 +171,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Edit original text"
                     android:src="@drawable/ic_edit"
-                    android:tint="?attr/colorTextSecondary" />
+                    app:tint="?attr/colorTextSecondary" />
 
                 <ImageButton
                     android:id="@+id/btnCopyOriginal"
@@ -181,7 +181,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Copy original"
                     android:src="@drawable/ic_copy"
-                    android:tint="?attr/colorTextSecondary" />
+                    app:tint="?attr/colorTextSecondary" />
 
                 <ImageButton
                     android:id="@+id/btnToggleOriginal"
@@ -190,7 +190,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Toggle original visibility"
                     android:src="@drawable/ic_visibility"
-                    android:tint="?attr/colorTextSecondary" />
+                    app:tint="?attr/colorTextSecondary" />
 
             </LinearLayout>
 
@@ -254,7 +254,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Toggle words visibility"
                     android:src="@drawable/ic_visibility"
-                    android:tint="?attr/colorTextSecondary" />
+                    app:tint="?attr/colorTextSecondary" />
 
             </LinearLayout>
 
@@ -353,7 +353,7 @@
             android:layout_width="20dp"
             android:layout_height="20dp"
             android:src="@drawable/ic_anki_cards"
-            android:tint="?attr/colorTextOnAccent"
+            app:tint="?attr/colorTextOnAccent"
             android:scaleType="centerInside" />
 
         <TextView

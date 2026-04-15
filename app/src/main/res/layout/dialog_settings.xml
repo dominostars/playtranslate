@@ -99,7 +99,7 @@
                     android:layout_width="18dp"
                     android:layout_height="18dp"
                     android:src="@drawable/ic_arrow_right"
-                    android:tint="?attr/colorTextPrimary"
+                    app:tint="?attr/colorTextPrimary"
                     android:scaleType="centerInside"
                     android:layout_marginHorizontal="8dp" />
 

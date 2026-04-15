@@ -655,7 +655,7 @@ class TranslationResultFragment : Fragment() {
             if (tokens.isEmpty()) {
                 tvMainWordsLoading.visibility = View.GONE
                 tvNoWords.visibility = View.VISIBLE
-                        onAnkiEnabledChanged?.invoke(true)
+                onAnkiEnabledChanged?.invoke(true)
                 val romaji = romajiDeferred.await()
                 if (romaji.isNotBlank() && romaji != text && false /* transliteration disabled */) {
                     tvTransliteration.text = romaji

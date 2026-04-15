@@ -6,15 +6,9 @@
     <string name="support_donate_subtitle">You can support %1$s on Ko-Fi</string>
 
     <!-- Actions -->
-    <string name="btn_translate">Translate</string>
     <string name="btn_translate_once">Use Without Saving</string>
-    <string name="btn_change_region">Change\nCapture\nRegion</string>
-    <string name="btn_translate_region">Translate %1$s</string>
-    <string name="btn_settings">Settings</string>
 
     <!-- Languages -->
-    <string name="label_source_lang">From</string>
-    <string name="label_target_lang">To</string>
 
     <!-- Accessibility service -->
     <string name="accessibility_service_description">PlayTranslate uses the Accessibility Service to take screenshots of the game screen and show a floating overlay icon. No UI content, input events, or personal data are read or monitored.</string>
@@ -22,9 +16,6 @@
     <string name="accessibility_dialog_title">Accessibility permission needed</string>
     <string name="accessibility_dialog_message">PlayTranslate needs the Accessibility permission to capture screenshots of the game screen on the top display while staying open on the bottom display.\n\nPlayTranslate does not read any UI content, monitor input, or access any personal data — it only takes screenshots when you tap Translate or start live mode.\n\nGo to Settings → Accessibility → Installed apps → PlayTranslate → Enable.</string>
     <string name="accessibility_dialog_open">Open Accessibility Settings</string>
-    <string name="inapp_dual_screen_title">Dual screen required</string>
-    <string name="inapp_dual_screen_message">In-App Only mode shows translations in the app, which requires a dual screen setup so you can see both the game and translations.\n\nYou can start with overlay mode instead.</string>
-    <string name="inapp_start_with_overlays">Start with Overlays</string>
     <string name="status_accessibility_needed">Enable PlayTranslate in Accessibility Settings first</string>
 
     <!-- Status messages -->
@@ -34,12 +25,10 @@
     <string name="status_capturing">Capturing screen…</string>
     <string name="status_ocr">Recognising text…</string>
     <string name="status_translating">Translating…</string>
-    <string name="status_downloading_model">Downloading translation model…</string>
     <string name="status_no_text">No %1$s text detected in "%2$s"</string>
     <string name="status_error">Error: %1$s</string>
 
     <!-- Notification -->
-    <string name="notif_channel_id">playtranslate_capture</string>
     <string name="notif_channel_name">Screen Capture</string>
     <string name="notif_title">PlayTranslate is active</string>
     <string name="notif_text">Tap to return to PlayTranslate</string>
@@ -50,46 +39,26 @@
     <string name="onboarding_a11y_hint">Look for <b>PlayTranslate</b> under Downloaded apps.</string>
     <string name="onboarding_a11y_title">Enable Accessibility</string>
     <string name="onboarding_a11y_body"><b>PlayTranslate</b> uses Accessibility to:\n• Capture the game screen\n• Show translated text over your game\n• Look up words by dragging over game text\n• Display game screen controls\n\nIt does not read UI content, monitor input, or access personal data.</string>
-    <string name="onboarding_a11y_alt">Screen recording works, but region preview and custom regions won\'t be available.</string>
     <string name="btn_grant_permission">Grant Permission</string>
     <string name="btn_open_a11y_settings">Open Accessibility Settings</string>
     <string name="btn_cant_enable_a11y">Can\'t enable?</string>
     <string name="restricted_settings_title">Allow Restricted Settings</string>
     <string name="restricted_settings_message">From PlayTranslate\'s Android settings page, select the button on the top right with three dots (⋮) and then select \"Allow restricted settings\". After authenticating, you should be able to turn on accessibility permissions.</string>
     <string name="btn_open_app_settings">Open PlayTranslate Settings</string>
-    <string name="btn_use_screen_recording">Use screen recording instead</string>
-    <string name="settings_capture_method">Capture Method</string>
-    <string name="settings_capture_a11y_active">Accessibility enabled — full functionality</string>
-    <string name="settings_capture_mp_active">Screen recording active</string>
-    <string name="settings_capture_mp_limitations">Enable Accessibility to use region preview on the game screen and create custom capture regions.</string>
-    <string name="btn_enable_accessibility">Enable Accessibility for PlayTranslate</string>
     <string name="region_picker_no_preview">To see a preview of your selected region on the game screen, you must enable Accessibility Settings. This is also necessary to create new capture regions. Tap here to change.</string>
     <string name="custom_region_a11y_required_title">Accessibility required</string>
     <string name="custom_region_a11y_required_message">Adding custom regions requires the Accessibility permission. It\'s used to draw a live preview box on the game screen so you can see exactly what area you\'re selecting.\n\nGo to Settings → Accessibility → Installed apps → PlayTranslate → Enable.</string>
-    <string name="notif_rationale_title">Allow notifications</string>
-    <string name="notif_rationale_message">Android requires apps that run in the background to show a status bar notification. PlayTranslate uses this to indicate it is active while translating.\n\nThis will never send alerts, sounds, or banners — only a quiet, persistent status indicator.</string>
 
     <!-- Word detail -->
-    <string name="word_detail_reading">Reading</string>
-    <string name="word_detail_pos">Part of speech</string>
-    <string name="word_detail_meanings">Meanings</string>
-    <string name="word_detail_jlpt">JLPT</string>
-    <string name="word_detail_tap_hint">Tap any word in the original text to look it up</string>
     <string name="word_detail_not_found">No dictionary entry found for \"%1$s\"</string>
-    <string name="word_detail_network_error">Dictionary lookup failed.</string>
 
     <!-- Banner / language pair -->
-    <string name="banner_lang_pair">Japanese → English</string>
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>
-    <string name="settings_language">Translation Language</string>
     <string name="settings_language_hint">Only Japanese → English is currently supported. More languages coming soon.</string>
-    <string name="settings_display">Capture display</string>
     <string name="settings_display_hint">Select the display that shows the game. Usually Display 0 is the main/top screen.</string>
     <string name="settings_no_displays_found">No displays found</string>
-    <string name="settings_deepl_key">DeepL API Key (optional)</string>
-    <string name="settings_deepl_hint">Without a key, PlayTranslate translates via Google\'s unofficial translate endpoint (no account needed), with on-device ML Kit as an offline fallback. Add a DeepL key to use DeepL as the primary translator. Unfortunately, the free plan still requires a credit card, but translations are better and it includes 500,000 characters per month: https://www.deepl.com/en/pro#developer</string>
     <string name="hint_deepl_key">Paste your DeepL API key here</string>
     <string name="note_mlkit_no_internet">⚠ No internet connection — showing offline translation (lower quality).</string>
     <string name="note_mlkit_service_unavailable">⚠ Translation service unavailable — showing offline translation (lower quality).</string>
@@ -101,7 +70,6 @@
     <string name="words_loading">Looking up words…</string>
 
     <!-- Region labels -->
-    <string name="label_region">Region</string>
     <string name="label_select_region">Select Region</string>
     <string name="label_edit">Edit</string>
     <string name="label_done">Done</string>
@@ -109,7 +77,6 @@
     <string name="label_add_custom_region_title">Add Custom Region</string>
     <string name="label_region_drag_hint">Drag the region box on the game screen to select your desired area. Drag the top or bottom edge, or drag the middle to move the whole box.</string>
     <string name="label_region_name">Region name</string>
-    <string name="label_rename_region">Rename region</string>
     <string name="hint_region_name">e.g. Dialogue box</string>
 
     <!-- Overlay icon -->
@@ -123,33 +90,24 @@
     <!-- Single-screen mode -->
     <string name="onboarding_a11y_single_title">Enable Accessibility</string>
     <string name="onboarding_a11y_single_body"><b>PlayTranslate</b> needs the Accessibility permission to work on single-screen devices.\n\nWith it, <b>PlayTranslate</b> can:\n• Capture the game screen without leaving your app\n• Show translated text as an overlay over your game\n• Look up words by dragging over game text\n• Display game screen controls\n\nIt does not read UI content, monitor input, or access personal data.</string>
-    <string name="settings_show_transliteration">Show transliteration</string>
-    <string name="settings_show_transliteration_hint">Display romanized reading below the original text.</string>
 
     <!-- Anki integration -->
     <string name="section_anki_deck">Anki Deck</string>
-    <string name="anki_not_installed">Install AnkiDroid to create flashcards</string>
     <string name="anki_not_installed_title">Create flashcard for review</string>
     <string name="anki_not_installed_message">Save words you discover while playing and review them later.\n\nPlayTranslate can save translated sentences, vocabulary, and screenshots directly to AnkiDroid, a free spaced-repetition flashcard app.</string>
     <string name="anki_not_installed_get">Get AnkiDroid</string>
     <string name="anki_section_description">Are you a language learner? Create flashcards in %1$s from unknown words and sentences, and review them later using AnkiDroid, a free and popular spaced-repetition flashcard app.</string>
     <string name="anki_play_store_url">https://play.google.com/store/apps/details?id=com.ichi2.anki</string>
-    <string name="anki_play_store_link">Get AnkiDroid on Google Play →</string>
     <string name="anki_permission_rationale_title">AnkiDroid permission needed</string>
     <string name="anki_permission_rationale_message">To add flashcards to Anki, PlayTranslate needs permission to access AnkiDroid.\n\nTap Continue to grant this permission.</string>
     <string name="btn_continue">Continue</string>
-    <string name="anki_permission_needed">To add flashcards to Anki, PlayTranslate needs permission to access AnkiDroid.</string>
     <string name="anki_permission_denied">Permission denied — grant it in AnkiDroid settings</string>
-    <string name="anki_loading_decks">Loading decks…</string>
     <string name="anki_no_deck_selected">No decks found in AnkiDroid</string>
     <string name="anki_added">Added to Anki!</string>
     <string name="anki_failed">Failed to add card to Anki</string>
     <string name="btn_add_to_anki">Add to Anki</string>
-    <string name="btn_grant_anki_permission">Grant AnkiDroid Access</string>
     <string name="btn_remove_photo">Remove</string>
     <string name="label_screenshot">Screenshot</string>
     <string name="anki_mode_sentence">Sentence</string>
     <string name="anki_mode_word">Word</string>
-    <string name="anki_bold_target_word">Bold target word in sentence</string>
-    <string name="anki_bold_target_word_named">Bold \"%1$s\" in sentence</string>
 </resources>

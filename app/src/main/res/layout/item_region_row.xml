@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
@@ -16,7 +17,7 @@
         android:layout_height="32dp"
         android:layout_marginEnd="10dp"
         android:src="@drawable/ic_drag_handle"
-        android:tint="?attr/colorTextHint"
+        app:tint="?attr/colorTextHint"
         android:scaleType="center"
         android:visibility="gone"
         android:contentDescription="Drag to reorder" />
@@ -47,7 +48,7 @@
         android:layout_marginStart="4dp"
         android:paddingHorizontal="12dp"
         android:src="@drawable/ic_close"
-        android:tint="@color/status_error"
+        app:tint="@color/status_error"
         android:scaleType="centerInside"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:visibility="gone"
