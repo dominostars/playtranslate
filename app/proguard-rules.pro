@@ -10,6 +10,14 @@
 -keep class com.playtranslate.DeepLTranslator$DeepLResponse { *; }
 -keep class com.playtranslate.DeepLTranslator$DeepLResponse$Translation { *; }
 
+# Language pack catalog + manifest — Gson reflection-parsed, field names must
+# survive R8 obfuscation.
+-keep class com.playtranslate.language.LanguagePackCatalog { *; }
+-keep class com.playtranslate.language.CatalogEntry { *; }
+-keep class com.playtranslate.language.LanguagePackManifest { *; }
+-keep class com.playtranslate.language.ManifestFile { *; }
+-keep class com.playtranslate.language.ManifestLicense { *; }
+
 # ── ML Kit ────────────────────────────────────────────────────────────────────
 -keep class com.google.mlkit.** { *; }
 -dontwarn com.google.mlkit.**
