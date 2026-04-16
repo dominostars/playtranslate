@@ -66,6 +66,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sqlite3
 import sys
@@ -73,51 +74,42 @@ import zipfile
 from pathlib import Path
 from typing import Iterable
 
-# Parts of speech we keep. Wiktionary exposes a rich taxonomy; this set
-# is the bare minimum to be useful for a game translator.
+try:
+    from wordfreq import word_frequency
+except ImportError:
+    print(
+        "error: wordfreq not installed. Run `pip install wordfreq` first.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+# Frequency threshold (Zipf scale). Words with frequency below this are
+# dropped. 1e-6 = "at least one occurrence per million words" — a
+# reasonable "common English word" cutoff that yields ~30-50k entries.
+MIN_FREQUENCY = 1e-6
+
+# Higher threshold for the is_common flag. ~top 3000 English words.
+COMMON_FREQUENCY = 1e-4
+
+# Parts of speech we keep. Allowlist matches the exact strings kaikki
+# emits in its `pos` field (verified against the full English dataset on
+# 2026-04-15). Proper nouns (`name`) are explicitly excluded — they add
+# noise without translation value for game text.
 CONTENT_POS = {
     "noun",
     "verb",
     "adj",
-    "adjective",
     "adv",
-    "adverb",
-    "prep",
-    "preposition",
-    "pron",
-    "pronoun",
-    "conj",
-    "conjunction",
-    "interj",
-    "interjection",
-    "num",
-    "numeral",
-    "abbrev",
-    "abbreviation",
     "phrase",
-}
-
-# Short-form POS so multiple senses share a concise string.
-POS_ABBREV = {
-    "noun": "n",
-    "verb": "v",
-    "adjective": "adj",
-    "adj": "adj",
-    "adverb": "adv",
-    "adv": "adv",
-    "preposition": "prep",
-    "prep": "prep",
-    "pronoun": "pron",
-    "pron": "pron",
-    "conjunction": "conj",
-    "conj": "conj",
-    "interjection": "intj",
-    "interj": "intj",
-    "numeral": "num",
-    "num": "num",
-    "abbreviation": "abbr",
-    "abbrev": "abbr",
-    "phrase": "phr",
+    "prep_phrase",
+    "proverb",
+    "intj",
+    "pron",
+    "conj",
+    "prep",
+    "num",
+    "contraction",
+    "abbrev",
 }
 
 MAX_SENSES_PER_ENTRY = 8
@@ -193,7 +185,12 @@ def build_sqlite(input_path: Path, db_path: Path) -> None:
     kept = 0
     seen_headwords: set[str] = set()
 
+    scanned = 0
     for obj in iter_kaikki(input_path):
+        scanned += 1
+        if scanned % 100000 == 0:
+            print(f"  {scanned:,} lines scanned, {kept:,} kept…")
+
         word = obj.get("word")
         pos_raw = (obj.get("pos") or "").lower()
         lang_code = obj.get("lang_code")
@@ -207,6 +204,13 @@ def build_sqlite(input_path: Path, db_path: Path) -> None:
         if len(word.split()) > MAX_HEADWORD_WORDS:
             continue
 
+        # Frequency cut — drops rare archaic words, misspellings, and
+        # obscure technical terms that bloat the pack.
+        word_lower = word.lower()
+        freq = word_frequency(word_lower, "en")
+        if freq < MIN_FREQUENCY:
+            continue
+
         glosses_list: list[str] = []
         for sense in (obj.get("senses") or [])[:MAX_SENSES_PER_ENTRY]:
             glosses = sense.get("glosses") or []
@@ -218,37 +222,40 @@ def build_sqlite(input_path: Path, db_path: Path) -> None:
             continue
 
         # De-duplicate (word, pos) — kaikki sometimes emits repeats.
-        key = f"{word.lower()}\t{pos_raw}"
+        key = f"{word_lower}\t{pos_raw}"
         if key in seen_headwords:
             continue
         seen_headwords.add(key)
 
+        # Scale frequency into an integer score for sort ordering.
+        # log10(freq) ranges from ~-7 (rare) to ~-2 (very common). Shift
+        # and clamp to 0..100.
+        freq_score = max(0, min(100, int((math.log10(freq) + 7) * 20)))
+        is_common = 1 if freq >= COMMON_FREQUENCY else 0
+
         entry_id += 1
         cur.execute(
             "INSERT INTO entry VALUES (?, ?, ?)",
-            (entry_id, 0, 0),  # is_common=0, freq_score=0 (Phase 3.5 can improve)
+            (entry_id, is_common, freq_score),
         )
         cur.execute(
             "INSERT INTO kanji VALUES (?, ?, ?)",
-            (entry_id, 0, word.lower()),
+            (entry_id, 0, word_lower),
         )
         # No reading rows for Latin.
 
-        pos_short = POS_ABBREV.get(pos_raw, pos_raw)
         cur.execute(
             "INSERT INTO sense VALUES (?, ?, ?, ?, ?)",
             (
                 entry_id,
                 0,
-                pos_short,
+                pos_raw,
                 "\t".join(glosses_list),
                 "",
             ),
         )
 
         kept += 1
-        if kept % 5000 == 0:
-            print(f"  {kept} entries processed…")
 
     conn.commit()
     conn.close()
