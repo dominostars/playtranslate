@@ -96,7 +96,8 @@ dependencies {
 
     // ML Kit
     implementation(libs.mlkit.text.recognition.japanese)
-    implementation(libs.mlkit.text.recognition)   // Latin base SDK (Phase 3)
+    implementation(libs.mlkit.text.recognition)          // Latin base SDK (Phase 3)
+    implementation(libs.mlkit.text.recognition.chinese)   // Chinese OCR (Phase 4)
     implementation(libs.mlkit.translate)
     implementation(libs.mlkit.language.id)
 
@@ -109,6 +110,9 @@ dependencies {
 
     // Lucene Snowball stemmer (Phase 3: Latin/English stemming)
     implementation(libs.lucene.analyzers.common)
+
+    // HanLP CRF segmenter (Phase 4: Chinese word segmentation)
+    implementation(libs.hanlp)
 
     // Unit tests
     testImplementation("junit:junit:4.13.2")

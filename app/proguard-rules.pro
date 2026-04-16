@@ -37,6 +37,11 @@
 -dontwarn org.apache.lucene.**
 -dontwarn org.tartarus.**
 
+# ── HanLP (Chinese CRF segmenter) ────────────────────────────────────────────
+# HanLP loads models, dictionaries, and nature-enum mappings by reflection.
+-keep class com.hankcs.hanlp.** { *; }
+-dontwarn com.hankcs.hanlp.**
+
 # ── OkHttp / Okio (bundled rules handle most cases; add dontwarn for extras) ──
 -dontwarn okhttp3.internal.platform.**
 -dontwarn org.conscrypt.**

@@ -30,10 +30,15 @@ class LanguageTest {
         assertEquals(SourceLangId.EN, SourceLangId.fromCode("en-US"))
     }
 
+    @Test fun `fromCode resolves ZH added in Phase 4`() {
+        assertEquals(SourceLangId.ZH, SourceLangId.fromCode("zh"))
+        assertEquals(SourceLangId.ZH, SourceLangId.fromCode("ZH"))
+        assertEquals(SourceLangId.ZH, SourceLangId.fromCode("zh-TW"))
+    }
+
     @Test fun `fromCode rejects unknown code`() {
-        // Phase 4+ languages not yet added to the enum.
-        assertNull(SourceLangId.fromCode("zh"))
         assertNull(SourceLangId.fromCode("fr"))
+        assertNull(SourceLangId.fromCode("ar"))
     }
 
     @Test fun `fromCode handles null and blank`() {
@@ -59,5 +64,15 @@ class LanguageTest {
         assertEquals(TextDirection.LTR, profile.textDirection)
         assertEquals(ScriptFamily.LATIN, profile.scriptFamily)
         assertEquals(true, profile.wordsSeparatedByWhitespace)
+    }
+
+    @Test fun `ZH profile has correct translation code and OCR backend`() {
+        val profile = SourceLanguageProfiles[SourceLangId.ZH]
+        assertEquals(TranslateLanguage.CHINESE, profile.translationCode)
+        assertEquals(OcrBackend.MLKitChinese, profile.ocrBackend)
+        assertEquals(HintTextKind.NONE, profile.hintTextKind)
+        assertEquals(TextDirection.LTR, profile.textDirection)
+        assertEquals(ScriptFamily.CJK_CHINESE, profile.scriptFamily)
+        assertEquals(false, profile.wordsSeparatedByWhitespace)
     }
 }

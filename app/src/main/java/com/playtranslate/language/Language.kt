@@ -13,7 +13,8 @@ import com.google.mlkit.nl.translate.TranslateLanguage
 enum class SourceLangId(val code: String) {
     JA("ja"),
     EN("en"),
-    // ZH, KO, AR, ES, FR, DE, IT, PT, NL, TR, VI, ID — deferred to later phases
+    ZH("zh"),
+    // KO, AR, ES, FR, DE, IT, PT, NL, TR, VI, ID — deferred to later phases
     ;
 
     companion object {
@@ -109,13 +110,25 @@ object SourceLanguageProfiles {
             hintTextKind = HintTextKind.NONE,
             wordsSeparatedByWhitespace = true,
             isScriptChar = { c ->
-                // Basic Latin letters + Latin-1 Supplement letters (covers
-                // English, common diacritics, and the symbols OCR might emit.)
                 c in '\u0041'..'\u005A'     // A-Z
                     || c in '\u0061'..'\u007A'  // a-z
                     || c in '\u00C0'..'\u00FF'  // Latin-1 Supplement letters
             },
             translationCode = TranslateLanguage.ENGLISH,
+        ),
+        SourceLangId.ZH to SourceLanguageProfile(
+            id = SourceLangId.ZH,
+            displayName = "Chinese",
+            scriptFamily = ScriptFamily.CJK_CHINESE,
+            textDirection = TextDirection.LTR,
+            ocrBackend = OcrBackend.MLKitChinese,
+            hintTextKind = HintTextKind.NONE,
+            wordsSeparatedByWhitespace = false,
+            isScriptChar = { c ->
+                c in '\u4E00'..'\u9FFF'     // CJK Unified Ideographs
+                    || c in '\u3400'..'\u4DBF'  // CJK Extension A
+            },
+            translationCode = TranslateLanguage.CHINESE,
         ),
     )
 
