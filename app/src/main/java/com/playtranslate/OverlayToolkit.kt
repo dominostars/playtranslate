@@ -144,28 +144,29 @@ object OverlayToolkit {
                 val lineBoxes = mutableListOf<TranslationOverlayView.TextBox>()
 
                 if (line.symbols.isNotEmpty()) {
-                    // Symbol-based positioning: use exact ML Kit character bounds
-                    var searchFrom = 0
+                    // Symbol-based positioning: use the tokenizer's authoritative
+                    // startOffset/endOffset (relative to line.text) to find each
+                    // kanji span's symbols. Avoids indexOf re-search, which breaks
+                    // on repeated kanji surfaces when an earlier occurrence has no
+                    // symbol coverage.
                     for (ft in furiganaTokens) {
-                        val matchStart = findConsecutiveSymbols(line.symbols, ft.kanjiSurface, searchFrom)
-                        if (matchStart != null) {
-                            val first = line.symbols[matchStart]
-                            val last = line.symbols[matchStart + ft.kanjiSurface.length - 1]
-                            searchFrom = matchStart + ft.kanjiSurface.length
+                        val matching = line.symbols.filter { it.charOffset in ft.startOffset until ft.endOffset }
+                        if (matching.isEmpty()) continue
+                        val first = matching.first()
+                        val last = matching.last()
 
-                            val furiganaHeight = (first.bounds.height() * 0.75f).toInt().coerceAtLeast(1)
-                            lineBoxes += TranslationOverlayView.TextBox(
-                                translatedText = ft.reading,
-                                bounds = Rect(
-                                    first.bounds.left,
-                                    first.bounds.top - furiganaHeight,
-                                    last.bounds.right,
-                                    first.bounds.top
-                                ),
-                                lineCount = 1,
-                                isFurigana = true
-                            )
-                        }
+                        val furiganaHeight = (first.bounds.height() * 0.75f).toInt().coerceAtLeast(1)
+                        lineBoxes += TranslationOverlayView.TextBox(
+                            translatedText = ft.reading,
+                            bounds = Rect(
+                                first.bounds.left,
+                                first.bounds.top - furiganaHeight,
+                                last.bounds.right,
+                                first.bounds.top
+                            ),
+                            lineCount = 1,
+                            isFurigana = true
+                        )
                     }
                 } else {
                     // Fallback: TextPaint estimation (no symbols available)
@@ -299,21 +300,6 @@ object OverlayToolkit {
         return maxOf(box.bounds.right, (box.bounds.left + textWidth).toInt())
     }
 
-    /**
-     * Find the starting index where [text] appears as consecutive symbols in [symbols],
-     * searching from index [from]. Returns null if not found.
-     */
-    private fun findConsecutiveSymbols(
-        symbols: List<OcrManager.SymbolBox>, text: String, from: Int
-    ): Int? {
-        outer@ for (start in from..symbols.size - text.length) {
-            for ((i, ch) in text.withIndex()) {
-                if (symbols[start + i].text != ch.toString()) continue@outer
-            }
-            return start
-        }
-        return null
-    }
 
     /**
      * Build a mapper from (startCharOffset, endCharOffset) → (left, right) pixel positions,

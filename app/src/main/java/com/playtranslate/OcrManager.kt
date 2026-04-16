@@ -69,10 +69,15 @@ class OcrManager private constructor() {
         val bounds: Rect
     )
 
-    /** A single character (ML Kit Symbol) with its exact bounding box. */
+    /** A single character (ML Kit Symbol) with its exact bounding box.
+     *  [charOffset] is the character's position within the containing line's
+     *  processed text string. Consumers filter symbols by offset range rather
+     *  than assuming 1:1 positional alignment — spaces and missing symbols
+     *  simply have no entry, which is correct. */
     data class SymbolBox(
         val text: String,
-        val bounds: Rect
+        val bounds: Rect,
+        val charOffset: Int,
     )
 
     /** A per-line bounding box with its processed text and group association. */
@@ -109,6 +114,7 @@ class OcrManager private constructor() {
     suspend fun recognise(bitmap: Bitmap, sourceLang: String = "ja", collectDebugBoxes: Boolean = false, screenshotWidth: Int = 0): OcrResult? {
         val processed = prepareForOcr(bitmap)
         val scaleFactor = processed.width.toFloat() / bitmap.width
+        val addWordSpaces = SourceLanguageProfiles.forCode(sourceLang)?.wordsSeparatedByWhitespace ?: false
 
         val visionText: Text = try {
             recognizerFor(sourceLang).recognize(processed)
@@ -153,6 +159,7 @@ class OcrManager private constructor() {
                 val lineBuilder = StringBuilder()
                 val lineElements = mutableListOf<ElementBox>()
                 val lineSymbols = mutableListOf<SymbolBox>()
+                var lineCharCount = 0
                 line.elements.forEachIndexed { ei, element ->
                     if (!isUiDecoration(element.text)) {
                         var text = element.text
@@ -160,9 +167,18 @@ class OcrManager private constructor() {
                         if (ei == 0) text = text.trimStart('|').trimStart()
                         if (ei == line.elements.lastIndex) text = text.trimEnd('|').trimEnd()
                         if (text.isNotEmpty()) {
+                            if (addWordSpaces && lineCharCount > 0) {
+                                fullTextBuilder.append(' ')
+                                groupBuilder.append(' ')
+                                lineBuilder.append(' ')
+                                segments += TextSegment(" ", isSeparator = true)
+                                lineCharCount++
+                            }
+                            val elementOffset = lineCharCount
                             fullTextBuilder.append(text)
                             groupBuilder.append(text)
                             lineBuilder.append(text)
+                            lineCharCount += text.length
                             segments += TextSegment(text)
                             // Collect element bounding box for precise furigana positioning
                             element.boundingBox?.let { ebb ->
@@ -177,7 +193,7 @@ class OcrManager private constructor() {
                                 )
                             }
                             // Collect per-character symbols with exact bounds
-                            lineSymbols += extractElementSymbols(element, text, scaleFactor)
+                            lineSymbols += extractElementSymbols(element, text, scaleFactor, elementOffset)
                         }
                     }
                 }
@@ -288,11 +304,12 @@ class OcrManager private constructor() {
         element: Text.Element,
         processedText: String,
         scaleFactor: Float,
+        startOffset: Int,
     ): List<SymbolBox> {
         val out = mutableListOf<SymbolBox>()
         val rawSymbols = element.symbols
         var symIdx = 0
-        for (ch in processedText) {
+        for ((charIdx, ch) in processedText.withIndex()) {
             while (symIdx < rawSymbols.size) {
                 val sym = rawSymbols[symIdx]
                 symIdx++
@@ -305,7 +322,8 @@ class OcrManager private constructor() {
                                 (sbb.top / scaleFactor).toInt(),
                                 (sbb.right / scaleFactor).toInt(),
                                 (sbb.bottom / scaleFactor).toInt()
-                            )
+                            ),
+                            charOffset = startOffset + charIdx,
                         )
                     }
                     break
@@ -563,6 +581,7 @@ class OcrManager private constructor() {
     suspend fun recogniseWithPositions(bitmap: Bitmap, sourceLang: String = "ja"): List<OcrLine>? {
         val processed = prepareForOcr(bitmap)
         val scaleFactor = processed.width.toFloat() / bitmap.width
+        val addWordSpaces = SourceLanguageProfiles.forCode(sourceLang)?.wordsSeparatedByWhitespace ?: false
 
         val visionText: Text = try {
             recognizerFor(sourceLang).recognize(processed)
@@ -581,14 +600,23 @@ class OcrManager private constructor() {
         val lines = mutableListOf<OcrLine>()
         groups.forEachIndexed { gi, group ->
             val groupTextBuilder = StringBuilder()
+            var groupLineCharCount = 0
             group.forEachIndexed { li, line ->
                 if (li > 0) groupTextBuilder.append(" ")
+                groupLineCharCount = 0
                 line.elements.forEachIndexed { ei, element ->
                     if (!isUiDecoration(element.text)) {
                         var text = element.text
                         if (ei == 0) text = text.trimStart('|').trimStart()
                         if (ei == line.elements.lastIndex) text = text.trimEnd('|').trimEnd()
-                        if (text.isNotEmpty()) groupTextBuilder.append(text)
+                        if (text.isNotEmpty()) {
+                            if (addWordSpaces && groupLineCharCount > 0) {
+                                groupTextBuilder.append(' ')
+                                groupLineCharCount++
+                            }
+                            groupTextBuilder.append(text)
+                            groupLineCharCount += text.length
+                        }
                     }
                 }
             }
@@ -597,19 +625,25 @@ class OcrManager private constructor() {
             for (line in group) {
                 val b = line.boundingBox ?: continue
                 // Walk elements with the same pipe-trim + decoration-filter +
-                // symbol-extraction rules that recognise() uses, so the symbol
-                // list is aligned 1:1 with the resulting text for non-monospaced
-                // hit testing in drag-lookup.
+                // symbol-extraction rules that recognise() uses. Symbols carry
+                // charOffset for offset-based lookup in drag-to-lookup.
                 val lineTextBuilder = StringBuilder()
                 val lineSymbols = mutableListOf<SymbolBox>()
+                var lineCharCount = 0
                 line.elements.forEachIndexed { ei, element ->
                     if (!isUiDecoration(element.text)) {
                         var text = element.text
                         if (ei == 0) text = text.trimStart('|').trimStart()
                         if (ei == line.elements.lastIndex) text = text.trimEnd('|').trimEnd()
                         if (text.isNotEmpty()) {
+                            if (addWordSpaces && lineCharCount > 0) {
+                                lineTextBuilder.append(' ')
+                                lineCharCount++
+                            }
+                            val elementOffset = lineCharCount
                             lineTextBuilder.append(text)
-                            lineSymbols += extractElementSymbols(element, text, scaleFactor)
+                            lineCharCount += text.length
+                            lineSymbols += extractElementSymbols(element, text, scaleFactor, elementOffset)
                         }
                     }
                 }
