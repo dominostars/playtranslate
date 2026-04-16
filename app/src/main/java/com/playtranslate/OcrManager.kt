@@ -708,7 +708,14 @@ class OcrManager private constructor() {
             "th" -> c in '\u0E00'..'\u0E7F'   // Thai
             "hi", "mr", "ne" ->
                    c in '\u0900'..'\u097F'   // Devanagari
-            else -> c.code > 0x007F            // Generic: any non-ASCII
+            else -> {
+                // For registered source languages (EN, future Latin, etc.)
+                // use the profile's isScriptChar lambda — it knows the correct
+                // character ranges. Fallback to non-ASCII heuristic only for
+                // source codes that aren't in the profile registry.
+                val profile = SourceLanguageProfiles.forCode(sourceLang)
+                if (profile != null) profile.isScriptChar(c) else c.code > 0x007F
+            }
         }
 
         /** UI-only symbols that are never meaningful dialogue text on their own. */
