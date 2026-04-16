@@ -35,13 +35,16 @@ object LastSentenceCache {
         context: Context,
         sentence: String
     ): Map<String, Triple<String, String, Int>> = withContext(Dispatchers.IO) {
-        val dict = DictionaryManager.get(context.applicationContext)
-        val tokenResults = dict.tokenizeWithSurfaces(sentence)
+        val engine = com.playtranslate.language.SourceLanguageEngines.get(
+            context.applicationContext,
+            com.playtranslate.Prefs(context.applicationContext).sourceLangId,
+        )
+        val tokenResults = engine.tokenize(sentence)
         val results = linkedMapOf<String, Triple<String, String, Int>>()
         val surfaces = linkedMapOf<String, String>()
         for (tok in tokenResults) {
             try {
-                val response = dict.lookup(tok.lookupForm, tok.reading)
+                val response = engine.lookup(tok.lookupForm, tok.reading)
                 if (response != null && response.entries.isNotEmpty()) {
                     val entry = response.entries.first()
                     val primary = entry.headwords.firstOrNull()

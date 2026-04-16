@@ -21,6 +21,7 @@ import androidx.lifecycle.lifecycleScope
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
+import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.R
 import com.playtranslate.dictionary.Deinflector
@@ -356,9 +357,9 @@ class TranslationResultFragment : Fragment() {
         val activity = activity ?: return
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                val dict = DictionaryManager.get(ctx.applicationContext)
+                val engine = SourceLanguageEngines.get(ctx.applicationContext, Prefs(ctx.applicationContext).sourceLangId)
                 val response = withContext(Dispatchers.IO) {
-                    dict.lookup(lookupForm, reading.ifEmpty { null })
+                    engine.lookup(lookupForm, reading.ifEmpty { null })
                 }
                 val entry = response?.entries?.firstOrNull()
 
@@ -631,8 +632,9 @@ class TranslationResultFragment : Fragment() {
             val romajiDeferred = async { buildRomaji(text) }
 
             val ctx = context ?: return@launch
+            val engine = SourceLanguageEngines.get(ctx.applicationContext, Prefs(ctx.applicationContext).sourceLangId)
             val allTokens = withContext(Dispatchers.IO) {
-                DictionaryManager.get(ctx.applicationContext).tokenizeWithSurfaces(text)
+                engine.tokenize(text)
             }
 
             // Build surface → character range mapping for furigana taps.
@@ -690,9 +692,8 @@ class TranslationResultFragment : Fragment() {
                         var displayWord = word
                         var freqScore = 0
                         try {
-                            val appCtx = context?.applicationContext ?: return@launch
                             val response = withContext(Dispatchers.IO) {
-                                DictionaryManager.get(appCtx).lookup(word, readingByToken[word])
+                                engine.lookup(word, readingByToken[word])
                             }
                             if (response != null && response.entries.isNotEmpty()) {
                                 val entry   = response.entries.first()

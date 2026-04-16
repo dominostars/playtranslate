@@ -15,7 +15,7 @@ import com.playtranslate.MainActivity
 import com.playtranslate.OcrManager
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.Prefs
-import com.playtranslate.dictionary.DictionaryManager
+import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.model.DictionaryEntry
 import kotlinx.coroutines.*
 import java.io.File
@@ -384,8 +384,8 @@ class DragLookupController(
 
         // Tokenize the line (surface spans for position mapping, lookup forms for dictionary)
         val service = PlayTranslateAccessibilityService.instance ?: return false
-        val dict = DictionaryManager.get(service)
-        val tokenResults = dict.tokenizeWithSurfaces(lineText)
+        val engine = SourceLanguageEngines.get(service, Prefs(service).sourceLangId)
+        val tokenResults = engine.tokenize(lineText)
 
         if (tokenResults.isEmpty()) return false
 
@@ -413,7 +413,7 @@ class DragLookupController(
         if (lookupForm == lastWord && popup.isShowing) return true
 
         // Dictionary lookup using the base/dictionary form + reading hint
-        val response = dict.lookup(lookupForm, matchedToken?.reading)
+        val response = engine.lookup(lookupForm, matchedToken?.reading)
         val entry = response?.entries?.firstOrNull()
 
         // Build popup data. If JMdict has the token, use its entry. Otherwise
