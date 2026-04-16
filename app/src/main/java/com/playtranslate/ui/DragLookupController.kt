@@ -121,25 +121,22 @@ class DragLookupController(
             data class TokenPos(val token: String, val idx: Int, val left: Float, val right: Float)
             val positioned = mutableListOf<TokenPos>()
 
-            // Use symbols only if their count aligns exactly with lineText —
-            // if ML Kit dropped some, we can't trust index arithmetic.
-            val useSymbols = symbols.size == lineText.length
-
             var pos = 0
             for (token in tokens) {
                 val idx = lineText.indexOf(token, pos)
                 if (idx < 0) continue
                 val endIdx = idx + token.length
+                // Find symbols whose charOffset falls in this token's range.
+                // Symbols may be absent for spaces, dropped characters, or
+                // lines where ML Kit didn't emit per-character data — fall
+                // back to the charWidth approximation in those cases.
+                val tokenSymbols = symbols.filter { it.charOffset in idx until endIdx }
                 val left: Float
                 val right: Float
-                if (useSymbols && endIdx <= symbols.size) {
-                    // Symbol-aware: precise per-character bounds. Union over
-                    // each character's rect catches italic/proportional fonts.
-                    val tokenSymbols = symbols.subList(idx, endIdx)
+                if (tokenSymbols.isNotEmpty()) {
                     left = tokenSymbols.minOf { it.bounds.left }.toFloat()
                     right = tokenSymbols.maxOf { it.bounds.right }.toFloat()
                 } else {
-                    // Legacy CJK-monospaced approximation.
                     left = fallbackLineLeft + idx * fallbackCharWidth
                     right = fallbackLineLeft + endIdx * fallbackCharWidth
                 }
