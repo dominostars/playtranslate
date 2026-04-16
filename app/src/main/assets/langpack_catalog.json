@@ -20,6 +20,22 @@
         }
       ]
     },
+    "zh": {
+      "display": "Chinese",
+      "script": "CJK_CHINESE",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 8217827,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/zh-v1/zh.zip",
+      "sha256": "f70f6c770780419f3aef139c47a9fe46fabe6f10d57eb83fbed199cfb136c46c",
+      "licenses": [
+        {
+          "component": "CC-CEDICT",
+          "license": "CC-BY-SA-4.0",
+          "attribution": "© MDBG, https://cc-cedict.org/"
+        }
+      ]
+    },
     "en": {
       "display": "English",
       "script": "LATIN",
