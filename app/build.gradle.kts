@@ -96,6 +96,7 @@ dependencies {
 
     // ML Kit
     implementation(libs.mlkit.text.recognition.japanese)
+    implementation(libs.mlkit.text.recognition)   // Latin base SDK (Phase 3)
     implementation(libs.mlkit.translate)
     implementation(libs.mlkit.language.id)
 
@@ -105,6 +106,9 @@ dependencies {
 
     // Japanese morphological analysis
     implementation(libs.kuromoji.ipadic)
+
+    // Lucene Snowball stemmer (Phase 3: Latin/English stemming)
+    implementation(libs.lucene.analyzers.common)
 
     // Unit tests
     testImplementation("junit:junit:4.13.2")

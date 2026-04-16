@@ -24,9 +24,16 @@ class LanguageTest {
         assertEquals(SourceLangId.JA, SourceLangId.fromCode("ja-JP"))
     }
 
+    @Test fun `fromCode resolves EN added in Phase 3`() {
+        assertEquals(SourceLangId.EN, SourceLangId.fromCode("en"))
+        assertEquals(SourceLangId.EN, SourceLangId.fromCode("EN"))
+        assertEquals(SourceLangId.EN, SourceLangId.fromCode("en-US"))
+    }
+
     @Test fun `fromCode rejects unknown code`() {
-        // Phase 1 only has JA; "en" lands in Phase 3.
-        assertNull(SourceLangId.fromCode("en"))
+        // Phase 4+ languages not yet added to the enum.
+        assertNull(SourceLangId.fromCode("zh"))
+        assertNull(SourceLangId.fromCode("fr"))
     }
 
     @Test fun `fromCode handles null and blank`() {
@@ -42,5 +49,15 @@ class LanguageTest {
         assertEquals(HintTextKind.FURIGANA, profile.hintTextKind)
         assertEquals(TextDirection.LTR, profile.textDirection)
         assertEquals(ScriptFamily.CJK_JAPANESE, profile.scriptFamily)
+    }
+
+    @Test fun `EN profile has correct translation code and OCR backend`() {
+        val profile = SourceLanguageProfiles[SourceLangId.EN]
+        assertEquals(TranslateLanguage.ENGLISH, profile.translationCode)
+        assertEquals(OcrBackend.MLKitLatin, profile.ocrBackend)
+        assertEquals(HintTextKind.NONE, profile.hintTextKind)
+        assertEquals(TextDirection.LTR, profile.textDirection)
+        assertEquals(ScriptFamily.LATIN, profile.scriptFamily)
+        assertEquals(true, profile.wordsSeparatedByWhitespace)
     }
 }

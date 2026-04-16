@@ -12,7 +12,8 @@ import com.google.mlkit.nl.translate.TranslateLanguage
  */
 enum class SourceLangId(val code: String) {
     JA("ja"),
-    // ZH, KO, AR, EN, ES, FR, DE, IT, PT, NL, TR, VI, ID — deferred to later phases
+    EN("en"),
+    // ZH, KO, AR, ES, FR, DE, IT, PT, NL, TR, VI, ID — deferred to later phases
     ;
 
     companion object {
@@ -79,7 +80,7 @@ data class SourceLanguageProfile(
     val translationCode: String,
 )
 
-/** Static profile registry. Phase 1 only has JA; new languages added in later phases. */
+/** Static profile registry. Phase 3 added EN; later phases add more languages. */
 object SourceLanguageProfiles {
     private val all: Map<SourceLangId, SourceLanguageProfile> = mapOf(
         SourceLangId.JA to SourceLanguageProfile(
@@ -98,6 +99,23 @@ object SourceLanguageProfiles {
                     || c in '\uFF65'..'\uFF9F'  // Half-width Katakana
             },
             translationCode = TranslateLanguage.JAPANESE,
+        ),
+        SourceLangId.EN to SourceLanguageProfile(
+            id = SourceLangId.EN,
+            displayName = "English",
+            scriptFamily = ScriptFamily.LATIN,
+            textDirection = TextDirection.LTR,
+            ocrBackend = OcrBackend.MLKitLatin,
+            hintTextKind = HintTextKind.NONE,
+            wordsSeparatedByWhitespace = true,
+            isScriptChar = { c ->
+                // Basic Latin letters + Latin-1 Supplement letters (covers
+                // English, common diacritics, and the symbols OCR might emit.)
+                c in '\u0041'..'\u005A'     // A-Z
+                    || c in '\u0061'..'\u007A'  // a-z
+                    || c in '\u00C0'..'\u00FF'  // Latin-1 Supplement letters
+            },
+            translationCode = TranslateLanguage.ENGLISH,
         ),
     )
 

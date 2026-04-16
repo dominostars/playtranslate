@@ -7,6 +7,7 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.TextRecognizerOptionsInterface
 import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -58,7 +59,7 @@ class MlKitRecognizer(options: TextRecognizerOptionsInterface) : ScreenTextRecog
 object ScreenTextRecognizerFactory {
     fun create(backend: OcrBackend): ScreenTextRecognizer = when (backend) {
         OcrBackend.MLKitJapanese   -> MlKitRecognizer(JapaneseTextRecognizerOptions.Builder().build())
-        OcrBackend.MLKitLatin      -> error("MLKitLatin not yet available (Phase 3: add play-services-mlkit-text-recognition dependency)")
+        OcrBackend.MLKitLatin      -> MlKitRecognizer(TextRecognizerOptions.DEFAULT_OPTIONS)
         OcrBackend.MLKitChinese    -> error("MLKitChinese not yet available (Phase 4: add play-services-mlkit-text-recognition-chinese dependency)")
         OcrBackend.MLKitKorean     -> error("MLKitKorean not yet available (add play-services-mlkit-text-recognition-korean dependency)")
         OcrBackend.MLKitDevanagari -> error("MLKitDevanagari not yet available (add play-services-mlkit-text-recognition-devanagari dependency)")

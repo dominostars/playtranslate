@@ -27,6 +27,16 @@
 -keep class com.atilika.kuromoji.** { *; }
 -dontwarn com.atilika.kuromoji.**
 
+# ── Lucene + Snowball (English/Latin stemmer) ────────────────────────────────
+# Lucene analyzers-common ships with reflection-loaded filters and
+# META-INF/services entries. Phase 3 only uses the Snowball EnglishStemmer
+# directly, but keeping the analyzer package + the Snowball classes is
+# defensive against future refactors that might use AnalysisSPI-based loading.
+-keep class org.apache.lucene.analysis.** { *; }
+-keep class org.tartarus.snowball.** { *; }
+-dontwarn org.apache.lucene.**
+-dontwarn org.tartarus.**
+
 # ── OkHttp / Okio (bundled rules handle most cases; add dontwarn for extras) ──
 -dontwarn okhttp3.internal.platform.**
 -dontwarn org.conscrypt.**

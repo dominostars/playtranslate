@@ -83,5 +83,6 @@ object SourceLanguageEngines {
 
     private fun create(app: Context, id: SourceLangId): SourceLanguageEngine = when (id) {
         SourceLangId.JA -> JapaneseEngine(app)
+        SourceLangId.EN -> LatinEngine(app)
     }
 }
