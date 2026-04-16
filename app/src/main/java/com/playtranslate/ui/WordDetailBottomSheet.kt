@@ -92,15 +92,17 @@ class WordDetailBottomSheet : DialogFragment() {
         val btnAddAnki  = view.findViewById<Button>(R.id.btnWordAddToAnki)
 
         lifecycleScope.launch {
-            val dict = DictionaryManager.get(requireContext())
-            val response = withContext(Dispatchers.IO) { dict.lookup(word, readingHint) }
+            val engine = com.playtranslate.language.SourceLanguageEngines.get(
+                requireContext(), com.playtranslate.Prefs(requireContext()).sourceLangId
+            )
+            val response = withContext(Dispatchers.IO) { engine.lookup(word, readingHint) }
             val entry = response?.entries?.firstOrNull()
             if (!isAdded) return@launch
             if (entry == null) {
                 addText(content, getString(R.string.word_detail_not_found, word), 14f, R.color.text_hint)
                 return@launch
             }
-            buildContent(content, entry, dict)
+            buildContent(content, entry, engine)
             scrollView?.scrollTo(0, 0)
 
             // Show Add to Anki button once we have a valid entry
@@ -174,7 +176,7 @@ class WordDetailBottomSheet : DialogFragment() {
         ).show(childFragmentManager, WordAnkiReviewSheet.TAG)
     }
 
-    private suspend fun buildContent(content: LinearLayout, entry: DictionaryEntry, dict: DictionaryManager) {
+    private suspend fun buildContent(content: LinearLayout, entry: DictionaryEntry, engine: com.playtranslate.language.SourceLanguageEngine) {
         // ── Readings ─────────────────────────────────────────────────────
         val allReadings = entry.headwords.mapNotNull { f ->
             f.reading?.takeIf { it != f.written }
@@ -227,7 +229,7 @@ class WordDetailBottomSheet : DialogFragment() {
 
         if (cjkChars.isNotEmpty()) {
             val kanjiDetails = withContext(Dispatchers.IO) {
-                cjkChars.mapNotNull { dict.lookupKanji(it) }
+                cjkChars.mapNotNull { engine.lookupCharacter(it) }
             }
             if (isAdded && kanjiDetails.isNotEmpty()) {
                 addDivider(content, topMargin = 14)
