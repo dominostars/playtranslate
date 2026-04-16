@@ -51,6 +51,12 @@
             android:excludeFromRecents="true"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- Multi-step language selection wizard (source → target → download → confirm). -->
+        <activity
+            android:name=".ui.LanguageSetupActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PlayTranslate" />
+
 <!-- Foreground service that owns the OCR + translation pipeline. -->
         <service
             android:name=".CaptureService"
