@@ -39,6 +39,8 @@ import com.playtranslate.R
 import com.playtranslate.diagnostics.LogExporter
 import com.playtranslate.fullScreenDialogTheme
 import com.playtranslate.language.CatalogEntry
+import com.playtranslate.language.DownloadProgress
+import com.playtranslate.language.InstallResult
 import com.playtranslate.language.LanguagePackCatalogLoader
 import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.SourceLangId
@@ -54,6 +56,8 @@ class SettingsBottomSheet : DialogFragment() {
 
     /** Called when the selected capture display changes. */
     var onDisplayChanged: (() -> Unit)? = null
+    /** Called when the user picks a different source language via the picker. */
+    var onSourceLangChanged: (() -> Unit)? = null
     private var prefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
     /** Called when the debug force-single-screen toggle changes. */
     var onScreenModeChanged: (() -> Unit)? = null
@@ -76,6 +80,20 @@ class SettingsBottomSheet : DialogFragment() {
     private lateinit var llLanguageList: LinearLayout
     private lateinit var spinnerAnkiDeck: android.widget.Spinner
     private lateinit var settingsScrollView: android.widget.ScrollView
+
+    /**
+     * Transient per-row download state for the language picker. Keyed on
+     * [SourceLangId]; absence means Idle. Survives rebuilds within a single
+     * open Settings session but is not persisted.
+     */
+    private val downloadStates = mutableMapOf<SourceLangId, DownloadRowState>()
+
+    private sealed interface DownloadRowState {
+        data class Downloading(val percent: Int) : DownloadRowState
+        data object Verifying : DownloadRowState
+        data object Extracting : DownloadRowState
+        data class Failed(val reason: String) : DownloadRowState
+    }
 
     private val requestAnkiPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -651,18 +669,35 @@ class SettingsBottomSheet : DialogFragment() {
 
     private fun buildLanguageRow(ctx: Context, id: SourceLangId, entry: CatalogEntry): View {
         val dp = ctx.resources.displayMetrics.density
+        val prefs = Prefs(ctx)
         val installed = LanguagePackStore.isInstalled(ctx, id)
+        val selected = installed && prefs.sourceLangId == id
+        val state = downloadStates[id]
+
+        val outlineColor = ctx.themeColor(
+            if (selected) R.attr.colorAccentPrimary else R.attr.colorTextHint
+        )
+        val bgColor = if (selected) {
+            val accent = ctx.themeColor(R.attr.colorAccentPrimary)
+            android.graphics.Color.argb(
+                15,
+                android.graphics.Color.red(accent),
+                android.graphics.Color.green(accent),
+                android.graphics.Color.blue(accent),
+            )
+        } else {
+            ctx.themeColor(R.attr.colorBgSurface)
+        }
 
         val row = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.VERTICAL
             setPadding(
                 (12 * dp).toInt(), (8 * dp).toInt(),
                 (12 * dp).toInt(), (8 * dp).toInt()
             )
             background = GradientDrawable().apply {
-                setColor(ctx.themeColor(R.attr.colorBgSurface))
-                setStroke((1 * dp).toInt(), ctx.themeColor(R.attr.colorTextHint))
+                setColor(bgColor)
+                setStroke((1 * dp).toInt(), outlineColor)
                 cornerRadius = 8 * dp
             }
             layoutParams = LinearLayout.LayoutParams(
@@ -671,34 +706,149 @@ class SettingsBottomSheet : DialogFragment() {
             ).also { it.bottomMargin = (4 * dp).toInt() }
         }
 
+        val topRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
         val name = TextView(ctx).apply {
             text = entry.display
             textSize = 15f
             setTypeface(null, android.graphics.Typeface.BOLD)
-            setTextColor(ctx.themeColor(R.attr.colorTextPrimary))
+            setTextColor(
+                ctx.themeColor(
+                    if (selected) R.attr.colorAccentPrimary else R.attr.colorTextPrimary
+                )
+            )
             layoutParams = LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
             )
         }
 
-        val badge = TextView(ctx).apply {
-            text = getString(
-                if (installed) R.string.lang_state_installed
-                else R.string.lang_state_not_installed
-            )
-            textSize = 12f
-            setTextColor(
-                ctx.themeColor(
-                    if (installed) R.attr.colorAccentPrimary else R.attr.colorTextHint
-                )
-            )
+        val badge = TextView(ctx).apply { textSize = 12f }
+
+        when {
+            selected -> {
+                badge.text = getString(R.string.lang_state_selected)
+                badge.setTextColor(ctx.themeColor(R.attr.colorAccentPrimary))
+            }
+            installed -> {
+                badge.text = getString(R.string.lang_state_installed)
+                badge.setTextColor(ctx.themeColor(R.attr.colorTextHint))
+                row.setOnClickListener { switchSourceLanguage(id) }
+            }
+            state is DownloadRowState.Downloading -> {
+                badge.text = getString(R.string.lang_state_downloading, state.percent)
+                badge.setTextColor(ctx.themeColor(R.attr.colorTextHint))
+            }
+            state is DownloadRowState.Verifying -> {
+                badge.text = getString(R.string.lang_state_verifying)
+                badge.setTextColor(ctx.themeColor(R.attr.colorTextHint))
+            }
+            state is DownloadRowState.Extracting -> {
+                badge.text = getString(R.string.lang_state_extracting)
+                badge.setTextColor(ctx.themeColor(R.attr.colorTextHint))
+            }
+            state is DownloadRowState.Failed -> {
+                badge.text = getString(R.string.lang_state_failed)
+                badge.setTextColor(ctx.themeColor(R.attr.colorAccentPrimary))
+                row.setOnClickListener { startDownload(id) }
+            }
+            else -> {
+                val mb = (entry.size / (1024L * 1024L)).coerceAtLeast(1L).toInt()
+                val sizeStr = getString(R.string.lang_size_mb, mb)
+                badge.text = getString(R.string.lang_state_download, sizeStr)
+                badge.setTextColor(ctx.themeColor(R.attr.colorAccentPrimary))
+                row.setOnClickListener { startDownload(id) }
+            }
         }
 
-        row.addView(name)
-        row.addView(badge)
-        // No click handler in Phase 2 — the row is informational. Phase 3
-        // adds download/delete/select semantics here.
+        topRow.addView(name)
+        topRow.addView(badge)
+        row.addView(topRow)
+
+        // Determinate progress bar while downloading.
+        if (state is DownloadRowState.Downloading) {
+            val bar = android.widget.ProgressBar(
+                ctx, null, android.R.attr.progressBarStyleHorizontal
+            ).apply {
+                max = 100
+                progress = state.percent
+                isIndeterminate = false
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).also { it.topMargin = (4 * dp).toInt() }
+            }
+            row.addView(bar)
+        }
+
         return row
+    }
+
+    /**
+     * Kicks off a [LanguagePackStore.install] on the fragment's view
+     * lifecycle scope. Updates [downloadStates] as progress arrives and
+     * rebuilds the language rows when the integer percent changes —
+     * debounced to avoid thousands of rebuilds per second from OkHttp's
+     * tight chunk callbacks.
+     *
+     * Cancellation: if the user dismisses Settings mid-download, the
+     * coroutine is cancelled and `LanguagePackStore.install`'s finally
+     * block scrubs the partial download/tmp-dir residue.
+     */
+    private fun startDownload(id: SourceLangId) {
+        downloadStates[id] = DownloadRowState.Downloading(0)
+        buildLanguageRows()
+        val appCtx = requireContext().applicationContext
+        viewLifecycleOwner.lifecycleScope.launch {
+            val result = LanguagePackStore.install(appCtx, id) { progress ->
+                val newState: DownloadRowState = when (progress) {
+                    is DownloadProgress.Downloading -> {
+                        val pct = if (progress.totalBytes > 0) {
+                            (progress.bytesReceived * 100L / progress.totalBytes).toInt()
+                        } else 0
+                        DownloadRowState.Downloading(pct)
+                    }
+                    DownloadProgress.Verifying -> DownloadRowState.Verifying
+                    DownloadProgress.Extracting -> DownloadRowState.Extracting
+                }
+                val old = downloadStates[id]
+                downloadStates[id] = newState
+                if (old != newState) {
+                    view?.post { if (isAdded) buildLanguageRows() }
+                }
+            }
+            when (result) {
+                is InstallResult.Success -> downloadStates.remove(id)
+                is InstallResult.Failed -> {
+                    android.util.Log.w(
+                        "SettingsBottomSheet",
+                        "Install ${id.code} failed: ${result.reason}"
+                    )
+                    downloadStates[id] = DownloadRowState.Failed(result.reason)
+                }
+            }
+            if (isAdded) buildLanguageRows()
+        }
+    }
+
+    /**
+     * User tapped an installed, not-selected row. Writes the new source
+     * language to [Prefs.sourceLang] and fires [onSourceLangChanged] so
+     * `MainActivity` can reconfigure the capture service and restart
+     * live mode — mirrors the display-change path.
+     */
+    private fun switchSourceLanguage(id: SourceLangId) {
+        val prefs = Prefs(requireContext())
+        if (prefs.sourceLangId == id) return
+        prefs.sourceLang = id.code
+        buildLanguageRows()
+        onSourceLangChanged?.invoke()
     }
 
     // ── Display rows ──────────────────────────────────────────────────────

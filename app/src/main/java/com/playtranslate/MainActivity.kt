@@ -766,6 +766,20 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                     withAccessibility { doStartLive() }
                 }
             }
+            onSourceLangChanged = {
+                val wasLive = captureService?.isLive == true
+                captureService?.resetConfiguration()
+                configureService()
+                PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
+                // Pre-warm the new engine so the next capture isn't cold.
+                lifecycleScope.launch(Dispatchers.IO) {
+                    SourceLanguageEngines.get(applicationContext, prefs.sourceLangId).preload()
+                }
+                if (wasLive) {
+                    captureService?.stopLive()
+                    withAccessibility { doStartLive() }
+                }
+            }
             onScreenModeChanged = {
                 checkOnboardingState()
             }
@@ -796,6 +810,19 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                 captureService?.resetConfiguration()
                 configureService()
                 PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
+                if (wasLive) {
+                    captureService?.stopLive()
+                    withAccessibility { doStartLive() }
+                }
+            }
+            onSourceLangChanged = {
+                val wasLive = captureService?.isLive == true
+                captureService?.resetConfiguration()
+                configureService()
+                PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
+                lifecycleScope.launch(Dispatchers.IO) {
+                    SourceLanguageEngines.get(applicationContext, prefs.sourceLangId).preload()
+                }
                 if (wasLive) {
                     captureService?.stopLive()
                     withAccessibility { doStartLive() }
