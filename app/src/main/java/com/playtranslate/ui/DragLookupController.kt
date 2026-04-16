@@ -94,6 +94,71 @@ class DragLookupController(
             '.', '!', '?', '\u2026',   // Latin / general (… = \u2026)
             '\u3002', '\uFF01', '\uFF1F' // 。！？ CJK fullwidth
         )
+
+        /**
+         * Finds the token at [fingerX] in [lineText]. Uses [symbols] (per-
+         * character bounds from ML Kit) when available — correct for non-
+         * monospaced fonts like Latin. Falls back to `fallbackLineLeft +
+         * idx * fallbackCharWidth` math when symbols are absent or
+         * misaligned with [lineText], preserving the pre-Phase-3 CJK path.
+         *
+         * Preference order:
+         *  1. Symbol-aware precise hit — finger within [left, right] of a token
+         *  2. charWidth fallback precise hit
+         *  3. Nearest-center (covers gaps between tokens)
+         *
+         * `internal` so the unit test in `FindClosestTokenTest` can exercise
+         * it without needing an instance of the enclosing class.
+         */
+        internal fun findClosestToken(
+            lineText: String,
+            tokens: List<String>,
+            fingerX: Int,
+            symbols: List<OcrManager.SymbolBox>,
+            fallbackLineLeft: Int,
+            fallbackCharWidth: Float,
+        ): Pair<String, Int>? {
+            data class TokenPos(val token: String, val idx: Int, val left: Float, val right: Float)
+            val positioned = mutableListOf<TokenPos>()
+
+            // Use symbols only if their count aligns exactly with lineText —
+            // if ML Kit dropped some, we can't trust index arithmetic.
+            val useSymbols = symbols.size == lineText.length
+
+            var pos = 0
+            for (token in tokens) {
+                val idx = lineText.indexOf(token, pos)
+                if (idx < 0) continue
+                val endIdx = idx + token.length
+                val left: Float
+                val right: Float
+                if (useSymbols && endIdx <= symbols.size) {
+                    // Symbol-aware: precise per-character bounds. Union over
+                    // each character's rect catches italic/proportional fonts.
+                    val tokenSymbols = symbols.subList(idx, endIdx)
+                    left = tokenSymbols.minOf { it.bounds.left }.toFloat()
+                    right = tokenSymbols.maxOf { it.bounds.right }.toFloat()
+                } else {
+                    // Legacy CJK-monospaced approximation.
+                    left = fallbackLineLeft + idx * fallbackCharWidth
+                    right = fallbackLineLeft + endIdx * fallbackCharWidth
+                }
+                positioned += TokenPos(token, idx, left, right)
+                pos = endIdx
+            }
+            if (positioned.isEmpty()) return null
+
+            // Prefer exact hit (finger within token span).
+            val exact = positioned.firstOrNull { fingerX >= it.left && fingerX <= it.right }
+            if (exact != null) return exact.token to exact.idx
+
+            // Fallback: nearest center.
+            val nearest = positioned.minByOrNull {
+                val center = (it.left + it.right) / 2f
+                abs(fingerX - center)
+            }
+            return nearest?.let { it.token to it.idx }
+        }
     }
 
     private val wobbleRadiusPx: Float by lazy {
@@ -327,10 +392,18 @@ class DragLookupController(
 
         if (tokenResults.isEmpty()) return false
 
-        // Find the token whose estimated screen position is closest to the finger
-        // Uses surface forms for position mapping in the original text
+        // Find the token whose screen position is closest to the finger.
+        // Prefers per-character symbol bounds (non-monospaced correct for Latin);
+        // falls back to charWidth approximation when symbols are absent.
         val surfaceTokens = tokenResults.map { it.surface }
-        val tokenMatch = findClosestToken(lineText, surfaceTokens, fingerX, hitLine.bounds.left, charWidth)
+        val tokenMatch = findClosestToken(
+            lineText = lineText,
+            tokens = surfaceTokens,
+            fingerX = fingerX,
+            symbols = hitLine.symbols,
+            fallbackLineLeft = hitLine.bounds.left,
+            fallbackCharWidth = charWidth,
+        )
         if (tokenMatch == null) return false
 
         val matchedSurface = tokenMatch.first
@@ -455,39 +528,6 @@ class DragLookupController(
         return null
     }
 
-    /**
-     * Finds the token at [fingerX]. First checks if the finger falls within a token's
-     * estimated screen span; if not, falls back to the token with the nearest center.
-     */
-    private fun findClosestToken(
-        lineText: String, tokens: List<String>,
-        fingerX: Int, lineLeft: Int, charWidth: Float
-    ): Pair<String, Int>? {
-        // Build list of (token, startIdx, screenLeft, screenRight)
-        data class TokenPos(val token: String, val idx: Int, val left: Float, val right: Float)
-        val positioned = mutableListOf<TokenPos>()
-        var pos = 0
-        for (token in tokens) {
-            val idx = lineText.indexOf(token, pos)
-            if (idx < 0) continue
-            val left = lineLeft + idx * charWidth
-            val right = lineLeft + (idx + token.length) * charWidth
-            positioned += TokenPos(token, idx, left, right)
-            pos = idx + token.length
-        }
-        if (positioned.isEmpty()) return null
-
-        // Prefer exact hit (finger within token span)
-        val exact = positioned.firstOrNull { fingerX >= it.left && fingerX <= it.right }
-        if (exact != null) return exact.token to exact.idx
-
-        // Fallback: nearest center
-        val nearest = positioned.minByOrNull {
-            val center = (it.left + it.right) / 2f
-            abs(fingerX - center)
-        }
-        return nearest?.let { it.token to it.idx }
-    }
 
     private fun showPopup(data: PopupData, fingerX: Int, fingerY: Int) {
         currentEntry = data.entry

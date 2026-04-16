@@ -177,28 +177,7 @@ class OcrManager private constructor() {
                                 )
                             }
                             // Collect per-character symbols with exact bounds
-                            val rawSymbols = element.symbols
-                            var symIdx = 0
-                            for (ch in text) {
-                                while (symIdx < rawSymbols.size) {
-                                    val sym = rawSymbols[symIdx]
-                                    symIdx++
-                                    if (sym.text == ch.toString()) {
-                                        sym.boundingBox?.let { sbb ->
-                                            lineSymbols += SymbolBox(
-                                                text = sym.text,
-                                                bounds = Rect(
-                                                    (sbb.left / scaleFactor).toInt(),
-                                                    (sbb.top / scaleFactor).toInt(),
-                                                    (sbb.right / scaleFactor).toInt(),
-                                                    (sbb.bottom / scaleFactor).toInt()
-                                                )
-                                            )
-                                        }
-                                        break
-                                    }
-                                }
-                            }
+                            lineSymbols += extractElementSymbols(element, text, scaleFactor)
                         }
                     }
                 }
@@ -290,6 +269,50 @@ class OcrManager private constructor() {
         val t = text.trim()
         if (t.isEmpty()) return false
         return t.all { it in UI_DECORATION_CHARS }
+    }
+
+    /**
+     * Walks [element]'s raw ML Kit symbols and returns a [SymbolBox] for each
+     * character in [processedText] (the post-pipe-trim, post-decoration-filter
+     * text for this element). Shared between [recognise] and
+     * [recogniseWithPositions] so both methods produce symbol lists aligned 1:1
+     * with their line text.
+     *
+     * Symbols whose `text` doesn't match the corresponding character are
+     * skipped — this is the same match-and-advance pattern ML Kit requires
+     * since its symbol ordering isn't guaranteed to be left-to-right on some
+     * RTL inputs. Coordinates are divided by [scaleFactor] to undo the OCR
+     * upscale.
+     */
+    private fun extractElementSymbols(
+        element: Text.Element,
+        processedText: String,
+        scaleFactor: Float,
+    ): List<SymbolBox> {
+        val out = mutableListOf<SymbolBox>()
+        val rawSymbols = element.symbols
+        var symIdx = 0
+        for (ch in processedText) {
+            while (symIdx < rawSymbols.size) {
+                val sym = rawSymbols[symIdx]
+                symIdx++
+                if (sym.text == ch.toString()) {
+                    sym.boundingBox?.let { sbb ->
+                        out += SymbolBox(
+                            text = sym.text,
+                            bounds = Rect(
+                                (sbb.left / scaleFactor).toInt(),
+                                (sbb.top / scaleFactor).toInt(),
+                                (sbb.right / scaleFactor).toInt(),
+                                (sbb.bottom / scaleFactor).toInt()
+                            )
+                        )
+                    }
+                    break
+                }
+            }
+        }
+        return out
     }
 
     /**
@@ -522,7 +545,14 @@ class OcrManager private constructor() {
         /** Index of the group this line belongs to (lines in the same group are combined text). */
         val groupIndex: Int = 0,
         /** Pre-built combined text of the entire group this line belongs to (same logic as [recognise]). */
-        val groupText: String = text
+        val groupText: String = text,
+        /**
+         * Per-character bounding boxes, aligned 1:1 with [text]. Empty if ML Kit
+         * didn't emit symbols for this line (some older model versions). When
+         * populated, drag-lookup uses these for precise (non-monospaced) hit
+         * testing; empty triggers the legacy charWidth fallback.
+         */
+        val symbols: List<SymbolBox> = emptyList()
     )
 
     /**
@@ -566,9 +596,24 @@ class OcrManager private constructor() {
 
             for (line in group) {
                 val b = line.boundingBox ?: continue
-                val text = line.elements
-                    .filter { !isUiDecoration(it.text) }
-                    .joinToString("") { it.text }
+                // Walk elements with the same pipe-trim + decoration-filter +
+                // symbol-extraction rules that recognise() uses, so the symbol
+                // list is aligned 1:1 with the resulting text for non-monospaced
+                // hit testing in drag-lookup.
+                val lineTextBuilder = StringBuilder()
+                val lineSymbols = mutableListOf<SymbolBox>()
+                line.elements.forEachIndexed { ei, element ->
+                    if (!isUiDecoration(element.text)) {
+                        var text = element.text
+                        if (ei == 0) text = text.trimStart('|').trimStart()
+                        if (ei == line.elements.lastIndex) text = text.trimEnd('|').trimEnd()
+                        if (text.isNotEmpty()) {
+                            lineTextBuilder.append(text)
+                            lineSymbols += extractElementSymbols(element, text, scaleFactor)
+                        }
+                    }
+                }
+                val text = lineTextBuilder.toString()
                 if (text.isBlank()) continue
                 lines += OcrLine(
                     text = text,
@@ -579,7 +624,8 @@ class OcrManager private constructor() {
                         (b.bottom / scaleFactor).toInt()
                     ),
                     groupIndex = gi,
-                    groupText = combinedGroupText
+                    groupText = combinedGroupText,
+                    symbols = lineSymbols,
                 )
             }
         }
