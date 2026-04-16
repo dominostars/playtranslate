@@ -19,6 +19,22 @@
           "attribution": "© EDRDG"
         }
       ]
+    },
+    "en": {
+      "display": "English",
+      "script": "LATIN",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 17929909,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/en-v1/en.zip",
+      "sha256": "860787371cda16d744a87813f24c3c52dfe72ba496afe00ecedfb2d7d8c5a25c",
+      "licenses": [
+        {
+          "component": "Wiktionary",
+          "license": "CC-BY-SA-3.0",
+          "attribution": "© Wiktionary contributors, https://en.wiktionary.org/"
+        }
+      ]
     }
   }
 }
