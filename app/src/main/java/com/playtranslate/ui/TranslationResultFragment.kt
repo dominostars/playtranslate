@@ -21,8 +21,11 @@ import androidx.lifecycle.lifecycleScope
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
+import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.language.TargetGlossDatabaseProvider
+import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.R
 import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.dictionary.DictionaryManager
@@ -357,10 +360,16 @@ class TranslationResultFragment : Fragment() {
         val activity = activity ?: return
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                val engine = SourceLanguageEngines.get(ctx.applicationContext, Prefs(ctx.applicationContext).sourceLangId)
-                val response = withContext(Dispatchers.IO) {
-                    engine.lookup(lookupForm, reading.ifEmpty { null })
+                val appCtx = ctx.applicationContext
+                val prefs = Prefs(appCtx)
+                val engine = SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
+                val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, prefs.targetLang)
+                val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
+                val resolver = DefinitionResolver(engine, targetGlossDb, mlKitTranslator, prefs.targetLang)
+                val defResult = withContext(Dispatchers.IO) {
+                    resolver.lookup(lookupForm, reading.ifEmpty { null })
                 }
+                val response = defResult?.response
                 val entry = response?.entries?.firstOrNull()
 
                 // Build popup data from the JMdict entry when we have one,
@@ -632,7 +641,12 @@ class TranslationResultFragment : Fragment() {
             val romajiDeferred = async { buildRomaji(text) }
 
             val ctx = context ?: return@launch
-            val engine = SourceLanguageEngines.get(ctx.applicationContext, Prefs(ctx.applicationContext).sourceLangId)
+            val appCtx = ctx.applicationContext
+            val wordsPrefs = Prefs(appCtx)
+            val engine = SourceLanguageEngines.get(appCtx, wordsPrefs.sourceLangId)
+            val wordsTargetGlossDb = TargetGlossDatabaseProvider.get(appCtx, wordsPrefs.targetLang)
+            val wordsMlKit = TranslationManagerProvider.get(engine.profile.translationCode, wordsPrefs.targetLang)
+            val wordsResolver = DefinitionResolver(engine, wordsTargetGlossDb, wordsMlKit, wordsPrefs.targetLang)
             val allTokens = withContext(Dispatchers.IO) {
                 engine.tokenize(text)
             }
@@ -692,9 +706,10 @@ class TranslationResultFragment : Fragment() {
                         var displayWord = word
                         var freqScore = 0
                         try {
-                            val response = withContext(Dispatchers.IO) {
-                                engine.lookup(word, readingByToken[word])
+                            val defResult = withContext(Dispatchers.IO) {
+                                wordsResolver.lookup(word, readingByToken[word])
                             }
+                            val response = defResult?.response
                             if (response != null && response.entries.isNotEmpty()) {
                                 val entry   = response.entries.first()
                                 val primary = entry.headwords.firstOrNull()
