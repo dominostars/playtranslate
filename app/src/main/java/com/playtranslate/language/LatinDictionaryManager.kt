@@ -189,7 +189,9 @@ class LatinDictionaryManager private constructor(private val context: Context) {
             jlpt = emptyList(),
             headwords = headwords,
             senses = senses,
-            freqScore = freqScore,
+            // DB stores 0-100 (fine-grained, used for ORDER BY). Normalize to
+            // 0-5 for display consistency with JMdict's 0-5 star scale.
+            freqScore = (freqScore * 5 / 100).coerceIn(0, 5),
         )
     }
 
