@@ -33,6 +33,8 @@ data class CatalogEntry(
     val url: String? = null,
     val sha256: String? = null,
     val coverageNote: String? = null,
+    /** null or "source" for source packs (backward compat), "target" for target gloss packs. */
+    val type: String? = null,
 )
 
 /**
@@ -60,6 +62,14 @@ object LanguagePackCatalogLoader {
 
     fun entryFor(ctx: Context, id: SourceLangId): CatalogEntry? = try {
         load(ctx).packs[id.code]
+    } catch (e: Exception) {
+        Log.w(TAG, "Catalog unavailable: ${e.message}")
+        null
+    }
+
+    /** Look up a catalog entry by its raw key (e.g. "target-fr"). */
+    fun entryForKey(ctx: Context, key: String): CatalogEntry? = try {
+        load(ctx).packs[key]
     } catch (e: Exception) {
         Log.w(TAG, "Catalog unavailable: ${e.message}")
         null

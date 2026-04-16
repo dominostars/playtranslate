@@ -40,6 +40,18 @@ object LanguagePackStore {
     fun isInstalled(ctx: Context, id: SourceLangId): Boolean =
         dictDbFor(ctx, id).exists() && manifestFileFor(ctx, id).exists()
 
+    // ── Target gloss packs ──────────────────────────────────────────────
+
+    fun targetDirFor(ctx: Context, targetLang: String): File =
+        File(rootDir(ctx), "target-$targetLang")
+
+    fun targetGlossDbFor(ctx: Context, targetLang: String): File =
+        File(targetDirFor(ctx, targetLang), "glosses.sqlite")
+
+    /** English target needs no pack — definitions are already in every source pack. */
+    fun isTargetInstalled(ctx: Context, targetLang: String): Boolean =
+        targetLang == "en" || targetGlossDbFor(ctx, targetLang).exists()
+
     /**
      * Writes the manifest for a bundled pack if it isn't already present.
      * Idempotent — subsequent boots no-op. Called from [com.playtranslate.dictionary.DictionaryManager.ensureOpen]
@@ -156,6 +168,70 @@ object LanguagePackStore {
             }
 
             Log.d(TAG, "Installed pack ${id.code} from $url (${zipFile.length()} bytes)")
+            InstallResult.Success
+        } catch (e: Exception) {
+            InstallResult.Failed(e.message ?: "Unknown install error", e)
+        } finally {
+            if (zipFile.exists()) zipFile.delete()
+            if (tmpDir.exists()) tmpDir.deleteRecursively()
+        }
+    }
+
+    /**
+     * Downloads, verifies, extracts, and installs a target gloss pack.
+     * Follows the same download→SHA-256→extract→swap pattern as [install].
+     */
+    suspend fun installTarget(
+        ctx: Context,
+        targetLang: String,
+        onProgress: (DownloadProgress) -> Unit = {},
+    ): InstallResult = withContext(Dispatchers.IO) {
+        val app = ctx.applicationContext
+        val catalogKey = "target-$targetLang"
+        val entry = LanguagePackCatalogLoader.entryForKey(app, catalogKey)
+            ?: return@withContext InstallResult.Failed("No catalog entry for $catalogKey")
+        if (entry.bundled) {
+            return@withContext InstallResult.Failed("$catalogKey is a bundled pack; cannot download")
+        }
+        val url = entry.url
+            ?: return@withContext InstallResult.Failed("Catalog entry for $catalogKey has no url")
+        val expectedSha = entry.sha256
+            ?: return@withContext InstallResult.Failed("Catalog entry for $catalogKey has no sha256")
+
+        val root = rootDir(app).apply { mkdirs() }
+        val zipFile = File(root, "$catalogKey.downloading.zip")
+        val tmpDir = File(root, "$catalogKey.tmp")
+        val finalDir = targetDirFor(app, targetLang)
+
+        if (zipFile.exists()) zipFile.delete()
+        if (tmpDir.exists()) tmpDir.deleteRecursively()
+
+        try {
+            // 1. Stream the zip
+            LanguagePackDownloader().download(url, zipFile) { onProgress(it) }
+
+            // 2. SHA-256 verify
+            onProgress(DownloadProgress.Verifying)
+            val actualSha = PackIntegrity.sha256Hex(zipFile)
+            if (!actualSha.equals(expectedSha, ignoreCase = true)) {
+                return@withContext InstallResult.Failed(
+                    "SHA-256 mismatch for $catalogKey: expected=$expectedSha actual=$actualSha"
+                )
+            }
+
+            // 3. Extract
+            onProgress(DownloadProgress.Extracting)
+            PackIntegrity.extractZip(zipFile, tmpDir)
+
+            // 4. Atomic-ish swap
+            if (finalDir.exists()) finalDir.deleteRecursively()
+            val renamed = try { tmpDir.renameTo(finalDir) } catch (_: Exception) { false }
+            if (!renamed) {
+                copyDirectory(tmpDir, finalDir)
+                tmpDir.deleteRecursively()
+            }
+
+            Log.d(TAG, "Installed target pack $catalogKey from $url (${zipFile.length()} bytes)")
             InstallResult.Success
         } catch (e: Exception) {
             InstallResult.Failed(e.message ?: "Unknown install error", e)
