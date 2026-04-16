@@ -15,7 +15,10 @@ import com.playtranslate.MainActivity
 import com.playtranslate.OcrManager
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.Prefs
+import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.SourceLanguageEngines
+import com.playtranslate.language.TargetGlossDatabaseProvider
+import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.model.DictionaryEntry
 import kotlinx.coroutines.*
 import java.io.File
@@ -413,7 +416,12 @@ class DragLookupController(
         if (lookupForm == lastWord && popup.isShowing) return true
 
         // Dictionary lookup using the base/dictionary form + reading hint
-        val response = engine.lookup(lookupForm, matchedToken?.reading)
+        val prefs = Prefs(service)
+        val targetGlossDb = TargetGlossDatabaseProvider.get(service, prefs.targetLang)
+        val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
+        val resolver = DefinitionResolver(engine, targetGlossDb, mlKitTranslator, prefs.targetLang)
+        val defResult = resolver.lookup(lookupForm, matchedToken?.reading)
+        val response = defResult?.response
         val entry = response?.entries?.firstOrNull()
 
         // Build popup data. If JMdict has the token, use its entry. Otherwise

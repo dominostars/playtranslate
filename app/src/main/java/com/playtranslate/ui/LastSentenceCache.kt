@@ -1,7 +1,11 @@
 package com.playtranslate.ui
 
 import android.content.Context
+import com.playtranslate.Prefs
 import com.playtranslate.dictionary.DictionaryManager
+import com.playtranslate.language.DefinitionResolver
+import com.playtranslate.language.TargetGlossDatabaseProvider
+import com.playtranslate.language.TranslationManagerProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -35,16 +39,19 @@ object LastSentenceCache {
         context: Context,
         sentence: String
     ): Map<String, Triple<String, String, Int>> = withContext(Dispatchers.IO) {
-        val engine = com.playtranslate.language.SourceLanguageEngines.get(
-            context.applicationContext,
-            com.playtranslate.Prefs(context.applicationContext).sourceLangId,
-        )
+        val appCtx = context.applicationContext
+        val prefs = Prefs(appCtx)
+        val engine = com.playtranslate.language.SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
+        val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, prefs.targetLang)
+        val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
+        val resolver = DefinitionResolver(engine, targetGlossDb, mlKitTranslator, prefs.targetLang)
         val tokenResults = engine.tokenize(sentence)
         val results = linkedMapOf<String, Triple<String, String, Int>>()
         val surfaces = linkedMapOf<String, String>()
         for (tok in tokenResults) {
             try {
-                val response = engine.lookup(tok.lookupForm, tok.reading)
+                val defResult = resolver.lookup(tok.lookupForm, tok.reading)
+                val response = defResult?.response
                 if (response != null && response.entries.isNotEmpty()) {
                     val entry = response.entries.first()
                     val primary = entry.headwords.firstOrNull()

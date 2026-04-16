@@ -15,9 +15,13 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
 import com.playtranslate.AnkiManager
+import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.fullScreenDialogTheme
 import com.playtranslate.dictionary.DictionaryManager
+import com.playtranslate.language.DefinitionResolver
+import com.playtranslate.language.TargetGlossDatabaseProvider
+import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.KanjiDetail
 import kotlinx.coroutines.Dispatchers
@@ -92,10 +96,14 @@ class WordDetailBottomSheet : DialogFragment() {
         val btnAddAnki  = view.findViewById<Button>(R.id.btnWordAddToAnki)
 
         lifecycleScope.launch {
-            val engine = com.playtranslate.language.SourceLanguageEngines.get(
-                requireContext(), com.playtranslate.Prefs(requireContext()).sourceLangId
-            )
-            val response = withContext(Dispatchers.IO) { engine.lookup(word, readingHint) }
+            val appCtx = requireContext().applicationContext
+            val prefs = Prefs(appCtx)
+            val engine = com.playtranslate.language.SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
+            val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, prefs.targetLang)
+            val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
+            val resolver = DefinitionResolver(engine, targetGlossDb, mlKitTranslator, prefs.targetLang)
+            val defResult = withContext(Dispatchers.IO) { resolver.lookup(word, readingHint) }
+            val response = defResult?.response
             val entry = response?.entries?.firstOrNull()
             if (!isAdded) return@launch
             if (entry == null) {
