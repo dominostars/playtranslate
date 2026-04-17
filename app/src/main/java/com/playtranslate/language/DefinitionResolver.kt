@@ -58,13 +58,16 @@ class DefinitionResolver(
     private val enToTargetTranslator: WordTranslator? = null,
 ) {
     suspend fun lookup(word: String, reading: String?): DefinitionResult? {
-        val response = engine.lookup(word, reading) ?: return null
+        val response = engine.lookup(word, reading)
+        if (response == null) {
+            Log.d(TAG, "lookup($word, $reading): engine returned null")
+            return null
+        }
+        Log.d(TAG, "lookup($word, $reading): engine returned ${response.entries.size} entries, targetLang=$targetLang, targetGlossDb=${targetGlossDb != null}, mlKit=${mlKitTranslator != null}")
 
         // Tier 1: target-pack native definition
         if (targetGlossDb != null && targetLang != "en") {
             val sourceLang = engine.profile.id.code
-            // Fan out: first entry's headwords + tapped surface only.
-            // Don't cross-match against later entries (archaic variants etc.)
             val headwords = buildSet {
                 response.entries.firstOrNull()?.let { entry ->
                     entry.headwords.forEach { hw ->
@@ -74,12 +77,18 @@ class DefinitionResolver(
                 }
                 add(word)
             }
+            Log.d(TAG, "  Tier 1: sourceLang=$sourceLang, headwords=$headwords, reading=$reading")
             for (hw in headwords) {
                 val senses = targetGlossDb.lookup(sourceLang, hw, reading)
+                Log.d(TAG, "  Tier 1: lookup($sourceLang, $hw, $reading) -> ${senses?.size ?: "null"}")
                 if (senses != null) {
+                    Log.d(TAG, "  -> Native (${senses.first().source}, ${senses.size} senses)")
                     return DefinitionResult.Native(response, senses, senses.first().source)
                 }
             }
+            Log.d(TAG, "  Tier 1: no match in target DB")
+        } else {
+            Log.d(TAG, "  Tier 1: skipped (targetGlossDb=${targetGlossDb != null}, targetLang=$targetLang)")
         }
 
         val entry = response.entries.firstOrNull()
@@ -90,17 +99,23 @@ class DefinitionResolver(
                 ?: entry?.slug ?: word
             try {
                 val translated = mlKitTranslator.translate(headword)
+                Log.d(TAG, "  Tier 2: translate($headword) -> $translated")
                 if (translated.isNotBlank() && translated.lowercase() != headword.lowercase()) {
                     val translatedDefs = entry?.let { translateDefinitions(it) }
+                    Log.d(TAG, "  -> MachineTranslated (translatedDefs=${translatedDefs?.size})")
                     return DefinitionResult.MachineTranslated(response, translated, translatedDefs)
                 }
+                Log.d(TAG, "  Tier 2: identity translation, falling through")
             } catch (e: Exception) {
-                Log.d(TAG, "ML Kit headword translation unavailable", e)
+                Log.d(TAG, "  Tier 2: ML Kit failed: ${e.message}")
             }
+        } else {
+            Log.d(TAG, "  Tier 2: skipped (mlKit=${mlKitTranslator != null}, targetLang=$targetLang)")
         }
 
         // Tier 3: English fallback (with translated definitions when possible)
         val translatedDefs = entry?.let { translateDefinitions(it) }
+        Log.d(TAG, "  -> EnglishFallback (translatedDefs=${translatedDefs?.size})")
         return DefinitionResult.EnglishFallback(response, translatedDefs)
     }
 

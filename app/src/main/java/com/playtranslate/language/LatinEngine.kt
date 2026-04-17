@@ -56,8 +56,10 @@ class LatinEngine(
         }
 
         for (slice in tokenSpans) {
-            val stem = stemOf(slice)
-            result += TokenSpan(surface = slice, lookupForm = stem, reading = null)
+            // lookupForm = surface (not stem). LatinDictionaryManager handles
+            // surface-first + stem-fallback internally. Emitting the stem as
+            // lookupForm would double-stem and miss dictionary entries.
+            result += TokenSpan(surface = slice, lookupForm = slice, reading = null)
         }
         result
     }
