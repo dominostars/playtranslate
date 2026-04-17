@@ -223,6 +223,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_DEBUG_SHOW_DETECTION_LOG, false)
         set(v) = sp.edit().putBoolean(KEY_DEBUG_SHOW_DETECTION_LOG, v).apply()
 
+    /** Set to true after the user dismisses the target-pack migration dialog. */
+    var targetPackMigrationDismissed: Boolean
+        get() = sp.getBoolean(KEY_TARGET_PACK_MIGRATION_DISMISSED, false)
+        set(v) = sp.edit().putBoolean(KEY_TARGET_PACK_MIGRATION_DISMISSED, v).apply()
+
     /** Set before recreate() so MainActivity suppresses the window transition animation. */
     var suppressNextTransition: Boolean
         get() = sp.getBoolean(KEY_SUPPRESS_TRANSITION, false)
@@ -314,6 +319,7 @@ class Prefs(context: Context) {
         private const val KEY_HOTKEY_FURIGANA              = "hotkey_furigana"
         private const val KEY_LAST_UPDATE_CHECK            = "last_update_check"
         private const val KEY_UPDATE_SKIP_TAG              = "update_skip_tag"
+        private const val KEY_TARGET_PACK_MIGRATION_DISMISSED = "target_pack_migration_dismissed"
 
         /**
          * True when the device has more than one physical display connected.
