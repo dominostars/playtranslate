@@ -78,6 +78,28 @@
           "attribution": "© Wiktionary contributors"
         }
       ]
+    },
+    "target-es": {
+      "display": "Spanish definitions",
+      "type": "target",
+      "script": "LATIN",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 9839280,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-es-v1/es.zip",
+      "sha256": "51b4b207a9b295118a8422ed2a78f6f68f4e8eadf9a6f519d54fa513e234b9de",
+      "licenses": [
+        {
+          "component": "JMdict",
+          "license": "CC-BY-SA-4.0",
+          "attribution": "© EDRDG, https://www.edrdg.org/jmdict/edict_doc.html"
+        },
+        {
+          "component": "Wiktionary",
+          "license": "CC-BY-SA-3.0",
+          "attribution": "© Wiktionary contributors"
+        }
+      ]
     }
   }
 }
