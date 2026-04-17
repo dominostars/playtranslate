@@ -778,20 +778,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                     withAccessibility { doStartLive() }
                 }
             }
-            onSourceLangChanged = {
-                val wasLive = captureService?.isLive == true
-                captureService?.resetConfiguration()
-                configureService()
-                PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
-                // Pre-warm the new engine so the next capture isn't cold.
-                lifecycleScope.launch(Dispatchers.IO) {
-                    SourceLanguageEngines.get(applicationContext, prefs.sourceLangId).preload()
-                }
-                if (wasLive) {
-                    captureService?.stopLive()
-                    withAccessibility { doStartLive() }
-                }
-            }
+            onSourceLangChanged = { onSourceLanguageChanged() }
             onScreenModeChanged = {
                 checkOnboardingState()
             }
@@ -827,19 +814,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                     withAccessibility { doStartLive() }
                 }
             }
-            onSourceLangChanged = {
-                val wasLive = captureService?.isLive == true
-                captureService?.resetConfiguration()
-                configureService()
-                PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
-                lifecycleScope.launch(Dispatchers.IO) {
-                    SourceLanguageEngines.get(applicationContext, prefs.sourceLangId).preload()
-                }
-                if (wasLive) {
-                    captureService?.stopLive()
-                    withAccessibility { doStartLive() }
-                }
-            }
+            onSourceLangChanged = { onSourceLanguageChanged() }
             onScreenModeChanged = {
                 checkOnboardingState()
             }
@@ -1007,6 +982,26 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             targetLang = selectedTargetLang(),
             region     = entry
         )
+    }
+
+    private fun onSourceLanguageChanged() {
+        val wasLive = captureService?.isLive == true
+        // Reset overlay mode if new language has no hint text
+        if (SourceLanguageProfiles[prefs.sourceLangId].hintTextKind == HintTextKind.NONE
+            && prefs.overlayMode == OverlayMode.FURIGANA) {
+            prefs.overlayMode = OverlayMode.TRANSLATION
+        }
+        captureService?.resetConfiguration()
+        configureService()
+        updateRegionButton()
+        PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
+        lifecycleScope.launch(Dispatchers.IO) {
+            SourceLanguageEngines.get(applicationContext, prefs.sourceLangId).preload()
+        }
+        if (wasLive) {
+            captureService?.stopLive()
+            withAccessibility { doStartLive() }
+        }
     }
 
     private fun showAccessibilityDialog() {

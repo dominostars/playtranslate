@@ -582,15 +582,35 @@ class SettingsBottomSheet : DialogFragment() {
         val prefs = Prefs(ctx)
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
         val hasHintText = hintKind != HintTextKind.NONE
+        val hintLabel = when (hintKind) {
+            HintTextKind.PINYIN -> "Pinyin"
+            else -> "Furigana"
+        }
+
+        // Overlay mode section
         val overlayModeSection = v.findViewById<View>(R.id.overlayModeSection) ?: return
         overlayModeSection.visibility = if (hasHintText) View.VISIBLE else View.GONE
-        if (!hasHintText) return
-        val toggle = v.findViewById<com.google.android.material.button.MaterialButtonToggleGroup>(R.id.toggleAutoMode) ?: return
-        val checkedId = when (prefs.overlayMode) {
-            OverlayMode.FURIGANA -> R.id.btnModeFurigana
-            else -> R.id.btnModeTranslate
+        if (hasHintText) {
+            v.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnModeFurigana)?.text = hintLabel
+            val toggle = v.findViewById<com.google.android.material.button.MaterialButtonToggleGroup>(R.id.toggleAutoMode)
+            if (toggle != null) {
+                val checkedId = when (prefs.overlayMode) {
+                    OverlayMode.FURIGANA -> R.id.btnModeFurigana
+                    else -> R.id.btnModeTranslate
+                }
+                if (toggle.checkedButtonId != checkedId) toggle.check(checkedId)
+            }
         }
-        if (toggle.checkedButtonId != checkedId) toggle.check(checkedId)
+
+        // Hotkey furigana/pinyin row
+        val rowHotkeyFurigana = v.findViewById<View>(R.id.rowHotkeyFurigana)
+        if (rowHotkeyFurigana != null) {
+            rowHotkeyFurigana.visibility = if (hasHintText) View.VISIBLE else View.GONE
+            if (hasHintText) {
+                v.findViewById<TextView>(R.id.tvHotkeyFuriganaLabel)?.text =
+                    "Hotkey: hold to show $hintLabel"
+            }
+        }
     }
 
     // ── Anki section ──────────────────────────────────────────────────────
