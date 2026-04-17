@@ -458,13 +458,21 @@ class DragLookupController(
             entry != null && defResult is DefinitionResult.MachineTranslated -> {
                 val form = entry.headwords.firstOrNull()
                 PopupData(
-                    word = defResult.translatedHeadword,
-                    reading = form?.written ?: form?.reading ?: entry.slug,
-                    senses = entry.senses.map { sense ->
-                        WordLookupPopup.SenseDisplay(
-                            pos = sense.partsOfSpeech.joinToString(", "),
-                            definition = sense.targetDefinitions.joinToString("; ")
-                        )
+                    word = form?.written ?: form?.reading ?: entry.slug,
+                    reading = form?.reading,
+                    senses = buildList {
+                        // ML Kit translated headword as the first "definition"
+                        add(WordLookupPopup.SenseDisplay(
+                            pos = "",
+                            definition = defResult.translatedHeadword
+                        ))
+                        // English definitions below as context
+                        entry.senses.forEach { sense ->
+                            add(WordLookupPopup.SenseDisplay(
+                                pos = sense.partsOfSpeech.joinToString(", "),
+                                definition = sense.targetDefinitions.joinToString("; ")
+                            ))
+                        }
                     },
                     freqScore = entry.freqScore,
                     isCommon = entry.isCommon == true,

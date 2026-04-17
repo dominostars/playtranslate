@@ -403,13 +403,20 @@ class TranslationResultFragment : Fragment() {
                         isCommon = entry.isCommon == true
                     }
                     entry != null && defResult is DefinitionResult.MachineTranslated -> {
-                        word = defResult.translatedHeadword
+                        val form = entry.headwords.firstOrNull()
+                        word = form?.written ?: form?.reading ?: entry.slug
                         popupLabel = "⚠ Machine translated"
-                        senses = entry.senses.map { sense ->
-                            WordLookupPopup.SenseDisplay(
-                                pos = sense.partsOfSpeech.joinToString(", "),
-                                definition = sense.targetDefinitions.joinToString("; ")
-                            )
+                        senses = buildList {
+                            add(WordLookupPopup.SenseDisplay(
+                                pos = "",
+                                definition = defResult.translatedHeadword
+                            ))
+                            entry.senses.forEach { sense ->
+                                add(WordLookupPopup.SenseDisplay(
+                                    pos = sense.partsOfSpeech.joinToString(", "),
+                                    definition = sense.targetDefinitions.joinToString("; ")
+                                ))
+                            }
                         }
                         freqScore = entry.freqScore
                         isCommon = entry.isCommon == true
@@ -765,11 +772,13 @@ class TranslationResultFragment : Fragment() {
                                     is DefinitionResult.MachineTranslated -> {
                                         displayWord = primary?.written ?: primary?.reading ?: word
                                         tvWord.text = displayWord
-                                        reading = defResult.translatedHeadword
-                                        meaning = entry.senses.mapIndexed { i, sense ->
+                                        reading = primary?.reading?.takeIf { it != primary.written } ?: ""
+                                        val translatedLine = defResult.translatedHeadword
+                                        val englishLines = entry.senses.mapIndexed { i, sense ->
                                             val glosses = sense.targetDefinitions.joinToString("; ")
                                             if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
                                         }.joinToString("\n")
+                                        meaning = "$translatedLine\n$englishLines"
                                     }
                                     else -> {
                                         displayWord = primary?.written ?: primary?.reading ?: word
