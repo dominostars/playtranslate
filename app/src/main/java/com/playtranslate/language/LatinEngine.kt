@@ -5,33 +5,33 @@ import android.icu.text.BreakIterator
 import com.playtranslate.model.DictionaryResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.tartarus.snowball.SnowballProgram
 import org.tartarus.snowball.ext.EnglishStemmer
+import org.tartarus.snowball.ext.SpanishStemmer
 import java.util.Locale
 
 /**
- * English source-language engine. Combines three off-the-shelf parts:
+ * Source-language engine for Latin-script languages (EN, ES, and future
+ * FR/DE/IT/PT/NL). Combines three off-the-shelf parts:
  *
- *  - **Tokenization**: ICU [BreakIterator] word-break iteration with
- *    [Locale.ENGLISH]. Correctly segments punctuation, contractions
- *    ("don't" → "don" + "'t"), and multi-byte characters.
- *  - **Stemming**: Lucene's Snowball Porter ([EnglishStemmer]). Maps
- *    "running" → "run", "houses" → "hous" (the Porter algorithm is
- *    aggressive and doesn't handle irregular verbs like "ran" → "run" —
- *    that's a dictionary-lookup concern, not a stemming one).
- *  - **Dictionary**: [LatinDictionaryManager] queries the downloaded
- *    English pack with surface-first and stem-fallback semantics.
+ *  - **Tokenization**: ICU [BreakIterator] with the language's [Locale].
+ *  - **Stemming**: Lucene's Snowball stemmer for the language.
+ *  - **Dictionary**: [LatinDictionaryManager] queries the downloaded pack
+ *    with surface-first and stem-fallback semantics.
  *
  * Tokenizer and stemmer are both stateful and not thread-safe, so both
- * operations are guarded by per-instance `synchronized` blocks. Contention
- * is negligible in practice (~1-5 OCR cycles per second).
+ * operations are guarded by per-instance `synchronized` blocks.
  */
-class LatinEngine(appContext: Context) : SourceLanguageEngine {
+class LatinEngine(
+    appContext: Context,
+    private val langId: SourceLangId = SourceLangId.EN,
+) : SourceLanguageEngine {
 
-    override val profile: SourceLanguageProfile = SourceLanguageProfiles[SourceLangId.EN]
+    override val profile: SourceLanguageProfile = SourceLanguageProfiles[langId]
 
-    private val dict: LatinDictionaryManager = LatinDictionaryManager.get(appContext)
-    private val breakIterator: BreakIterator = BreakIterator.getWordInstance(Locale.ENGLISH)
-    private val stemmer: EnglishStemmer = EnglishStemmer()
+    private val dict: LatinDictionaryManager = LatinDictionaryManager.get(appContext, langId)
+    private val breakIterator: BreakIterator = BreakIterator.getWordInstance(localeFor(langId))
+    private val stemmer: SnowballProgram = stemmerFor(langId)
     private val stemmerLock = Any()
     private val iteratorLock = Any()
 
@@ -72,15 +72,28 @@ class LatinEngine(appContext: Context) : SourceLanguageEngine {
     }
 
     private fun stemOf(word: String): String = synchronized(stemmerLock) {
-        stemmer.current = word.lowercase()
+        stemmer.setCurrent(word.lowercase())
         stemmer.stem()
         stemmer.current
     }
 
     private fun isLookupWorthy(token: String): Boolean {
         if (token.isBlank()) return false
-        if (!token.any { it.isLetter() }) return false  // pure punctuation / numeric
-        if (token.length < 2) return false                // "a", "I" — too short
+        if (!token.any { it.isLetter() }) return false
+        if (token.length < 2) return false
         return true
+    }
+
+    companion object {
+        private fun localeFor(id: SourceLangId): Locale = when (id) {
+            SourceLangId.EN -> Locale.ENGLISH
+            SourceLangId.ES -> Locale("es")
+            else -> Locale(id.code)
+        }
+
+        private fun stemmerFor(id: SourceLangId): SnowballProgram = when (id) {
+            SourceLangId.ES -> SpanishStemmer()
+            else -> EnglishStemmer()
+        }
     }
 }

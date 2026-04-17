@@ -14,7 +14,8 @@ enum class SourceLangId(val code: String) {
     JA("ja"),
     EN("en"),
     ZH("zh"),
-    // KO, AR, ES, FR, DE, IT, PT, NL, TR, VI, ID — deferred to later phases
+    ES("es"),
+    // KO, AR, FR, DE, IT, PT, NL, TR, VI, ID — deferred to later phases
     ;
 
     companion object {
@@ -129,6 +130,21 @@ object SourceLanguageProfiles {
                     || c in '\u3400'..'\u4DBF'  // CJK Extension A
             },
             translationCode = TranslateLanguage.CHINESE,
+        ),
+        SourceLangId.ES to SourceLanguageProfile(
+            id = SourceLangId.ES,
+            displayName = "Spanish",
+            scriptFamily = ScriptFamily.LATIN,
+            textDirection = TextDirection.LTR,
+            ocrBackend = OcrBackend.MLKitLatin,
+            hintTextKind = HintTextKind.NONE,
+            wordsSeparatedByWhitespace = true,
+            isScriptChar = { c ->
+                c in '\u0041'..'\u005A'     // A-Z
+                    || c in '\u0061'..'\u007A'  // a-z
+                    || c in '\u00C0'..'\u00FF'  // Latin-1 Supplement (á, é, ñ, ü, etc.)
+            },
+            translationCode = TranslateLanguage.SPANISH,
         ),
     )
 

@@ -30,12 +30,13 @@ import java.io.File
  * the Latin pack's `kanjidic` is empty by design, and this manager does
  * not probe or query it.
  *
- * Process-scoped singleton keyed on the `EN` source language. When Phase 6+
- * ships additional Latin languages (ES/FR/DE/…), this class should be
- * parameterized on `SourceLangId` so one singleton exists per Latin pack,
- * each opening its own SQLite handle.
+ * Process-scoped singleton keyed on [SourceLangId]. One instance per Latin
+ * source language (EN, ES, FR, …), each opening its own SQLite pack.
  */
-class LatinDictionaryManager private constructor(private val context: Context) {
+class LatinDictionaryManager private constructor(
+    private val context: Context,
+    private val langId: SourceLangId,
+) {
 
     private var db: SQLiteDatabase? = null
     private val mutex = Mutex()
@@ -74,22 +75,22 @@ class LatinDictionaryManager private constructor(private val context: Context) {
     private suspend fun ensureOpen(): SQLiteDatabase? = mutex.withLock {
         db?.let { return@withLock it }
 
-        val dbFile = LanguagePackStore.dictDbFor(context, SourceLangId.EN)
+        val dbFile = LanguagePackStore.dictDbFor(context, langId)
         if (!dbFile.exists()) {
-            Log.w(TAG, "EN pack missing at ${dbFile.absolutePath} — download it first")
+            Log.w(TAG, "${langId.code} pack missing at ${dbFile.absolutePath} — download it first")
             return@withLock null
         }
 
         if (!isSchemaUpToDate(dbFile)) {
-            Log.w(TAG, "EN pack schema mismatch — marking uninstalled")
+            Log.w(TAG, "${langId.code} pack schema mismatch — marking uninstalled")
             return@withLock null
         }
 
         db = try {
             SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
-                .also { Log.d(TAG, "EN pack opened (${dbFile.length() / 1_048_576} MB)") }
+                .also { Log.d(TAG, "${langId.code} pack opened (${dbFile.length() / 1_048_576} MB)") }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to open EN pack: ${e.message}")
+            Log.e(TAG, "Failed to open ${langId.code} pack: ${e.message}")
             null
         }
         db
@@ -101,17 +102,15 @@ class LatinDictionaryManager private constructor(private val context: Context) {
      * this does NOT require the `kanjidic` table — the Latin pack leaves it
      * empty or absent by design.
      */
-    private fun isSchemaUpToDate(dbFile: File): Boolean {
-        return try {
-            SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { tempDb ->
-                tempDb.rawQuery("SELECT freq_score FROM entry LIMIT 1", null).use { }
-                tempDb.rawQuery("SELECT text FROM kanji LIMIT 1", null).use { }
-                tempDb.rawQuery("SELECT pos, glosses, misc FROM sense LIMIT 1", null).use { }
-            }
-            true
-        } catch (_: Exception) {
-            false
+    private fun isSchemaUpToDate(dbFile: File): Boolean = try {
+        SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { tempDb ->
+            tempDb.rawQuery("SELECT freq_score FROM entry LIMIT 1", null).use { }
+            tempDb.rawQuery("SELECT text FROM kanji LIMIT 1", null).use { }
+            tempDb.rawQuery("SELECT pos, glosses, misc FROM sense LIMIT 1", null).use { }
         }
+        true
+    } catch (_: Exception) {
+        false
     }
 
     // ── Queries ───────────────────────────────────────────────────────────
@@ -198,15 +197,12 @@ class LatinDictionaryManager private constructor(private val context: Context) {
     companion object {
         private const val TAG = "LatinDictionaryManager"
 
-        // The stored context is context.applicationContext, which lives for
-        // the entire process lifetime and cannot leak an Activity — so the
-        // StaticFieldLeak warning here is a false positive.
         @SuppressLint("StaticFieldLeak")
-        @Volatile private var instance: LatinDictionaryManager? = null
+        private val instances = java.util.concurrent.ConcurrentHashMap<SourceLangId, LatinDictionaryManager>()
 
-        fun get(context: Context): LatinDictionaryManager =
-            instance ?: synchronized(this) {
-                instance ?: LatinDictionaryManager(context.applicationContext).also { instance = it }
+        fun get(context: Context, langId: SourceLangId = SourceLangId.EN): LatinDictionaryManager =
+            instances.getOrPut(langId) {
+                LatinDictionaryManager(context.applicationContext, langId)
             }
     }
 }
