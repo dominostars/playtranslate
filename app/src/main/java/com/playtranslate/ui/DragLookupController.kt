@@ -16,6 +16,7 @@ import com.playtranslate.OcrManager
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.Prefs
 import com.playtranslate.language.DefinitionResolver
+import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TranslationManagerProvider
@@ -424,13 +425,55 @@ class DragLookupController(
         val response = defResult?.response
         val entry = response?.entries?.firstOrNull()
 
-        // Build popup data. If JMdict has the token, use its entry. Otherwise
-        // fall back to a reading-only "Not in dictionary, may be a name"
-        // popup when the tokenizer gave us a reading (proper nouns live in
-        // ENAMDICT, not JMdict). If neither, there's nothing to show.
+        // Build popup data based on DefinitionResult tier.
         val reading = matchedToken?.reading
         val popupData: PopupData = when {
+            entry != null && defResult is DefinitionResult.Native -> {
+                val form = entry.headwords.firstOrNull()
+                // Build senses by ordinal alignment: for each source sense,
+                // use the target-language gloss if senseOrd matches, else English.
+                val targetByOrd = defResult.targetSenses.associateBy { it.senseOrd }
+                PopupData(
+                    word = form?.written ?: form?.reading ?: entry.slug,
+                    reading = form?.reading,
+                    senses = entry.senses.mapIndexed { i, sense ->
+                        val target = targetByOrd[i]
+                        if (target != null) {
+                            WordLookupPopup.SenseDisplay(
+                                pos = target.pos.joinToString(", "),
+                                definition = target.glosses.joinToString("; ")
+                            )
+                        } else {
+                            WordLookupPopup.SenseDisplay(
+                                pos = sense.partsOfSpeech.joinToString(", "),
+                                definition = sense.targetDefinitions.joinToString("; ")
+                            )
+                        }
+                    },
+                    freqScore = entry.freqScore,
+                    isCommon = entry.isCommon == true,
+                    entry = entry
+                )
+            }
+            entry != null && defResult is DefinitionResult.MachineTranslated -> {
+                val form = entry.headwords.firstOrNull()
+                PopupData(
+                    word = defResult.translatedHeadword,
+                    reading = form?.written ?: form?.reading ?: entry.slug,
+                    senses = entry.senses.map { sense ->
+                        WordLookupPopup.SenseDisplay(
+                            pos = sense.partsOfSpeech.joinToString(", "),
+                            definition = sense.targetDefinitions.joinToString("; ")
+                        )
+                    },
+                    freqScore = entry.freqScore,
+                    isCommon = entry.isCommon == true,
+                    entry = entry,
+                    machineTranslated = true
+                )
+            }
             entry != null -> {
+                // EnglishFallback — show English definitions as-is
                 val form = entry.headwords.firstOrNull()
                 PopupData(
                     word = form?.written ?: form?.reading ?: entry.slug,
@@ -496,7 +539,8 @@ class DragLookupController(
         val senses: List<WordLookupPopup.SenseDisplay>,
         val freqScore: Int,
         val isCommon: Boolean,
-        val entry: DictionaryEntry?
+        val entry: DictionaryEntry?,
+        val machineTranslated: Boolean = false
     )
 
     private fun findLineAt(x: Int, y: Int, lines: List<OcrManager.OcrLine>): OcrManager.OcrLine? {
@@ -554,7 +598,8 @@ class DragLookupController(
             screenX = fingerX,
             screenY = fingerY,
             screenW = screen.x,
-            screenH = screen.y
+            screenH = screen.y,
+            label = if (data.machineTranslated) "⚠ Machine translated" else null
         )
 
         popup.showAnkiButton = savedShowAnki

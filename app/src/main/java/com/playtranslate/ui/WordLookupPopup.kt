@@ -72,7 +72,8 @@ class WordLookupPopup(
         isCommon: Boolean = false,
         screenX: Int, screenY: Int,
         screenW: Int, screenH: Int,
-        anchorHeight: Int = 0
+        anchorHeight: Int = 0,
+        label: String? = null
     ) {
         // Skip full redraw if same word is already showing
         if (word == currentWord && popupView != null) return
@@ -90,7 +91,7 @@ class WordLookupPopup(
         val margin = dp(verticalMarginDp)
 
         // Build card first so we can measure its desired height
-        val card = buildCardView(word, reading, senses, freqScore, isCommon, popupW)
+        val card = buildCardView(word, reading, senses, freqScore, isCommon, popupW, label)
         val widthSpec = View.MeasureSpec.makeMeasureSpec(popupW, View.MeasureSpec.EXACTLY)
         val heightSpec = View.MeasureSpec.makeMeasureSpec(maxCardH, View.MeasureSpec.AT_MOST)
         card.measure(widthSpec, heightSpec)
@@ -217,7 +218,8 @@ class WordLookupPopup(
         senses: List<SenseDisplay>,
         freqScore: Int,
         isCommon: Boolean,
-        width: Int
+        width: Int,
+        label: String? = null
     ): View {
         val bg = GradientDrawable().apply {
             setColor(bgColor)
@@ -322,6 +324,16 @@ class WordLookupPopup(
                 })
             }
             rightCol.addView(metaRow)
+        }
+
+        if (label != null) {
+            rightCol.addView(TextView(ctx).apply {
+                text = label
+                setTextColor(Color.parseColor("#D4A017"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                typeface = Typeface.DEFAULT_BOLD
+                setPadding(0, 0, 0, dp(4))
+            })
         }
 
         senses.forEachIndexed { i, sense ->

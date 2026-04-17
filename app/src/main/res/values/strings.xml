@@ -82,6 +82,7 @@
     <string name="section_translation">Translation</string>
     <string name="section_words">Words</string>
     <string name="words_loading">Looking up words…</string>
+    <string name="def_source_machine_translated">⚠ Machine translated</string>
 
     <!-- Region labels -->
     <string name="label_select_region">Select Region</string>
