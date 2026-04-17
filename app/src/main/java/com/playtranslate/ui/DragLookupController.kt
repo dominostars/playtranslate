@@ -17,6 +17,7 @@ import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.Prefs
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
+import com.playtranslate.language.WordTranslator
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TranslationManagerProvider
@@ -420,7 +421,10 @@ class DragLookupController(
         val prefs = Prefs(service)
         val targetGlossDb = TargetGlossDatabaseProvider.get(service, prefs.targetLang)
         val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
-        val resolver = DefinitionResolver(engine, targetGlossDb, mlKitTranslator, prefs.targetLang)
+        val enToTarget = TranslationManagerProvider.getEnToTarget(prefs.targetLang)
+        val resolver = DefinitionResolver(engine, targetGlossDb,
+            mlKitTranslator?.let { WordTranslator(it::translate) }, prefs.targetLang,
+            enToTarget?.let { WordTranslator(it::translate) })
         val defResult = resolver.lookup(lookupForm, matchedToken?.reading)
         val response = defResult?.response
         val entry = response?.entries?.firstOrNull()
@@ -457,21 +461,28 @@ class DragLookupController(
             }
             entry != null && defResult is DefinitionResult.MachineTranslated -> {
                 val form = entry.headwords.firstOrNull()
+                val defs = defResult.translatedDefinitions
                 PopupData(
                     word = form?.written ?: form?.reading ?: entry.slug,
                     reading = form?.reading,
-                    senses = buildList {
-                        // ML Kit translated headword as the first "definition"
-                        add(WordLookupPopup.SenseDisplay(
-                            pos = "",
-                            definition = defResult.translatedHeadword
-                        ))
-                        // English definitions below as context
-                        entry.senses.forEach { sense ->
-                            add(WordLookupPopup.SenseDisplay(
+                    senses = if (defs != null) {
+                        // Translated definitions available — show them directly
+                        entry.senses.mapIndexed { i, sense ->
+                            WordLookupPopup.SenseDisplay(
                                 pos = sense.partsOfSpeech.joinToString(", "),
-                                definition = sense.targetDefinitions.joinToString("; ")
-                            ))
+                                definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
+                            )
+                        }
+                    } else {
+                        // No translated definitions — headword + English context
+                        buildList {
+                            add(WordLookupPopup.SenseDisplay(pos = "", definition = defResult.translatedHeadword))
+                            entry.senses.forEach { sense ->
+                                add(WordLookupPopup.SenseDisplay(
+                                    pos = sense.partsOfSpeech.joinToString(", "),
+                                    definition = sense.targetDefinitions.joinToString("; ")
+                                ))
+                            }
                         }
                     },
                     freqScore = entry.freqScore,
@@ -480,8 +491,27 @@ class DragLookupController(
                     machineTranslated = true
                 )
             }
+            entry != null && defResult is DefinitionResult.EnglishFallback && defResult.translatedDefinitions != null -> {
+                // Translated definitions without headword translation
+                val form = entry.headwords.firstOrNull()
+                val defs = defResult.translatedDefinitions
+                PopupData(
+                    word = form?.written ?: form?.reading ?: entry.slug,
+                    reading = form?.reading,
+                    senses = entry.senses.mapIndexed { i, sense ->
+                        WordLookupPopup.SenseDisplay(
+                            pos = sense.partsOfSpeech.joinToString(", "),
+                            definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
+                        )
+                    },
+                    freqScore = entry.freqScore,
+                    isCommon = entry.isCommon == true,
+                    entry = entry,
+                    machineTranslated = true
+                )
+            }
             entry != null -> {
-                // EnglishFallback — show English definitions as-is
+                // EnglishFallback with no translations — show English as-is
                 val form = entry.headwords.firstOrNull()
                 PopupData(
                     word = form?.written ?: form?.reading ?: entry.slug,

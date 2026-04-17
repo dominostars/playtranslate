@@ -4,6 +4,7 @@ import android.content.Context
 import com.playtranslate.Prefs
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.language.DefinitionResolver
+import com.playtranslate.language.WordTranslator
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TranslationManagerProvider
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +45,10 @@ object LastSentenceCache {
         val engine = com.playtranslate.language.SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
         val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, prefs.targetLang)
         val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
-        val resolver = DefinitionResolver(engine, targetGlossDb, mlKitTranslator, prefs.targetLang)
+        val enToTarget = TranslationManagerProvider.getEnToTarget(prefs.targetLang)
+        val resolver = DefinitionResolver(engine, targetGlossDb,
+            mlKitTranslator?.let { WordTranslator(it::translate) }, prefs.targetLang,
+            enToTarget?.let { WordTranslator(it::translate) })
         val tokenResults = engine.tokenize(sentence)
         val results = linkedMapOf<String, Triple<String, String, Int>>()
         val surfaces = linkedMapOf<String, String>()

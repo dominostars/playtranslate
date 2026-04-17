@@ -1,8 +1,13 @@
 package com.playtranslate.language
 
 import android.util.Log
-import com.playtranslate.TranslationManager
+import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.DictionaryResponse
+
+/** Single-string translation abstraction, extracted for testability. */
+fun interface WordTranslator {
+    suspend fun translate(text: String): String
+}
 
 /**
  * Result of a word-tap definition lookup through the multi-tier fallback chain.
@@ -19,15 +24,19 @@ sealed interface DefinitionResult {
         val source: String,
     ) : DefinitionResult
 
-    /** ML Kit translated the headword. English definition kept as context hint. */
+    /** ML Kit translated the headword. Definitions may also be translated. */
     data class MachineTranslated(
         override val response: DictionaryResponse,
         val translatedHeadword: String,
+        /** Per-sense translated definitions (index-parallel to response.entries[0].senses). Null if translation unavailable. */
+        val translatedDefinitions: List<String>? = null,
     ) : DefinitionResult
 
-    /** No target-language data. English definitions from source pack. */
+    /** No headword translation available. Definitions may be translated or English. */
     data class EnglishFallback(
         override val response: DictionaryResponse,
+        /** Per-sense translated definitions. Null = show English as-is. */
+        val translatedDefinitions: List<String>? = null,
     ) : DefinitionResult
 }
 
@@ -35,17 +44,18 @@ sealed interface DefinitionResult {
  * Centralizes the word-tap definition fallback chain:
  *
  * 1. **Native** — target-language pack definition (JMdict/Wiktionary/CFDICT)
- * 2. **MachineTranslated** — ML Kit headword translation + English context
- * 3. **EnglishFallback** — English definitions from the source pack
+ * 2. **MachineTranslated** — ML Kit headword translation + translated definitions
+ * 3. **EnglishFallback** — English definitions (translated to target when possible)
  *
  * All word-tap UI paths use this resolver instead of calling
  * [SourceLanguageEngine.lookup] directly.
  */
 class DefinitionResolver(
     private val engine: SourceLanguageEngine,
-    private val targetGlossDb: TargetGlossDatabase?,
-    private val mlKitTranslator: TranslationManager?,
+    private val targetGlossDb: TargetGlossLookup?,
+    private val mlKitTranslator: WordTranslator?,
     private val targetLang: String,
+    private val enToTargetTranslator: WordTranslator? = null,
 ) {
     suspend fun lookup(word: String, reading: String?): DefinitionResult? {
         val response = engine.lookup(word, reading) ?: return null
@@ -72,22 +82,44 @@ class DefinitionResolver(
             }
         }
 
+        val entry = response.entries.firstOrNull()
+
         // Tier 2: ML Kit single-word headword translation
         if (mlKitTranslator != null && targetLang != "en") {
-            val headword = response.entries.firstOrNull()?.headwords?.firstOrNull()?.written
-                ?: response.entries.firstOrNull()?.slug ?: word
+            val headword = entry?.headwords?.firstOrNull()?.written
+                ?: entry?.slug ?: word
             try {
                 val translated = mlKitTranslator.translate(headword)
                 if (translated.isNotBlank() && translated.lowercase() != headword.lowercase()) {
-                    return DefinitionResult.MachineTranslated(response, translated)
+                    val translatedDefs = entry?.let { translateDefinitions(it) }
+                    return DefinitionResult.MachineTranslated(response, translated, translatedDefs)
                 }
             } catch (e: Exception) {
                 Log.d(TAG, "ML Kit headword translation unavailable", e)
             }
         }
 
-        // Tier 3: English fallback
-        return DefinitionResult.EnglishFallback(response)
+        // Tier 3: English fallback (with translated definitions when possible)
+        val translatedDefs = entry?.let { translateDefinitions(it) }
+        return DefinitionResult.EnglishFallback(response, translatedDefs)
+    }
+
+    /**
+     * Translates each sense's English definitions to the target language.
+     * Returns null if no EN→target translator is available.
+     */
+    private suspend fun translateDefinitions(entry: DictionaryEntry): List<String>? {
+        if (enToTargetTranslator == null || targetLang == "en") return null
+        return entry.senses.map { sense ->
+            val english = sense.targetDefinitions.joinToString("; ")
+            if (english.isBlank()) ""
+            else try {
+                enToTargetTranslator.translate(english)
+            } catch (e: Exception) {
+                Log.d(TAG, "Definition translation failed", e)
+                english
+            }
+        }
     }
 
     companion object {

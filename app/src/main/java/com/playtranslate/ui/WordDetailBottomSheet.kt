@@ -21,6 +21,7 @@ import com.playtranslate.fullScreenDialogTheme
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
+import com.playtranslate.language.WordTranslator
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.model.DictionaryEntry
@@ -102,7 +103,10 @@ class WordDetailBottomSheet : DialogFragment() {
             val engine = com.playtranslate.language.SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
             val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, prefs.targetLang)
             val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
-            val resolver = DefinitionResolver(engine, targetGlossDb, mlKitTranslator, prefs.targetLang)
+            val enToTarget = TranslationManagerProvider.getEnToTarget(prefs.targetLang)
+            val resolver = DefinitionResolver(engine, targetGlossDb,
+                mlKitTranslator?.let { WordTranslator(it::translate) }, prefs.targetLang,
+                enToTarget?.let { WordTranslator(it::translate) })
             val defResult = withContext(Dispatchers.IO) { resolver.lookup(word, readingHint) }
             val response = defResult?.response
             val entry = response?.entries?.firstOrNull()
@@ -210,34 +214,51 @@ class WordDetailBottomSheet : DialogFragment() {
         val targetByOrd = if (defResult is DefinitionResult.Native)
             defResult.targetSenses.associateBy { it.senseOrd } else null
 
+        // Translated definitions from MachineTranslated or EnglishFallback
+        val translatedDefs = when (defResult) {
+            is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
+            is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
+            else -> null
+        }
+
         // Machine-translated label
+        val isMachineTranslated = defResult is DefinitionResult.MachineTranslated || translatedDefs != null
         if (defResult is DefinitionResult.MachineTranslated) {
             addText(content, "⚠ Machine translated: ${defResult.translatedHeadword}",
                 13f, R.color.text_hint, topMargin = 0, italic = true)
+        } else if (translatedDefs != null) {
+            addText(content, "⚠ Machine translated",
+                13f, R.color.text_hint, topMargin = 0, italic = true)
         }
 
-        val senses = entry.senses.filter { it.targetDefinitions.isNotEmpty() }
-        senses.forEachIndexed { idx, sense ->
-            val target = targetByOrd?.get(idx)
+        // Iterate with original index so targetByOrd and translatedDefs align correctly
+        // (both are indexed against the unfiltered entry.senses list).
+        var displayCount = 0
+        entry.senses.forEachIndexed { origIdx, sense ->
+            if (sense.targetDefinitions.isEmpty()) return@forEachIndexed
+            val target = targetByOrd?.get(origIdx)
             val posLabels = (target?.pos ?: sense.partsOfSpeech).filter { it.isNotBlank() }
             if (posLabels.isNotEmpty()) {
                 val posRow = LinearLayout(requireContext()).apply {
                     orientation = LinearLayout.HORIZONTAL
-                    layoutParams = rowParams(topMargin = if (idx == 0) 0 else 12)
+                    layoutParams = rowParams(topMargin = if (displayCount == 0) 0 else 12)
                 }
                 posLabels.forEach { posRow.addView(makeBadge(it, small = true)) }
                 content.addView(posRow)
             }
 
             val glosses = target?.glosses?.joinToString("; ")
+                ?: translatedDefs?.getOrElse(origIdx) { sense.targetDefinitions.joinToString("; ") }
                 ?: sense.targetDefinitions.joinToString("; ")
-            val prefix = if (senses.size > 1) "${idx + 1}.  " else ""
+            val numSenses = entry.senses.count { it.targetDefinitions.isNotEmpty() }
+            val prefix = if (numSenses > 1) "${displayCount + 1}.  " else ""
             addText(content, prefix + glosses, 16f, R.color.text_primary, topMargin = 4)
 
             if (sense.misc.isNotEmpty()) {
                 addText(content, sense.misc.joinToString(" · "), 12f, R.color.text_hint,
                     topMargin = 2, italic = true)
             }
+            displayCount++
         }
 
         // ── Kanji breakdown ───────────────────────────────────────────────

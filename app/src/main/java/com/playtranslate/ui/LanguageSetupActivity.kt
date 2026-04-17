@@ -124,6 +124,11 @@ class LanguageSetupActivity : AppCompatActivity() {
             val currentTarget = Prefs(applicationContext).targetLang
             val tm = TranslationManager(SourceLanguageProfiles[id].translationCode, currentTarget)
             try { tm.ensureModelReady() } finally { tm.close() }
+            // EN→target model for definition translation fallback
+            if (currentTarget != "en") {
+                val enTm = TranslationManager("en", currentTarget)
+                try { enTm.ensureModelReady() } finally { enTm.close() }
+            }
         }
         val onDone: () -> Unit = {
             Prefs(this).sourceLang = id.code
@@ -193,6 +198,11 @@ class LanguageSetupActivity : AppCompatActivity() {
                 loadAction = {
                     val tm = TranslationManager(sourceLangCode, code)
                     try { tm.ensureModelReady() } finally { tm.close() }
+                    // EN→target model for definition translation fallback
+                    if (code != "en") {
+                        val enTm = TranslationManager("en", code)
+                        try { enTm.ensureModelReady() } finally { enTm.close() }
+                    }
                 },
                 onSuccess = saveAndFinish,
             )
@@ -208,6 +218,11 @@ class LanguageSetupActivity : AppCompatActivity() {
                     withContext(Dispatchers.IO) {
                         val tm = TranslationManager(sourceLangCode, code)
                         try { tm.ensureModelReady() } finally { tm.close() }
+                        // EN→target model for definition translation fallback
+                        if (code != "en") {
+                            val enTm = TranslationManager("en", code)
+                            try { enTm.ensureModelReady() } finally { enTm.close() }
+                        }
                     }
                     dialog.dismiss()
                     saveAndFinish()
