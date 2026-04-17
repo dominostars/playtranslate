@@ -215,8 +215,13 @@ class TranslationResultFragment : Fragment() {
         originalContent.visibility = if (hidden) View.GONE else View.VISIBLE
         btnCopyOriginal.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
         btnEditOriginal.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
-        val hasHintText = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind != HintTextKind.NONE
+        val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
+        val hasHintText = hintKind != HintTextKind.NONE
         btnToggleFurigana.visibility = if (hidden || !hasHintText) View.INVISIBLE else View.VISIBLE
+        if (hasHintText) {
+            val label = when (hintKind) { HintTextKind.PINYIN -> "pinyin"; else -> "furigana" }
+            btnToggleFurigana.contentDescription = "Toggle inline $label"
+        }
         btnToggleOriginal.setImageResource(if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility)
     }
 

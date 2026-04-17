@@ -226,50 +226,57 @@
                 android:letterSpacing="0.15"
                 android:layout_marginBottom="8dp" />
 
-            <!-- Overlay Mode title -->
-            <TextView
+            <!-- Overlay Mode section (hidden for languages without hint text) -->
+            <LinearLayout
+                android:id="@+id/overlayModeSection"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Overlay Mode"
-                android:textColor="?attr/colorTextPrimary"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="2dp" />
+                android:orientation="vertical">
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="What overlays to show during &quot;auto&quot; mode or hold-to-preview."
-                android:textColor="?attr/colorTextHint"
-                android:textSize="14sp"
-                android:layout_marginBottom="6dp" />
-
-            <!-- Overlay Mode toggle -->
-            <com.google.android.material.button.MaterialButtonToggleGroup
-                android:id="@+id/toggleAutoMode"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                app:singleSelection="true"
-                app:selectionRequired="true">
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnModeTranslate"
-                    style="@style/Widget.PlayTranslate.SegmentedButton"
-                    android:layout_width="0dp"
+                <TextView
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Translation" />
+                    android:text="Overlay Mode"
+                    android:textColor="?attr/colorTextPrimary"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="2dp" />
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnModeFurigana"
-                    style="@style/Widget.PlayTranslate.SegmentedButton"
-                    android:layout_width="0dp"
+                <TextView
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Furigana" />
+                    android:text="What overlays to show during &quot;auto&quot; mode or hold-to-preview."
+                    android:textColor="?attr/colorTextHint"
+                    android:textSize="14sp"
+                    android:layout_marginBottom="6dp" />
 
-            </com.google.android.material.button.MaterialButtonToggleGroup>
+                <com.google.android.material.button.MaterialButtonToggleGroup
+                    android:id="@+id/toggleAutoMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    app:singleSelection="true"
+                    app:selectionRequired="true">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnModeTranslate"
+                        style="@style/Widget.PlayTranslate.SegmentedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Translation" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnModeFurigana"
+                        style="@style/Widget.PlayTranslate.SegmentedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Furigana" />
+
+                </com.google.android.material.button.MaterialButtonToggleGroup>
+
+            </LinearLayout>
 
             <!-- Hide game screen overlays toggle (multi-screen only) -->
             <LinearLayout
@@ -368,6 +375,7 @@
                     android:orientation="vertical">
 
                     <TextView
+                        android:id="@+id/tvHotkeyFuriganaLabel"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Hotkey: hold to show furigana"

@@ -59,7 +59,8 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     /** Current active capture region as fractional coordinates (top, bottom, left, right).
      *  null or (0,1,0,1) means full screen — no region highlight shown. */
     var activeRegion: RegionEntry? = null
-    var isFuriganaMode: Boolean = false
+    /** Label for the hint-text overlay mode ("Furigana", "Pinyin", etc.), or null for translation mode. */
+    var hintModeLabel: String? = null
         set(value) { field = value; updateLiveButton() }
     var isLiveMode: Boolean = false
         set(value) {
@@ -374,7 +375,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             liveIcon.textSize = 26f
             liveIcon.setTextColor(onAccentColor)
             liveIcon.setPadding((2 * dp).toInt(), 0, 0, (1 * dp).toInt())
-            liveLabel.text = if (isFuriganaMode) "Auto Furigana" else "Auto Translate"
+            liveLabel.text = hintModeLabel?.let { "Auto $it" } ?: "Auto Translate"
             (liveBtn.background as? GradientDrawable)?.setColor(accentColor)
         }
     }

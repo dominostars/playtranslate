@@ -44,6 +44,7 @@ import com.playtranslate.BuildConfig
 import com.playtranslate.diagnostics.LogExporter
 import com.playtranslate.language.LanguagePackCatalogLoader
 import com.playtranslate.language.LanguagePackStore
+import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.model.TextSegment
@@ -498,13 +499,18 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         tvTranslateTitle.text = SpannableStringBuilder(prefix + label).apply {
             setSpan(StyleSpan(Typeface.BOLD), prefix.length, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
+        val hintLabel = when (SourceLanguageProfiles[prefs.sourceLangId].hintTextKind) {
+            HintTextKind.PINYIN -> "pinyin"
+            HintTextKind.FURIGANA -> "furigana"
+            else -> "furigana"
+        }
         tvTranslateSubtitle.text = when (captureService?.holdBehavior) {
             CaptureService.HoldBehavior.HIDE_TRANSLATIONS ->
                 "Hold to hide translations on game screen"
             CaptureService.HoldBehavior.SHOW_TRANSLATIONS_OVER_FURIGANA ->
-                "Hold to show translations instead of furigana"
+                "Hold to show translations instead of $hintLabel"
             CaptureService.HoldBehavior.SHOW_FURIGANA ->
-                "Hold to show furigana on game screen"
+                "Hold to show $hintLabel on game screen"
             else ->
                 "Hold to show translations on game screen"
         }

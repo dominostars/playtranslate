@@ -25,6 +25,8 @@ import androidx.core.view.WindowInsetsCompat
 import com.playtranslate.ui.DimController
 import com.playtranslate.ui.OverlayAlert
 import com.playtranslate.ui.DragLookupController
+import com.playtranslate.language.HintTextKind
+import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ui.FloatingIconMenu
 import com.playtranslate.ui.FloatingOverlayIcon
 import com.playtranslate.ui.OcrDebugOverlayView
@@ -1084,7 +1086,11 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         CaptureService.instance?.holdActive = true
         hideTranslationOverlay()
 
-        menu.isFuriganaMode = Prefs(this).overlayMode == OverlayMode.FURIGANA
+        val prefs = Prefs(this)
+        val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
+        menu.hintModeLabel = if (prefs.overlayMode == OverlayMode.FURIGANA && hintKind != HintTextKind.NONE) {
+            when (hintKind) { HintTextKind.PINYIN -> "Pinyin"; else -> "Furigana" }
+        } else null
         menu.isLiveMode = CaptureService.instance?.isLive == true
         menu.showDegradedWarning = CaptureService.instance?.degradedState?.value == true
         menu.onHideIcon = {

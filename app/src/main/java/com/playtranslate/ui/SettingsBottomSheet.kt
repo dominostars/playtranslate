@@ -38,6 +38,7 @@ import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.diagnostics.LogExporter
 import com.playtranslate.fullScreenDialogTheme
+import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.themeColor
 import android.content.Intent
@@ -327,23 +328,41 @@ class SettingsBottomSheet : DialogFragment() {
         refreshAnkiSection()
 
         // ── Overlay mode toggle ─────────────────────────────────────────
+        val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
+        val hasHintText = hintKind != HintTextKind.NONE
+        val overlayModeSection = view.findViewById<View>(R.id.overlayModeSection)
         val toggleAutoMode = view.findViewById<com.google.android.material.button.MaterialButtonToggleGroup>(R.id.toggleAutoMode)
 
-        toggleAutoMode.check(when (prefs.overlayMode) {
-            OverlayMode.FURIGANA -> R.id.btnModeFurigana
-            else -> R.id.btnModeTranslate
-        })
+        if (hasHintText) {
+            overlayModeSection.visibility = View.VISIBLE
+            val hintLabel = when (hintKind) {
+                HintTextKind.PINYIN -> "Pinyin"
+                else -> "Furigana"
+            }
+            view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnModeFurigana).text = hintLabel
 
-        toggleAutoMode.addOnButtonCheckedListener { _, checkedId, isChecked ->
-            if (!isChecked) return@addOnButtonCheckedListener
-            prefs.overlayMode = when (checkedId) {
-                R.id.btnModeFurigana -> OverlayMode.FURIGANA
-                else -> OverlayMode.TRANSLATION
+            toggleAutoMode.check(when (prefs.overlayMode) {
+                OverlayMode.FURIGANA -> R.id.btnModeFurigana
+                else -> R.id.btnModeTranslate
+            })
+
+            toggleAutoMode.addOnButtonCheckedListener { _, checkedId, isChecked ->
+                if (!isChecked) return@addOnButtonCheckedListener
+                prefs.overlayMode = when (checkedId) {
+                    R.id.btnModeFurigana -> OverlayMode.FURIGANA
+                    else -> OverlayMode.TRANSLATION
+                }
+                if (CaptureService.instance?.isLive == true) {
+                    CaptureService.instance?.stopLive()
+                }
+                onOverlayModeChanged?.invoke()
             }
-            if (CaptureService.instance?.isLive == true) {
-                CaptureService.instance?.stopLive()
+        } else {
+            overlayModeSection.visibility = View.GONE
+            if (prefs.overlayMode == OverlayMode.FURIGANA) {
+                prefs.overlayMode = OverlayMode.TRANSLATION
+                onOverlayModeChanged?.invoke()
             }
-            onOverlayModeChanged?.invoke()
         }
 
         // ── Hide game screen overlays toggle (multi-screen only) ─────────
@@ -366,10 +385,22 @@ class SettingsBottomSheet : DialogFragment() {
             R.id.rowHotkeyTranslation, R.id.switchHotkeyTranslation, R.id.tvHotkeyTranslationHint,
             { prefs.hotkeyTranslation }, { prefs.hotkeyTranslation = it },
             "Show Translations")
-        setupHotkeyRow(view,
-            R.id.rowHotkeyFurigana, R.id.switchHotkeyFurigana, R.id.tvHotkeyFuriganaHint,
-            { prefs.hotkeyFurigana }, { prefs.hotkeyFurigana = it },
-            "Show Furigana")
+        val rowHotkeyFurigana = view.findViewById<View>(R.id.rowHotkeyFurigana)
+        if (hasHintText) {
+            rowHotkeyFurigana.visibility = View.VISIBLE
+            val hintLabel = when (hintKind) {
+                HintTextKind.PINYIN -> "Pinyin"
+                else -> "Furigana"
+            }
+            view.findViewById<TextView>(R.id.tvHotkeyFuriganaLabel).text =
+                "Hotkey: hold to show $hintLabel"
+            setupHotkeyRow(view,
+                R.id.rowHotkeyFurigana, R.id.switchHotkeyFurigana, R.id.tvHotkeyFuriganaHint,
+                { prefs.hotkeyFurigana }, { prefs.hotkeyFurigana = it },
+                "Show $hintLabel")
+        } else {
+            rowHotkeyFurigana.visibility = View.GONE
+        }
 
         // ── Capture interval (auto-save on text change) ───────────────────
         val minSec = Prefs.MIN_CAPTURE_INTERVAL_SEC
@@ -548,8 +579,14 @@ class SettingsBottomSheet : DialogFragment() {
     private fun refreshAutoModeToggle() {
         val v = currentView ?: view ?: return
         val ctx = context ?: return
+        val prefs = Prefs(ctx)
+        val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
+        val hasHintText = hintKind != HintTextKind.NONE
+        val overlayModeSection = v.findViewById<View>(R.id.overlayModeSection) ?: return
+        overlayModeSection.visibility = if (hasHintText) View.VISIBLE else View.GONE
+        if (!hasHintText) return
         val toggle = v.findViewById<com.google.android.material.button.MaterialButtonToggleGroup>(R.id.toggleAutoMode) ?: return
-        val checkedId = when (Prefs(ctx).overlayMode) {
+        val checkedId = when (prefs.overlayMode) {
             OverlayMode.FURIGANA -> R.id.btnModeFurigana
             else -> R.id.btnModeTranslate
         }
