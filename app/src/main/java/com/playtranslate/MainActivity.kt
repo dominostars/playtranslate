@@ -42,6 +42,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.playtranslate.BuildConfig
 import com.playtranslate.diagnostics.LogExporter
+import com.playtranslate.language.LanguagePackCatalogLoader
+import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.model.TextSegment
@@ -276,6 +278,10 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         lifecycleScope.launch(Dispatchers.IO) {
             SourceLanguageEngines.get(applicationContext, prefs.sourceLangId).preload()
         }
+
+        // One-shot migration: if the user already has a non-English target but
+        // no target gloss pack installed, offer to download it.
+        checkTargetPackMigration()
 
         // Wire up the fragment's edit-original listener for edit overlay
         resultFragment?.setOnEditOriginalListener { showEditOverlay() }
@@ -1574,6 +1580,32 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         row.setBackgroundColor(themeColor(
             if (highlighted) R.attr.colorBgCard else R.attr.colorBgSurface))
         ((row as? LinearLayout)?.getChildAt(0) as? RadioButton)?.isChecked = highlighted
+    }
+
+    private fun checkTargetPackMigration() {
+        val target = prefs.targetLang
+        if (target == "en") return
+        if (LanguagePackStore.isTargetInstalled(this, target)) return
+        if (prefs.targetPackMigrationDismissed) return
+        val catalogKey = "target-$target"
+        if (LanguagePackCatalogLoader.entryForKey(this, catalogKey) == null) return
+
+        val targetName = java.util.Locale(target).getDisplayLanguage(java.util.Locale.ENGLISH)
+            .replaceFirstChar { it.uppercase() }
+        AlertDialog.Builder(this)
+            .setTitle("$targetName definitions available")
+            .setMessage(
+                "A $targetName definition pack is available. " +
+                "Download it for word definitions in $targetName instead of English?"
+            )
+            .setPositiveButton("Download") { _, _ ->
+                com.playtranslate.ui.LanguageSetupActivity.launch(this, com.playtranslate.ui.LanguageSetupActivity.MODE_TARGET)
+            }
+            .setNegativeButton("Not now") { _, _ ->
+                prefs.targetPackMigrationDismissed = true
+            }
+            .setCancelable(false)
+            .show()
     }
 
     companion object {
