@@ -106,6 +106,8 @@ class DefinitionResolver(
                     return DefinitionResult.MachineTranslated(response, translated, translatedDefs)
                 }
                 Log.d(TAG, "  Tier 2: identity translation, falling through")
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "  Tier 2: ML Kit failed: ${e.message}")
             }
@@ -130,6 +132,8 @@ class DefinitionResolver(
             if (english.isBlank()) ""
             else try {
                 enToTargetTranslator.translate(english)
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Definition translation failed", e)
                 english
