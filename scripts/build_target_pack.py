@@ -333,7 +333,7 @@ def parse_wiktionary_dir(
                     if sense_ord >= 7:
                         break
 
-        print(f"    → {file_rows} rows")
+        print(f"    {file_rows} rows from {jsonl_file.name}")
 
     print(f"  Wiktionary total: {len(rows)} rows")
     return rows
