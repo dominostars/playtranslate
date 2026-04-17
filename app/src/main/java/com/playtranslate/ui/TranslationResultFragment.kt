@@ -22,6 +22,7 @@ import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.language.DefinitionResolver
+import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TargetGlossDatabaseProvider
@@ -372,39 +373,73 @@ class TranslationResultFragment : Fragment() {
                 val response = defResult?.response
                 val entry = response?.entries?.firstOrNull()
 
-                // Build popup data from the JMdict entry when we have one,
-                // or fall back to a reading-only display when the tokenizer
-                // produced a reading but no dictionary entry exists (proper
-                // nouns live in ENAMDICT, which isn't bundled — same for
-                // other out-of-dictionary tokens). If we don't even have a
-                // reading there's nothing meaningful to show, so return.
+                // Build popup data based on DefinitionResult tier.
                 val word: String
+                val popupLabel: String?
                 val senses: List<WordLookupPopup.SenseDisplay>
                 val freqScore: Int
                 val isCommon: Boolean
-                if (entry != null) {
-                    val form = entry.headwords.firstOrNull()
-                    word = form?.written ?: form?.reading ?: entry.slug
-                    senses = entry.senses.map { sense ->
-                        WordLookupPopup.SenseDisplay(
-                            pos = sense.partsOfSpeech.joinToString(", "),
-                            definition = sense.targetDefinitions.joinToString("; ")
-                        )
+                when {
+                    entry != null && defResult is DefinitionResult.Native -> {
+                        val form = entry.headwords.firstOrNull()
+                        word = form?.written ?: form?.reading ?: entry.slug
+                        popupLabel = null
+                        val targetByOrd = defResult.targetSenses.associateBy { it.senseOrd }
+                        senses = entry.senses.mapIndexed { i, sense ->
+                            val target = targetByOrd[i]
+                            if (target != null) {
+                                WordLookupPopup.SenseDisplay(
+                                    pos = target.pos.joinToString(", "),
+                                    definition = target.glosses.joinToString("; ")
+                                )
+                            } else {
+                                WordLookupPopup.SenseDisplay(
+                                    pos = sense.partsOfSpeech.joinToString(", "),
+                                    definition = sense.targetDefinitions.joinToString("; ")
+                                )
+                            }
+                        }
+                        freqScore = entry.freqScore
+                        isCommon = entry.isCommon == true
                     }
-                    freqScore = entry.freqScore
-                    isCommon = entry.isCommon == true
-                } else if (reading.isNotEmpty()) {
-                    word = lookupForm
-                    senses = listOf(
-                        WordLookupPopup.SenseDisplay(
-                            pos = "",
-                            definition = "Not in dictionary, may be a name"
+                    entry != null && defResult is DefinitionResult.MachineTranslated -> {
+                        word = defResult.translatedHeadword
+                        popupLabel = "⚠ Machine translated"
+                        senses = entry.senses.map { sense ->
+                            WordLookupPopup.SenseDisplay(
+                                pos = sense.partsOfSpeech.joinToString(", "),
+                                definition = sense.targetDefinitions.joinToString("; ")
+                            )
+                        }
+                        freqScore = entry.freqScore
+                        isCommon = entry.isCommon == true
+                    }
+                    entry != null -> {
+                        val form = entry.headwords.firstOrNull()
+                        word = form?.written ?: form?.reading ?: entry.slug
+                        popupLabel = null
+                        senses = entry.senses.map { sense ->
+                            WordLookupPopup.SenseDisplay(
+                                pos = sense.partsOfSpeech.joinToString(", "),
+                                definition = sense.targetDefinitions.joinToString("; ")
+                            )
+                        }
+                        freqScore = entry.freqScore
+                        isCommon = entry.isCommon == true
+                    }
+                    reading.isNotEmpty() -> {
+                        word = lookupForm
+                        popupLabel = null
+                        senses = listOf(
+                            WordLookupPopup.SenseDisplay(
+                                pos = "",
+                                definition = "Not in dictionary, may be a name"
+                            )
                         )
-                    )
-                    freqScore = 0
-                    isCommon = false
-                } else {
-                    return@launch
+                        freqScore = 0
+                        isCommon = false
+                    }
+                    else -> return@launch
                 }
 
                 // Calculate position: center on the tapped word, above it
@@ -444,7 +479,7 @@ class TranslationResultFragment : Fragment() {
                 }
                 wordPopup?.show(word, lookupReading, senses, freqScore,
                     isCommon, screenX, screenY, dm.widthPixels, dm.heightPixels,
-                    anchorHeight = lineH)
+                    anchorHeight = lineH, label = popupLabel)
             } catch (_: Exception) {}
         }
     }
@@ -713,14 +748,39 @@ class TranslationResultFragment : Fragment() {
                             if (response != null && response.entries.isNotEmpty()) {
                                 val entry   = response.entries.first()
                                 val primary = entry.headwords.firstOrNull()
-                                displayWord = primary?.written ?: primary?.reading ?: word
-                                tvWord.text = displayWord
-                                reading = primary?.reading?.takeIf { it != primary.written } ?: ""
                                 freqScore = entry.freqScore
-                                meaning = entry.senses.mapIndexed { i, sense ->
-                                    val glosses = sense.targetDefinitions.joinToString("; ")
-                                    if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
-                                }.joinToString("\n")
+                                when (defResult) {
+                                    is DefinitionResult.Native -> {
+                                        displayWord = primary?.written ?: primary?.reading ?: word
+                                        tvWord.text = displayWord
+                                        reading = primary?.reading?.takeIf { it != primary.written } ?: ""
+                                        val targetByOrd = defResult.targetSenses.associateBy { it.senseOrd }
+                                        meaning = entry.senses.mapIndexed { i, sense ->
+                                            val target = targetByOrd[i]
+                                            val glosses = target?.glosses?.joinToString("; ")
+                                                ?: sense.targetDefinitions.joinToString("; ")
+                                            if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
+                                        }.joinToString("\n")
+                                    }
+                                    is DefinitionResult.MachineTranslated -> {
+                                        displayWord = primary?.written ?: primary?.reading ?: word
+                                        tvWord.text = displayWord
+                                        reading = defResult.translatedHeadword
+                                        meaning = entry.senses.mapIndexed { i, sense ->
+                                            val glosses = sense.targetDefinitions.joinToString("; ")
+                                            if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
+                                        }.joinToString("\n")
+                                    }
+                                    else -> {
+                                        displayWord = primary?.written ?: primary?.reading ?: word
+                                        tvWord.text = displayWord
+                                        reading = primary?.reading?.takeIf { it != primary.written } ?: ""
+                                        meaning = entry.senses.mapIndexed { i, sense ->
+                                            val glosses = sense.targetDefinitions.joinToString("; ")
+                                            if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
+                                        }.joinToString("\n")
+                                    }
+                                }
                             }
                         } catch (_: Exception) {}
                         if (meaning.isNotEmpty()) {

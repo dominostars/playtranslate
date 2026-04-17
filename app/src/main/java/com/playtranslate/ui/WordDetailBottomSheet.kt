@@ -20,6 +20,7 @@ import com.playtranslate.R
 import com.playtranslate.fullScreenDialogTheme
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.language.DefinitionResolver
+import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.model.DictionaryEntry
@@ -110,7 +111,7 @@ class WordDetailBottomSheet : DialogFragment() {
                 addText(content, getString(R.string.word_detail_not_found, word), 14f, R.color.text_hint)
                 return@launch
             }
-            buildContent(content, entry, engine)
+            buildContent(content, entry, engine, defResult)
             scrollView?.scrollTo(0, 0)
 
             // Show Add to Anki button once we have a valid entry
@@ -184,7 +185,7 @@ class WordDetailBottomSheet : DialogFragment() {
         ).show(childFragmentManager, WordAnkiReviewSheet.TAG)
     }
 
-    private suspend fun buildContent(content: LinearLayout, entry: DictionaryEntry, engine: com.playtranslate.language.SourceLanguageEngine) {
+    private suspend fun buildContent(content: LinearLayout, entry: DictionaryEntry, engine: com.playtranslate.language.SourceLanguageEngine, defResult: DefinitionResult?) {
         // ── Readings ─────────────────────────────────────────────────────
         val allReadings = entry.headwords.mapNotNull { f ->
             f.reading?.takeIf { it != f.written }
@@ -205,24 +206,33 @@ class WordDetailBottomSheet : DialogFragment() {
         addDivider(content, topMargin = 14)
 
         // ── Senses ────────────────────────────────────────────────────────
+        // Build target-sense lookup for ordinal alignment (Native result)
+        val targetByOrd = if (defResult is DefinitionResult.Native)
+            defResult.targetSenses.associateBy { it.senseOrd } else null
+
+        // Machine-translated label
+        if (defResult is DefinitionResult.MachineTranslated) {
+            addText(content, "⚠ Machine translated: ${defResult.translatedHeadword}",
+                13f, R.color.text_hint, topMargin = 0, italic = true)
+        }
+
         val senses = entry.senses.filter { it.targetDefinitions.isNotEmpty() }
         senses.forEachIndexed { idx, sense ->
-            val posFiltered = sense.partsOfSpeech.filter { it.isNotBlank() }
-            if (posFiltered.isNotEmpty()) {
+            val target = targetByOrd?.get(idx)
+            val posLabels = (target?.pos ?: sense.partsOfSpeech).filter { it.isNotBlank() }
+            if (posLabels.isNotEmpty()) {
                 val posRow = LinearLayout(requireContext()).apply {
                     orientation = LinearLayout.HORIZONTAL
                     layoutParams = rowParams(topMargin = if (idx == 0) 0 else 12)
                 }
-                posFiltered.forEach { posRow.addView(makeBadge(it, small = true)) }
+                posLabels.forEach { posRow.addView(makeBadge(it, small = true)) }
                 content.addView(posRow)
             }
 
+            val glosses = target?.glosses?.joinToString("; ")
+                ?: sense.targetDefinitions.joinToString("; ")
             val prefix = if (senses.size > 1) "${idx + 1}.  " else ""
-            addText(
-                content,
-                prefix + sense.targetDefinitions.joinToString("; "),
-                16f, R.color.text_primary, topMargin = 4
-            )
+            addText(content, prefix + glosses, 16f, R.color.text_primary, topMargin = 4)
 
             if (sense.misc.isNotEmpty()) {
                 addText(content, sense.misc.joinToString(" · "), 12f, R.color.text_hint,
