@@ -23,6 +23,7 @@ import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
+import com.playtranslate.language.WordTranslator
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TargetGlossDatabaseProvider
@@ -366,7 +367,10 @@ class TranslationResultFragment : Fragment() {
                 val engine = SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
                 val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, prefs.targetLang)
                 val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
-                val resolver = DefinitionResolver(engine, targetGlossDb, mlKitTranslator, prefs.targetLang)
+                val enToTarget = TranslationManagerProvider.getEnToTarget(prefs.targetLang)
+                val resolver = DefinitionResolver(engine, targetGlossDb,
+                    mlKitTranslator?.let { WordTranslator(it::translate) }, prefs.targetLang,
+                    enToTarget?.let { WordTranslator(it::translate) })
                 val defResult = withContext(Dispatchers.IO) {
                     resolver.lookup(lookupForm, reading.ifEmpty { null })
                 }
@@ -406,17 +410,38 @@ class TranslationResultFragment : Fragment() {
                         val form = entry.headwords.firstOrNull()
                         word = form?.written ?: form?.reading ?: entry.slug
                         popupLabel = "⚠ Machine translated"
-                        senses = buildList {
-                            add(WordLookupPopup.SenseDisplay(
-                                pos = "",
-                                definition = defResult.translatedHeadword
-                            ))
-                            entry.senses.forEach { sense ->
-                                add(WordLookupPopup.SenseDisplay(
+                        val defs = defResult.translatedDefinitions
+                        senses = if (defs != null) {
+                            entry.senses.mapIndexed { i, sense ->
+                                WordLookupPopup.SenseDisplay(
                                     pos = sense.partsOfSpeech.joinToString(", "),
-                                    definition = sense.targetDefinitions.joinToString("; ")
-                                ))
+                                    definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
+                                )
                             }
+                        } else {
+                            buildList {
+                                add(WordLookupPopup.SenseDisplay(pos = "", definition = defResult.translatedHeadword))
+                                entry.senses.forEach { sense ->
+                                    add(WordLookupPopup.SenseDisplay(
+                                        pos = sense.partsOfSpeech.joinToString(", "),
+                                        definition = sense.targetDefinitions.joinToString("; ")
+                                    ))
+                                }
+                            }
+                        }
+                        freqScore = entry.freqScore
+                        isCommon = entry.isCommon == true
+                    }
+                    entry != null && defResult is DefinitionResult.EnglishFallback && defResult.translatedDefinitions != null -> {
+                        val form = entry.headwords.firstOrNull()
+                        word = form?.written ?: form?.reading ?: entry.slug
+                        popupLabel = "⚠ Machine translated"
+                        val defs = defResult.translatedDefinitions
+                        senses = entry.senses.mapIndexed { i, sense ->
+                            WordLookupPopup.SenseDisplay(
+                                pos = sense.partsOfSpeech.joinToString(", "),
+                                definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
+                            )
                         }
                         freqScore = entry.freqScore
                         isCommon = entry.isCommon == true
@@ -688,7 +713,10 @@ class TranslationResultFragment : Fragment() {
             val engine = SourceLanguageEngines.get(appCtx, wordsPrefs.sourceLangId)
             val wordsTargetGlossDb = TargetGlossDatabaseProvider.get(appCtx, wordsPrefs.targetLang)
             val wordsMlKit = TranslationManagerProvider.get(engine.profile.translationCode, wordsPrefs.targetLang)
-            val wordsResolver = DefinitionResolver(engine, wordsTargetGlossDb, wordsMlKit, wordsPrefs.targetLang)
+            val wordsEnToTarget = TranslationManagerProvider.getEnToTarget(wordsPrefs.targetLang)
+            val wordsResolver = DefinitionResolver(engine, wordsTargetGlossDb,
+                wordsMlKit?.let { WordTranslator(it::translate) }, wordsPrefs.targetLang,
+                wordsEnToTarget?.let { WordTranslator(it::translate) })
             val allTokens = withContext(Dispatchers.IO) {
                 engine.tokenize(text)
             }
@@ -773,19 +801,29 @@ class TranslationResultFragment : Fragment() {
                                         displayWord = primary?.written ?: primary?.reading ?: word
                                         tvWord.text = displayWord
                                         reading = primary?.reading?.takeIf { it != primary.written } ?: ""
-                                        val translatedLine = defResult.translatedHeadword
-                                        val englishLines = entry.senses.mapIndexed { i, sense ->
-                                            val glosses = sense.targetDefinitions.joinToString("; ")
-                                            if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
-                                        }.joinToString("\n")
-                                        meaning = "$translatedLine\n$englishLines"
+                                        val defs = defResult.translatedDefinitions
+                                        meaning = if (defs != null) {
+                                            entry.senses.mapIndexed { i, sense ->
+                                                val glosses = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
+                                                if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
+                                            }.joinToString("\n")
+                                        } else {
+                                            val translatedLine = defResult.translatedHeadword
+                                            val englishLines = entry.senses.mapIndexed { i, sense ->
+                                                val glosses = sense.targetDefinitions.joinToString("; ")
+                                                if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
+                                            }.joinToString("\n")
+                                            "$translatedLine\n$englishLines"
+                                        }
                                     }
-                                    else -> {
+                                    is DefinitionResult.EnglishFallback -> {
                                         displayWord = primary?.written ?: primary?.reading ?: word
                                         tvWord.text = displayWord
                                         reading = primary?.reading?.takeIf { it != primary.written } ?: ""
+                                        val defs = defResult.translatedDefinitions
                                         meaning = entry.senses.mapIndexed { i, sense ->
-                                            val glosses = sense.targetDefinitions.joinToString("; ")
+                                            val glosses = defs?.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
+                                                ?: sense.targetDefinitions.joinToString("; ")
                                             if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
                                         }.joinToString("\n")
                                     }

@@ -16,17 +16,22 @@ data class TargetSense(
     val source: String,
 )
 
+/** Lookup interface extracted for testability (no Android dependency). */
+interface TargetGlossLookup {
+    fun lookup(sourceLang: String, written: String, reading: String? = null): List<TargetSense>?
+}
+
 /**
  * Read-only accessor for a target-language gloss pack's `glosses.sqlite`.
  * One instance per target language, managed by [TargetGlossDatabaseProvider].
  */
-class TargetGlossDatabase private constructor(private val db: SQLiteDatabase) {
+class TargetGlossDatabase private constructor(private val db: SQLiteDatabase) : TargetGlossLookup {
 
     /**
      * Look up target-language senses for a source headword.
      * Tries reading-specific match first, falls back to reading-agnostic.
      */
-    fun lookup(sourceLang: String, written: String, reading: String? = null): List<TargetSense>? {
+    override fun lookup(sourceLang: String, written: String, reading: String?): List<TargetSense>? {
         if (reading != null) {
             val result = query(sourceLang, written, reading)
             if (result != null) return result

@@ -11,7 +11,10 @@ import com.playtranslate.TranslationManager
 object TranslationManagerProvider {
     @Volatile private var currentKey: Pair<String, String>? = null
     @Volatile private var tm: TranslationManager? = null
+    @Volatile private var enTargetLang: String? = null
+    @Volatile private var enTm: TranslationManager? = null
 
+    /** Translator for source→target headword translation (Tier 2). */
     fun get(sourceLangTranslationCode: String, targetLang: String): TranslationManager? {
         if (targetLang == "en") return null
         val key = sourceLangTranslationCode to targetLang
@@ -25,5 +28,21 @@ object TranslationManagerProvider {
         }
     }
 
-    fun close() = synchronized(this) { tm?.close(); tm = null; currentKey = null }
+    /** Translator for EN→target definition translation. */
+    fun getEnToTarget(targetLang: String): TranslationManager? {
+        if (targetLang == "en") return null
+        if (targetLang == enTargetLang && enTm != null) return enTm
+        synchronized(this) {
+            if (targetLang == enTargetLang && enTm != null) return enTm
+            enTm?.close()
+            enTm = TranslationManager("en", targetLang)
+            enTargetLang = targetLang
+            return enTm
+        }
+    }
+
+    fun close() = synchronized(this) {
+        tm?.close(); tm = null; currentKey = null
+        enTm?.close(); enTm = null; enTargetLang = null
+    }
 }
