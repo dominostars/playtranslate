@@ -6,8 +6,8 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import android.text.TextPaint
-import com.playtranslate.dictionary.DictionaryManager
-import com.playtranslate.dictionary.FuriganaToken
+import com.playtranslate.language.HintTextAnnotation
+import com.playtranslate.language.SourceLanguageEngine
 import com.playtranslate.ui.TranslationOverlayView
 
 /**
@@ -128,7 +128,7 @@ object OverlayToolkit {
      */
     fun buildFuriganaBoxesByGroup(
         ocrResult: OcrManager.OcrResult,
-        dictionary: DictionaryManager,
+        engine: SourceLanguageEngine,
         furiganaPaint: TextPaint
     ): List<FuriganaGroup> {
         val groups = mutableListOf<FuriganaGroup>()
@@ -140,24 +140,22 @@ object OverlayToolkit {
             val groupBoxes = mutableListOf<TranslationOverlayView.TextBox>()
             for (line in lines) {
                 if (line.text.isEmpty()) continue
-                val furiganaTokens = dictionary.tokenizeForFurigana(line.text)
+                val annotations = engine.annotateForHintText(line.text)
                 val lineBoxes = mutableListOf<TranslationOverlayView.TextBox>()
 
                 if (line.symbols.isNotEmpty()) {
-                    // Symbol-based positioning: use the tokenizer's authoritative
-                    // startOffset/endOffset (relative to line.text) to find each
-                    // kanji span's symbols. Avoids indexOf re-search, which breaks
-                    // on repeated kanji surfaces when an earlier occurrence has no
-                    // symbol coverage.
-                    for (ft in furiganaTokens) {
-                        val matching = line.symbols.filter { it.charOffset in ft.startOffset until ft.endOffset }
+                    // Symbol-based positioning: use the annotation's authoritative
+                    // baseStart/baseEnd (relative to line.text) to find each
+                    // annotated span's symbols.
+                    for (ann in annotations) {
+                        val matching = line.symbols.filter { it.charOffset in ann.baseStart until ann.baseEnd }
                         if (matching.isEmpty()) continue
                         val first = matching.first()
                         val last = matching.last()
 
                         val furiganaHeight = (first.bounds.height() * 0.75f).toInt().coerceAtLeast(1)
                         lineBoxes += TranslationOverlayView.TextBox(
-                            translatedText = ft.reading,
+                            translatedText = ann.hintText,
                             bounds = Rect(
                                 first.bounds.left,
                                 first.bounds.top - furiganaHeight,
@@ -191,8 +189,8 @@ object OverlayToolkit {
                         }
                     }
 
-                    for (ft in furiganaTokens) {
-                        val (left, right) = positionMapper(ft.startOffset, ft.endOffset)
+                    for (ann in annotations) {
+                        val (left, right) = positionMapper(ann.baseStart, ann.baseEnd)
                         val furiganaHeight = (line.bounds.height() * 0.75f).toInt().coerceAtLeast(1)
                         val furiganaBounds = Rect(
                             left,
@@ -201,7 +199,7 @@ object OverlayToolkit {
                             line.bounds.top
                         )
                         lineBoxes += TranslationOverlayView.TextBox(
-                            translatedText = ft.reading,
+                            translatedText = ann.hintText,
                             bounds = furiganaBounds,
                             lineCount = 1,
                             isFurigana = true
@@ -226,10 +224,10 @@ object OverlayToolkit {
     /** Convenience: build flat list of furigana boxes (for callers that don't need group tracking). */
     fun buildFuriganaBoxes(
         ocrResult: OcrManager.OcrResult,
-        dictionary: DictionaryManager,
+        engine: SourceLanguageEngine,
         furiganaPaint: TextPaint
     ): List<TranslationOverlayView.TextBox> =
-        buildFuriganaBoxesByGroup(ocrResult, dictionary, furiganaPaint).flatMap { it.boxes }
+        buildFuriganaBoxesByGroup(ocrResult, engine, furiganaPaint).flatMap { it.boxes }
 
     /** Check if two OCR groups match (same text at same approximate location). */
     fun groupsMatch(

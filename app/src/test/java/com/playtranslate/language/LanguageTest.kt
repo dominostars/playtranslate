@@ -70,7 +70,7 @@ class LanguageTest {
         val profile = SourceLanguageProfiles[SourceLangId.ZH]
         assertEquals(TranslateLanguage.CHINESE, profile.translationCode)
         assertEquals(OcrBackend.MLKitChinese, profile.ocrBackend)
-        assertEquals(HintTextKind.NONE, profile.hintTextKind)
+        assertEquals(HintTextKind.PINYIN, profile.hintTextKind)
         assertEquals(TextDirection.LTR, profile.textDirection)
         assertEquals(ScriptFamily.CJK_CHINESE, profile.scriptFamily)
         assertEquals(false, profile.wordsSeparatedByWhitespace)

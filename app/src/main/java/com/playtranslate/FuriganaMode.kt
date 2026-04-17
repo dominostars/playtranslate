@@ -4,7 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Rect
 import android.graphics.RectF
-import com.playtranslate.dictionary.DictionaryManager
+import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.ui.TranslationOverlayView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -204,8 +204,8 @@ class FuriganaMode(
             lastOcrText = dedupKey
 
             // Build and show furigana (grouped for selective invalidation)
-            val dict = DictionaryManager.get(service)
-            furiganaGroups = OverlayToolkit.buildFuriganaBoxesByGroup(ocrResult, dict, service.furiganaPaint)
+            val engine = SourceLanguageEngines.get(service, Prefs(service).sourceLangId)
+            furiganaGroups = OverlayToolkit.buildFuriganaBoxesByGroup(ocrResult, engine, service.furiganaPaint)
             val furigana = furiganaGroups.flatMap { it.boxes }
             cachedFuriganaBoxes = furigana
             this@FuriganaMode.cropLeft = left

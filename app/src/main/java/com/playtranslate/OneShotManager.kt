@@ -1,7 +1,7 @@
 package com.playtranslate
 
 import android.graphics.Bitmap
-import com.playtranslate.dictionary.DictionaryManager
+import com.playtranslate.language.SourceLanguageEngines
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -79,10 +79,10 @@ class OneShotManager(private val service: CaptureService) {
     private fun createProcessor(): OneShotProcessor {
         val mode = forcedMode ?: Prefs(service).overlayMode
         return when (mode) {
-            OverlayMode.FURIGANA -> FuriganaOneShotProcessor(
-                DictionaryManager.get(service),
-                service.furiganaPaint
-            )
+            OverlayMode.FURIGANA -> {
+                val engine = SourceLanguageEngines.get(service, Prefs(service).sourceLangId)
+                FuriganaOneShotProcessor(engine, service.furiganaPaint)
+            }
             OverlayMode.TRANSLATION -> TranslationOneShotProcessor(
                 service::translateGroupsSeparately
             )

@@ -2,7 +2,7 @@ package com.playtranslate
 
 import android.graphics.Bitmap
 import android.text.TextPaint
-import com.playtranslate.dictionary.DictionaryManager
+import com.playtranslate.language.SourceLanguageEngine
 import com.playtranslate.ui.TranslationOverlayView
 
 /**
@@ -20,9 +20,9 @@ interface OneShotProcessor {
     ): List<TranslationOverlayView.TextBox>
 }
 
-/** Builds furigana reading boxes. Instant — no network, no shimmer. */
+/** Builds furigana/pinyin reading boxes. Instant — no network, no shimmer. */
 class FuriganaOneShotProcessor(
-    private val dictionary: DictionaryManager,
+    private val engine: SourceLanguageEngine,
     private val furiganaPaint: TextPaint
 ) : OneShotProcessor {
     override suspend fun buildBoxes(
@@ -32,7 +32,7 @@ class FuriganaOneShotProcessor(
         screenshotW: Int, screenshotH: Int,
         showOverlay: (List<TranslationOverlayView.TextBox>) -> Unit
     ): List<TranslationOverlayView.TextBox> {
-        return OverlayToolkit.buildFuriganaBoxes(ocrResult, dictionary, furiganaPaint)
+        return OverlayToolkit.buildFuriganaBoxes(ocrResult, engine, furiganaPaint)
     }
 }
 
