@@ -2,6 +2,7 @@ package com.playtranslate.language
 
 import android.content.Context
 import com.hankcs.hanlp.HanLP
+import com.hankcs.hanlp.dictionary.py.Pinyin
 import com.playtranslate.model.DictionaryResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -38,6 +39,18 @@ class ChineseEngine(appContext: Context) : SourceLanguageEngine {
 
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? =
         dict.lookup(word)
+
+    override fun annotateForHintText(text: String): List<HintTextAnnotation> {
+        val pinyinList = HanLP.convertToPinyinList(text)
+        val annotations = mutableListOf<HintTextAnnotation>()
+        for (i in text.indices) {
+            val pinyin = pinyinList.getOrNull(i) ?: continue
+            if (pinyin == Pinyin.none5) continue
+            val pinyinStr = pinyin.pinyinWithToneMark ?: continue
+            annotations.add(HintTextAnnotation(baseStart = i, baseEnd = i + 1, hintText = pinyinStr))
+        }
+        return annotations
+    }
 
     override fun close() {
         dict.close()

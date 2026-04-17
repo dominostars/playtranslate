@@ -123,7 +123,7 @@ object SourceLanguageProfiles {
             scriptFamily = ScriptFamily.CJK_CHINESE,
             textDirection = TextDirection.LTR,
             ocrBackend = OcrBackend.MLKitChinese,
-            hintTextKind = HintTextKind.NONE,
+            hintTextKind = HintTextKind.PINYIN,
             wordsSeparatedByWhitespace = false,
             isScriptChar = { c ->
                 c in '\u4E00'..'\u9FFF'     // CJK Unified Ideographs

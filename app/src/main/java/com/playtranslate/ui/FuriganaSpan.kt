@@ -41,12 +41,18 @@ class FuriganaSpan(private val reading: String) : ReplacementSpan() {
         val furiganaSize = paint.textSize * FURIGANA_SCALE
         val furiganaPaint = Paint(paint).apply { textSize = furiganaSize }
 
-        // Draw kanji left-aligned
-        canvas.drawText(text, start, end, x, y.toFloat(), paint)
+        val baseWidth = paint.measureText(text, start, end)
+        val readingWidth = furiganaPaint.measureText(reading)
+        val spanWidth = maxOf(baseWidth, readingWidth)
 
-        // Draw furigana reading left-aligned above kanji
+        // Center base text within span
+        val baseX = x + (spanWidth - baseWidth) / 2f
+        canvas.drawText(text, start, end, baseX, y.toFloat(), paint)
+
+        // Center reading above base text
+        val readingX = x + (spanWidth - readingWidth) / 2f
         val gap = furiganaSize * FURIGANA_GAP
         val furiganaY = y.toFloat() + paint.fontMetrics.ascent - gap - furiganaPaint.fontMetrics.descent
-        canvas.drawText(reading, x, furiganaY, furiganaPaint)
+        canvas.drawText(reading, readingX, furiganaY, furiganaPaint)
     }
 }

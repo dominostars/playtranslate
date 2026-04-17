@@ -30,7 +30,7 @@ import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.R
 import com.playtranslate.dictionary.Deinflector
-import com.playtranslate.dictionary.DictionaryManager
+import com.playtranslate.language.HintTextKind
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
@@ -215,7 +215,8 @@ class TranslationResultFragment : Fragment() {
         originalContent.visibility = if (hidden) View.GONE else View.VISIBLE
         btnCopyOriginal.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
         btnEditOriginal.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
-        btnToggleFurigana.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
+        val hasHintText = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind != HintTextKind.NONE
+        btnToggleFurigana.visibility = if (hidden || !hasHintText) View.INVISIBLE else View.VISIBLE
         btnToggleOriginal.setImageResource(if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility)
     }
 
@@ -236,18 +237,18 @@ class TranslationResultFragment : Fragment() {
 
         val plainText = tvOriginal.text.toString()
         if (active && plainText.isNotEmpty()) {
-            val dict = DictionaryManager.get(ctx.applicationContext)
-            val tokens = dict.tokenizeForFurigana(plainText)
-            if (tokens.isEmpty()) {
+            val engine = SourceLanguageEngines.get(ctx.applicationContext, prefs.sourceLangId)
+            val annotations = engine.annotateForHintText(plainText)
+            if (annotations.isEmpty()) {
                 tvOriginal.text = plainText
                 return
             }
             val spannable = android.text.SpannableString(plainText)
-            for (ft in tokens) {
-                if (ft.endOffset > plainText.length) continue
+            for (ann in annotations) {
+                if (ann.baseEnd > plainText.length) continue
                 spannable.setSpan(
-                    FuriganaSpan(ft.reading),
-                    ft.startOffset, ft.endOffset,
+                    FuriganaSpan(ann.hintText),
+                    ann.baseStart, ann.baseEnd,
                     android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
             }
