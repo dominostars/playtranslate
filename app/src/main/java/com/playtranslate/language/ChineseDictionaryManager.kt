@@ -117,7 +117,7 @@ class ChineseDictionaryManager private constructor(private val context: Context)
         ).use { c -> while (c.moveToNext()) readings.add(c.getString(0)) }
 
         val headwords = headwordTexts.mapIndexed { i, written ->
-            Headword(written = written, reading = readings.getOrNull(i))
+            Headword(written = written, reading = readings.getOrNull(i)?.let { numberedToToneMarks(it) })
         }
 
         val senses = mutableListOf<Sense>()
@@ -152,6 +152,45 @@ class ChineseDictionaryManager private constructor(private val context: Context)
             senses = senses,
             freqScore = (freqScore * 5 / 100).coerceIn(0, 5),
         )
+    }
+
+    /**
+     * Converts numbered pinyin (e.g. "fu4 wu4") to tone-marked pinyin ("fù wù").
+     * Handles syllables separated by spaces. Tone 5 (neutral) = no mark.
+     */
+    private fun numberedToToneMarks(numbered: String): String =
+        numbered.split(' ').joinToString(" ") { syllable ->
+            val tone = syllable.lastOrNull()?.digitToIntOrNull()
+            if (tone == null || tone == 0) return@joinToString syllable
+            val base = if (tone in 1..5) syllable.dropLast(1) else syllable
+            if (tone == 5 || tone !in 1..4) return@joinToString base
+            applyToneMark(base.lowercase(), tone)
+        }
+
+    private fun applyToneMark(syllable: String, tone: Int): String {
+        // Standard rule: mark goes on 'a' or 'e' if present, 'o' in 'ou', else last vowel
+        val vowels = "aeiouü"
+        val toneMap = mapOf(
+            'a' to arrayOf("ā", "á", "ǎ", "à"),
+            'e' to arrayOf("ē", "é", "ě", "è"),
+            'i' to arrayOf("ī", "í", "ǐ", "ì"),
+            'o' to arrayOf("ō", "ó", "ǒ", "ò"),
+            'u' to arrayOf("ū", "ú", "ǔ", "ù"),
+            'ü' to arrayOf("ǖ", "ǘ", "ǚ", "ǜ"),
+        )
+        // Map v → ü (CC-CEDICT uses v for ü)
+        val s = syllable.replace('v', 'ü')
+
+        val idx = when {
+            'a' in s -> s.indexOf('a')
+            'e' in s -> s.indexOf('e')
+            "ou" in s -> s.indexOf('o')
+            else -> s.indexOfLast { it in vowels }
+        }
+        if (idx < 0) return s
+        val vowel = s[idx]
+        val marked = toneMap[vowel]?.getOrNull(tone - 1) ?: return s
+        return s.substring(0, idx) + marked + s.substring(idx + 1)
     }
 
     companion object {
