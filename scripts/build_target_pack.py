@@ -155,16 +155,16 @@ def parse_jmdict(
                             gloss_str, "jmdict",
                         ))
                         covered.add(keb)
-                    # Also emit null-reading row for fallback queries
+                    # Also emit empty-reading row for fallback queries
                     rows.append((
-                        "ja", keb, None, sense_ord, pos_str,
+                        "ja", keb, "", sense_ord, pos_str,
                         gloss_str, "jmdict",
                     ))
                     covered.add(keb)
             else:
                 for reb in reb_list:
                     rows.append((
-                        "ja", reb, None, sense_ord, pos_str,
+                        "ja", reb, "", sense_ord, pos_str,
                         gloss_str, "jmdict",
                     ))
                     covered.add(reb)
@@ -221,7 +221,7 @@ def parse_cfdict(cfdict_path: str, source_label: str) -> Tuple[List[tuple], Set[
             # Also emit without reading for fallback
             if pinyin:
                 rows.append((
-                    "zh", simplified, None, 0, "",
+                    "zh", simplified, "", 0, "",
                     gloss_str, source_label,
                 ))
             covered.add(simplified)
@@ -324,7 +324,7 @@ def parse_wiktionary_dir(
                     gloss_str = "\t".join(glosses[:8])
 
                     rows.append((
-                        source_lang, word, None, sense_ord, pos_str,
+                        source_lang, word, "", sense_ord, pos_str,
                         gloss_str, "wiktionary",
                     ))
                     file_rows += 1

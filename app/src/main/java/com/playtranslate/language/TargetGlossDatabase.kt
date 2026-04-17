@@ -31,14 +31,15 @@ class TargetGlossDatabase private constructor(private val db: SQLiteDatabase) {
             val result = query(sourceLang, written, reading)
             if (result != null) return result
         }
-        return query(sourceLang, written, null)
+        // Fall back to empty-reading entries (WITHOUT ROWID tables can't have NULL in PK)
+        return query(sourceLang, written, "")
     }
 
     private fun query(sourceLang: String, written: String, reading: String?): List<TargetSense>? {
         val sql = if (reading != null)
             "SELECT sense_ord, pos, glosses, source FROM glosses WHERE source_lang=? AND written=? AND reading=? ORDER BY sense_ord"
         else
-            "SELECT sense_ord, pos, glosses, source FROM glosses WHERE source_lang=? AND written=? AND reading IS NULL ORDER BY sense_ord"
+            "SELECT sense_ord, pos, glosses, source FROM glosses WHERE source_lang=? AND written=? AND reading='' ORDER BY sense_ord"
         val args = if (reading != null) arrayOf(sourceLang, written, reading) else arrayOf(sourceLang, written)
         db.rawQuery(sql, args).use { c ->
             if (!c.moveToFirst()) return null
