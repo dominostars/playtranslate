@@ -24,6 +24,7 @@ import com.playtranslate.R
 import com.playtranslate.TranslationManager
 import com.playtranslate.language.DownloadProgress
 import com.playtranslate.language.InstallResult
+import com.playtranslate.language.LanguagePackCatalogLoader
 import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
@@ -171,34 +172,51 @@ class LanguageSetupActivity : AppCompatActivity() {
         val sourceLangCode = SourceLanguageProfiles[sourceId].translationCode
         val targetName = langDisplayName(code)
 
-        // Download the ML Kit translation model for this source→target pair
-        // (~30 MB on first use, cached on-device thereafter). Without this,
-        // going offline after setup breaks translation. ML Kit doesn't expose
-        // byte-level progress, so the bar stays indeterminate.
-        val (dialog, tvStatus, progressBar) = buildPopupDialog()
-        tvStatus.text = "Downloading $targetName"
-        progressBar.isIndeterminate = true
-        dialog.show()
+        val saveAndFinish = {
+            Prefs(this@LanguageSetupActivity).targetLang = code
+            selectionDelegate?.onTargetSelectionDone(code)
+            finish()
+        }
 
-        activeJob = lifecycleScope.launch {
-            try {
-                withContext(Dispatchers.IO) {
+        // Check if a target gloss pack exists in the catalog and isn't installed yet
+        val needsTargetPack = code != "en"
+            && LanguagePackCatalogLoader.entryForKey(this, "target-$code") != null
+            && !LanguagePackStore.isTargetInstalled(this, code)
+
+        if (needsTargetPack) {
+            // Download target pack first, then ML Kit model
+            showDownloadAndLoadPopup(
+                langName = "$targetName definitions",
+                downloadAction = { onProgress ->
+                    LanguagePackStore.installTarget(applicationContext, code, onProgress)
+                },
+                loadAction = {
                     val tm = TranslationManager(sourceLangCode, code)
-                    try {
-                        tm.ensureModelReady()
-                    } finally {
-                        tm.close()
+                    try { tm.ensureModelReady() } finally { tm.close() }
+                },
+                onSuccess = saveAndFinish,
+            )
+        } else {
+            // No target pack needed/available — just download ML Kit model
+            val (dialog, tvStatus, progressBar) = buildPopupDialog()
+            tvStatus.text = "Downloading $targetName"
+            progressBar.isIndeterminate = true
+            dialog.show()
+
+            activeJob = lifecycleScope.launch {
+                try {
+                    withContext(Dispatchers.IO) {
+                        val tm = TranslationManager(sourceLangCode, code)
+                        try { tm.ensureModelReady() } finally { tm.close() }
                     }
+                    dialog.dismiss()
+                    saveAndFinish()
+                } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                    // User tapped Cancel — dialog already dismissed.
+                } catch (e: Exception) {
+                    dialog.dismiss()
+                    showErrorPopup(e.message ?: "Failed to download translation model")
                 }
-                dialog.dismiss()
-                Prefs(this@LanguageSetupActivity).targetLang = code
-                selectionDelegate?.onTargetSelectionDone(code)
-                finish()
-            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
-                // User tapped Cancel — dialog already dismissed.
-            } catch (e: Exception) {
-                dialog.dismiss()
-                showErrorPopup(e.message ?: "Failed to download translation model")
             }
         }
     }
