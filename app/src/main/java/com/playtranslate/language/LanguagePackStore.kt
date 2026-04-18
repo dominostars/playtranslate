@@ -234,6 +234,12 @@ object LanguagePackStore {
         val manifestFile = File(tmpDir, "manifest.json")
         val manifest = LanguagePackManifestIO.read(manifestFile)
             ?: return "Extracted pack has no manifest.json"
+        if (manifest.schemaVersion > SUPPORTED_SCHEMA_VERSION) {
+            return "Pack schema v${manifest.schemaVersion} not supported (max v$SUPPORTED_SCHEMA_VERSION)"
+        }
+        if (manifest.appMinVersion > com.playtranslate.BuildConfig.VERSION_CODE) {
+            return "Pack requires app version ${manifest.appMinVersion}, current is ${com.playtranslate.BuildConfig.VERSION_CODE}"
+        }
         for (f in manifest.files) {
             val inDir = File(tmpDir, f.path)
             if (!inDir.exists()) return "Manifest file missing in pack: ${f.path}"
@@ -306,4 +312,5 @@ object LanguagePackStore {
     }
 
     private const val TAG = "LanguagePackStore"
+    private const val SUPPORTED_SCHEMA_VERSION = 1
 }

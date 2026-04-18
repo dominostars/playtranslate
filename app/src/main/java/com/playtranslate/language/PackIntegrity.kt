@@ -43,8 +43,8 @@ object PackIntegrity {
             while (true) {
                 val entry = zis.nextEntry ?: break
                 try {
-                    if (entry.name.contains("..")) continue
                     val out = File(targetDir, entry.name)
+                    if (!out.canonicalPath.startsWith(targetDir.canonicalPath + File.separator)) continue
                     if (entry.isDirectory) {
                         out.mkdirs()
                     } else {
