@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="?attr/ptSurface">
+    android:background="?attr/ptBg">
 
     <!-- Toolbar (shown only in dialog mode) -->
     <LinearLayout
@@ -39,7 +39,6 @@
             android:minWidth="0dp"
             android:minHeight="0dp"
             android:padding="0dp" />
-
     </LinearLayout>
 
     <View
@@ -60,649 +59,515 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingHorizontal="20dp"
-            android:paddingTop="16dp"
+            android:paddingHorizontal="@dimen/pt_section_h_padding"
+            android:paddingTop="4dp"
             android:paddingBottom="20dp">
 
-            <!-- ═══════════════════════════════════════════════════════════ -->
-            <!-- LANGUAGE                                                    -->
-            <!-- ═══════════════════════════════════════════════════════════ -->
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- LANGUAGE                                              -->
+            <!-- ══════════════════════════════════════════════════════ -->
 
-            <TextView
+            <include layout="@layout/settings_group_header"
+                android:id="@+id/headerLanguage" />
+
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="LANGUAGE"
-                android:textColor="?attr/ptTextMuted"
-                android:textSize="11sp"
-                android:letterSpacing="0.15"
-                android:layout_marginBottom="8dp" />
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
 
-            <LinearLayout
-                android:id="@+id/llLanguageList"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/settings_language_hint"
-                android:textColor="?attr/ptTextHint"
-                android:textSize="14sp"
-                android:layout_marginTop="4dp" />
-
-            <!-- ═══════════════════════════════════════════════════════════ -->
-            <!-- GAME SCREEN ICON                                            -->
-            <!-- ═══════════════════════════════════════════════════════════ -->
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?attr/ptDivider"
-                android:layout_marginTop="16dp"
-                android:layout_marginBottom="16dp" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="GAME SCREEN ICON"
-                android:textColor="?attr/ptTextMuted"
-                android:textSize="11sp"
-                android:letterSpacing="0.15"
-                android:layout_marginBottom="8dp" />
-
-            <!-- Show icon toggle -->
-            <LinearLayout
-                android:id="@+id/rowOverlayIcon"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:paddingVertical="6dp">
-
-                <!-- Left: title + hint with icon -->
                 <LinearLayout
-                    android:layout_width="0dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:orientation="vertical">
 
-                    <TextView
-                        android:id="@+id/tvOverlayIconTitle"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/settings_show_overlay_icon"
-                        android:textColor="?attr/ptText"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
+                    <include layout="@layout/settings_row_value"
+                        android:id="@+id/rowSourceLang" />
 
-                    <!-- Hint row: icon aligned with hint text -->
+                    <include layout="@layout/settings_row_divider" />
+
+                    <include layout="@layout/settings_row_value"
+                        android:id="@+id/rowTargetLang" />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- ON-SCREEN CONTROLS                                    -->
+            <!-- ══════════════════════════════════════════════════════ -->
+
+            <include layout="@layout/settings_group_header"
+                android:id="@+id/headerOnScreen" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <include layout="@layout/settings_row_switch"
+                        android:id="@+id/rowOverlayIcon" />
+
+                    <View
+                        android:id="@+id/dividerCompactIcon"
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="@dimen/pt_row_h_padding"
+                        android:background="?attr/ptDivider" />
+
+                    <include layout="@layout/settings_row_switch"
+                        android:id="@+id/rowCompactIcon" />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- AUTO-TRANSLATE                                        -->
+            <!-- ══════════════════════════════════════════════════════ -->
+
+            <include layout="@layout/settings_group_header"
+                android:id="@+id/headerAutoTranslate" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardAutoTranslate"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <!-- Overlay mode section (conditional: only when language has hint text) -->
                     <LinearLayout
+                        android:id="@+id/overlayModeSection"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical">
-
-                        <ImageView
-                            android:id="@+id/ivFloatingIconPreview"
-                            android:layout_width="32dp"
-                            android:layout_height="32dp"
-                            android:layout_marginEnd="2dp"
-                            android:scaleType="fitCenter"
-                            android:adjustViewBounds="true"
-                            android:contentDescription="@string/settings_show_overlay_icon" />
+                        android:orientation="vertical"
+                        android:paddingHorizontal="@dimen/pt_row_h_padding"
+                        android:paddingVertical="@dimen/pt_row_v_padding"
+                        android:visibility="gone">
 
                         <TextView
-                            android:id="@+id/tvOverlayIconHint"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Overlay Mode"
+                            style="@style/Text.PT.RowTitle" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="What overlays to show during auto mode or hold-to-preview."
+                            style="@style/Text.PT.RowSubtitle" />
+
+                        <com.google.android.material.button.MaterialButtonToggleGroup
+                            android:id="@+id/toggleAutoMode"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            app:singleSelection="true"
+                            app:selectionRequired="true">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnModeTranslate"
+                                style="@style/Widget.PlayTranslate.SegmentedButton"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="Translation" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnModeFurigana"
+                                style="@style/Widget.PlayTranslate.SegmentedButton"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="Furigana" />
+
+                        </com.google.android.material.button.MaterialButtonToggleGroup>
+                    </LinearLayout>
+
+                    <View
+                        android:id="@+id/dividerOverlayMode"
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="@dimen/pt_row_h_padding"
+                        android:background="?attr/ptDivider"
+                        android:visibility="gone" />
+
+                    <!-- Hide overlays toggle (conditional: multi-screen only) -->
+                    <include layout="@layout/settings_row_switch"
+                        android:id="@+id/rowHideOverlays"
+                        android:visibility="gone" />
+
+                    <View
+                        android:id="@+id/dividerHideOverlays"
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="@dimen/pt_row_h_padding"
+                        android:background="?attr/ptDivider" />
+
+                    <!-- Capture interval (value-row style) -->
+                    <LinearLayout
+                        android:id="@+id/rowCaptureInterval"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/pt_row_min_height"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:paddingHorizontal="@dimen/pt_row_h_padding"
+                        android:paddingVertical="@dimen/pt_row_v_padding"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true">
+
+                        <LinearLayout
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:text="@string/settings_overlay_icon_hint_dual"
-                            android:textColor="?attr/ptTextHint"
-                            android:textSize="12sp" />
+                            android:orientation="vertical"
+                            android:layout_marginEnd="16dp">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Capture interval"
+                                style="@style/Text.PT.RowTitle" />
+
+                            <TextView
+                                android:id="@+id/tvCaptureIntervalHint"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                style="@style/Text.PT.RowSubtitle" />
+                        </LinearLayout>
+
+                        <EditText
+                            android:id="@+id/etCaptureInterval"
+                            android:layout_width="48dp"
+                            android:layout_height="32dp"
+                            android:gravity="center"
+                            android:textSize="13sp"
+                            android:textColor="?attr/ptTextMuted"
+                            android:background="@android:color/transparent"
+                            android:inputType="numberDecimal"
+                            android:maxLength="3"
+                            android:imeOptions="actionDone"
+                            android:importantForAutofill="no" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="s"
+                            android:layout_marginEnd="4dp"
+                            style="@style/Text.PT.RowValue" />
+
+                        <ImageView
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:src="@drawable/ic_chevron_right"
+                            android:tint="?attr/ptTextMuted"
+                            android:importantForAccessibility="no" />
 
                     </LinearLayout>
 
                 </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
-                <!-- Right: switch centered with entire section -->
-                <com.google.android.material.materialswitch.MaterialSwitch
-                    android:id="@+id/switchOverlayIcon"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center_vertical"
-                    android:layout_marginStart="8dp" />
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- HOTKEYS (conditional: only when language has hint text) -->
+            <!-- ══════════════════════════════════════════════════════ -->
 
-            </LinearLayout>
-
-            <!-- Wrapper for settings below the icon toggle (dimmed when icon is off on single-screen) -->
             <LinearLayout
-                android:id="@+id/settingsBelowIcon"
+                android:id="@+id/hotkeySection"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
-
-            <!-- Small icon toggle -->
-            <LinearLayout
-                android:id="@+id/rowCompactIcon"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingVertical="6dp">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Minimize icon"
-                    android:textColor="?attr/ptText"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-
-                <com.google.android.material.materialswitch.MaterialSwitch
-                    android:id="@+id/switchCompactIcon"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-
-            </LinearLayout>
-
-            <!-- ═══════════════════════════════════════════════════════════ -->
-            <!-- AUTO TRANSLATION                                            -->
-            <!-- ═══════════════════════════════════════════════════════════ -->
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?attr/ptDivider"
-                android:layout_marginTop="12dp"
-                android:layout_marginBottom="16dp" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="AUTO TRANSLATION"
-                android:textColor="?attr/ptTextMuted"
-                android:textSize="11sp"
-                android:letterSpacing="0.15"
-                android:layout_marginBottom="8dp" />
-
-            <!-- Overlay Mode section (hidden for languages without hint text) -->
-            <LinearLayout
-                android:id="@+id/overlayModeSection"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Overlay Mode"
-                    android:textColor="?attr/ptText"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="2dp" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="What overlays to show during &quot;auto&quot; mode or hold-to-preview."
-                    android:textColor="?attr/ptTextHint"
-                    android:textSize="14sp"
-                    android:layout_marginBottom="6dp" />
-
-                <com.google.android.material.button.MaterialButtonToggleGroup
-                    android:id="@+id/toggleAutoMode"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="12dp"
-                    app:singleSelection="true"
-                    app:selectionRequired="true">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnModeTranslate"
-                        style="@style/Widget.PlayTranslate.SegmentedButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Translation" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnModeFurigana"
-                        style="@style/Widget.PlayTranslate.SegmentedButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Furigana" />
-
-                </com.google.android.material.button.MaterialButtonToggleGroup>
-
-            </LinearLayout>
-
-            <!-- Hide game screen overlays toggle (multi-screen only) -->
-            <LinearLayout
-                android:id="@+id/rowHideOverlays"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingVertical="6dp"
+                android:orientation="vertical"
                 android:visibility="gone">
 
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
+                <include layout="@layout/settings_group_header"
+                    android:id="@+id/headerHotkeys" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Hide overlays during &quot;auto&quot; mode"
-                        android:textColor="?attr/ptText"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Translations will only appear in PlayTranslate"
-                        android:textColor="?attr/ptTextHint"
-                        android:textSize="12sp"
-                        android:layout_marginTop="2dp" />
-
-                </LinearLayout>
-
-                <com.google.android.material.materialswitch.MaterialSwitch
-                    android:id="@+id/switchHideOverlays"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp" />
-
-            </LinearLayout>
-
-            <!-- Hotkey: hold to show translations -->
-            <LinearLayout
-                android:id="@+id/rowHotkeyTranslation"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingVertical="6dp">
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Hotkey: hold to show translations"
-                        android:textColor="?attr/ptText"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/tvHotkeyTranslationHint"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Not set"
-                        android:textColor="?attr/ptTextHint"
-                        android:textSize="14sp" />
-                </LinearLayout>
-
-                <com.google.android.material.materialswitch.MaterialSwitch
-                    android:id="@+id/switchHotkeyTranslation"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-            </LinearLayout>
-
-            <!-- Hotkey: hold to show furigana -->
-            <LinearLayout
-                android:id="@+id/rowHotkeyFurigana"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingVertical="6dp"
-                android:layout_marginBottom="12dp">
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:id="@+id/tvHotkeyFuriganaLabel"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Hotkey: hold to show furigana"
-                        android:textColor="?attr/ptText"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/tvHotkeyFuriganaHint"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Not set"
-                        android:textColor="?attr/ptTextHint"
-                        android:textSize="14sp" />
-                </LinearLayout>
-
-                <com.google.android.material.materialswitch.MaterialSwitch
-                    android:id="@+id/switchHotkeyFurigana"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-            </LinearLayout>
-
-            <!-- Capture interval -->
-            <LinearLayout
-                android:id="@+id/rowCaptureInterval"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <!-- Left: title + hint stacked -->
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="Capture interval"
-                        android:textColor="?attr/ptText"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/tvCaptureIntervalHint"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text=""
-                        android:textColor="?attr/ptTextHint"
-                        android:textSize="14sp"
-                        android:layout_marginTop="1dp" />
-
-                </LinearLayout>
-
-                <!-- Right: input + suffix -->
-                <EditText
-                    android:id="@+id/etCaptureInterval"
-                    android:layout_width="56dp"
-                    android:layout_height="wrap_content"
-                    android:inputType="numberDecimal"
-                    android:imeOptions="actionDone"
-                    android:textSize="14sp"
-                    android:textColor="?attr/ptText"
-                    android:background="?attr/ptCard"
-                    android:paddingHorizontal="8dp"
-                    android:paddingVertical="6dp"
-                    android:gravity="center"
-                    android:maxLength="3"
-                    android:singleLine="true" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text=" s"
-                    android:textColor="?attr/ptTextMuted"
-                    android:textSize="14sp" />
-
-            </LinearLayout>
-
-            <!-- ═══════════════════════════════════════════════════════════ -->
-            <!-- CAPTURE DISPLAY (hidden when only one display)              -->
-            <!-- ═══════════════════════════════════════════════════════════ -->
-
-            <LinearLayout
-                android:id="@+id/llCaptureDisplaySection"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:background="?attr/ptDivider"
-                    android:layout_marginTop="16dp"
-                    android:layout_marginBottom="16dp" />
-
-                <TextView
+                <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="CAPTURE DISPLAY"
-                    android:textColor="?attr/ptTextMuted"
-                    android:textSize="11sp"
-                    android:letterSpacing="0.15"
-                    android:layout_marginBottom="8dp" />
+                    app:cardBackgroundColor="?attr/ptCard"
+                    app:cardCornerRadius="@dimen/pt_radius"
+                    app:cardElevation="0dp"
+                    app:strokeColor="?attr/ptDivider"
+                    app:strokeWidth="1dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <include layout="@layout/settings_row_hotkey"
+                            android:id="@+id/rowHotkeyTranslation" />
+
+                        <View
+                            android:id="@+id/dividerHotkeyFurigana"
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:layout_marginStart="@dimen/pt_row_h_padding"
+                            android:background="?attr/ptDivider" />
+
+                        <include layout="@layout/settings_row_hotkey"
+                            android:id="@+id/rowHotkeyFurigana" />
+
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- CAPTURE DISPLAY (conditional: multi-display)          -->
+            <!-- ══════════════════════════════════════════════════════ -->
+
+            <LinearLayout
+                android:id="@+id/captureDisplaySection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <include layout="@layout/settings_group_header"
+                    android:id="@+id/headerCaptureDisplay" />
+
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:cardBackgroundColor="?attr/ptCard"
+                    app:cardCornerRadius="@dimen/pt_radius"
+                    app:cardElevation="0dp"
+                    app:strokeColor="?attr/ptDivider"
+                    app:strokeWidth="1dp">
+
+                    <LinearLayout
+                        android:id="@+id/llDisplayOptions"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="@dimen/pt_row_h_padding" />
+
+                </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- TRANSLATION SERVICE                                   -->
+            <!-- ══════════════════════════════════════════════════════ -->
+
+            <include layout="@layout/settings_group_header"
+                android:id="@+id/headerTranslationService" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
 
                 <LinearLayout
-                    android:id="@+id/llDisplayOptions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <!-- DeepL API key input -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingHorizontal="@dimen/pt_row_h_padding"
+                        android:paddingVertical="@dimen/pt_row_v_padding">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="DeepL API Key"
+                            style="@style/Text.PT.RowTitle" />
+
+                        <EditText
+                            android:id="@+id/etDeeplKey"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:hint="@string/hint_deepl_key"
+                            android:textColorHint="?attr/ptTextHint"
+                            android:textColor="?attr/ptText"
+                            android:textSize="13sp"
+                            android:fontFamily="monospace"
+                            android:singleLine="true"
+                            android:background="?attr/ptSurface"
+                            android:padding="10dp"
+                            android:importantForAutofill="no" />
+                    </LinearLayout>
+
+                    <include layout="@layout/settings_row_divider" />
+
+                    <!-- DeepL link row (populated dynamically) -->
+                    <LinearLayout
+                        android:id="@+id/llDeeplLink"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- ANKI                                                  -->
+            <!-- ══════════════════════════════════════════════════════ -->
+
+            <include layout="@layout/settings_group_header"
+                android:id="@+id/headerAnki" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvAnkiSectionTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingHorizontal="@dimen/pt_row_h_padding"
+                        android:paddingTop="@dimen/pt_row_v_padding"
+                        android:visibility="gone"
+                        style="@style/Text.PT.RowTitle" />
+
+                    <LinearLayout
+                        android:id="@+id/llAnkiGetApp"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone" />
+
+                    <LinearLayout
+                        android:id="@+id/llAnkiPermission"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone" />
+
+                    <Spinner
+                        android:id="@+id/spinnerAnkiDeck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingHorizontal="@dimen/pt_row_h_padding"
+                        android:paddingVertical="@dimen/pt_row_v_padding"
+                        android:background="?attr/ptCard"
+                        android:popupBackground="?attr/ptCard"
+                        android:visibility="gone" />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- APPEARANCE                                            -->
+            <!-- ══════════════════════════════════════════════════════ -->
+
+            <include layout="@layout/settings_group_header"
+                android:id="@+id/headerAppearance" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:id="@+id/llThemePicker"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="@dimen/pt_row_h_padding" />
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- SUPPORT                                               -->
+            <!-- ══════════════════════════════════════════════════════ -->
+
+            <include layout="@layout/settings_group_header"
+                android:id="@+id/headerSupport" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:id="@+id/llSupportLinks"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical" />
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/settings_display_hint"
-                    android:textColor="?attr/ptTextHint"
-                    android:textSize="14sp"
-                    android:layout_marginTop="4dp" />
+            </com.google.android.material.card.MaterialCardView>
 
-            </LinearLayout>
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- DIAGNOSTICS                                           -->
+            <!-- ══════════════════════════════════════════════════════ -->
 
-            <!-- ═══════════════════════════════════════════════════════════ -->
-            <!-- TRANSLATION SERVICE                                         -->
-            <!-- ═══════════════════════════════════════════════════════════ -->
+            <include layout="@layout/settings_group_header"
+                android:id="@+id/headerDiagnostics" />
 
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?attr/ptDivider"
-                android:layout_marginTop="16dp"
-                android:layout_marginBottom="16dp" />
-
-            <TextView
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="TRANSLATION SERVICE (OPTIONAL)"
-                android:textColor="?attr/ptTextMuted"
-                android:textSize="11sp"
-                android:letterSpacing="0.15"
-                android:layout_marginBottom="8dp" />
-
-            <EditText
-                android:id="@+id/etDeeplKey"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="textNoSuggestions"
-                android:hint="@string/hint_deepl_key"
-                android:textSize="14sp"
-                android:textColor="?attr/ptText"
-                android:textColorHint="?attr/ptTextHint"
-                android:background="?attr/ptCard"
-                android:paddingHorizontal="10dp"
-                android:paddingVertical="8dp"
-                android:fontFamily="monospace"
-                android:singleLine="true" />
-
-            <LinearLayout
-                android:id="@+id/llDeeplLink"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_marginTop="4dp" />
-
-            <!-- ═══════════════════════════════════════════════════════════ -->
-            <!-- ANKI                                                        -->
-            <!-- ═══════════════════════════════════════════════════════════ -->
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?attr/ptDivider"
-                android:layout_marginTop="16dp"
-                android:layout_marginBottom="16dp" />
-
-            <TextView
-                android:id="@+id/tvAnkiSectionTitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="ANKI"
-                android:textColor="?attr/ptTextMuted"
-                android:textSize="11sp"
-                android:letterSpacing="0.15"
-                android:layout_marginBottom="4dp" />
-
-            <LinearLayout
-                android:id="@+id/llAnkiGetApp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone" />
-
-            <LinearLayout
-                android:id="@+id/llAnkiPermission"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone" />
-
-            <Spinner
-                android:id="@+id/spinnerAnkiDeck"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="?attr/ptCard"
-                android:popupBackground="?attr/ptCard"
-                android:layout_marginTop="4dp"
-                android:visibility="gone" />
-
-
-            <!-- ═══════════════════════════════════════════════════════════ -->
-            <!-- THEME                                                       -->
-            <!-- ═══════════════════════════════════════════════════════════ -->
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?attr/ptDivider"
-                android:layout_marginTop="16dp"
-                android:layout_marginBottom="16dp" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="THEME"
-                android:textColor="?attr/ptTextMuted"
-                android:textSize="11sp"
-                android:letterSpacing="0.15"
-                android:layout_marginBottom="8dp" />
-
-            <LinearLayout
-                android:id="@+id/llThemePicker"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal" />
-
-            </LinearLayout> <!-- settingsBelowIcon -->
-
-            <!-- ═══════════════════════════════════════════════════════════ -->
-            <!-- SUPPORT                                                      -->
-            <!-- ═══════════════════════════════════════════════════════════ -->
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?attr/ptDivider"
-                android:layout_marginTop="16dp"
-                android:layout_marginBottom="16dp" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="SUPPORT"
-                android:textColor="?attr/ptTextMuted"
-                android:textSize="11sp"
-                android:letterSpacing="0.15"
-                android:layout_marginBottom="8dp" />
-
-            <LinearLayout
-                android:id="@+id/llSupportLinks"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical" />
-
-            <!-- ═══════════════════════════════════════════════════════════ -->
-            <!-- DIAGNOSTICS                                                  -->
-            <!-- ═══════════════════════════════════════════════════════════ -->
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?attr/ptDivider"
-                android:layout_marginTop="16dp"
-                android:layout_marginBottom="16dp" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="DIAGNOSTICS"
-                android:textColor="?attr/ptTextMuted"
-                android:textSize="11sp"
-                android:letterSpacing="0.15"
-                android:layout_marginBottom="8dp" />
-
-            <LinearLayout
-                android:id="@+id/rowExportLogs"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingVertical="6dp">
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
 
                 <LinearLayout
-                    android:layout_width="0dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:orientation="vertical">
 
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="Export logs"
-                        android:textColor="?attr/ptText"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="Share recent app logs for bug reports"
-                        android:textColor="?attr/ptTextHint"
-                        android:textSize="12sp" />
+                    <include layout="@layout/settings_row_action"
+                        android:id="@+id/rowExportLogs" />
 
                 </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnExportLogs"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:text="Export" />
-
-            </LinearLayout>
-
-            <!-- ═══════════════════════════════════════════════════════════ -->
-            <!-- DEBUG (only in debug builds)                                -->
-            <!-- ═══════════════════════════════════════════════════════════ -->
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- DEBUG (debug builds only)                             -->
+            <!-- ══════════════════════════════════════════════════════ -->
 
             <LinearLayout
                 android:id="@+id/llDebugSection"
@@ -711,121 +576,48 @@
                 android:orientation="vertical"
                 android:visibility="gone">
 
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:background="?attr/ptDivider"
-                    android:layout_marginTop="16dp"
-                    android:layout_marginBottom="16dp" />
+                <include layout="@layout/settings_group_header"
+                    android:id="@+id/headerDebug" />
 
-                <TextView
+                <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="DEBUG"
-                    android:textColor="?attr/ptTextMuted"
-                    android:textSize="11sp"
-                    android:letterSpacing="0.15"
-                    android:layout_marginBottom="12dp" />
+                    app:cardBackgroundColor="?attr/ptCard"
+                    app:cardCornerRadius="@dimen/pt_radius"
+                    app:cardElevation="0dp"
+                    app:strokeColor="?attr/ptDivider"
+                    app:strokeWidth="1dp">
 
-                <LinearLayout
-                    android:id="@+id/rowForceSingleScreen"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:paddingVertical="6dp">
-
-                    <TextView
-                        android:layout_width="0dp"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Force single-screen mode"
-                        android:textColor="?attr/ptText"
-                        android:textSize="14sp" />
+                        android:orientation="vertical">
 
-                    <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/switchForceSingleScreen"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content" />
+                        <include layout="@layout/settings_row_switch"
+                            android:id="@+id/rowForceSingleScreen" />
 
-                </LinearLayout>
+                        <include layout="@layout/settings_row_divider" />
 
-                <LinearLayout
-                    android:id="@+id/rowShowOcrBoxes"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:paddingVertical="6dp">
+                        <include layout="@layout/settings_row_switch"
+                            android:id="@+id/rowShowOcrBoxes" />
 
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Show OCR bounding boxes"
-                        android:textColor="?attr/ptText"
-                        android:textSize="14sp" />
+                        <include layout="@layout/settings_row_divider" />
 
-                    <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/switchShowOcrBoxes"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content" />
+                        <include layout="@layout/settings_row_switch"
+                            android:id="@+id/rowDetectionLog" />
 
-                </LinearLayout>
+                        <include layout="@layout/settings_row_divider" />
 
-                <LinearLayout
-                    android:id="@+id/rowDetectionLog"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:paddingVertical="6dp">
+                        <include layout="@layout/settings_row_action"
+                            android:id="@+id/rowForceCrash" />
 
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Show detection log"
-                        android:textColor="?attr/ptText"
-                        android:textSize="14sp" />
-
-                    <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/switchDetectionLog"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content" />
-
-                </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/rowForceCrash"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:paddingVertical="6dp">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Force crash"
-                        android:textColor="?attr/ptText"
-                        android:textSize="14sp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnForceCrash"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:text="Crash" />
-
-                </LinearLayout>
-
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
 
+            <!-- Footer -->
+            <include layout="@layout/settings_footer" />
 
         </LinearLayout>
-
     </ScrollView>
-
 </LinearLayout>

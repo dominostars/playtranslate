@@ -208,6 +208,51 @@
         <item name="android:lineSpacingMultiplier">1</item>
     </style>
 
+    <!-- ── Settings row typography ──────────────────────────────────────── -->
+
+    <style name="Text.PT.RowTitle" parent="">
+        <item name="android:textSize">15sp</item>
+        <item name="android:textColor">?attr/ptText</item>
+        <item name="android:textStyle">normal</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="Text.PT.RowSubtitle" parent="">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">?attr/ptTextMuted</item>
+        <item name="android:lineSpacingMultiplier">1.35</item>
+    </style>
+
+    <style name="Text.PT.GroupHeader" parent="">
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">?attr/ptTextMuted</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.12</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="Text.PT.RowValue" parent="">
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">?attr/ptTextMuted</item>
+    </style>
+
+    <style name="Text.PT.Hint" parent="">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">?attr/ptTextMuted</item>
+        <item name="android:lineSpacingMultiplier">1.4</item>
+    </style>
+
+    <style name="Text.PT.KeyCap" parent="">
+        <item name="android:textSize">10sp</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.08</item>
+        <item name="android:textColor">?attr/ptAccent</item>
+        <item name="android:background">@drawable/bg_keycap</item>
+        <item name="android:paddingHorizontal">7dp</item>
+        <item name="android:paddingVertical">3dp</item>
+    </style>
+
     <!-- Enter from bottom, exit to bottom (word/sentence detail) -->
     <style name="AnimSlideBottom">
         <item name="android:windowEnterAnimation">@anim/slide_in_bottom</item>
