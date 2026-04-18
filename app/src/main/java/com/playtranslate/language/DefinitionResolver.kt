@@ -67,7 +67,7 @@ class DefinitionResolver(
 
         // Tier 1: target-pack native definition
         if (targetGlossDb != null && targetLang != "en") {
-            val sourceLang = engine.profile.id.code
+            val sourceLang = engine.profile.id.packId.code
             val headwords = buildSet {
                 response.entries.firstOrNull()?.let { entry ->
                     entry.headwords.forEach { hw ->

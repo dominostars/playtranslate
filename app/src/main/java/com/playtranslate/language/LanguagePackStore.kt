@@ -29,8 +29,10 @@ object LanguagePackStore {
     fun rootDir(ctx: Context): File =
         File(ctx.applicationContext.noBackupFilesDir, "langpacks")
 
+    /** Directory for a source pack. Variants sharing a pack (e.g. ZH_HANT)
+     *  resolve to the same directory via [SourceLangId.packId]. */
     fun dirFor(ctx: Context, id: SourceLangId): File =
-        File(rootDir(ctx), id.code)
+        File(rootDir(ctx), id.packId.code)
 
     fun dictDbFor(ctx: Context, id: SourceLangId): File =
         File(dirFor(ctx, id), "dict.sqlite")

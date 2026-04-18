@@ -30,10 +30,10 @@ class ChineseDictionaryManager private constructor(private val context: Context)
 
     suspend fun preload() = ensureOpen()
 
-    suspend fun lookup(surface: String): DictionaryResponse? = withContext(Dispatchers.IO) {
+    suspend fun lookup(surface: String, preferTraditional: Boolean = false): DictionaryResponse? = withContext(Dispatchers.IO) {
         val database = ensureOpen() ?: return@withContext null
         val ids = queryEntryIds(database, surface)
-        if (ids.isNotEmpty()) buildResponse(database, ids) else null
+        if (ids.isNotEmpty()) buildResponse(database, ids, preferTraditional) else null
     }
 
     fun close() {
@@ -85,12 +85,12 @@ class ChineseDictionaryManager private constructor(private val context: Context)
         return ids
     }
 
-    private fun buildResponse(db: SQLiteDatabase, entryIds: List<Long>): DictionaryResponse {
-        val entries = entryIds.mapNotNull { buildEntry(db, it) }
+    private fun buildResponse(db: SQLiteDatabase, entryIds: List<Long>, preferTraditional: Boolean = false): DictionaryResponse {
+        val entries = entryIds.mapNotNull { buildEntry(db, it, preferTraditional) }
         return DictionaryResponse(entries = entries)
     }
 
-    private fun buildEntry(db: SQLiteDatabase, id: Long): DictionaryEntry? {
+    private fun buildEntry(db: SQLiteDatabase, id: Long, preferTraditional: Boolean = false): DictionaryEntry? {
         val idStr = id.toString()
 
         var isCommon = false
@@ -116,9 +116,11 @@ class ChineseDictionaryManager private constructor(private val context: Context)
             arrayOf(idStr)
         ).use { c -> while (c.moveToNext()) readings.add(c.getString(0)) }
 
-        val headwords = headwordTexts.mapIndexed { i, written ->
-            Headword(written = written, reading = readings.getOrNull(i)?.let { numberedToToneMarks(it) })
-        }
+        // CC-CEDICT has one reading per entry shared by all headword forms
+        val primaryReading = readings.firstOrNull()?.let { numberedToToneMarks(it) }
+        val headwords = headwordTexts.map { written ->
+            Headword(written = written, reading = primaryReading)
+        }.let { if (preferTraditional && it.size > 1) it.reversed() else it }
 
         val senses = mutableListOf<Sense>()
         db.rawQuery(

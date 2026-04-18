@@ -121,7 +121,7 @@ object SentenceAnkiHtmlBuilder {
             .filter { it.key.isNotEmpty() }
             .sortedByDescending { it.key.length }
         val useDeinflection = sourceLangId == SourceLangId.JA
-        val useRuby = sourceLangId == SourceLangId.JA || sourceLangId == SourceLangId.ZH
+        val useRuby = sourceLangId == SourceLangId.JA || sourceLangId == SourceLangId.ZH || sourceLangId == SourceLangId.ZH_HANT
         val sb = StringBuilder()
         var i = 0
         while (i < text.length) {

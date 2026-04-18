@@ -14,19 +14,39 @@ enum class SourceLangId(val code: String) {
     JA("ja"),
     EN("en"),
     ZH("zh"),
+    ZH_HANT("zh-Hant"),
     ES("es"),
     // KO, AR, FR, DE, IT, PT, NL, TR, VI, ID — deferred to later phases
     ;
 
+    /** The lang ID used for pack directory/catalog lookup. Variants that share
+     *  a pack (e.g. ZH_HANT shares ZH's pack) override this. */
+    val packId: SourceLangId get() = when (this) {
+        ZH_HANT -> ZH
+        else -> this
+    }
+
     companion object {
         /**
-         * Defensive raw-string lookup. Strips BCP-47 region suffix (`ja-JP` → `ja`)
-         * and lowercases so `"JA"`, `"ja-JP"`, and `"ja"` all resolve identically.
+         * Defensive raw-string lookup. Tries exact match first (e.g. `"zh-Hant"`),
+         * then falls back to primary subtag (`"zh-Hant"` → `"zh"`).
          * Returns null for blank, null, or unknown codes.
          */
+        /** Region codes that imply Traditional Chinese script. */
+        private val TRADITIONAL_REGIONS = setOf("tw", "hk", "mo")
+
         fun fromCode(code: String?): SourceLangId? {
             if (code.isNullOrBlank()) return null
-            val primary = code.substringBefore('-').lowercase()
+            val lower = code.lowercase()
+            // Exact match first (handles "zh-hant" → ZH_HANT)
+            entries.firstOrNull { it.code.lowercase() == lower }?.let { return it }
+            // Map zh-TW, zh-HK, zh-MO, zh-Hant-TW etc. to ZH_HANT
+            if (lower.startsWith("zh-")) {
+                val parts = lower.removePrefix("zh-").split('-')
+                if (parts.any { it == "hant" || it in TRADITIONAL_REGIONS }) return ZH_HANT
+            }
+            // Fall back to primary subtag (handles "ja-JP" → JA)
+            val primary = lower.substringBefore('-')
             return entries.firstOrNull { it.code == primary }
         }
     }
@@ -80,7 +100,13 @@ data class SourceLanguageProfile(
     val wordsSeparatedByWhitespace: Boolean,
     val isScriptChar: (Char) -> Boolean,
     val translationCode: String,
+    /** When true, dictionary results show traditional headword first. */
+    val preferTraditional: Boolean = false,
 )
+
+private val CJK_CHAR_CHECK: (Char) -> Boolean = { c ->
+    c in '\u4E00'..'\u9FFF' || c in '\u3400'..'\u4DBF'
+}
 
 /** Static profile registry. Phase 3 added EN; later phases add more languages. */
 object SourceLanguageProfiles {
@@ -119,17 +145,26 @@ object SourceLanguageProfiles {
         ),
         SourceLangId.ZH to SourceLanguageProfile(
             id = SourceLangId.ZH,
-            displayName = "Chinese",
+            displayName = "Chinese (Simplified)",
             scriptFamily = ScriptFamily.CJK_CHINESE,
             textDirection = TextDirection.LTR,
             ocrBackend = OcrBackend.MLKitChinese,
             hintTextKind = HintTextKind.PINYIN,
             wordsSeparatedByWhitespace = false,
-            isScriptChar = { c ->
-                c in '\u4E00'..'\u9FFF'     // CJK Unified Ideographs
-                    || c in '\u3400'..'\u4DBF'  // CJK Extension A
-            },
+            isScriptChar = CJK_CHAR_CHECK,
             translationCode = TranslateLanguage.CHINESE,
+        ),
+        SourceLangId.ZH_HANT to SourceLanguageProfile(
+            id = SourceLangId.ZH_HANT,
+            displayName = "Chinese (Traditional)",
+            scriptFamily = ScriptFamily.CJK_CHINESE,
+            textDirection = TextDirection.LTR,
+            ocrBackend = OcrBackend.MLKitChinese,
+            hintTextKind = HintTextKind.PINYIN,
+            wordsSeparatedByWhitespace = false,
+            isScriptChar = CJK_CHAR_CHECK,
+            translationCode = TranslateLanguage.CHINESE,
+            preferTraditional = true,
         ),
         SourceLangId.ES to SourceLanguageProfile(
             id = SourceLangId.ES,

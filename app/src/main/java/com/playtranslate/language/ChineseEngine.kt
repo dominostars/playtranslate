@@ -18,9 +18,9 @@ import kotlinx.coroutines.withContext
  * [preload] triggers this on the background IO thread so the user's first
  * capture doesn't stall.
  */
-class ChineseEngine(appContext: Context) : SourceLanguageEngine {
+class ChineseEngine(appContext: Context, langId: SourceLangId = SourceLangId.ZH) : SourceLanguageEngine {
 
-    override val profile: SourceLanguageProfile = SourceLanguageProfiles[SourceLangId.ZH]
+    override val profile: SourceLanguageProfile = SourceLanguageProfiles[langId]
 
     private val dict: ChineseDictionaryManager = ChineseDictionaryManager.get(appContext)
 
@@ -38,7 +38,7 @@ class ChineseEngine(appContext: Context) : SourceLanguageEngine {
     }
 
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? =
-        dict.lookup(word)
+        dict.lookup(word, profile.preferTraditional)
 
     override fun annotateForHintText(text: String): List<HintTextAnnotation> {
         val pinyinList = HanLP.convertToPinyinList(text)

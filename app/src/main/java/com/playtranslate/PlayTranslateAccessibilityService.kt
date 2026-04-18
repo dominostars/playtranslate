@@ -528,7 +528,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             val ocr = debugOcrManager
             val result = try {
                 kotlinx.coroutines.withContext(Dispatchers.Default) {
-                    ocr.recognise(bitmap, prefs.sourceLang, collectDebugBoxes = true)
+                    ocr.recognise(bitmap, SourceLanguageProfiles[prefs.sourceLangId].translationCode, collectDebugBoxes = true)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Debug OCR failed: ${e.message}")
@@ -1166,7 +1166,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             val svc = CaptureService.instance
             if (svc != null && svc.isConfigured) {
                 val entry = Prefs.DEFAULT_REGION_LIST[0]
-                svc.configureSaved(displayId = prefs.captureDisplayId, sourceLang = prefs.sourceLang, targetLang = prefs.targetLang, region = entry)
+                svc.configureSaved(displayId = prefs.captureDisplayId, sourceLang = SourceLanguageProfiles[prefs.sourceLangId].translationCode, targetLang = prefs.targetLang, region = entry)
             }
             if (MainActivity.isInForeground) {
                 sendMainActivityIntent(MainActivity.ACTION_REFRESH_REGION_LABEL)
@@ -1450,7 +1450,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 val entry = prefs.getSelectedRegion()
                 svc.configureSaved(
                     displayId  = prefs.captureDisplayId,
-                    sourceLang = prefs.sourceLang,
+                    sourceLang = SourceLanguageProfiles[prefs.sourceLangId].translationCode,
                     targetLang = prefs.targetLang,
                     region     = entry
                 )

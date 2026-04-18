@@ -61,7 +61,7 @@ object LanguagePackCatalogLoader {
     }
 
     fun entryFor(ctx: Context, id: SourceLangId): CatalogEntry? = try {
-        load(ctx).packs[id.code]
+        load(ctx).packs[id.packId.code]
     } catch (e: Exception) {
         Log.w(TAG, "Catalog unavailable: ${e.message}")
         null

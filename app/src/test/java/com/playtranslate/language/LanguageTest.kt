@@ -33,7 +33,6 @@ class LanguageTest {
     @Test fun `fromCode resolves ZH added in Phase 4`() {
         assertEquals(SourceLangId.ZH, SourceLangId.fromCode("zh"))
         assertEquals(SourceLangId.ZH, SourceLangId.fromCode("ZH"))
-        assertEquals(SourceLangId.ZH, SourceLangId.fromCode("zh-TW"))
     }
 
     @Test fun `fromCode rejects unknown code`() {
@@ -71,8 +70,34 @@ class LanguageTest {
         assertEquals(TranslateLanguage.CHINESE, profile.translationCode)
         assertEquals(OcrBackend.MLKitChinese, profile.ocrBackend)
         assertEquals(HintTextKind.PINYIN, profile.hintTextKind)
-        assertEquals(TextDirection.LTR, profile.textDirection)
-        assertEquals(ScriptFamily.CJK_CHINESE, profile.scriptFamily)
-        assertEquals(false, profile.wordsSeparatedByWhitespace)
+        assertEquals(false, profile.preferTraditional)
+        assertEquals("Chinese (Simplified)", profile.displayName)
+    }
+
+    @Test fun `ZH_HANT profile shares ZH traits but prefers traditional`() {
+        val profile = SourceLanguageProfiles[SourceLangId.ZH_HANT]
+        assertEquals(TranslateLanguage.CHINESE, profile.translationCode)
+        assertEquals(OcrBackend.MLKitChinese, profile.ocrBackend)
+        assertEquals(HintTextKind.PINYIN, profile.hintTextKind)
+        assertEquals(true, profile.preferTraditional)
+        assertEquals("Chinese (Traditional)", profile.displayName)
+    }
+
+    @Test fun `ZH_HANT shares pack with ZH`() {
+        assertEquals(SourceLangId.ZH, SourceLangId.ZH_HANT.packId)
+        assertEquals(SourceLangId.ZH, SourceLangId.ZH.packId)
+    }
+
+    @Test fun `fromCode resolves zh-Hant to ZH_HANT`() {
+        assertEquals(SourceLangId.ZH_HANT, SourceLangId.fromCode("zh-Hant"))
+        assertEquals(SourceLangId.ZH_HANT, SourceLangId.fromCode("zh-hant"))
+        assertEquals(SourceLangId.ZH, SourceLangId.fromCode("zh"))
+    }
+
+    @Test fun `fromCode maps traditional region codes to ZH_HANT`() {
+        assertEquals(SourceLangId.ZH_HANT, SourceLangId.fromCode("zh-TW"))
+        assertEquals(SourceLangId.ZH_HANT, SourceLangId.fromCode("zh-HK"))
+        assertEquals(SourceLangId.ZH_HANT, SourceLangId.fromCode("zh-MO"))
+        assertEquals(SourceLangId.ZH_HANT, SourceLangId.fromCode("zh-Hant-TW"))
     }
 }

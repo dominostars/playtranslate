@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.playtranslate.language.SourceLanguageProfiles
 import androidx.lifecycle.lifecycleScope
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
@@ -146,7 +147,7 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
 
         svc.configureSaved(
             displayId  = prefs.captureDisplayId,
-            sourceLang = prefs.sourceLang,
+            sourceLang = SourceLanguageProfiles[prefs.sourceLangId].translationCode,
             targetLang = prefs.targetLang,
             region     = RegionEntry("Drawn Region", topFrac, bottomFrac, leftFrac, rightFrac)
         )
@@ -186,7 +187,7 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
         // Ensure the service is configured for translation
         svc.configureSaved(
             displayId  = prefs.captureDisplayId,
-            sourceLang = prefs.sourceLang,
+            sourceLang = SourceLanguageProfiles[prefs.sourceLangId].translationCode,
             targetLang = prefs.targetLang
         )
 
