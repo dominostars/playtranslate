@@ -130,12 +130,12 @@ class SettingsBottomSheet : DialogFragment() {
         setupViews(newView)
         // Update the dialog window's system bar colors to match the new theme
         val ctx = requireActivity()
-        val bgColor = ctx.themeColor(R.attr.colorBgDark)
+        val bgColor = ctx.themeColor(R.attr.ptBg)
         dialog?.window?.apply {
             statusBarColor = bgColor
             navigationBarColor = bgColor
             setBackgroundDrawable(android.graphics.drawable.ColorDrawable(
-                ctx.themeColor(R.attr.colorBgSurface)))
+                ctx.themeColor(R.attr.ptSurface)))
         }
     }
 
@@ -208,7 +208,7 @@ class SettingsBottomSheet : DialogFragment() {
             else R.string.settings_overlay_icon_hint_dual
         )
         // Make subtext same color as title (both modes)
-        tvOverlayIconHint.setTextColor(requireContext().themeColor(R.attr.colorTextPrimary))
+        tvOverlayIconHint.setTextColor(requireContext().themeColor(R.attr.ptText))
 
         val settingsBelowIcon = view.findViewById<View>(R.id.settingsBelowIcon)
         fun updateIconRowStyle(isOn: Boolean) {
@@ -456,7 +456,7 @@ class SettingsBottomSheet : DialogFragment() {
         val versionName = com.playtranslate.BuildConfig.VERSION_NAME
         llSupportLinks.addView(TextView(requireContext()).apply {
             text = "$appName v$versionName"
-            setTextColor(requireContext().themeColor(R.attr.colorTextHint))
+            setTextColor(requireContext().themeColor(R.attr.ptTextHint))
             textSize = 12f
             gravity = Gravity.CENTER
             setPadding(0, (12 * resources.displayMetrics.density).toInt(), 0, 0)
@@ -710,8 +710,8 @@ class SettingsBottomSheet : DialogFragment() {
                 (12 * dp).toInt(), (10 * dp).toInt()
             )
             background = GradientDrawable().apply {
-                setColor(ctx.themeColor(R.attr.colorBgSurface))
-                setStroke((1 * dp).toInt(), ctx.themeColor(R.attr.colorTextHint))
+                setColor(ctx.themeColor(R.attr.ptSurface))
+                setStroke((1 * dp).toInt(), ctx.themeColor(R.attr.ptTextHint))
                 cornerRadius = 8 * dp
             }
             layoutParams = LinearLayout.LayoutParams(
@@ -724,7 +724,7 @@ class SettingsBottomSheet : DialogFragment() {
             text = sourceName
             textSize = 15f
             setTypeface(null, android.graphics.Typeface.BOLD)
-            setTextColor(ctx.themeColor(R.attr.colorTextPrimary))
+            setTextColor(ctx.themeColor(R.attr.ptText))
             layoutParams = LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
             )
@@ -737,7 +737,7 @@ class SettingsBottomSheet : DialogFragment() {
         val arrow = android.widget.ImageView(ctx).apply {
             setImageResource(R.drawable.ic_arrow_right)
             imageTintList = android.content.res.ColorStateList.valueOf(
-                ctx.themeColor(R.attr.colorTextHint)
+                ctx.themeColor(R.attr.ptTextHint)
             )
             scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
             layoutParams = LinearLayout.LayoutParams(
@@ -752,7 +752,7 @@ class SettingsBottomSheet : DialogFragment() {
             text = targetName
             textSize = 15f
             setTypeface(null, android.graphics.Typeface.BOLD)
-            setTextColor(ctx.themeColor(R.attr.colorTextPrimary))
+            setTextColor(ctx.themeColor(R.attr.ptText))
             gravity = Gravity.END
             layoutParams = LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
@@ -798,7 +798,7 @@ class SettingsBottomSheet : DialogFragment() {
         if (displayList.isEmpty()) {
             llDisplayOptions.addView(TextView(ctx).apply {
                 text = getString(R.string.settings_no_displays_found)
-                setTextColor(ctx.themeColor(R.attr.colorTextHint))
+                setTextColor(ctx.themeColor(R.attr.ptTextHint))
                 textSize = 13f
                 setPadding(0, 8, 0, 8)
             })
@@ -814,18 +814,18 @@ class SettingsBottomSheet : DialogFragment() {
         val thumbH = (50 * dp).toInt()
 
         val outlineColor = ctx.themeColor(
-            if (isSelected) R.attr.colorAccentPrimary else R.attr.colorTextHint
+            if (isSelected) R.attr.ptAccent else R.attr.ptTextHint
         )
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding((12 * dp).toInt(), (8 * dp).toInt(), (12 * dp).toInt(), (8 * dp).toInt())
-            val accent = ctx.themeColor(R.attr.colorAccentPrimary)
+            val accent = ctx.themeColor(R.attr.ptAccent)
             val bgColor = if (isSelected) android.graphics.Color.argb(15,
                 android.graphics.Color.red(accent),
                 android.graphics.Color.green(accent),
                 android.graphics.Color.blue(accent))
-            else ctx.themeColor(R.attr.colorBgSurface)
+            else ctx.themeColor(R.attr.ptSurface)
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(bgColor)
                 setStroke((1 * dp).toInt(), outlineColor)
@@ -842,7 +842,7 @@ class SettingsBottomSheet : DialogFragment() {
                 it.marginEnd = (10 * dp).toInt()
             }
             scaleType = ImageView.ScaleType.FIT_CENTER
-            setBackgroundColor(ctx.themeColor(R.attr.colorBgDivider))
+            setBackgroundColor(ctx.themeColor(R.attr.ptDivider))
             val thumb = displayThumbnails[display.displayId]
             if (thumb != null) setImageBitmap(thumb)
         }
@@ -851,7 +851,7 @@ class SettingsBottomSheet : DialogFragment() {
             text = "Display ${display.displayId}  —  ${display.name}"
             textSize = 15f
             setTypeface(null, android.graphics.Typeface.BOLD)
-            setTextColor(ctx.themeColor(if (isSelected) R.attr.colorAccentPrimary else R.attr.colorTextHint))
+            setTextColor(ctx.themeColor(if (isSelected) R.attr.ptAccent else R.attr.ptTextHint))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
@@ -946,7 +946,7 @@ class SettingsBottomSheet : DialogFragment() {
         row.findViewById<TextView>(R.id.tvLinkSubtitle).text = subtitle
         row.findViewById<ImageView>(R.id.ivLinkIcon).setImageResource(iconRes)
         // Tint background with a very light wash of the accent color
-        val accent = ctx.themeColor(R.attr.colorAccentPrimary)
+        val accent = ctx.themeColor(R.attr.ptAccent)
         val tinted = android.graphics.Color.argb(15,
             android.graphics.Color.red(accent),
             android.graphics.Color.green(accent),
@@ -985,7 +985,7 @@ class SettingsBottomSheet : DialogFragment() {
 
         val ctx = requireContext()
         val dp  = ctx.resources.displayMetrics.density
-        val selectionColor = ctx.themeColor(R.attr.colorAccentPrimary)
+        val selectionColor = ctx.themeColor(R.attr.ptAccent)
 
         container.removeAllViews()
 
@@ -1049,7 +1049,7 @@ class SettingsBottomSheet : DialogFragment() {
                 text = theme.label
                 textSize = 11f
                 gravity = Gravity.CENTER
-                setTextColor(ctx.themeColor(R.attr.colorTextPrimary))
+                setTextColor(ctx.themeColor(R.attr.ptText))
             }
             col.addView(label)
 

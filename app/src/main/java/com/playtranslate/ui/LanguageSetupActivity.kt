@@ -356,14 +356,14 @@ class LanguageSetupActivity : AppCompatActivity() {
             text = name
             textSize = 16f
             setTypeface(null, Typeface.NORMAL)
-            setTextColor(themeColor(R.attr.colorTextPrimary))
+            setTextColor(themeColor(R.attr.ptText))
             setPadding(
                 (16 * dp).toInt(), (14 * dp).toInt(),
                 (16 * dp).toInt(), (14 * dp).toInt()
             )
             background = GradientDrawable().apply {
-                setColor(themeColor(R.attr.colorBgSurface))
-                setStroke((1 * dp).toInt(), themeColor(R.attr.colorBgDivider))
+                setColor(themeColor(R.attr.ptSurface))
+                setStroke((1 * dp).toInt(), themeColor(R.attr.ptDivider))
                 cornerRadius = 8 * dp
             }
             layoutParams = LinearLayout.LayoutParams(

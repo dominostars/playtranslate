@@ -21,7 +21,7 @@
             android:layout_height="wrap_content"
             android:gravity="center"
             android:text="@string/status_idle"
-            android:textColor="?attr/colorTextHint"
+            android:textColor="?attr/ptTextHint"
             android:textSize="24sp" />
 
         <TextView
@@ -30,7 +30,7 @@
             android:layout_height="wrap_content"
             android:gravity="center"
             android:text="@string/status_hold_hint"
-            android:textColor="?attr/colorTextHint"
+            android:textColor="?attr/ptTextHint"
             android:textSize="24sp"
             android:layout_marginTop="28dp"
             android:visibility="gone" />
@@ -40,7 +40,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center"
-            android:textColor="?attr/colorTextHint"
+            android:textColor="?attr/ptTextHint"
             android:textSize="24sp"
             android:layout_marginTop="28dp"
             android:visibility="gone" />
@@ -76,7 +76,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:textColor="?attr/colorTextTranslation"
+                    android:textColor="?attr/ptTextTranslation"
                     android:text="@string/section_translation" />
 
                 <ImageButton
@@ -87,7 +87,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Copy translation"
                     android:src="@drawable/ic_copy"
-                    app:tint="?attr/colorTextSecondary" />
+                    app:tint="?attr/ptTextMuted" />
 
                 <ImageButton
                     android:id="@+id/btnToggleTranslation"
@@ -96,7 +96,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Toggle translation visibility"
                     android:src="@drawable/ic_visibility"
-                    app:tint="?attr/colorTextSecondary" />
+                    app:tint="?attr/ptTextMuted" />
 
             </LinearLayout>
 
@@ -119,7 +119,7 @@
                     android:id="@+id/tvTranslationNote"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:textColor="?attr/colorTextHint"
+                    android:textColor="?attr/ptTextHint"
                     android:textSize="11sp"
                     android:layout_marginTop="6dp"
                     android:visibility="gone" />
@@ -135,7 +135,7 @@
                 android:id="@+id/dividerMid"
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:background="?attr/colorBgDivider"
+                android:background="?attr/ptDivider"
                 android:layout_marginBottom="10dp" />
 
             <!-- Original section header: label + action buttons -->
@@ -161,7 +161,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Toggle inline furigana"
                     android:src="@drawable/ic_furigana"
-                    app:tint="?attr/colorTextSecondary" />
+                    app:tint="?attr/ptTextMuted" />
 
                 <ImageButton
                     android:id="@+id/btnEditOriginal"
@@ -171,7 +171,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Edit original text"
                     android:src="@drawable/ic_edit"
-                    app:tint="?attr/colorTextSecondary" />
+                    app:tint="?attr/ptTextMuted" />
 
                 <ImageButton
                     android:id="@+id/btnCopyOriginal"
@@ -181,7 +181,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Copy original"
                     android:src="@drawable/ic_copy"
-                    app:tint="?attr/colorTextSecondary" />
+                    app:tint="?attr/ptTextMuted" />
 
                 <ImageButton
                     android:id="@+id/btnToggleOriginal"
@@ -190,7 +190,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Toggle original visibility"
                     android:src="@drawable/ic_visibility"
-                    app:tint="?attr/colorTextSecondary" />
+                    app:tint="?attr/ptTextMuted" />
 
             </LinearLayout>
 
@@ -207,14 +207,14 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:textSize="20sp"
-                    android:textColor="?attr/colorTextHint"
+                    android:textColor="?attr/ptTextHint"
                     android:lineSpacingMultiplier="1" />
 
                 <TextView
                     android:id="@+id/tvTransliteration"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:textColor="?attr/colorTextHint"
+                    android:textColor="?attr/ptTextHint"
                     android:textSize="13sp"
                     android:layout_marginTop="2dp"
                     android:visibility="gone" />
@@ -229,7 +229,7 @@
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:background="?attr/colorBgDivider"
+                android:background="?attr/ptDivider"
                 android:layout_marginBottom="10dp" />
 
             <!-- Words section header -->
@@ -254,7 +254,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Toggle words visibility"
                     android:src="@drawable/ic_visibility"
-                    app:tint="?attr/colorTextSecondary" />
+                    app:tint="?attr/ptTextMuted" />
 
             </LinearLayout>
 
@@ -270,7 +270,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/words_loading"
-                    android:textColor="?attr/colorTextHint"
+                    android:textColor="?attr/ptTextHint"
                     android:textSize="13sp"
                     android:layout_marginBottom="8dp"
                     android:visibility="gone" />
@@ -286,7 +286,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/words_none"
-                    android:textColor="?attr/colorTextHint"
+                    android:textColor="?attr/ptTextHint"
                     android:textSize="13sp"
                     android:visibility="gone" />
 
@@ -296,7 +296,7 @@
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:background="?attr/colorBgDivider"
+                android:background="?attr/ptDivider"
                 android:layout_marginTop="10dp"
                 android:layout_marginBottom="12dp" />
 
@@ -321,7 +321,7 @@
                     android:textSize="14sp"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
-                    app:strokeColor="?attr/colorTextSecondary"
+                    app:strokeColor="?attr/ptTextMuted"
                     app:cornerRadius="6dp" />
 
             </LinearLayout>
@@ -353,14 +353,14 @@
             android:layout_width="20dp"
             android:layout_height="20dp"
             android:src="@drawable/ic_anki_cards"
-            app:tint="?attr/colorTextOnAccent"
+            app:tint="?attr/ptAccentOn"
             android:scaleType="centerInside" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Anki"
-            android:textColor="?attr/colorTextOnAccent"
+            android:textColor="?attr/ptAccentOn"
             android:textSize="14sp"
             android:textStyle="bold"
             android:layout_marginStart="2dp" />

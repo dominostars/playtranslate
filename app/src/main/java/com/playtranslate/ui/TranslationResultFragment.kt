@@ -237,8 +237,8 @@ class TranslationResultFragment : Fragment() {
     private fun applyFurigana() {
         val active = prefs.showFuriganaInline
         val ctx = context ?: return
-        val accentColor = ctx.themeColor(R.attr.colorAccentPrimary)
-        val secondaryColor = ctx.themeColor(R.attr.colorTextSecondary)
+        val accentColor = ctx.themeColor(R.attr.ptAccent)
+        val secondaryColor = ctx.themeColor(R.attr.ptTextMuted)
         btnToggleFurigana.imageTintList = android.content.res.ColorStateList.valueOf(
             if (active) accentColor else secondaryColor
         )
@@ -540,7 +540,7 @@ class TranslationResultFragment : Fragment() {
         val dm = resources.displayMetrics
         fun dp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, dm).toInt()
 
-        val bgColor = ctx.themeColor(R.attr.colorBgCard)
+        val bgColor = ctx.themeColor(R.attr.ptCard)
         val arrowW = dp(12f)
         val arrowH = dp(6f)
 
@@ -548,7 +548,7 @@ class TranslationResultFragment : Fragment() {
         val tv = TextView(ctx).apply {
             text = reading
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            setTextColor(ctx.themeColor(R.attr.colorTextPrimary))
+            setTextColor(ctx.themeColor(R.attr.ptText))
             setPadding(dp(10f), dp(5f), dp(10f), dp(5f))
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(bgColor)

@@ -10,7 +10,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorBgDark"
+    android:background="?attr/ptBg"
     tools:context=".MainActivity">
 
     <!-- ── Results container — hosts TranslationResultFragment ────────── -->
@@ -52,7 +52,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:background="?attr/colorBgSurface"
+        android:background="?attr/ptSurface"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
@@ -60,7 +60,7 @@
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
-            android:background="?attr/colorBgDivider" />
+            android:background="?attr/ptDivider" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -88,7 +88,7 @@
                     android:layout_width="20dp"
                     android:layout_height="20dp"
                     android:src="@drawable/ic_settings"
-                    app:tint="?attr/colorTextPrimary"
+                    app:tint="?attr/ptText"
                     android:scaleType="centerInside" />
 
                 <TextView
@@ -96,7 +96,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Settings"
-                    android:textColor="?attr/colorTextPrimary"
+                    android:textColor="?attr/ptText"
                     android:textSize="8sp"
                     android:layout_marginTop="2dp" />
 
@@ -119,7 +119,7 @@
                     android:layout_width="20dp"
                     android:layout_height="20dp"
                     android:src="@drawable/ic_crop"
-                    app:tint="?attr/colorTextPrimary"
+                    app:tint="?attr/ptText"
                     android:scaleType="centerInside" />
 
                 <TextView
@@ -127,7 +127,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Regions"
-                    android:textColor="?attr/colorTextPrimary"
+                    android:textColor="?attr/ptText"
                     android:textSize="8sp"
                     android:layout_marginTop="2dp" />
 
@@ -149,7 +149,7 @@
                     android:id="@+id/tvTranslateTitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textColor="?attr/colorTextOnAccent"
+                    android:textColor="?attr/ptAccentOn"
                     android:textSize="16sp"
                     android:gravity="center" />
 
@@ -157,7 +157,7 @@
                     android:id="@+id/tvTranslateSubtitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textColor="?attr/colorTextOnAccent"
+                    android:textColor="?attr/ptAccentOn"
                     android:textSize="9sp"
                     android:alpha="0.7"
                     android:gravity="center"
@@ -182,7 +182,7 @@
                     android:layout_width="22dp"
                     android:layout_height="22dp"
                     android:src="@drawable/ic_play"
-                    app:tint="?attr/colorTextPrimary"
+                    app:tint="?attr/ptText"
                     android:scaleType="centerInside" />
 
                 <TextView
@@ -190,7 +190,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Auto"
-                    android:textColor="?attr/colorTextPrimary"
+                    android:textColor="?attr/ptText"
                     android:textSize="8sp"
                     android:layout_marginTop="2dp" />
 
@@ -206,7 +206,7 @@
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:orientation="vertical"
-        android:background="?attr/colorBgDark"
+        android:background="?attr/ptBg"
         android:visibility="gone"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -222,7 +222,7 @@
             android:paddingHorizontal="14dp"
             android:paddingTop="12dp"
             android:textSize="24sp"
-            android:textColor="?attr/colorTextPrimary"
+            android:textColor="?attr/ptText"
             android:lineSpacingMultiplier="1.5"
             android:background="@null"
             android:inputType="textMultiLine"
@@ -240,7 +240,7 @@
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:orientation="vertical"
-        android:background="?attr/colorBgSurface"
+        android:background="?attr/ptSurface"
         android:clickable="true"
         android:focusable="true"
         android:visibility="gone"
@@ -272,7 +272,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/onboarding_notif_title"
-                        android:textColor="?attr/colorTextPrimary"
+                        android:textColor="?attr/ptText"
                         android:textSize="26sp"
                         android:textStyle="bold"
                         android:layout_marginBottom="24dp" />
@@ -281,7 +281,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/onboarding_notif_body"
-                        android:textColor="?attr/colorTextSecondary"
+                        android:textColor="?attr/ptTextMuted"
                         android:textSize="14sp"
                         android:lineSpacingMultiplier="1.4" />
 
@@ -295,8 +295,8 @@
                 android:layout_marginTop="20dp"
                 android:text="@string/btn_grant_permission"
                 android:textSize="16sp"
-                android:backgroundTint="?attr/colorAccentPrimary"
-                android:textColor="?attr/colorTextOnAccent"
+                android:backgroundTint="?attr/ptAccent"
+                android:textColor="?attr/ptAccentOn"
                 app:cornerRadius="8dp" />
 
         </LinearLayout>
@@ -324,7 +324,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/onboarding_a11y_single_title"
-                        android:textColor="?attr/colorTextPrimary"
+                        android:textColor="?attr/ptText"
                         android:textSize="26sp"
                         android:textStyle="bold"
                         android:layout_marginBottom="24dp" />
@@ -333,7 +333,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/onboarding_a11y_single_body"
-                        android:textColor="?attr/colorTextSecondary"
+                        android:textColor="?attr/ptTextMuted"
                         android:textSize="14sp"
                         android:lineSpacingMultiplier="1.4" />
 
@@ -346,7 +346,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
                 android:text="@string/onboarding_a11y_hint"
-                android:textColor="?attr/colorTextPrimary"
+                android:textColor="?attr/ptText"
                 android:textSize="13sp"
                 android:gravity="center"
                 android:layout_marginBottom="12dp" />
@@ -357,8 +357,8 @@
                 android:layout_height="56dp"
                 android:text="@string/btn_open_a11y_settings"
                 android:textSize="16sp"
-                android:backgroundTint="?attr/colorAccentPrimary"
-                android:textColor="?attr/colorTextOnAccent"
+                android:backgroundTint="?attr/ptAccent"
+                android:textColor="?attr/ptAccentOn"
                 app:cornerRadius="8dp" />
 
             <com.google.android.material.button.MaterialButton
@@ -370,7 +370,7 @@
                 android:text="@string/btn_cant_enable_a11y"
                 android:textSize="14sp"
                 android:textAllCaps="false"
-                android:textColor="?attr/colorTextSecondary" />
+                android:textColor="?attr/ptTextMuted" />
 
         </LinearLayout>
 
@@ -397,7 +397,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/onboarding_a11y_title"
-                        android:textColor="?attr/colorTextPrimary"
+                        android:textColor="?attr/ptText"
                         android:textSize="26sp"
                         android:textStyle="bold"
                         android:layout_marginBottom="24dp" />
@@ -406,7 +406,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/onboarding_a11y_body"
-                        android:textColor="?attr/colorTextSecondary"
+                        android:textColor="?attr/ptTextMuted"
                         android:textSize="14sp"
                         android:lineSpacingMultiplier="1.4" />
 
@@ -419,7 +419,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
                 android:text="@string/onboarding_a11y_hint"
-                android:textColor="?attr/colorTextPrimary"
+                android:textColor="?attr/ptText"
                 android:textSize="13sp"
                 android:gravity="center"
                 android:layout_marginBottom="12dp" />
@@ -430,8 +430,8 @@
                 android:layout_height="56dp"
                 android:text="@string/btn_open_a11y_settings"
                 android:textSize="16sp"
-                android:backgroundTint="?attr/colorAccentPrimary"
-                android:textColor="?attr/colorTextOnAccent"
+                android:backgroundTint="?attr/ptAccent"
+                android:textColor="?attr/ptAccentOn"
                 app:cornerRadius="8dp" />
 
             <com.google.android.material.button.MaterialButton
@@ -443,7 +443,7 @@
                 android:text="@string/btn_cant_enable_a11y"
                 android:textSize="14sp"
                 android:textAllCaps="false"
-                android:textColor="?attr/colorTextSecondary" />
+                android:textColor="?attr/ptTextMuted" />
 
         </LinearLayout>
 
@@ -477,7 +477,7 @@
             android:layout_height="match_parent"
             android:layout_gravity="end"
             android:orientation="vertical"
-            android:background="?attr/colorBgSurface"
+            android:background="?attr/ptSurface"
             android:paddingTop="16dp"
             android:paddingBottom="16dp"
             android:elevation="8dp">
@@ -498,14 +498,14 @@
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:src="@drawable/ic_settings"
-                    app:tint="?attr/colorTextPrimary" />
+                    app:tint="?attr/ptText" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="20dp"
                     android:text="Settings"
-                    android:textColor="?attr/colorTextPrimary"
+                    android:textColor="?attr/ptText"
                     android:textSize="16sp" />
 
             </LinearLayout>
@@ -533,7 +533,7 @@
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:src="@drawable/ic_play"
-                    app:tint="?attr/colorTextPrimary" />
+                    app:tint="?attr/ptText" />
 
                 <TextView
                     android:id="@+id/menuItemLiveLabel"
@@ -541,7 +541,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginStart="20dp"
                     android:text="Auto Translate"
-                    android:textColor="?attr/colorTextPrimary"
+                    android:textColor="?attr/ptText"
                     android:textSize="16sp" />
 
             </LinearLayout>
@@ -562,14 +562,14 @@
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:src="@drawable/ic_crop"
-                    app:tint="?attr/colorTextPrimary" />
+                    app:tint="?attr/ptText" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="20dp"
                     android:text="Capture Region"
-                    android:textColor="?attr/colorTextPrimary"
+                    android:textColor="?attr/ptText"
                     android:textSize="16sp" />
 
             </LinearLayout>
@@ -590,14 +590,14 @@
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:src="@drawable/ic_history"
-                    app:tint="?attr/colorTextPrimary" />
+                    app:tint="?attr/ptText" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="20dp"
                     android:text="Translations"
-                    android:textColor="?attr/colorTextPrimary"
+                    android:textColor="?attr/ptText"
                     android:textSize="16sp" />
 
             </LinearLayout>
@@ -618,14 +618,14 @@
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:src="@drawable/ic_close"
-                    app:tint="?attr/colorTextPrimary" />
+                    app:tint="?attr/ptText" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="20dp"
                     android:text="Close"
-                    android:textColor="?attr/colorTextPrimary"
+                    android:textColor="?attr/ptText"
                     android:textSize="16sp" />
 
             </LinearLayout>

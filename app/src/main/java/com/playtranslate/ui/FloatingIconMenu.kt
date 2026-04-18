@@ -38,11 +38,11 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     // Theme colors resolved from the user's selected palette
-    private val accentColor: Int = context.themeColor(R.attr.colorAccentPrimary).takeIf { it != 0 } ?: Color.parseColor("#00BCD4")
-    private val onAccentColor: Int = context.themeColor(R.attr.colorTextOnAccent).takeIf { it != 0 } ?: Color.BLACK
-    private val hideColor: Int = context.themeColor(R.attr.colorTextHint).takeIf { it != 0 } ?: Color.parseColor("#606060")
-    private val textColor: Int = context.themeColor(R.attr.colorTextPrimary).takeIf { it != 0 } ?: Color.parseColor("#CCFFFFFF")
-    private val bgColor: Int = context.themeColor(R.attr.colorBgDark).takeIf { it != 0 } ?: Color.parseColor("#0D0D0D")
+    private val accentColor: Int = context.themeColor(R.attr.ptAccent).takeIf { it != 0 } ?: Color.parseColor("#00BCD4")
+    private val onAccentColor: Int = context.themeColor(R.attr.ptAccentOn).takeIf { it != 0 } ?: Color.BLACK
+    private val hideColor: Int = context.themeColor(R.attr.ptTextHint).takeIf { it != 0 } ?: Color.parseColor("#606060")
+    private val textColor: Int = context.themeColor(R.attr.ptText).takeIf { it != 0 } ?: Color.parseColor("#CCFFFFFF")
+    private val bgColor: Int = context.themeColor(R.attr.ptBg).takeIf { it != 0 } ?: Color.parseColor("#0D0D0D")
     private val pauseColor: Int = Color.parseColor("#C95050")
 
     var onHideIcon: (() -> Unit)? = null

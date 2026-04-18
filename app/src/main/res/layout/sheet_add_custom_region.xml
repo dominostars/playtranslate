@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="?attr/colorBgSurface">
+    android:background="?attr/ptSurface">
 
     <!-- Toolbar -->
     <LinearLayout
@@ -21,7 +21,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="@string/label_add_custom_region_title"
-            android:textColor="?attr/colorTextPrimary"
+            android:textColor="?attr/ptText"
             android:textSize="16sp"
             android:textStyle="bold"
             android:gravity="center" />
@@ -32,7 +32,7 @@
             android:layout_width="72dp"
             android:layout_height="wrap_content"
             android:text="✕"
-            android:textColor="?attr/colorTextSecondary"
+            android:textColor="?attr/ptTextMuted"
             android:textSize="18sp"
             android:minWidth="0dp"
             android:minHeight="0dp" />
@@ -43,7 +43,7 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="?attr/colorBgDivider" />
+        android:background="?attr/ptDivider" />
 
     <!-- Content -->
     <ScrollView
@@ -62,7 +62,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/label_region_drag_hint"
-                android:textColor="?attr/colorTextSecondary"
+                android:textColor="?attr/ptTextMuted"
                 android:textSize="13sp"
                 android:lineSpacingMultiplier="1.4"
                 android:layout_marginBottom="24dp" />
@@ -71,7 +71,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/label_region_name"
-                android:textColor="?attr/colorTextSecondary"
+                android:textColor="?attr/ptTextMuted"
                 android:textSize="11sp"
                 android:letterSpacing="0.1"
                 android:textAllCaps="true"
@@ -82,10 +82,10 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:hint="@string/hint_region_name"
-                android:textColor="?attr/colorTextPrimary"
-                android:textColorHint="?attr/colorTextHint"
+                android:textColor="?attr/ptText"
+                android:textColorHint="?attr/ptTextHint"
                 android:textSize="15sp"
-                android:background="?attr/colorBgCard"
+                android:background="?attr/ptCard"
                 android:padding="12dp"
                 android:inputType="text"
                 android:imeOptions="actionDone"
@@ -99,7 +99,7 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="?attr/colorBgDivider" />
+        android:background="?attr/ptDivider" />
 
     <!-- Use Without Saving — plain bold text, no button chrome -->
     <TextView
@@ -107,7 +107,7 @@
         android:layout_width="match_parent"
         android:layout_height="72dp"
         android:text="@string/btn_translate_once"
-        android:textColor="?attr/colorAccentPrimary"
+        android:textColor="?attr/ptAccent"
         android:textSize="14sp"
         android:textStyle="bold"
         android:gravity="center"
@@ -124,7 +124,7 @@
         android:layout_marginTop="4dp"
         android:layout_marginBottom="12dp"
         android:text="Save to List"
-        android:backgroundTint="?attr/colorAccentPrimary"
-        android:textColor="?attr/colorTextOnAccent" />
+        android:backgroundTint="?attr/ptAccent"
+        android:textColor="?attr/ptAccentOn" />
 
 </LinearLayout>

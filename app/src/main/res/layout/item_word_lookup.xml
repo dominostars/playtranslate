@@ -17,7 +17,7 @@
         android:id="@+id/tvItemWord"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textColor="?attr/colorTextLink"
+        android:textColor="?attr/ptTextLink"
         android:textSize="18sp"
         android:textStyle="bold"
         android:minWidth="80dp"
@@ -40,7 +40,7 @@
                 android:id="@+id/tvItemReading"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="?attr/colorTextHint"
+                android:textColor="?attr/ptTextHint"
                 android:textSize="11sp" />
 
             <TextView
@@ -48,7 +48,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="6dp"
-                android:textColor="?attr/colorTextHint"
+                android:textColor="?attr/ptTextHint"
                 android:textSize="10sp"
                 android:visibility="gone" />
 
@@ -58,7 +58,7 @@
             android:id="@+id/tvItemMeaning"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="?attr/colorTextSecondary"
+            android:textColor="?attr/ptTextMuted"
             android:textSize="13sp" />
 
     </LinearLayout>

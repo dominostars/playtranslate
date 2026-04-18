@@ -303,7 +303,7 @@ class RegionPickerSheet : DialogFragment() {
             val isSelected = workingList.getOrNull(position)?.id == selectedId
             holder.radio.isChecked = isSelected
             holder.itemView.setBackgroundColor(
-                if (isSelected && !isEditMode) holder.itemView.context.themeColor(R.attr.colorBgCard)
+                if (isSelected && !isEditMode) holder.itemView.context.themeColor(R.attr.ptCard)
                 else android.graphics.Color.TRANSPARENT
             )
 

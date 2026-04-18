@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="?attr/colorBgSurface">
+    android:background="?attr/ptSurface">
 
     <!-- Toolbar (shown only in dialog mode) -->
     <LinearLayout
@@ -24,7 +24,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="@string/settings_title"
-            android:textColor="?attr/colorTextPrimary"
+            android:textColor="?attr/ptText"
             android:textSize="18sp"
             android:textStyle="bold" />
 
@@ -34,7 +34,7 @@
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:text="&#x2715;"
-            android:textColor="?attr/colorTextPrimary"
+            android:textColor="?attr/ptText"
             android:textSize="18sp"
             android:minWidth="0dp"
             android:minHeight="0dp"
@@ -46,7 +46,7 @@
         android:id="@+id/settingsToolbarDivider"
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="?attr/colorBgDivider"
+        android:background="?attr/ptDivider"
         android:visibility="gone" />
 
     <!-- Scrollable content -->
@@ -72,7 +72,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="LANGUAGE"
-                android:textColor="?attr/colorTextSecondary"
+                android:textColor="?attr/ptTextMuted"
                 android:textSize="11sp"
                 android:letterSpacing="0.15"
                 android:layout_marginBottom="8dp" />
@@ -87,7 +87,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/settings_language_hint"
-                android:textColor="?attr/colorTextHint"
+                android:textColor="?attr/ptTextHint"
                 android:textSize="14sp"
                 android:layout_marginTop="4dp" />
 
@@ -98,7 +98,7 @@
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:background="?attr/colorBgDivider"
+                android:background="?attr/ptDivider"
                 android:layout_marginTop="16dp"
                 android:layout_marginBottom="16dp" />
 
@@ -106,7 +106,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="GAME SCREEN ICON"
-                android:textColor="?attr/colorTextSecondary"
+                android:textColor="?attr/ptTextMuted"
                 android:textSize="11sp"
                 android:letterSpacing="0.15"
                 android:layout_marginBottom="8dp" />
@@ -131,7 +131,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/settings_show_overlay_icon"
-                        android:textColor="?attr/colorTextPrimary"
+                        android:textColor="?attr/ptText"
                         android:textSize="16sp"
                         android:textStyle="bold" />
 
@@ -157,7 +157,7 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:text="@string/settings_overlay_icon_hint_dual"
-                            android:textColor="?attr/colorTextHint"
+                            android:textColor="?attr/ptTextHint"
                             android:textSize="12sp" />
 
                     </LinearLayout>
@@ -195,7 +195,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="Minimize icon"
-                    android:textColor="?attr/colorTextPrimary"
+                    android:textColor="?attr/ptText"
                     android:textSize="16sp"
                     android:textStyle="bold" />
 
@@ -213,7 +213,7 @@
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:background="?attr/colorBgDivider"
+                android:background="?attr/ptDivider"
                 android:layout_marginTop="12dp"
                 android:layout_marginBottom="16dp" />
 
@@ -221,7 +221,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="AUTO TRANSLATION"
-                android:textColor="?attr/colorTextSecondary"
+                android:textColor="?attr/ptTextMuted"
                 android:textSize="11sp"
                 android:letterSpacing="0.15"
                 android:layout_marginBottom="8dp" />
@@ -237,7 +237,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="Overlay Mode"
-                    android:textColor="?attr/colorTextPrimary"
+                    android:textColor="?attr/ptText"
                     android:textSize="16sp"
                     android:textStyle="bold"
                     android:layout_marginBottom="2dp" />
@@ -246,7 +246,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="What overlays to show during &quot;auto&quot; mode or hold-to-preview."
-                    android:textColor="?attr/colorTextHint"
+                    android:textColor="?attr/ptTextHint"
                     android:textSize="14sp"
                     android:layout_marginBottom="6dp" />
 
@@ -298,7 +298,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Hide overlays during &quot;auto&quot; mode"
-                        android:textColor="?attr/colorTextPrimary"
+                        android:textColor="?attr/ptText"
                         android:textSize="16sp"
                         android:textStyle="bold" />
 
@@ -306,7 +306,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Translations will only appear in PlayTranslate"
-                        android:textColor="?attr/colorTextHint"
+                        android:textColor="?attr/ptTextHint"
                         android:textSize="12sp"
                         android:layout_marginTop="2dp" />
 
@@ -339,7 +339,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Hotkey: hold to show translations"
-                        android:textColor="?attr/colorTextPrimary"
+                        android:textColor="?attr/ptText"
                         android:textSize="16sp"
                         android:textStyle="bold" />
 
@@ -348,7 +348,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Not set"
-                        android:textColor="?attr/colorTextHint"
+                        android:textColor="?attr/ptTextHint"
                         android:textSize="14sp" />
                 </LinearLayout>
 
@@ -379,7 +379,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Hotkey: hold to show furigana"
-                        android:textColor="?attr/colorTextPrimary"
+                        android:textColor="?attr/ptText"
                         android:textSize="16sp"
                         android:textStyle="bold" />
 
@@ -388,7 +388,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Not set"
-                        android:textColor="?attr/colorTextHint"
+                        android:textColor="?attr/ptTextHint"
                         android:textSize="14sp" />
                 </LinearLayout>
 
@@ -417,7 +417,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="Capture interval"
-                        android:textColor="?attr/colorTextPrimary"
+                        android:textColor="?attr/ptText"
                         android:textSize="16sp"
                         android:textStyle="bold" />
 
@@ -426,7 +426,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text=""
-                        android:textColor="?attr/colorTextHint"
+                        android:textColor="?attr/ptTextHint"
                         android:textSize="14sp"
                         android:layout_marginTop="1dp" />
 
@@ -440,8 +440,8 @@
                     android:inputType="numberDecimal"
                     android:imeOptions="actionDone"
                     android:textSize="14sp"
-                    android:textColor="?attr/colorTextPrimary"
-                    android:background="?attr/colorBgCard"
+                    android:textColor="?attr/ptText"
+                    android:background="?attr/ptCard"
                     android:paddingHorizontal="8dp"
                     android:paddingVertical="6dp"
                     android:gravity="center"
@@ -452,7 +452,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text=" s"
-                    android:textColor="?attr/colorTextSecondary"
+                    android:textColor="?attr/ptTextMuted"
                     android:textSize="14sp" />
 
             </LinearLayout>
@@ -470,7 +470,7 @@
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
-                    android:background="?attr/colorBgDivider"
+                    android:background="?attr/ptDivider"
                     android:layout_marginTop="16dp"
                     android:layout_marginBottom="16dp" />
 
@@ -478,7 +478,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="CAPTURE DISPLAY"
-                    android:textColor="?attr/colorTextSecondary"
+                    android:textColor="?attr/ptTextMuted"
                     android:textSize="11sp"
                     android:letterSpacing="0.15"
                     android:layout_marginBottom="8dp" />
@@ -493,7 +493,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/settings_display_hint"
-                    android:textColor="?attr/colorTextHint"
+                    android:textColor="?attr/ptTextHint"
                     android:textSize="14sp"
                     android:layout_marginTop="4dp" />
 
@@ -506,7 +506,7 @@
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:background="?attr/colorBgDivider"
+                android:background="?attr/ptDivider"
                 android:layout_marginTop="16dp"
                 android:layout_marginBottom="16dp" />
 
@@ -514,7 +514,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="TRANSLATION SERVICE (OPTIONAL)"
-                android:textColor="?attr/colorTextSecondary"
+                android:textColor="?attr/ptTextMuted"
                 android:textSize="11sp"
                 android:letterSpacing="0.15"
                 android:layout_marginBottom="8dp" />
@@ -526,9 +526,9 @@
                 android:inputType="textNoSuggestions"
                 android:hint="@string/hint_deepl_key"
                 android:textSize="14sp"
-                android:textColor="?attr/colorTextPrimary"
-                android:textColorHint="?attr/colorTextHint"
-                android:background="?attr/colorBgCard"
+                android:textColor="?attr/ptText"
+                android:textColorHint="?attr/ptTextHint"
+                android:background="?attr/ptCard"
                 android:paddingHorizontal="10dp"
                 android:paddingVertical="8dp"
                 android:fontFamily="monospace"
@@ -548,7 +548,7 @@
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:background="?attr/colorBgDivider"
+                android:background="?attr/ptDivider"
                 android:layout_marginTop="16dp"
                 android:layout_marginBottom="16dp" />
 
@@ -557,7 +557,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="ANKI"
-                android:textColor="?attr/colorTextSecondary"
+                android:textColor="?attr/ptTextMuted"
                 android:textSize="11sp"
                 android:letterSpacing="0.15"
                 android:layout_marginBottom="4dp" />
@@ -580,8 +580,8 @@
                 android:id="@+id/spinnerAnkiDeck"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="?attr/colorBgCard"
-                android:popupBackground="?attr/colorBgCard"
+                android:background="?attr/ptCard"
+                android:popupBackground="?attr/ptCard"
                 android:layout_marginTop="4dp"
                 android:visibility="gone" />
 
@@ -593,7 +593,7 @@
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:background="?attr/colorBgDivider"
+                android:background="?attr/ptDivider"
                 android:layout_marginTop="16dp"
                 android:layout_marginBottom="16dp" />
 
@@ -601,7 +601,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="THEME"
-                android:textColor="?attr/colorTextSecondary"
+                android:textColor="?attr/ptTextMuted"
                 android:textSize="11sp"
                 android:letterSpacing="0.15"
                 android:layout_marginBottom="8dp" />
@@ -621,7 +621,7 @@
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:background="?attr/colorBgDivider"
+                android:background="?attr/ptDivider"
                 android:layout_marginTop="16dp"
                 android:layout_marginBottom="16dp" />
 
@@ -629,7 +629,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="SUPPORT"
-                android:textColor="?attr/colorTextSecondary"
+                android:textColor="?attr/ptTextMuted"
                 android:textSize="11sp"
                 android:letterSpacing="0.15"
                 android:layout_marginBottom="8dp" />
@@ -647,7 +647,7 @@
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:background="?attr/colorBgDivider"
+                android:background="?attr/ptDivider"
                 android:layout_marginTop="16dp"
                 android:layout_marginBottom="16dp" />
 
@@ -655,7 +655,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="DIAGNOSTICS"
-                android:textColor="?attr/colorTextSecondary"
+                android:textColor="?attr/ptTextMuted"
                 android:textSize="11sp"
                 android:letterSpacing="0.15"
                 android:layout_marginBottom="8dp" />
@@ -678,7 +678,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="Export logs"
-                        android:textColor="?attr/colorTextPrimary"
+                        android:textColor="?attr/ptText"
                         android:textSize="16sp"
                         android:textStyle="bold" />
 
@@ -686,7 +686,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="Share recent app logs for bug reports"
-                        android:textColor="?attr/colorTextHint"
+                        android:textColor="?attr/ptTextHint"
                         android:textSize="12sp" />
 
                 </LinearLayout>
@@ -714,7 +714,7 @@
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
-                    android:background="?attr/colorBgDivider"
+                    android:background="?attr/ptDivider"
                     android:layout_marginTop="16dp"
                     android:layout_marginBottom="16dp" />
 
@@ -722,7 +722,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="DEBUG"
-                    android:textColor="?attr/colorTextSecondary"
+                    android:textColor="?attr/ptTextMuted"
                     android:textSize="11sp"
                     android:letterSpacing="0.15"
                     android:layout_marginBottom="12dp" />
@@ -740,7 +740,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:text="Force single-screen mode"
-                        android:textColor="?attr/colorTextPrimary"
+                        android:textColor="?attr/ptText"
                         android:textSize="14sp" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
@@ -763,7 +763,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:text="Show OCR bounding boxes"
-                        android:textColor="?attr/colorTextPrimary"
+                        android:textColor="?attr/ptText"
                         android:textSize="14sp" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
@@ -786,7 +786,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:text="Show detection log"
-                        android:textColor="?attr/colorTextPrimary"
+                        android:textColor="?attr/ptText"
                         android:textSize="14sp" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
@@ -809,7 +809,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:text="Force crash"
-                        android:textColor="?attr/colorTextPrimary"
+                        android:textColor="?attr/ptText"
                         android:textSize="14sp" />
 
                     <com.google.android.material.button.MaterialButton
