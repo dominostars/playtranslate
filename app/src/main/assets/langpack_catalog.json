@@ -116,6 +116,40 @@
           "attribution": "© Wiktionary contributors"
         }
       ]
+    },
+    "target-ja": {
+      "display": "Japanese definitions",
+      "type": "target",
+      "script": "CJK",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 17145590,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-ja-v1/ja.zip",
+      "sha256": "3c8c2b3ce5ce3724881d835418c7c8750ef3ff0212d866c48b97bfd7f495c978",
+      "licenses": [
+        {
+          "component": "Wiktionary",
+          "license": "CC-BY-SA-3.0",
+          "attribution": "© Wiktionary contributors"
+        }
+      ]
+    },
+    "target-zh": {
+      "display": "Chinese (Simplified) definitions",
+      "type": "target",
+      "script": "CJK",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 28768547,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-zh-v1/zh-Hans.zip",
+      "sha256": "98aeff04642e3563482fe2bbeb3aa2260c476c2a7a3518fd5085eb0cfe9f1b8f",
+      "licenses": [
+        {
+          "component": "Wiktionary",
+          "license": "CC-BY-SA-3.0",
+          "attribution": "© Wiktionary contributors"
+        }
+      ]
     }
   }
 }
