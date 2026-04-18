@@ -15,6 +15,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import com.playtranslate.R
 
 /**
@@ -56,7 +57,7 @@ class OverlayAlert private constructor(
         }
 
         fun addCancelButton(onClick: (() -> Unit)? = null) = apply {
-            buttons.add(ButtonConfig("Cancel", Color.TRANSPARENT, Color.parseColor("#AAAAAA")) {
+            buttons.add(ButtonConfig("Cancel", Color.TRANSPARENT, ContextCompat.getColor(context, R.color.pt_dark_text_muted)) {
                 onClick?.invoke()
             })
         }
@@ -94,7 +95,7 @@ class OverlayAlert private constructor(
         val dialog = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#F0222222"))
+                setColor(ContextCompat.getColor(context, R.color.pt_dark_elevated))
                 cornerRadius = 16 * dp
             }
             setPadding((24 * dp).toInt(), (24 * dp).toInt(), (24 * dp).toInt(), (16 * dp).toInt())
@@ -133,7 +134,7 @@ class OverlayAlert private constructor(
         // Title
         dialog.addView(TextView(context).apply {
             text = title
-            setTextColor(Color.WHITE)
+            setTextColor(ContextCompat.getColor(context, R.color.pt_dark_text))
             textSize = 17f
             gravity = Gravity.CENTER
             setTypeface(null, android.graphics.Typeface.BOLD)
@@ -150,7 +151,7 @@ class OverlayAlert private constructor(
         if (message != null) {
             dialog.addView(TextView(context).apply {
                 text = message
-                setTextColor(Color.parseColor("#AAAAAA"))
+                setTextColor(ContextCompat.getColor(context, R.color.pt_dark_text_muted))
                 textSize = 13f
                 gravity = Gravity.CENTER
                 layoutParams = LinearLayout.LayoutParams(

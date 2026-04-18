@@ -43,7 +43,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private val hideColor: Int = context.themeColor(R.attr.ptTextHint).takeIf { it != 0 } ?: Color.parseColor("#606060")
     private val textColor: Int = context.themeColor(R.attr.ptText).takeIf { it != 0 } ?: Color.parseColor("#CCFFFFFF")
     private val bgColor: Int = context.themeColor(R.attr.ptBg).takeIf { it != 0 } ?: Color.parseColor("#0D0D0D")
-    private val pauseColor: Int = Color.parseColor("#C95050")
+    private val pauseColor: Int = context.themeColor(R.attr.ptDanger).takeIf { it != 0 } ?: Color.parseColor("#E05D5D")
 
     var onHideIcon: (() -> Unit)? = null
     var onHideTemporary: (() -> Unit)? = null
@@ -323,7 +323,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             val icon = TextView(context).apply {
                 text = "⚠"
                 textSize = 14f
-                setTextColor(Color.parseColor("#EEFF00"))
+                setTextColor(context.themeColor(R.attr.ptWarning))
             }
             val label = TextView(context).apply {
                 text = "  Offline — translation quality is reduced"
