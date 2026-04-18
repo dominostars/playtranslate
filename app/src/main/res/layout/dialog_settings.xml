@@ -538,37 +538,15 @@
                     <include layout="@layout/settings_row_divider" />
 
                     <include layout="@layout/settings_row_link"
+                        android:id="@+id/rowExportLogs" />
+
+                    <include layout="@layout/settings_row_divider" />
+
+                    <include layout="@layout/settings_row_link"
                         android:id="@+id/rowDonate" />
 
                 </LinearLayout>
 
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- ══════════════════════════════════════════════════════ -->
-            <!-- DIAGNOSTICS                                           -->
-            <!-- ══════════════════════════════════════════════════════ -->
-
-            <include layout="@layout/settings_group_header"
-                android:id="@+id/headerDiagnostics" />
-
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:cardBackgroundColor="?attr/ptCard"
-                app:cardCornerRadius="@dimen/pt_radius"
-                app:cardElevation="0dp"
-                app:strokeColor="?attr/ptDivider"
-                app:strokeWidth="1dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical">
-
-                    <include layout="@layout/settings_row_action"
-                        android:id="@+id/rowExportLogs" />
-
-                </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
             <!-- ══════════════════════════════════════════════════════ -->
