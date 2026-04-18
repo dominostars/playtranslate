@@ -129,7 +129,6 @@ class SettingsRenderer(
         setupAnkiSection()
         setupAppearanceSection()
         setupSupportSection()
-        setupDiagnosticsSection()
         setupDebugSection()
         setupFooter()
     }
@@ -146,7 +145,6 @@ class SettingsRenderer(
         setGroupHeader(R.id.headerAnki, "ANKI")
         setGroupHeader(R.id.headerAppearance, "APPEARANCE")
         setGroupHeader(R.id.headerSupport, "SUPPORT")
-        setGroupHeader(R.id.headerDiagnostics, "DIAGNOSTICS")
         setGroupHeader(R.id.headerDebug, "DEBUG")
     }
 
@@ -758,29 +756,17 @@ class SettingsRenderer(
     // ── Support ──────────────────────────────────────────────────────────
 
     private fun setupSupportSection() {
-        val appName = ctx.getString(R.string.app_name)
-
         wireLinkRow(rowDiscord, "Join Discord",
-            "Feedback, bugs, requests, updates!",
+            "Get help and chat with other players.",
             "https://go.playtranslate.com/discord")
 
-        wireLinkRow(rowDonate, "Support Me",
-            ctx.getString(R.string.support_donate_subtitle, appName),
-            "https://go.playtranslate.com/donate")
-    }
-
-    // ── Diagnostics ──────────────────────────────────────────────────────
-
-    private fun setupDiagnosticsSection() {
+        // Export logs row
         val rowExportLogs = root.findViewById<View>(R.id.rowExportLogs)
-        val tvTitle = rowExportLogs.findViewById<TextView>(R.id.tvRowTitle)
-        val btnExportLogs = rowExportLogs.findViewById<MaterialButton>(R.id.btnRowAction)
-
-        tvTitle.text = "Export logs"
-        btnExportLogs.text = "Export"
-
-        val exportClick = View.OnClickListener {
-            btnExportLogs.isEnabled = false
+        rowExportLogs.findViewById<TextView>(R.id.tvRowTitle).text = "Export logs"
+        val tvExportSub = rowExportLogs.findViewById<TextView>(R.id.tvRowSubtitle)
+        tvExportSub.text = "Share recent logs for a bug report"
+        tvExportSub.visibility = View.VISIBLE
+        rowExportLogs.setOnClickListener {
             lifecycleScope.launch {
                 val files = withContext(Dispatchers.IO) {
                     runCatching {
@@ -788,7 +774,6 @@ class SettingsRenderer(
                         listOf(logFile) + LogExporter.getCrashFiles(ctx)
                     }
                 }
-                btnExportLogs.isEnabled = true
                 files.fold(
                     onSuccess = {
                         if (ctx is android.app.Activity) {
@@ -796,17 +781,17 @@ class SettingsRenderer(
                         }
                     },
                     onFailure = {
-                        Toast.makeText(
-                            ctx,
+                        Toast.makeText(ctx,
                             "Failed to export logs: ${it.javaClass.simpleName}",
-                            Toast.LENGTH_LONG
-                        ).show()
+                            Toast.LENGTH_LONG).show()
                     }
                 )
             }
         }
-        btnExportLogs.setOnClickListener(exportClick)
-        rowExportLogs.setOnClickListener(exportClick)
+
+        wireLinkRow(rowDonate, "Buy me a coffee",
+            "PlayTranslate is free, support development on Ko-Fi",
+            "https://go.playtranslate.com/donate")
     }
 
     // ── Debug section ────────────────────────────────────────────────────
