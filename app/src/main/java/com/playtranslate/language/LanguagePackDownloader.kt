@@ -1,11 +1,13 @@
 package com.playtranslate.language
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.coroutineContext
 
 /**
  * Progress phases emitted by [LanguagePackStore.install].
@@ -30,6 +32,7 @@ sealed interface DownloadProgress {
  */
 sealed interface InstallResult {
     data object Success : InstallResult
+    data object Cancelled : InstallResult
     data class Failed(val reason: String, val cause: Throwable? = null) : InstallResult
 }
 
@@ -57,7 +60,11 @@ class LanguagePackDownloader(
     ) = withContext(Dispatchers.IO) {
         destination.parentFile?.mkdirs()
         val request = Request.Builder().url(url).build()
-        httpClient.newCall(request).execute().use { response ->
+        val call = httpClient.newCall(request)
+        // Cancel the HTTP call if the coroutine is cancelled
+        val job = coroutineContext[kotlinx.coroutines.Job]
+        job?.invokeOnCompletion { if (it != null) call.cancel() }
+        call.execute().use { response ->
             if (!response.isSuccessful) {
                 error("HTTP ${response.code} for $url")
             }
@@ -68,6 +75,7 @@ class LanguagePackDownloader(
                 destination.outputStream().buffered().use { output ->
                     val buf = ByteArray(64 * 1024)
                     while (true) {
+                        coroutineContext.ensureActive()
                         val n = input.read(buf)
                         if (n <= 0) break
                         output.write(buf, 0, n)

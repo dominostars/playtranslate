@@ -3,7 +3,9 @@ package com.playtranslate.language
 import android.content.Context
 import android.util.Log
 import com.playtranslate.BuildConfig
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -115,6 +117,7 @@ object LanguagePackStore {
         try {
             // 1. Stream the zip
             LanguagePackDownloader().download(url, zipFile) { onProgress(it) }
+            ensureActive()
 
             // 2. Whole-file SHA-256 verify against catalog's advertised hash
             onProgress(DownloadProgress.Verifying)
@@ -126,8 +129,10 @@ object LanguagePackStore {
             }
 
             // 3. Extract to the temp dir (atomic swap happens in step 5)
+            ensureActive()
             onProgress(DownloadProgress.Extracting)
             PackIntegrity.extractZip(zipFile, tmpDir)
+            ensureActive()
 
             // 4. Manifest check — pack must contain a manifest.json naming
             //    every file inside the pack, with matching sizes. Per-file
@@ -142,6 +147,8 @@ object LanguagePackStore {
 
             Log.d(TAG, "Installed pack ${id.code} from $url (${zipFile.length()} bytes)")
             InstallResult.Success
+        } catch (_: CancellationException) {
+            InstallResult.Cancelled
         } catch (e: Exception) {
             InstallResult.Failed(e.message ?: "Unknown install error", e)
         } finally {
@@ -182,6 +189,7 @@ object LanguagePackStore {
         try {
             // 1. Stream the zip
             LanguagePackDownloader().download(url, zipFile) { onProgress(it) }
+            ensureActive()
 
             // 2. SHA-256 verify
             onProgress(DownloadProgress.Verifying)
@@ -193,8 +201,10 @@ object LanguagePackStore {
             }
 
             // 3. Extract
+            ensureActive()
             onProgress(DownloadProgress.Extracting)
             PackIntegrity.extractZip(zipFile, tmpDir)
+            ensureActive()
 
             // 4. Manifest check
             validateManifest(tmpDir)?.let {
@@ -206,6 +216,8 @@ object LanguagePackStore {
 
             Log.d(TAG, "Installed target pack $catalogKey from $url (${zipFile.length()} bytes)")
             InstallResult.Success
+        } catch (_: CancellationException) {
+            InstallResult.Cancelled
         } catch (e: Exception) {
             InstallResult.Failed(e.message ?: "Unknown install error", e)
         } finally {

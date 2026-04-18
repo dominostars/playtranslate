@@ -308,6 +308,9 @@ class LanguageSetupActivity : AppCompatActivity() {
                     dialog.dismiss()
                     showErrorPopup(result.reason)
                 }
+                is InstallResult.Cancelled -> {
+                    dialog.dismiss()
+                }
             }
         }
     }
