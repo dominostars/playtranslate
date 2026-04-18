@@ -23,7 +23,7 @@
             android:id="@+id/tvLinkTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="?attr/colorAccentPrimary"
+            android:textColor="?attr/ptAccent"
             android:textSize="16sp"
             android:textStyle="bold" />
 
@@ -31,7 +31,7 @@
             android:id="@+id/tvLinkSubtitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="?attr/colorTextHint"
+            android:textColor="?attr/ptTextHint"
             android:textSize="14sp"
             android:layout_marginTop="1dp" />
 
@@ -42,7 +42,7 @@
         android:layout_width="24dp"
         android:layout_height="24dp"
         android:src="@drawable/ic_open_in_new"
-        app:tint="?attr/colorAccentPrimary"
+        app:tint="?attr/ptAccent"
         android:scaleType="centerInside"
         android:layout_marginStart="8dp" />
 

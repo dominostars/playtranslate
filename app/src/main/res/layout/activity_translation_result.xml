@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="?attr/colorBgDark">
+    android:background="?attr/ptBg">
 
     <!-- Back button bar -->
     <LinearLayout
@@ -22,7 +22,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="Back"
             android:src="@drawable/ic_close"
-            app:tint="?attr/colorTextSecondary" />
+            app:tint="?attr/ptTextMuted" />
 
         <View
             android:layout_width="0dp"
@@ -36,7 +36,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="Add to Anki"
             android:src="@drawable/ic_anki"
-            app:tint="?attr/colorTextSecondary"
+            app:tint="?attr/ptTextMuted"
             android:enabled="false" />
 
     </LinearLayout>

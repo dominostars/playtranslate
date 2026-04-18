@@ -9,7 +9,7 @@
     </item>
     <item>
         <shape>
-            <solid android:color="?attr/colorAccentPrimary" />
+            <solid android:color="?attr/ptAccent" />
             <corners android:radius="6dp" />
         </shape>
     </item>

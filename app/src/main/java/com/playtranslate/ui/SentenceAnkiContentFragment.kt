@@ -142,7 +142,7 @@ class SentenceAnkiContentFragment : Fragment() {
         val density = resources.displayMetrics.density
         val dp8 = (8 * density).toInt()
         val ctx = view?.context ?: requireContext()
-        val hlColor = ctx.themeColor(R.attr.colorTextTranslation)
+        val hlColor = ctx.themeColor(R.attr.ptTextTranslation)
         highlightColor = hlColor
 
         words.forEach { entry ->
@@ -173,7 +173,7 @@ class SentenceAnkiContentFragment : Fragment() {
             textBlock.addView(TextView(ctx).apply {
                 text = entry.word
                 textSize = if (isSelected) 16f else 14f
-                setTextColor(if (isSelected) hlColor else ctx.themeColor(R.attr.colorTextPrimary))
+                setTextColor(if (isSelected) hlColor else ctx.themeColor(R.attr.ptText))
                 setTypeface(null, Typeface.BOLD)
             })
 
@@ -183,7 +183,7 @@ class SentenceAnkiContentFragment : Fragment() {
                     readingLine.addView(TextView(ctx).apply {
                         text = entry.reading
                         textSize = if (isSelected) 12f else 11f
-                        setTextColor(ContextCompat.getColor(ctx, R.color.text_hint))
+                        setTextColor(ctx.themeColor(R.attr.ptTextHint))
                         if (isSelected) setTypeface(null, Typeface.BOLD)
                     })
                 }
@@ -191,7 +191,7 @@ class SentenceAnkiContentFragment : Fragment() {
                     readingLine.addView(TextView(ctx).apply {
                         text = "  " + SentenceAnkiHtmlBuilder.starsString(entry.freqScore)
                         textSize = if (isSelected) 11f else 10f
-                        setTextColor(ContextCompat.getColor(ctx, R.color.text_hint))
+                        setTextColor(ctx.themeColor(R.attr.ptTextHint))
                     })
                 }
                 textBlock.addView(readingLine)
@@ -201,7 +201,7 @@ class SentenceAnkiContentFragment : Fragment() {
                 textBlock.addView(TextView(ctx).apply {
                     text = line
                     textSize = if (isSelected) 13f else 12f
-                    setTextColor(ContextCompat.getColor(ctx, R.color.text_secondary))
+                    setTextColor(ctx.themeColor(R.attr.ptTextMuted))
                     setPadding(16, 0, 0, 0)
                     if (isSelected) setTypeface(null, Typeface.BOLD)
                 })
@@ -211,7 +211,7 @@ class SentenceAnkiContentFragment : Fragment() {
                 text = "\u2715"
                 textSize = 14f
                 setBackgroundResource(android.R.color.transparent)
-                setTextColor(ContextCompat.getColor(ctx, R.color.text_secondary))
+                setTextColor(ctx.themeColor(R.attr.ptTextMuted))
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT

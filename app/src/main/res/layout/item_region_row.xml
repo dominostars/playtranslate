@@ -17,7 +17,7 @@
         android:layout_height="32dp"
         android:layout_marginEnd="10dp"
         android:src="@drawable/ic_drag_handle"
-        app:tint="?attr/colorTextHint"
+        app:tint="?attr/ptTextHint"
         android:scaleType="center"
         android:visibility="gone"
         android:contentDescription="Drag to reorder" />
@@ -38,7 +38,7 @@
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:textSize="15sp"
-        android:textColor="?attr/colorTextPrimary" />
+        android:textColor="?attr/ptText" />
 
     <!-- Delete button (visible in edit mode) -->
     <ImageView

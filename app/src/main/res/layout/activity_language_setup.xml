@@ -4,21 +4,21 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="?attr/colorBgSurface">
+    android:background="?attr/ptSurface">
 
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="?attr/colorBgSurface"
+        android:background="?attr/ptSurface"
         app:navigationIcon="@drawable/ic_arrow_back"
-        app:navigationIconTint="?attr/colorTextPrimary"
-        app:titleTextColor="?attr/colorTextPrimary" />
+        app:navigationIconTint="?attr/ptText"
+        app:titleTextColor="?attr/ptText" />
 
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="?attr/colorBgDivider" />
+        android:background="?attr/ptDivider" />
 
     <FrameLayout
         android:id="@+id/contentFrame"
