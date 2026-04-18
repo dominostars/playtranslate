@@ -343,6 +343,7 @@ def parse_wiktionary_dir(
 
 def build_target_pack(args: argparse.Namespace) -> None:
     target = args.target
+    pack_version = args.pack_version
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -424,12 +425,19 @@ def build_target_pack(args: argparse.Namespace) -> None:
 
     # ── Manifest ─────────────────────────────────────────────────────
     db_size = db_path.stat().st_size
+    db_sha = hashlib.sha256(db_path.read_bytes()).hexdigest()
     manifest = {
+        "langId": f"target-{target}",
+        "schemaVersion": 1,
+        "packVersion": pack_version,
+        "appMinVersion": 0,
+        "files": [{"path": "glosses.sqlite", "size": db_size, "sha256": db_sha}],
+        "totalSize": db_size,
+        "licenses": [],
         "target": target,
         "covers": all_sources,
         "sourceCounts": source_counts,
         "totalRows": total_rows,
-        "schemaVersion": 1,
     }
     manifest_path = output_dir / "manifest.json"
     with open(manifest_path, "w", encoding="utf-8") as f:
@@ -454,9 +462,9 @@ def build_target_pack(args: argparse.Namespace) -> None:
     print(f'    "display": "{target.upper()} definitions",')
     print(f'    "type": "target",')
     print(f'    "bundled": false,')
-    print(f'    "packVersion": 1,')
+    print(f'    "packVersion": {pack_version},')
     print(f'    "size": {zip_size},')
-    print(f'    "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-{target}-v1/{zip_name}",')
+    print(f'    "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-{target}-v{pack_version}/{zip_name}",')
     print(f'    "sha256": "{sha256}"')
     print(f"  }}")
 
@@ -484,6 +492,10 @@ def main():
     parser.add_argument(
         "--output", required=True,
         help="Output directory for glosses.sqlite, manifest.json, and .zip",
+    )
+    parser.add_argument(
+        "--pack-version", type=int, default=1,
+        help="Pack version number for manifest (default: 1)",
     )
 
     args = parser.parse_args()

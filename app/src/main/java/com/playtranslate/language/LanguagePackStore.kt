@@ -132,26 +132,8 @@ object LanguagePackStore {
             // 4. Manifest check — pack must contain a manifest.json naming
             //    every file inside the pack, with matching sizes. Per-file
             //    sha256 is optional; when provided, it's enforced.
-            val tmpManifestFile = File(tmpDir, "manifest.json")
-            val tmpManifest = LanguagePackManifestIO.read(tmpManifestFile)
-                ?: return@withContext InstallResult.Failed("Extracted pack has no manifest.json")
-            for (f in tmpManifest.files) {
-                val inDir = File(tmpDir, f.path)
-                if (!inDir.exists()) {
-                    return@withContext InstallResult.Failed("Manifest file missing in pack: ${f.path}")
-                }
-                if (inDir.length() != f.size) {
-                    return@withContext InstallResult.Failed(
-                        "Manifest size mismatch for ${f.path}: expected=${f.size} actual=${inDir.length()}"
-                    )
-                }
-                val fileSha = f.sha256
-                if (fileSha != null) {
-                    val actual = PackIntegrity.sha256Hex(inDir)
-                    if (!actual.equals(fileSha, ignoreCase = true)) {
-                        return@withContext InstallResult.Failed("Per-file SHA-256 mismatch on ${f.path}")
-                    }
-                }
+            validateManifest(tmpDir)?.let {
+                return@withContext InstallResult.Failed(it)
             }
 
             // 5. Atomic-ish swap. Not POSIX-atomic (delete + rename is two
@@ -223,7 +205,12 @@ object LanguagePackStore {
             onProgress(DownloadProgress.Extracting)
             PackIntegrity.extractZip(zipFile, tmpDir)
 
-            // 4. Atomic-ish swap
+            // 4. Manifest check
+            validateManifest(tmpDir)?.let {
+                return@withContext InstallResult.Failed(it)
+            }
+
+            // 5. Atomic-ish swap
             if (finalDir.exists()) finalDir.deleteRecursively()
             val renamed = try { tmpDir.renameTo(finalDir) } catch (_: Exception) { false }
             if (!renamed) {
@@ -251,6 +238,31 @@ object LanguagePackStore {
     fun uninstall(ctx: Context, id: SourceLangId): Boolean {
         val dir = dirFor(ctx.applicationContext, id)
         return if (dir.exists()) dir.deleteRecursively() else false
+    }
+
+    /**
+     * Validate a manifest inside an extracted pack directory. Returns null on
+     * success, or an error message describing the first failure.
+     */
+    private suspend fun validateManifest(tmpDir: File): String? {
+        val manifestFile = File(tmpDir, "manifest.json")
+        val manifest = LanguagePackManifestIO.read(manifestFile)
+            ?: return "Extracted pack has no manifest.json"
+        for (f in manifest.files) {
+            val inDir = File(tmpDir, f.path)
+            if (!inDir.exists()) return "Manifest file missing in pack: ${f.path}"
+            if (inDir.length() != f.size) {
+                return "Manifest size mismatch for ${f.path}: expected=${f.size} actual=${inDir.length()}"
+            }
+            val fileSha = f.sha256
+            if (fileSha != null) {
+                val actual = PackIntegrity.sha256Hex(inDir)
+                if (!actual.equals(fileSha, ignoreCase = true)) {
+                    return "Per-file SHA-256 mismatch on ${f.path}"
+                }
+            }
+        }
+        return null
     }
 
     private fun copyDirectory(src: File, dst: File) {
