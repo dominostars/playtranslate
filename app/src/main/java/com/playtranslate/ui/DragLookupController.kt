@@ -787,6 +787,8 @@ class DragLookupController(
         putExtra(WordAnkiReviewActivity.EXTRA_DEFINITION, definition)
         putExtra(WordAnkiReviewActivity.EXTRA_FREQ_SCORE, freqScore)
         putExtra(WordAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, screenshotPath)
+        putExtra(WordAnkiReviewActivity.EXTRA_SOURCE_LANG,
+            com.playtranslate.Prefs(context).sourceLangId.code)
         if (sentenceOriginal != null) {
             putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_ORIGINAL, sentenceOriginal)
         }

@@ -17,6 +17,7 @@ import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.fullScreenDialogTheme
+import com.playtranslate.language.SourceLangId
 import com.google.android.material.button.MaterialButtonToggleGroup
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -97,12 +98,14 @@ class WordAnkiReviewSheet : DialogFragment() {
         }
         etDefinition.setText(definition)
 
+        val sourceLangId = SourceLangId.fromCode(args.getString(ARG_SOURCE_LANG)) ?: SourceLangId.JA
+
         // Embed shared sentence content fragment
         if (hasSentenceData && savedInstanceState == null) {
             val sentenceWords = buildWordEntries(args)
             val contentFragment = SentenceAnkiContentFragment.newInstance(
                 sentenceOriginal ?: return, sentenceTranslation, sentenceWords,
-                screenshotPath, targetWord = word
+                screenshotPath, targetWord = word, sourceLangId = sourceLangId
             )
             childFragmentManager.beginTransaction()
                 .replace(R.id.containerSentence, contentFragment, TAG_CONTENT)
@@ -242,9 +245,9 @@ class WordAnkiReviewSheet : DialogFragment() {
             withContext(Dispatchers.IO) { ankiManager.addMediaFromFile(File(data.screenshotPath)) }
         } else null
 
-        val front = SentenceAnkiHtmlBuilder.buildFrontHtml(data.japanese, data.words, data.selectedWords)
-        val back  = SentenceAnkiHtmlBuilder.buildBackHtml(data.japanese, data.english, data.words,
-            imageFilename, data.selectedWords)
+        val front = SentenceAnkiHtmlBuilder.buildFrontHtml(data.source, data.words, data.selectedWords, data.sourceLangId)
+        val back  = SentenceAnkiHtmlBuilder.buildBackHtml(data.source, data.target, data.words,
+            imageFilename, data.selectedWords, data.sourceLangId)
 
         val success = withContext(Dispatchers.IO) { ankiManager.addNote(deckId, front, back) }
         val msg = if (success) getString(R.string.anki_added) else getString(R.string.anki_failed)
@@ -271,6 +274,7 @@ class WordAnkiReviewSheet : DialogFragment() {
         private const val ARG_SENTENCE_READINGS     = "sentence_readings"
         private const val ARG_SENTENCE_MEANINGS     = "sentence_meanings"
         private const val ARG_SENTENCE_FREQ_SCORES  = "sentence_freq_scores"
+        private const val ARG_SOURCE_LANG     = "source_lang"
 
         fun newInstance(
             word: String,
@@ -281,7 +285,8 @@ class WordAnkiReviewSheet : DialogFragment() {
             freqScore: Int = 0,
             sentenceOriginal: String? = null,
             sentenceTranslation: String? = null,
-            sentenceWordResults: Map<String, Triple<String, String, Int>>? = null
+            sentenceWordResults: Map<String, Triple<String, String, Int>>? = null,
+            sourceLangId: SourceLangId = SourceLangId.JA
         ) = WordAnkiReviewSheet().apply {
             arguments = Bundle().apply {
                 putString(ARG_WORD, word)
@@ -300,6 +305,7 @@ class WordAnkiReviewSheet : DialogFragment() {
                         putIntArray(ARG_SENTENCE_FREQ_SCORES, sentenceWordResults.values.map { it.third }.toIntArray())
                     }
                 }
+                putString(ARG_SOURCE_LANG, sourceLangId.code)
             }
         }
     }

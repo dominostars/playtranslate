@@ -125,13 +125,13 @@ class WordDetailBottomSheet : DialogFragment() {
                 if (!ankiManager.isAnkiDroidInstalled()) {
                     showAnkiNotInstalledDialog(requireContext())
                 } else {
-                    openWordAnkiReview(word, entry, screenshotPath)
+                    openWordAnkiReview(word, entry, screenshotPath, defResult)
                 }
             }
         }
     }
 
-    private fun openWordAnkiReview(word: String, entry: DictionaryEntry, screenshotPath: String?) {
+    private fun openWordAnkiReview(word: String, entry: DictionaryEntry, screenshotPath: String?, defResult: DefinitionResult?) {
         if (!AnkiManager(requireContext()).hasPermission()) {
             AlertDialog.Builder(requireContext())
                 .setTitle(R.string.anki_permission_rationale_title)
@@ -154,11 +154,26 @@ class WordDetailBottomSheet : DialogFragment() {
         val pos = entry.senses.firstOrNull()?.partsOfSpeech
             ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
 
+        // Use resolved definitions (target-pack native or ML Kit translated)
+        // instead of raw English glosses from the dictionary entry.
+        val targetByOrd = if (defResult is DefinitionResult.Native)
+            defResult.targetSenses.associateBy { it.senseOrd } else null
+        val translatedDefs = when (defResult) {
+            is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
+            is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
+            else -> null
+        }
+        val nonEmptySenseCount = entry.senses.count { it.targetDefinitions.isNotEmpty() }
+        var displayNum = 0
         val definition = entry.senses
-            .filter { it.targetDefinitions.isNotEmpty() }
-            .mapIndexed { i, sense ->
-                val prefix = if (entry.senses.size > 1) "${i + 1}. " else ""
-                prefix + sense.targetDefinitions.joinToString("; ")
+            .mapIndexedNotNull { i, sense ->
+                if (sense.targetDefinitions.isEmpty()) return@mapIndexedNotNull null
+                displayNum++
+                val glosses = targetByOrd?.get(i)?.glosses?.joinToString("; ")
+                    ?: translatedDefs?.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
+                    ?: sense.targetDefinitions.joinToString("; ")
+                val prefix = if (nonEmptySenseCount > 1) "$displayNum. " else ""
+                prefix + glosses
             }
             .joinToString("\n")
 
@@ -180,12 +195,14 @@ class WordDetailBottomSheet : DialogFragment() {
                 }.toMap()
             }
 
+        val sourceLangId = com.playtranslate.Prefs(requireContext().applicationContext).sourceLangId
         WordAnkiReviewSheet.newInstance(
             word, reading, pos, definition, screenshotPath,
             freqScore = entry.freqScore,
             sentenceOriginal = sentenceOriginal,
             sentenceTranslation = sentenceTranslation,
-            sentenceWordResults = sentenceWordResults
+            sentenceWordResults = sentenceWordResults,
+            sourceLangId = sourceLangId
         ).show(childFragmentManager, WordAnkiReviewSheet.TAG)
     }
 

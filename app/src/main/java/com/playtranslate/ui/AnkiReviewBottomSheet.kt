@@ -13,6 +13,7 @@ import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.fullScreenDialogTheme
+import com.playtranslate.language.SourceLangId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -62,10 +63,12 @@ class AnkiReviewBottomSheet : DialogFragment() {
             ))
         }
 
+        val sourceLangId = SourceLangId.fromCode(args.getString(ARG_SOURCE_LANG)) ?: SourceLangId.JA
+
         // Embed the shared sentence content fragment
         if (savedInstanceState == null) {
             val contentFragment = SentenceAnkiContentFragment.newInstance(
-                original, translation, words, screenshotPath
+                original, translation, words, screenshotPath, sourceLangId = sourceLangId
             )
             childFragmentManager.beginTransaction()
                 .replace(R.id.sentenceContentContainer, contentFragment, TAG_CONTENT)
@@ -101,9 +104,9 @@ class AnkiReviewBottomSheet : DialogFragment() {
             withContext(Dispatchers.IO) { ankiManager.addMediaFromFile(File(data.screenshotPath)) }
         } else null
 
-        val front = SentenceAnkiHtmlBuilder.buildFrontHtml(data.japanese, data.words, data.selectedWords)
-        val back  = SentenceAnkiHtmlBuilder.buildBackHtml(data.japanese, data.english, data.words,
-            imageFilename, data.selectedWords)
+        val front = SentenceAnkiHtmlBuilder.buildFrontHtml(data.source, data.words, data.selectedWords, data.sourceLangId)
+        val back  = SentenceAnkiHtmlBuilder.buildBackHtml(data.source, data.target, data.words,
+            imageFilename, data.selectedWords, data.sourceLangId)
 
         val success = withContext(Dispatchers.IO) { ankiManager.addNote(deckId, front, back) }
         val msg = if (success) getString(R.string.anki_added) else getString(R.string.anki_failed)
@@ -127,12 +130,14 @@ class AnkiReviewBottomSheet : DialogFragment() {
         private const val ARG_MEANINGS        = "meanings"
         private const val ARG_FREQ_SCORES     = "freq_scores"
         private const val ARG_SCREENSHOT_PATH = "screenshot_path"
+        private const val ARG_SOURCE_LANG     = "source_lang"
 
         fun newInstance(
             original: String,
             translation: String,
             wordResults: Map<String, Triple<String, String, Int>>,
-            screenshotPath: String?
+            screenshotPath: String?,
+            sourceLangId: SourceLangId = SourceLangId.JA
         ): AnkiReviewBottomSheet {
             return AnkiReviewBottomSheet().apply {
                 arguments = Bundle().apply {
@@ -143,6 +148,7 @@ class AnkiReviewBottomSheet : DialogFragment() {
                     putStringArray(ARG_MEANINGS, wordResults.values.map { it.second }.toTypedArray())
                     putIntArray(ARG_FREQ_SCORES, wordResults.values.map { it.third }.toIntArray())
                     if (screenshotPath != null) putString(ARG_SCREENSHOT_PATH, screenshotPath)
+                    putString(ARG_SOURCE_LANG, sourceLangId.code)
                 }
             }
         }

@@ -25,7 +25,7 @@ class AnkiManager(private val context: Context) {
 
         private const val AUTHORITY = "com.ichi2.anki.flashcards"
         private const val FILE_PROVIDER_AUTHORITY = "com.playtranslate.fileprovider"
-        private const val MODEL_NAME = "PlayTranslate v003"
+        private const val MODEL_NAME = "PlayTranslate v004"
 
         /** AnkiDroid field separator (ASCII 31, unit separator) */
         private const val SEP = "\u001f"
@@ -73,7 +73,7 @@ class AnkiManager(private val context: Context) {
      * Returns null on failure.
      */
     fun getOrCreateModel(): Long? {
-        val expectedFields = listOf("Japanese", "Back").joinToString(SEP)
+        val expectedFields = listOf("Expression", "Back").joinToString(SEP)
 
         // Find any existing PlayTranslate model whose field_names match the expected 2-field schema.
         // Name-only matching is unreliable because old models with the same name but different
@@ -99,13 +99,13 @@ class AnkiManager(private val context: Context) {
         }
         Log.d(TAG, "Creating new Anki model '$MODEL_NAME'")
 
-        // 2-field model: Japanese (plain text front) + Back (full HTML blob).
-        // qfmt centers and enlarges the Japanese text.
+        // 2-field model: Expression (source text front) + Back (full HTML blob).
+        // qfmt centers and enlarges the expression text.
         // afmt shows only {{Back}} — the Back field already contains the full card back
-        // (image, furigana sentence, translation, definitions), so no FrontSide duplication
+        // (image, annotated sentence, translation, definitions), so no FrontSide duplication
         // and no auto-generated \n\n separator artifacts.
-        val fieldNames = listOf("Japanese", "Back").joinToString(SEP)
-        val qfmt = """<div style="text-align:center;font-size:1.5em;padding:20px;line-height:1.5;">{{Japanese}}</div>"""
+        val fieldNames = listOf("Expression", "Back").joinToString(SEP)
+        val qfmt = """<div style="text-align:center;font-size:1.5em;padding:20px;line-height:1.5;">{{Expression}}</div>"""
         val afmt = """{{Back}}"""
         val css = """
             @media(prefers-color-scheme:light){

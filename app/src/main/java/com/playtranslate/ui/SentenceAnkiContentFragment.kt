@@ -16,6 +16,7 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.playtranslate.R
+import com.playtranslate.language.SourceLangId
 import com.playtranslate.themeColor
 import java.io.File
 
@@ -42,19 +43,21 @@ class SentenceAnkiContentFragment : Fragment() {
     // ── Public API ────────────────────────────────────────────────────────
 
     data class CardData(
-        val japanese: String,
-        val english: String,
+        val source: String,
+        val target: String,
         val words: List<SentenceAnkiHtmlBuilder.WordEntry>,
         val selectedWords: Set<String>,
-        val screenshotPath: String?
+        val screenshotPath: String?,
+        val sourceLangId: SourceLangId
     )
 
     fun getCardData(): CardData = CardData(
-        japanese = etJapanese.text.toString(),
-        english = etTranslation.text.toString(),
+        source = etJapanese.text.toString(),
+        target = etTranslation.text.toString(),
         words = words.toList(),
         selectedWords = selectedWords.toSet(),
-        screenshotPath = if (includePhoto) arguments?.getString(ARG_SCREENSHOT_PATH) else null
+        screenshotPath = if (includePhoto) arguments?.getString(ARG_SCREENSHOT_PATH) else null,
+        sourceLangId = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG)) ?: SourceLangId.JA
     )
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -241,13 +244,15 @@ class SentenceAnkiContentFragment : Fragment() {
         private const val ARG_FREQ_SCORES     = "freq_scores"
         private const val ARG_SCREENSHOT_PATH = "screenshot_path"
         private const val ARG_TARGET_WORD     = "target_word"
+        private const val ARG_SOURCE_LANG     = "source_lang"
 
         fun newInstance(
             japanese: String,
             translation: String,
             words: List<SentenceAnkiHtmlBuilder.WordEntry>,
             screenshotPath: String?,
-            targetWord: String? = null
+            targetWord: String? = null,
+            sourceLangId: SourceLangId = SourceLangId.JA
         ) = SentenceAnkiContentFragment().apply {
             arguments = Bundle().apply {
                 putString(ARG_JAPANESE, japanese)
@@ -258,6 +263,7 @@ class SentenceAnkiContentFragment : Fragment() {
                 putIntArray(ARG_FREQ_SCORES, words.map { it.freqScore }.toIntArray())
                 if (screenshotPath != null) putString(ARG_SCREENSHOT_PATH, screenshotPath)
                 if (targetWord != null) putString(ARG_TARGET_WORD, targetWord)
+                putString(ARG_SOURCE_LANG, sourceLangId.code)
             }
         }
     }

@@ -6,7 +6,9 @@ import android.view.WindowManager
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.playtranslate.AnkiManager
+import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.language.SourceLangId
 
 /**
  * Lightweight activity that hosts [WordAnkiReviewSheet] when launched from
@@ -38,6 +40,8 @@ class WordAnkiReviewActivity : AppCompatActivity() {
         val screenshotPath = intent.getStringExtra(EXTRA_SCREENSHOT_PATH)
         val sentenceOriginal = intent.getStringExtra(EXTRA_SENTENCE_ORIGINAL)
         val sentenceTranslation = intent.getStringExtra(EXTRA_SENTENCE_TRANSLATION)
+        val sourceLangId = SourceLangId.fromCode(intent.getStringExtra(EXTRA_SOURCE_LANG))
+            ?: Prefs(applicationContext).sourceLangId
 
         if (!AnkiManager(this).hasPermission()) {
             AlertDialog.Builder(this)
@@ -60,21 +64,23 @@ class WordAnkiReviewActivity : AppCompatActivity() {
         ) LastSentenceCache.wordResults else null
 
         showReviewSheet(word, reading, pos, definition, freqScore, screenshotPath,
-            sentenceOriginal, sentenceTranslation, cachedWordResults)
+            sentenceOriginal, sentenceTranslation, cachedWordResults, sourceLangId)
     }
 
     private fun showReviewSheet(
         word: String, reading: String, pos: String,
         definition: String, freqScore: Int, screenshotPath: String?,
         sentenceOriginal: String?, sentenceTranslation: String?,
-        sentenceWordResults: Map<String, Triple<String, String, Int>>? = null
+        sentenceWordResults: Map<String, Triple<String, String, Int>>? = null,
+        sourceLangId: SourceLangId = SourceLangId.JA
     ) {
         val sheet = WordAnkiReviewSheet.newInstance(
             word, reading, pos, definition, screenshotPath,
             freqScore = freqScore,
             sentenceOriginal = sentenceOriginal,
             sentenceTranslation = sentenceTranslation,
-            sentenceWordResults = sentenceWordResults
+            sentenceWordResults = sentenceWordResults,
+            sourceLangId = sourceLangId
         )
         sheet.onDismissListener = DialogInterface.OnDismissListener { finish() }
         sheet.show(supportFragmentManager, WordAnkiReviewSheet.TAG)
@@ -100,5 +106,6 @@ class WordAnkiReviewActivity : AppCompatActivity() {
         const val EXTRA_FREQ_SCORE = "extra_freq_score"
         const val EXTRA_SENTENCE_ORIGINAL = "extra_sentence_original"
         const val EXTRA_SENTENCE_TRANSLATION = "extra_sentence_translation"
+        const val EXTRA_SOURCE_LANG = "extra_source_lang"
     }
 }

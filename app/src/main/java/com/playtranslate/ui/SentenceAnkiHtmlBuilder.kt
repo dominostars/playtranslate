@@ -1,6 +1,7 @@
 package com.playtranslate.ui
 
 import com.playtranslate.dictionary.Deinflector
+import com.playtranslate.language.SourceLangId
 
 /**
  * Shared HTML builder for sentence-mode Anki cards.
@@ -13,7 +14,11 @@ object SentenceAnkiHtmlBuilder {
     /**
      * @param highlightedWords words to bold in the sentence (font-weight:800)
      */
-    fun buildFrontHtml(japanese: String, words: List<WordEntry>, highlightedWords: Set<String> = emptySet()): String {
+    fun buildFrontHtml(
+        japanese: String, words: List<WordEntry>,
+        highlightedWords: Set<String> = emptySet(),
+        sourceLangId: SourceLangId = SourceLangId.JA
+    ): String {
         val clean = japanese.replace(Regex("[\\n\\r]+"), " ").trim()
         val wordMap = words.associate { it.word to it.reading }.toMutableMap()
         val expanded = highlightedWords.toMutableSet()
@@ -25,7 +30,7 @@ object SentenceAnkiHtmlBuilder {
                 expanded.add(entry.surfaceForm)
             }
         }
-        val annotated = annotateText(clean, wordMap, newlineAsBr = false, highlightedWords = expanded)
+        val annotated = annotateText(clean, wordMap, newlineAsBr = false, highlightedWords = expanded, sourceLangId = sourceLangId)
         return buildString {
             append("<style>")
             append(".gl-front ruby{cursor:pointer;-webkit-tap-highlight-color:transparent;}")
@@ -72,10 +77,11 @@ object SentenceAnkiHtmlBuilder {
      */
     fun buildBackHtml(
         japanese: String, english: String, words: List<WordEntry>,
-        imageFilename: String?, highlightedWords: Set<String> = emptySet()
+        imageFilename: String?, highlightedWords: Set<String> = emptySet(),
+        sourceLangId: SourceLangId = SourceLangId.JA
     ): String {
         val wordMap = words.associate { it.word to it.reading }
-        val furigana = annotateText(japanese, wordMap, newlineAsBr = true)
+        val furigana = annotateText(japanese, wordMap, newlineAsBr = true, sourceLangId = sourceLangId)
         val sorted = if (highlightedWords.isNotEmpty()) {
             words.sortedByDescending { it.word in highlightedWords }
         } else words
@@ -107,12 +113,15 @@ object SentenceAnkiHtmlBuilder {
 
     fun annotateText(
         text: String, wordMap: Map<String, String>,
-        newlineAsBr: Boolean, highlightedWords: Set<String> = emptySet()
+        newlineAsBr: Boolean, highlightedWords: Set<String> = emptySet(),
+        sourceLangId: SourceLangId = SourceLangId.JA
     ): String {
         if (wordMap.isEmpty()) return text
         val sortedWords = wordMap.entries
             .filter { it.key.isNotEmpty() }
             .sortedByDescending { it.key.length }
+        val useDeinflection = sourceLangId == SourceLangId.JA
+        val useRuby = sourceLangId == SourceLangId.JA || sourceLangId == SourceLangId.ZH
         val sb = StringBuilder()
         var i = 0
         while (i < text.length) {
@@ -126,9 +135,9 @@ object SentenceAnkiHtmlBuilder {
             if (direct != null) {
                 val (w, r) = direct
                 val isBold = w in highlightedWords
-                val hasKanji = w.any { it in '\u4e00'..'\u9fff' || it in '\u3400'..'\u4dbf' }
                 if (isBold) sb.append("<span style=\"font-weight:800;\">")
-                if (hasKanji && r.isNotEmpty() && r != w) {
+                val hasCjk = w.any { it in '\u4e00'..'\u9fff' || it in '\u3400'..'\u4dbf' }
+                if (useRuby && hasCjk && r.isNotEmpty() && r != w) {
                     sb.append("<ruby>$w<rt>$r</rt></ruby>")
                 } else {
                     sb.append(w)
@@ -137,33 +146,36 @@ object SentenceAnkiHtmlBuilder {
                 i += w.length
                 continue
             }
-            val isJapanese = c in '\u3000'..'\u9fff' || c in '\uf900'..'\ufaff'
-            if (isJapanese) {
-                val maxEnd = minOf(i + 12, text.length)
-                var deinflected = false
-                for (end in maxEnd downTo i + 1) {
-                    val sub = text.substring(i, end)
-                    val matchedEntry = Deinflector.candidates(sub)
-                        .asSequence()
-                        .mapNotNull { cand -> sortedWords.firstOrNull { it.key == cand.text } }
-                        .firstOrNull()
-                    if (matchedEntry != null) {
-                        val isBold = matchedEntry.key in highlightedWords
-                        val r = matchedEntry.value
-                        val hasKanji = sub.any { it in '\u4e00'..'\u9fff' || it in '\u3400'..'\u4dbf' }
-                        if (isBold) sb.append("<span style=\"font-weight:800;\">")
-                        if (hasKanji && r.isNotEmpty() && r != sub) {
-                            sb.append("<ruby>$sub<rt>$r</rt></ruby>")
-                        } else {
-                            sb.append(sub)
+            // Deinflection fallback: only for Japanese (Kuromoji-based)
+            if (useDeinflection) {
+                val isCjk = c in '\u3000'..'\u9fff' || c in '\uf900'..'\ufaff'
+                if (isCjk) {
+                    val maxEnd = minOf(i + 12, text.length)
+                    var deinflected = false
+                    for (end in maxEnd downTo i + 1) {
+                        val sub = text.substring(i, end)
+                        val matchedEntry = Deinflector.candidates(sub)
+                            .asSequence()
+                            .mapNotNull { cand -> sortedWords.firstOrNull { it.key == cand.text } }
+                            .firstOrNull()
+                        if (matchedEntry != null) {
+                            val isBold = matchedEntry.key in highlightedWords
+                            val r = matchedEntry.value
+                            val subHasCjk = sub.any { it in '\u4e00'..'\u9fff' || it in '\u3400'..'\u4dbf' }
+                            if (isBold) sb.append("<span style=\"font-weight:800;\">")
+                            if (subHasCjk && r.isNotEmpty() && r != sub) {
+                                sb.append("<ruby>$sub<rt>$r</rt></ruby>")
+                            } else {
+                                sb.append(sub)
+                            }
+                            if (isBold) sb.append("</span>")
+                            i = end
+                            deinflected = true
+                            break
                         }
-                        if (isBold) sb.append("</span>")
-                        i = end
-                        deinflected = true
-                        break
                     }
+                    if (deinflected) continue
                 }
-                if (deinflected) continue
             }
             sb.append(c)
             i++

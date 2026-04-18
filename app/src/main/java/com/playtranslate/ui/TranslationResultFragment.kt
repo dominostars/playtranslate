@@ -347,7 +347,8 @@ class TranslationResultFragment : Fragment() {
                     .show()
             else ->
                 AnkiReviewBottomSheet.newInstance(
-                    getDisplayedOriginalText(), result.translatedText, mainWordResults, result.screenshotPath
+                    getDisplayedOriginalText(), result.translatedText, mainWordResults,
+                    result.screenshotPath, prefs.sourceLangId
                 ).show(childFragmentManager, AnkiReviewBottomSheet.TAG)
         }
     }
