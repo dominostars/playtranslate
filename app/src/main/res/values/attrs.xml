@@ -15,4 +15,23 @@
     <attr name="colorTextLink"        format="color" />
     <!-- Text color for content drawn ON top of the accent/primary button color. -->
     <attr name="colorTextOnAccent"    format="color" />
+
+    <!-- Semantic design-system tokens (Stage 1 of the redesign).
+         Light & Dark themes both populate these to a consistent shape so
+         layouts can be written against ?attr/ptBg, ?attr/ptText, etc. without
+         caring which of the 4 legacy themes is active. -->
+    <attr name="ptBg"         format="color" />
+    <attr name="ptSurface"    format="color" />
+    <attr name="ptCard"       format="color" />
+    <attr name="ptDivider"    format="color" />
+    <attr name="ptOutline"    format="color" />
+    <attr name="ptText"       format="color" />
+    <attr name="ptTextMuted"  format="color" />
+    <attr name="ptTextHint"   format="color" />
+    <attr name="ptAccent"     format="color" />
+    <attr name="ptAccentOn"   format="color" />
+
+    <!-- Shared radius token (dimens would be more idiomatic, but attr keeps
+         it themeable per-variant in case a future theme wants a different radius). -->
+    <attr name="ptRadius"     format="dimension" />
 </resources>

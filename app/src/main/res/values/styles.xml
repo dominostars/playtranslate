@@ -32,6 +32,19 @@
         <item name="android:textColor">?attr/colorTextPrimary</item>
         <item name="android:fontFamily">sans-serif</item>
         <item name="materialSwitchStyle">@style/Widget.PlayTranslate.MaterialSwitch</item>
+
+        <!-- ── Semantic tokens (Dark) ─────────────────────────────────── -->
+        <item name="ptBg">?attr/colorBgDark</item>
+        <item name="ptSurface">?attr/colorBgSurface</item>
+        <item name="ptCard">?attr/colorBgCard</item>
+        <item name="ptDivider">?attr/colorBgDivider</item>
+        <item name="ptOutline">?attr/colorBgDivider</item>
+        <item name="ptText">?attr/colorTextPrimary</item>
+        <item name="ptTextMuted">?attr/colorTextSecondary</item>
+        <item name="ptTextHint">?attr/colorTextHint</item>
+        <item name="ptAccent">?attr/colorAccentPrimary</item>
+        <item name="ptAccentOn">?attr/colorTextOnAccent</item>
+        <item name="ptRadius">14dp</item>
     </style>
 
     <!-- ── White theme ────────────────────────────────────────────────────── -->
@@ -65,6 +78,19 @@
         <item name="android:textColor">?attr/colorTextPrimary</item>
         <item name="android:fontFamily">sans-serif</item>
         <item name="materialSwitchStyle">@style/Widget.PlayTranslate.MaterialSwitch</item>
+
+        <!-- ── Semantic tokens (Light) ────────────────────────────────── -->
+        <item name="ptBg">?attr/colorBgDark</item>
+        <item name="ptSurface">?attr/colorBgSurface</item>
+        <item name="ptCard">?attr/colorBgCard</item>
+        <item name="ptDivider">?attr/colorBgDivider</item>
+        <item name="ptOutline">?attr/colorBgDivider</item>
+        <item name="ptText">?attr/colorTextPrimary</item>
+        <item name="ptTextMuted">?attr/colorTextSecondary</item>
+        <item name="ptTextHint">?attr/colorTextHint</item>
+        <item name="ptAccent">?attr/colorAccentPrimary</item>
+        <item name="ptAccentOn">?attr/colorTextOnAccent</item>
+        <item name="ptRadius">14dp</item>
     </style>
 
     <!-- ── Rainbow / Granite theme ────────────────────────────────────────── -->
@@ -98,6 +124,19 @@
         <item name="android:textColor">?attr/colorTextPrimary</item>
         <item name="android:fontFamily">sans-serif</item>
         <item name="materialSwitchStyle">@style/Widget.PlayTranslate.MaterialSwitch</item>
+
+        <!-- ── Semantic tokens (Light) ────────────────────────────────── -->
+        <item name="ptBg">?attr/colorBgDark</item>
+        <item name="ptSurface">?attr/colorBgSurface</item>
+        <item name="ptCard">?attr/colorBgCard</item>
+        <item name="ptDivider">?attr/colorBgDivider</item>
+        <item name="ptOutline">?attr/colorBgDivider</item>
+        <item name="ptText">?attr/colorTextPrimary</item>
+        <item name="ptTextMuted">?attr/colorTextSecondary</item>
+        <item name="ptTextHint">?attr/colorTextHint</item>
+        <item name="ptAccent">?attr/colorAccentPrimary</item>
+        <item name="ptAccentOn">?attr/colorTextOnAccent</item>
+        <item name="ptRadius">14dp</item>
     </style>
 
     <!-- ── Purple theme ───────────────────────────────────────────────────── -->
@@ -131,6 +170,19 @@
         <item name="android:textColor">?attr/colorTextPrimary</item>
         <item name="android:fontFamily">sans-serif</item>
         <item name="materialSwitchStyle">@style/Widget.PlayTranslate.MaterialSwitch</item>
+
+        <!-- ── Semantic tokens (Dark) ─────────────────────────────────── -->
+        <item name="ptBg">?attr/colorBgDark</item>
+        <item name="ptSurface">?attr/colorBgSurface</item>
+        <item name="ptCard">?attr/colorBgCard</item>
+        <item name="ptDivider">?attr/colorBgDivider</item>
+        <item name="ptOutline">?attr/colorBgDivider</item>
+        <item name="ptText">?attr/colorTextPrimary</item>
+        <item name="ptTextMuted">?attr/colorTextSecondary</item>
+        <item name="ptTextHint">?attr/colorTextHint</item>
+        <item name="ptAccent">?attr/colorAccentPrimary</item>
+        <item name="ptAccentOn">?attr/colorTextOnAccent</item>
+        <item name="ptRadius">14dp</item>
     </style>
 
     <!-- ── Full-screen dialog overlays (one per theme) ────────────────────── -->
