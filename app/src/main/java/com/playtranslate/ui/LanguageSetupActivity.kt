@@ -160,7 +160,7 @@ class LanguageSetupActivity : AppCompatActivity() {
         val container = view.findViewById<LinearLayout>(R.id.languageListContainer)
 
         val allLangs = TranslateLanguage.getAllLanguages()
-            .map { code -> code to langDisplayName(code) }
+            .map { code -> code to targetDisplayName(code) }
             .sortedBy { it.second }
 
         for ((code, displayName) in allLangs) {
@@ -377,6 +377,12 @@ class LanguageSetupActivity : AppCompatActivity() {
     private fun langDisplayName(code: String): String =
         Locale(code).getDisplayLanguage(Locale.ENGLISH)
             .replaceFirstChar { it.uppercase() }
+
+    /** Display name for target languages — adds variant qualifiers where needed. */
+    private fun targetDisplayName(code: String): String = when (code) {
+        "zh" -> "Chinese (Simplified)"
+        else -> langDisplayName(code)
+    }
 
     interface Delegate {
         fun onSourceSelectionDone(sourceId: SourceLangId)

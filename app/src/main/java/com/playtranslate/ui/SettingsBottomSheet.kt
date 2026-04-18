@@ -697,7 +697,7 @@ class SettingsBottomSheet : DialogFragment() {
 
         val sourceName = SourceLanguageProfiles.forCode(prefs.sourceLang)?.displayName
             ?: langDisplayName(prefs.sourceLang)
-        val targetName = langDisplayName(prefs.targetLang)
+        val targetName = if (prefs.targetLang == "zh") "Chinese (Simplified)" else langDisplayName(prefs.targetLang)
 
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL

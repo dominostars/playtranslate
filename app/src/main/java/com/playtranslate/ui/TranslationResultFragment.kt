@@ -280,7 +280,7 @@ class TranslationResultFragment : Fragment() {
         applyOriginalVisibility()
         applyWordsVisibility()
         labelOriginal.text    = langDisplayName(selectedSourceLang())
-        labelTranslation.text = langDisplayName(selectedTargetLang())
+        labelTranslation.text = targetLangDisplayName()
         statusContainer.visibility = View.GONE
         resultsContent.visibility  = View.INVISIBLE
         resultActionButtons.visibility = View.VISIBLE
@@ -684,7 +684,7 @@ class TranslationResultFragment : Fragment() {
         tvOriginal.setSegments(segments)
         tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
         labelOriginal.text = langDisplayName(selectedSourceLang())
-        labelTranslation.text = langDisplayName(selectedTargetLang())
+        labelTranslation.text = targetLangDisplayName()
         statusContainer.visibility = View.GONE
         resultsContent.visibility = View.VISIBLE
         resultActionButtons.visibility = View.VISIBLE
@@ -940,6 +940,11 @@ class TranslationResultFragment : Fragment() {
     private fun langDisplayName(langCode: String): String =
         Locale(langCode).getDisplayLanguage(Locale.ENGLISH)
             .replaceFirstChar { it.uppercase() }
+
+    private fun targetLangDisplayName(): String {
+        val code = selectedTargetLang()
+        return if (code == "zh") "Chinese (Simplified)" else langDisplayName(code)
+    }
 
     private fun copyToClipboard(text: String) {
         val ctx = context ?: return
