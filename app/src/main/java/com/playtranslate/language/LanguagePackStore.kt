@@ -136,18 +136,9 @@ object LanguagePackStore {
                 return@withContext InstallResult.Failed(it)
             }
 
-            // 5. Atomic-ish swap. Not POSIX-atomic (delete + rename is two
-            //    operations), but safe under interruption: the partial state
-            //    either keeps the old pack or surfaces an absent pack on
-            //    next boot, which LanguagePackStore.isInstalled treats as
-            //    uninstalled. Next install retry works cleanly.
-            if (finalDir.exists()) finalDir.deleteRecursively()
-            val renamed = try { tmpDir.renameTo(finalDir) } catch (_: Exception) { false }
-            if (!renamed) {
-                // Cross-mount or permission fallback: copy then delete.
-                copyDirectory(tmpDir, finalDir)
-                tmpDir.deleteRecursively()
-            }
+            // 5. Rollback-safe swap: old pack is backed up, new pack promoted,
+            //    backup deleted only after the new pack is confirmed in place.
+            safeSwap(tmpDir, finalDir)
 
             Log.d(TAG, "Installed pack ${id.code} from $url (${zipFile.length()} bytes)")
             InstallResult.Success
@@ -210,13 +201,8 @@ object LanguagePackStore {
                 return@withContext InstallResult.Failed(it)
             }
 
-            // 5. Atomic-ish swap
-            if (finalDir.exists()) finalDir.deleteRecursively()
-            val renamed = try { tmpDir.renameTo(finalDir) } catch (_: Exception) { false }
-            if (!renamed) {
-                copyDirectory(tmpDir, finalDir)
-                tmpDir.deleteRecursively()
-            }
+            // 5. Rollback-safe swap
+            safeSwap(tmpDir, finalDir)
 
             Log.d(TAG, "Installed target pack $catalogKey from $url (${zipFile.length()} bytes)")
             InstallResult.Success
@@ -263,6 +249,46 @@ object LanguagePackStore {
             }
         }
         return null
+    }
+
+    /**
+     * Rollback-safe directory swap: moves [tmpDir] into [finalDir] without
+     * deleting the old pack until the new one is confirmed in place.
+     * If the swap fails, the old pack is restored so the user never loses
+     * a working install.
+     */
+    private fun safeSwap(tmpDir: File, finalDir: File) {
+        val backupDir = File(finalDir.parentFile, finalDir.name + ".old")
+        if (backupDir.exists()) backupDir.deleteRecursively()
+
+        // Step 1: move old pack to backup (if it exists)
+        if (finalDir.exists()) {
+            val backedUp = try { finalDir.renameTo(backupDir) } catch (_: Exception) { false }
+            if (!backedUp) {
+                copyDirectory(finalDir, backupDir)
+                finalDir.deleteRecursively()
+            }
+        }
+
+        // Step 2: promote new pack
+        val promoted = try { tmpDir.renameTo(finalDir) } catch (_: Exception) { false }
+        if (!promoted) {
+            try {
+                copyDirectory(tmpDir, finalDir)
+                tmpDir.deleteRecursively()
+            } catch (e: Exception) {
+                // Promotion failed — restore from backup
+                if (backupDir.exists() && !finalDir.exists()) {
+                    try { backupDir.renameTo(finalDir) } catch (_: Exception) {
+                        copyDirectory(backupDir, finalDir)
+                    }
+                }
+                throw e
+            }
+        }
+
+        // Step 3: delete backup (new pack is confirmed)
+        if (backupDir.exists()) backupDir.deleteRecursively()
     }
 
     private fun copyDirectory(src: File, dst: File) {
