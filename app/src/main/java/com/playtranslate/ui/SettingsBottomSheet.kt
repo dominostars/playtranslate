@@ -38,6 +38,7 @@ import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.diagnostics.LogExporter
 import com.playtranslate.fullScreenDialogTheme
+import androidx.core.content.ContextCompat
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
@@ -976,11 +977,12 @@ class SettingsBottomSheet : DialogFragment() {
     )
 
     private fun buildThemePicker(container: LinearLayout, prefs: Prefs) {
+        val c = { id: Int -> ContextCompat.getColor(requireContext(), id) }
         val themes = listOf(
-            ThemeOption("Black",   0, Color.parseColor("#0D0D0D"), Color.parseColor("#00BCD4")),
-            ThemeOption("White",   1, Color.parseColor("#F0F0F0"), Color.parseColor("#1565C0")),
-            ThemeOption("Rainbow", 2, Color.parseColor("#D8D4D1"), Color.parseColor("#546E7A")),
-            ThemeOption("Purple",  3, Color.parseColor("#2E2238"), Color.parseColor("#CE93D8")),
+            ThemeOption("Black",   0, c(R.color.pt_dark_bg),  c(R.color.pt_accent_teal)),
+            ThemeOption("White",   1, c(R.color.pt_light_bg), c(R.color.pt_accent_teal)),
+            ThemeOption("Rainbow", 2, c(R.color.pt_light_bg), c(R.color.pt_accent_coral)),
+            ThemeOption("Purple",  3, c(R.color.pt_dark_bg),  c(R.color.pt_accent_purple)),
         )
 
         val ctx = requireContext()

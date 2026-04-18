@@ -4,6 +4,7 @@ import android.app.Dialog
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import com.playtranslate.themeColor
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
@@ -83,7 +84,7 @@ fun showAnkiNotInstalledDialog(context: Context) {
     val card = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         background = GradientDrawable().apply {
-            setColor(Color.parseColor("#F0222222"))
+            setColor(context.themeColor(R.attr.ptElevated))
             cornerRadius = dpf(16)
         }
         elevation = dpf(12)
@@ -94,7 +95,7 @@ fun showAnkiNotInstalledDialog(context: Context) {
     // Title
     card.addView(TextView(context).apply {
         text = context.getString(R.string.anki_not_installed_title)
-        setTextColor(Color.WHITE)
+        setTextColor(context.themeColor(R.attr.ptText))
         textSize = 17f
         gravity = Gravity.CENTER
         setTypeface(null, Typeface.BOLD)
@@ -110,7 +111,7 @@ fun showAnkiNotInstalledDialog(context: Context) {
     // Subtitle
     card.addView(TextView(context).apply {
         text = context.getString(R.string.anki_not_installed_message)
-        setTextColor(Color.parseColor("#AAAAAA"))
+        setTextColor(context.themeColor(R.attr.ptTextMuted))
         textSize = 13f
         gravity = Gravity.CENTER
         layoutParams = LinearLayout.LayoutParams(
@@ -132,10 +133,10 @@ fun showAnkiNotInstalledDialog(context: Context) {
     // "Get AnkiDroid" button
     card.addView(Button(context).apply {
         text = context.getString(R.string.anki_not_installed_get)
-        setTextColor(Color.WHITE)
+        setTextColor(context.themeColor(R.attr.ptAccentOn))
         textSize = 14f
         background = GradientDrawable().apply {
-            setColor(Color.parseColor("#D4A020"))
+            setColor(context.themeColor(R.attr.ptWarning))
             cornerRadius = dpf(8)
         }
         isAllCaps = false
@@ -154,7 +155,7 @@ fun showAnkiNotInstalledDialog(context: Context) {
     // Cancel button
     card.addView(Button(context).apply {
         text = context.getString(android.R.string.cancel)
-        setTextColor(Color.parseColor("#AAAAAA"))
+        setTextColor(context.themeColor(R.attr.ptTextMuted))
         textSize = 14f
         setBackgroundColor(Color.TRANSPARENT)
         isAllCaps = false

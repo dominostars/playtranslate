@@ -655,7 +655,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         }
     }
 
-    private val liveRedColor = android.graphics.Color.parseColor("#C95050")
+    private val liveRedColor by lazy { themeColor(R.attr.ptDanger) }
 
     private fun updateMenuLiveItem() {
         if (isLiveMode) {
@@ -1021,7 +1021,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         OverlayAlert.Builder(this)
             .setTitle("PlayTranslate crashed previously")
             .setMessage("Send the crash report to the developer? It includes a stack trace, recent app logs, and any text PlayTranslate has recently OCR'd or looked up. No account info.")
-            .addButton("Send", android.graphics.Color.parseColor("#5DB2EB")) {
+            .addButton("Send", themeColor(R.attr.ptAccent)) {
                 lifecycleScope.launch {
                     val files = withContext(Dispatchers.IO) {
                         runCatching {
@@ -1043,14 +1043,14 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             .addButton(
                 "Later",
                 android.graphics.Color.TRANSPARENT,
-                android.graphics.Color.parseColor("#AAAAAA")
+                themeColor(R.attr.ptTextMuted)
             ) {
                 // No action — files remain, prompt re-fires next launch.
             }
             .addButton(
                 "Discard",
                 android.graphics.Color.TRANSPARENT,
-                android.graphics.Color.parseColor("#AAAAAA")
+                themeColor(R.attr.ptTextMuted)
             ) {
                 LogExporter.deleteCrashFiles(this)
             }
@@ -1071,7 +1071,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         OverlayAlert.Builder(this)
             .setTitle("Update available")
             .setMessage("PlayTranslate ${release.tag} is available on GitHub.")
-            .addButton("View release", android.graphics.Color.parseColor("#5DB2EB")) {
+            .addButton("View release", themeColor(R.attr.ptAccent)) {
                 try {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(release.url)))
                 } catch (_: Exception) {
@@ -1081,7 +1081,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             .addButton(
                 "Ask again later",
                 android.graphics.Color.TRANSPARENT,
-                android.graphics.Color.parseColor("#AAAAAA")
+                themeColor(R.attr.ptTextMuted)
             ) {
                 // 24h debounce timestamp was already committed inside
                 // UpdateChecker.maybeCheck — no extra bookkeeping needed.
@@ -1089,7 +1089,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             .addButton(
                 "Skip this version",
                 android.graphics.Color.TRANSPARENT,
-                android.graphics.Color.parseColor("#AAAAAA")
+                themeColor(R.attr.ptTextMuted)
             ) {
                 prefs.updateCheckSkippedTag = release.tag
             }
@@ -1102,7 +1102,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             .setMessage(getString(R.string.restricted_settings_message))
             .addButton(
                 getString(R.string.btn_open_app_settings),
-                android.graphics.Color.parseColor("#5DB2EB")
+                themeColor(R.attr.ptAccent)
             ) {
                 val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                     data = Uri.fromParts("package", packageName, null)

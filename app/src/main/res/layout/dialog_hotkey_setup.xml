@@ -11,7 +11,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Set Hotkey"
-        android:textColor="#FFFFFF"
+        android:textColor="@color/pt_dark_text"
         android:textSize="14sp"
         android:textStyle="bold"
         android:gravity="center" />
@@ -20,7 +20,7 @@
         android:id="@+id/tvTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textColor="#FFFFFF"
+        android:textColor="@color/pt_dark_text"
         android:textSize="17sp"
         android:textStyle="bold"
         android:gravity="center" />
@@ -30,7 +30,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Hold down key(s) for 2 seconds"
-        android:textColor="#5DB2EB"
+        android:textColor="@color/pt_accent_teal"
         android:textSize="20sp"
         android:textStyle="bold"
         android:gravity="center"
@@ -42,7 +42,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:visibility="gone"
-        android:textColor="#E04040"
+        android:textColor="@color/pt_dark_danger"
         android:textSize="23sp"
         android:layout_marginTop="8dp" />
 
@@ -51,7 +51,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Cancel"
-        android:textColor="#CCCCCC"
+        android:textColor="@color/pt_dark_text_muted"
         android:textSize="14sp"
         android:textStyle="bold"
         android:layout_marginTop="24dp"
