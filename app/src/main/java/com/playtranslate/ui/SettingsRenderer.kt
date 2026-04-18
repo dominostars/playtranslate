@@ -105,8 +105,9 @@ class SettingsRenderer(
     private val tvAnkiSectionTitle: TextView = root.findViewById(R.id.tvAnkiSectionTitle)
 
     private val llThemePicker: LinearLayout = root.findViewById(R.id.llThemePicker)
-    private val llSupportLinks: LinearLayout = root.findViewById(R.id.llSupportLinks)
-    private val settingsScrollView: android.widget.ScrollView = root.findViewById(R.id.settingsScrollView)
+    private val rowDiscord: View = root.findViewById(R.id.rowDiscord)
+    private val rowDonate: View = root.findViewById(R.id.rowDonate)
+    private val settingsScrollView: androidx.core.widget.NestedScrollView = root.findViewById(R.id.settingsScrollView)
 
     private val llDebugSection: LinearLayout = root.findViewById(R.id.llDebugSection)
 
@@ -560,13 +561,11 @@ class SettingsRenderer(
             }
         })
 
-        addLinkRow(
-            root.findViewById(R.id.llDeeplLink),
-            "Get free DeepL API key",
+        val rowDeeplLink = root.findViewById<View>(R.id.rowDeeplLink)
+        wireLinkRow(rowDeeplLink, "Get free DeepL API key",
             "Adding a DeepL API key potentially improves online translations. " +
                 "The free plan requires a credit card and includes 500,000 characters per month.",
-            "https://www.deepl.com/en/pro#developer"
-        )
+            "https://www.deepl.com/en/pro#developer")
     }
 
     // ── Anki section ─────────────────────────────────────────────────────
@@ -760,28 +759,14 @@ class SettingsRenderer(
 
     private fun setupSupportSection() {
         val appName = ctx.getString(R.string.app_name)
-        addLinkRow(
-            llSupportLinks,
-            "Join Discord",
-            "Feedback, bugs, requests, updates!",
-            "https://go.playtranslate.com/discord"
-        )
-        addLinkRow(
-            llSupportLinks,
-            "Support Me",
-            ctx.getString(R.string.support_donate_subtitle, appName),
-            "https://go.playtranslate.com/donate"
-        )
 
-        // Version text
-        val versionName = BuildConfig.VERSION_NAME
-        llSupportLinks.addView(TextView(ctx).apply {
-            text = "$appName v$versionName"
-            setTextColor(ctx.themeColor(R.attr.ptTextHint))
-            textSize = 12f
-            gravity = Gravity.CENTER
-            setPadding(0, (12 * ctx.resources.displayMetrics.density).toInt(), 0, 0)
-        })
+        wireLinkRow(rowDiscord, "Join Discord",
+            "Feedback, bugs, requests, updates!",
+            "https://go.playtranslate.com/discord")
+
+        wireLinkRow(rowDonate, "Support Me",
+            ctx.getString(R.string.support_donate_subtitle, appName),
+            "https://go.playtranslate.com/donate")
     }
 
     // ── Diagnostics ──────────────────────────────────────────────────────
@@ -938,15 +923,15 @@ class SettingsRenderer(
 
     // ── Private helpers ──────────────────────────────────────────────────
 
-    /** Add a link row using the settings_row_link template. Opens a URL on tap, copies on long-press. */
-    private fun addLinkRow(
-        container: LinearLayout,
-        title: String,
-        subtitle: String,
-        url: String
-    ) {
-        val row = LayoutInflater.from(ctx)
-            .inflate(R.layout.settings_row_link, container, false)
+    /** Add a 1dp inset divider to a container (for dynamically-built row lists). */
+    private fun addInsetDivider(container: LinearLayout) {
+        val divider = LayoutInflater.from(ctx)
+            .inflate(R.layout.settings_row_divider, container, false)
+        container.addView(divider)
+    }
+
+    /** Wire an existing link row view (from <include>) with title, subtitle, and URL. */
+    private fun wireLinkRow(row: View, title: String, subtitle: String, url: String) {
         row.findViewById<TextView>(R.id.tvRowTitle).text = title
         val tvSub = row.findViewById<TextView>(R.id.tvRowSubtitle)
         if (subtitle.isNotEmpty()) {
@@ -963,6 +948,13 @@ class SettingsRenderer(
             Toast.makeText(ctx, "Link copied", Toast.LENGTH_SHORT).show()
             true
         }
+    }
+
+    /** Inflate and add a link row dynamically to a container. For sections with variable content. */
+    private fun addLinkRow(container: LinearLayout, title: String, subtitle: String, url: String) {
+        val row = LayoutInflater.from(ctx)
+            .inflate(R.layout.settings_row_link, container, false)
+        wireLinkRow(row, title, subtitle, url)
         container.addView(row)
     }
 

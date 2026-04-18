@@ -11,7 +11,7 @@ import android.view.LayoutInflater
 import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ScrollView
+import androidx.core.widget.NestedScrollView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
@@ -127,7 +127,6 @@ class SettingsBottomSheet : DialogFragment() {
         // Toolbar (dialog mode only)
         if (isDialog) {
             view.findViewById<View>(R.id.settingsToolbar).visibility = View.VISIBLE
-            view.findViewById<View>(R.id.settingsToolbarDivider).visibility = View.VISIBLE
             if (!Prefs.hasMultipleDisplays(requireContext())) {
                 view.findViewById<android.widget.TextView>(R.id.tvSettingsTitle)
                     .text = getString(R.string.app_name)
@@ -148,7 +147,7 @@ class SettingsBottomSheet : DialogFragment() {
         }
 
         // Scroll position restore after theme change
-        val settingsScrollView = view.findViewById<ScrollView>(R.id.settingsScrollView)
+        val settingsScrollView = view.findViewById<NestedScrollView>(R.id.settingsScrollView)
         val savedScroll = prefs.settingsScrollY
         if (savedScroll > 0) {
             fun tryRestore() {

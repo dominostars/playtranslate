@@ -1,59 +1,60 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
+<androidx.coordinatorlayout.widget.CoordinatorLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
     android:background="?attr/ptBg">
 
-    <!-- Toolbar (shown only in dialog mode) -->
-    <LinearLayout
+    <!-- Toolbar (shown only in dialog mode).
+         liftOnScroll replaces the old static divider: a subtle surface-tint
+         shadow appears when content scrolls under the toolbar. -->
+    <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/settingsToolbar"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingStart="16dp"
-        android:paddingEnd="4dp"
+        android:layout_height="wrap_content"
+        android:background="?attr/ptBg"
+        app:liftOnScroll="true"
+        app:liftOnScrollTargetViewId="@id/settingsScrollView"
         android:visibility="gone">
 
-        <TextView
-            android:id="@+id/tvSettingsTitle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/settings_title"
-            android:textColor="?attr/ptText"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/settingsToolbarInner"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            app:titleTextColor="?attr/ptText">
 
-        <Button
-            android:id="@+id/btnCloseSettings"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:text="&#x2715;"
-            android:textColor="?attr/ptText"
-            android:textSize="18sp"
-            android:minWidth="0dp"
-            android:minHeight="0dp"
-            android:padding="0dp" />
-    </LinearLayout>
+            <TextView
+                android:id="@+id/tvSettingsTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_title"
+                android:textColor="?attr/ptText"
+                android:textSize="18sp"
+                android:textStyle="bold" />
 
-    <View
-        android:id="@+id/settingsToolbarDivider"
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="?attr/ptDivider"
-        android:visibility="gone" />
+            <Button
+                android:id="@+id/btnCloseSettings"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="end"
+                android:text="&#x2715;"
+                android:textColor="?attr/ptText"
+                android:textSize="18sp"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:padding="0dp" />
+
+        </com.google.android.material.appbar.MaterialToolbar>
+    </com.google.android.material.appbar.AppBarLayout>
 
     <!-- Scrollable content -->
-    <ScrollView
+    <androidx.core.widget.NestedScrollView
         android:id="@+id/settingsScrollView"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -422,12 +423,8 @@
 
                     <include layout="@layout/settings_row_divider" />
 
-                    <!-- DeepL link row (populated dynamically) -->
-                    <LinearLayout
-                        android:id="@+id/llDeeplLink"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical" />
+                    <include layout="@layout/settings_row_link"
+                        android:id="@+id/rowDeeplLink" />
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
@@ -531,10 +528,19 @@
                 app:strokeWidth="1dp">
 
                 <LinearLayout
-                    android:id="@+id/llSupportLinks"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical" />
+                    android:orientation="vertical">
+
+                    <include layout="@layout/settings_row_link"
+                        android:id="@+id/rowDiscord" />
+
+                    <include layout="@layout/settings_row_divider" />
+
+                    <include layout="@layout/settings_row_link"
+                        android:id="@+id/rowDonate" />
+
+                </LinearLayout>
 
             </com.google.android.material.card.MaterialCardView>
 
@@ -619,5 +625,5 @@
             <include layout="@layout/settings_footer" />
 
         </LinearLayout>
-    </ScrollView>
-</LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
