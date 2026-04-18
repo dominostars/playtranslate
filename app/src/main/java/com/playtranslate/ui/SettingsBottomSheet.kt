@@ -195,6 +195,11 @@ class SettingsBottomSheet : DialogFragment() {
                     dialog.onCancelled = onCancel
                     dialog.show(childFragmentManager, "hotkey_setup")
                 }
+                override fun showAnkiDeckPicker(onDeckSelected: () -> Unit) {
+                    val picker = AnkiDeckPickerDialog.newInstance()
+                    picker.onDeckSelected = onDeckSelected
+                    picker.show(childFragmentManager, AnkiDeckPickerDialog.TAG)
+                }
                 override fun getScrollY(): Int = settingsScrollView.scrollY
             }
         )

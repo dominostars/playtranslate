@@ -473,14 +473,10 @@
                         android:orientation="vertical"
                         android:visibility="gone" />
 
-                    <Spinner
-                        android:id="@+id/spinnerAnkiDeck"
+                    <include layout="@layout/settings_row_value"
+                        android:id="@+id/rowAnkiDeck"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:paddingHorizontal="@dimen/pt_row_h_padding"
-                        android:paddingVertical="@dimen/pt_row_v_padding"
-                        android:background="?attr/ptCard"
-                        android:popupBackground="?attr/ptCard"
                         android:visibility="gone" />
 
                 </LinearLayout>

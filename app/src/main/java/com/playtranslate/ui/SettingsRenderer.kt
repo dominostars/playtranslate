@@ -13,13 +13,10 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -69,6 +66,7 @@ class SettingsRenderer(
         fun requestAnkiPermission()
         fun openLanguageSetup(mode: String)
         fun showHotkeyDialog(title: String?, onSet: (List<Int>) -> Unit, onCancel: () -> Unit)
+        fun showAnkiDeckPicker(onDeckSelected: () -> Unit)
         fun getScrollY(): Int
     }
 
@@ -101,7 +99,7 @@ class SettingsRenderer(
 
     private val llAnkiGetApp: LinearLayout = root.findViewById(R.id.llAnkiGetApp)
     private val llAnkiPermission: LinearLayout = root.findViewById(R.id.llAnkiPermission)
-    private val spinnerAnkiDeck: Spinner = root.findViewById(R.id.spinnerAnkiDeck)
+    private val rowAnkiDeck: View = root.findViewById(R.id.rowAnkiDeck)
     private val tvAnkiSectionTitle: TextView = root.findViewById(R.id.tvAnkiSectionTitle)
 
     private val llThemePicker: LinearLayout = root.findViewById(R.id.llThemePicker)
@@ -586,13 +584,13 @@ class SettingsRenderer(
 
         when {
             !installed -> {
-                tvAnkiSectionTitle.text = "ANKI"
+                tvAnkiSectionTitle.visibility = View.GONE
                 llAnkiPermission.visibility = View.GONE
-                spinnerAnkiDeck.visibility = View.GONE
+                rowAnkiDeck.visibility = View.GONE
             }
 
             !ankiManager.hasPermission() -> {
-                tvAnkiSectionTitle.text = "ANKI"
+                tvAnkiSectionTitle.visibility = View.GONE
                 llAnkiPermission.removeAllViews()
                 addClickableRow(
                     llAnkiPermission,
@@ -603,50 +601,31 @@ class SettingsRenderer(
                     onClick = { callbacks.requestAnkiPermission() }
                 )
                 llAnkiPermission.visibility = View.VISIBLE
-                spinnerAnkiDeck.visibility = View.GONE
+                rowAnkiDeck.visibility = View.GONE
             }
 
             else -> {
-                tvAnkiSectionTitle.text = "ANKI DECK"
+                tvAnkiSectionTitle.visibility = View.GONE
                 llAnkiPermission.visibility = View.GONE
-                if (spinnerAnkiDeck.visibility != View.VISIBLE) loadAnkiDecks()
+                setupAnkiDeckRow()
             }
         }
     }
 
-    private fun loadAnkiDecks() {
-        llAnkiPermission.visibility = View.GONE
-        spinnerAnkiDeck.visibility = View.GONE
-
-        lifecycleScope.launch {
-            val decks = withContext(Dispatchers.IO) { AnkiManager(ctx).getDecks() }
-            if (decks.isEmpty()) return@launch
-
-            deckEntries = decks.entries.toList()
-            spinnerAnkiDeck.adapter = ArrayAdapter(
-                ctx,
-                android.R.layout.simple_spinner_dropdown_item,
-                deckEntries.map { it.value }
-            )
-
-            val savedIdx =
-                deckEntries.indexOfFirst { it.key == prefs.ankiDeckId }.takeIf { it >= 0 } ?: 0
-            spinnerAnkiDeck.setSelection(savedIdx)
-
-            spinnerAnkiDeck.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(
-                    parent: AdapterView<*>?, v: View?, pos: Int, id: Long
-                ) {
-                    val entry = deckEntries.getOrNull(pos) ?: return
-                    prefs.ankiDeckId = entry.key
-                    prefs.ankiDeckName = entry.value
-                }
-
-                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-            }
-
-            spinnerAnkiDeck.visibility = View.VISIBLE
+    private fun setupAnkiDeckRow() {
+        rowAnkiDeck.findViewById<TextView>(R.id.tvRowTitle).text = "Deck"
+        val deckName = prefs.ankiDeckName.ifEmpty { "Not selected" }
+        rowAnkiDeck.findViewById<TextView>(R.id.tvRowValue).text = deckName
+        rowAnkiDeck.setOnClickListener {
+            callbacks.showAnkiDeckPicker { refreshAnkiDeckValue() }
         }
+        rowAnkiDeck.visibility = View.VISIBLE
+    }
+
+    private fun refreshAnkiDeckValue() {
+        val freshPrefs = Prefs(ctx)
+        val deckName = freshPrefs.ankiDeckName.ifEmpty { "Not selected" }
+        rowAnkiDeck.findViewById<TextView>(R.id.tvRowValue).text = deckName
     }
 
     // ── Appearance ───────────────────────────────────────────────────────
