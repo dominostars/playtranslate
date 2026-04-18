@@ -257,7 +257,7 @@ object LanguagePackStore {
      * If the swap fails, the old pack is restored so the user never loses
      * a working install.
      */
-    private fun safeSwap(tmpDir: File, finalDir: File) {
+    internal fun safeSwap(tmpDir: File, finalDir: File) {
         val backupDir = File(finalDir.parentFile, finalDir.name + ".old")
         if (backupDir.exists()) backupDir.deleteRecursively()
 
