@@ -39,6 +39,7 @@ import com.playtranslate.R
 import com.playtranslate.diagnostics.LogExporter
 import com.playtranslate.fullScreenDialogTheme
 import com.playtranslate.language.HintTextKind
+import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.themeColor
 import android.content.Intent
@@ -695,9 +696,11 @@ class SettingsBottomSheet : DialogFragment() {
         val prefs = Prefs(ctx)
         llLanguageList.removeAllViews()
 
-        val sourceName = SourceLanguageProfiles.forCode(prefs.sourceLang)?.displayName
+        val sourceName = SourceLangId.fromCode(prefs.sourceLang)?.displayName()
             ?: langDisplayName(prefs.sourceLang)
-        val targetName = if (prefs.targetLang == "zh") "Chinese (Simplified)" else langDisplayName(prefs.targetLang)
+        val targetName = java.util.Locale(prefs.targetLang)
+            .getDisplayLanguage(java.util.Locale(prefs.targetLang))
+            .replaceFirstChar { it.uppercase() }
 
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -780,7 +783,7 @@ class SettingsBottomSheet : DialogFragment() {
     }
 
     private fun langDisplayName(langCode: String): String =
-        java.util.Locale(langCode).getDisplayLanguage(java.util.Locale.ENGLISH)
+        java.util.Locale(langCode).getDisplayLanguage(java.util.Locale.getDefault())
             .replaceFirstChar { it.uppercase() }
 
     // ── Display rows ──────────────────────────────────────────────────────

@@ -71,7 +71,7 @@ class LanguageTest {
         assertEquals(OcrBackend.MLKitChinese, profile.ocrBackend)
         assertEquals(HintTextKind.PINYIN, profile.hintTextKind)
         assertEquals(false, profile.preferTraditional)
-        assertEquals("Chinese (Simplified)", profile.displayName)
+        assertEquals(SourceLangId.ZH.displayName(), profile.id.displayName())
     }
 
     @Test fun `ZH_HANT profile shares ZH traits but prefers traditional`() {
@@ -80,7 +80,7 @@ class LanguageTest {
         assertEquals(OcrBackend.MLKitChinese, profile.ocrBackend)
         assertEquals(HintTextKind.PINYIN, profile.hintTextKind)
         assertEquals(true, profile.preferTraditional)
-        assertEquals("Chinese (Traditional)", profile.displayName)
+        assertEquals(SourceLangId.ZH_HANT.displayName(), profile.id.displayName())
     }
 
     @Test fun `ZH_HANT shares pack with ZH`() {

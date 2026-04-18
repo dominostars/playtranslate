@@ -938,12 +938,13 @@ class TranslationResultFragment : Fragment() {
         Prefs(requireContext().applicationContext).targetLang
 
     private fun langDisplayName(langCode: String): String =
-        Locale(langCode).getDisplayLanguage(Locale.ENGLISH)
+        Locale(langCode).getDisplayLanguage(Locale.getDefault())
             .replaceFirstChar { it.uppercase() }
 
     private fun targetLangDisplayName(): String {
         val code = selectedTargetLang()
-        return if (code == "zh") "Chinese (Simplified)" else langDisplayName(code)
+        return Locale(code).getDisplayLanguage(Locale(code))
+            .replaceFirstChar { it.uppercase() }
     }
 
     private fun copyToClipboard(text: String) {

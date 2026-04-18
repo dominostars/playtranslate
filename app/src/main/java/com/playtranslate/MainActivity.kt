@@ -1253,7 +1253,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     private fun langDisplayName(langCode: String): String =
-        Locale(langCode).getDisplayLanguage(Locale.ENGLISH)
+        Locale(langCode).getDisplayLanguage(Locale.getDefault())
             .replaceFirstChar { it.uppercase() }
 
     private fun showEditOverlay() {
@@ -1591,7 +1591,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         val catalogKey = "target-$target"
         if (LanguagePackCatalogLoader.entryForKey(this, catalogKey) == null) return
 
-        val targetName = java.util.Locale(target).getDisplayLanguage(java.util.Locale.ENGLISH)
+        val targetName = java.util.Locale(target).getDisplayLanguage(java.util.Locale(target))
             .replaceFirstChar { it.uppercase() }
         AlertDialog.Builder(this)
             .setTitle("$targetName definitions available")

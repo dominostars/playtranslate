@@ -106,7 +106,7 @@ class LanguageSetupActivity : AppCompatActivity() {
 
         SourceLangId.entries.forEach { id ->
             val profile = SourceLanguageProfiles[id]
-            container.addView(buildLanguageListRow(profile.displayName) {
+            container.addView(buildLanguageListRow(id.displayName()) {
                 onSourceSelected(id)
             })
         }
@@ -138,14 +138,14 @@ class LanguageSetupActivity : AppCompatActivity() {
 
         if (needsDownload) {
             showDownloadAndLoadPopup(
-                langName = SourceLanguageProfiles[id].displayName,
+                langName = id.displayName(),
                 downloadAction = { onProgress -> LanguagePackStore.install(applicationContext, id, onProgress) },
                 loadAction = sourceLoadAction,
                 onSuccess = onDone,
             )
         } else {
             showLoadingPopup(
-                langName = SourceLanguageProfiles[id].displayName,
+                langName = id.displayName(),
                 loadAction = sourceLoadAction,
                 onSuccess = onDone,
             )
@@ -375,14 +375,13 @@ class LanguageSetupActivity : AppCompatActivity() {
     }
 
     private fun langDisplayName(code: String): String =
-        Locale(code).getDisplayLanguage(Locale.ENGLISH)
+        Locale(code).getDisplayLanguage(Locale.getDefault())
             .replaceFirstChar { it.uppercase() }
 
-    /** Display name for target languages — adds variant qualifiers where needed. */
-    private fun targetDisplayName(code: String): String = when (code) {
-        "zh" -> "Chinese (Simplified)"
-        else -> langDisplayName(code)
-    }
+    /** Display name for target languages — shows the native language name. */
+    private fun targetDisplayName(code: String): String =
+        Locale(code).getDisplayLanguage(Locale(code))
+            .replaceFirstChar { it.uppercase() }
 
     interface Delegate {
         fun onSourceSelectionDone(sourceId: SourceLangId)

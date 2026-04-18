@@ -26,12 +26,17 @@ enum class SourceLangId(val code: String) {
         else -> this
     }
 
+    /** System-locale display name, e.g. "Japanese" on an English device, "日本語" on Japanese. */
+    fun displayName(): String = when (this) {
+        ZH      -> java.util.Locale.forLanguageTag("zh-Hans").getDisplayName(java.util.Locale.getDefault())
+            .replaceFirstChar { it.uppercase() }
+        ZH_HANT -> java.util.Locale.forLanguageTag("zh-Hant").getDisplayName(java.util.Locale.getDefault())
+            .replaceFirstChar { it.uppercase() }
+        else    -> java.util.Locale(code).getDisplayLanguage(java.util.Locale.getDefault())
+            .replaceFirstChar { it.uppercase() }
+    }
+
     companion object {
-        /**
-         * Defensive raw-string lookup. Tries exact match first (e.g. `"zh-Hant"`),
-         * then falls back to primary subtag (`"zh-Hant"` → `"zh"`).
-         * Returns null for blank, null, or unknown codes.
-         */
         /** Region codes that imply Traditional Chinese script. */
         private val TRADITIONAL_REGIONS = setOf("tw", "hk", "mo")
 
@@ -92,7 +97,6 @@ enum class HintTextKind {
  */
 data class SourceLanguageProfile(
     val id: SourceLangId,
-    val displayName: String,
     val scriptFamily: ScriptFamily,
     val textDirection: TextDirection,
     val ocrBackend: OcrBackend,
@@ -113,7 +117,6 @@ object SourceLanguageProfiles {
     private val all: Map<SourceLangId, SourceLanguageProfile> = mapOf(
         SourceLangId.JA to SourceLanguageProfile(
             id = SourceLangId.JA,
-            displayName = "Japanese",
             scriptFamily = ScriptFamily.CJK_JAPANESE,
             textDirection = TextDirection.LTR,
             ocrBackend = OcrBackend.MLKitJapanese,
@@ -130,7 +133,6 @@ object SourceLanguageProfiles {
         ),
         SourceLangId.EN to SourceLanguageProfile(
             id = SourceLangId.EN,
-            displayName = "English",
             scriptFamily = ScriptFamily.LATIN,
             textDirection = TextDirection.LTR,
             ocrBackend = OcrBackend.MLKitLatin,
@@ -145,7 +147,6 @@ object SourceLanguageProfiles {
         ),
         SourceLangId.ZH to SourceLanguageProfile(
             id = SourceLangId.ZH,
-            displayName = "Chinese (Simplified)",
             scriptFamily = ScriptFamily.CJK_CHINESE,
             textDirection = TextDirection.LTR,
             ocrBackend = OcrBackend.MLKitChinese,
@@ -156,7 +157,6 @@ object SourceLanguageProfiles {
         ),
         SourceLangId.ZH_HANT to SourceLanguageProfile(
             id = SourceLangId.ZH_HANT,
-            displayName = "Chinese (Traditional)",
             scriptFamily = ScriptFamily.CJK_CHINESE,
             textDirection = TextDirection.LTR,
             ocrBackend = OcrBackend.MLKitChinese,
@@ -168,7 +168,6 @@ object SourceLanguageProfiles {
         ),
         SourceLangId.ES to SourceLanguageProfile(
             id = SourceLangId.ES,
-            displayName = "Spanish",
             scriptFamily = ScriptFamily.LATIN,
             textDirection = TextDirection.LTR,
             ocrBackend = OcrBackend.MLKitLatin,
