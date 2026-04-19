@@ -31,7 +31,6 @@ import com.playtranslate.ui.FloatingIconMenu
 import com.playtranslate.ui.FloatingOverlayIcon
 import com.playtranslate.ui.OcrDebugOverlayView
 import com.playtranslate.ui.RegionDragView
-import com.playtranslate.ui.RegionOverlayView
 import com.playtranslate.ui.TranslationOverlayView
 import com.playtranslate.ui.WordLookupPopup
 import kotlinx.coroutines.CoroutineScope
@@ -58,8 +57,6 @@ import kotlinx.coroutines.launch
  */
 class PlayTranslateAccessibilityService : AccessibilityService() {
 
-    private var overlayView: RegionOverlayView? = null
-    private var overlayWm: WindowManager? = null
     private var dragView: RegionDragView? = null
     private var dragWm: WindowManager? = null
     internal var floatingIcon: FloatingOverlayIcon? = null
@@ -90,6 +87,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     private var regionEditorLabelWm: WindowManager? = null
     private var regionIndicatorView: View? = null
     private var regionIndicatorWm: WindowManager? = null
+    private var regionIndicatorPersistent = false
     private val regionIndicatorHandler = Handler(Looper.getMainLooper())
     private val debugOcrManager get() = OcrManager.instance
     private val debugHandler = Handler(Looper.getMainLooper())
@@ -154,7 +152,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         stopDebugOcrLoop()
         hideTranslationOverlay()
         hideRegionOverlay()
-        hideRegionIndicator()
+        hideRegionIndicator(force = true)
         hideRegionEditor()
         hideRegionDragOverlay()
         dismissFloatingMenu()
@@ -166,41 +164,20 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         return super.onUnbind(intent)
     }
 
+    /** Shows a persistent region indicator on the game display (reuses the indicator view). */
     fun showRegionOverlay(display: Display, region: RegionEntry) {
-        // Don't show/recreate the overlay while the icon is being dragged —
-        // it would override the INVISIBLE state set by onDragStart and
-        // bringFloatingIconToFront would break the drag touch sequence.
         if (floatingIcon?.inDragMode == true) return
-        hideRegionOverlay()
-        val wm = createDisplayContext(display).getSystemService(WindowManager::class.java) ?: return
-        val view = RegionOverlayView(this).apply {
-            updateRegion(region.top, region.bottom, region.left, region.right)
-        }
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        )
-        wm.addView(view, params)
-        overlayWm = wm
-        overlayView = view
-
-        // Re-add the floating icon so it draws above the region overlay
+        showRegionIndicator(display, region, persistent = true)
+        // Re-add the floating icon so it draws above the full-screen dim overlay
         bringFloatingIconToFront()
     }
 
     fun updateRegionOverlay(region: RegionEntry) {
-        overlayView?.updateRegion(region.top, region.bottom, region.left, region.right)
+        // No incremental update — the indicator is recreated on next showRegionOverlay call
     }
 
     fun hideRegionOverlay() {
-        try { overlayView?.let { overlayWm?.removeView(it) } } catch (_: Exception) {}
-        overlayView = null
-        overlayWm = null
+        hideRegionIndicator(force = true)
     }
 
     // ── Overlay state for ScreenshotManager ──────────────────────────────
@@ -209,27 +186,20 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     data class OverlayState(
         val hadTranslation: Boolean,
         val hadDebug: Boolean,
-        val hadRegionOverlay: Boolean
+        val hadRegionIndicator: Boolean
     )
 
     /**
      * Hides overlays so they don't appear in a clean screenshot.
      * Returns the previous state so [restoreAfterCapture] can restore it.
-     *
-     * The region indicator is intentionally left visible — it draws outside
-     * the capture region and doesn't affect OCR. It is only force-removed
-     * when the region itself changes (see [CaptureService.updateActiveRegion]).
-     *
-     * The region overlay (dim mask from RegionPickerSheet) IS hidden — it
-     * obscures text outside the capture region and would break full-screen OCR.
      */
     fun prepareForCleanCapture(): OverlayState {
         val state = OverlayState(
             hadTranslation = translationOverlayView != null,
             hadDebug = debugOverlayView != null,
-            hadRegionOverlay = overlayView != null
+            hadRegionIndicator = regionIndicatorView != null
         )
-        if (state.hadRegionOverlay) overlayView?.visibility = View.INVISIBLE
+        if (state.hadRegionIndicator) regionIndicatorView?.visibility = View.INVISIBLE
         if (state.hadDebug) debugOverlayView?.visibility = View.INVISIBLE
         if (state.hadTranslation) translationOverlayView?.visibility = View.INVISIBLE
         return state
@@ -239,10 +209,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     fun restoreAfterCapture(state: OverlayState) {
         if (state.hadDebug) debugOverlayView?.visibility = View.VISIBLE
         if (state.hadTranslation) translationOverlayView?.visibility = View.VISIBLE
-        // Region overlay is NOT restored during drag — the drag lifecycle
-        // (overlayHiddenForDrag → restoreRegionOverlay) handles that.
-        if (state.hadRegionOverlay && floatingIcon?.inDragMode != true) {
-            overlayView?.visibility = View.VISIBLE
+        if (state.hadRegionIndicator && floatingIcon?.inDragMode != true) {
+            regionIndicatorView?.visibility = View.VISIBLE
         }
     }
 
@@ -257,9 +225,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     fun showRegionIndicator(
         display: Display,
         region: RegionEntry,
-        durationMs: Long = 1500L
+        persistent: Boolean = false
     ) {
-        hideRegionIndicator()
+        hideRegionIndicator(force = true)
 
         // Skip for full-screen regions
         if (region.isFullScreen) return
@@ -332,18 +300,26 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         wm.addView(view, params)
         regionIndicatorView = view
         regionIndicatorWm = wm
+        regionIndicatorPersistent = persistent
 
-        // Brief flash, then quick fade out
-        regionIndicatorHandler.postDelayed({
-            view.animate()
-                .alpha(0f)
-                .setDuration(600L)
-                .withEndAction { hideRegionIndicator() }
-                .start()
-        }, 400L)  // 400ms solid + 600ms fade
+        if (!persistent) {
+            // Brief flash, then quick fade out
+            regionIndicatorHandler.postDelayed({
+                view.animate()
+                    .alpha(0f)
+                    .setDuration(600L)
+                    .withEndAction { hideRegionIndicator(force = true) }
+                    .start()
+            }, 400L)  // 400ms solid + 600ms fade
+        }
     }
 
-    fun hideRegionIndicator() {
+    /**
+     * Hides the region indicator. If [force] is false, persistent indicators
+     * (from the region picker) are left alone — only flash indicators are cleared.
+     */
+    fun hideRegionIndicator(force: Boolean = false) {
+        if (!force && regionIndicatorPersistent) return
         regionIndicatorHandler.removeCallbacksAndMessages(null)
         val view = regionIndicatorView
         if (view != null) {
@@ -353,6 +329,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         }
         regionIndicatorView = null
         regionIndicatorWm = null
+        regionIndicatorPersistent = false
     }
 
     // ── No-text pill toast ────────────────────────────────────────────────
@@ -961,7 +938,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         fun restoreRegionOverlay() {
             if (overlayHiddenForDrag) {
                 overlayHiddenForDrag = false
-                overlayView?.visibility = View.VISIBLE
+                regionIndicatorView?.visibility = View.VISIBLE
             }
         }
 
@@ -994,9 +971,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         }
         icon.onDragStart = {
             // Hide region preview so the user can see game text while dragging
-            if (overlayView?.visibility == View.VISIBLE) {
+            if (regionIndicatorView?.visibility == View.VISIBLE) {
                 overlayHiddenForDrag = true
-                overlayView?.visibility = View.INVISIBLE
+                regionIndicatorView?.visibility = View.INVISIBLE
             }
             // Pause live mode while dragging for definitions
             if (CaptureService.instance?.isLive == true) {

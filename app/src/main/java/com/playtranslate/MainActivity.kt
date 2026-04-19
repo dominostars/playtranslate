@@ -1421,7 +1421,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         dropdownHighlightListener = { rowIdx ->
             val regionIdx = dropdownRegionOrder[rowIdx]
             if (regionIdx >= 0) {
-                PlayTranslateAccessibilityService.instance?.updateRegionOverlay(dropdownRegions[regionIdx])
+                dropdownGameDisplay?.let { d ->
+                    PlayTranslateAccessibilityService.instance?.showRegionOverlay(d, dropdownRegions[regionIdx])
+                }
             }
         }
         dropdownCommitAction = { commitRegionDropdownSelection() }
