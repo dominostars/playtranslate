@@ -235,26 +235,52 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val ctx = createDisplayContext(display)
         val wm = ctx.getSystemService(WindowManager::class.java) ?: return
         val dp = ctx.resources.displayMetrics.density
-        val displayLabel = "Capturing ${region.label}"
+        val displayLabel = region.label
+
+        // Resolve accent + bg from theme or color resources
+        val accentColor = themeColor(R.attr.ptAccent)
+            .takeIf { it != 0 } ?: androidx.core.content.ContextCompat.getColor(this, R.color.pt_accent_teal)
+        val bgColor = themeColor(R.attr.ptBg)
+            .takeIf { it != 0 } ?: androidx.core.content.ContextCompat.getColor(this, R.color.pt_dark_bg)
 
         val view = object : View(ctx) {
             private val dimPaint = android.graphics.Paint().apply {
-                color = android.graphics.Color.argb(160, 0, 0, 0)
+                color = android.graphics.Color.argb(200, 0, 0, 0)
                 style = android.graphics.Paint.Style.FILL
             }
             private val borderPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                color = android.graphics.Color.WHITE
+                color = accentColor
                 style = android.graphics.Paint.Style.STROKE
-                strokeWidth = 1.5f * dp
+                strokeWidth = 2f * dp
+            }
+            private val glowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.argb(26,
+                    android.graphics.Color.red(accentColor),
+                    android.graphics.Color.green(accentColor),
+                    android.graphics.Color.blue(accentColor))
+                style = android.graphics.Paint.Style.STROKE
+                strokeWidth = 12f * dp
+                maskFilter = android.graphics.BlurMaskFilter(14f * dp, android.graphics.BlurMaskFilter.Blur.NORMAL)
             }
             private val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                color = android.graphics.Color.WHITE
-                textSize = 13f * dp
+                color = bgColor
+                textSize = 12f * dp
                 textAlign = android.graphics.Paint.Align.CENTER
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setShadowLayer(6f * dp, 0f, 0f, android.graphics.Color.BLACK)
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
             }
+            private val labelBgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = accentColor
+                style = android.graphics.Paint.Style.FILL
+            }
+            private val labelPadH = 10f * dp
+            private val labelPadV = 4f * dp
+            private val labelRadius = 6f * dp
             private val labelMargin = 8f * dp
+
+            init {
+                // BlurMaskFilter requires software rendering
+                setLayerType(LAYER_TYPE_SOFTWARE, null)
+            }
 
             override fun onDraw(canvas: android.graphics.Canvas) {
                 val w = width.toFloat()
@@ -270,21 +296,37 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 if (l > 0f) canvas.drawRect(0f, t, l, b, dimPaint)
                 if (r < w) canvas.drawRect(r, t, w, b, dimPaint)
 
-                // White border completely outside the capture region
+                // Soft accent glow — clipped to outside the region only
+                canvas.save()
+                canvas.clipRect(l, t, r, b, android.graphics.Region.Op.DIFFERENCE)
+                val glowOffset = glowPaint.strokeWidth / 2f
+                canvas.drawRect(l - glowOffset, t - glowOffset, r + glowOffset, b + glowOffset, glowPaint)
+                canvas.restore()
+
+                // Accent border outside the capture region
                 val half = borderPaint.strokeWidth / 2f
                 canvas.drawRect(l - half, t - half, r + half, b + half, borderPaint)
 
-                // Label centered horizontally, above the region (or below if no space)
+                // Label with accent background, centered above (or below) the region
                 val cx = (l + r) / 2f
+                val textW = textPaint.measureText(displayLabel)
                 val textH = textPaint.descent() - textPaint.ascent()
-                val labelY = if (t > textH + labelMargin * 2) {
-                    // Above the region
-                    t - labelMargin - textPaint.descent()
-                } else {
-                    // Below the region
-                    b + labelMargin - textPaint.ascent()
-                }
-                canvas.drawText(displayLabel, cx, labelY, textPaint)
+                val pillW = textW + labelPadH * 2
+                val pillH = textH + labelPadV * 2
+
+                val aboveY = t - labelMargin - pillH
+                val labelTop = if (aboveY >= 0) aboveY else b + labelMargin
+                val labelBottom = labelTop + pillH
+
+                // Pill background
+                canvas.drawRoundRect(
+                    cx - pillW / 2, labelTop, cx + pillW / 2, labelBottom,
+                    labelRadius, labelRadius, labelBgPaint
+                )
+
+                // Label text
+                val textY = labelTop + labelPadV - textPaint.ascent()
+                canvas.drawText(displayLabel, cx, textY, textPaint)
             }
         }
 
