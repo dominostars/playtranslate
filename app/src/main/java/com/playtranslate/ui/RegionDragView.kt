@@ -7,7 +7,6 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.view.MotionEvent
 import android.view.View
-import com.playtranslate.themeColor
 import kotlin.math.abs
 
 /**
@@ -31,19 +30,15 @@ class RegionDragView(context: Context) : View(context) {
 
     private val density get() = resources.displayMetrics.density
 
-    private val accentColor: Int = context.themeColor(com.playtranslate.R.attr.ptAccent)
-        .takeIf { it != 0 }
-        ?: androidx.core.content.ContextCompat.getColor(context, com.playtranslate.R.color.pt_accent_teal)
-    private val cardColor: Int = context.themeColor(com.playtranslate.R.attr.ptCard)
-        .takeIf { it != 0 }
-        ?: androidx.core.content.ContextCompat.getColor(context, com.playtranslate.R.color.pt_dark_card)
+    private val accentColor: Int = com.playtranslate.OverlayColors.accent(context)
+    private val dividerColor: Int = com.playtranslate.OverlayColors.divider(context)
 
     private val darkPaint = Paint().apply {
         color = Color.argb(200, 0, 0, 0)
         style = Paint.Style.FILL
     }
     private val cardBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = cardColor
+        color = dividerColor
         style = Paint.Style.STROKE
     }
     private val accentDashPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -52,9 +47,7 @@ class RegionDragView(context: Context) : View(context) {
         strokeCap = Paint.Cap.ROUND
     }
     private val dotFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = context.themeColor(com.playtranslate.R.attr.ptText)
-            .takeIf { it != 0 }
-            ?: androidx.core.content.ContextCompat.getColor(context, com.playtranslate.R.color.pt_dark_text)
+        color = Color.parseColor("#E8E8E8")
         style = Paint.Style.FILL
     }
     private val dotStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
