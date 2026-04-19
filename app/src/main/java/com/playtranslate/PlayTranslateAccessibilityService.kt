@@ -237,11 +237,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val dp = ctx.resources.displayMetrics.density
         val displayLabel = region.label
 
-        // Resolve accent + bg from theme or color resources
-        val accentColor = themeColor(R.attr.ptAccent)
-            .takeIf { it != 0 } ?: androidx.core.content.ContextCompat.getColor(this, R.color.pt_accent_teal)
-        val bgColor = themeColor(R.attr.ptBg)
-            .takeIf { it != 0 } ?: androidx.core.content.ContextCompat.getColor(this, R.color.pt_dark_bg)
+        val accentColor = OverlayColors.accent(this)
+        val bgColor = OverlayColors.bg(this)
 
         val view = object : View(ctx) {
             private val dimPaint = android.graphics.Paint().apply {
@@ -1320,13 +1317,12 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val barPad = (12 * dp).toInt()
         val gap = (16 * dp).toInt()
 
-        val c = { id: Int -> androidx.core.content.ContextCompat.getColor(this, id) }
-        val surfaceColor = c(R.color.pt_dark_surface)
-        val cardColor = c(R.color.pt_dark_card)
-        val dividerColor = c(R.color.pt_dark_divider)
-        val accentColorBtn = c(R.color.pt_accent_teal)
-        val accentOnColor = c(R.color.pt_dark_text_on_accent)
-        val textColor = c(R.color.pt_dark_text)
+        val surfaceColor = OverlayColors.surface(this)
+        val cardColor = OverlayColors.card(this)
+        val dividerColor = OverlayColors.divider(this)
+        val accentColorBtn = OverlayColors.accent(this)
+        val accentOnColor = OverlayColors.accentOn(this)
+        val textColor = OverlayColors.text(this)
         val surfaceAlpha = android.graphics.Color.argb(230,
             android.graphics.Color.red(surfaceColor),
             android.graphics.Color.green(surfaceColor),
@@ -1351,7 +1347,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             textSize = 22f
             gravity = Gravity.CENTER
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(dividerColor)
+                setColor(cardColor)
                 cornerRadius = btnRadius
             }
             layoutParams = android.widget.LinearLayout.LayoutParams(btnSize, btnSize).apply {
