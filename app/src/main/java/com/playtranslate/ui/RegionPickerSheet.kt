@@ -93,6 +93,27 @@ class RegionPickerSheet : DialogFragment() {
         adapter = RegionAdapter()
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
         recyclerView.adapter = adapter
+
+        // Inset divider between rows (matching settings card style)
+        val dividerDrawable = android.graphics.drawable.GradientDrawable().apply {
+            setSize(0, (1 * resources.displayMetrics.density).toInt())
+            setColor(requireContext().themeColor(R.attr.ptDivider))
+        }
+        val dividerDecoration = object : RecyclerView.ItemDecoration() {
+            private val insetStart = (resources.getDimension(R.dimen.pt_row_h_padding)).toInt()
+            override fun onDraw(c: android.graphics.Canvas, parent: RecyclerView, state: RecyclerView.State) {
+                val left = parent.paddingLeft + insetStart
+                val right = parent.width - parent.paddingRight
+                for (i in 0 until parent.childCount - 1) {
+                    val child = parent.getChildAt(i)
+                    val top = child.bottom + (child.layoutParams as RecyclerView.LayoutParams).bottomMargin
+                    val bottom = top + (1 * resources.displayMetrics.density).toInt()
+                    dividerDrawable.setBounds(left, top, right, bottom)
+                    dividerDrawable.draw(c)
+                }
+            }
+        }
+        recyclerView.addItemDecoration(dividerDecoration)
         setupDragHelper()
         adapter.submitList()
 
@@ -298,14 +319,39 @@ class RegionPickerSheet : DialogFragment() {
         @SuppressLint("ClickableViewAccessibility")
         override fun onBindViewHolder(holder: VH, position: Int) {
             val entry = workingList[position]
+            val ctx = holder.itemView.context
+            val dp = ctx.resources.displayMetrics.density
+            val radius = ctx.resources.getDimension(R.dimen.pt_radius)
+            val count = workingList.size
 
             holder.label.text = entry.label
             val isSelected = workingList.getOrNull(position)?.id == selectedId
             holder.radio.isChecked = isSelected
-            holder.itemView.setBackgroundColor(
-                if (isSelected && !isEditMode) holder.itemView.context.themeColor(R.attr.ptCard)
-                else android.graphics.Color.TRANSPARENT
+
+            // Per-row rounded corners: first row gets top corners, last row gets bottom
+            val cardColor = ctx.themeColor(R.attr.ptCard)
+            val accent = ctx.themeColor(R.attr.ptAccent)
+            val selectedColor = android.graphics.Color.argb(
+                51, android.graphics.Color.red(accent),
+                android.graphics.Color.green(accent),
+                android.graphics.Color.blue(accent)
             )
+            val fillColor = if (isSelected && !isEditMode) selectedColor else cardColor
+            val strokeColor = ctx.themeColor(R.attr.ptDivider)
+
+            val topRadius = if (position == 0) radius else 0f
+            val bottomRadius = if (position == count - 1) radius else 0f
+
+            holder.itemView.background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(fillColor)
+                cornerRadii = floatArrayOf(
+                    topRadius, topRadius,     // top-left
+                    topRadius, topRadius,     // top-right
+                    bottomRadius, bottomRadius, // bottom-right
+                    bottomRadius, bottomRadius  // bottom-left
+                )
+                setStroke((1 * dp).toInt(), strokeColor)
+            }
 
             if (isEditMode) {
                 holder.radio.visibility = View.GONE

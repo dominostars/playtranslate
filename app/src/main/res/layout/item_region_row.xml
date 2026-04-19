@@ -6,16 +6,17 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:paddingHorizontal="16dp"
-    android:paddingVertical="14dp"
+    android:minHeight="@dimen/pt_row_min_height"
+    android:paddingHorizontal="@dimen/pt_row_h_padding"
+    android:paddingVertical="@dimen/pt_row_v_padding"
     android:background="?attr/selectableItemBackground">
 
     <!-- Drag handle (visible in edit mode, replaces radio button) -->
     <ImageView
         android:id="@+id/dragHandle"
-        android:layout_width="32dp"
-        android:layout_height="32dp"
-        android:layout_marginEnd="10dp"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:layout_marginEnd="12dp"
         android:src="@drawable/ic_drag_handle"
         app:tint="?attr/ptTextHint"
         android:scaleType="center"
@@ -25,8 +26,8 @@
     <RadioButton
         android:id="@+id/radioRegion"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginEnd="10dp"
+        android:layout_height="28dp"
+        android:layout_marginEnd="12dp"
         android:minHeight="0dp"
         android:minWidth="0dp"
         android:clickable="false"
@@ -37,18 +38,17 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:textSize="15sp"
-        android:textColor="?attr/ptText" />
+        style="@style/Text.PT.RowTitle" />
 
     <!-- Delete button (visible in edit mode) -->
     <ImageView
         android:id="@+id/btnDeleteRegion"
-        android:layout_width="48dp"
-        android:layout_height="32dp"
+        android:layout_width="44dp"
+        android:layout_height="28dp"
         android:layout_marginStart="4dp"
-        android:paddingHorizontal="12dp"
+        android:paddingHorizontal="10dp"
         android:src="@drawable/ic_close"
-        app:tint="@color/status_error"
+        app:tint="?attr/ptDanger"
         android:scaleType="centerInside"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:visibility="gone"
