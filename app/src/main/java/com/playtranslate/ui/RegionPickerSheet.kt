@@ -298,6 +298,7 @@ class RegionPickerSheet : DialogFragment() {
 
         inner class VH(itemView: View) : RecyclerView.ViewHolder(itemView) {
             val radio: RadioButton = itemView.findViewById(R.id.radioRegion)
+            val preview: RegionPreviewView = itemView.findViewById(R.id.regionPreview)
             val label: TextView = itemView.findViewById(R.id.tvRegionLabel)
             val dragHandle: ImageView = itemView.findViewById(R.id.dragHandle)
             val btnDelete: ImageView = itemView.findViewById(R.id.btnDeleteRegion)
@@ -329,6 +330,23 @@ class RegionPickerSheet : DialogFragment() {
             holder.radio.isChecked = isSelected
             val accentC = ctx.themeColor(R.attr.ptAccent)
             val dividerColor = ctx.themeColor(R.attr.ptDivider)
+
+            // Region preview thumbnail — swap physical dims based on rotation
+            val display = gameDisplay
+            if (display != null) {
+                val pw = display.mode.physicalWidth.toFloat()
+                val ph = display.mode.physicalHeight.toFloat()
+                val rotated = display.rotation == android.view.Surface.ROTATION_90
+                    || display.rotation == android.view.Surface.ROTATION_270
+                val dw = if (rotated) ph else pw
+                val dh = if (rotated) pw else ph
+                holder.preview.setDisplayRatio(dw / dh)
+            }
+            holder.preview.surfaceColor = ctx.themeColor(R.attr.ptSurface)
+            holder.preview.accentColor = accentC
+            holder.preview.mutedColor = ctx.themeColor(R.attr.ptTextMuted)
+            holder.preview.setRegion(entry.top, entry.bottom, entry.left, entry.right)
+            holder.preview.setRegionSelected(isSelected)
             holder.radio.buttonTintList = android.content.res.ColorStateList(
                 arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
                 intArrayOf(accentC, dividerColor)
