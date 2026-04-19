@@ -389,10 +389,12 @@ class RegionPickerSheet : DialogFragment() {
             // Per-row rounded corners: first row gets top corners, last row gets bottom
             val cardColor = ctx.themeColor(R.attr.ptCard)
             val accent = ctx.themeColor(R.attr.ptAccent)
-            val selectedColor = android.graphics.Color.argb(
-                38, android.graphics.Color.red(accent),
-                android.graphics.Color.green(accent),
-                android.graphics.Color.blue(accent)
+            // Blend 5% accent over card color (solid, no transparency)
+            val alpha = 0.10f
+            val selectedColor = android.graphics.Color.rgb(
+                ((android.graphics.Color.red(accent) * alpha + android.graphics.Color.red(cardColor) * (1 - alpha))).toInt(),
+                ((android.graphics.Color.green(accent) * alpha + android.graphics.Color.green(cardColor) * (1 - alpha))).toInt(),
+                ((android.graphics.Color.blue(accent) * alpha + android.graphics.Color.blue(cardColor) * (1 - alpha))).toInt()
             )
             val fillColor = if (isSelected && !isEditMode) selectedColor else cardColor
             val strokeColor = ctx.themeColor(R.attr.ptDivider)
