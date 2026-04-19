@@ -81,12 +81,19 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private val clearPaint = Paint().apply {
         xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
     }
-    private val selectionStrokePaint = Paint().apply {
+    private val selectionBasePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        color = Color.WHITE
-        strokeWidth = 3f * dp
-        isAntiAlias = true
+        color = context.themeColor(R.attr.ptDivider)
+        strokeWidth = 2f * dp
     }
+    private val selectionDashPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = accentColor
+        strokeWidth = 2f * dp
+        strokeCap = Paint.Cap.ROUND
+    }
+    private val selDashLen = 8f
+    private val selGapLen = 6f
 
     private val regionStrokePaint = Paint().apply {
         style = Paint.Style.STROKE
@@ -294,10 +301,11 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             ViewGroup.LayoutParams.WRAP_CONTENT
         ))
 
-        // Instruction text at top center with pill background
+        // Instruction text at top center
+        val dividerColor = context.themeColor(R.attr.ptDivider)
         instructionText = TextView(context).apply {
             text = "Drag finger to capture a specific area"
-            setTextColor(Color.WHITE)
+            setTextColor(textColor)
             textSize = 14f
             gravity = Gravity.CENTER
             setPadding(
@@ -305,7 +313,8 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 (14 * dp).toInt(), (9 * dp).toInt()
             )
             background = GradientDrawable().apply {
-                setColor(Color.argb(180, 30, 30, 30))
+                setColor(Color.argb(0xD9, Color.red(bgColor), Color.green(bgColor), Color.blue(bgColor)))
+                setStroke((1 * dp).toInt(), dividerColor)
                 cornerRadii = floatArrayOf(
                     0f, 0f,           // top-left
                     0f, 0f,           // top-right
@@ -401,7 +410,15 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), dimPaint)
             canvas.drawRect(sel, clearPaint)
             canvas.restoreToCount(sc)
-            canvas.drawRect(sel, selectionStrokePaint)
+            // Card-colored base border + accent dashes (screen-space stable)
+            canvas.drawRect(sel, selectionBasePaint)
+            val dashPx = selDashLen * dp
+            val gapPx = selGapLen * dp
+            val period = dashPx + gapPx
+            drawScreenDashes(canvas, sel.left, sel.top, sel.right, sel.top, dashPx, period, true)
+            drawScreenDashes(canvas, sel.right, sel.top, sel.right, sel.bottom, dashPx, period, false)
+            drawScreenDashes(canvas, sel.left, sel.bottom, sel.right, sel.bottom, dashPx, period, true)
+            drawScreenDashes(canvas, sel.left, sel.top, sel.left, sel.bottom, dashPx, period, false)
         } else {
             val region = activeRegion
             if (region != null && !region.isFullScreen) {
@@ -500,6 +517,34 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     // ── Positioning ──────────────────────────────────────────────────────
 
     @Suppress("UNUSED_PARAMETER")
+    /** Draws dashes along a line at fixed screen-space positions. */
+    private fun drawScreenDashes(
+        canvas: Canvas, x1: Float, y1: Float, x2: Float, y2: Float,
+        dashPx: Float, period: Float, horizontal: Boolean
+    ) {
+        if (horizontal) {
+            val y = y1
+            var pos = (x1 / period).toInt() * period
+            if (pos > x1) pos -= period
+            while (pos < x2) {
+                val s = pos.coerceAtLeast(x1)
+                val e = (pos + dashPx).coerceAtMost(x2)
+                if (e > s) canvas.drawLine(s, y, e, y, selectionDashPaint)
+                pos += period
+            }
+        } else {
+            val x = x1
+            var pos = (y1 / period).toInt() * period
+            if (pos > y1) pos -= period
+            while (pos < y2) {
+                val s = pos.coerceAtLeast(y1)
+                val e = (pos + dashPx).coerceAtMost(y2)
+                if (e > s) canvas.drawLine(x, s, x, e, selectionDashPaint)
+                pos += period
+            }
+        }
+    }
+
     fun positionNearIcon(iconCx: Int, iconCy: Int, iconEdge: FloatingOverlayIcon.Edge, screenW: Int, screenH: Int) {
         post {
             menuCard.measure(
