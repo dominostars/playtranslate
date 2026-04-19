@@ -22,7 +22,6 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.AnkiManager
 import com.playtranslate.BuildConfig
@@ -83,8 +82,7 @@ class SettingsRenderer(
     private val dividerCompactIcon: View = root.findViewById(R.id.dividerCompactIcon)
 
     private val overlayModeSection: View = root.findViewById(R.id.overlayModeSection)
-    private val toggleAutoMode: MaterialButtonToggleGroup = root.findViewById(R.id.toggleAutoMode)
-    private val btnModeFurigana: MaterialButton = root.findViewById(R.id.btnModeFurigana)
+    private val overlayModeToggleContainer: FrameLayout = root.findViewById(R.id.overlayModeToggleContainer)
 
     private val rowHideOverlays: View = root.findViewById(R.id.rowHideOverlays)
     private val switchHideOverlays: MaterialSwitch = rowHideOverlays.findViewById(R.id.switchRowToggle)
@@ -261,26 +259,19 @@ class SettingsRenderer(
                 HintTextKind.PINYIN -> "Pinyin"
                 else -> "Furigana"
             }
-            btnModeFurigana.text = hintLabel
 
-            toggleAutoMode.check(
-                when (prefs.overlayMode) {
-                    OverlayMode.FURIGANA -> R.id.btnModeFurigana
-                    else -> R.id.btnModeTranslate
+            buildPillToggle(
+                container = overlayModeToggleContainer,
+                options = listOf("Translation" to OverlayMode.TRANSLATION, hintLabel to OverlayMode.FURIGANA),
+                selected = prefs.overlayMode,
+                onSelect = { mode ->
+                    prefs.overlayMode = mode
+                    if (CaptureService.instance?.isLive == true) {
+                        CaptureService.instance?.stopLive()
+                    }
+                    callbacks.onOverlayModeChanged()
                 }
             )
-
-            toggleAutoMode.addOnButtonCheckedListener { _, checkedId, isChecked ->
-                if (!isChecked) return@addOnButtonCheckedListener
-                prefs.overlayMode = when (checkedId) {
-                    R.id.btnModeFurigana -> OverlayMode.FURIGANA
-                    else -> OverlayMode.TRANSLATION
-                }
-                if (CaptureService.instance?.isLive == true) {
-                    CaptureService.instance?.stopLive()
-                }
-                callbacks.onOverlayModeChanged()
-            }
 
             root.findViewById<View>(R.id.dividerOverlayMode)?.visibility = View.VISIBLE
         } else {
@@ -919,12 +910,18 @@ class SettingsRenderer(
             if (hasHintText) View.VISIBLE else View.GONE
 
         if (hasHintText) {
-            btnModeFurigana.text = hintLabel
-            val checkedId = when (prefs.overlayMode) {
-                OverlayMode.FURIGANA -> R.id.btnModeFurigana
-                else -> R.id.btnModeTranslate
-            }
-            if (toggleAutoMode.checkedButtonId != checkedId) toggleAutoMode.check(checkedId)
+            buildPillToggle(
+                container = overlayModeToggleContainer,
+                options = listOf("Translation" to OverlayMode.TRANSLATION, hintLabel to OverlayMode.FURIGANA),
+                selected = prefs.overlayMode,
+                onSelect = { mode ->
+                    prefs.overlayMode = mode
+                    if (CaptureService.instance?.isLive == true) {
+                        CaptureService.instance?.stopLive()
+                    }
+                    callbacks.onOverlayModeChanged()
+                }
+            )
         }
 
         // Hotkey section visibility
@@ -939,6 +936,87 @@ class SettingsRenderer(
 
     fun refreshDisplayRows(prefs: Prefs) {
         buildDisplayRows(prefs)
+    }
+
+    // ── Pill toggle ─────────────────────────────────────────────────────
+
+    /**
+     * Builds a two-layer pill segmented control:
+     * - Layer 1: recessed track (subtle semi-transparent bg, 10dp radius, 3dp padding)
+     * - Layer 2: option pills (active one "lifts" with card bg + shadow)
+     */
+    private fun <T> buildPillToggle(
+        container: FrameLayout,
+        options: List<Pair<String, T>>,
+        selected: T,
+        onSelect: (T) -> Unit
+    ) {
+        container.removeAllViews()
+        val dp = ctx.resources.displayMetrics.density
+        val trackRadius = 10 * dp
+        val pillRadius = 8 * dp
+        val trackPad = (3 * dp).toInt()
+        val pillH = (32 * dp).toInt()
+
+        val bgColor = ctx.themeColor(R.attr.ptBg)
+        val accentColor = ctx.themeColor(R.attr.ptAccent)
+        val mutedColor = ctx.themeColor(R.attr.ptTextMuted)
+
+        val track = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+            background = GradientDrawable().apply {
+                setColor(bgColor)
+                cornerRadius = trackRadius
+            }
+            setPadding(trackPad, trackPad, trackPad, trackPad)
+        }
+
+        options.forEach { (label, value) ->
+            val isActive = value == selected
+
+            val pill = TextView(ctx).apply {
+                text = label
+                textSize = 13f
+                typeface = android.graphics.Typeface.create(
+                    "sans-serif-medium",
+                    if (isActive) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL
+                )
+                gravity = Gravity.CENTER
+                setTextColor(if (isActive) bgColor else mutedColor)
+                layoutParams = LinearLayout.LayoutParams(0, pillH, 1f)
+                setPadding((14 * dp).toInt(), 0, (14 * dp).toInt(), 0)
+
+                background = if (isActive) {
+                    GradientDrawable().apply {
+                        setColor(accentColor)
+                        cornerRadius = pillRadius
+                    }
+                } else {
+                    null
+                }
+
+                if (isActive) {
+                    elevation = 2 * dp
+                }
+
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    if (value != selected) {
+                        onSelect(value)
+                        buildPillToggle(container, options, value, onSelect)
+                    }
+                }
+            }
+
+            track.addView(pill)
+        }
+
+        container.addView(track)
     }
 
     // ── Private helpers ──────────────────────────────────────────────────
