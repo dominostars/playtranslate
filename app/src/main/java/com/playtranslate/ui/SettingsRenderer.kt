@@ -478,14 +478,14 @@ class SettingsRenderer(
             gravity = Gravity.CENTER_VERTICAL
             setPadding((12 * dp).toInt(), (8 * dp).toInt(), (12 * dp).toInt(), (8 * dp).toInt())
             val accent = ctx.themeColor(R.attr.ptAccent)
-            val bgColor = if (isSelected) Color.argb(
+            val rowBg = if (isSelected) Color.argb(
                 15,
                 Color.red(accent),
                 Color.green(accent),
                 Color.blue(accent)
             ) else ctx.themeColor(R.attr.ptSurface)
             background = GradientDrawable().apply {
-                setColor(bgColor)
+                setColor(rowBg)
                 setStroke((1 * dp).toInt(), outlineColor)
                 cornerRadius = 8 * dp
             }
@@ -961,7 +961,7 @@ class SettingsRenderer(
         val trackPad = (3 * dp).toInt()
         val pillH = (32 * dp).toInt()
 
-        val bgColor = ctx.themeColor(R.attr.ptBg)
+        val surfaceColor = ctx.themeColor(R.attr.ptSurface)
         val accentColor = ctx.themeColor(R.attr.ptAccent)
         val mutedColor = ctx.themeColor(R.attr.ptTextMuted)
 
@@ -974,7 +974,7 @@ class SettingsRenderer(
                 FrameLayout.LayoutParams.WRAP_CONTENT
             )
             background = GradientDrawable().apply {
-                setColor(bgColor)
+                setColor(surfaceColor)
                 cornerRadius = trackRadius
             }
             setPadding(trackPad, trackPad, trackPad, trackPad)
@@ -1013,7 +1013,7 @@ class SettingsRenderer(
                 typeface = android.graphics.Typeface.create("sans-serif-medium",
                     if (isActive) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
                 gravity = Gravity.CENTER
-                setTextColor(if (isActive) bgColor else mutedColor)
+                setTextColor(if (isActive) surfaceColor else mutedColor)
                 layoutParams = LinearLayout.LayoutParams(0, pillH, 1f)
                 setPadding((14 * dp).toInt(), 0, (14 * dp).toInt(), 0)
                 isClickable = true
@@ -1050,7 +1050,7 @@ class SettingsRenderer(
                 // Update text styles
                 pills.forEachIndexed { i, p ->
                     val active = i == idx
-                    p.setTextColor(if (active) bgColor else mutedColor)
+                    p.setTextColor(if (active) surfaceColor else mutedColor)
                     p.typeface = android.graphics.Typeface.create("sans-serif-medium",
                         if (active) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
                 }

@@ -38,11 +38,12 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     // Theme colors resolved from the user's selected palette
-    private val accentColor: Int = context.themeColor(R.attr.ptAccent).takeIf { it != 0 } ?: Color.parseColor("#00BCD4")
+    private val accentColor: Int = context.themeColor(R.attr.ptAccent).takeIf { it != 0 } ?: Color.parseColor("#4DD0C2")
     private val onAccentColor: Int = context.themeColor(R.attr.ptAccentOn).takeIf { it != 0 } ?: Color.BLACK
-    private val hideColor: Int = context.themeColor(R.attr.ptTextHint).takeIf { it != 0 } ?: Color.parseColor("#606060")
-    private val textColor: Int = context.themeColor(R.attr.ptText).takeIf { it != 0 } ?: Color.parseColor("#CCFFFFFF")
-    private val bgColor: Int = context.themeColor(R.attr.ptBg).takeIf { it != 0 } ?: Color.parseColor("#0D0D0D")
+    private val cardColor: Int = context.themeColor(R.attr.ptCard).takeIf { it != 0 } ?: Color.parseColor("#1C1F22")
+    private val textColor: Int = context.themeColor(R.attr.ptText).takeIf { it != 0 } ?: Color.parseColor("#ECEFF1")
+    private val mutedColor: Int = context.themeColor(R.attr.ptTextMuted).takeIf { it != 0 } ?: Color.parseColor("#9AA1A8")
+    private val bgColor: Int = context.themeColor(R.attr.ptBg).takeIf { it != 0 } ?: Color.parseColor("#0B0D0E")
     private val pauseColor: Int = context.themeColor(R.attr.ptDanger).takeIf { it != 0 } ?: Color.parseColor("#E05D5D")
 
     var onHideIcon: (() -> Unit)? = null
@@ -130,21 +131,27 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     init {
         setWillNotDraw(false)
         setLayerType(LAYER_TYPE_HARDWARE, null)
+        clipChildren = false
+        clipToPadding = false
 
         val btnSize = (54 * dp).toInt()
+        val iconPad = (14 * dp).toInt()
 
         // Rounded rectangle container for both buttons
+        val borderColor = context.themeColor(R.attr.ptDivider)
         menuCard = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
                 setColor(Color.argb(0xD9, Color.red(bgColor), Color.green(bgColor), Color.blue(bgColor)))
                 cornerRadius = 20 * dp
+                setStroke((1 * dp).toInt(), borderColor)
             }
-            elevation = 12 * dp
+            elevation = 8 * dp
+            clipChildren = false
+            clipToPadding = false
             gravity = Gravity.CENTER_HORIZONTAL
             val hPad = (14 * dp).toInt()
-            val vPad = (12 * dp).toInt()
-            setPadding(hPad, vPad, hPad, vPad)
+            setPadding(hPad, (14 * dp).toInt(), hPad, (12 * dp).toInt())
             visibility = View.INVISIBLE
         }
 
@@ -162,6 +169,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 setColor(accentColor)
                 cornerRadius = 14 * dp
             }
+            elevation = 4 * dp
             layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
@@ -170,7 +178,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         liveIcon = TextView(context).apply {
             text = "\u25B6"
             setTextColor(onAccentColor)
-            textSize = 26f
+            textSize = 22f
             gravity = Gravity.CENTER
         }
         liveBtn.addView(liveIcon, LayoutParams(
@@ -207,6 +215,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 setColor(accentColor)
                 cornerRadius = 14 * dp
             }
+            elevation = 4 * dp
             layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
@@ -215,7 +224,8 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         val regionIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_crop)
             imageTintList = android.content.res.ColorStateList.valueOf(onAccentColor)
-            scaleType = ImageView.ScaleType.CENTER
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(iconPad, iconPad, iconPad, iconPad)
         }
         regionBtn.addView(regionIcon, LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -244,19 +254,20 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
         val hideBtn = FrameLayout(context).apply {
             background = GradientDrawable().apply {
-                setColor(hideColor)
+                setColor(cardColor)
                 cornerRadius = 14 * dp
             }
+            elevation = 4 * dp
             layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
             setOnClickListener { onCloseRequested?.invoke() }
         }
-        val hideIcon = TextView(context).apply {
-            text = "\u2715"
-            setTextColor(Color.BLACK)
-            textSize = 24f
-            gravity = Gravity.CENTER
+        val hideIcon = ImageView(context).apply {
+            setImageResource(R.drawable.ic_exit_to_app)
+            imageTintList = android.content.res.ColorStateList.valueOf(textColor)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(iconPad, iconPad, iconPad, iconPad)
         }
         hideBtn.addView(hideIcon, LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -347,14 +358,16 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             setImageResource(R.drawable.ic_settings)
             imageTintList = android.content.res.ColorStateList.valueOf(textColor)
             scaleType = ImageView.ScaleType.FIT_CENTER
-            val pad = (10 * dp).toInt()
-            setPadding(pad, pad, pad, pad)
+            val gearPad = (10 * dp).toInt()
+            setPadding(gearPad, gearPad, gearPad, gearPad)
         }
         settingsBtn = FrameLayout(context).apply {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(Color.argb(0xD9, Color.red(bgColor), Color.green(bgColor), Color.blue(bgColor)))
+                setStroke((1 * dp).toInt(), borderColor)
             }
+            elevation = 4 * dp
             addView(gearIcon, LayoutParams(gearSize, gearSize))
             setOnClickListener { onSettings?.invoke() }
             visibility = View.INVISIBLE
