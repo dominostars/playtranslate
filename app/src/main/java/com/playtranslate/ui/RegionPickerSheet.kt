@@ -327,12 +327,18 @@ class RegionPickerSheet : DialogFragment() {
             holder.label.text = entry.label
             val isSelected = workingList.getOrNull(position)?.id == selectedId
             holder.radio.isChecked = isSelected
+            val accentC = ctx.themeColor(R.attr.ptAccent)
+            val dividerColor = ctx.themeColor(R.attr.ptDivider)
+            holder.radio.buttonTintList = android.content.res.ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(accentC, dividerColor)
+            )
 
             // Per-row rounded corners: first row gets top corners, last row gets bottom
             val cardColor = ctx.themeColor(R.attr.ptCard)
             val accent = ctx.themeColor(R.attr.ptAccent)
             val selectedColor = android.graphics.Color.argb(
-                51, android.graphics.Color.red(accent),
+                38, android.graphics.Color.red(accent),
                 android.graphics.Color.green(accent),
                 android.graphics.Color.blue(accent)
             )
