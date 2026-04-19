@@ -1320,25 +1320,39 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val barPad = (12 * dp).toInt()
         val gap = (16 * dp).toInt()
 
+        val c = { id: Int -> androidx.core.content.ContextCompat.getColor(this, id) }
+        val surfaceColor = c(R.color.pt_dark_surface)
+        val cardColor = c(R.color.pt_dark_card)
+        val dividerColor = c(R.color.pt_dark_divider)
+        val accentColorBtn = c(R.color.pt_accent_teal)
+        val accentOnColor = c(R.color.pt_dark_text_on_accent)
+        val textColor = c(R.color.pt_dark_text)
+        val surfaceAlpha = android.graphics.Color.argb(230,
+            android.graphics.Color.red(surfaceColor),
+            android.graphics.Color.green(surfaceColor),
+            android.graphics.Color.blue(surfaceColor))
+        val btnRadius = 16 * dp
+
         val bar = android.widget.LinearLayout(ctx).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(barPad * 2, barPad, barPad * 2, barPad)
+            setPadding(barPad * 2 - (9 * dp).toInt(), barPad, barPad * 2 - (9 * dp).toInt(), barPad)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.argb(220, 30, 30, 30))
-                cornerRadius = 28 * dp
+                setColor(surfaceAlpha)
+                setStroke((1 * dp).toInt(), dividerColor)
+                cornerRadius = 22 * dp
             }
         }
 
         // Cancel button (X)
         val cancelBtn = android.widget.TextView(ctx).apply {
             text = "\u2715"
-            setTextColor(android.graphics.Color.WHITE)
+            setTextColor(textColor)
             textSize = 22f
             gravity = Gravity.CENTER
             background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(android.graphics.Color.argb(200, 180, 50, 50))
+                setColor(dividerColor)
+                cornerRadius = btnRadius
             }
             layoutParams = android.widget.LinearLayout.LayoutParams(btnSize, btnSize).apply {
                 marginEnd = gap
@@ -1354,12 +1368,12 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         // Use button (checkmark)
         val useBtn = android.widget.TextView(ctx).apply {
             text = "\u2713"
-            setTextColor(android.graphics.Color.WHITE)
+            setTextColor(accentOnColor)
             textSize = 22f
             gravity = Gravity.CENTER
             background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(android.graphics.Color.argb(200, 50, 140, 50))
+                setColor(accentColorBtn)
+                cornerRadius = btnRadius
             }
             layoutParams = android.widget.LinearLayout.LayoutParams(btnSize, btnSize)
             setOnClickListener {
@@ -1397,13 +1411,14 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         // Instruction label at top center
         val label = android.widget.TextView(ctx).apply {
             text = "Drag edges to restrict screen captures to this region"
-            setTextColor(android.graphics.Color.WHITE)
+            setTextColor(textColor)
             textSize = 14f
             gravity = Gravity.CENTER
             setPadding((16 * dp).toInt(), (12 * dp).toInt(), (16 * dp).toInt(), (12 * dp).toInt())
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.argb(200, 30, 30, 30))
-                cornerRadius = 12 * dp
+                setColor(surfaceAlpha)
+                setStroke((1 * dp).toInt(), dividerColor)
+                cornerRadius = 100 * dp
             }
         }
         val screenW = getDisplaySize(display).x
