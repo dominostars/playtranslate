@@ -941,9 +941,12 @@ class SettingsRenderer(
     // ── Pill toggle ─────────────────────────────────────────────────────
 
     /**
-     * Builds a two-layer pill segmented control:
-     * - Layer 1: recessed track (subtle semi-transparent bg, 10dp radius, 3dp padding)
-     * - Layer 2: option pills (active one "lifts" with card bg + shadow)
+     * Builds a two-layer pill segmented control with animated indicator:
+     * - Layer 1: recessed track with bg color
+     * - Layer 2: sliding accent indicator behind pill labels
+     * - Layer 3: transparent pill labels on top
+     *
+     * On selection change the indicator slides to the new position.
      */
     private fun <T> buildPillToggle(
         container: FrameLayout,
@@ -962,8 +965,10 @@ class SettingsRenderer(
         val accentColor = ctx.themeColor(R.attr.ptAccent)
         val mutedColor = ctx.themeColor(R.attr.ptTextMuted)
 
-        val track = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
+        val selectedIdx = options.indexOfFirst { it.second == selected }.coerceAtLeast(0)
+
+        // Outer track (FrameLayout so indicator + pills can layer)
+        val track = FrameLayout(ctx).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
@@ -975,48 +980,84 @@ class SettingsRenderer(
             setPadding(trackPad, trackPad, trackPad, trackPad)
         }
 
-        options.forEach { (label, value) ->
-            val isActive = value == selected
+        // Row of pill labels (transparent, on top)
+        val pillRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
 
+        // Sliding indicator (accent-colored pill behind labels)
+        val indicator = View(ctx).apply {
+            background = GradientDrawable().apply {
+                setColor(accentColor)
+                cornerRadius = pillRadius
+            }
+            elevation = 2 * dp
+        }
+        // Indicator behind, pill row in front (higher elevation so text renders on top)
+        track.addView(indicator)
+        pillRow.elevation = 3 * dp
+        track.addView(pillRow)
+
+        val pills = mutableListOf<TextView>()
+        var currentIdx = selectedIdx
+
+        options.forEachIndexed { idx, (label, _) ->
+            val isActive = idx == selectedIdx
             val pill = TextView(ctx).apply {
                 text = label
                 textSize = 13f
-                typeface = android.graphics.Typeface.create(
-                    "sans-serif-medium",
-                    if (isActive) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL
-                )
+                typeface = android.graphics.Typeface.create("sans-serif-medium",
+                    if (isActive) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
                 gravity = Gravity.CENTER
                 setTextColor(if (isActive) bgColor else mutedColor)
                 layoutParams = LinearLayout.LayoutParams(0, pillH, 1f)
                 setPadding((14 * dp).toInt(), 0, (14 * dp).toInt(), 0)
-
-                background = if (isActive) {
-                    GradientDrawable().apply {
-                        setColor(accentColor)
-                        cornerRadius = pillRadius
-                    }
-                } else {
-                    null
-                }
-
-                if (isActive) {
-                    elevation = 2 * dp
-                }
-
                 isClickable = true
                 isFocusable = true
-                setOnClickListener {
-                    if (value != selected) {
-                        onSelect(value)
-                        buildPillToggle(container, options, value, onSelect)
-                    }
-                }
             }
-
-            track.addView(pill)
+            pills.add(pill)
+            pillRow.addView(pill)
         }
 
         container.addView(track)
+
+        // Position indicator after layout using translationX only
+        pillRow.post {
+            if (pills.isEmpty()) return@post
+            val pillW = pills[0].width
+            indicator.layoutParams = FrameLayout.LayoutParams(pillW, pillH)
+            indicator.translationX = (pillW * selectedIdx).toFloat()
+            indicator.requestLayout()
+        }
+
+        // Click handlers with slide animation
+        pills.forEachIndexed { idx, pill ->
+            pill.setOnClickListener {
+                if (idx == currentIdx) return@setOnClickListener
+                currentIdx = idx
+
+                val pillW = pills[0].width
+                indicator.animate()
+                    .translationX((pillW * idx).toFloat())
+                    .setDuration(200)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator())
+                    .start()
+
+                // Update text styles
+                pills.forEachIndexed { i, p ->
+                    val active = i == idx
+                    p.setTextColor(if (active) bgColor else mutedColor)
+                    p.typeface = android.graphics.Typeface.create("sans-serif-medium",
+                        if (active) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+                }
+
+                onSelect(options[idx].second)
+            }
+        }
     }
 
     // ── Private helpers ──────────────────────────────────────────────────
