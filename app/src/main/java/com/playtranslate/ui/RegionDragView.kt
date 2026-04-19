@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.view.MotionEvent
 import android.view.View
+import com.playtranslate.themeColor
 import kotlin.math.abs
 
 /**
@@ -30,21 +31,39 @@ class RegionDragView(context: Context) : View(context) {
 
     private val density get() = resources.displayMetrics.density
 
+    private val accentColor: Int = context.themeColor(com.playtranslate.R.attr.ptAccent)
+        .takeIf { it != 0 }
+        ?: androidx.core.content.ContextCompat.getColor(context, com.playtranslate.R.color.pt_accent_teal)
+    private val cardColor: Int = context.themeColor(com.playtranslate.R.attr.ptCard)
+        .takeIf { it != 0 }
+        ?: androidx.core.content.ContextCompat.getColor(context, com.playtranslate.R.color.pt_dark_card)
+
     private val darkPaint = Paint().apply {
-        color = Color.argb((0.78f * 255).toInt(), 0, 0, 0)
+        color = Color.argb(200, 0, 0, 0)
         style = Paint.Style.FILL
     }
-    private val outlinePaint = Paint().apply {
-        color = Color.argb(200, 255, 255, 255)
+    private val cardBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = cardColor
         style = Paint.Style.STROKE
-        isAntiAlias = true
     }
-    private val cornerPaint = Paint().apply {
-        color = Color.WHITE
+    private val accentDashPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = accentColor
         style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.SQUARE
-        isAntiAlias = true
+        strokeCap = Paint.Cap.ROUND
     }
+    private val dotFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = context.themeColor(com.playtranslate.R.attr.ptText)
+            .takeIf { it != 0 }
+            ?: androidx.core.content.ContextCompat.getColor(context, com.playtranslate.R.color.pt_dark_text)
+        style = Paint.Style.FILL
+    }
+    private val dotStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = accentColor
+        style = Paint.Style.STROKE
+    }
+    // Dash params in dp — fixed screen-space intervals
+    private val dashLen = 8f
+    private val gapLen = 6f
 
     // Scratch reused in onLayout — allocating per frame is lint DrawAllocation.
     private val gestureRect = Rect()
@@ -90,33 +109,83 @@ class RegionDragView(context: Context) : View(context) {
         val b = h * bottomFraction
         val l = w * leftFraction
         val r = w * rightFraction
+        val dp = density
 
-        outlinePaint.strokeWidth = 1.5f * density
-        cornerPaint.strokeWidth  = 3.5f * density
+        cardBorderPaint.strokeWidth = 2f * dp
+        accentDashPaint.strokeWidth = 2f * dp
+        dotStrokePaint.strokeWidth = 2f * dp
+        val dotRadius = 5f * dp
 
-        // Dark areas outside the box (4 rects to avoid overdraw)
-        if (t > 0f)       canvas.drawRect(0f, 0f, w, t, darkPaint)   // above
-        if (b < h)        canvas.drawRect(0f, b, w, h, darkPaint)     // below
-        if (l > 0f)       canvas.drawRect(0f, t, l, b, darkPaint)     // left strip
-        if (r < w)        canvas.drawRect(r, t, w, b, darkPaint)      // right strip
+        // Dark areas outside the box
+        if (t > 0f) canvas.drawRect(0f, 0f, w, t, darkPaint)
+        if (b < h)  canvas.drawRect(0f, b, w, h, darkPaint)
+        if (l > 0f) canvas.drawRect(0f, t, l, b, darkPaint)
+        if (r < w)  canvas.drawRect(r, t, w, b, darkPaint)
 
-        // Box outline
-        canvas.drawRect(l, t, r, b, outlinePaint)
+        // Card-colored solid border
+        val half = cardBorderPaint.strokeWidth / 2f
+        canvas.drawRect(l - half, t - half, r + half, b + half, cardBorderPaint)
 
-        // Bold corner L-shapes
-        val cl = cornerLen
-        // Top-left
-        canvas.drawLine(l, t, l + cl, t, cornerPaint)
-        canvas.drawLine(l, t, l, t + cl, cornerPaint)
-        // Top-right
-        canvas.drawLine(r, t, r - cl, t, cornerPaint)
-        canvas.drawLine(r, t, r, t + cl, cornerPaint)
-        // Bottom-left
-        canvas.drawLine(l, b, l + cl, b, cornerPaint)
-        canvas.drawLine(l, b, l, b - cl, cornerPaint)
-        // Bottom-right
-        canvas.drawLine(r, b, r - cl, b, cornerPaint)
-        canvas.drawLine(r, b, r, b - cl, cornerPaint)
+        // Accent dashed border — screen-space stable (dashes at fixed positions)
+        val dashPx = dashLen * dp
+        val gapPx = gapLen * dp
+        val period = dashPx + gapPx
+        drawScreenSpaceDashes(canvas, l, t, r, t, dashPx, gapPx, period, true)  // top
+        drawScreenSpaceDashes(canvas, r, t, r, b, dashPx, gapPx, period, false) // right
+        drawScreenSpaceDashes(canvas, l, b, r, b, dashPx, gapPx, period, true)  // bottom
+        drawScreenSpaceDashes(canvas, l, t, l, b, dashPx, gapPx, period, false) // left
+
+        // 8 dots (muted fill + accent border): 4 corners + 4 midpoints
+        val cx = (l + r) / 2f
+        val cy = (t + b) / 2f
+        drawDot(canvas, l, t, dotRadius)
+        drawDot(canvas, r, t, dotRadius)
+        drawDot(canvas, l, b, dotRadius)
+        drawDot(canvas, r, b, dotRadius)
+        drawDot(canvas, cx, t, dotRadius)
+        drawDot(canvas, cx, b, dotRadius)
+        drawDot(canvas, l, cy, dotRadius)
+        drawDot(canvas, r, cy, dotRadius)
+    }
+
+    private fun drawDot(canvas: Canvas, x: Float, y: Float, radius: Float) {
+        canvas.drawCircle(x, y, radius, dotFillPaint)
+        canvas.drawCircle(x, y, radius, dotStrokePaint)
+    }
+
+    /** Draws dashes along a line at fixed screen-space positions (no swimming on drag). */
+    private fun drawScreenSpaceDashes(
+        canvas: Canvas,
+        x1: Float, y1: Float, x2: Float, y2: Float,
+        dashPx: Float, gapPx: Float, period: Float,
+        horizontal: Boolean
+    ) {
+        if (horizontal) {
+            val y = y1
+            // Start at the nearest period-aligned position before x1
+            var pos = (x1 / period).toInt() * period
+            if (pos > x1) pos -= period
+            while (pos < x2) {
+                val segStart = pos.coerceAtLeast(x1)
+                val segEnd = (pos + dashPx).coerceAtMost(x2)
+                if (segEnd > segStart) {
+                    canvas.drawLine(segStart, y, segEnd, y, accentDashPaint)
+                }
+                pos += period
+            }
+        } else {
+            val x = x1
+            var pos = (y1 / period).toInt() * period
+            if (pos > y1) pos -= period
+            while (pos < y2) {
+                val segStart = pos.coerceAtLeast(y1)
+                val segEnd = (pos + dashPx).coerceAtMost(y2)
+                if (segEnd > segStart) {
+                    canvas.drawLine(x, segStart, x, segEnd, accentDashPaint)
+                }
+                pos += period
+            }
+        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
