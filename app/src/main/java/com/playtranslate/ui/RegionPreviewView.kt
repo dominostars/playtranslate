@@ -69,13 +69,17 @@ class RegionPreviewView @JvmOverloads constructor(
         canvas.drawRoundRect(rect, cornerR, cornerR, bgPaint)
 
         // Region bounds
+        val strokeW = 2f * dp
+        regionStrokePaint.strokeWidth = strokeW
+        val half = strokeW / 2f
+
         val rLeft = w * regionLeft
         val rTop = h * regionTop
         val rRight = w * regionRight
         val rBottom = h * regionBottom
-        rect.set(rLeft, rTop, rRight, rBottom)
 
-        regionStrokePaint.strokeWidth = 1.5f * dp
+        // Inset by half stroke so border draws entirely inside the region
+        rect.set(rLeft + half, rTop + half, rRight - half, rBottom - half)
 
         if (isSelectedRegion) {
             // Filled with 25% accent + accent outline
@@ -85,7 +89,7 @@ class RegionPreviewView @JvmOverloads constructor(
                 android.graphics.Color.blue(accentColor)
             )
             regionStrokePaint.color = accentColor
-            canvas.drawRect(rect, regionFillPaint)
+            canvas.drawRect(rLeft, rTop, rRight, rBottom, regionFillPaint)
             canvas.drawRect(rect, regionStrokePaint)
         } else {
             // Muted outline only
