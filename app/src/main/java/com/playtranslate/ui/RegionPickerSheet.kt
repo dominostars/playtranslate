@@ -40,6 +40,8 @@ class RegionPickerSheet : DialogFragment() {
     private lateinit var btnEdit: Button
     private lateinit var tvTitle: TextView
     private lateinit var adapter: RegionAdapter
+    private var displayListener: android.hardware.display.DisplayManager.DisplayListener? = null
+    private var lastDisplayRotation: Int = -1
     private var itemTouchHelper: ItemTouchHelper? = null
 
     override fun getTheme(): Int = fullScreenDialogTheme(requireContext())
@@ -119,6 +121,32 @@ class RegionPickerSheet : DialogFragment() {
 
         showSelectedOverlay()
 
+        // Track display changes (rotation, dimensions) to update preview thumbnails
+        lastDisplayRotation = gameDisplay?.rotation ?: -1
+        val dm = requireContext().getSystemService(android.content.Context.DISPLAY_SERVICE)
+            as android.hardware.display.DisplayManager
+        displayListener = object : android.hardware.display.DisplayManager.DisplayListener {
+            override fun onDisplayAdded(displayId: Int) {}
+            override fun onDisplayRemoved(displayId: Int) {
+                val gd = gameDisplay ?: return
+                if (displayId == gd.displayId && isAdded) {
+                    PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+                    if (showsDialog) dismissAllowingStateLoss()
+                    else onClose?.invoke()
+                }
+            }
+            override fun onDisplayChanged(displayId: Int) {
+                val gd = gameDisplay ?: return
+                if (displayId != gd.displayId) return
+                val newRotation = gd.rotation
+                if (newRotation != lastDisplayRotation) {
+                    lastDisplayRotation = newRotation
+                    adapter.submitList()
+                }
+            }
+        }
+        dm.registerDisplayListener(displayListener, null)
+
         // React to live mode changes while the sheet is visible
         com.playtranslate.CaptureService.instance?.liveModeState?.observe(viewLifecycleOwner) { live ->
             if (live) {
@@ -137,6 +165,12 @@ class RegionPickerSheet : DialogFragment() {
     /** App went to background — kill the overlay immediately so it doesn't get stuck. */
     override fun onStop() {
         PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+        displayListener?.let {
+            val dm = requireContext().getSystemService(android.content.Context.DISPLAY_SERVICE)
+                as android.hardware.display.DisplayManager
+            dm.unregisterDisplayListener(it)
+        }
+        displayListener = null
         super.onStop()
         if (showsDialog) dismissAllowingStateLoss()
     }
