@@ -477,8 +477,8 @@ class OcrManager private constructor() {
             }
         if (allLines.isEmpty()) return emptyList()
 
-        // Two-pass grouping: partition lines by detected orientation, group
-        // each set with its own sort order and axis-aware proximity rules.
+        // Partition lines by detected orientation, group each set with its
+        // own sort order and axis-aware proximity rules.
         val (verticalLines, horizontalLines) = allLines.partition {
             detectOrientation(it) == TextOrientation.VERTICAL
         }
