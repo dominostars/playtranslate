@@ -63,6 +63,9 @@ enum class ScriptFamily { LATIN, CJK_JAPANESE, CJK_CHINESE, CJK_KOREAN, ARABIC, 
 /** Text direction for rendering source text. */
 enum class TextDirection { LTR, RTL }
 
+/** Text orientation: horizontal (left-to-right lines) or vertical (top-to-bottom columns). */
+enum class TextOrientation { HORIZONTAL, VERTICAL }
+
 /**
  * The on-device OCR backend that produces recognized text for a source
  * language. Sealed so the [ScreenTextRecognizerFactory] `when` is exhaustive

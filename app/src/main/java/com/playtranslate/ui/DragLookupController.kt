@@ -115,15 +115,24 @@ class DragLookupController(
          * `internal` so the unit test in `FindClosestTokenTest` can exercise
          * it without needing an instance of the enclosing class.
          */
+        /**
+         * Finds the token closest to the finger position along the text flow axis.
+         *
+         * @param fingerPos The finger coordinate along the text flow axis:
+         *   X for horizontal text, Y for vertical text.
+         * @param vertical When true, token extents come from symbol top/bottom
+         *   and fallback uses character height instead of width.
+         */
         internal fun findClosestToken(
             lineText: String,
             tokens: List<String>,
-            fingerX: Int,
+            fingerPos: Int,
             symbols: List<OcrManager.SymbolBox>,
-            fallbackLineLeft: Int,
-            fallbackCharWidth: Float,
+            fallbackLineStart: Int,
+            fallbackCharExtent: Float,
+            vertical: Boolean = false,
         ): Pair<String, Int>? {
-            data class TokenPos(val token: String, val idx: Int, val left: Float, val right: Float)
+            data class TokenPos(val token: String, val idx: Int, val start: Float, val end: Float)
             val positioned = mutableListOf<TokenPos>()
 
             var pos = 0
@@ -131,33 +140,34 @@ class DragLookupController(
                 val idx = lineText.indexOf(token, pos)
                 if (idx < 0) continue
                 val endIdx = idx + token.length
-                // Find symbols whose charOffset falls in this token's range.
-                // Symbols may be absent for spaces, dropped characters, or
-                // lines where ML Kit didn't emit per-character data — fall
-                // back to the charWidth approximation in those cases.
                 val tokenSymbols = symbols.filter { it.charOffset in idx until endIdx }
-                val left: Float
-                val right: Float
+                val start: Float
+                val end: Float
                 if (tokenSymbols.isNotEmpty()) {
-                    left = tokenSymbols.minOf { it.bounds.left }.toFloat()
-                    right = tokenSymbols.maxOf { it.bounds.right }.toFloat()
+                    if (vertical) {
+                        start = tokenSymbols.minOf { it.bounds.top }.toFloat()
+                        end = tokenSymbols.maxOf { it.bounds.bottom }.toFloat()
+                    } else {
+                        start = tokenSymbols.minOf { it.bounds.left }.toFloat()
+                        end = tokenSymbols.maxOf { it.bounds.right }.toFloat()
+                    }
                 } else {
-                    left = fallbackLineLeft + idx * fallbackCharWidth
-                    right = fallbackLineLeft + endIdx * fallbackCharWidth
+                    start = fallbackLineStart + idx * fallbackCharExtent
+                    end = fallbackLineStart + endIdx * fallbackCharExtent
                 }
-                positioned += TokenPos(token, idx, left, right)
+                positioned += TokenPos(token, idx, start, end)
                 pos = endIdx
             }
             if (positioned.isEmpty()) return null
 
             // Prefer exact hit (finger within token span).
-            val exact = positioned.firstOrNull { fingerX >= it.left && fingerX <= it.right }
+            val exact = positioned.firstOrNull { fingerPos >= it.start && fingerPos <= it.end }
             if (exact != null) return exact.token to exact.idx
 
             // Fallback: nearest center.
             val nearest = positioned.minByOrNull {
-                val center = (it.left + it.right) / 2f
-                abs(fingerX - center)
+                val center = (it.start + it.end) / 2f
+                abs(fingerPos - center)
             }
             return nearest?.let { it.token to it.idx }
         }
@@ -384,8 +394,10 @@ class DragLookupController(
         Log.d(TAG, "Hit line: \"${hitLine.text}\" at ($fingerX, $fingerY)")
 
         val lineText = hitLine.text
-        val lineWidth = hitLine.bounds.width().toFloat()
-        val charWidth = lineWidth / lineText.length
+        val isVertical = hitLine.orientation == com.playtranslate.language.TextOrientation.VERTICAL
+        // For vertical text, characters stack along the height; for horizontal, along the width.
+        val lineExtent = if (isVertical) hitLine.bounds.height().toFloat() else hitLine.bounds.width().toFloat()
+        val charExtent = lineExtent / lineText.length
 
         // Tokenize the line (surface spans for position mapping, lookup forms for dictionary)
         val service = PlayTranslateAccessibilityService.instance ?: return false
@@ -395,16 +407,16 @@ class DragLookupController(
         if (tokenResults.isEmpty()) return false
 
         // Find the token whose screen position is closest to the finger.
-        // Prefers per-character symbol bounds (non-monospaced correct for Latin);
-        // falls back to charWidth approximation when symbols are absent.
+        // For vertical text, match along the Y axis; for horizontal, along X.
         val surfaceTokens = tokenResults.map { it.surface }
         val tokenMatch = findClosestToken(
             lineText = lineText,
             tokens = surfaceTokens,
-            fingerX = fingerX,
+            fingerPos = if (isVertical) fingerY else fingerX,
             symbols = hitLine.symbols,
-            fallbackLineLeft = hitLine.bounds.left,
-            fallbackCharWidth = charWidth,
+            fallbackLineStart = if (isVertical) hitLine.bounds.top else hitLine.bounds.left,
+            fallbackCharExtent = charExtent,
+            vertical = isVertical,
         )
         if (tokenMatch == null) return false
 
@@ -545,9 +557,14 @@ class DragLookupController(
             else -> return false
         }
 
-        // Estimate the word's center X in screen coordinates (using surface span position)
+        // Estimate the word's center position along the text flow axis.
         val tokenCenterIdx = matchedIdx + matchedSurface.length / 2f
-        val wordCenterX = (hitLine.bounds.left + tokenCenterIdx * charWidth).toInt()
+        val wordCenterX = if (isVertical) {
+            // For vertical text, use the column's center X for popup positioning
+            hitLine.bounds.centerX()
+        } else {
+            (hitLine.bounds.left + tokenCenterIdx * charExtent).toInt()
+        }
 
         Log.d(TAG, "Found: $matchedSurface ($lookupForm) → ${entry?.slug ?: "(fallback)"}")
         lastWord = lookupForm
@@ -603,8 +620,12 @@ class DragLookupController(
                 val cy = line.bounds.centerY()
                 val dx = (x - cx).toLong()
                 val dy = (y - cy).toLong()
-                // Weight vertical distance 3× to strongly prefer the line the finger is actually on
-                val dist = dx * dx + dy * dy * 9
+                // Weight the cross-axis distance 3× to prefer the line/column
+                // the finger is on. For horizontal text, weight vertical; for
+                // vertical columns, weight horizontal.
+                val isVertical = line.orientation == com.playtranslate.language.TextOrientation.VERTICAL
+                val dist = if (isVertical) dx * dx * 9 + dy * dy
+                           else dx * dx + dy * dy * 9
                 if (dist < bestDist) {
                     bestDist = dist
                     bestLine = line

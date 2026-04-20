@@ -12,6 +12,7 @@ import com.playtranslate.language.ScreenTextRecognizer
 import com.playtranslate.language.ScreenTextRecognizerFactory
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.language.TextOrientation
 import com.playtranslate.model.TextSegment
 import java.util.concurrent.ConcurrentHashMap
 
@@ -91,7 +92,9 @@ class OcrManager private constructor() {
         /** Per-element bounding boxes within this line (for precise character positioning). */
         val elements: List<ElementBox> = emptyList(),
         /** Per-character symbols with exact bounds from ML Kit. Empty if unavailable. */
-        val symbols: List<SymbolBox> = emptyList()
+        val symbols: List<SymbolBox> = emptyList(),
+        /** Text orientation detected from ML Kit angle / bounding box geometry. */
+        val orientation: TextOrientation = TextOrientation.HORIZONTAL
     )
 
     data class OcrResult(
@@ -108,7 +111,9 @@ class OcrManager private constructor() {
         /** Per-line bounding boxes with processed text, for furigana positioning. */
         val lineBoxes: List<LineBox> = emptyList(),
         /** Debug bounding boxes at block/line/element level, or null if debug is off. */
-        val debugBoxes: OcrDebugBoxes? = null
+        val debugBoxes: OcrDebugBoxes? = null,
+        /** Orientation per group (majority vote of constituent lines). */
+        val groupOrientations: List<TextOrientation> = emptyList()
     )
 
     suspend fun recognise(bitmap: Bitmap, sourceLang: String = "ja", collectDebugBoxes: Boolean = false, screenshotWidth: Int = 0): OcrResult? {
@@ -123,6 +128,38 @@ class OcrManager private constructor() {
         }
 
         if (visionText.textBlocks.isEmpty()) return null
+
+        // ── Vertical text diagnostics (Phase 0) ──────────────────────────
+        // Dumps orientation-relevant data for every Line so we can determine
+        // what ML Kit returns for vertical (tategaki) Japanese text.
+        // TODO: Remove after Phase 0 verification is complete.
+        for ((bi, block) in visionText.textBlocks.withIndex()) {
+            for ((li, line) in block.lines.withIndex()) {
+                val bb = line.boundingBox ?: continue
+                val w = bb.width()
+                val h = bb.height()
+                val aspect = if (w > 0) h.toFloat() / w else 0f
+                val angleStr = try {
+                    "%.1f".format(line.angle)
+                } catch (_: Throwable) {
+                    "N/A"
+                }
+                val cornerStr = line.cornerPoints?.joinToString { "(${it.x},${it.y})" } ?: "null"
+                android.util.Log.d("VerticalDiag",
+                    "block[$bi] line[$li]: \"${line.text}\" " +
+                    "bbox=${w}x${h} aspect=%.2f angle=$angleStr corners=[$cornerStr]".format(aspect))
+
+                // Log per-element bounds to see if elements stack vertically
+                for ((ei, elem) in line.elements.withIndex()) {
+                    val eb = elem.boundingBox
+                    if (eb != null) {
+                        android.util.Log.d("VerticalDiag",
+                            "  elem[$ei]: \"${elem.text}\" bbox=(${eb.left},${eb.top})-(${eb.right},${eb.bottom})")
+                    }
+                }
+            }
+        }
+        // ── End vertical text diagnostics ─────────────────────────────────
 
         // 2. Group lines by proximity, size, and alignment (not blocks — blocks
         //    can contain spatially distant lines that shouldn't be merged).
@@ -211,7 +248,8 @@ class OcrManager private constructor() {
                             ),
                             groupIndex = gi,
                             elements = lineElements,
-                            symbols = lineSymbols
+                            symbols = lineSymbols,
+                            orientation = detectOrientation(line)
                         )
                     }
                 }
@@ -271,7 +309,15 @@ class OcrManager private constructor() {
         } else null
 
         val groupLineCounts = groups.map { it.size }
-        return OcrResult(fullText, segments, groupTexts, groupBounds, groupLineCounts, lineBoxes, debugBoxes)
+
+        // Compute per-group orientation by majority vote of constituent lines.
+        val groupOrientations = groups.map { group ->
+            val verticalCount = group.count { detectOrientation(it) == TextOrientation.VERTICAL }
+            if (verticalCount > group.size / 2) TextOrientation.VERTICAL
+            else TextOrientation.HORIZONTAL
+        }
+
+        return OcrResult(fullText, segments, groupTexts, groupBounds, groupLineCounts, lineBoxes, debugBoxes, groupOrientations)
     }
 
     /**
@@ -438,31 +484,21 @@ class OcrManager private constructor() {
      *     of the group's left edge, OR the right edges are similarly aligned.
      */
     private fun groupLinesByProximity(blocks: List<Text.TextBlock>, sourceLang: String = "ja"): List<List<Text.Line>> {
-        // Extract all lines from all blocks, sorted top-to-bottom.
-        // Filter out low-confidence single-character lines (e.g. game UI arrows
-        // misdetected as "く") on API 31+ where confidence is available.
+        // Extract all lines from all blocks and filter noise.
         val allLines = blocks.flatMap { it.lines }
             .filter { it.boundingBox != null }
             .filter { line ->
                 // Drop single-character lines that aren't real words.
-                // Game UI arrows/symbols get misdetected as characters like "く".
-                // When blockLang is null/undetermined, check the dictionary —
-                // real words like "夜" have entries, symbols don't.
                 if (line.text.trim().length <= 1) {
                     val blockLang = blocks.firstOrNull { b -> line in b.lines }?.recognizedLanguage
                     if (blockLang == null || blockLang == "und") {
-                        // Single hiragana/katakana alone are almost never real
-                        // standalone words — they're UI arrows (く), indicators,
-                        // or misdetected fragments. Single kanji CAN be real
-                        // words (夜, 日, 月) so we keep those.
                         val c = line.text.trim().firstOrNull() ?: return@filter false
                         val isKanji = c in '\u4E00'..'\u9FFF' || c in '\u3400'..'\u4DBF'
                         if (!isKanji) return@filter false
                     }
                 }
                 // Drop garbled multi-char lines: mostly non-source characters AND
-                // low confidence. Both must fail — prefer showing garbled text over
-                // missing a real translation. (e.g. "|edaっidad" = 10% source, 0.28 conf)
+                // low confidence.
                 if (android.os.Build.VERSION.SDK_INT >= 31 && line.text.trim().length > 1) {
                     val text = line.text.trim()
                     val sourceCount = text.count { c -> isSourceLangChar(c, sourceLang) }
@@ -471,31 +507,56 @@ class OcrManager private constructor() {
                 }
                 true
             }
-            .sortedBy { it.boundingBox!!.top }
         if (allLines.isEmpty()) return emptyList()
 
+        // Two-pass grouping: partition lines by detected orientation, group
+        // each set with its own sort order and axis-aware proximity rules.
+        val (verticalLines, horizontalLines) = allLines.partition {
+            detectOrientation(it) == TextOrientation.VERTICAL
+        }
+
+        // Horizontal: sort top-to-bottom (existing behavior)
+        val hGroups = groupLinesOnePass(
+            horizontalLines.sortedBy { it.boundingBox!!.top },
+            TextOrientation.HORIZONTAL
+        )
+
+        // Vertical: sort right-to-left (rightmost column first = Japanese reading order)
+        val vGroups = groupLinesOnePass(
+            verticalLines.sortedByDescending { it.boundingBox!!.right },
+            TextOrientation.VERTICAL
+        )
+
+        return hGroups + vGroups
+    }
+
+    /** Groups pre-sorted lines using orientation-aware proximity rules. */
+    private fun groupLinesOnePass(
+        sortedLines: List<Text.Line>,
+        orientation: TextOrientation
+    ): List<List<Text.Line>> {
+        if (sortedLines.isEmpty()) return emptyList()
         val groups = mutableListOf<MutableList<Text.Line>>()
-
-        for (line in allLines) {
-            val lineH = line.boundingBox?.height() ?: 0
+        for (line in sortedLines) {
             val lineBox = line.boundingBox ?: continue
-            val lineTop = lineBox.top
-
             val lastGroup = groups.lastOrNull()
-            if (lastGroup != null && lineH > 0) {
+            if (lastGroup != null) {
                 val prevBox = lastGroup.last().boundingBox
-                val groupLeft = lastGroup.mapNotNull { it.boundingBox?.left }.minOrNull() ?: 0
-                val groupRect = Rect(groupLeft, prevBox?.top ?: 0, prevBox?.right ?: 0, prevBox?.bottom ?: 0)
-
-                if (wouldGroup(groupRect, lineBox)) {
+                val groupRect = if (orientation == TextOrientation.VERTICAL) {
+                    // For vertical columns: track group's top edge for alignment
+                    val groupTop = lastGroup.mapNotNull { it.boundingBox?.top }.minOrNull() ?: 0
+                    Rect(prevBox?.left ?: 0, groupTop, prevBox?.right ?: 0, prevBox?.bottom ?: 0)
+                } else {
+                    val groupLeft = lastGroup.mapNotNull { it.boundingBox?.left }.minOrNull() ?: 0
+                    Rect(groupLeft, prevBox?.top ?: 0, prevBox?.right ?: 0, prevBox?.bottom ?: 0)
+                }
+                if (wouldGroup(groupRect, lineBox, orientation)) {
                     lastGroup += line
                     continue
                 }
             }
-
             groups += mutableListOf(line)
         }
-
         return groups
     }
 
@@ -570,7 +631,9 @@ class OcrManager private constructor() {
          * populated, drag-lookup uses these for precise (non-monospaced) hit
          * testing; empty triggers the legacy charWidth fallback.
          */
-        val symbols: List<SymbolBox> = emptyList()
+        val symbols: List<SymbolBox> = emptyList(),
+        /** Text orientation detected from ML Kit angle / bounding box geometry. */
+        val orientation: TextOrientation = TextOrientation.HORIZONTAL
     )
 
     /**
@@ -660,6 +723,7 @@ class OcrManager private constructor() {
                     groupIndex = gi,
                     groupText = combinedGroupText,
                     symbols = lineSymbols,
+                    orientation = detectOrientation(line),
                 )
             }
         }
@@ -672,10 +736,23 @@ class OcrManager private constructor() {
 
         /**
          * Would two rects be grouped as the same text block?
-         * Three checks: intersection (fill leak), inline (same line),
-         * block (next line in paragraph with left or center alignment).
+         * Three checks: intersection (fill leak), inline (same line/column),
+         * block (next line/column in paragraph with alignment).
+         *
+         * When [orientation] is [TextOrientation.VERTICAL], all axis logic is
+         * swapped: "inline" checks for vertical continuation in the same column,
+         * and "block" checks for horizontal continuation to the next column
+         * (right-to-left).
          */
-        fun wouldGroup(a: Rect, b: Rect): Boolean {
+        fun wouldGroup(
+            a: Rect,
+            b: Rect,
+            orientation: TextOrientation = TextOrientation.HORIZONTAL
+        ): Boolean {
+            if (orientation == TextOrientation.VERTICAL) {
+                return wouldGroupVertical(a, b)
+            }
+
             val refH = maxOf(a.height(), b.height())
             if (refH <= 0) return false
 
@@ -713,11 +790,88 @@ class OcrManager private constructor() {
         }
 
         /**
+         * Vertical-text variant of [wouldGroup]. Axes are swapped:
+         * - "Inline" = vertical continuation in the same column (same X-band)
+         * - "Block"  = horizontal continuation to the next column (top-aligned
+         *   or center-Y-aligned, right-to-left flow)
+         * - Reference dimension is width (column thickness) not height.
+         */
+        private fun wouldGroupVertical(a: Rect, b: Rect): Boolean {
+            val refW = maxOf(a.width(), b.width())
+            if (refW <= 0) return false
+
+            // 1. Intersection
+            if (Rect.intersects(a, b)) return true
+
+            // 2. Inline: vertical continuation in the same column
+            val aCenterX = (a.left + a.right) / 2
+            val bCenterX = (b.left + b.right) / 2
+            val aContainsB = bCenterX in a.left..a.right
+            val bContainsA = aCenterX in b.left..b.right
+            if (aContainsB || bContainsA) {
+                val dy = if (a.bottom <= b.top) b.top - a.bottom
+                         else if (b.bottom <= a.top) a.top - b.bottom
+                         else 0
+                if (dy < (refW * 1.5f).toInt()) return true
+            }
+
+            // 3. Block: horizontal continuation (next column in same paragraph)
+            val dx = if (a.left <= b.right && b.right <= a.right) 0
+                     else if (b.left <= a.right && a.right <= b.right) 0
+                     else if (a.right <= b.left) b.left - a.right
+                     else a.left - b.right
+            if (dx < (refW * 0.8f).toInt()) {
+                val alignTolerance = (refW * 0.5f).toInt()
+                val topAligned = kotlin.math.abs(a.top - b.top) <= alignTolerance
+                val centerAligned = kotlin.math.abs(a.centerY() - b.centerY()) <= alignTolerance
+                if (topAligned || centerAligned) {
+                    val lo = minOf(a.width(), b.width())
+                    val hi = maxOf(a.width(), b.width())
+                    if (lo <= 0 || (hi - lo).toDouble() / lo <= 0.30) return true
+                }
+            }
+
+            return false
+        }
+
+        /**
          * Minimum pixel count on the shorter side before we skip upscaling.
          * 1200px balances OCR accuracy against memory usage (~6.6MB vs ~18MB
          * for full-screen captures). ML Kit downscales internally if larger.
          */
         private const val TARGET_MIN_DIM = 1200
+
+        /**
+         * Detects whether a Text.Line is vertical (tategaki) or horizontal
+         * based on ML Kit's reported angle and bounding box geometry.
+         *
+         * Primary signal: [Text.Line.getAngle] — ~90° indicates vertical text.
+         * Fallback: bounding box aspect ratio (height/width > 2 for multi-char lines).
+         * Single-character lines are ambiguous and default to [TextOrientation.HORIZONTAL].
+         */
+        fun detectOrientation(line: Text.Line): TextOrientation {
+            // Single-character lines are ambiguous — a tall narrow box could be
+            // one large character, not a vertical column.
+            if (line.text.trim().length <= 1) return TextOrientation.HORIZONTAL
+
+            // Primary: ML Kit angle (~90° = vertical)
+            try {
+                val angle = line.angle.toDouble()
+                if (angle in 60.0..120.0 || angle in -120.0..-60.0) {
+                    return TextOrientation.VERTICAL
+                }
+            } catch (_: Throwable) {
+                // getAngle() may not exist in all versions — fall through to geometry
+            }
+
+            // Fallback: bounding box aspect ratio
+            val bb = line.boundingBox ?: return TextOrientation.HORIZONTAL
+            val w = bb.width()
+            val h = bb.height()
+            if (w > 0 && h.toFloat() / w > 2.0f) return TextOrientation.VERTICAL
+
+            return TextOrientation.HORIZONTAL
+        }
 
         /**
          * Returns true if [c] belongs to a script that is native to [sourceLang].
