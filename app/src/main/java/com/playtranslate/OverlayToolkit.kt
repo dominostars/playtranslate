@@ -174,7 +174,8 @@ object OverlayToolkit {
                             translatedText = ann.hintText,
                             bounds = bounds,
                             lineCount = 1,
-                            isFurigana = true
+                            isFurigana = true,
+                            orientation = line.orientation
                         )
                     }
                 } else {
@@ -199,7 +200,8 @@ object OverlayToolkit {
                                     bottom
                                 ),
                                 lineCount = 1,
-                                isFurigana = true
+                                isFurigana = true,
+                                orientation = line.orientation
                             )
                         }
                     } else {
@@ -316,7 +318,8 @@ object OverlayToolkit {
                             maxOf(current.bounds.bottom, next.bounds.bottom)
                         ),
                         lineCount = 1,
-                        isFurigana = true
+                        isFurigana = true,
+                        orientation = current.orientation
                     )
                     currentBottom = estimateFuriganaBottom(current, furiganaPaint)
                 } else {

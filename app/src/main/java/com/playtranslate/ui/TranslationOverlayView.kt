@@ -277,20 +277,37 @@ class TranslationOverlayView(
 
         boxes.zip(finalRects).forEach { (box, rect) ->
             if (box.isFurigana) {
-                // Furigana: outlined text, no box constraint, sized from line height
-                val textSizePx = (rect.height() * 0.7f).coerceAtLeast(4f)
+                val isVerticalFurigana = box.orientation == TextOrientation.VERTICAL
+                // Vertical furigana: size from box width; horizontal: from box height
+                val textSizePx = if (isVerticalFurigana) {
+                    (rect.width() * 0.7f).coerceAtLeast(4f)
+                } else {
+                    (rect.height() * 0.7f).coerceAtLeast(4f)
+                }
                 val strokeW = 3f * dp
                 val strokePad = (strokeW / 2f + 0.5f).toInt()
+                // Vertical: stack characters top-to-bottom with newlines
+                val displayText = if (isVerticalFurigana) {
+                    box.translatedText.toList().joinToString("\n")
+                } else {
+                    box.translatedText
+                }
                 val child = OutlinedTextView(context).apply {
-                    text = box.translatedText
+                    text = displayText
                     setTextColor(Color.WHITE)
                     outlineColor = Color.BLACK
                     outlineWidth = strokeW
                     typeface = Typeface.DEFAULT_BOLD
                     includeFontPadding = false
-                    setPadding(strokePad, strokePad, strokePad, strokePad)
                     setShadowLayer(strokeW, 0f, 0f, Color.TRANSPARENT)
                     setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
+                    if (isVerticalFurigana) {
+                        gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                        setPadding(strokePad, 0, strokePad, 0)
+                        setLineSpacing(0f, 0.8f)
+                    } else {
+                        setPadding(strokePad, strokePad, strokePad, strokePad)
+                    }
                 }
                 child.setTag(R.id.tag_bg_color, Color.BLACK)
                 addView(child, LayoutParams(
@@ -298,8 +315,14 @@ class TranslationOverlayView(
                 ))
                 // Position after measurement but before draw — no (0,0) flash
                 child.doOnLayout {
-                    child.translationX = rect.left - strokePad
-                    child.translationY = (rect.bottom - child.measuredHeight).coerceAtLeast(0f)
+                    if (isVerticalFurigana) {
+                        // Vertical: align to top of OCR box, no Y offset
+                        child.translationX = rect.left - strokePad
+                        child.translationY = rect.top
+                    } else {
+                        child.translationX = rect.left - strokePad
+                        child.translationY = (rect.bottom - child.measuredHeight).coerceAtLeast(0f)
+                    }
                 }
             } else {
                 val rectW = rect.width().toInt().coerceAtLeast(1)
