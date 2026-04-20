@@ -101,10 +101,30 @@ class LanguageSetupActivity : AppCompatActivity() {
         val view = LayoutInflater.from(this).inflate(R.layout.page_language_list, contentFrame, false)
         val root = view.findViewById<LinearLayout>(R.id.languageListRoot)
 
-        val rows = SourceLangId.entries.map { id ->
-            id.displayName() to { onSourceSelected(id) }
+        val allIds = SourceLangId.entries.toList()
+
+        // Suggested: any source whose pack is already installed — bundled
+        // (JA) or downloaded (ZH / ZH_HANT share the same pack, EN, ES).
+        // Unlike the target picker this does NOT include the device locale,
+        // per user request.
+        val suggested = allIds.filter { LanguagePackStore.isInstalled(this, it) }
+
+        if (suggested.isNotEmpty()) {
+            val suggestedRows = suggested.map { id ->
+                id.displayName() to { onSourceSelected(id) }
+            }
+            addLanguageSection(root, title = "Suggested", rows = suggestedRows)
+
+            val allRows = allIds.map { id ->
+                id.displayName() to { onSourceSelected(id) }
+            }
+            addLanguageSection(root, title = "All", rows = allRows)
+        } else {
+            val allRows = allIds.map { id ->
+                id.displayName() to { onSourceSelected(id) }
+            }
+            addLanguageSection(root, title = null, rows = allRows)
         }
-        addLanguageSection(root, title = null, rows = rows)
 
         contentFrame.addView(view)
     }
