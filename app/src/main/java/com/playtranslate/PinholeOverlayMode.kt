@@ -380,7 +380,8 @@ class PinholeOverlayMode(
                 val farTexts = farOcrGroups.map { it.text }
                 val farBounds = farOcrGroups.map { it.bounds }
                 val farLineCounts = farOcrGroups.map { it.lineCount }
-                val placeholders = buildPlaceholderBoxes(farTexts, farBounds, farLineCounts, raw, cropLeft, cropTop)
+                val farOrientations = farOcrGroups.map { it.orientation }
+                val placeholders = buildPlaceholderBoxes(farTexts, farBounds, farLineCounts, raw, cropLeft, cropTop, farOrientations)
 
                 if (placeholders.isNotEmpty()) {
                     val partial = placeholders.mapIndexed { i, ph ->
@@ -702,7 +703,8 @@ class PinholeOverlayMode(
     /** Build placeholder TextBoxes with empty text (skeleton indicators). Instant, no network. */
     private fun buildPlaceholderBoxes(
         texts: List<String>, bounds: List<Rect>, lineCounts: List<Int>,
-        raw: Bitmap, left: Int, top: Int
+        raw: Bitmap, left: Int, top: Int,
+        orientations: List<com.playtranslate.language.TextOrientation> = emptyList()
     ): List<TranslationOverlayView.TextBox> {
         val colorScale = 4
         val colorRef = Bitmap.createScaledBitmap(raw, raw.width / colorScale, raw.height / colorScale, false)
@@ -714,8 +716,9 @@ class PinholeOverlayMode(
         }
         return bounds.mapIndexed { idx, rect ->
             val (bg, tc) = colors.getOrElse(idx) { Pair(Color.argb(224, 0, 0, 0), Color.WHITE) }
+            val orient = orientations.getOrElse(idx) { com.playtranslate.language.TextOrientation.HORIZONTAL }
             TranslationOverlayView.TextBox("", rect, bg, tc, lineCounts.getOrElse(idx) { 1 },
-                sourceText = texts.getOrElse(idx) { "" })
+                sourceText = texts.getOrElse(idx) { "" }, orientation = orient)
         }
     }
 

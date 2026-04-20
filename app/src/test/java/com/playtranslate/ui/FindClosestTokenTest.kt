@@ -58,10 +58,10 @@ class FindClosestTokenTest {
         val match = DragLookupController.findClosestToken(
             lineText = line,
             tokens = listOf("hello", "world"),
-            fingerX = 170,
+            fingerPos = 170,
             symbols = symbols,
-            fallbackLineLeft = 100,
-            fallbackCharWidth = 10f,
+            fallbackLineStart = 100,
+            fallbackCharExtent = 10f,
         )
         assertEquals("world" to 6, match)
     }
@@ -74,10 +74,10 @@ class FindClosestTokenTest {
         val match = DragLookupController.findClosestToken(
             lineText = line,
             tokens = listOf("I", "w"),
-            fingerX = 15,
+            fingerPos = 15,
             symbols = symbols,
-            fallbackLineLeft = 0,
-            fallbackCharWidth = 15f,
+            fallbackLineStart = 0,
+            fallbackCharExtent = 15f,
         )
         assertEquals("w" to 1, match)
     }
@@ -88,10 +88,10 @@ class FindClosestTokenTest {
         val match = DragLookupController.findClosestToken(
             lineText = line,
             tokens = tokens,
-            fingerX = 50,
+            fingerPos = 50,
             symbols = emptyList(),
-            fallbackLineLeft = 0,
-            fallbackCharWidth = 20f,
+            fallbackLineStart = 0,
+            fallbackCharExtent = 20f,
         )
         assertEquals("は" to 2, match)
     }
@@ -108,10 +108,10 @@ class FindClosestTokenTest {
         val match = DragLookupController.findClosestToken(
             lineText = line,
             tokens = listOf("hello", "world"),
-            fingerX = 170,
+            fingerPos = 170,
             symbols = partialSymbols,
-            fallbackLineLeft = 100,
-            fallbackCharWidth = 10f,
+            fallbackLineStart = 100,
+            fallbackCharExtent = 10f,
         )
         assertEquals("world" to 6, match)
     }
@@ -137,10 +137,10 @@ class FindClosestTokenTest {
         val match = DragLookupController.findClosestToken(
             lineText = line,
             tokens = listOf("hello", "world"),
-            fingerX = 200, // right at the missing 'd' position
+            fingerPos = 200, // right at the missing 'd' position
             symbols = symbols,
-            fallbackLineLeft = 100,
-            fallbackCharWidth = 10f,
+            fallbackLineStart = 100,
+            fallbackCharExtent = 10f,
         )
         assertEquals("world" to 6, match)
     }
@@ -149,10 +149,10 @@ class FindClosestTokenTest {
         assertNull(DragLookupController.findClosestToken(
             lineText = "hello",
             tokens = emptyList(),
-            fingerX = 50,
+            fingerPos = 50,
             symbols = emptyList(),
-            fallbackLineLeft = 0,
-            fallbackCharWidth = 10f,
+            fallbackLineStart = 0,
+            fallbackCharExtent = 10f,
         ))
     }
 
@@ -162,10 +162,10 @@ class FindClosestTokenTest {
         val match = DragLookupController.findClosestToken(
             lineText = line,
             tokens = listOf("hello", "world"),
-            fingerX = 500,
+            fingerPos = 500,
             symbols = symbols,
-            fallbackLineLeft = 100,
-            fallbackCharWidth = 10f,
+            fallbackLineStart = 100,
+            fallbackCharExtent = 10f,
         )
         assertEquals("world" to 6, match)
     }
@@ -179,10 +179,10 @@ class FindClosestTokenTest {
         val match = DragLookupController.findClosestToken(
             lineText = line,
             tokens = listOf("ab", "cd"),
-            fingerX = 25,
+            fingerPos = 25,
             symbols = symbols,
-            fallbackLineLeft = 0,
-            fallbackCharWidth = 10f,
+            fallbackLineStart = 0,
+            fallbackCharExtent = 10f,
         )
         assertEquals("ab" to 0, match)
     }

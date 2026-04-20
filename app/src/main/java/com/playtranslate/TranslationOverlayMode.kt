@@ -196,7 +196,8 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
             val placeholderBoxes = liveGroupBounds.mapIndexed { idx, bounds ->
                 val (bgColor, textColor) = colors[idx]
                 val lineCount = liveGroupLineCounts.getOrElse(idx) { 1 }
-                TranslationOverlayView.TextBox("", bounds, bgColor, textColor, lineCount)
+                val orient = ocrResult.groupOrientations.getOrElse(idx) { com.playtranslate.language.TextOrientation.HORIZONTAL }
+                TranslationOverlayView.TextBox("", bounds, bgColor, textColor, lineCount, orientation = orient)
             }
             service.showLiveOverlay(placeholderBoxes, left, top, raw.width, raw.height)
 
@@ -651,10 +652,12 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
             }
             if (newGroupTexts.isEmpty()) return false
 
-            val newGroupBounds = ocrResult.groupBounds.filterIndexed { i, _ ->
+            val sourceFilter = { i: Int ->
                 i < ocrResult.groupTexts.size &&
                     ocrResult.groupTexts[i].any { c -> OcrManager.isSourceLangChar(c, service.sourceLang) }
             }
+            val newGroupBounds = ocrResult.groupBounds.filterIndexed { i, _ -> sourceFilter(i) }
+            val newGroupOrientations = ocrResult.groupOrientations.filterIndexed { i, _ -> sourceFilter(i) }
 
             val perGroup = service.translateGroupsSeparately(newGroupTexts)
             val cRef = colorRef
@@ -663,7 +666,8 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
                 val colors = OverlayToolkit.sampleGroupColors(cRef, newGroupBounds, left, top, colorScale)
                 perGroup.indices.map { idx ->
                     val (bg, tc) = colors.getOrElse(idx) { Pair(android.graphics.Color.argb(200,0,0,0), android.graphics.Color.WHITE) }
-                    TranslationOverlayView.TextBox(perGroup[idx].first, newGroupBounds[idx], bg, tc)
+                    val orient = newGroupOrientations.getOrElse(idx) { com.playtranslate.language.TextOrientation.HORIZONTAL }
+                    TranslationOverlayView.TextBox(perGroup[idx].first, newGroupBounds[idx], bg, tc, orientation = orient)
                 }
             } else emptyList()
 

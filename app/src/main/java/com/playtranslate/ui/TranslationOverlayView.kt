@@ -22,6 +22,7 @@ import androidx.core.view.doOnLayout
 import androidx.core.widget.TextViewCompat
 import com.playtranslate.PinholeCalibration
 import com.playtranslate.R
+import com.playtranslate.language.TextOrientation
 
 /**
  * Transparent overlay that positions auto-sizing TextViews inside bounding
@@ -69,7 +70,9 @@ class TranslationOverlayView(
         /** Marked when pinhole detection finds a minor change under this overlay. */
         val dirty: Boolean = false,
         /** Original OCR source text this overlay translates. Used for content-based matching. */
-        val sourceText: String = ""
+        val sourceText: String = "",
+        /** Text orientation — vertical boxes render with 90° CW rotated text. */
+        val orientation: TextOrientation = TextOrientation.HORIZONTAL
     )
 
     private val dp = context.resources.displayMetrics.density
@@ -231,20 +234,41 @@ class TranslationOverlayView(
             }
         }
 
-        // Resolve vertical overlaps for non-furigana boxes only
+        // Resolve vertical overlaps for non-furigana horizontal boxes
         val finalRects = screenRects.map { RectF(it) }
-        val nonFuriganaIndices = boxes.indices.filter { !boxes[it].isFurigana }
-            .sortedBy { finalRects[it].top }
-        for (a in nonFuriganaIndices.indices) {
-            for (b in a + 1 until nonFuriganaIndices.size) {
-                val i = nonFuriganaIndices[a]
-                val j = nonFuriganaIndices[b]
+        val hBoxIndices = boxes.indices.filter {
+            !boxes[it].isFurigana && boxes[it].orientation != TextOrientation.VERTICAL
+        }.sortedBy { finalRects[it].top }
+        for (a in hBoxIndices.indices) {
+            for (b in a + 1 until hBoxIndices.size) {
+                val i = hBoxIndices[a]
+                val j = hBoxIndices[b]
                 val ri = finalRects[i]
                 val rj = finalRects[j]
                 if (ri.bottom > rj.top && ri.left < rj.right && ri.right > rj.left) {
                     val mid = (ri.bottom + rj.top) / 2f
                     ri.bottom = mid
                     rj.top = mid
+                }
+            }
+        }
+
+        // Resolve horizontal overlaps for non-furigana vertical boxes
+        // (adjacent columns whose overlay boxes overlap on the X axis).
+        // Sort by right edge descending (right-to-left reading order).
+        val vBoxIndices = boxes.indices.filter {
+            !boxes[it].isFurigana && boxes[it].orientation == TextOrientation.VERTICAL
+        }.sortedByDescending { finalRects[it].right }
+        for (a in vBoxIndices.indices) {
+            for (b in a + 1 until vBoxIndices.size) {
+                val i = vBoxIndices[a]
+                val j = vBoxIndices[b]
+                val ri = finalRects[i]
+                val rj = finalRects[j]
+                if (ri.left < rj.right && ri.top < rj.bottom && ri.bottom > rj.top) {
+                    val mid = (ri.left + rj.right) / 2f
+                    ri.left = mid
+                    rj.right = mid
                 }
             }
         }
@@ -280,6 +304,7 @@ class TranslationOverlayView(
             } else {
                 val rectW = rect.width().toInt().coerceAtLeast(1)
                 val rectH = rect.height().toInt().coerceAtLeast(1)
+                val isVertical = box.orientation == TextOrientation.VERTICAL
 
                 val child: View = if (box.translatedText.isEmpty()) {
                     buildSkeletonView(rectW, rectH, box.lineCount, box.bgColor, box.textColor)
@@ -302,11 +327,25 @@ class TranslationOverlayView(
                 }
 
                 child.setTag(R.id.tag_bg_color, box.bgColor)
-                val lp = LayoutParams(rectW, rectH).apply {
-                    leftMargin = rect.left.toInt()
-                    topMargin = rect.top.toInt()
+
+                if (isVertical && box.translatedText.isNotEmpty()) {
+                    // Vertical text: create view with swapped dimensions (width=rectH,
+                    // height=rectW) so auto-sizing picks a readable font, then rotate
+                    // 90° CW so text reads top-to-bottom in the original narrow box.
+                    val lp = LayoutParams(rectH, rectW)
+                    addView(child, lp)
+                    child.rotation = 90f
+                    // Position so the visual center aligns with the original box center.
+                    // After rotation, the (rectH × rectW) layout visually becomes (rectW × rectH).
+                    child.translationX = rect.centerX() - rectH / 2f
+                    child.translationY = rect.centerY() - rectW / 2f
+                } else {
+                    val lp = LayoutParams(rectW, rectH).apply {
+                        leftMargin = rect.left.toInt()
+                        topMargin = rect.top.toInt()
+                    }
+                    addView(child, lp)
                 }
-                addView(child, lp)
             }
         }
 

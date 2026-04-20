@@ -67,7 +67,8 @@ class TranslationOneShotProcessor(
                 Pair(android.graphics.Color.argb(200, 0, 0, 0), android.graphics.Color.WHITE)
             }
             val lineCount = ocrResult.groupLineCounts.getOrElse(idx) { 1 }
-            TranslationOverlayView.TextBox("", bounds, bgColor, textColor, lineCount)
+            val orient = ocrResult.groupOrientations.getOrElse(idx) { com.playtranslate.language.TextOrientation.HORIZONTAL }
+            TranslationOverlayView.TextBox("", bounds, bgColor, textColor, lineCount, orientation = orient)
         }
         showOverlay(placeholders)
 
