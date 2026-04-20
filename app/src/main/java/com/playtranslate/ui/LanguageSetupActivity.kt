@@ -3,8 +3,6 @@ package com.playtranslate.ui
 import android.app.Dialog
 import android.content.Context
 import android.content.Intent
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -29,7 +27,6 @@ import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
-import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -104,9 +101,9 @@ class LanguageSetupActivity : AppCompatActivity() {
         val view = LayoutInflater.from(this).inflate(R.layout.page_language_list, contentFrame, false)
         val container = view.findViewById<LinearLayout>(R.id.languageListContainer)
 
-        SourceLangId.entries.forEach { id ->
-            val profile = SourceLanguageProfiles[id]
-            container.addView(buildLanguageListRow(id.displayName()) {
+        SourceLangId.entries.forEachIndexed { idx, id ->
+            if (idx > 0) container.addView(inflateLanguageListDivider(container))
+            container.addView(buildLanguageListRow(container, id.displayName()) {
                 onSourceSelected(id)
             })
         }
@@ -163,8 +160,9 @@ class LanguageSetupActivity : AppCompatActivity() {
             .map { code -> code to targetDisplayName(code) }
             .sortedBy { it.second }
 
-        for ((code, displayName) in allLangs) {
-            container.addView(buildLanguageListRow(displayName) {
+        allLangs.forEachIndexed { idx, (code, displayName) ->
+            if (idx > 0) container.addView(inflateLanguageListDivider(container))
+            container.addView(buildLanguageListRow(container, displayName) {
                 onTargetSelected(code)
             })
         }
@@ -350,29 +348,18 @@ class LanguageSetupActivity : AppCompatActivity() {
 
     // ── Helpers ───────────────────────────────────────────────────────────
 
-    private fun buildLanguageListRow(name: String, onClick: () -> Unit): View {
-        val dp = resources.displayMetrics.density
-        return TextView(this).apply {
-            text = name
-            textSize = 16f
-            setTypeface(null, Typeface.NORMAL)
-            setTextColor(themeColor(R.attr.ptText))
-            setPadding(
-                (16 * dp).toInt(), (14 * dp).toInt(),
-                (16 * dp).toInt(), (14 * dp).toInt()
-            )
-            background = GradientDrawable().apply {
-                setColor(themeColor(R.attr.ptSurface))
-                setStroke((1 * dp).toInt(), themeColor(R.attr.ptDivider))
-                cornerRadius = 8 * dp
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).also { it.bottomMargin = (6 * dp).toInt() }
-            setOnClickListener { onClick() }
-        }
+    private fun buildLanguageListRow(container: android.view.ViewGroup, name: String, onClick: () -> Unit): View {
+        val row = LayoutInflater.from(this)
+            .inflate(R.layout.settings_row_value, container, false)
+        row.findViewById<TextView>(R.id.tvRowTitle).text = name
+        row.findViewById<TextView>(R.id.tvRowValue).text = ""
+        row.setOnClickListener { onClick() }
+        return row
     }
+
+    private fun inflateLanguageListDivider(container: android.view.ViewGroup): View =
+        LayoutInflater.from(this)
+            .inflate(R.layout.settings_row_divider, container, false)
 
     private fun langDisplayName(code: String): String =
         Locale(code).getDisplayLanguage(Locale.getDefault())
