@@ -99,14 +99,12 @@ class LanguageSetupActivity : AppCompatActivity() {
     private fun showSourceList() {
         toolbar.title = getString(R.string.lang_translate_from)
         val view = LayoutInflater.from(this).inflate(R.layout.page_language_list, contentFrame, false)
-        val container = view.findViewById<LinearLayout>(R.id.languageListContainer)
+        val root = view.findViewById<LinearLayout>(R.id.languageListRoot)
 
-        SourceLangId.entries.forEachIndexed { idx, id ->
-            if (idx > 0) container.addView(inflateLanguageListDivider(container))
-            container.addView(buildLanguageListRow(container, id.displayName()) {
-                onSourceSelected(id)
-            })
+        val rows = SourceLangId.entries.map { id ->
+            id.displayName() to { onSourceSelected(id) }
         }
+        addLanguageSection(root, title = null, rows = rows)
 
         contentFrame.addView(view)
     }
@@ -154,17 +152,35 @@ class LanguageSetupActivity : AppCompatActivity() {
     private fun showTargetList() {
         toolbar.title = getString(R.string.lang_translate_to)
         val view = LayoutInflater.from(this).inflate(R.layout.page_language_list, contentFrame, false)
-        val container = view.findViewById<LinearLayout>(R.id.languageListContainer)
+        val root = view.findViewById<LinearLayout>(R.id.languageListRoot)
 
         val allLangs = TranslateLanguage.getAllLanguages()
             .map { code -> code to targetDisplayName(code) }
             .sortedBy { it.second }
 
-        allLangs.forEachIndexed { idx, (code, displayName) ->
-            if (idx > 0) container.addView(inflateLanguageListDivider(container))
-            container.addView(buildLanguageListRow(container, displayName) {
-                onTargetSelected(code)
-            })
+        // Suggested: device-locale language (if supported) + any target packs
+        // already installed. Surfaces the likely target(s) without removing
+        // them from the canonical alphabetical list below.
+        val deviceLang = Locale.getDefault().language
+        val suggested = allLangs.filter { (code, _) ->
+            code == deviceLang || LanguagePackStore.isTargetInstalled(this, code)
+        }
+
+        if (suggested.isNotEmpty()) {
+            val suggestedRows = suggested.map { (code, displayName) ->
+                displayName to { onTargetSelected(code) }
+            }
+            addLanguageSection(root, title = "Suggested", rows = suggestedRows)
+
+            val allRows = allLangs.map { (code, displayName) ->
+                displayName to { onTargetSelected(code) }
+            }
+            addLanguageSection(root, title = "All", rows = allRows)
+        } else {
+            val allRows = allLangs.map { (code, displayName) ->
+                displayName to { onTargetSelected(code) }
+            }
+            addLanguageSection(root, title = null, rows = allRows)
         }
 
         contentFrame.addView(view)
@@ -347,6 +363,34 @@ class LanguageSetupActivity : AppCompatActivity() {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
+
+    /**
+     * Adds one grouped-card section to [root]: an optional uppercase group
+     * header followed by a MaterialCardView containing [rows] separated by
+     * inset dividers. Skips entirely if [rows] is empty.
+     */
+    private fun addLanguageSection(
+        root: LinearLayout,
+        title: String?,
+        rows: List<Pair<String, () -> Unit>>,
+    ) {
+        if (rows.isEmpty()) return
+        val inflater = LayoutInflater.from(this)
+
+        if (title != null) {
+            val header = inflater.inflate(R.layout.settings_group_header, root, false)
+            header.findViewById<TextView>(R.id.tvGroupTitle).text = title
+            root.addView(header)
+        }
+
+        val card = inflater.inflate(R.layout.language_list_section, root, false)
+        val rowContainer = card.findViewById<LinearLayout>(R.id.sectionRows)
+        rows.forEachIndexed { idx, (name, onClick) ->
+            if (idx > 0) rowContainer.addView(inflateLanguageListDivider(rowContainer))
+            rowContainer.addView(buildLanguageListRow(rowContainer, name, onClick))
+        }
+        root.addView(card)
+    }
 
     private fun buildLanguageListRow(container: android.view.ViewGroup, name: String, onClick: () -> Unit): View {
         val row = LayoutInflater.from(this)
