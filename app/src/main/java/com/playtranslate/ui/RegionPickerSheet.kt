@@ -40,6 +40,8 @@ class RegionPickerSheet : DialogFragment() {
     private lateinit var btnEdit: Button
     private lateinit var tvTitle: TextView
     private lateinit var adapter: RegionAdapter
+    private var displayListener: android.hardware.display.DisplayManager.DisplayListener? = null
+    private var lastDisplayRotation: Int = -1
     private var itemTouchHelper: ItemTouchHelper? = null
 
     override fun getTheme(): Int = fullScreenDialogTheme(requireContext())
@@ -93,10 +95,57 @@ class RegionPickerSheet : DialogFragment() {
         adapter = RegionAdapter()
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
         recyclerView.adapter = adapter
+
+        // Inset divider between rows (matching settings card style)
+        val dividerDrawable = android.graphics.drawable.GradientDrawable().apply {
+            setSize(0, (1 * resources.displayMetrics.density).toInt())
+            setColor(requireContext().themeColor(R.attr.ptDivider))
+        }
+        val dividerDecoration = object : RecyclerView.ItemDecoration() {
+            private val insetStart = (resources.getDimension(R.dimen.pt_row_h_padding)).toInt()
+            override fun onDraw(c: android.graphics.Canvas, parent: RecyclerView, state: RecyclerView.State) {
+                val left = parent.paddingLeft + insetStart
+                val right = parent.width - parent.paddingRight
+                for (i in 0 until parent.childCount - 1) {
+                    val child = parent.getChildAt(i)
+                    val top = child.bottom + (child.layoutParams as RecyclerView.LayoutParams).bottomMargin
+                    val bottom = top + (1 * resources.displayMetrics.density).toInt()
+                    dividerDrawable.setBounds(left, top, right, bottom)
+                    dividerDrawable.draw(c)
+                }
+            }
+        }
+        recyclerView.addItemDecoration(dividerDecoration)
         setupDragHelper()
         adapter.submitList()
 
         showSelectedOverlay()
+
+        // Track display changes (rotation, dimensions) to update preview thumbnails
+        lastDisplayRotation = gameDisplay?.rotation ?: -1
+        val dm = requireContext().getSystemService(android.content.Context.DISPLAY_SERVICE)
+            as android.hardware.display.DisplayManager
+        displayListener = object : android.hardware.display.DisplayManager.DisplayListener {
+            override fun onDisplayAdded(displayId: Int) {}
+            override fun onDisplayRemoved(displayId: Int) {
+                val gd = gameDisplay ?: return
+                if (displayId == gd.displayId && isAdded) {
+                    PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+                    if (showsDialog) dismissAllowingStateLoss()
+                    else onClose?.invoke()
+                }
+            }
+            override fun onDisplayChanged(displayId: Int) {
+                val gd = gameDisplay ?: return
+                if (displayId != gd.displayId) return
+                val newRotation = gd.rotation
+                if (newRotation != lastDisplayRotation) {
+                    lastDisplayRotation = newRotation
+                    adapter.submitList()
+                }
+            }
+        }
+        dm.registerDisplayListener(displayListener, null)
 
         // React to live mode changes while the sheet is visible
         com.playtranslate.CaptureService.instance?.liveModeState?.observe(viewLifecycleOwner) { live ->
@@ -116,6 +165,12 @@ class RegionPickerSheet : DialogFragment() {
     /** App went to background — kill the overlay immediately so it doesn't get stuck. */
     override fun onStop() {
         PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+        displayListener?.let {
+            val dm = requireContext().getSystemService(android.content.Context.DISPLAY_SERVICE)
+                as android.hardware.display.DisplayManager
+            dm.unregisterDisplayListener(it)
+        }
+        displayListener = null
         super.onStop()
         if (showsDialog) dismissAllowingStateLoss()
     }
@@ -266,6 +321,8 @@ class RegionPickerSheet : DialogFragment() {
 
     private fun showSelectedOverlay() {
         if (isLive) return
+        // Don't re-show the picker overlay while the region drag editor is active
+        if (PlayTranslateAccessibilityService.instance?.isRegionEditorActive == true) return
         val display = gameDisplay ?: return
         val e = workingList.find { it.id == selectedId } ?: workingList.firstOrNull() ?: return
         PlayTranslateAccessibilityService.instance?.showRegionOverlay(display, e)
@@ -277,6 +334,7 @@ class RegionPickerSheet : DialogFragment() {
 
         inner class VH(itemView: View) : RecyclerView.ViewHolder(itemView) {
             val radio: RadioButton = itemView.findViewById(R.id.radioRegion)
+            val preview: RegionPreviewView = itemView.findViewById(R.id.regionPreview)
             val label: TextView = itemView.findViewById(R.id.tvRegionLabel)
             val dragHandle: ImageView = itemView.findViewById(R.id.dragHandle)
             val btnDelete: ImageView = itemView.findViewById(R.id.btnDeleteRegion)
@@ -298,14 +356,64 @@ class RegionPickerSheet : DialogFragment() {
         @SuppressLint("ClickableViewAccessibility")
         override fun onBindViewHolder(holder: VH, position: Int) {
             val entry = workingList[position]
+            val ctx = holder.itemView.context
+            val dp = ctx.resources.displayMetrics.density
+            val radius = ctx.resources.getDimension(R.dimen.pt_radius)
+            val count = workingList.size
 
             holder.label.text = entry.label
             val isSelected = workingList.getOrNull(position)?.id == selectedId
             holder.radio.isChecked = isSelected
-            holder.itemView.setBackgroundColor(
-                if (isSelected && !isEditMode) holder.itemView.context.themeColor(R.attr.colorBgCard)
-                else android.graphics.Color.TRANSPARENT
+            val accentC = ctx.themeColor(R.attr.ptAccent)
+            val dividerColor = ctx.themeColor(R.attr.ptDivider)
+
+            // Region preview thumbnail — swap physical dims based on rotation
+            val display = gameDisplay
+            if (display != null) {
+                val pw = display.mode.physicalWidth.toFloat()
+                val ph = display.mode.physicalHeight.toFloat()
+                val rotated = display.rotation == android.view.Surface.ROTATION_90
+                    || display.rotation == android.view.Surface.ROTATION_270
+                val dw = if (rotated) ph else pw
+                val dh = if (rotated) pw else ph
+                holder.preview.setDisplayRatio(dw / dh)
+            }
+            holder.preview.surfaceColor = ctx.themeColor(R.attr.ptSurface)
+            holder.preview.accentColor = accentC
+            holder.preview.mutedColor = ctx.themeColor(R.attr.ptTextMuted)
+            holder.preview.setRegion(entry.top, entry.bottom, entry.left, entry.right)
+            holder.preview.setRegionSelected(isSelected)
+            holder.radio.buttonTintList = android.content.res.ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(accentC, dividerColor)
             )
+
+            // Per-row rounded corners: first row gets top corners, last row gets bottom
+            val cardColor = ctx.themeColor(R.attr.ptCard)
+            val accent = ctx.themeColor(R.attr.ptAccent)
+            // Blend 5% accent over card color (solid, no transparency)
+            val alpha = 0.10f
+            val selectedColor = android.graphics.Color.rgb(
+                ((android.graphics.Color.red(accent) * alpha + android.graphics.Color.red(cardColor) * (1 - alpha))).toInt(),
+                ((android.graphics.Color.green(accent) * alpha + android.graphics.Color.green(cardColor) * (1 - alpha))).toInt(),
+                ((android.graphics.Color.blue(accent) * alpha + android.graphics.Color.blue(cardColor) * (1 - alpha))).toInt()
+            )
+            val fillColor = if (isSelected && !isEditMode) selectedColor else cardColor
+            val strokeColor = ctx.themeColor(R.attr.ptDivider)
+
+            val topRadius = if (position == 0) radius else 0f
+            val bottomRadius = if (position == count - 1) radius else 0f
+
+            holder.itemView.background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(fillColor)
+                cornerRadii = floatArrayOf(
+                    topRadius, topRadius,     // top-left
+                    topRadius, topRadius,     // top-right
+                    bottomRadius, bottomRadius, // bottom-right
+                    bottomRadius, bottomRadius  // bottom-left
+                )
+                setStroke((1 * dp).toInt(), strokeColor)
+            }
 
             if (isEditMode) {
                 holder.radio.visibility = View.GONE

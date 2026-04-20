@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Design-system spacing tokens -->
+    <dimen name="pt_radius">14dp</dimen>
+    <dimen name="pt_row_min_height">56dp</dimen>
+    <dimen name="pt_row_h_padding">16dp</dimen>
+    <dimen name="pt_row_v_padding">14dp</dimen>
+    <dimen name="pt_group_gap">20dp</dimen>
+    <dimen name="pt_section_h_padding">14dp</dimen>
+</resources>

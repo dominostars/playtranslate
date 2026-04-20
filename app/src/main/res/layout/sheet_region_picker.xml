@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="?attr/colorBgSurface">
+    android:background="?attr/ptBg">
 
-    <!-- Toolbar: [Edit]  title  [✕] -->
+    <!-- Toolbar: [Edit]  title  [+] -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="56dp"
@@ -19,7 +20,7 @@
             android:layout_width="72dp"
             android:layout_height="wrap_content"
             android:text="@string/label_edit"
-            android:textColor="?attr/colorAccentPrimary"
+            android:textColor="?attr/ptAccent"
             android:textSize="14sp"
             android:minWidth="0dp"
             android:minHeight="0dp" />
@@ -30,7 +31,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="@string/label_select_region"
-            android:textColor="?attr/colorTextPrimary"
+            android:textColor="?attr/ptText"
             android:textSize="16sp"
             android:textStyle="bold"
             android:gravity="center" />
@@ -41,7 +42,7 @@
             android:layout_width="72dp"
             android:layout_height="wrap_content"
             android:text="+"
-            android:textColor="?attr/colorAccentPrimary"
+            android:textColor="?attr/ptAccent"
             android:textSize="22sp"
             android:minWidth="0dp"
             android:minHeight="0dp" />
@@ -52,16 +53,16 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="?attr/colorBgDivider" />
+        android:background="?attr/ptDivider" />
 
-    <!-- No-preview notice (shown when accessibility is not enabled; taps open a11y settings) -->
+    <!-- No-preview notice (shown when accessibility is not enabled) -->
     <LinearLayout
         android:id="@+id/noPreviewNotice"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:background="?attr/selectableItemBackground"
-        android:paddingHorizontal="16dp"
+        android:paddingHorizontal="@dimen/pt_section_h_padding"
         android:paddingVertical="12dp"
         android:clickable="true"
         android:focusable="true">
@@ -71,7 +72,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="@string/region_picker_no_preview"
-            android:textColor="?attr/colorTextSecondary"
+            android:textColor="?attr/ptTextMuted"
             android:textSize="12sp"
             android:lineSpacingMultiplier="1.3" />
 
@@ -80,7 +81,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center_vertical"
             android:text="›"
-            android:textColor="?attr/colorTextHint"
+            android:textColor="?attr/ptTextHint"
             android:textSize="18sp"
             android:layout_marginStart="8dp" />
 
@@ -92,8 +93,10 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:paddingVertical="8dp"
-        android:clipToPadding="false" />
-
+        android:layout_marginHorizontal="@dimen/pt_section_h_padding"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="12dp"
+        android:clipToPadding="false"
+        android:clipChildren="false" />
 
 </LinearLayout>

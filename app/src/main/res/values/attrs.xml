@@ -1,18 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Custom theme color attributes — set per-theme, referenced via ?attr/ in layouts. -->
-    <attr name="colorBgDark"          format="color" />
-    <attr name="colorBgSurface"       format="color" />
-    <attr name="colorBgCard"          format="color" />
-    <attr name="colorBgDivider"       format="color" />
-    <attr name="colorAccentPrimary"   format="color" />
-    <attr name="colorAccentPrimaryDark" format="color" />
-    <attr name="colorAccentSecondary" format="color" />
-    <attr name="colorTextPrimary"     format="color" />
-    <attr name="colorTextSecondary"   format="color" />
-    <attr name="colorTextHint"        format="color" />
-    <attr name="colorTextTranslation" format="color" />
-    <attr name="colorTextLink"        format="color" />
-    <!-- Text color for content drawn ON top of the accent/primary button color. -->
-    <attr name="colorTextOnAccent"    format="color" />
+    <!-- Semantic design-system tokens -->
+    <attr name="ptBg"              format="color" />  <!-- window / page background -->
+    <attr name="ptSurface"         format="color" />  <!-- raised flat surface (rows, sheets) -->
+    <attr name="ptCard"            format="color" />  <!-- grouped card background -->
+    <attr name="ptElevated"        format="color" />  <!-- elevated surface (popovers, menus) -->
+    <attr name="ptDivider"         format="color" />  <!-- hairline between rows -->
+    <attr name="ptOutline"         format="color" />  <!-- input/button borders -->
+    <attr name="ptText"            format="color" />  <!-- primary body text -->
+    <attr name="ptTextMuted"       format="color" />  <!-- secondary / subtitle text -->
+    <attr name="ptTextHint"        format="color" />  <!-- tertiary / placeholder -->
+    <attr name="ptTextTranslation" format="color" />  <!-- translation output text -->
+    <attr name="ptTextLink"        format="color" />  <!-- tappable links -->
+    <attr name="ptAccent"          format="color" />  <!-- primary accent -->
+    <attr name="ptAccentTint"      format="color" />  <!-- semi-transparent accent overlay -->
+    <attr name="ptAccentOn"        format="color" />  <!-- text/icon color over ptAccent -->
+    <attr name="ptDanger"          format="color" />  <!-- destructive / error -->
+    <attr name="ptWarning"         format="color" />  <!-- caution / warning -->
+    <attr name="ptRadius"          format="dimension" />
 </resources>

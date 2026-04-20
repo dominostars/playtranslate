@@ -31,7 +31,6 @@ import com.playtranslate.ui.FloatingIconMenu
 import com.playtranslate.ui.FloatingOverlayIcon
 import com.playtranslate.ui.OcrDebugOverlayView
 import com.playtranslate.ui.RegionDragView
-import com.playtranslate.ui.RegionOverlayView
 import com.playtranslate.ui.TranslationOverlayView
 import com.playtranslate.ui.WordLookupPopup
 import kotlinx.coroutines.CoroutineScope
@@ -58,10 +57,10 @@ import kotlinx.coroutines.launch
  */
 class PlayTranslateAccessibilityService : AccessibilityService() {
 
-    private var overlayView: RegionOverlayView? = null
-    private var overlayWm: WindowManager? = null
     private var dragView: RegionDragView? = null
     private var dragWm: WindowManager? = null
+    /** True when the region drag editor overlay is showing. */
+    val isRegionEditorActive: Boolean get() = dragView != null
     internal var floatingIcon: FloatingOverlayIcon? = null
         set(value) {
             field = value
@@ -90,6 +89,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     private var regionEditorLabelWm: WindowManager? = null
     private var regionIndicatorView: View? = null
     private var regionIndicatorWm: WindowManager? = null
+    private var regionIndicatorPersistent = false
     private val regionIndicatorHandler = Handler(Looper.getMainLooper())
     private val debugOcrManager get() = OcrManager.instance
     private val debugHandler = Handler(Looper.getMainLooper())
@@ -154,7 +154,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         stopDebugOcrLoop()
         hideTranslationOverlay()
         hideRegionOverlay()
-        hideRegionIndicator()
+        hideRegionIndicator(force = true)
         hideRegionEditor()
         hideRegionDragOverlay()
         dismissFloatingMenu()
@@ -166,41 +166,20 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         return super.onUnbind(intent)
     }
 
+    /** Shows a persistent region indicator on the game display (reuses the indicator view). */
     fun showRegionOverlay(display: Display, region: RegionEntry) {
-        // Don't show/recreate the overlay while the icon is being dragged —
-        // it would override the INVISIBLE state set by onDragStart and
-        // bringFloatingIconToFront would break the drag touch sequence.
         if (floatingIcon?.inDragMode == true) return
-        hideRegionOverlay()
-        val wm = createDisplayContext(display).getSystemService(WindowManager::class.java) ?: return
-        val view = RegionOverlayView(this).apply {
-            updateRegion(region.top, region.bottom, region.left, region.right)
-        }
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        )
-        wm.addView(view, params)
-        overlayWm = wm
-        overlayView = view
-
-        // Re-add the floating icon so it draws above the region overlay
+        showRegionIndicator(display, region, persistent = true)
+        // Re-add the floating icon so it draws above the full-screen dim overlay
         bringFloatingIconToFront()
     }
 
     fun updateRegionOverlay(region: RegionEntry) {
-        overlayView?.updateRegion(region.top, region.bottom, region.left, region.right)
+        // No incremental update — the indicator is recreated on next showRegionOverlay call
     }
 
     fun hideRegionOverlay() {
-        try { overlayView?.let { overlayWm?.removeView(it) } } catch (_: Exception) {}
-        overlayView = null
-        overlayWm = null
+        hideRegionIndicator(force = true)
     }
 
     // ── Overlay state for ScreenshotManager ──────────────────────────────
@@ -209,27 +188,20 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     data class OverlayState(
         val hadTranslation: Boolean,
         val hadDebug: Boolean,
-        val hadRegionOverlay: Boolean
+        val hadRegionIndicator: Boolean
     )
 
     /**
      * Hides overlays so they don't appear in a clean screenshot.
      * Returns the previous state so [restoreAfterCapture] can restore it.
-     *
-     * The region indicator is intentionally left visible — it draws outside
-     * the capture region and doesn't affect OCR. It is only force-removed
-     * when the region itself changes (see [CaptureService.updateActiveRegion]).
-     *
-     * The region overlay (dim mask from RegionPickerSheet) IS hidden — it
-     * obscures text outside the capture region and would break full-screen OCR.
      */
     fun prepareForCleanCapture(): OverlayState {
         val state = OverlayState(
             hadTranslation = translationOverlayView != null,
             hadDebug = debugOverlayView != null,
-            hadRegionOverlay = overlayView != null
+            hadRegionIndicator = regionIndicatorView != null
         )
-        if (state.hadRegionOverlay) overlayView?.visibility = View.INVISIBLE
+        if (state.hadRegionIndicator) regionIndicatorView?.visibility = View.INVISIBLE
         if (state.hadDebug) debugOverlayView?.visibility = View.INVISIBLE
         if (state.hadTranslation) translationOverlayView?.visibility = View.INVISIBLE
         return state
@@ -239,10 +211,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     fun restoreAfterCapture(state: OverlayState) {
         if (state.hadDebug) debugOverlayView?.visibility = View.VISIBLE
         if (state.hadTranslation) translationOverlayView?.visibility = View.VISIBLE
-        // Region overlay is NOT restored during drag — the drag lifecycle
-        // (overlayHiddenForDrag → restoreRegionOverlay) handles that.
-        if (state.hadRegionOverlay && floatingIcon?.inDragMode != true) {
-            overlayView?.visibility = View.VISIBLE
+        if (state.hadRegionIndicator && floatingIcon?.inDragMode != true) {
+            regionIndicatorView?.visibility = View.VISIBLE
         }
     }
 
@@ -257,9 +227,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     fun showRegionIndicator(
         display: Display,
         region: RegionEntry,
-        durationMs: Long = 1500L
+        persistent: Boolean = false
     ) {
-        hideRegionIndicator()
+        hideRegionIndicator(force = true)
 
         // Skip for full-screen regions
         if (region.isFullScreen) return
@@ -267,26 +237,49 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val ctx = createDisplayContext(display)
         val wm = ctx.getSystemService(WindowManager::class.java) ?: return
         val dp = ctx.resources.displayMetrics.density
-        val displayLabel = "Capturing ${region.label}"
+        val displayLabel = region.label
+
+        val accentColor = OverlayColors.accent(this)
+        val bgColor = OverlayColors.bg(this)
 
         val view = object : View(ctx) {
             private val dimPaint = android.graphics.Paint().apply {
-                color = android.graphics.Color.argb(160, 0, 0, 0)
+                color = android.graphics.Color.argb(200, 0, 0, 0)
                 style = android.graphics.Paint.Style.FILL
             }
             private val borderPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                color = android.graphics.Color.WHITE
+                color = accentColor
                 style = android.graphics.Paint.Style.STROKE
-                strokeWidth = 1.5f * dp
+                strokeWidth = 2f * dp
+            }
+            private val glowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.argb(26,
+                    android.graphics.Color.red(accentColor),
+                    android.graphics.Color.green(accentColor),
+                    android.graphics.Color.blue(accentColor))
+                style = android.graphics.Paint.Style.STROKE
+                strokeWidth = 12f * dp
+                maskFilter = android.graphics.BlurMaskFilter(14f * dp, android.graphics.BlurMaskFilter.Blur.NORMAL)
             }
             private val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                color = android.graphics.Color.WHITE
-                textSize = 13f * dp
+                color = bgColor
+                textSize = 12f * dp
                 textAlign = android.graphics.Paint.Align.CENTER
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setShadowLayer(6f * dp, 0f, 0f, android.graphics.Color.BLACK)
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
             }
+            private val labelBgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = accentColor
+                style = android.graphics.Paint.Style.FILL
+            }
+            private val labelPadH = 10f * dp
+            private val labelPadV = 4f * dp
+            private val labelRadius = 6f * dp
             private val labelMargin = 8f * dp
+
+            init {
+                // BlurMaskFilter requires software rendering
+                setLayerType(LAYER_TYPE_SOFTWARE, null)
+            }
 
             override fun onDraw(canvas: android.graphics.Canvas) {
                 val w = width.toFloat()
@@ -302,21 +295,37 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 if (l > 0f) canvas.drawRect(0f, t, l, b, dimPaint)
                 if (r < w) canvas.drawRect(r, t, w, b, dimPaint)
 
-                // White border completely outside the capture region
+                // Soft accent glow — clipped to outside the region only
+                canvas.save()
+                canvas.clipRect(l, t, r, b, android.graphics.Region.Op.DIFFERENCE)
+                val glowOffset = glowPaint.strokeWidth / 2f
+                canvas.drawRect(l - glowOffset, t - glowOffset, r + glowOffset, b + glowOffset, glowPaint)
+                canvas.restore()
+
+                // Accent border outside the capture region
                 val half = borderPaint.strokeWidth / 2f
                 canvas.drawRect(l - half, t - half, r + half, b + half, borderPaint)
 
-                // Label centered horizontally, above the region (or below if no space)
+                // Label with accent background, centered above (or below) the region
                 val cx = (l + r) / 2f
+                val textW = textPaint.measureText(displayLabel)
                 val textH = textPaint.descent() - textPaint.ascent()
-                val labelY = if (t > textH + labelMargin * 2) {
-                    // Above the region
-                    t - labelMargin - textPaint.descent()
-                } else {
-                    // Below the region
-                    b + labelMargin - textPaint.ascent()
-                }
-                canvas.drawText(displayLabel, cx, labelY, textPaint)
+                val pillW = textW + labelPadH * 2
+                val pillH = textH + labelPadV * 2
+
+                val aboveY = t - labelMargin - pillH
+                val labelTop = if (aboveY >= 0) aboveY else b + labelMargin
+                val labelBottom = labelTop + pillH
+
+                // Pill background
+                canvas.drawRoundRect(
+                    cx - pillW / 2, labelTop, cx + pillW / 2, labelBottom,
+                    labelRadius, labelRadius, labelBgPaint
+                )
+
+                // Label text
+                val textY = labelTop + labelPadV - textPaint.ascent()
+                canvas.drawText(displayLabel, cx, textY, textPaint)
             }
         }
 
@@ -332,18 +341,26 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         wm.addView(view, params)
         regionIndicatorView = view
         regionIndicatorWm = wm
+        regionIndicatorPersistent = persistent
 
-        // Brief flash, then quick fade out
-        regionIndicatorHandler.postDelayed({
-            view.animate()
-                .alpha(0f)
-                .setDuration(600L)
-                .withEndAction { hideRegionIndicator() }
-                .start()
-        }, 400L)  // 400ms solid + 600ms fade
+        if (!persistent) {
+            // Brief flash, then quick fade out
+            regionIndicatorHandler.postDelayed({
+                view.animate()
+                    .alpha(0f)
+                    .setDuration(600L)
+                    .withEndAction { hideRegionIndicator(force = true) }
+                    .start()
+            }, 400L)  // 400ms solid + 600ms fade
+        }
     }
 
-    fun hideRegionIndicator() {
+    /**
+     * Hides the region indicator. If [force] is false, persistent indicators
+     * (from the region picker) are left alone — only flash indicators are cleared.
+     */
+    fun hideRegionIndicator(force: Boolean = false) {
+        if (!force && regionIndicatorPersistent) return
         regionIndicatorHandler.removeCallbacksAndMessages(null)
         val view = regionIndicatorView
         if (view != null) {
@@ -353,6 +370,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         }
         regionIndicatorView = null
         regionIndicatorWm = null
+        regionIndicatorPersistent = false
     }
 
     // ── No-text pill toast ────────────────────────────────────────────────
@@ -961,7 +979,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         fun restoreRegionOverlay() {
             if (overlayHiddenForDrag) {
                 overlayHiddenForDrag = false
-                overlayView?.visibility = View.VISIBLE
+                regionIndicatorView?.visibility = View.VISIBLE
             }
         }
 
@@ -994,9 +1012,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         }
         icon.onDragStart = {
             // Hide region preview so the user can see game text while dragging
-            if (overlayView?.visibility == View.VISIBLE) {
+            if (regionIndicatorView?.visibility == View.VISIBLE) {
                 overlayHiddenForDrag = true
-                overlayView?.visibility = View.INVISIBLE
+                regionIndicatorView?.visibility = View.INVISIBLE
             }
             // Pause live mode while dragging for definitions
             if (CaptureService.instance?.isLive == true) {
@@ -1228,13 +1246,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             builder.setTitle("Disable $appName?")
                 .setMessage("Re-enable in $appName app")
             if (!alreadyCompact) {
-                builder.addButton("Minimize Icon", android.graphics.Color.parseColor("#5DB2EB")) {
+                builder.addButton("Minimize Icon", OverlayColors.accent(this)) {
                     prefs.compactOverlayIcon = true
                     hideFloatingIcon("confirm_minimize_single")
                     ensureFloatingIcon()
                 }
             }
-            builder.addButton("Turn Off", android.graphics.Color.parseColor("#E04040")) {
+            builder.addButton("Turn Off", OverlayColors.danger(this)) {
                     prefs.showOverlayIcon = false
                     hideFloatingIcon("confirm_turn_off_single")
                 }
@@ -1243,18 +1261,18 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             builder.setTitle("Hide $appName game screen controls?")
             if (!alreadyCompact) {
                 builder.setMessage("\u201CMinimize Icon\u201D shrinks the floating icon. \u201CTurn Off\u201D disables it until re-enabled in settings.")
-                    .addButton("Minimize Icon", android.graphics.Color.parseColor("#5DB2EB")) {
+                    .addButton("Minimize Icon", OverlayColors.accent(this)) {
                         prefs.compactOverlayIcon = true
                         hideFloatingIcon("confirm_minimize_multi")
                         ensureFloatingIcon()
                     }
             } else {
                 builder.setMessage("\u201CHide for Now\u201D brings it back next time you open $appName. \u201CTurn Off\u201D disables it until re-enabled in settings.")
-                    .addButton("Hide for Now", android.graphics.Color.parseColor("#5DB2EB")) {
+                    .addButton("Hide for Now", OverlayColors.accent(this)) {
                         hideFloatingIcon("confirm_hide_for_now")
                     }
             }
-            builder.addButton("Turn Off", android.graphics.Color.parseColor("#E04040")) {
+            builder.addButton("Turn Off", OverlayColors.danger(this)) {
                     prefs.showOverlayIcon = false
                     hideFloatingIcon("confirm_turn_off_multi")
                 }
@@ -1277,6 +1295,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         // Suppress live captures while editing
         CaptureService.instance?.holdActive = true
         hideTranslationOverlay()
+        hideRegionOverlay()
 
         // Pre-populate with current active region (or default if full-screen)
         val currentRegion = CaptureService.instance?.activeRegion
@@ -1301,25 +1320,38 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val barPad = (12 * dp).toInt()
         val gap = (16 * dp).toInt()
 
+        val surfaceColor = OverlayColors.surface(this)
+        val cardColor = OverlayColors.card(this)
+        val dividerColor = OverlayColors.divider(this)
+        val accentColorBtn = OverlayColors.accent(this)
+        val accentOnColor = OverlayColors.accentOn(this)
+        val textColor = OverlayColors.text(this)
+        val surfaceAlpha = android.graphics.Color.argb(230,
+            android.graphics.Color.red(surfaceColor),
+            android.graphics.Color.green(surfaceColor),
+            android.graphics.Color.blue(surfaceColor))
+        val btnRadius = 16 * dp
+
         val bar = android.widget.LinearLayout(ctx).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(barPad * 2, barPad, barPad * 2, barPad)
+            setPadding(barPad * 2 - (9 * dp).toInt(), barPad, barPad * 2 - (9 * dp).toInt(), barPad)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.argb(220, 30, 30, 30))
-                cornerRadius = 28 * dp
+                setColor(surfaceAlpha)
+                setStroke((1 * dp).toInt(), dividerColor)
+                cornerRadius = 22 * dp
             }
         }
 
         // Cancel button (X)
         val cancelBtn = android.widget.TextView(ctx).apply {
             text = "\u2715"
-            setTextColor(android.graphics.Color.WHITE)
+            setTextColor(textColor)
             textSize = 22f
             gravity = Gravity.CENTER
             background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(android.graphics.Color.argb(200, 180, 50, 50))
+                setColor(cardColor)
+                cornerRadius = btnRadius
             }
             layoutParams = android.widget.LinearLayout.LayoutParams(btnSize, btnSize).apply {
                 marginEnd = gap
@@ -1335,12 +1367,12 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         // Use button (checkmark)
         val useBtn = android.widget.TextView(ctx).apply {
             text = "\u2713"
-            setTextColor(android.graphics.Color.WHITE)
+            setTextColor(accentOnColor)
             textSize = 22f
             gravity = Gravity.CENTER
             background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(android.graphics.Color.argb(200, 50, 140, 50))
+                setColor(accentColorBtn)
+                cornerRadius = btnRadius
             }
             layoutParams = android.widget.LinearLayout.LayoutParams(btnSize, btnSize)
             setOnClickListener {
@@ -1378,13 +1410,14 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         // Instruction label at top center
         val label = android.widget.TextView(ctx).apply {
             text = "Drag edges to restrict screen captures to this region"
-            setTextColor(android.graphics.Color.WHITE)
+            setTextColor(textColor)
             textSize = 14f
             gravity = Gravity.CENTER
             setPadding((16 * dp).toInt(), (12 * dp).toInt(), (16 * dp).toInt(), (12 * dp).toInt())
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.argb(200, 30, 30, 30))
-                cornerRadius = 12 * dp
+                setColor(surfaceAlpha)
+                setStroke((1 * dp).toInt(), dividerColor)
+                cornerRadius = 100 * dp
             }
         }
         val screenW = getDisplaySize(display).x

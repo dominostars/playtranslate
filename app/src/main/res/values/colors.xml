@@ -1,13 +1,54 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Background palette -->
-    <color name="bg_card">#242424</color>
-    <color name="bg_divider">#2E2E2E</color>
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!-- Dark palette (used by Theme.PlayTranslate & .Purple)      -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <color name="pt_dark_bg">#FF0B0D0E</color>
+    <color name="pt_dark_surface">#FF141719</color>
+    <color name="pt_dark_card">#FF1C1F22</color>
+    <color name="pt_dark_elevated">#FF24272B</color>
+    <color name="pt_dark_divider">#12FFFFFF</color>
+    <color name="pt_dark_outline">#1FFFFFFF</color>
+    <color name="pt_dark_text">#FFECEFF1</color>
+    <color name="pt_dark_text_muted">#FF9AA1A8</color>
+    <color name="pt_dark_text_hint">#FF5F6770</color>
+    <color name="pt_dark_text_on_accent">#FF0B1412</color>
+    <color name="pt_dark_danger">#FFE05D5D</color>
+    <color name="pt_dark_warning">#FFD4A84A</color>
+    <color name="pt_dark_translation">#FFE8C07A</color>
 
-    <!-- Text -->
-    <color name="text_primary">#EFEFEF</color>
-    <color name="text_secondary">#A0A0A0</color>
-    <color name="text_hint">#606060</color>
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!-- Light palette (used by Theme.PlayTranslate.White & .Rainbow) -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <color name="pt_light_bg">#FFF7F8F7</color>
+    <color name="pt_light_surface">#FFECEEEC</color>
+    <color name="pt_light_card">#FFFFFFFF</color>
+    <color name="pt_light_elevated">#FFFFFFFF</color>
+    <color name="pt_light_divider">#12000000</color>
+    <color name="pt_light_outline">#1A000000</color>
+    <color name="pt_light_text">#FF14171A</color>
+    <color name="pt_light_text_muted">#FF5A6168</color>
+    <color name="pt_light_text_hint">#FF8A9199</color>
+    <color name="pt_light_text_on_accent">#FFFFFFFF</color>
+    <color name="pt_light_danger">#FFC8383D</color>
+    <color name="pt_light_warning">#FFA67A11</color>
+    <color name="pt_light_translation">#FF9E5A00</color>
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!-- Accents — per-theme                                       -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <color name="pt_accent_teal">#FF4DD0C2</color>
+    <color name="pt_accent_teal_tint_dark">#244DD0C2</color>
+    <color name="pt_accent_teal_tint_light">#1A4DD0C2</color>
+
+    <color name="pt_accent_purple">#FFB794F4</color>
+    <color name="pt_accent_purple_tint">#24B794F4</color>
+
+    <color name="pt_accent_coral">#FFE67A6F</color>
+    <color name="pt_accent_coral_tint">#1AE67A6F</color>
+
+    <!-- Named colors referenced by vector drawables (tinted at runtime) -->
+    <color name="text_secondary">@color/pt_dark_text_muted</color>
 
     <!-- Status colours -->
     <color name="status_error">#F44336</color>

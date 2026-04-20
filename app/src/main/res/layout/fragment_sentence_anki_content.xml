@@ -10,7 +10,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/section_original"
-        android:textColor="?attr/colorTextSecondary"
+        android:textColor="?attr/ptTextMuted"
         android:textSize="11sp"
         android:textAllCaps="true"
         android:letterSpacing="0.08"
@@ -20,11 +20,11 @@
         android:id="@+id/etSentenceJapanese"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textColor="?attr/colorTextPrimary"
+        android:textColor="?attr/ptText"
         android:textSize="15sp"
         android:minLines="2"
         android:gravity="top|start"
-        android:background="?attr/colorBgCard"
+        android:background="?attr/ptCard"
         android:padding="10dp"
         android:inputType="textMultiLine"
         android:layout_marginBottom="16dp" />
@@ -34,7 +34,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/section_translation"
-        android:textColor="?attr/colorTextSecondary"
+        android:textColor="?attr/ptTextMuted"
         android:textSize="11sp"
         android:textAllCaps="true"
         android:letterSpacing="0.08"
@@ -44,11 +44,11 @@
         android:id="@+id/etSentenceTranslation"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textColor="?attr/colorTextPrimary"
+        android:textColor="?attr/ptText"
         android:textSize="14sp"
         android:minLines="2"
         android:gravity="top|start"
-        android:background="?attr/colorBgCard"
+        android:background="?attr/ptCard"
         android:padding="10dp"
         android:inputType="textMultiLine"
         android:layout_marginBottom="16dp" />
@@ -58,7 +58,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/section_words"
-        android:textColor="?attr/colorTextSecondary"
+        android:textColor="?attr/ptTextMuted"
         android:textSize="11sp"
         android:textAllCaps="true"
         android:letterSpacing="0.08"
@@ -76,7 +76,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/label_screenshot"
-        android:textColor="?attr/colorTextSecondary"
+        android:textColor="?attr/ptTextMuted"
         android:textSize="11sp"
         android:textAllCaps="true"
         android:letterSpacing="0.08"
@@ -97,7 +97,7 @@
             android:layout_height="wrap_content"
             android:scaleType="fitCenter"
             android:adjustViewBounds="true"
-            android:background="?attr/colorBgCard" />
+            android:background="?attr/ptCard" />
 
         <Button
             android:id="@+id/btnSentenceRemovePhoto"
@@ -107,8 +107,8 @@
             android:layout_margin="4dp"
             android:text="@string/btn_remove_photo"
             android:textSize="11sp"
-            android:backgroundTint="#CC000000"
-            android:textColor="#FFFFFF" />
+            android:backgroundTint="?attr/ptCard"
+            android:textColor="?attr/ptText" />
 
     </FrameLayout>
 

@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="?attr/colorBgSurface">
+    android:background="?attr/ptSurface">
 
     <!-- Toolbar -->
     <LinearLayout
@@ -22,7 +22,7 @@
             android:layout_width="64dp"
             android:layout_height="match_parent"
             android:text="&#8249;"
-            android:textColor="?attr/colorAccentPrimary"
+            android:textColor="?attr/ptAccent"
             android:textSize="40sp"
             android:minWidth="0dp"
             android:minHeight="0dp"
@@ -34,7 +34,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/section_anki_deck"
-            android:textColor="?attr/colorTextSecondary"
+            android:textColor="?attr/ptTextMuted"
             android:textSize="11sp"
             android:textAllCaps="true"
             android:letterSpacing="0.08"
@@ -51,7 +51,7 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="?attr/colorBgDivider" />
+        android:background="?attr/ptDivider" />
 
     <ScrollView
         android:layout_width="match_parent"
@@ -112,7 +112,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="WORD"
-                    android:textColor="?attr/colorTextSecondary"
+                    android:textColor="?attr/ptTextMuted"
                     android:textSize="11sp"
                     android:textAllCaps="true"
                     android:letterSpacing="0.08"
@@ -122,10 +122,10 @@
                     android:id="@+id/tvWordAnkiHeadword"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:textColor="?attr/colorTextPrimary"
+                    android:textColor="?attr/ptText"
                     android:textSize="22sp"
                     android:textStyle="bold"
-                    android:background="?attr/colorBgCard"
+                    android:background="?attr/ptCard"
                     android:padding="10dp"
                     android:layout_marginBottom="4dp" />
 
@@ -142,14 +142,14 @@
                         android:id="@+id/tvWordAnkiReading"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:textColor="?attr/colorTextHint"
+                        android:textColor="?attr/ptTextHint"
                         android:textSize="13sp" />
 
                     <TextView
                         android:id="@+id/tvWordAnkiFreqStars"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:textColor="?attr/colorTextHint"
+                        android:textColor="?attr/ptTextHint"
                         android:textSize="12sp"
                         android:layout_marginStart="8dp"
                         android:visibility="gone" />
@@ -160,7 +160,7 @@
                     android:id="@+id/tvWordAnkiPos"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:textColor="?attr/colorTextHint"
+                    android:textColor="?attr/ptTextHint"
                     android:textSize="11sp"
                     android:layout_marginBottom="16dp"
                     android:visibility="gone" />
@@ -170,7 +170,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="DEFINITION"
-                    android:textColor="?attr/colorTextSecondary"
+                    android:textColor="?attr/ptTextMuted"
                     android:textSize="11sp"
                     android:textAllCaps="true"
                     android:letterSpacing="0.08"
@@ -180,11 +180,11 @@
                     android:id="@+id/etWordAnkiDefinition"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:textColor="?attr/colorTextPrimary"
+                    android:textColor="?attr/ptText"
                     android:textSize="14sp"
                     android:minLines="3"
                     android:gravity="top|start"
-                    android:background="?attr/colorBgCard"
+                    android:background="?attr/ptCard"
                     android:padding="10dp"
                     android:inputType="textMultiLine"
                     android:layout_marginBottom="16dp" />
@@ -198,7 +198,7 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="?attr/colorBgDivider" />
+        android:background="?attr/ptDivider" />
 
     <Button
         android:id="@+id/btnWordAnkiSend"
@@ -206,7 +206,7 @@
         android:layout_height="wrap_content"
         android:layout_margin="12dp"
         android:text="@string/btn_add_to_anki"
-        android:backgroundTint="?attr/colorAccentPrimary"
-        android:textColor="?attr/colorTextOnAccent" />
+        android:backgroundTint="?attr/ptAccent"
+        android:textColor="?attr/ptAccentOn" />
 
 </LinearLayout>

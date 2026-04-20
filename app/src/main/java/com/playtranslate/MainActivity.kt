@@ -582,14 +582,14 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         }
         btnTranslate.setOnLongClickListener {
             translateHoldActive = true
-            val holdColor = themeColor(R.attr.colorTextTranslation)
+            val holdColor = themeColor(R.attr.ptTextTranslation)
             val radius = 6f * resources.displayMetrics.density
             btnTranslate.background = android.graphics.drawable.GradientDrawable().apply {
                 cornerRadius = radius
                 setColor(holdColor)
             }
-            tvTranslateTitle.setTextColor(themeColor(R.attr.colorTextOnAccent))
-            tvTranslateSubtitle.setTextColor(themeColor(R.attr.colorTextOnAccent))
+            tvTranslateTitle.setTextColor(themeColor(R.attr.ptAccentOn))
+            tvTranslateSubtitle.setTextColor(themeColor(R.attr.ptAccentOn))
             if (isLiveMode) {
                 captureService?.holdStart()
             } else {
@@ -655,7 +655,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         }
     }
 
-    private val liveRedColor = android.graphics.Color.parseColor("#C95050")
+    private val liveRedColor by lazy { themeColor(R.attr.ptDanger) }
 
     private fun updateMenuLiveItem() {
         if (isLiveMode) {
@@ -670,7 +670,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             menuItemLiveLabel.text = "Auto Translate"
             ivLiveToggle.setImageResource(R.drawable.ic_play)
             tvLiveToggle.text = "Auto"
-            val normalColor = themeColor(R.attr.colorTextPrimary)
+            val normalColor = themeColor(R.attr.ptText)
             ivLiveToggle.imageTintList = android.content.res.ColorStateList.valueOf(normalColor)
             tvLiveToggle.setTextColor(normalColor)
         }
@@ -699,10 +699,10 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         }
 
         // ── Button visuals (always re-applied) ──
-        val accentBg = themeColor(R.attr.colorAccentPrimary)
-        val accentText = themeColor(R.attr.colorTextOnAccent)
-        val normalText = themeColor(R.attr.colorTextPrimary)
-        val strokeColor = themeColor(R.attr.colorTextSecondary)
+        val accentBg = themeColor(R.attr.ptAccent)
+        val accentText = themeColor(R.attr.ptAccentOn)
+        val normalText = themeColor(R.attr.ptText)
+        val strokeColor = themeColor(R.attr.ptTextMuted)
         val radius = 6f * resources.displayMetrics.density
 
         fun tabBackground(selected: Boolean): android.graphics.drawable.Drawable {
@@ -1021,7 +1021,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         OverlayAlert.Builder(this)
             .setTitle("PlayTranslate crashed previously")
             .setMessage("Send the crash report to the developer? It includes a stack trace, recent app logs, and any text PlayTranslate has recently OCR'd or looked up. No account info.")
-            .addButton("Send", android.graphics.Color.parseColor("#5DB2EB")) {
+            .addButton("Send", themeColor(R.attr.ptAccent)) {
                 lifecycleScope.launch {
                     val files = withContext(Dispatchers.IO) {
                         runCatching {
@@ -1043,14 +1043,14 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             .addButton(
                 "Later",
                 android.graphics.Color.TRANSPARENT,
-                android.graphics.Color.parseColor("#AAAAAA")
+                themeColor(R.attr.ptTextMuted)
             ) {
                 // No action — files remain, prompt re-fires next launch.
             }
             .addButton(
                 "Discard",
                 android.graphics.Color.TRANSPARENT,
-                android.graphics.Color.parseColor("#AAAAAA")
+                themeColor(R.attr.ptTextMuted)
             ) {
                 LogExporter.deleteCrashFiles(this)
             }
@@ -1071,7 +1071,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         OverlayAlert.Builder(this)
             .setTitle("Update available")
             .setMessage("PlayTranslate ${release.tag} is available on GitHub.")
-            .addButton("View release", android.graphics.Color.parseColor("#5DB2EB")) {
+            .addButton("View release", themeColor(R.attr.ptAccent)) {
                 try {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(release.url)))
                 } catch (_: Exception) {
@@ -1081,7 +1081,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             .addButton(
                 "Ask again later",
                 android.graphics.Color.TRANSPARENT,
-                android.graphics.Color.parseColor("#AAAAAA")
+                themeColor(R.attr.ptTextMuted)
             ) {
                 // 24h debounce timestamp was already committed inside
                 // UpdateChecker.maybeCheck — no extra bookkeeping needed.
@@ -1089,7 +1089,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             .addButton(
                 "Skip this version",
                 android.graphics.Color.TRANSPARENT,
-                android.graphics.Color.parseColor("#AAAAAA")
+                themeColor(R.attr.ptTextMuted)
             ) {
                 prefs.updateCheckSkippedTag = release.tag
             }
@@ -1102,7 +1102,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             .setMessage(getString(R.string.restricted_settings_message))
             .addButton(
                 getString(R.string.btn_open_app_settings),
-                android.graphics.Color.parseColor("#5DB2EB")
+                themeColor(R.attr.ptAccent)
             ) {
                 val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                     data = Uri.fromParts("package", packageName, null)
@@ -1184,7 +1184,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         pageA11y.findViewById<View>(R.id.btnCantEnableA11y).setOnClickListener(cantEnableClick)
         pageA11ySingle.findViewById<View>(R.id.btnCantEnableA11ySingle).setOnClickListener(cantEnableClick)
         // Highlight "PlayTranslate" in the hint text with the theme accent color
-        val accentColor = themeColor(R.attr.colorTextTranslation)
+        val accentColor = themeColor(R.attr.ptTextTranslation)
         colorizeAppName(pageA11y.findViewById(R.id.tvA11yHintDual), accentColor)
         colorizeAppName(pageA11ySingle.findViewById(R.id.tvA11yHintSingle), accentColor)
     }
@@ -1233,7 +1233,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private fun initLiveHintText() {
         val frag = resultFragment ?: return
         val icon = ContextCompat.getDrawable(this, R.drawable.ic_play)?.mutate() ?: return
-        icon.setTint(themeColor(R.attr.colorTextHint))
+        icon.setTint(themeColor(R.attr.ptTextHint))
         val textSize = 24f * resources.displayMetrics.scaledDensity
         val size = (textSize * 1.1f).toInt()
         icon.setBounds(0, 0, size, size)
@@ -1340,7 +1340,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(themeColor(R.attr.colorBgSurface))
+            setBackgroundColor(themeColor(R.attr.ptSurface))
             elevation = 8 * dp
         }
         val rows = mutableListOf<View>()
@@ -1406,7 +1406,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(themeColor(R.attr.colorBgSurface))
+            setBackgroundColor(themeColor(R.attr.ptSurface))
             elevation = 8 * dp
         }
         val rows = mutableListOf<View>()
@@ -1421,7 +1421,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         dropdownHighlightListener = { rowIdx ->
             val regionIdx = dropdownRegionOrder[rowIdx]
             if (regionIdx >= 0) {
-                PlayTranslateAccessibilityService.instance?.updateRegionOverlay(dropdownRegions[regionIdx])
+                dropdownGameDisplay?.let { d ->
+                    PlayTranslateAccessibilityService.instance?.showRegionOverlay(d, dropdownRegions[regionIdx])
+                }
             }
         }
         dropdownCommitAction = { commitRegionDropdownSelection() }
@@ -1496,6 +1498,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     private fun openAddCustomRegionFromDropdown() {
+        PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val gameDisplay = displayManager.getDisplay(prefs.captureDisplayId)
         val current = CaptureService.instance?.activeRegion
@@ -1546,14 +1549,14 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             gravity = Gravity.CENTER_VERTICAL
             setPadding(padH, padV, padH, padV)
             setBackgroundColor(themeColor(
-                if (highlighted) R.attr.colorBgCard else R.attr.colorBgSurface))
+                if (highlighted) R.attr.ptCard else R.attr.ptSurface))
 
             if (isAddNew) {
                 val tv = TextView(this@MainActivity).apply {
                     text = label
                     textSize = 14f
                     setTypeface(null, Typeface.BOLD)
-                    setTextColor(themeColor(R.attr.colorAccentPrimary))
+                    setTextColor(themeColor(R.attr.ptAccent))
                 }
                 addView(tv)
             } else {
@@ -1569,7 +1572,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                 val tv = TextView(this@MainActivity).apply {
                     text = label
                     textSize = 14f
-                    setTextColor(themeColor(R.attr.colorTextPrimary))
+                    setTextColor(themeColor(R.attr.ptText))
                 }
                 addView(rb)
                 addView(tv)
@@ -1579,7 +1582,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
     private fun updateRowHighlight(row: View, highlighted: Boolean) {
         row.setBackgroundColor(themeColor(
-            if (highlighted) R.attr.colorBgCard else R.attr.colorBgSurface))
+            if (highlighted) R.attr.ptCard else R.attr.ptSurface))
         ((row as? LinearLayout)?.getChildAt(0) as? RadioButton)?.isChecked = highlighted
     }
 

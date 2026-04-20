@@ -11,6 +11,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
+import com.playtranslate.themeColor
 
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
@@ -112,7 +113,7 @@ class WordDetailBottomSheet : DialogFragment() {
             val entry = response?.entries?.firstOrNull()
             if (!isAdded) return@launch
             if (entry == null) {
-                addText(content, getString(R.string.word_detail_not_found, word), 14f, R.color.text_hint)
+                addText(content, getString(R.string.word_detail_not_found, word), 14f, R.attr.ptTextHint)
                 return@launch
             }
             buildContent(content, entry, engine, defResult)
@@ -212,7 +213,7 @@ class WordDetailBottomSheet : DialogFragment() {
             f.reading?.takeIf { it != f.written }
         }.distinct()
         if (allReadings.isNotEmpty()) {
-            addText(content, allReadings.joinToString("  /  "), 15f, R.color.text_hint)
+            addText(content, allReadings.joinToString("  /  "), 15f, R.attr.ptTextHint)
         }
 
         // ── Badges: Common + frequency ────────────────────────────────────
@@ -242,10 +243,10 @@ class WordDetailBottomSheet : DialogFragment() {
         val isMachineTranslated = defResult is DefinitionResult.MachineTranslated || translatedDefs != null
         if (defResult is DefinitionResult.MachineTranslated) {
             addText(content, "⚠ Machine translated: ${defResult.translatedHeadword}",
-                13f, R.color.text_hint, topMargin = 0, italic = true)
+                13f, R.attr.ptTextHint, topMargin = 0, italic = true)
         } else if (translatedDefs != null) {
             addText(content, "⚠ Machine translated",
-                13f, R.color.text_hint, topMargin = 0, italic = true)
+                13f, R.attr.ptTextHint, topMargin = 0, italic = true)
         }
 
         // Iterate with original index so targetByOrd and translatedDefs align correctly
@@ -269,10 +270,10 @@ class WordDetailBottomSheet : DialogFragment() {
                 ?: sense.targetDefinitions.joinToString("; ")
             val numSenses = entry.senses.count { it.targetDefinitions.isNotEmpty() }
             val prefix = if (numSenses > 1) "${displayCount + 1}.  " else ""
-            addText(content, prefix + glosses, 16f, R.color.text_primary, topMargin = 4)
+            addText(content, prefix + glosses, 16f, R.attr.ptText, topMargin = 4)
 
             if (sense.misc.isNotEmpty()) {
-                addText(content, sense.misc.joinToString(" · "), 12f, R.color.text_hint,
+                addText(content, sense.misc.joinToString(" · "), 12f, R.attr.ptTextHint,
                     topMargin = 2, italic = true)
             }
             displayCount++
@@ -298,13 +299,13 @@ class WordDetailBottomSheet : DialogFragment() {
     // ── View helpers ──────────────────────────────────────────────────────
 
     private fun addText(
-        parent: LinearLayout, text: String, sizeSp: Float, colorRes: Int,
+        parent: LinearLayout, text: String, sizeSp: Float, colorAttr: Int,
         topMargin: Int = 0, italic: Boolean = false
     ) {
         parent.addView(TextView(requireContext()).apply {
             this.text = text
             textSize = sizeSp
-            setTextColor(ContextCompat.getColor(requireContext(), colorRes))
+            setTextColor(requireContext().themeColor(colorAttr))
             if (italic) setTypeface(null, Typeface.ITALIC)
             layoutParams = rowParams(topMargin)
         })
@@ -315,7 +316,7 @@ class WordDetailBottomSheet : DialogFragment() {
             text = label.uppercase()
             textSize = 10f
             letterSpacing = 0.15f
-            setTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
+            setTextColor(requireContext().themeColor(R.attr.ptTextMuted))
             setTypeface(null, Typeface.BOLD)
             layoutParams = rowParams(topMargin = 4, bottomMargin = 4)
         })
@@ -323,7 +324,7 @@ class WordDetailBottomSheet : DialogFragment() {
 
     private fun addDivider(parent: LinearLayout, topMargin: Int = 0) {
         parent.addView(View(requireContext()).apply {
-            setBackgroundColor(ContextCompat.getColor(requireContext(), R.color.bg_divider))
+            setBackgroundColor(requireContext().themeColor(R.attr.ptDivider))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(1)
             ).also { it.topMargin = dp(topMargin) }
@@ -334,7 +335,7 @@ class WordDetailBottomSheet : DialogFragment() {
         return TextView(requireContext()).apply {
             text = label
             textSize = if (small) 11f else 12f
-            setTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
+            setTextColor(requireContext().themeColor(R.attr.ptTextMuted))
             setBackgroundResource(R.drawable.bg_badge)
             setPadding(dp(6), dp(2), dp(6), dp(2))
             layoutParams = LinearLayout.LayoutParams(
@@ -348,7 +349,7 @@ class WordDetailBottomSheet : DialogFragment() {
         val ctx = requireContext()
         val card = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(ContextCompat.getColor(ctx, R.color.bg_card))
+            setBackgroundColor(ctx.themeColor(R.attr.ptCard))
             layoutParams = rowParams(topMargin = 8)
             setPadding(dp(12), dp(10), dp(12), dp(10))
         }
@@ -356,7 +357,7 @@ class WordDetailBottomSheet : DialogFragment() {
         card.addView(TextView(ctx).apply {
             text = detail.literal.toString()
             textSize = 36f
-            setTextColor(ContextCompat.getColor(ctx, R.color.text_primary))
+            setTextColor(ctx.themeColor(R.attr.ptText))
             setTypeface(null, Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -373,7 +374,7 @@ class WordDetailBottomSheet : DialogFragment() {
             col.addView(TextView(ctx).apply {
                 text = detail.meanings.take(4).joinToString(", ")
                 textSize = 14f
-                setTextColor(ContextCompat.getColor(ctx, R.color.text_primary))
+                setTextColor(ctx.themeColor(R.attr.ptText))
             })
         }
 
@@ -385,7 +386,7 @@ class WordDetailBottomSheet : DialogFragment() {
             col.addView(TextView(ctx).apply {
                 text = readings.joinToString("  ")
                 textSize = 12f
-                setTextColor(ContextCompat.getColor(ctx, R.color.text_hint))
+                setTextColor(ctx.themeColor(R.attr.ptTextHint))
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
                 ).also { it.topMargin = dp(2) }
@@ -402,7 +403,7 @@ class WordDetailBottomSheet : DialogFragment() {
             col.addView(TextView(ctx).apply {
                 text = meta.joinToString("  ·  ")
                 textSize = 11f
-                setTextColor(ContextCompat.getColor(ctx, R.color.text_hint))
+                setTextColor(ctx.themeColor(R.attr.ptTextHint))
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
                 ).also { it.topMargin = dp(2) }

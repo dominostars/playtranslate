@@ -38,12 +38,13 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     // Theme colors resolved from the user's selected palette
-    private val accentColor: Int = context.themeColor(R.attr.colorAccentPrimary).takeIf { it != 0 } ?: Color.parseColor("#00BCD4")
-    private val onAccentColor: Int = context.themeColor(R.attr.colorTextOnAccent).takeIf { it != 0 } ?: Color.BLACK
-    private val hideColor: Int = context.themeColor(R.attr.colorTextHint).takeIf { it != 0 } ?: Color.parseColor("#606060")
-    private val textColor: Int = context.themeColor(R.attr.colorTextPrimary).takeIf { it != 0 } ?: Color.parseColor("#CCFFFFFF")
-    private val bgColor: Int = context.themeColor(R.attr.colorBgDark).takeIf { it != 0 } ?: Color.parseColor("#0D0D0D")
-    private val pauseColor: Int = Color.parseColor("#C95050")
+    private val accentColor: Int = context.themeColor(R.attr.ptAccent).takeIf { it != 0 } ?: Color.parseColor("#4DD0C2")
+    private val onAccentColor: Int = context.themeColor(R.attr.ptAccentOn).takeIf { it != 0 } ?: Color.BLACK
+    private val cardColor: Int = context.themeColor(R.attr.ptCard).takeIf { it != 0 } ?: Color.parseColor("#1C1F22")
+    private val textColor: Int = context.themeColor(R.attr.ptText).takeIf { it != 0 } ?: Color.parseColor("#ECEFF1")
+    private val mutedColor: Int = context.themeColor(R.attr.ptTextMuted).takeIf { it != 0 } ?: Color.parseColor("#9AA1A8")
+    private val bgColor: Int = context.themeColor(R.attr.ptBg).takeIf { it != 0 } ?: Color.parseColor("#0B0D0E")
+    private val pauseColor: Int = context.themeColor(R.attr.ptDanger).takeIf { it != 0 } ?: Color.parseColor("#E05D5D")
 
     var onHideIcon: (() -> Unit)? = null
     var onHideTemporary: (() -> Unit)? = null
@@ -80,12 +81,19 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private val clearPaint = Paint().apply {
         xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
     }
-    private val selectionStrokePaint = Paint().apply {
+    private val selectionBasePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        color = Color.WHITE
-        strokeWidth = 3f * dp
-        isAntiAlias = true
+        color = context.themeColor(R.attr.ptDivider)
+        strokeWidth = 2f * dp
     }
+    private val selectionDashPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = accentColor
+        strokeWidth = 2f * dp
+        strokeCap = Paint.Cap.ROUND
+    }
+    private val selDashLen = 8f
+    private val selGapLen = 6f
 
     private val regionStrokePaint = Paint().apply {
         style = Paint.Style.STROKE
@@ -130,21 +138,27 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     init {
         setWillNotDraw(false)
         setLayerType(LAYER_TYPE_HARDWARE, null)
+        clipChildren = false
+        clipToPadding = false
 
         val btnSize = (54 * dp).toInt()
+        val iconPad = (14 * dp).toInt()
 
         // Rounded rectangle container for both buttons
+        val borderColor = context.themeColor(R.attr.ptDivider)
         menuCard = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
                 setColor(Color.argb(0xD9, Color.red(bgColor), Color.green(bgColor), Color.blue(bgColor)))
                 cornerRadius = 20 * dp
+                setStroke((1 * dp).toInt(), borderColor)
             }
-            elevation = 12 * dp
+            elevation = 8 * dp
+            clipChildren = false
+            clipToPadding = false
             gravity = Gravity.CENTER_HORIZONTAL
             val hPad = (14 * dp).toInt()
-            val vPad = (12 * dp).toInt()
-            setPadding(hPad, vPad, hPad, vPad)
+            setPadding(hPad, (14 * dp).toInt(), hPad, (12 * dp).toInt())
             visibility = View.INVISIBLE
         }
 
@@ -162,6 +176,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 setColor(accentColor)
                 cornerRadius = 14 * dp
             }
+            elevation = 4 * dp
             layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
@@ -170,7 +185,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         liveIcon = TextView(context).apply {
             text = "\u25B6"
             setTextColor(onAccentColor)
-            textSize = 26f
+            textSize = 22f
             gravity = Gravity.CENTER
         }
         liveBtn.addView(liveIcon, LayoutParams(
@@ -207,6 +222,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 setColor(accentColor)
                 cornerRadius = 14 * dp
             }
+            elevation = 4 * dp
             layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
@@ -215,7 +231,8 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         val regionIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_crop)
             imageTintList = android.content.res.ColorStateList.valueOf(onAccentColor)
-            scaleType = ImageView.ScaleType.CENTER
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(iconPad, iconPad, iconPad, iconPad)
         }
         regionBtn.addView(regionIcon, LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -244,19 +261,20 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
         val hideBtn = FrameLayout(context).apply {
             background = GradientDrawable().apply {
-                setColor(hideColor)
+                setColor(cardColor)
                 cornerRadius = 14 * dp
             }
+            elevation = 4 * dp
             layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
             setOnClickListener { onCloseRequested?.invoke() }
         }
-        val hideIcon = TextView(context).apply {
-            text = "\u2715"
-            setTextColor(Color.BLACK)
-            textSize = 24f
-            gravity = Gravity.CENTER
+        val hideIcon = ImageView(context).apply {
+            setImageResource(R.drawable.ic_exit_to_app)
+            imageTintList = android.content.res.ColorStateList.valueOf(textColor)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(iconPad, iconPad, iconPad, iconPad)
         }
         hideBtn.addView(hideIcon, LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -283,10 +301,11 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             ViewGroup.LayoutParams.WRAP_CONTENT
         ))
 
-        // Instruction text at top center with pill background
+        // Instruction text at top center
+        val dividerColor = context.themeColor(R.attr.ptDivider)
         instructionText = TextView(context).apply {
             text = "Drag finger to capture a specific area"
-            setTextColor(Color.WHITE)
+            setTextColor(textColor)
             textSize = 14f
             gravity = Gravity.CENTER
             setPadding(
@@ -294,7 +313,8 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 (14 * dp).toInt(), (9 * dp).toInt()
             )
             background = GradientDrawable().apply {
-                setColor(Color.argb(180, 30, 30, 30))
+                setColor(Color.argb(0xD9, Color.red(bgColor), Color.green(bgColor), Color.blue(bgColor)))
+                setStroke((1 * dp).toInt(), dividerColor)
                 cornerRadii = floatArrayOf(
                     0f, 0f,           // top-left
                     0f, 0f,           // top-right
@@ -323,7 +343,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             val icon = TextView(context).apply {
                 text = "⚠"
                 textSize = 14f
-                setTextColor(Color.parseColor("#EEFF00"))
+                setTextColor(context.themeColor(R.attr.ptWarning))
             }
             val label = TextView(context).apply {
                 text = "  Offline — translation quality is reduced"
@@ -347,14 +367,16 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             setImageResource(R.drawable.ic_settings)
             imageTintList = android.content.res.ColorStateList.valueOf(textColor)
             scaleType = ImageView.ScaleType.FIT_CENTER
-            val pad = (10 * dp).toInt()
-            setPadding(pad, pad, pad, pad)
+            val gearPad = (10 * dp).toInt()
+            setPadding(gearPad, gearPad, gearPad, gearPad)
         }
         settingsBtn = FrameLayout(context).apply {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(Color.argb(0xD9, Color.red(bgColor), Color.green(bgColor), Color.blue(bgColor)))
+                setStroke((1 * dp).toInt(), borderColor)
             }
+            elevation = 4 * dp
             addView(gearIcon, LayoutParams(gearSize, gearSize))
             setOnClickListener { onSettings?.invoke() }
             visibility = View.INVISIBLE
@@ -388,7 +410,15 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), dimPaint)
             canvas.drawRect(sel, clearPaint)
             canvas.restoreToCount(sc)
-            canvas.drawRect(sel, selectionStrokePaint)
+            // Card-colored base border + accent dashes (screen-space stable)
+            canvas.drawRect(sel, selectionBasePaint)
+            val dashPx = selDashLen * dp
+            val gapPx = selGapLen * dp
+            val period = dashPx + gapPx
+            drawScreenDashes(canvas, sel.left, sel.top, sel.right, sel.top, dashPx, period, true)
+            drawScreenDashes(canvas, sel.right, sel.top, sel.right, sel.bottom, dashPx, period, false)
+            drawScreenDashes(canvas, sel.left, sel.bottom, sel.right, sel.bottom, dashPx, period, true)
+            drawScreenDashes(canvas, sel.left, sel.top, sel.left, sel.bottom, dashPx, period, false)
         } else {
             val region = activeRegion
             if (region != null && !region.isFullScreen) {
@@ -487,6 +517,34 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     // ── Positioning ──────────────────────────────────────────────────────
 
     @Suppress("UNUSED_PARAMETER")
+    /** Draws dashes along a line at fixed screen-space positions. */
+    private fun drawScreenDashes(
+        canvas: Canvas, x1: Float, y1: Float, x2: Float, y2: Float,
+        dashPx: Float, period: Float, horizontal: Boolean
+    ) {
+        if (horizontal) {
+            val y = y1
+            var pos = (x1 / period).toInt() * period
+            if (pos > x1) pos -= period
+            while (pos < x2) {
+                val s = pos.coerceAtLeast(x1)
+                val e = (pos + dashPx).coerceAtMost(x2)
+                if (e > s) canvas.drawLine(s, y, e, y, selectionDashPaint)
+                pos += period
+            }
+        } else {
+            val x = x1
+            var pos = (y1 / period).toInt() * period
+            if (pos > y1) pos -= period
+            while (pos < y2) {
+                val s = pos.coerceAtLeast(y1)
+                val e = (pos + dashPx).coerceAtMost(y2)
+                if (e > s) canvas.drawLine(x, s, x, e, selectionDashPaint)
+                pos += period
+            }
+        }
+    }
+
     fun positionNearIcon(iconCx: Int, iconCy: Int, iconEdge: FloatingOverlayIcon.Edge, screenW: Int, screenH: Int) {
         post {
             menuCard.measure(

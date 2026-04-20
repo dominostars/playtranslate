@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Reusable section row: title above, empty container below for injected controls. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingHorizontal="@dimen/pt_row_h_padding"
+    android:paddingVertical="@dimen/pt_row_v_padding">
+
+    <TextView
+        android:id="@+id/tvRowTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        style="@style/Text.PT.RowTitle" />
+
+    <TextView
+        android:id="@+id/tvRowSubtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:visibility="gone"
+        style="@style/Text.PT.RowSubtitle" />
+
+    <FrameLayout
+        android:id="@+id/sectionContent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp" />
+
+</LinearLayout>
