@@ -59,6 +59,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
     private var dragView: RegionDragView? = null
     private var dragWm: WindowManager? = null
+    /** True when the region drag editor overlay is showing. */
+    val isRegionEditorActive: Boolean get() = dragView != null
     internal var floatingIcon: FloatingOverlayIcon? = null
         set(value) {
             field = value
@@ -1293,6 +1295,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         // Suppress live captures while editing
         CaptureService.instance?.holdActive = true
         hideTranslationOverlay()
+        hideRegionOverlay()
 
         // Pre-populate with current active region (or default if full-screen)
         val currentRegion = CaptureService.instance?.activeRegion
