@@ -130,6 +130,7 @@ class ChineseDictionaryManager private constructor(private val context: Context)
             while (c.moveToNext()) {
                 val posList   = c.getString(0).split(',').filter { it.isNotBlank() }
                 val glossList = c.getString(1).split('\t').filter { it.isNotBlank() }
+                    .map { convertPinyinInBrackets(it) }
                 val miscList  = c.getString(2).split('\t').filter { it.isNotBlank() }
                 senses.add(
                     Sense(
@@ -159,6 +160,8 @@ class ChineseDictionaryManager private constructor(private val context: Context)
     /**
      * Converts numbered pinyin (e.g. "fu4 wu4") to tone-marked pinyin ("fù wù").
      * Handles syllables separated by spaces. Tone 5 (neutral) = no mark.
+     * Preserves leading-letter capitalization so proper nouns like "Bei3 jing1"
+     * render as "Běi jīng" rather than lowercased.
      */
     private fun numberedToToneMarks(numbered: String): String =
         numbered.split(' ').joinToString(" ") { syllable ->
@@ -166,7 +169,21 @@ class ChineseDictionaryManager private constructor(private val context: Context)
             if (tone == null || tone == 0) return@joinToString syllable
             val base = if (tone in 1..5) syllable.dropLast(1) else syllable
             if (tone == 5 || tone !in 1..4) return@joinToString base
-            applyToneMark(base.lowercase(), tone)
+            val wasCapital = base.firstOrNull()?.isUpperCase() == true
+            val marked = applyToneMark(base.lowercase(), tone)
+            if (wasCapital) marked.replaceFirstChar { it.uppercase() } else marked
+        }
+
+    /**
+     * CC-CEDICT definitions embed pinyin cross-references in brackets, e.g.
+     * `"capital of Hebei Province 河北省[He2 bei3 sheng3] in China"`. Convert
+     * only the content inside `[...]` so numeric tones become accents while
+     * surrounding English text (which may legitimately contain digits like
+     * "H2O") is left untouched.
+     */
+    private fun convertPinyinInBrackets(text: String): String =
+        PINYIN_BRACKET_REGEX.replace(text) { m ->
+            "[${numberedToToneMarks(m.groupValues[1])}]"
         }
 
     private fun applyToneMark(syllable: String, tone: Int): String {
@@ -197,6 +214,7 @@ class ChineseDictionaryManager private constructor(private val context: Context)
 
     companion object {
         private const val TAG = "ChineseDictMgr"
+        private val PINYIN_BRACKET_REGEX = Regex("""\[([^\[\]]+)\]""")
 
         @SuppressLint("StaticFieldLeak")
         @Volatile private var instance: ChineseDictionaryManager? = null
