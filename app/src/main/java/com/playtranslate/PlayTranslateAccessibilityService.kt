@@ -1244,13 +1244,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             builder.setTitle("Disable $appName?")
                 .setMessage("Re-enable in $appName app")
             if (!alreadyCompact) {
-                builder.addButton("Minimize Icon", androidx.core.content.ContextCompat.getColor(this, R.color.pt_accent_teal)) {
+                builder.addButton("Minimize Icon", OverlayColors.accent(this)) {
                     prefs.compactOverlayIcon = true
                     hideFloatingIcon("confirm_minimize_single")
                     ensureFloatingIcon()
                 }
             }
-            builder.addButton("Turn Off", androidx.core.content.ContextCompat.getColor(this, R.color.pt_dark_danger)) {
+            builder.addButton("Turn Off", OverlayColors.danger(this)) {
                     prefs.showOverlayIcon = false
                     hideFloatingIcon("confirm_turn_off_single")
                 }
@@ -1259,18 +1259,18 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             builder.setTitle("Hide $appName game screen controls?")
             if (!alreadyCompact) {
                 builder.setMessage("\u201CMinimize Icon\u201D shrinks the floating icon. \u201CTurn Off\u201D disables it until re-enabled in settings.")
-                    .addButton("Minimize Icon", androidx.core.content.ContextCompat.getColor(this, R.color.pt_accent_teal)) {
+                    .addButton("Minimize Icon", OverlayColors.accent(this)) {
                         prefs.compactOverlayIcon = true
                         hideFloatingIcon("confirm_minimize_multi")
                         ensureFloatingIcon()
                     }
             } else {
                 builder.setMessage("\u201CHide for Now\u201D brings it back next time you open $appName. \u201CTurn Off\u201D disables it until re-enabled in settings.")
-                    .addButton("Hide for Now", androidx.core.content.ContextCompat.getColor(this, R.color.pt_accent_teal)) {
+                    .addButton("Hide for Now", OverlayColors.accent(this)) {
                         hideFloatingIcon("confirm_hide_for_now")
                     }
             }
-            builder.addButton("Turn Off", androidx.core.content.ContextCompat.getColor(this, R.color.pt_dark_danger)) {
+            builder.addButton("Turn Off", OverlayColors.danger(this)) {
                     prefs.showOverlayIcon = false
                     hideFloatingIcon("confirm_turn_off_multi")
                 }

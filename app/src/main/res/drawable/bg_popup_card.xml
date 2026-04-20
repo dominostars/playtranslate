@@ -2,6 +2,6 @@
 <!-- Dark rounded card matching the overlay popup style (#242424, 12dp corners). -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="#242424" />
+    <solid android:color="?attr/ptElevated" />
     <corners android:radius="12dp" />
 </shape>

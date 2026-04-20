@@ -21,7 +21,6 @@ import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.R
 import com.playtranslate.fullScreenDialogTheme
 import com.playtranslate.themeColor
-import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 
 /**
@@ -237,7 +236,7 @@ class SettingsBottomSheet : DialogFragment() {
         displays.forEach { display ->
             val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
             if (mgr != null) {
-                MainScope().launch {
+                viewLifecycleOwner.lifecycleScope.launch {
                     val bitmap = mgr.requestClean(display.displayId)
                     if (bitmap != null) {
                         r.displayThumbnails[display.displayId] = scaleThumbnail(bitmap)

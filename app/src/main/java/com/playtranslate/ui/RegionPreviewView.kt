@@ -54,7 +54,9 @@ class RegionPreviewView @JvmOverloads constructor(
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val desiredH = (28 * resources.displayMetrics.density).toInt()
         val desiredW = (desiredH * displayRatio).toInt()
-        setMeasuredDimension(desiredW, desiredH)
+        val w = resolveSize(desiredW, widthMeasureSpec)
+        val h = resolveSize(desiredH, heightMeasureSpec)
+        setMeasuredDimension(w, h)
     }
 
     override fun onDraw(canvas: Canvas) {

@@ -611,6 +611,24 @@ class SettingsRenderer(
             callbacks.showAnkiDeckPicker { refreshAnkiDeckValue() }
         }
         rowAnkiDeck.visibility = View.VISIBLE
+
+        // Validate saved deck still exists in AnkiDroid
+        validateAnkiDeck()
+    }
+
+    private fun validateAnkiDeck() {
+        if (prefs.ankiDeckId == 0L) return
+        lifecycleScope.launch {
+            val decks = withContext(Dispatchers.IO) { AnkiManager(ctx).getDecks() }
+            if (decks.isEmpty()) return@launch
+            if (!decks.containsKey(prefs.ankiDeckId)) {
+                // Saved deck no longer exists — clear and show first available
+                val first = decks.entries.first()
+                prefs.ankiDeckId = first.key
+                prefs.ankiDeckName = first.value
+                rowAnkiDeck.findViewById<TextView>(R.id.tvRowValue).text = first.value
+            }
+        }
     }
 
     private fun refreshAnkiDeckValue() {

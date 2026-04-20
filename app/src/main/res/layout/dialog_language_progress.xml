@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Mimics the overlay popup style (dark rounded card, light text). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -12,7 +11,7 @@
         android:id="@+id/tvPopupStatus"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textColor="#FFFFFFFF"
+        android:textColor="?attr/ptText"
         android:textSize="16sp"
         android:gravity="center" />
 
@@ -31,8 +30,8 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:text="@android:string/cancel"
-        android:textColor="#FFFFFFFF"
-        android:backgroundTint="#44FFFFFF"
+        android:textColor="?attr/ptTextMuted"
+        android:backgroundTint="?attr/ptDivider"
         android:minHeight="40dp" />
 
 </LinearLayout>
