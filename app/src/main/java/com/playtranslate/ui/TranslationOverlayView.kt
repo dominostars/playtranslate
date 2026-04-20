@@ -138,6 +138,7 @@ class TranslationOverlayView(
             if (ba.translatedText != bb.translatedText) return false
             if (ba.isFurigana != bb.isFurigana) return false
             if (ba.sourceText != bb.sourceText) return false
+            if (ba.orientation != bb.orientation) return false
             val ra = ba.bounds; val rb = bb.bounds
             if (Math.abs(ra.left - rb.left) > tolerance ||
                 Math.abs(ra.top - rb.top) > tolerance ||
@@ -450,6 +451,8 @@ class TranslationOverlayView(
     /**
      * Get the actual screen rects of all text box children.
      * Uses getLocationOnScreen for pixel-perfect positioning — no computed approximations.
+     * For rotated children (vertical text overlays), uses the visual bounds
+     * from the transformation matrix rather than the layout width/height.
      * Call after layout completes (doOnLayout).
      */
     fun getChildScreenRects(): List<Rect> {
@@ -458,8 +461,19 @@ class TranslationOverlayView(
         for (i in 0 until childCount) {
             val child = getChildAt(i)
             if (child.getTag(R.id.tag_bg_color) == null) continue
-            child.getLocationOnScreen(location)
-            rects += Rect(location[0], location[1], location[0] + child.width, location[1] + child.height)
+            if (child.rotation != 0f) {
+                // Rotated child: compute visual bounds via the hit rect,
+                // which accounts for rotation/translation transforms.
+                val hitRect = android.graphics.Rect()
+                child.getHitRect(hitRect)
+                // getHitRect returns parent-relative coords; offset to screen
+                getLocationOnScreen(location)
+                hitRect.offset(location[0], location[1])
+                rects += hitRect
+            } else {
+                child.getLocationOnScreen(location)
+                rects += Rect(location[0], location[1], location[0] + child.width, location[1] + child.height)
+            }
         }
         return rects
     }

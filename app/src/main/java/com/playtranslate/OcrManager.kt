@@ -129,38 +129,6 @@ class OcrManager private constructor() {
 
         if (visionText.textBlocks.isEmpty()) return null
 
-        // ── Vertical text diagnostics (Phase 0) ──────────────────────────
-        // Dumps orientation-relevant data for every Line so we can determine
-        // what ML Kit returns for vertical (tategaki) Japanese text.
-        // TODO: Remove after Phase 0 verification is complete.
-        for ((bi, block) in visionText.textBlocks.withIndex()) {
-            for ((li, line) in block.lines.withIndex()) {
-                val bb = line.boundingBox ?: continue
-                val w = bb.width()
-                val h = bb.height()
-                val aspect = if (w > 0) h.toFloat() / w else 0f
-                val angleStr = try {
-                    "%.1f".format(line.angle)
-                } catch (_: Throwable) {
-                    "N/A"
-                }
-                val cornerStr = line.cornerPoints?.joinToString { "(${it.x},${it.y})" } ?: "null"
-                android.util.Log.d("VerticalDiag",
-                    "block[$bi] line[$li]: \"${line.text}\" " +
-                    "bbox=${w}x${h} aspect=%.2f angle=$angleStr corners=[$cornerStr]".format(aspect))
-
-                // Log per-element bounds to see if elements stack vertically
-                for ((ei, elem) in line.elements.withIndex()) {
-                    val eb = elem.boundingBox
-                    if (eb != null) {
-                        android.util.Log.d("VerticalDiag",
-                            "  elem[$ei]: \"${elem.text}\" bbox=(${eb.left},${eb.top})-(${eb.right},${eb.bottom})")
-                    }
-                }
-            }
-        }
-        // ── End vertical text diagnostics ─────────────────────────────────
-
         // 2. Group lines by proximity, size, and alignment (not blocks — blocks
         //    can contain spatially distant lines that shouldn't be merged).
         // 3. Discard groups that contain no character from the source language's script.
