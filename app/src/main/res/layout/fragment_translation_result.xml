@@ -59,24 +59,30 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingHorizontal="14dp"
+            android:paddingHorizontal="@dimen/pt_section_h_padding"
             android:paddingTop="8dp"
             android:paddingBottom="64dp">
 
-            <!-- Translation section header: label + action buttons -->
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- TRANSLATION                                           -->
+            <!-- ══════════════════════════════════════════════════════ -->
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:gravity="center_vertical">
+                android:gravity="center_vertical"
+                android:paddingTop="@dimen/pt_group_gap"
+                android:paddingBottom="8dp"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp">
 
                 <TextView
                     android:id="@+id/labelTranslation"
-                    style="@style/Widget.PlayTranslate.SectionLabel"
+                    style="@style/Text.PT.GroupHeader"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:textColor="?attr/ptTextTranslation"
                     android:text="@string/section_translation" />
 
                 <ImageButton
@@ -100,54 +106,61 @@
 
             </LinearLayout>
 
-            <!-- Translation content (hidden when eye is toggled off) -->
-            <LinearLayout
-                android:id="@+id/translationContent"
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardTranslation"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
 
-                <TextView
-                    android:id="@+id/tvTranslation"
-                    style="@style/Widget.PlayTranslate.TranslationText"
+                <LinearLayout
+                    android:id="@+id/translationContent"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:layout_marginBottom="14dp" />
+                    android:orientation="vertical"
+                    android:paddingHorizontal="@dimen/pt_row_h_padding"
+                    android:paddingVertical="@dimen/pt_row_v_padding">
 
-                <TextView
-                    android:id="@+id/tvTranslationNote"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textColor="?attr/ptTextHint"
-                    android:textSize="11sp"
-                    android:layout_marginTop="6dp"
-                    android:visibility="gone" />
+                    <TextView
+                        android:id="@+id/tvTranslation"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="24sp"
+                        android:textColor="?attr/ptText"
+                        android:lineSpacingMultiplier="1" />
 
-            </LinearLayout>
+                    <TextView
+                        android:id="@+id/tvTranslationNote"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:textColor="?attr/ptTextHint"
+                        android:textSize="11sp"
+                        android:visibility="gone" />
 
-            <View
-                android:layout_width="0dp"
-                android:layout_height="10dp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
-            <!-- Divider between translation and original -->
-            <View
-                android:id="@+id/dividerMid"
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?attr/ptDivider"
-                android:layout_marginBottom="10dp" />
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- SOURCE (Original)                                     -->
+            <!-- ══════════════════════════════════════════════════════ -->
 
-            <!-- Original section header: label + action buttons -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:gravity="center_vertical">
+                android:gravity="center_vertical"
+                android:paddingTop="@dimen/pt_group_gap"
+                android:paddingBottom="8dp"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp">
 
                 <TextView
                     android:id="@+id/labelOriginal"
-                    style="@style/Widget.PlayTranslate.SectionLabel"
+                    style="@style/Text.PT.GroupHeader"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
@@ -194,54 +207,61 @@
 
             </LinearLayout>
 
-            <!-- Original content (hidden when eye is toggled off) -->
-            <LinearLayout
-                android:id="@+id/originalContent"
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardOriginal"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
 
-                <com.playtranslate.ui.ClickableTextView
-                    android:id="@+id/tvOriginal"
+                <LinearLayout
+                    android:id="@+id/originalContent"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:textSize="20sp"
-                    android:textColor="?attr/ptTextHint"
-                    android:lineSpacingMultiplier="1" />
+                    android:orientation="vertical"
+                    android:paddingHorizontal="@dimen/pt_row_h_padding"
+                    android:paddingVertical="@dimen/pt_row_v_padding">
 
-                <TextView
-                    android:id="@+id/tvTransliteration"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textColor="?attr/ptTextHint"
-                    android:textSize="13sp"
-                    android:layout_marginTop="2dp"
-                    android:visibility="gone" />
+                    <com.playtranslate.ui.ClickableTextView
+                        android:id="@+id/tvOriginal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="20sp"
+                        android:textColor="?attr/ptText"
+                        android:lineSpacingMultiplier="1" />
 
-            </LinearLayout>
+                    <TextView
+                        android:id="@+id/tvTransliteration"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:textColor="?attr/ptTextHint"
+                        android:textSize="13sp"
+                        android:visibility="gone" />
 
-            <View
-                android:layout_width="0dp"
-                android:layout_height="10dp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
-            <!-- Divider before vocabulary -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?attr/ptDivider"
-                android:layout_marginBottom="10dp" />
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- WORDS                                                 -->
+            <!-- ══════════════════════════════════════════════════════ -->
 
-            <!-- Words section header -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
-                android:layout_marginBottom="6dp">
+                android:paddingTop="@dimen/pt_group_gap"
+                android:paddingBottom="8dp"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp">
 
                 <TextView
-                    style="@style/Widget.PlayTranslate.SectionLabel"
+                    android:id="@+id/labelWords"
+                    style="@style/Text.PT.GroupHeader"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
@@ -258,54 +278,61 @@
 
             </LinearLayout>
 
-            <!-- Words content (hidden when eye is toggled off) -->
-            <LinearLayout
-                android:id="@+id/wordsContent"
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardWords"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
-
-                <TextView
-                    android:id="@+id/tvMainWordsLoading"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/words_loading"
-                    android:textColor="?attr/ptTextHint"
-                    android:textSize="13sp"
-                    android:layout_marginBottom="8dp"
-                    android:visibility="gone" />
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
 
                 <LinearLayout
-                    android:id="@+id/mainWordsContainer"
+                    android:id="@+id/wordsContent"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical" />
+                    android:orientation="vertical">
 
-                <TextView
-                    android:id="@+id/tvNoWords"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/words_none"
-                    android:textColor="?attr/ptTextHint"
-                    android:textSize="13sp"
-                    android:visibility="gone" />
+                    <TextView
+                        android:id="@+id/tvMainWordsLoading"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingHorizontal="@dimen/pt_row_h_padding"
+                        android:paddingVertical="@dimen/pt_row_v_padding"
+                        android:text="@string/words_loading"
+                        android:textColor="?attr/ptTextHint"
+                        android:textSize="13sp"
+                        android:visibility="gone" />
 
-            </LinearLayout>
+                    <LinearLayout
+                        android:id="@+id/mainWordsContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+
+                    <TextView
+                        android:id="@+id/tvNoWords"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingHorizontal="@dimen/pt_row_h_padding"
+                        android:paddingVertical="@dimen/pt_row_v_padding"
+                        android:text="@string/words_none"
+                        android:textColor="?attr/ptTextHint"
+                        android:textSize="13sp"
+                        android:visibility="gone" />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
             <!-- Action buttons row -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?attr/ptDivider"
-                android:layout_marginTop="10dp"
-                android:layout_marginBottom="12dp" />
-
             <LinearLayout
                 android:id="@+id/resultActionButtons"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
+                android:layout_marginTop="20dp"
                 android:layout_marginBottom="12dp"
                 android:visibility="gone">
 

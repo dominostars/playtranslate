@@ -26,13 +26,14 @@ enum class SourceLangId(val code: String) {
         else -> this
     }
 
-    /** System-locale display name, e.g. "Japanese" on an English device, "日本語" on Japanese. */
-    fun displayName(): String = when (this) {
-        ZH      -> java.util.Locale.forLanguageTag("zh-Hans").getDisplayName(java.util.Locale.getDefault())
+    /** Display name in [locale]. e.g. `JA.displayName(Locale("en"))` → "Japanese";
+     *  `JA.displayName(Locale("ja"))` → "日本語". Defaults to system locale. */
+    fun displayName(locale: java.util.Locale = java.util.Locale.getDefault()): String = when (this) {
+        ZH      -> java.util.Locale.forLanguageTag("zh-Hans").getDisplayName(locale)
             .replaceFirstChar { it.uppercase() }
-        ZH_HANT -> java.util.Locale.forLanguageTag("zh-Hant").getDisplayName(java.util.Locale.getDefault())
+        ZH_HANT -> java.util.Locale.forLanguageTag("zh-Hant").getDisplayName(locale)
             .replaceFirstChar { it.uppercase() }
-        else    -> java.util.Locale(code).getDisplayLanguage(java.util.Locale.getDefault())
+        else    -> java.util.Locale(code).getDisplayLanguage(locale)
             .replaceFirstChar { it.uppercase() }
     }
 

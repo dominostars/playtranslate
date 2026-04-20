@@ -85,6 +85,9 @@ class TranslationResultFragment : Fragment() {
     private lateinit var translationContent: LinearLayout
     private lateinit var originalContent: LinearLayout
     private lateinit var wordsContent: LinearLayout
+    private lateinit var cardTranslation: com.google.android.material.card.MaterialCardView
+    private lateinit var cardOriginal: com.google.android.material.card.MaterialCardView
+    private lateinit var cardWords: com.google.android.material.card.MaterialCardView
     private lateinit var labelOriginal: TextView
     private lateinit var labelTranslation: TextView
     private lateinit var tvNoWords: TextView
@@ -155,6 +158,9 @@ class TranslationResultFragment : Fragment() {
         translationContent   = view.findViewById(R.id.translationContent)
         originalContent      = view.findViewById(R.id.originalContent)
         wordsContent         = view.findViewById(R.id.wordsContent)
+        cardTranslation      = view.findViewById(R.id.cardTranslation)
+        cardOriginal         = view.findViewById(R.id.cardOriginal)
+        cardWords            = view.findViewById(R.id.cardWords)
         labelOriginal        = view.findViewById(R.id.labelOriginal)
         labelTranslation     = view.findViewById(R.id.labelTranslation)
         tvNoWords            = view.findViewById(R.id.tvNoWords)
@@ -205,14 +211,14 @@ class TranslationResultFragment : Fragment() {
 
     private fun applyTranslationVisibility() {
         val hidden = prefs.hideTranslationSection
-        translationContent.visibility = if (hidden) View.GONE else View.VISIBLE
+        cardTranslation.visibility = if (hidden) View.GONE else View.VISIBLE
         btnCopyTranslation.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
         btnToggleTranslation.setImageResource(if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility)
     }
 
     private fun applyOriginalVisibility() {
         val hidden = prefs.hideOriginalSection
-        originalContent.visibility = if (hidden) View.GONE else View.VISIBLE
+        cardOriginal.visibility = if (hidden) View.GONE else View.VISIBLE
         btnCopyOriginal.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
         btnEditOriginal.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
@@ -230,7 +236,7 @@ class TranslationResultFragment : Fragment() {
 
     private fun applyWordsVisibility() {
         val hidden = prefs.hideWordsSection
-        wordsContent.visibility = if (hidden) View.GONE else View.VISIBLE
+        cardWords.visibility = if (hidden) View.GONE else View.VISIBLE
         btnToggleWords.setImageResource(if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility)
     }
 
@@ -279,7 +285,7 @@ class TranslationResultFragment : Fragment() {
         applyTranslationVisibility()
         applyOriginalVisibility()
         applyWordsVisibility()
-        labelOriginal.text    = langDisplayName(selectedSourceLang())
+        labelOriginal.text    = sourceLangLocalizedDisplayName()
         labelTranslation.text = targetLangDisplayName()
         statusContainer.visibility = View.GONE
         resultsContent.visibility  = View.INVISIBLE
@@ -298,6 +304,23 @@ class TranslationResultFragment : Fragment() {
     private companion object {
         const val TEXT_SIZE_MAX_SP = 24f
         const val TEXT_SIZE_MIN_SP = 16f
+        const val WORD_DIVIDER_TAG = "pt_word_divider"
+    }
+
+    /** 1dp ptDivider line inset from the start by pt_row_h_padding, matching
+     *  `settings_row_divider` for word rows inside the Words card. */
+    private fun inflateWordDivider(): View {
+        val ctx = requireContext()
+        val dp1 = ctx.resources.displayMetrics.density.toInt().coerceAtLeast(1)
+        return View(ctx).apply {
+            tag = WORD_DIVIDER_TAG
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp1
+            ).apply {
+                marginStart = ctx.resources.getDimensionPixelSize(R.dimen.pt_row_h_padding)
+            }
+            setBackgroundColor(ctx.themeColor(R.attr.ptDivider))
+        }
     }
 
     /**
@@ -683,7 +706,7 @@ class TranslationResultFragment : Fragment() {
         if (!isAdded || view == null) return
         tvOriginal.setSegments(segments)
         tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
-        labelOriginal.text = langDisplayName(selectedSourceLang())
+        labelOriginal.text = sourceLangLocalizedDisplayName()
         labelTranslation.text = targetLangDisplayName()
         statusContainer.visibility = View.GONE
         resultsContent.visibility = View.VISIBLE
@@ -767,6 +790,9 @@ class TranslationResultFragment : Fragment() {
                 val row = inflater.inflate(R.layout.item_word_lookup, mainWordsContainer, false)
                 row.findViewById<TextView>(R.id.tvItemWord).text = word
                 row.findViewById<TextView>(R.id.tvItemMeaning).text = "…"
+                if (mainWordsContainer.childCount > 0) {
+                    mainWordsContainer.addView(inflateWordDivider())
+                }
                 mainWordsContainer.addView(row)
                 Pair(word, row)
             }
@@ -866,7 +892,22 @@ class TranslationResultFragment : Fragment() {
                                 surfaceArr[idx] = Pair(displayWord, surface)
                             }
                         } else {
-                            mainWordsContainer.removeView(row)
+                            // Remove the row plus its adjacent divider so the
+                            // invariant "every row at index > 0 is preceded by
+                            // a divider" holds after filtering.
+                            val childIdx = mainWordsContainer.indexOfChild(row)
+                            if (childIdx != -1) {
+                                if (childIdx == 0) {
+                                    mainWordsContainer.removeViewAt(0)
+                                    val next = mainWordsContainer.getChildAt(0)
+                                    if (next?.tag == WORD_DIVIDER_TAG) {
+                                        mainWordsContainer.removeViewAt(0)
+                                    }
+                                } else {
+                                    mainWordsContainer.removeViewAt(childIdx - 1) // divider
+                                    mainWordsContainer.removeViewAt(childIdx - 1) // row (shifted)
+                                }
+                            }
                         }
                     }
                 }
@@ -932,14 +973,14 @@ class TranslationResultFragment : Fragment() {
         Deinflector.toKanaTokens(text).joinToString(" ") { t.transliterate(it) }
     }
 
-    private fun selectedSourceLang() =
-        SourceLanguageProfiles[Prefs(requireContext().applicationContext).sourceLangId].translationCode
     private fun selectedTargetLang() =
         Prefs(requireContext().applicationContext).targetLang
 
-    private fun langDisplayName(langCode: String): String =
-        Locale(langCode).getDisplayLanguage(Locale.getDefault())
-            .replaceFirstChar { it.uppercase() }
+    private fun sourceLangLocalizedDisplayName(): String {
+        val appCtx = requireContext().applicationContext
+        val p = Prefs(appCtx)
+        return p.sourceLangId.displayName(Locale(p.targetLang))
+    }
 
     private fun targetLangDisplayName(): String {
         val code = selectedTargetLang()
