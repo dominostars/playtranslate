@@ -134,7 +134,8 @@ fun classifyOcrResults(
             if (boxIdx >= bitmapRects.size) continue
             if (boxes[boxIdx].dirty) continue
             if (boxIdx in contentMatchRemovals) continue
-            if (OcrManager.wouldGroup(bitmapRects[boxIdx], ocrFullRect)) {
+            val orient = ocrResult.groupOrientations.getOrElse(ocrIdx) { TextOrientation.HORIZONTAL }
+            if (OcrManager.wouldGroup(bitmapRects[boxIdx], ocrFullRect, orient)) {
                 nearExisting = true
                 staleOverlayIndices.add(boxIdx)
             }
@@ -183,7 +184,8 @@ fun cascadeStaleRemovals(
             if (i >= bitmapRects.size) continue
             for (removeIdx in cascadedRemovals.toSet()) {
                 if (removeIdx >= bitmapRects.size) continue
-                if (OcrManager.wouldGroup(bitmapRects[removeIdx], bitmapRects[i])) {
+                val orient = boxes[removeIdx].orientation
+                if (OcrManager.wouldGroup(bitmapRects[removeIdx], bitmapRects[i], orient)) {
                     cascadedRemovals.add(i)
                     expanded = true
                     break
