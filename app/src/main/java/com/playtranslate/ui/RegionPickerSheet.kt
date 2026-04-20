@@ -321,6 +321,8 @@ class RegionPickerSheet : DialogFragment() {
 
     private fun showSelectedOverlay() {
         if (isLive) return
+        // Don't re-show the picker overlay while the region drag editor is active
+        if (PlayTranslateAccessibilityService.instance?.isRegionEditorActive == true) return
         val display = gameDisplay ?: return
         val e = workingList.find { it.id == selectedId } ?: workingList.firstOrNull() ?: return
         PlayTranslateAccessibilityService.instance?.showRegionOverlay(display, e)

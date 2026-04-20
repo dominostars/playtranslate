@@ -1498,6 +1498,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     private fun openAddCustomRegionFromDropdown() {
+        PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val gameDisplay = displayManager.getDisplay(prefs.captureDisplayId)
         val current = CaptureService.instance?.activeRegion
