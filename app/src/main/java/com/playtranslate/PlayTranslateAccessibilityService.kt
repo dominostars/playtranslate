@@ -1252,7 +1252,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                     ensureFloatingIcon()
                 }
             }
-            builder.addButton("Turn Off", OverlayColors.danger(this)) {
+            builder.addButton("Turn Off", OverlayColors.divider(this), OverlayColors.danger(this)) {
                     prefs.showOverlayIcon = false
                     hideFloatingIcon("confirm_turn_off_single")
                 }
@@ -1272,7 +1272,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                         hideFloatingIcon("confirm_hide_for_now")
                     }
             }
-            builder.addButton("Turn Off", OverlayColors.danger(this)) {
+            builder.addButton("Turn Off", OverlayColors.divider(this), OverlayColors.danger(this)) {
                     prefs.showOverlayIcon = false
                     hideFloatingIcon("confirm_turn_off_multi")
                 }

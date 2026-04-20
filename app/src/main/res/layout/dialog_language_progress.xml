@@ -30,7 +30,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:text="@android:string/cancel"
-        android:textColor="?attr/ptTextMuted"
+        android:textColor="?attr/ptText"
         android:backgroundTint="?attr/ptDivider"
         android:minHeight="40dp" />
 

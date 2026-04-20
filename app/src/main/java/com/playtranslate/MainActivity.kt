@@ -1041,18 +1041,18 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                 }
             }
             .addButton(
-                "Later",
-                android.graphics.Color.TRANSPARENT,
-                themeColor(R.attr.ptTextMuted)
-            ) {
-                // No action — files remain, prompt re-fires next launch.
-            }
-            .addButton(
                 "Discard",
-                android.graphics.Color.TRANSPARENT,
-                themeColor(R.attr.ptTextMuted)
+                themeColor(R.attr.ptDivider),
+                themeColor(R.attr.ptDanger)
             ) {
                 LogExporter.deleteCrashFiles(this)
+            }
+            .addButton(
+                "Later",
+                themeColor(R.attr.ptDivider),
+                themeColor(R.attr.ptText)
+            ) {
+                // No action — files remain, prompt re-fires next launch.
             }
             .showInActivity(this)
     }
@@ -1079,19 +1079,19 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                 }
             }
             .addButton(
+                "Skip this version",
+                themeColor(R.attr.ptDivider),
+                themeColor(R.attr.ptDanger)
+            ) {
+                prefs.updateCheckSkippedTag = release.tag
+            }
+            .addButton(
                 "Ask again later",
-                android.graphics.Color.TRANSPARENT,
-                themeColor(R.attr.ptTextMuted)
+                themeColor(R.attr.ptDivider),
+                themeColor(R.attr.ptText)
             ) {
                 // 24h debounce timestamp was already committed inside
                 // UpdateChecker.maybeCheck — no extra bookkeeping needed.
-            }
-            .addButton(
-                "Skip this version",
-                android.graphics.Color.TRANSPARENT,
-                themeColor(R.attr.ptTextMuted)
-            ) {
-                prefs.updateCheckSkippedTag = release.tag
             }
             .showInActivity(this)
     }

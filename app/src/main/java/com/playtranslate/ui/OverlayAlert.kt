@@ -52,12 +52,15 @@ class OverlayAlert private constructor(
         fun setTitle(title: String) = apply { this.title = title }
         fun setMessage(message: String) = apply { this.message = message }
 
-        fun addButton(label: String, color: Int, textColor: Int = com.playtranslate.OverlayColors.text(context), onClick: () -> Unit) = apply {
+        fun addButton(label: String, color: Int, textColor: Int = com.playtranslate.OverlayColors.card(context), onClick: () -> Unit) = apply {
             buttons.add(ButtonConfig(label, color, textColor, onClick))
         }
 
         fun addCancelButton(onClick: (() -> Unit)? = null) = apply {
-            buttons.add(ButtonConfig("Cancel", Color.TRANSPARENT, com.playtranslate.OverlayColors.textMuted(context)) {
+            buttons.add(ButtonConfig("Cancel",
+                com.playtranslate.OverlayColors.divider(context),
+                com.playtranslate.OverlayColors.text(context)
+            ) {
                 onClick?.invoke()
             })
         }
