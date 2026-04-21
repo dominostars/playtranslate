@@ -1193,7 +1193,11 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         val p = Prefs(this)
         val srcInstalled = LanguagePackStore.isInstalled(this, p.sourceLangId)
         val tgtSet = p.hasTargetLangBeenSet
-        val tgtLocale = java.util.Locale(p.targetLang)
+        // Effective target — explicit if set, else the computed default.
+        // Used both for the Your Language row display and for localizing the
+        // Game Language name.
+        val effectiveTarget = if (tgtSet) p.targetLang else computeDefaultTarget()
+        val tgtLocale = java.util.Locale(effectiveTarget)
 
         rowWelcomeGameLang.findViewById<TextView>(R.id.tvRowTitle).text =
             getString(R.string.lang_translate_from)
@@ -1209,15 +1213,13 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         rowWelcomeYourLang.findViewById<TextView>(R.id.tvRowTitle).text =
             getString(R.string.lang_translate_to)
         val yourVal = rowWelcomeYourLang.findViewById<TextView>(R.id.tvRowValue)
-        if (tgtSet) {
-            yourVal.text = java.util.Locale(p.targetLang)
-                .getDisplayLanguage(tgtLocale)
-                .replaceFirstChar { it.uppercase() }
-            yourVal.setTextColor(themeColor(R.attr.ptTextMuted))
-        } else {
-            yourVal.text = getString(R.string.onboarding_welcome_row_placeholder)
-            yourVal.setTextColor(themeColor(R.attr.ptTextHint))
-        }
+        // Value is the effective target — explicit selection or computed
+        // default. Styling matches a committed selection; if the user wants
+        // something else they tap the row. Tapping Continue without having
+        // picked explicitly runs the install flow for this default.
+        yourVal.text = tgtLocale.getDisplayLanguage(tgtLocale)
+            .replaceFirstChar { it.uppercase() }
+        yourVal.setTextColor(themeColor(R.attr.ptTextMuted))
 
         btnWelcomeContinue.text = getString(
             if (srcInstalled) R.string.onboarding_welcome_continue
@@ -1231,6 +1233,17 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                 .putExtra(com.playtranslate.ui.LanguageSetupActivity.EXTRA_MODE, mode)
                 .putExtra(com.playtranslate.ui.LanguageSetupActivity.EXTRA_ONBOARDING, true)
         )
+    }
+
+    /** Target language to pre-populate in the welcome page when the user
+     *  hasn't explicitly picked one yet. Prefers the device's system locale
+     *  if ML Kit supports it as a target; falls back to English otherwise. */
+    private fun computeDefaultTarget(): String {
+        val deviceLang = java.util.Locale.getDefault().language
+        return if (deviceLang in com.google.mlkit.nl.translate.TranslateLanguage.getAllLanguages())
+            deviceLang
+        else
+            TranslateLanguage.ENGLISH
     }
 
     private fun showOnboardingPage(page: View) {
@@ -1252,13 +1265,30 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         }
         btnWelcomeContinue.setOnClickListener {
             val p = Prefs(this)
-            if (!LanguagePackStore.isInstalled(this, p.sourceLangId)) {
-                launchLanguagePicker(com.playtranslate.ui.LanguageSetupActivity.MODE_SOURCE)
-            } else {
-                if (!p.hasTargetLangBeenSet) {
-                    p.targetLang = TranslateLanguage.ENGLISH
+            when {
+                !LanguagePackStore.isInstalled(this, p.sourceLangId) -> {
+                    launchLanguagePicker(com.playtranslate.ui.LanguageSetupActivity.MODE_SOURCE)
                 }
-                checkOnboardingState()
+                !p.hasTargetLangBeenSet -> {
+                    // User is accepting the pre-populated default — run the
+                    // same download + ensure-model-ready flow the target
+                    // picker would have, commit prefs on success, advance.
+                    val defaultTarget = computeDefaultTarget()
+                    val sourceCode = com.playtranslate.language.SourceLanguageProfiles[
+                        p.sourceLangId
+                    ].translationCode
+                    com.playtranslate.ui.TargetPackInstaller(
+                        this, lifecycleScope
+                    ).installAndLoad(
+                        sourceLangCode = sourceCode,
+                        targetCode = defaultTarget,
+                        onSuccess = {
+                            Prefs(this).targetLang = defaultTarget
+                            checkOnboardingState()
+                        },
+                    )
+                }
+                else -> checkOnboardingState()
             }
         }
 
