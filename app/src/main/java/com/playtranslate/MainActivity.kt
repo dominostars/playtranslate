@@ -1165,11 +1165,12 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         showOnboardingPage(pageA11y)
     }
 
-    /** Returns true if source + target packs are installed (or not needed,
-     *  i.e. English target). If not, hides the onboarding overlay and launches
-     *  [LanguageSetupActivity] in onboarding mode for the missing step. When
-     *  that activity finishes, [onResume] re-fires [checkOnboardingState] and
-     *  the next gap (or none) is surfaced. */
+    /** Returns true once the user has both an installed source pack and an
+     *  explicitly-saved target language. If not, hides the onboarding overlay
+     *  and launches [com.playtranslate.ui.LanguageSetupActivity] in onboarding
+     *  mode for the missing step. Target step fires on every first run of
+     *  this build — including upgrade users — so everyone consciously picks
+     *  a target and the ML Kit model for source→target eagerly downloads. */
     private fun checkLanguagePackGate(): Boolean {
         val gatePrefs = Prefs(this)
         if (!LanguagePackStore.isInstalled(this, gatePrefs.sourceLangId)) {
@@ -1181,7 +1182,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             )
             return false
         }
-        if (!LanguagePackStore.isTargetInstalled(this, gatePrefs.targetLang)) {
+        if (!gatePrefs.hasTargetLangBeenSet) {
             onboardingContainer.visibility = View.GONE
             startActivity(
                 Intent(this, com.playtranslate.ui.LanguageSetupActivity::class.java)

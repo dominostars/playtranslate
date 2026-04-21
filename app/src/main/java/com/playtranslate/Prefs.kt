@@ -54,6 +54,13 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_TARGET_LANG, TranslateLanguage.ENGLISH) ?: TranslateLanguage.ENGLISH
         set(v) = sp.edit().putString(KEY_TARGET_LANG, v).apply()
 
+    /** True iff the user has explicitly picked a target language at least once.
+     *  The [targetLang] getter returns an English fallback for unsaved values,
+     *  but this key-presence check is the cleanest signal for the onboarding
+     *  gate: the key is only written by [LanguageSetupActivity.onTargetSelected]. */
+    val hasTargetLangBeenSet: Boolean
+        get() = sp.contains(KEY_TARGET_LANG)
+
     /**
      * Profile-aware view of [sourceLang]. Derives a [SourceLangId] from the raw
      * ML Kit code; falls back to [SourceLangId.JA] on unknown/blank values and
