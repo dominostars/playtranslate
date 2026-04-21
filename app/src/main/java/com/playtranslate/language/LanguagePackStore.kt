@@ -184,6 +184,18 @@ object LanguagePackStore {
             //    backup deleted only after the new pack is confirmed in place.
             safeSwap(tmpDir, finalDir)
 
+            // 6. Purge the legacy bundled-asset DB for JA. Upgraders from the
+            //    bundled-JA era land here after the schema-stale gate routes
+            //    them through onboarding + a fresh download; the ~45 MB file
+            //    at ctx.getDatabasePath("jmdict.db") is now superseded by
+            //    dirFor(ctx, JA)/dict.sqlite and would otherwise sit orphaned.
+            if (id == SourceLangId.JA) {
+                val legacy = app.getDatabasePath("jmdict.db")
+                if (legacy.exists() && legacy.delete()) {
+                    Log.d(TAG, "Purged orphaned legacy JMdict DB at ${legacy.path}")
+                }
+            }
+
             Log.d(TAG, "Installed pack ${id.code} from $url (${zipFile.length()} bytes)")
             InstallResult.Success
         } catch (_: CancellationException) {

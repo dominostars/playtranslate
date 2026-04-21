@@ -19,7 +19,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 private const val TAG = "DictionaryManager"
-private const val DB_ASSET = "jmdict.db"
 
 /** Result from [DictionaryManager.tokenizeWithSurfaces]. */
 data class TokenWithReading(
@@ -283,12 +282,14 @@ class DictionaryManager private constructor(private val context: Context) {
 
         val dbFile = LanguagePackStore.dictDbFor(context, SourceLangId.JA)
 
-        // One-time upgrade migration: if the legacy path holds the DB and the
-        // new pack path is empty, move it in place instead of re-copying 46 MB
-        // from assets. Falls back to a byte-copy-then-delete if rename fails
-        // (cross-mount, permission, or race); falls back again to
-        // copyFromAssets below if both fail.
-        val legacyDbFile = context.getDatabasePath(DB_ASSET)
+        // One-time upgrade migration: users from the bundled-asset era whose
+        // legacy DB still has the current schema land here with the pack
+        // path empty and the legacy path populated. Move it in place so the
+        // pack-path reader finds it; LanguagePackStore.isInstalled gates
+        // this call to schema-current DBs, so no byte-copy-then-schema-fail
+        // regression. Rename is best-effort (cross-mount / permission
+        // failures fall back to byte copy + delete).
+        val legacyDbFile = context.getDatabasePath("jmdict.db")
         if (!dbFile.exists() && legacyDbFile.exists()) {
             dbFile.parentFile?.mkdirs()
             val renamed = try { legacyDbFile.renameTo(dbFile) } catch (_: Exception) { false }
@@ -302,19 +303,22 @@ class DictionaryManager private constructor(private val context: Context) {
                     legacyDbFile.delete()
                     Log.d(TAG, "Copied JMdict ${legacyDbFile.absolutePath} -> ${dbFile.absolutePath} (rename failed)")
                 } catch (e: Exception) {
-                    Log.w(TAG, "Legacy migration failed: ${e.message}; falling back to assets copy")
-                    // dbFile remains nonexistent → copyFromAssets below handles it
+                    Log.w(TAG, "Legacy migration failed: ${e.message}")
                 }
             }
         }
 
         if (dbFile.exists() && !isSchemaUpToDate(dbFile)) {
-            Log.d(TAG, "JMdict schema outdated — re-copying from assets")
+            // Should be unreachable: LanguagePackStore.isInstalled schema-
+            // validates before callers reach us, and the welcome-flow download
+            // deletes legacy on success. Keep the guard as defense-in-depth.
+            Log.w(TAG, "JMdict schema outdated at ${dbFile.absolutePath} — deleting; user must re-run onboarding")
             dbFile.delete()
         }
 
         if (!dbFile.exists()) {
-            if (!copyFromAssets(dbFile)) return@withLock null
+            Log.w(TAG, "JMdict pack not installed at ${dbFile.absolutePath}; lookups will return empty")
+            return@withLock null
         }
 
         db = try {
@@ -350,20 +354,6 @@ class DictionaryManager private constructor(private val context: Context) {
             }
             true
         } catch (_: Exception) {
-            false
-        }
-    }
-
-    private fun copyFromAssets(dbFile: File): Boolean {
-        return try {
-            dbFile.parentFile?.mkdirs()
-            context.assets.open(DB_ASSET).use { src ->
-                dbFile.outputStream().use { dst -> src.copyTo(dst) }
-            }
-            Log.d(TAG, "Copied JMdict from assets (${dbFile.length() / 1_048_576} MB)")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "JMdict asset not found — run scripts/build_jmdict.py first: ${e.message}")
             false
         }
     }

@@ -55,7 +55,6 @@ import com.playtranslate.ui.DimController
 import com.playtranslate.ui.OverlayAlert
 import android.net.Uri
 import com.playtranslate.AnkiManager
-import com.playtranslate.TranslationManager
 import com.playtranslate.ui.AddCustomRegionSheet
 import com.playtranslate.ui.AnkiReviewBottomSheet
 import com.playtranslate.ui.RegionPickerSheet
@@ -107,7 +106,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private lateinit var etEditOriginal: android.widget.EditText
 
     private var editTranslationJob: Job? = null
-    private var editTranslationManager: TranslationManager? = null
     private var wasKeyboardVisible = false
 
     // ── Fragment ───────────────────────────────────────────────────────────
@@ -407,7 +405,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             .unregisterDisplayListener(displayListener)
         if (isLiveMode && !isChangingConfigurations) captureService?.stopLive()
         if (serviceConnected) unbindService(serviceConnection)
-        editTranslationManager?.close()
         super.onDestroy()
     }
 
@@ -1370,7 +1367,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
     private fun selectedSourceLang() =
         SourceLanguageProfiles[prefs.sourceLangId].translationCode
-    private fun selectedTargetLang() = prefs.targetLang
 
     /**
      * Sets tvLiveHint text with an inline play icon ImageSpan.
@@ -1427,10 +1423,16 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         editTranslationJob?.cancel()
         editTranslationJob = lifecycleScope.launch {
             try {
-                val tm = editTranslationManager
-                    ?: TranslationManager(selectedSourceLang(), selectedTargetLang()).also { editTranslationManager = it }
-                tm.ensureModelReady()
-                val translated = tm.translate(newText)
+                // Route through the service so edit re-translations pick up the
+                // current language pair via translateOnce's self-heal, inherit
+                // the full DeepL→Lingva→ML-Kit waterfall, and don't own any
+                // parallel translator state that could go stale on pref change.
+                val svc = captureService
+                if (svc == null) {
+                    frag.updateTranslation("—")
+                    return@launch
+                }
+                val (translated, _) = svc.translateOnce(newText)
                 frag.updateTranslation(translated)
             } catch (_: Exception) {
                 frag.updateTranslation("—")
