@@ -51,7 +51,14 @@ class LanguageSetupActivity : AppCompatActivity() {
         toolbar = findViewById(R.id.toolbar)
         contentFrame = findViewById(R.id.contentFrame)
 
-        toolbar.setNavigationOnClickListener { handleBack() }
+        val isOnboarding = intent.getBooleanExtra(EXTRA_ONBOARDING, false)
+        if (isOnboarding) {
+            // Forced step — no back chevron. System back still works; MainActivity
+            // re-launches this on resume if state is still unsatisfied.
+            toolbar.navigationIcon = null
+        } else {
+            toolbar.setNavigationOnClickListener { handleBack() }
+        }
 
         when (intent.getStringExtra(EXTRA_MODE)) {
             MODE_TARGET -> {
@@ -130,7 +137,7 @@ class LanguageSetupActivity : AppCompatActivity() {
     }
 
     private fun onSourceSelected(id: SourceLangId) {
-        val needsDownload = id != SourceLangId.JA && !LanguagePackStore.isInstalled(this, id)
+        val needsDownload = !LanguagePackStore.isInstalled(this, id)
 
         val sourceLoadAction: suspend () -> Unit = {
             SourceLanguageEngines.get(applicationContext, id).preload()
@@ -441,6 +448,7 @@ class LanguageSetupActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_MODE = "mode"
+        const val EXTRA_ONBOARDING = "onboarding"
         const val MODE_SOURCE = "source"
         const val MODE_TARGET = "target"
 

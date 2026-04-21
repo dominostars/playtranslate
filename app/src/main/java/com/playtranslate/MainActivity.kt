@@ -1142,6 +1142,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                 showOnboardingPage(pageA11ySingle)
                 return
             }
+            if (!checkLanguagePackGate()) return
             onboardingContainer.visibility = View.GONE
                 val isAlreadySingleScreenSheet = existingSheet != null &&
                 existingSheet.arguments?.getBoolean("hide_dismiss", false) == true
@@ -1157,10 +1158,39 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         }
 
         if (a11yEnabled) {
+            if (!checkLanguagePackGate()) return
             onboardingContainer.visibility = View.GONE
             return
         }
         showOnboardingPage(pageA11y)
+    }
+
+    /** Returns true if source + target packs are installed (or not needed,
+     *  i.e. English target). If not, hides the onboarding overlay and launches
+     *  [LanguageSetupActivity] in onboarding mode for the missing step. When
+     *  that activity finishes, [onResume] re-fires [checkOnboardingState] and
+     *  the next gap (or none) is surfaced. */
+    private fun checkLanguagePackGate(): Boolean {
+        val gatePrefs = Prefs(this)
+        if (!LanguagePackStore.isInstalled(this, gatePrefs.sourceLangId)) {
+            onboardingContainer.visibility = View.GONE
+            startActivity(
+                Intent(this, com.playtranslate.ui.LanguageSetupActivity::class.java)
+                    .putExtra(com.playtranslate.ui.LanguageSetupActivity.EXTRA_MODE, com.playtranslate.ui.LanguageSetupActivity.MODE_SOURCE)
+                    .putExtra(com.playtranslate.ui.LanguageSetupActivity.EXTRA_ONBOARDING, true)
+            )
+            return false
+        }
+        if (!LanguagePackStore.isTargetInstalled(this, gatePrefs.targetLang)) {
+            onboardingContainer.visibility = View.GONE
+            startActivity(
+                Intent(this, com.playtranslate.ui.LanguageSetupActivity::class.java)
+                    .putExtra(com.playtranslate.ui.LanguageSetupActivity.EXTRA_MODE, com.playtranslate.ui.LanguageSetupActivity.MODE_TARGET)
+                    .putExtra(com.playtranslate.ui.LanguageSetupActivity.EXTRA_ONBOARDING, true)
+            )
+            return false
+        }
+        return true
     }
 
     private fun showOnboardingPage(page: View) {
