@@ -1,31 +1,36 @@
 #!/usr/bin/env python3
 """
-Build the JMdict SQLite database for GameLens offline dictionary.
+Build the JMdict + KANJIDIC2 language pack for PlayTranslate (Japanese).
+
+Produces the same `dict.sqlite` + `manifest.json` + `<code>.zip` bundle
+layout that LanguagePackStore.install expects, mirroring build_zh_dict.py.
+Upload the resulting ja.zip to the playtranslate-langpacks GH release and
+update app/src/main/assets/langpack_catalog.json with the sha256 + size.
 
 Usage (run from project root):
-    python scripts/build_jmdict.py
+    python scripts/build_jmdict.py --output /tmp/ja_pack/
 
 Requirements: Python 3.8+, no third-party libraries needed.
-
-Output: app/src/main/assets/jmdict.db  (~35 MB)
 
 JMdict is © The Electronic Dictionary Research and Development Group,
 licensed under Creative Commons Attribution-ShareAlike 3.0.
 See https://www.edrdg.org/edrdg/licence.html
 """
 
+import argparse
 import gzip
-import os
+import json
 import re
 import sqlite3
 import ssl
+import sys
 import urllib.request
 import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
 
 JMDICT_URL = "https://ftp.edrdg.org/pub/Nihongo/JMdict_e.gz"
 SCRIPT_DIR = Path(__file__).parent
-OUTPUT_PATH = SCRIPT_DIR.parent / "app" / "src" / "main" / "assets" / "jmdict.db"
 
 # Shorten verbose JMdict POS entity values for display
 POS_ABBREV = {
@@ -424,19 +429,18 @@ def parse_and_insert_kanjidic(xml_bytes: bytes, conn: sqlite3.Connection) -> Non
     print(f"  Total: {count:,} kanji inserted")
 
 
-def main() -> None:
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    if OUTPUT_PATH.exists():
-        OUTPUT_PATH.unlink()
-        print(f"Removed existing {OUTPUT_PATH}")
+def build_sqlite(db_path: Path) -> None:
+    if db_path.exists():
+        db_path.unlink()
+        print(f"Removed existing {db_path}")
 
     xml_bytes = download_jmdict()
     print("Pre-processing XML entities...")
     clean_xml = preprocess_xml(xml_bytes)
     del xml_bytes  # free memory
 
-    print(f"Building {OUTPUT_PATH} ...")
-    conn = sqlite3.connect(OUTPUT_PATH)
+    print(f"Building {db_path} ...")
+    conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA journal_mode=OFF")   # faster bulk insert (no WAL during build)
     conn.execute("PRAGMA synchronous=OFF")
     conn.execute("PRAGMA cache_size=65536")
@@ -453,11 +457,64 @@ def main() -> None:
     conn.execute("VACUUM")
     conn.close()
 
-    size_mb = OUTPUT_PATH.stat().st_size / 1024 / 1024
-    print(f"\nDone!  {OUTPUT_PATH}  ({size_mb:.1f} MB)")
-    print("\nNext: rebuild the APK so the database is bundled as an asset.")
-    print("  JAVA_HOME='.sdk/jdk17' bash gradlew assembleDebug")
+
+def build_manifest(db_path: Path, manifest_path: Path, pack_version: int) -> None:
+    size = db_path.stat().st_size
+    manifest = {
+        "langId": "ja",
+        "schemaVersion": 1,
+        "packVersion": pack_version,
+        "appMinVersion": 0,
+        "files": [{"path": "dict.sqlite", "size": size, "sha256": None}],
+        "totalSize": size,
+        "licenses": [
+            {
+                "component": "JMdict",
+                "license": "CC-BY-SA-4.0",
+                "attribution": "© EDRDG, https://www.edrdg.org/jmdict/edict_doc.html",
+            },
+            {
+                "component": "KANJIDIC2",
+                "license": "CC-BY-SA-4.0",
+                "attribution": "© EDRDG",
+            },
+        ],
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2))
+    print(f"Wrote {manifest_path} ({size:,} bytes dict)")
+
+
+def build_zip(db_path: Path, manifest_path: Path, zip_path: Path) -> None:
+    if zip_path.exists():
+        zip_path.unlink()
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.write(db_path, arcname="dict.sqlite")
+        z.write(manifest_path, arcname="manifest.json")
+    print(f"Wrote {zip_path} ({zip_path.stat().st_size:,} bytes)")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Build the Japanese language pack")
+    parser.add_argument("--output", type=Path, required=True, help="Output directory")
+    parser.add_argument("--pack-version", type=int, default=1)
+    args = parser.parse_args()
+
+    args.output.mkdir(parents=True, exist_ok=True)
+    db_path = args.output / "dict.sqlite"
+    manifest_path = args.output / "manifest.json"
+    zip_path = args.output / "ja.zip"
+
+    build_sqlite(db_path)
+    build_manifest(db_path, manifest_path, args.pack_version)
+    build_zip(db_path, manifest_path, zip_path)
+
+    print()
+    print("Next steps:")
+    print(f"  1. sha256sum {zip_path}")
+    print(f"  2. Upload {zip_path} to dominostars/playtranslate-langpacks tag ja-v1")
+    print(f"  3. Update assets/langpack_catalog.json with URL + sha256, flip bundled → false")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -40,9 +40,16 @@ object LanguagePackStore {
     fun manifestFileFor(ctx: Context, id: SourceLangId): File =
         File(dirFor(ctx, id), "manifest.json")
 
-    /** A pack is "installed" when both its DB and its manifest are present. */
-    fun isInstalled(ctx: Context, id: SourceLangId): Boolean =
-        dictDbFor(ctx, id).exists() && manifestFileFor(ctx, id).exists()
+    /** A pack is "installed" when both its DB and its manifest are present.
+     *  Special-cases Japanese: the pre-LanguagePackStore location
+     *  (`databases/jmdict.db`) also counts as installed, so upgraded users
+     *  aren't force-onboarded before [com.playtranslate.dictionary.DictionaryManager.ensureOpen]
+     *  gets a chance to migrate it into the pack layout. */
+    fun isInstalled(ctx: Context, id: SourceLangId): Boolean {
+        if (dictDbFor(ctx, id).exists() && manifestFileFor(ctx, id).exists()) return true
+        if (id == SourceLangId.JA && ctx.getDatabasePath("jmdict.db").exists()) return true
+        return false
+    }
 
     // ── Target gloss packs ──────────────────────────────────────────────
 
