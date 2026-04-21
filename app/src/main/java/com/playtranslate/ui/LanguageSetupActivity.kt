@@ -42,6 +42,11 @@ class LanguageSetupActivity : AppCompatActivity() {
     private lateinit var toolbar: MaterialToolbar
     private lateinit var contentFrame: FrameLayout
     private var activeJob: Job? = null
+    // Shared so the installer's single-flight guard engages across rapid
+    // repeated row taps.
+    private val targetInstaller by lazy {
+        TargetPackInstaller(this, lifecycleScope)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -206,7 +211,7 @@ class LanguageSetupActivity : AppCompatActivity() {
     private fun onTargetSelected(code: String) {
         val sourceId = selectedSource ?: Prefs(this).sourceLangId
         val sourceLangCode = SourceLanguageProfiles[sourceId].translationCode
-        TargetPackInstaller(this, lifecycleScope).installAndLoad(
+        targetInstaller.installAndLoad(
             sourceLangCode = sourceLangCode,
             targetCode = code,
             onSuccess = {
