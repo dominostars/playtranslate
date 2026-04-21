@@ -162,13 +162,13 @@ class SettingsRenderer(
         val sourceName = resolveSourceName()
         val targetName = resolveTargetName()
 
-        rowSourceLang.findViewById<TextView>(R.id.tvRowTitle).text = "Translate from"
+        rowSourceLang.findViewById<TextView>(R.id.tvRowTitle).text = "Game Language"
         rowSourceLang.findViewById<TextView>(R.id.tvRowValue).text = sourceName
         rowSourceLang.setOnClickListener {
             callbacks.openLanguageSetup(LanguageSetupActivity.MODE_SOURCE)
         }
 
-        rowTargetLang.findViewById<TextView>(R.id.tvRowTitle).text = "Translate to"
+        rowTargetLang.findViewById<TextView>(R.id.tvRowTitle).text = "Your Language"
         rowTargetLang.findViewById<TextView>(R.id.tvRowValue).text = targetName
         rowTargetLang.setOnClickListener {
             callbacks.openLanguageSetup(LanguageSetupActivity.MODE_TARGET)
