@@ -1216,7 +1216,8 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         // Used both for the Your Language row display and for localizing the
         // Game Language name.
         val sourceCode = com.playtranslate.language.SourceLanguageProfiles[p.sourceLangId].translationCode
-        val effectiveTarget = if (tgtSet) p.targetLang else computeDefaultTarget(sourceCode)
+        val effectiveTarget = if (tgtSet) p.targetLang
+            else com.playtranslate.ui.WelcomeDefaults.computeDefaultTarget(sourceCode)
         val tgtLocale = java.util.Locale(effectiveTarget)
 
         rowWelcomeGameLang.findViewById<TextView>(R.id.tvRowTitle).text =
@@ -1255,19 +1256,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         )
     }
 
-    /** Target language to pre-populate in the welcome page when the user
-     *  hasn't explicitly picked one yet. Prefers the device's system locale
-     *  if ML Kit supports it as a target AND it differs from [sourceCode]
-     *  (ML Kit has no source→same-language models — picking one would stall
-     *  onboarding on a model-download error). Falls back to English, which
-     *  is guaranteed to differ from any supported source. */
-    private fun computeDefaultTarget(sourceCode: String): String {
-        val deviceLang = java.util.Locale.getDefault().language
-        val mlKitSupported = deviceLang in com.google.mlkit.nl.translate.TranslateLanguage.getAllLanguages()
-        return if (mlKitSupported && deviceLang != sourceCode) deviceLang
-        else TranslateLanguage.ENGLISH
-    }
-
     private fun showOnboardingPage(page: View) {
         onboardingContainer.visibility = View.VISIBLE
         pageWelcome.visibility    = if (page == pageWelcome)    View.VISIBLE else View.GONE
@@ -1300,7 +1288,8 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                     val sourceCode = com.playtranslate.language.SourceLanguageProfiles[
                         p.sourceLangId
                     ].translationCode
-                    val defaultTarget = computeDefaultTarget(sourceCode)
+                    val defaultTarget = com.playtranslate.ui.WelcomeDefaults
+                        .computeDefaultTarget(sourceCode)
                     welcomeTargetInstaller.installAndLoad(
                         sourceLangCode = sourceCode,
                         targetCode = defaultTarget,

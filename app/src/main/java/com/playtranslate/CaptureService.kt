@@ -268,28 +268,18 @@ class CaptureService : Service() {
         )
     }
 
-    /** Tracks the last-seen preferred backend so we can invalidate the
-     *  translation cache when the user toggles their DeepL key on/off.
-     *  Pair changes are covered by the cache key itself (text, source,
-     *  target); backend toggles aren't in the key (deliberate — keeps
-     *  Lingva fallback caching on DeepL-transient-failure), so we clear
-     *  explicitly on transition here. */
-    private var lastPreferredBackend: String? = null
-
     /** Reconcile the shared translator fields with [target]. Called at the
      *  top of every translation call so drift from a pref-change in another
      *  code path (onboarding, Settings) is picked up automatically.
      *
-     *  The [translationCache] is cleared only on a backend transition
-     *  (DeepL key added or removed). Pair changes are handled by the cache
-     *  key; keeping the cache across same-pair re-ensures preserves the
-     *  "unchanged UI labels stay cached" benefit that drives live mode. */
+     *  Delegates backend-toggle cache invalidation to [translationCache.reconcilePreferredBackend].
+     *  Pair changes are handled by the cache key itself — no explicit clear
+     *  needed; same-pair re-ensures preserve the "unchanged UI labels stay
+     *  cached" benefit that drives live mode. */
     private fun ensureLanguageManagersFor(target: TranslationTarget) {
-        val preferredBackend = if (target.deeplKey.isNotBlank()) "deepl" else "lingva"
-        if (lastPreferredBackend != null && lastPreferredBackend != preferredBackend) {
-            translationCache.clear()
-        }
-        lastPreferredBackend = preferredBackend
+        translationCache.reconcilePreferredBackend(
+            if (target.deeplKey.isNotBlank()) "deepl" else "lingva"
+        )
 
         // DeepL — only when a key is configured
         if (target.deeplKey.isNotBlank()) {
@@ -929,29 +919,17 @@ class CaptureService : Service() {
         }
     }
 
-    /** Cache key: translated text is identified by the *pair* it was
-     *  produced for, not just the source text. A cached "Hello" from a
-     *  JA→EN session must not be returned in a JA→ES session — different
-     *  values. Keying by pair makes cross-pair stale reads impossible;
-     *  old-pair entries become unreachable the moment the target flips
-     *  and the LRU ages them out naturally. */
-    private data class CacheKey(val text: String, val source: String, val target: String)
+    /** Cache of past translations. Keyed by (text, source, target) so
+     *  cross-pair stale reads are impossible; cleared on backend toggle
+     *  via [TranslationCache.reconcilePreferredBackend] called from
+     *  [ensureLanguageManagersFor]. */
+    private val translationCache = TranslationCache()
 
-    private fun cacheKey(text: String, target: TranslationTarget): CacheKey =
-        CacheKey(text, target.source, target.target)
-
-    /** Cache of (text, source, target) → (translated text, note). Avoids
-     *  retranslating groups that haven't changed between live mode cycles
-     *  (e.g. persistent UI labels while only the dialogue updates). */
-    private val translationCache = object : LinkedHashMap<CacheKey, Pair<String, String?>>(500, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<CacheKey, Pair<String, String?>>?) =
-            size > 500
-    }
+    private fun cacheKey(text: String, target: TranslationTarget): TranslationCache.Key =
+        TranslationCache.Key(text, target.source, target.target)
 
     /** Synchronous cache lookup for previously translated text. Returns null
-     *  if not cached for the current pair. No ensure-call needed: the cache
-     *  key includes source+target, so entries from a prior pair can't be
-     *  returned by lookup under a new one. */
+     *  if not cached for the current pair. */
     fun getCachedTranslation(sourceText: String): String? =
         translationCache[cacheKey(sourceText, snapshotTranslationTarget())]?.first
 
@@ -974,7 +952,7 @@ class CaptureService : Service() {
         val uncached = keys.withIndex()
             .filter { (_, key) -> key !in translationCache }
 
-        val freshByKey: Map<CacheKey, Pair<String, String?>> = if (uncached.isNotEmpty()) {
+        val freshByKey: Map<TranslationCache.Key, Pair<String, String?>> = if (uncached.isNotEmpty()) {
             val results = uncached.map { (_, key) ->
                 serviceScope.async { translate(key.text, target) }
             }.awaitAll()

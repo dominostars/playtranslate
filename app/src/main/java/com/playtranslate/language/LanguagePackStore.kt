@@ -67,10 +67,20 @@ object LanguagePackStore {
         return false
     }
 
+    /** Deletes the legacy bundled-asset JMdict DB if present. Called on a
+     *  successful JA pack install: the new pack supersedes the legacy path,
+     *  which would otherwise sit as a ~45 MB orphan forever for upgraders. */
+    internal fun purgeLegacyJaDatabase(ctx: Context) {
+        val legacy = ctx.getDatabasePath("jmdict.db")
+        if (legacy.exists() && legacy.delete()) {
+            Log.d(TAG, "Purged orphaned legacy JMdict DB at ${legacy.path}")
+        }
+    }
+
     /** Matches the check in `DictionaryManager.isSchemaUpToDate`. Returns
      *  false if the DB is missing any of the columns/tables the runtime
      *  queries, so we don't commit to a DB we'll end up deleting. */
-    private fun isJmdictSchemaCurrent(dbFile: File): Boolean = try {
+    internal fun isJmdictSchemaCurrent(dbFile: File): Boolean = try {
         SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
             db.rawQuery("SELECT freq_score FROM entry LIMIT 1", null).use { }
             db.rawQuery("SELECT misc FROM sense LIMIT 1", null).use { }
@@ -190,10 +200,7 @@ object LanguagePackStore {
             //    at ctx.getDatabasePath("jmdict.db") is now superseded by
             //    dirFor(ctx, JA)/dict.sqlite and would otherwise sit orphaned.
             if (id == SourceLangId.JA) {
-                val legacy = app.getDatabasePath("jmdict.db")
-                if (legacy.exists() && legacy.delete()) {
-                    Log.d(TAG, "Purged orphaned legacy JMdict DB at ${legacy.path}")
-                }
+                purgeLegacyJaDatabase(app)
             }
 
             Log.d(TAG, "Installed pack ${id.code} from $url (${zipFile.length()} bytes)")
