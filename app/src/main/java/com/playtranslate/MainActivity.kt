@@ -97,6 +97,12 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private lateinit var rowWelcomeGameLang: View
     private lateinit var rowWelcomeYourLang: View
     private lateinit var btnWelcomeContinue: Button
+    // Shared across Continue taps so the installer's single-flight guard
+    // engages on rapid double-taps. Lazy so we construct after lifecycleScope
+    // is available.
+    private val welcomeTargetInstaller by lazy {
+        com.playtranslate.ui.TargetPackInstaller(this, lifecycleScope)
+    }
     private lateinit var editOverlay: android.widget.LinearLayout
     private lateinit var etEditOriginal: android.widget.EditText
 
@@ -1273,13 +1279,13 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                     // User is accepting the pre-populated default — run the
                     // same download + ensure-model-ready flow the target
                     // picker would have, commit prefs on success, advance.
+                    // Using the shared welcomeTargetInstaller so its
+                    // single-flight guard engages across rapid double-taps.
                     val defaultTarget = computeDefaultTarget()
                     val sourceCode = com.playtranslate.language.SourceLanguageProfiles[
                         p.sourceLangId
                     ].translationCode
-                    com.playtranslate.ui.TargetPackInstaller(
-                        this, lifecycleScope
-                    ).installAndLoad(
+                    welcomeTargetInstaller.installAndLoad(
                         sourceLangCode = sourceCode,
                         targetCode = defaultTarget,
                         onSuccess = {

@@ -1,6 +1,7 @@
 package com.playtranslate.language
 
 import android.content.Context
+import android.database.sqlite.SQLiteDatabase
 import android.util.Log
 import com.playtranslate.BuildConfig
 import kotlinx.coroutines.CancellationException
@@ -44,11 +45,40 @@ object LanguagePackStore {
      *  Special-cases Japanese: the pre-LanguagePackStore location
      *  (`databases/jmdict.db`) also counts as installed, so upgraded users
      *  aren't force-onboarded before [com.playtranslate.dictionary.DictionaryManager.ensureOpen]
-     *  gets a chance to migrate it into the pack layout. */
+     *  gets a chance to migrate it into the pack layout.
+     *
+     *  For JA we additionally schema-validate the DB before treating it as
+     *  installed. Reason: with the JMdict asset unbundled, a migrated-from-
+     *  legacy DB with an outdated schema would otherwise pass this check,
+     *  then get deleted by DictionaryManager's schema-drift guard, then fail
+     *  to recover via `copyFromAssets` (asset no longer exists). Surfacing
+     *  "not installed" here routes those users through the welcome page and
+     *  a clean `install()` download instead. */
     fun isInstalled(ctx: Context, id: SourceLangId): Boolean {
-        if (dictDbFor(ctx, id).exists() && manifestFileFor(ctx, id).exists()) return true
-        if (id == SourceLangId.JA && ctx.getDatabasePath("jmdict.db").exists()) return true
+        val primaryDb = dictDbFor(ctx, id)
+        if (primaryDb.exists() && manifestFileFor(ctx, id).exists()) {
+            if (id == SourceLangId.JA) return isJmdictSchemaCurrent(primaryDb)
+            return true
+        }
+        if (id == SourceLangId.JA) {
+            val legacy = ctx.getDatabasePath("jmdict.db")
+            if (legacy.exists() && isJmdictSchemaCurrent(legacy)) return true
+        }
         return false
+    }
+
+    /** Matches the check in `DictionaryManager.isSchemaUpToDate`. Returns
+     *  false if the DB is missing any of the columns/tables the runtime
+     *  queries, so we don't commit to a DB we'll end up deleting. */
+    private fun isJmdictSchemaCurrent(dbFile: File): Boolean = try {
+        SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("SELECT freq_score FROM entry LIMIT 1", null).use { }
+            db.rawQuery("SELECT misc FROM sense LIMIT 1", null).use { }
+            db.rawQuery("SELECT literal FROM kanjidic LIMIT 1", null).use { }
+        }
+        true
+    } catch (_: Exception) {
+        false
     }
 
     // ── Target gloss packs ──────────────────────────────────────────────

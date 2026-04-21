@@ -55,6 +55,12 @@ class TargetPackInstaller(
         targetCode: String,
         onSuccess: () -> Unit,
     ) {
+        // Single-flight: if an install is already in progress, ignore the
+        // re-entry. Protects against rapid double-taps on the welcome
+        // page's Continue button (the install dialog's scrim blocks most
+        // but not all double-taps in-frame) and similarly for picker rows.
+        if (activeJob?.isActive == true) return
+
         val targetName = Locale(targetCode).getDisplayLanguage(Locale.getDefault())
             .replaceFirstChar { it.uppercase() }
         val needsTargetPack = targetCode != "en"
