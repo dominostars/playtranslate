@@ -13,7 +13,6 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import com.playtranslate.language.SourceLanguageProfiles
 import androidx.lifecycle.lifecycleScope
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
@@ -146,10 +145,8 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
         val rightFrac  = intent.getFloatExtra(EXTRA_RIGHT_FRAC, 1f)
 
         svc.configureSaved(
-            displayId  = prefs.captureDisplayId,
-            sourceLang = SourceLanguageProfiles[prefs.sourceLangId].translationCode,
-            targetLang = prefs.targetLang,
-            region     = RegionEntry("Drawn Region", topFrac, bottomFrac, leftFrac, rightFrac)
+            displayId = prefs.captureDisplayId,
+            region    = RegionEntry("Drawn Region", topFrac, bottomFrac, leftFrac, rightFrac)
         )
 
         svc.onResult = { result ->
@@ -185,11 +182,7 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
         val prefs = Prefs(this)
 
         // Ensure the service is configured for translation
-        svc.configureSaved(
-            displayId  = prefs.captureDisplayId,
-            sourceLang = SourceLanguageProfiles[prefs.sourceLangId].translationCode,
-            targetLang = prefs.targetLang
-        )
+        svc.configureSaved(displayId = prefs.captureDisplayId)
 
         frag.showTranslatingPlaceholder(sentenceText, segments)
 

@@ -1184,7 +1184,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             val svc = CaptureService.instance
             if (svc != null && svc.isConfigured) {
                 val entry = Prefs.DEFAULT_REGION_LIST[0]
-                svc.configureSaved(displayId = prefs.captureDisplayId, sourceLang = SourceLanguageProfiles[prefs.sourceLangId].translationCode, targetLang = prefs.targetLang, region = entry)
+                svc.configureSaved(displayId = prefs.captureDisplayId, region = entry)
             }
             if (MainActivity.isInForeground) {
                 sendMainActivityIntent(MainActivity.ACTION_REFRESH_REGION_LABEL)
@@ -1482,10 +1482,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 val prefs = Prefs(this)
                 val entry = prefs.getSelectedRegion()
                 svc.configureSaved(
-                    displayId  = prefs.captureDisplayId,
-                    sourceLang = SourceLanguageProfiles[prefs.sourceLangId].translationCode,
-                    targetLang = prefs.targetLang,
-                    region     = entry
+                    displayId = prefs.captureDisplayId,
+                    region    = entry
                 )
             }
             // Delay start if a popup was just dismissed so the compositor

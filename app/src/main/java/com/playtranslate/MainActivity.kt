@@ -287,8 +287,16 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         startAndBindService()
         (getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
             .registerDisplayListener(displayListener, null)
-        lifecycleScope.launch(Dispatchers.IO) {
-            SourceLanguageEngines.get(applicationContext, prefs.sourceLangId).preload()
+        // Only preload when the source pack is actually present. Skipping
+        // this for stale-JA / fresh-install / data-wiped users prevents
+        // DictionaryManager.ensureOpen() from destroying a legacy stale DB
+        // (the schema check deletes it, copyFromAssets is a no-op now that
+        // the JMdict asset is unbundled) before the welcome flow has had a
+        // chance to download a replacement pack.
+        if (LanguagePackStore.isInstalled(applicationContext, prefs.sourceLangId)) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                SourceLanguageEngines.get(applicationContext, prefs.sourceLangId).preload()
+            }
         }
 
         // One-shot migration: if the user already has a non-English target but
@@ -785,7 +793,8 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             setShowsDialog(false)
             onDisplayChanged = {
                 val wasLive = captureService?.isLive == true
-                captureService?.resetConfiguration()
+                // configureService() writes display/region; language managers
+                // self-heal via ensureLanguageManagersFor.
                 configureService()
                 PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
                 if (wasLive) {
@@ -821,7 +830,8 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         val sheet = SettingsBottomSheet.newInstance(hideDismiss = hideDismiss).apply {
             onDisplayChanged = {
                 val wasLive = captureService?.isLive == true
-                captureService?.resetConfiguration()
+                // configureService() writes display/region; language managers
+                // self-heal via ensureLanguageManagersFor.
                 configureService()
                 PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
                 if (wasLive) {
@@ -938,7 +948,10 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         frag.showTranslatingPlaceholder(lineText, segments)
 
         val svc = captureService
-        if (svc != null && svc.isConfigured) {
+        if (svc != null) {
+            // translateOnce is a translation-only path — doesn't need
+            // display/region (i.e. isConfigured) to be true. translate()
+            // self-heals language managers on first call.
             lifecycleScope.launch {
                 try {
                     val (translated, note) = svc.translateOnce(lineText)
@@ -987,16 +1000,13 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         }
     }
 
-    /** Applies all current prefs to the capture service. Clears any override. */
+    /** Applies display + region to the capture service. Language managers
+     *  self-heal on the next capture via [CaptureService.ensureLanguageManagersFor]
+     *  so we no longer pass sourceLang / targetLang here. */
     private fun configureService() {
         val svc = captureService ?: return
         val entry = prefs.getSelectedRegion()
-        svc.configureSaved(
-            displayId  = prefs.captureDisplayId,
-            sourceLang = selectedSourceLang(),
-            targetLang = selectedTargetLang(),
-            region     = entry
-        )
+        svc.configureSaved(displayId = prefs.captureDisplayId, region = entry)
     }
 
     private fun onSourceLanguageChanged() {
@@ -1006,12 +1016,18 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             && prefs.overlayMode == OverlayMode.FURIGANA) {
             prefs.overlayMode = OverlayMode.TRANSLATION
         }
-        captureService?.resetConfiguration()
+        // Language managers self-heal in translate(), but configureSaved()
+        // also clears any temporary override region and refreshes the saved
+        // region — both of which should reset on a deliberate language
+        // change. The cache invalidation that used to live here is now a
+        // side effect of configureSaved → ensureLanguageManagersFor.
         configureService()
         updateRegionButton()
         PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
-        lifecycleScope.launch(Dispatchers.IO) {
-            SourceLanguageEngines.get(applicationContext, prefs.sourceLangId).preload()
+        if (LanguagePackStore.isInstalled(applicationContext, prefs.sourceLangId)) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                SourceLanguageEngines.get(applicationContext, prefs.sourceLangId).preload()
+            }
         }
         if (wasLive) {
             captureService?.stopLive()
