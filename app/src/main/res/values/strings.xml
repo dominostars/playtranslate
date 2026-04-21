@@ -57,8 +57,8 @@
     <!-- Settings -->
     <string name="settings_title">Settings</string>
     <string name="settings_language_hint">Tap to change translation languages.</string>
-    <string name="lang_translate_from">Translate from</string>
-    <string name="lang_translate_to">Translate to</string>
+    <string name="lang_translate_from">Game Language</string>
+    <string name="lang_translate_to">Your Language</string>
     <string name="lang_download">Download</string>
     <string name="lang_confirm">Confirm</string>
     <string name="lang_download_error_title">Download failed</string>
