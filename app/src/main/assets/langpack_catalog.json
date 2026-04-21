@@ -4,9 +4,11 @@
     "ja": {
       "display": "Japanese",
       "script": "CJK_JAPANESE",
-      "bundled": true,
+      "bundled": false,
       "packVersion": 1,
-      "size": 46000000,
+      "size": 20247374,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/ja-v1/ja.zip",
+      "sha256": "90a89b8d41085b1e543e4c1deab5786e908be50805143ebb286f1f16da93fd48",
       "licenses": [
         {
           "component": "JMdict",
