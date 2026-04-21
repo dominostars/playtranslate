@@ -49,15 +49,10 @@ class LanguageSetupActivity : AppCompatActivity() {
 
         toolbar = findViewById(R.id.toolbar)
         contentFrame = findViewById(R.id.contentFrame)
-
-        val isOnboarding = intent.getBooleanExtra(EXTRA_ONBOARDING, false)
-        if (isOnboarding) {
-            // Forced step — no back chevron. System back still works; MainActivity
-            // re-launches this on resume if state is still unsatisfied.
-            toolbar.navigationIcon = null
-        } else {
-            toolbar.setNavigationOnClickListener { handleBack() }
-        }
+        // Back chevron is always available. In onboarding mode, backing out
+        // returns to the welcome page (via MainActivity.onResume re-check);
+        // in normal mode, it finishes / pops the page stack.
+        toolbar.setNavigationOnClickListener { handleBack() }
 
         when (intent.getStringExtra(EXTRA_MODE)) {
             MODE_TARGET -> {
