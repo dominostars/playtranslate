@@ -140,7 +140,6 @@ class LanguageSetupActivity : AppCompatActivity() {
 
     private fun onSourceSelected(id: SourceLangId) {
         val needsDownload = !LanguagePackStore.isInstalled(this, id)
-        val isOnboarding = intent.getBooleanExtra(EXTRA_ONBOARDING, false)
 
         val sourceLoadAction: suspend () -> Unit = {
             SourceLanguageEngines.get(applicationContext, id).preload()
@@ -158,14 +157,7 @@ class LanguageSetupActivity : AppCompatActivity() {
         val onDone: () -> Unit = {
             Prefs(this).sourceLang = id.code
             selectionDelegate?.onSourceSelectionDone(id)
-            if (isOnboarding) {
-                // Stay in this activity and chain straight into target selection
-                // so the user doesn't flicker back to MainActivity between steps.
-                selectedSource = id
-                pushPage(Page.TARGET_LIST)
-            } else {
-                finish()
-            }
+            finish()
         }
 
         if (needsDownload) {

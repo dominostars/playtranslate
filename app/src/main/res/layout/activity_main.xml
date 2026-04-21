@@ -249,6 +249,93 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
+        <!-- Page 0: Welcome + language setup (entry point) -->
+        <LinearLayout
+            android:id="@+id/pageWelcome"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:padding="28dp"
+            android:visibility="gone">
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/onboarding_welcome_title"
+                        android:textColor="?attr/ptText"
+                        android:textSize="26sp"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="6dp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/onboarding_welcome_tagline"
+                        android:textColor="?attr/ptText"
+                        android:textSize="15sp"
+                        android:lineSpacingMultiplier="1.3"
+                        android:layout_marginBottom="20dp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/onboarding_welcome_body"
+                        android:textColor="?attr/ptTextMuted"
+                        android:textSize="14sp"
+                        android:lineSpacingMultiplier="1.4"
+                        android:layout_marginBottom="28dp" />
+
+                    <com.google.android.material.card.MaterialCardView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        app:cardBackgroundColor="?attr/ptCard"
+                        app:cardCornerRadius="@dimen/pt_radius"
+                        app:cardElevation="0dp"
+                        app:strokeColor="?attr/ptDivider"
+                        app:strokeWidth="1dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical">
+
+                            <include layout="@layout/settings_row_value"
+                                android:id="@+id/rowWelcomeGameLang" />
+
+                            <include layout="@layout/settings_row_divider" />
+
+                            <include layout="@layout/settings_row_value"
+                                android:id="@+id/rowWelcomeYourLang" />
+
+                        </LinearLayout>
+                    </com.google.android.material.card.MaterialCardView>
+
+                </LinearLayout>
+            </ScrollView>
+
+            <Button
+                android:id="@+id/btnWelcomeContinue"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="20dp"
+                android:text="@string/onboarding_welcome_continue"
+                android:textSize="16sp"
+                android:backgroundTint="?attr/ptAccent"
+                android:textColor="?attr/ptAccentOn"
+                app:cornerRadius="8dp" />
+
+        </LinearLayout>
+
         <!-- Page 1: Notification permission -->
         <LinearLayout
             android:id="@+id/pageNotif"

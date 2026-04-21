@@ -34,6 +34,12 @@
     <string name="notif_text">Tap to return to PlayTranslate</string>
 
     <!-- Permission / Onboarding -->
+    <string name="onboarding_welcome_title">Welcome to PlayTranslate!</string>
+    <string name="onboarding_welcome_tagline">Your companion app for playing games in other languages.</string>
+    <string name="onboarding_welcome_body">Playing something you don\'t understand? Turn on-screen text into translations instantly.\n\nLearning a language? Word-by-word definitions, reading guides (furigana, pinyin), and one-tap Anki flashcards.</string>
+    <string name="onboarding_welcome_row_placeholder">Tap to choose</string>
+    <string name="onboarding_welcome_continue">Continue</string>
+    <string name="onboarding_welcome_select_source">Select game language</string>
     <string name="onboarding_notif_title">Allow Notifications</string>
     <string name="onboarding_notif_body">Android requires apps that run in the background to display a status bar notification while active.\n\nThis will never send alerts, sounds, or banners — only a quiet persistent indicator that PlayTranslate is running.</string>
     <string name="onboarding_a11y_hint">Look for <b>PlayTranslate</b> under Downloaded apps.</string>

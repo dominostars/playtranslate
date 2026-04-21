@@ -27,6 +27,7 @@ import android.animation.ObjectAnimator
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.widget.Button
+import com.google.mlkit.nl.translate.TranslateLanguage
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -89,9 +90,13 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private lateinit var regionPickerContainer: View
     private lateinit var settingsContainer: View
     private lateinit var onboardingContainer: View
+    private lateinit var pageWelcome: View
     private lateinit var pageNotif: View
     private lateinit var pageA11y: View
     private lateinit var pageA11ySingle: View
+    private lateinit var rowWelcomeGameLang: View
+    private lateinit var rowWelcomeYourLang: View
+    private lateinit var btnWelcomeContinue: Button
     private lateinit var editOverlay: android.widget.LinearLayout
     private lateinit var etEditOriginal: android.widget.EditText
 
@@ -412,9 +417,13 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         regionPickerContainer = findViewById(R.id.regionPickerContainer)
         settingsContainer    = findViewById(R.id.settingsContainer)
         onboardingContainer  = findViewById(R.id.onboardingContainer)
+        pageWelcome          = findViewById(R.id.pageWelcome)
         pageNotif            = findViewById(R.id.pageNotif)
         pageA11y             = findViewById(R.id.pageA11y)
         pageA11ySingle       = findViewById(R.id.pageA11ySingle)
+        rowWelcomeGameLang   = findViewById(R.id.rowWelcomeGameLang)
+        rowWelcomeYourLang   = findViewById(R.id.rowWelcomeYourLang)
+        btnWelcomeContinue   = findViewById(R.id.btnWelcomeContinue)
         editOverlay          = findViewById(R.id.editOverlay)
         etEditOriginal       = findViewById(R.id.etEditOriginal)
     }
@@ -1116,6 +1125,22 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private fun isSingleScreen(): Boolean = Prefs.isSingleScreen(this)
 
     private fun checkOnboardingState() {
+        val prefs = Prefs(this)
+        val sourceInstalled = LanguagePackStore.isInstalled(this, prefs.sourceLangId)
+        val languageConfigured = sourceInstalled && prefs.hasTargetLangBeenSet
+
+        val existingSheet = supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG) as? SettingsBottomSheet
+
+        // Welcome + language setup comes first: tap a language pair before
+        // being asked to grant permissions. Upgrade users who already have
+        // both satisfied skip this step entirely.
+        if (!languageConfigured) {
+            existingSheet?.dismissAllowingStateLoss()
+            showOnboardingPage(pageWelcome)
+            refreshWelcomeRowsAndButton()
+            return
+        }
+
         val notifGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
@@ -1127,9 +1152,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         // rationale doesn't apply in split-screen where the app half is
         // visible alongside the game.
         val singleScreen = Prefs.isSingleScreen(this)
-        val existingSheet = supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG) as? SettingsBottomSheet
 
-        // Notification permission always comes first regardless of screen mode
         if (!notifGranted) {
             existingSheet?.dismissAllowingStateLoss()
             showOnboardingPage(pageNotif)
@@ -1142,7 +1165,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                 showOnboardingPage(pageA11ySingle)
                 return
             }
-            if (!checkLanguagePackGate()) return
             onboardingContainer.visibility = View.GONE
                 val isAlreadySingleScreenSheet = existingSheet != null &&
                 existingSheet.arguments?.getBoolean("hide_dismiss", false) == true
@@ -1158,50 +1180,88 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         }
 
         if (a11yEnabled) {
-            if (!checkLanguagePackGate()) return
             onboardingContainer.visibility = View.GONE
             return
         }
         showOnboardingPage(pageA11y)
     }
 
-    /** Returns true once the user has both an installed source pack and an
-     *  explicitly-saved target language. If not, hides the onboarding overlay
-     *  and launches [com.playtranslate.ui.LanguageSetupActivity] in onboarding
-     *  mode for the missing step. Target step fires on every first run of
-     *  this build — including upgrade users — so everyone consciously picks
-     *  a target and the ML Kit model for source→target eagerly downloads. */
-    private fun checkLanguagePackGate(): Boolean {
-        val gatePrefs = Prefs(this)
-        if (!LanguagePackStore.isInstalled(this, gatePrefs.sourceLangId)) {
-            onboardingContainer.visibility = View.GONE
-            startActivity(
-                Intent(this, com.playtranslate.ui.LanguageSetupActivity::class.java)
-                    .putExtra(com.playtranslate.ui.LanguageSetupActivity.EXTRA_MODE, com.playtranslate.ui.LanguageSetupActivity.MODE_SOURCE)
-                    .putExtra(com.playtranslate.ui.LanguageSetupActivity.EXTRA_ONBOARDING, true)
-            )
-            return false
+    /** Refreshes Game Language / Your Language row values and the Continue
+     *  button's label to match current source-installed / target-set state.
+     *  Called whenever [pageWelcome] is (re-)displayed. */
+    private fun refreshWelcomeRowsAndButton() {
+        val p = Prefs(this)
+        val srcInstalled = LanguagePackStore.isInstalled(this, p.sourceLangId)
+        val tgtSet = p.hasTargetLangBeenSet
+        val tgtLocale = java.util.Locale(p.targetLang)
+
+        rowWelcomeGameLang.findViewById<TextView>(R.id.tvRowTitle).text =
+            getString(R.string.lang_translate_from)
+        val gameVal = rowWelcomeGameLang.findViewById<TextView>(R.id.tvRowValue)
+        if (srcInstalled) {
+            gameVal.text = p.sourceLangId.displayName(tgtLocale)
+            gameVal.setTextColor(themeColor(R.attr.ptTextMuted))
+        } else {
+            gameVal.text = getString(R.string.onboarding_welcome_row_placeholder)
+            gameVal.setTextColor(themeColor(R.attr.ptTextHint))
         }
-        if (!gatePrefs.hasTargetLangBeenSet) {
-            onboardingContainer.visibility = View.GONE
-            startActivity(
-                Intent(this, com.playtranslate.ui.LanguageSetupActivity::class.java)
-                    .putExtra(com.playtranslate.ui.LanguageSetupActivity.EXTRA_MODE, com.playtranslate.ui.LanguageSetupActivity.MODE_TARGET)
-                    .putExtra(com.playtranslate.ui.LanguageSetupActivity.EXTRA_ONBOARDING, true)
-            )
-            return false
+
+        rowWelcomeYourLang.findViewById<TextView>(R.id.tvRowTitle).text =
+            getString(R.string.lang_translate_to)
+        val yourVal = rowWelcomeYourLang.findViewById<TextView>(R.id.tvRowValue)
+        if (tgtSet) {
+            yourVal.text = java.util.Locale(p.targetLang)
+                .getDisplayLanguage(tgtLocale)
+                .replaceFirstChar { it.uppercase() }
+            yourVal.setTextColor(themeColor(R.attr.ptTextMuted))
+        } else {
+            yourVal.text = getString(R.string.onboarding_welcome_row_placeholder)
+            yourVal.setTextColor(themeColor(R.attr.ptTextHint))
         }
-        return true
+
+        btnWelcomeContinue.text = getString(
+            if (srcInstalled) R.string.onboarding_welcome_continue
+            else R.string.onboarding_welcome_select_source
+        )
+    }
+
+    private fun launchLanguagePicker(mode: String) {
+        startActivity(
+            Intent(this, com.playtranslate.ui.LanguageSetupActivity::class.java)
+                .putExtra(com.playtranslate.ui.LanguageSetupActivity.EXTRA_MODE, mode)
+                .putExtra(com.playtranslate.ui.LanguageSetupActivity.EXTRA_ONBOARDING, true)
+        )
     }
 
     private fun showOnboardingPage(page: View) {
         onboardingContainer.visibility = View.VISIBLE
+        pageWelcome.visibility    = if (page == pageWelcome)    View.VISIBLE else View.GONE
         pageNotif.visibility      = if (page == pageNotif)      View.VISIBLE else View.GONE
         pageA11y.visibility       = if (page == pageA11y)       View.VISIBLE else View.GONE
         pageA11ySingle.visibility = if (page == pageA11ySingle) View.VISIBLE else View.GONE
     }
 
     private fun setupOnboarding() {
+        // Welcome page — row taps open the appropriate picker; Continue's
+        // label + action depend on whether the source pack is installed yet.
+        rowWelcomeGameLang.setOnClickListener {
+            launchLanguagePicker(com.playtranslate.ui.LanguageSetupActivity.MODE_SOURCE)
+        }
+        rowWelcomeYourLang.setOnClickListener {
+            launchLanguagePicker(com.playtranslate.ui.LanguageSetupActivity.MODE_TARGET)
+        }
+        btnWelcomeContinue.setOnClickListener {
+            val p = Prefs(this)
+            if (!LanguagePackStore.isInstalled(this, p.sourceLangId)) {
+                launchLanguagePicker(com.playtranslate.ui.LanguageSetupActivity.MODE_SOURCE)
+            } else {
+                if (!p.hasTargetLangBeenSet) {
+                    p.targetLang = TranslateLanguage.ENGLISH
+                }
+                checkOnboardingState()
+            }
+        }
+
         pageNotif.findViewById<View>(R.id.btnGrantNotif).setOnClickListener {
             notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
