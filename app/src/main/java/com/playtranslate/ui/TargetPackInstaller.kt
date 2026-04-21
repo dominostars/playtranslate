@@ -5,7 +5,6 @@ import android.app.Dialog
 import android.graphics.Color
 import android.view.Gravity
 import android.view.LayoutInflater
-import android.view.View
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ProgressBar
@@ -88,7 +87,6 @@ class TargetPackInstaller(
                         activity.runOnUiThread {
                             tvStatus.text = "Loading $targetName"
                             progressBar.isIndeterminate = true
-                            dialog.findViewById<Button>(R.id.btnPopupCancel)?.visibility = View.GONE
                         }
                         runLoadThenFinish(dialog, sourceLangCode, targetCode, onSuccess)
                     }
@@ -102,7 +100,6 @@ class TargetPackInstaller(
         } else {
             tvStatus.text = "Downloading $targetName"
             progressBar.isIndeterminate = true
-            dialog.findViewById<Button>(R.id.btnPopupCancel)?.visibility = View.GONE
             dialog.show()
             activeJob = scope.launch {
                 runLoadThenFinish(dialog, sourceLangCode, targetCode, onSuccess)
