@@ -129,17 +129,11 @@ class LanguageSetupActivity : AppCompatActivity() {
                 id.displayName() to { onSourceSelected(id) }
             }
             addLanguageSection(root, title = "Suggested", rows = suggestedRows)
-
-            val allRows = allIds.map { id ->
-                id.displayName() to { onSourceSelected(id) }
-            }
-            addLanguageSection(root, title = "All", rows = allRows)
-        } else {
-            val allRows = allIds.map { id ->
-                id.displayName() to { onSourceSelected(id) }
-            }
-            addLanguageSection(root, title = null, rows = allRows)
         }
+        val allRows = allIds.map { id ->
+            id.displayName() to { onSourceSelected(id) }
+        }
+        addLanguageSection(root, title = "All", rows = allRows)
 
         contentFrame.addView(view)
     }
@@ -214,17 +208,11 @@ class LanguageSetupActivity : AppCompatActivity() {
                 displayName to { onTargetSelected(code) }
             }
             addLanguageSection(root, title = "Suggested", rows = suggestedRows)
-
-            val allRows = allLangs.map { (code, displayName) ->
-                displayName to { onTargetSelected(code) }
-            }
-            addLanguageSection(root, title = "All", rows = allRows)
-        } else {
-            val allRows = allLangs.map { (code, displayName) ->
-                displayName to { onTargetSelected(code) }
-            }
-            addLanguageSection(root, title = null, rows = allRows)
         }
+        val allRows = allLangs.map { (code, displayName) ->
+            displayName to { onTargetSelected(code) }
+        }
+        addLanguageSection(root, title = "All", rows = allRows)
 
         contentFrame.addView(view)
     }
