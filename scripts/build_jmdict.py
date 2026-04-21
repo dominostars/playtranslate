@@ -512,7 +512,7 @@ def main() -> int:
     print("Next steps:")
     print(f"  1. sha256sum {zip_path}")
     print(f"  2. Upload {zip_path} to dominostars/playtranslate-langpacks tag ja-v1")
-    print(f"  3. Update assets/langpack_catalog.json with URL + sha256, flip bundled → false")
+    print(f"  3. Update assets/langpack_catalog.json with URL + sha256, flip bundled to false")
     return 0
 
 
