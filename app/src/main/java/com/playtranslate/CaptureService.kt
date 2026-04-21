@@ -268,15 +268,29 @@ class CaptureService : Service() {
         )
     }
 
+    /** Tracks the last-seen preferred backend so we can invalidate the
+     *  translation cache when the user toggles their DeepL key on/off.
+     *  Pair changes are covered by the cache key itself (text, source,
+     *  target); backend toggles aren't in the key (deliberate — keeps
+     *  Lingva fallback caching on DeepL-transient-failure), so we clear
+     *  explicitly on transition here. */
+    private var lastPreferredBackend: String? = null
+
     /** Reconcile the shared translator fields with [target]. Called at the
      *  top of every translation call so drift from a pref-change in another
      *  code path (onboarding, Settings) is picked up automatically.
      *
-     *  The [translationCache] is NOT cleared here. It's keyed by
-     *  `(text, source, target)`, so old-pair entries become unreachable
-     *  the moment [target] flips; LRU ages them out of the 500-slot bound
-     *  naturally. */
+     *  The [translationCache] is cleared only on a backend transition
+     *  (DeepL key added or removed). Pair changes are handled by the cache
+     *  key; keeping the cache across same-pair re-ensures preserves the
+     *  "unchanged UI labels stay cached" benefit that drives live mode. */
     private fun ensureLanguageManagersFor(target: TranslationTarget) {
+        val preferredBackend = if (target.deeplKey.isNotBlank()) "deepl" else "lingva"
+        if (lastPreferredBackend != null && lastPreferredBackend != preferredBackend) {
+            translationCache.clear()
+        }
+        lastPreferredBackend = preferredBackend
+
         // DeepL — only when a key is configured
         if (target.deeplKey.isNotBlank()) {
             val same = deeplTranslator?.let {

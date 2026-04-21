@@ -179,10 +179,12 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
         val screenshotPath = intent.getStringExtra(EXTRA_SCREENSHOT_PATH)
         val segments = sentenceText.map { TextSegment(it.toString()) }
         val frag = resultFragment ?: return
-        val prefs = Prefs(this)
 
-        // Ensure the service is configured for translation
-        svc.configureSaved(displayId = prefs.captureDisplayId)
+        // Translation-only path: translateOnce() self-heals language managers
+        // internally, so we don't touch configureSaved — doing so would
+        // overwrite the user's saved capture region with the full-screen
+        // default, which any concurrent capture (e.g. live mode still
+        // running) would then pick up.
 
         frag.showTranslatingPlaceholder(sentenceText, segments)
 
