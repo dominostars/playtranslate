@@ -1239,7 +1239,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         // something else they tap the row. Tapping Continue without having
         // picked explicitly runs the install flow for this default.
         yourVal.text = tgtLocale.getDisplayLanguage(tgtLocale)
-            .replaceFirstChar { it.uppercase() }
+            .replaceFirstChar { it.uppercase(tgtLocale) }
         yourVal.setTextColor(themeColor(R.attr.ptTextMuted))
 
         btnWelcomeContinue.text = getString(
@@ -1385,7 +1385,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
     private fun langDisplayName(langCode: String): String =
         Locale(langCode).getDisplayLanguage(Locale.getDefault())
-            .replaceFirstChar { it.uppercase() }
+            .replaceFirstChar { it.uppercase(Locale.getDefault()) }
 
     private fun showEditOverlay() {
         val currentText = resultFragment?.getDisplayedOriginalText()?.takeIf { it.isNotBlank() }
@@ -1731,8 +1731,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         val catalogKey = "target-$target"
         if (LanguagePackCatalogLoader.entryForKey(this, catalogKey) == null) return
 
-        val targetName = java.util.Locale(target).getDisplayLanguage(java.util.Locale(target))
-            .replaceFirstChar { it.uppercase() }
+        val targetLocale = java.util.Locale(target)
+        val targetName = targetLocale.getDisplayLanguage(targetLocale)
+            .replaceFirstChar { it.uppercase(targetLocale) }
         AlertDialog.Builder(this)
             .setTitle("$targetName definitions available")
             .setMessage(

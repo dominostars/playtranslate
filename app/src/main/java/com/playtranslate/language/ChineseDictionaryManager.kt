@@ -171,8 +171,10 @@ class ChineseDictionaryManager private constructor(private val context: Context)
             val base = if (tone in 1..5) syllable.dropLast(1) else syllable
             if (tone == 5 || tone !in 1..4) return@joinToString base
             val wasCapital = base.firstOrNull()?.isUpperCase() == true
-            val marked = applyToneMark(base.lowercase(), tone)
-            if (wasCapital) marked.replaceFirstChar { it.uppercase() } else marked
+            // Pinyin syllables are ASCII — ROOT avoids Turkish-locale
+            // devices mangling `"Yin"` into `"yın"`.
+            val marked = applyToneMark(base.lowercase(java.util.Locale.ROOT), tone)
+            if (wasCapital) marked.replaceFirstChar { it.uppercase(java.util.Locale.ROOT) } else marked
         }
 
     /**

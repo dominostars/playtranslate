@@ -61,7 +61,7 @@ class TargetPackInstaller(
         if (activeJob?.isActive == true) return
 
         val targetName = Locale(targetCode).getDisplayLanguage(Locale.getDefault())
-            .replaceFirstChar { it.uppercase() }
+            .replaceFirstChar { it.uppercase(Locale.getDefault()) }
         val needsTargetPack = targetCode != "en"
             && LanguagePackCatalogLoader.entryForKey(activity, "target-$targetCode") != null
             && !LanguagePackStore.isTargetInstalled(activity, targetCode)

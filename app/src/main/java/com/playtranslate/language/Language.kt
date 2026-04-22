@@ -41,15 +41,24 @@ enum class SourceLangId(val code: String) {
         else -> this
     }
 
+    /** The [java.util.Locale] for this language. Drives locale-sensitive
+     *  string operations — most importantly Turkish case mapping, where
+     *  `"IŞIK".lowercase()` yields `"işik"` under the default locale but
+     *  the Turkish-correct `"ışık"` under this one. */
+    val locale: java.util.Locale
+        get() = java.util.Locale.forLanguageTag(code)
+
     /** Display name in [locale]. e.g. `JA.displayName(Locale("en"))` → "Japanese";
-     *  `JA.displayName(Locale("ja"))` → "日本語". Defaults to system locale. */
+     *  `JA.displayName(Locale("ja"))` → "日本語". Defaults to system locale.
+     *  First-char casing uses the display [locale] so Turkish display names
+     *  title-case correctly (e.g. "ispanyolca" → "İspanyolca"). */
     fun displayName(locale: java.util.Locale = java.util.Locale.getDefault()): String = when (this) {
         ZH      -> java.util.Locale.forLanguageTag("zh-Hans").getDisplayName(locale)
-            .replaceFirstChar { it.uppercase() }
+            .replaceFirstChar { it.uppercase(locale) }
         ZH_HANT -> java.util.Locale.forLanguageTag("zh-Hant").getDisplayName(locale)
-            .replaceFirstChar { it.uppercase() }
+            .replaceFirstChar { it.uppercase(locale) }
         else    -> java.util.Locale(code).getDisplayLanguage(locale)
-            .replaceFirstChar { it.uppercase() }
+            .replaceFirstChar { it.uppercase(locale) }
     }
 
     companion object {
@@ -58,9 +67,12 @@ enum class SourceLangId(val code: String) {
 
         fun fromCode(code: String?): SourceLangId? {
             if (code.isNullOrBlank()) return null
-            val lower = code.lowercase()
+            // Language codes are ASCII identifiers, not natural-language
+            // text — use ROOT so Turkish-locale devices don't mangle
+            // `"IT".lowercase()` into `"ıt"`.
+            val lower = code.lowercase(java.util.Locale.ROOT)
             // Exact match first (handles "zh-hant" → ZH_HANT)
-            entries.firstOrNull { it.code.lowercase() == lower }?.let { return it }
+            entries.firstOrNull { it.code.lowercase(java.util.Locale.ROOT) == lower }?.let { return it }
             // Map zh-TW, zh-HK, zh-MO, zh-Hant-TW etc. to ZH_HANT
             if (lower.startsWith("zh-")) {
                 val parts = lower.removePrefix("zh-").split('-')

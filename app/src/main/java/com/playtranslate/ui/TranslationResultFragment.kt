@@ -984,8 +984,9 @@ class TranslationResultFragment : Fragment() {
 
     private fun targetLangDisplayName(): String {
         val code = selectedTargetLang()
-        return Locale(code).getDisplayLanguage(Locale(code))
-            .replaceFirstChar { it.uppercase() }
+        val locale = Locale(code)
+        return locale.getDisplayLanguage(locale)
+            .replaceFirstChar { it.uppercase(locale) }
     }
 
     private fun copyToClipboard(text: String) {

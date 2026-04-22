@@ -46,7 +46,8 @@ class LatinEngine(
     override val profile: SourceLanguageProfile = SourceLanguageProfiles[langId]
 
     private val dict: LatinDictionaryManager = LatinDictionaryManager.get(appContext, langId)
-    private val breakIterator: BreakIterator = BreakIterator.getWordInstance(localeFor(langId))
+    private val locale: Locale = langId.locale
+    private val breakIterator: BreakIterator = BreakIterator.getWordInstance(locale)
     private val stemmer: SnowballProgram? = stemmerFor(langId)
     private val stemmerLock = Any()
     private val iteratorLock = Any()
@@ -90,13 +91,15 @@ class LatinEngine(
     }
 
     /** Returns the stem for [word], or the lowercased surface when the
-     *  language has no Snowball stemmer. Callers of [LatinDictionaryManager.lookup]
-     *  already short-circuit when `stemmed == surface`, so no extra guard
-     *  is needed downstream. */
+     *  language has no Snowball stemmer. Lowercasing runs under the
+     *  language's [locale] so Turkish `IŞIK` → `ışık` (not `işik`).
+     *  Callers of [LatinDictionaryManager.lookup] already short-circuit
+     *  when `stemmed == surface`, so no extra guard is needed downstream. */
     private fun stemOf(word: String): String {
-        val s = stemmer ?: return word.lowercase()
+        val lower = word.lowercase(locale)
+        val s = stemmer ?: return lower
         return synchronized(stemmerLock) {
-            s.setCurrent(word.lowercase())
+            s.setCurrent(lower)
             s.stem()
             s.current
         }
@@ -110,17 +113,6 @@ class LatinEngine(
     }
 
     companion object {
-        private fun localeFor(id: SourceLangId): Locale = when (id) {
-            SourceLangId.EN -> Locale.ENGLISH
-            SourceLangId.FR -> Locale.FRENCH
-            SourceLangId.DE -> Locale.GERMAN
-            SourceLangId.IT -> Locale.ITALIAN
-            // Everything else maps code→Locale directly. ICU's BreakIterator
-            // gracefully falls back to the root locale if the code is
-            // unknown, so unusual codes don't throw.
-            else -> Locale(id.code)
-        }
-
         /** Returns a fresh Snowball stemmer instance, or null for isolating
          *  languages with no useful stemming rules. English is the default
          *  catch-all only for unknown IDs — callers should route through
