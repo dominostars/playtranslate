@@ -44,9 +44,10 @@ After running:
 
 Schema notes
 ------------
-- `kanji.text`    -> headword. Column is misnamed for legacy JMdict
-                    reasons; a later cleanup will rename.
-- `reading.text`  -> UNUSED for Latin (no pronunciation data).
+- `headword.text`  -> lemma surface (position 0), Snowball stem (position 1),
+                     or redirect alias (position 2). See the alias pass in
+                     build_sqlite for what position 2 represents.
+- `reading.text`   -> UNUSED for Latin (no pronunciation data).
 - `sense.glosses` -> TAB-separated list of English definitions (matches
                     JMdict's sense format).
 - `sense.pos`     -> Wiktionary's `pos` field, lowercased.
@@ -173,7 +174,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
             is_common  INTEGER NOT NULL DEFAULT 0,
             freq_score INTEGER NOT NULL DEFAULT 0
         );
-        CREATE TABLE kanji (
+        CREATE TABLE headword (
             entry_id   INTEGER NOT NULL,
             position   INTEGER NOT NULL,
             text       TEXT    NOT NULL
@@ -200,8 +201,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
             grade        INTEGER NOT NULL DEFAULT 0,
             stroke_count INTEGER NOT NULL DEFAULT 0
         );
-        CREATE INDEX idx_kanji_text   ON kanji(text);
-        CREATE INDEX idx_reading_text ON reading(text);
+        CREATE INDEX idx_headword_text ON headword(text);
+        CREATE INDEX idx_reading_text  ON reading(text);
         """
     )
 
@@ -219,10 +220,11 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
 
     # Snowball stemmer for the language (or None for isolating languages
     # with no inflection). When present, every entry gets a second
-    # `kanji.text` row pointing the stem at the same entry_id — this is
-    # what makes LatinDictionaryManager's stem fallback reach the lemma
-    # after the redirect entry (`volontari → "plural of volontario"`) has
-    # been filtered out of the pack.
+    # `headword.text` row pointing the stem at the same entry_id — this
+    # is what makes LatinDictionaryManager's stem fallback reach the
+    # lemma for REGULAR inflections (e.g. `cani` and `cane` both stem to
+    # `can`). Irregular forms (e.g. `detto` / `dire` stem to `dett` /
+    # `dir`) need the redirect-alias pass below.
     if lang not in SNOWBALL_ALGO_FOR_LANG:
         raise ValueError(
             f"No SNOWBALL_ALGO_FOR_LANG mapping for '{lang}'. "
@@ -237,12 +239,21 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
     stem_rows = 0
     seen_headwords: set[str] = set()
 
+    # Pass 1 populates this map; pass 2 consults it to check whether a
+    # redirect entry's target lemma was actually kept in the pack. A
+    # surface like "volontario" appears TWICE in Italian Wiktionary — as
+    # a noun ("volunteer") and as an adj ("voluntary") — each with its
+    # own entry_id. Both meanings are valid for the inflected surface
+    # `volontari`, so we track every entry_id per word and pass 2 emits
+    # an alias row for each.
+    kept_lemma_ids: dict[str, list[int]] = {}
+
     scanned = 0
     for obj in iter_kaikki(input_path):
         scanned += 1
         if scanned % 100000 == 0:
             print(
-                f"  {scanned:,} scanned, {kept:,} kept, "
+                f"  [pass1] {scanned:,} scanned, {kept:,} kept, "
                 f"{dropped_redirect:,} redirects dropped…"
             )
 
@@ -262,8 +273,8 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         # Drop entire entries whose senses are all "form_of" / "alt_of"
         # redirects. Keeping them shadows the real lemma on direct lookup
         # (e.g. tap `volontari` → "masculine plural of volontario" instead
-        # of the real gloss). The stem fallback inserted below lets users
-        # still reach the lemma via inflected forms.
+        # of the real gloss). Pass 2 below converts their surfaces into
+        # alias rows so users can still reach the lemma.
         if is_redirect_entry(obj):
             dropped_redirect += 1
             continue
@@ -308,20 +319,26 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
             (entry_id, is_common, freq_score),
         )
         cur.execute(
-            "INSERT INTO kanji VALUES (?, ?, ?)",
+            "INSERT INTO headword VALUES (?, ?, ?)",
             (entry_id, 0, word_lower),
         )
-        # Stem row — second kanji.text pointing at the same entry_id.
-        # LatinDictionaryManager tries surface first, then the Lucene
-        # Snowball stem of the queried word; the stem row is what that
-        # fallback actually hits. Skip when the stem equals the surface
-        # (would just duplicate the row) or when the language has no
-        # stemmer.
+        # Position 0 = lemma surface. Record in kept_lemma_ids so pass 2
+        # can alias-index redirect surfaces targeting this lemma. A word
+        # may appear under multiple POS (noun + adj etc.) with distinct
+        # entry_ids — we keep them all so an alias like "volontari" fans
+        # out to both the "volunteer" (noun) and "voluntary" (adj) entries.
+        kept_lemma_ids.setdefault(word_lower, []).append(entry_id)
+
+        # Stem row — position 1 headword pointing at the same entry_id.
+        # LatinDictionaryManager tries surface first, then the Snowball
+        # stem of the queried word; the stem row is what that fallback
+        # actually hits. Skip when the stem equals the surface (would
+        # just duplicate the row) or when the language has no stemmer.
         if stemmer is not None:
             stem = stemmer.stemWord(word_lower)
             if stem and stem != word_lower:
                 cur.execute(
-                    "INSERT INTO kanji VALUES (?, ?, ?)",
+                    "INSERT INTO headword VALUES (?, ?, ?)",
                     (entry_id, 1, stem),
                 )
                 stem_rows += 1
@@ -340,12 +357,85 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
 
         kept += 1
 
+    # ── Pass 2: redirect-alias indexing ─────────────────────────────
+    # Re-stream the kaikki file. For each entry we dropped as a redirect
+    # in pass 1, extract its target lemma word from any sense's
+    # `form_of` / `alt_of` / `altspell_of` / `abbreviation_of` /
+    # `synonym_of` field, and if that lemma is in the pack, add a
+    # position-2 headword row so `LatinDictionaryManager` can resolve
+    # the inflected/alternate surface to the lemma's entry_id.
+    #
+    # `compound_of` is INTENTIONALLY EXCLUDED. Italian compounds like
+    # `dacci = da' + ci` would route the user to `da'`'s gloss, which
+    # is only a fragment of the compound's meaning. Romance languages
+    # (IT, ES, PT) populate compound_of heavily with clitic-attached
+    # imperatives; English has zero compound_of entries in a 200 MB
+    # sample, so there's nothing to lose by skipping this key.
+    ALIAS_KEYS = (
+        "form_of",
+        "alt_of",
+        "altspell_of",
+        "abbreviation_of",
+        "synonym_of",
+    )
+
+    alias_pairs: set[tuple[int, str]] = set()
+    scanned2 = 0
+    for obj in iter_kaikki(input_path):
+        scanned2 += 1
+        if scanned2 % 200000 == 0:
+            print(
+                f"  [pass2] {scanned2:,} scanned, "
+                f"{len(alias_pairs):,} alias pairs collected…"
+            )
+
+        word = obj.get("word")
+        lang_code = obj.get("lang_code")
+        if not word:
+            continue
+        if lang_code and lang_code != kaikki_lang:
+            continue
+        # We only care about entries we dropped in pass 1 — i.e. pure
+        # redirect entries. Entries that survived pass 1 already have
+        # their lemma row.
+        if not is_redirect_entry(obj):
+            continue
+
+        source_surface = word.lower()
+        senses = obj.get("senses") or []
+        for sense in senses:
+            for key in ALIAS_KEYS:
+                target_list = sense.get(key)
+                if not target_list:
+                    continue
+                target = target_list[0] if isinstance(target_list, list) else None
+                if not isinstance(target, dict):
+                    continue
+                target_word = (target.get("word") or "").lower()
+                if not target_word:
+                    continue
+                if source_surface == target_word:
+                    continue  # self-alias, defensive
+                target_ids = kept_lemma_ids.get(target_word)
+                if not target_ids:
+                    continue
+                for target_id in target_ids:
+                    alias_pairs.add((target_id, source_surface))
+
+    if alias_pairs:
+        cur.executemany(
+            "INSERT INTO headword VALUES (?, ?, ?)",
+            [(tid, 2, surf) for (tid, surf) in alias_pairs],
+        )
+
     conn.commit()
     conn.close()
+    distinct_targets = len({tid for (tid, _) in alias_pairs})
     print(
         f"Built {db_path} with {kept:,} entries "
         f"({dropped_redirect:,} redirects filtered, "
-        f"{stem_rows:,} stem rows indexed)."
+        f"{stem_rows:,} stem rows indexed, "
+        f"{len(alias_pairs):,} alias rows covering {distinct_targets:,} lemmas)."
     )
 
 
@@ -397,10 +487,20 @@ def build_zip(db_path: Path, manifest_path: Path, zip_path: Path) -> None:
 # language" (build still succeeds).
 SMOKE_FIXTURES: dict[str, dict[str, str]] = {
     "it": {
-        "cani": "dog",          # cani → cane → "dog"
+        # Regular plurals resolve via the Snowball stem path.
+        "cani": "dog",            # cani → cane → "dog"
         "volontari": "volunteer",  # volontari → volontario → "volunteer"
-        "gatti": "cat",         # gatti → gatto → "cat"
+        "gatti": "cat",           # gatti → gatto → "cat"
+        # Irregular participles resolve via the form_of alias path.
+        # These stem to something unrelated to their lemma's stem, so
+        # they only work when pass 2 indexed a position-2 alias row.
+        "detto": "say",            # detto → dire (form_of) → "say"
+        "fatto": "do",             # fatto → fare (form_of) → "do"
+        "preso": "take",           # preso → prendere (form_of) → "take"
+        "venuto": "come",          # venuto → venire (form_of) → "come"
     },
+    # Other languages: fill in per-rebuild. Empty is OK — no fixtures
+    # means "build still succeeds, just no regression guard for this lang."
 }
 
 
@@ -421,16 +521,16 @@ def run_smoke_test(db_path: Path, lang: str) -> None:
             surface_l = surface.lower()
             # Try surface, then stem — matches LatinDictionaryManager.lookup.
             rows = conn.execute(
-                "SELECT s.glosses FROM kanji k JOIN sense s ON s.entry_id=k.entry_id "
-                "WHERE k.text = ? ORDER BY k.entry_id",
+                "SELECT s.glosses FROM headword h JOIN sense s ON s.entry_id=h.entry_id "
+                "WHERE h.text = ? ORDER BY h.entry_id",
                 (surface_l,),
             ).fetchall()
             if not rows and stemmer is not None:
                 stem = stemmer.stemWord(surface_l)
                 if stem and stem != surface_l:
                     rows = conn.execute(
-                        "SELECT s.glosses FROM kanji k JOIN sense s ON s.entry_id=k.entry_id "
-                        "WHERE k.text = ? ORDER BY k.entry_id",
+                        "SELECT s.glosses FROM headword h JOIN sense s ON s.entry_id=h.entry_id "
+                        "WHERE h.text = ? ORDER BY h.entry_id",
                         (stem,),
                     ).fetchall()
             if not rows:

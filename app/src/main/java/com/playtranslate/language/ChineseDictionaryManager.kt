@@ -16,9 +16,10 @@ import java.io.File
 
 /**
  * Read-only SQLite dictionary for Chinese, backed by a CC-CEDICT-derived
- * pack. Both Simplified and Traditional headwords are stored in the `kanji`
- * table (position 0 = simplified, position 1 = traditional when different),
- * so a single `WHERE text = ?` query matches either variant.
+ * pack. Both Simplified and Traditional headwords are stored in the
+ * `headword` table (position 0 = simplified, position 1 = traditional
+ * when different), so a single `WHERE text = ?` query matches either
+ * variant.
  *
  * No stemming or de-inflection — Chinese doesn't inflect. Lookup is
  * direct surface match with silent pass-through on miss.
@@ -68,7 +69,7 @@ class ChineseDictionaryManager private constructor(private val context: Context)
     private fun isSchemaUpToDate(dbFile: File): Boolean = try {
         SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { tempDb ->
             tempDb.rawQuery("SELECT freq_score FROM entry LIMIT 1", null).use { }
-            tempDb.rawQuery("SELECT text FROM kanji LIMIT 1", null).use { }
+            tempDb.rawQuery("SELECT text FROM headword LIMIT 1", null).use { }
             tempDb.rawQuery("SELECT pos, glosses, misc FROM sense LIMIT 1", null).use { }
         }
         true
@@ -79,7 +80,7 @@ class ChineseDictionaryManager private constructor(private val context: Context)
     private fun queryEntryIds(db: SQLiteDatabase, word: String): List<Long> {
         val ids = mutableListOf<Long>()
         db.rawQuery(
-            "SELECT DISTINCT k.entry_id FROM kanji k JOIN entry e ON e.id = k.entry_id WHERE k.text = ? ORDER BY e.freq_score DESC LIMIT 8",
+            "SELECT DISTINCT h.entry_id FROM headword h JOIN entry e ON e.id = h.entry_id WHERE h.text = ? ORDER BY e.freq_score DESC LIMIT 8",
             arrayOf(word)
         ).use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
         return ids
@@ -104,7 +105,7 @@ class ChineseDictionaryManager private constructor(private val context: Context)
 
         val headwordTexts = mutableListOf<String>()
         db.rawQuery(
-            "SELECT text FROM kanji WHERE entry_id=? ORDER BY position",
+            "SELECT text FROM headword WHERE entry_id=? ORDER BY position",
             arrayOf(idStr)
         ).use { c -> while (c.moveToNext()) headwordTexts.add(c.getString(0)) }
         if (headwordTexts.isEmpty()) return null

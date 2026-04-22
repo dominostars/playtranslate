@@ -53,21 +53,39 @@ object LanguagePackStore {
      *  gets a chance to migrate it into the pack layout.
      *
      *  For JA we additionally schema-validate the DB before treating it as
-     *  installed. Reason: with the JMdict asset unbundled, a migrated-from-
-     *  legacy DB with an outdated schema would otherwise pass this check,
-     *  then get deleted by DictionaryManager's schema-drift guard, then fail
-     *  to recover via `copyFromAssets` (asset no longer exists). Surfacing
-     *  "not installed" here routes those users through the welcome page and
-     *  a clean `install()` download instead. */
+     *  installed, AND proactively delete any DB that fails the check. Two
+     *  reasons to delete rather than just report false:
+     *   1. With the JMdict asset unbundled, a migrated-from-legacy DB with
+     *      an outdated schema would otherwise pass `copyFromAssets` (the
+     *      asset no longer exists) → we'd be stuck. Deleting forces the
+     *      user through a clean `install()`.
+     *   2. The `kanji` → `headword` table rename (2026-04) invalidates every
+     *      pre-rename JA DB — both the old bundled copy at
+     *      `getDatabasePath("jmdict.db")` and any downloaded pack still on
+     *      the v1 schema. Leaving them on disk means `DictionaryManager`'s
+     *      runtime queries blow up on first use. Forcing a redownload is
+     *      cheaper than writing a migration.
+     */
     fun isInstalled(ctx: Context, id: SourceLangId): Boolean {
         val primaryDb = dictDbFor(ctx, id)
         if (primaryDb.exists() && manifestFileFor(ctx, id).exists()) {
-            if (id == SourceLangId.JA) return isJmdictSchemaCurrent(primaryDb)
+            if (id == SourceLangId.JA && !isJmdictSchemaCurrent(primaryDb)) {
+                val dir = dirFor(ctx, id)
+                if (dir.deleteRecursively()) {
+                    Log.d(TAG, "Deleted stale-schema JA pack at ${dir.path}")
+                }
+                return false
+            }
             return true
         }
         if (id == SourceLangId.JA) {
             val legacy = ctx.getDatabasePath("jmdict.db")
-            if (legacy.exists() && isJmdictSchemaCurrent(legacy)) return true
+            if (legacy.exists()) {
+                if (isJmdictSchemaCurrent(legacy)) return true
+                if (legacy.delete()) {
+                    Log.d(TAG, "Deleted stale-schema legacy JMdict DB at ${legacy.path}")
+                }
+            }
         }
         return false
     }
@@ -84,10 +102,16 @@ object LanguagePackStore {
 
     /** Matches the check in `DictionaryManager.isSchemaUpToDate`. Returns
      *  false if the DB is missing any of the columns/tables the runtime
-     *  queries, so we don't commit to a DB we'll end up deleting. */
+     *  queries, so we don't commit to a DB we'll end up deleting.
+     *
+     *  MUST probe `headword` — not `kanji` — post-rename. Old DBs that
+     *  still have the `kanji` table fail here, which is exactly what we
+     *  want: [isInstalled] deletes them and routes the user to re-download.
+     */
     internal fun isJmdictSchemaCurrent(dbFile: File): Boolean = try {
         SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
             db.rawQuery("SELECT freq_score FROM entry LIMIT 1", null).use { }
+            db.rawQuery("SELECT text FROM headword LIMIT 1", null).use { }
             db.rawQuery("SELECT misc FROM sense LIMIT 1", null).use { }
             db.rawQuery("SELECT literal FROM kanjidic LIMIT 1", null).use { }
         }

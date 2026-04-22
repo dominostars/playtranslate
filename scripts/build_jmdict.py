@@ -196,7 +196,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
             is_common  INTEGER NOT NULL DEFAULT 0,
             freq_score INTEGER NOT NULL DEFAULT 0
         );
-        CREATE TABLE kanji (
+        CREATE TABLE headword (
             entry_id   INTEGER NOT NULL,
             position   INTEGER NOT NULL,
             text       TEXT    NOT NULL
@@ -223,8 +223,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
             grade        INTEGER NOT NULL DEFAULT 0,
             stroke_count INTEGER NOT NULL DEFAULT 0
         );
-        CREATE INDEX idx_kanji_text   ON kanji(text);
-        CREATE INDEX idx_reading_text ON reading(text);
+        CREATE INDEX idx_headword_text ON headword(text);
+        CREATE INDEX idx_reading_text  ON reading(text);
         """
     )
 
@@ -255,12 +255,13 @@ def parse_and_insert(xml_bytes: bytes, conn: sqlite3.Connection) -> None:
 
         cur.execute("INSERT OR IGNORE INTO entry VALUES (?,?,?)", (entry_id, is_common, freq_score))
 
-        # Kanji forms
+        # Kanji forms (headword table — the name is schema-shared with
+        # other source packs; for Japanese the values are genuine kanji.)
         for pos, k_ele in enumerate(entry.findall("k_ele")):
             keb = k_ele.findtext("keb")
             if keb:
                 cur.execute(
-                    "INSERT INTO kanji VALUES (?,?,?)", (entry_id, pos, keb)
+                    "INSERT INTO headword VALUES (?,?,?)", (entry_id, pos, keb)
                 )
 
         # Reading forms

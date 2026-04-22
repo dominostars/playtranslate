@@ -10,7 +10,7 @@ under CC-BY-SA-4.0. Each line has the format:
 This script parses that format into the JMdict-compatible SQLite schema
 so ChineseDictionaryManager can read it without a schema branch.
 
-Both simplified and traditional forms are stored in the `kanji` table
+Both simplified and traditional forms are stored in the `headword` table
 (position 0 = simplified, position 1 = traditional if different). A
 single `WHERE text = ?` query matches either variant.
 
@@ -63,7 +63,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
             is_common  INTEGER NOT NULL DEFAULT 0,
             freq_score INTEGER NOT NULL DEFAULT 0
         );
-        CREATE TABLE kanji (
+        CREATE TABLE headword (
             entry_id   INTEGER NOT NULL,
             position   INTEGER NOT NULL,
             text       TEXT    NOT NULL
@@ -90,8 +90,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
             grade        INTEGER NOT NULL DEFAULT 0,
             stroke_count INTEGER NOT NULL DEFAULT 0
         );
-        CREATE INDEX idx_kanji_text   ON kanji(text);
-        CREATE INDEX idx_reading_text ON reading(text);
+        CREATE INDEX idx_headword_text ON headword(text);
+        CREATE INDEX idx_reading_text  ON reading(text);
         """
     )
 
@@ -147,14 +147,14 @@ def build_sqlite(input_path: Path, db_path: Path) -> None:
 
             # Simplified as primary headword (position 0)
             cur.execute(
-                "INSERT INTO kanji VALUES (?, ?, ?)",
+                "INSERT INTO headword VALUES (?, ?, ?)",
                 (entry_id, 0, simplified),
             )
 
             # Traditional as secondary headword (position 1) if different
             if traditional != simplified:
                 cur.execute(
-                    "INSERT INTO kanji VALUES (?, ?, ?)",
+                    "INSERT INTO headword VALUES (?, ?, ?)",
                     (entry_id, 1, traditional),
                 )
 

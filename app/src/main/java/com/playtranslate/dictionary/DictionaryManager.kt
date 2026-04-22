@@ -229,7 +229,7 @@ class DictionaryManager private constructor(private val context: Context) {
             }
         }
 
-        // 2. Exact match (kanji or reading table, no reading filter)
+        // 2. Exact match (headword or reading table, no reading filter)
         val directIds = queryEntryIds(database, word)
         if (directIds.isNotEmpty()) {
             Log.d(TAG, "lookup($word): exact match ids=$directIds")
@@ -344,11 +344,18 @@ class DictionaryManager private constructor(private val context: Context) {
         db
     }
 
-    /** Returns false if the on-device DB is missing required tables/columns. */
+    /** Returns false if the on-device DB is missing required tables/columns.
+     *
+     *  Must probe `headword` (not `kanji`) post-rename. Pre-rename DBs — both
+     *  the legacy bundled JMdict and any downloaded v1-era pack — don't have
+     *  that table, so this returns false and the caller drops the DB; the
+     *  stale-install cleanup in [LanguagePackStore.isInstalled] then deletes
+     *  the file and routes the user through a fresh download. */
     private fun isSchemaUpToDate(dbFile: File): Boolean {
         return try {
             SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { tempDb ->
                 tempDb.rawQuery("SELECT freq_score FROM entry LIMIT 1", null).use { }
+                tempDb.rawQuery("SELECT text FROM headword LIMIT 1", null).use { }
                 tempDb.rawQuery("SELECT misc FROM sense LIMIT 1", null).use { }
                 tempDb.rawQuery("SELECT literal FROM kanjidic LIMIT 1", null).use { }
             }
@@ -361,12 +368,12 @@ class DictionaryManager private constructor(private val context: Context) {
     // ── Database queries ──────────────────────────────────────────────────
 
     /**
-     * Returns entry IDs matching [word] as a kanji or reading form, up to 8,
-     * sorted by frequency (most common first).
+     * Returns entry IDs matching [word] as a kanji (written headword) or
+     * reading form, up to 8, sorted by frequency (most common first).
      */
     /** Fast existence check — no JOIN, no sorting. Used by tokenization. */
     private fun hasEntry(db: SQLiteDatabase, word: String): Boolean {
-        db.rawQuery("SELECT 1 FROM kanji WHERE text = ? LIMIT 1", arrayOf(word))
+        db.rawQuery("SELECT 1 FROM headword WHERE text = ? LIMIT 1", arrayOf(word))
             .use { if (it.moveToFirst()) return true }
         db.rawQuery("SELECT 1 FROM reading WHERE text = ? LIMIT 1", arrayOf(word))
             .use { if (it.moveToFirst()) return true }
@@ -375,7 +382,7 @@ class DictionaryManager private constructor(private val context: Context) {
 
     /**
      * Batch existence check: returns the subset of [candidates] that exist
-     * in the kanji or reading tables. Uses 2 queries with IN (...) instead
+     * in the headword or reading tables. Uses 2 queries with IN (...) instead
      * of one query per candidate.
      */
     private fun batchCheckEntries(db: SQLiteDatabase, candidates: Set<String>): Set<String> {
@@ -385,9 +392,9 @@ class DictionaryManager private constructor(private val context: Context) {
         for (chunk in candidates.chunked(500)) {
             val placeholders = chunk.joinToString(",") { "?" }
             val args = chunk.toTypedArray()
-            db.rawQuery("SELECT DISTINCT text FROM kanji WHERE text IN ($placeholders)", args)
+            db.rawQuery("SELECT DISTINCT text FROM headword WHERE text IN ($placeholders)", args)
                 .use { c -> while (c.moveToNext()) found.add(c.getString(0)) }
-            // Only query reading table for candidates not already found in kanji
+            // Only query reading table for candidates not already found in headword
             val remaining = chunk.filter { it !in found }
             if (remaining.isNotEmpty()) {
                 val ph2 = remaining.joinToString(",") { "?" }
@@ -403,11 +410,11 @@ class DictionaryManager private constructor(private val context: Context) {
     private fun queryEntryIdsWithReading(db: SQLiteDatabase, word: String, reading: String): List<Long> {
         val ids = mutableListOf<Long>()
         db.rawQuery(
-            """SELECT DISTINCT k.entry_id
-               FROM kanji k
-               JOIN entry e ON e.id = k.entry_id
-               JOIN reading r ON r.entry_id = k.entry_id
-               WHERE k.text = ? AND r.text = ?
+            """SELECT DISTINCT h.entry_id
+               FROM headword h
+               JOIN entry e ON e.id = h.entry_id
+               JOIN reading r ON r.entry_id = h.entry_id
+               WHERE h.text = ? AND r.text = ?
                ORDER BY e.freq_score DESC LIMIT 8""",
             arrayOf(word, reading)
         ).use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
@@ -418,7 +425,7 @@ class DictionaryManager private constructor(private val context: Context) {
         val ids = mutableListOf<Long>()
 
         db.rawQuery(
-            "SELECT DISTINCT k.entry_id FROM kanji k JOIN entry e ON e.id = k.entry_id WHERE k.text = ? ORDER BY e.freq_score DESC LIMIT 8",
+            "SELECT DISTINCT h.entry_id FROM headword h JOIN entry e ON e.id = h.entry_id WHERE h.text = ? ORDER BY e.freq_score DESC LIMIT 8",
             arrayOf(word)
         ).use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
 
@@ -455,7 +462,7 @@ class DictionaryManager private constructor(private val context: Context) {
 
         val kanjiForms = mutableListOf<String>()
         db.rawQuery(
-            "SELECT text FROM kanji WHERE entry_id=? ORDER BY position",
+            "SELECT text FROM headword WHERE entry_id=? ORDER BY position",
             arrayOf(idStr)
         ).use { c -> while (c.moveToNext()) kanjiForms.add(c.getString(0)) }
 
