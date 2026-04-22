@@ -76,7 +76,7 @@ class DeepLTranslator(
         "it" -> "IT"
         "pt" -> "PT-PT"
         "ru" -> "RU"
-        else -> mlKitCode.uppercase()
+        else -> mlKitCode.uppercase(java.util.Locale.ROOT)
     }
 
     private data class DeepLResponse(val translations: List<Translation>) {

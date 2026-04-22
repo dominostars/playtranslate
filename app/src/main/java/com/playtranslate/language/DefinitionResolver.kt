@@ -100,7 +100,7 @@ class DefinitionResolver(
             try {
                 val translated = mlKitTranslator.translate(headword)
                 Log.d(TAG, "  Tier 2: translate($headword) -> $translated")
-                if (translated.isNotBlank() && translated.lowercase() != headword.lowercase()) {
+                if (translated.isNotBlank() && !translated.equals(headword, ignoreCase = true)) {
                     val translatedDefs = entry?.let { translateDefinitions(it) }
                     Log.d(TAG, "  -> MachineTranslated (translatedDefs=${translatedDefs?.size})")
                     return DefinitionResult.MachineTranslated(response, translated, translatedDefs)

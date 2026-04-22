@@ -700,7 +700,7 @@ class CaptureService : Service() {
      */
     internal fun noTextMessage(): String {
         val langName = java.util.Locale(sourceLang).getDisplayLanguage(java.util.Locale.ENGLISH)
-            .replaceFirstChar { it.uppercase() }
+            .replaceFirstChar { it.uppercase(java.util.Locale.ENGLISH) }
         return getString(R.string.status_no_text, langName, activeRegion.label)
     }
 

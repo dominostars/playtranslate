@@ -313,7 +313,7 @@ class WordDetailBottomSheet : DialogFragment() {
 
     private fun addSectionLabel(parent: LinearLayout, label: String) {
         parent.addView(TextView(requireContext()).apply {
-            text = label.uppercase()
+            text = label.uppercase(java.util.Locale.ROOT)
             textSize = 10f
             letterSpacing = 0.15f
             setTextColor(requireContext().themeColor(R.attr.ptTextMuted))

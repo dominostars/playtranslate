@@ -379,12 +379,14 @@ class LanguageSetupActivity : AppCompatActivity() {
 
     private fun langDisplayName(code: String): String =
         Locale(code).getDisplayLanguage(Locale.getDefault())
-            .replaceFirstChar { it.uppercase() }
+            .replaceFirstChar { it.uppercase(Locale.getDefault()) }
 
     /** Display name for target languages — shows the native language name. */
-    private fun targetDisplayName(code: String): String =
-        Locale(code).getDisplayLanguage(Locale(code))
-            .replaceFirstChar { it.uppercase() }
+    private fun targetDisplayName(code: String): String {
+        val locale = Locale(code)
+        return locale.getDisplayLanguage(locale)
+            .replaceFirstChar { it.uppercase(locale) }
+    }
 
     interface Delegate {
         fun onSourceSelectionDone(sourceId: SourceLangId)

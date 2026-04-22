@@ -44,6 +44,11 @@ class LatinDictionaryManager private constructor(
     private var db: SQLiteDatabase? = null
     private val mutex = Mutex()
 
+    // Turkish case mapping differs from the Unicode default (`I` → `ı`,
+    // `İ` → `i`). Matching the pack's lowercased headwords requires
+    // locale-aware casing here instead of the default `.lowercase()`.
+    private val locale = langId.locale
+
     suspend fun preload() = ensureOpen()
 
     /**
@@ -68,15 +73,19 @@ class LatinDictionaryManager private constructor(
     suspend fun lookup(surface: String, stemmed: String?): DictionaryResponse? = withContext(Dispatchers.IO) {
         val database = ensureOpen() ?: return@withContext null
 
-        val surfaceIds = queryEntryIds(database, surface.lowercase())
+        val surfaceLower = surface.lowercase(locale)
+        val surfaceIds = queryEntryIds(database, surfaceLower)
         if (surfaceIds.isNotEmpty()) {
             return@withContext buildResponse(database, surfaceIds)
         }
 
-        if (stemmed != null && stemmed.lowercase() != surface.lowercase()) {
-            val stemIds = queryEntryIds(database, stemmed.lowercase())
-            if (stemIds.isNotEmpty()) {
-                return@withContext buildResponse(database, stemIds, forceNote = "stem")
+        if (stemmed != null) {
+            val stemmedLower = stemmed.lowercase(locale)
+            if (stemmedLower != surfaceLower) {
+                val stemIds = queryEntryIds(database, stemmedLower)
+                if (stemIds.isNotEmpty()) {
+                    return@withContext buildResponse(database, stemIds, forceNote = "stem")
+                }
             }
         }
 

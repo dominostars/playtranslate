@@ -179,12 +179,13 @@ class SettingsRenderer(
         SourceLangId.fromCode(prefs.sourceLang)?.displayName()
             ?: Locale(prefs.sourceLang)
                 .getDisplayLanguage(Locale.getDefault())
-                .replaceFirstChar { it.uppercase() }
+                .replaceFirstChar { it.uppercase(Locale.getDefault()) }
 
-    private fun resolveTargetName(): String =
-        Locale(prefs.targetLang)
-            .getDisplayLanguage(Locale(prefs.targetLang))
-            .replaceFirstChar { it.uppercase() }
+    private fun resolveTargetName(): String {
+        val locale = Locale(prefs.targetLang)
+        return locale.getDisplayLanguage(locale)
+            .replaceFirstChar { it.uppercase(locale) }
+    }
 
     // ── On-screen controls ───────────────────────────────────────────────
 
