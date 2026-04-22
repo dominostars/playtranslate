@@ -16,7 +16,22 @@ enum class SourceLangId(val code: String) {
     ZH("zh"),
     ZH_HANT("zh-Hant"),
     ES("es"),
-    // KO, AR, FR, DE, IT, PT, NL, TR, VI, ID — deferred to later phases
+    FR("fr"),
+    DE("de"),
+    IT("it"),
+    PT("pt"),
+    NL("nl"),
+    TR("tr"),
+    VI("vi"),
+    ID("id"),
+    SV("sv"),
+    DA("da"),
+    NO("no"),
+    FI("fi"),
+    HU("hu"),
+    RO("ro"),
+    CA("ca"),
+    // KO, AR — deferred (require MLKit Korean dep / Tesseract respectively)
     ;
 
     /** The lang ID used for pack directory/catalog lookup. Variants that share
@@ -184,7 +199,123 @@ object SourceLanguageProfiles {
             },
             translationCode = TranslateLanguage.SPANISH,
         ),
+        SourceLangId.FR to SourceLanguageProfile(
+            id = SourceLangId.FR,
+            scriptFamily = ScriptFamily.LATIN,
+            textDirection = TextDirection.LTR,
+            ocrBackend = OcrBackend.MLKitLatin,
+            hintTextKind = HintTextKind.NONE,
+            wordsSeparatedByWhitespace = true,
+            isScriptChar = { c ->
+                c in 'A'..'Z'     // A-Z
+                    || c in 'a'..'z'  // a-z
+                    || c in 'À'..'ÿ'  // Latin-1 Supplement (à, é, ç, ù, ü, ÿ, etc.)
+                    || c == 'Œ' || c == 'œ'  // Œ œ
+                    || c == 'Ÿ'            // Ÿ
+            },
+            translationCode = TranslateLanguage.FRENCH,
+        ),
+        SourceLangId.DE to latinProfile(SourceLangId.DE, TranslateLanguage.GERMAN),
+        SourceLangId.IT to latinProfile(SourceLangId.IT, TranslateLanguage.ITALIAN),
+        SourceLangId.PT to latinProfile(SourceLangId.PT, TranslateLanguage.PORTUGUESE),
+        SourceLangId.NL to latinProfile(SourceLangId.NL, TranslateLanguage.DUTCH),
+        SourceLangId.SV to latinProfile(SourceLangId.SV, TranslateLanguage.SWEDISH),
+        SourceLangId.DA to latinProfile(SourceLangId.DA, TranslateLanguage.DANISH),
+        SourceLangId.NO to latinProfile(SourceLangId.NO, TranslateLanguage.NORWEGIAN),
+        SourceLangId.FI to latinProfile(SourceLangId.FI, TranslateLanguage.FINNISH),
+        SourceLangId.CA to latinProfile(SourceLangId.CA, TranslateLanguage.CATALAN),
+        SourceLangId.ID to latinProfile(SourceLangId.ID, TranslateLanguage.INDONESIAN),
+        SourceLangId.TR to SourceLanguageProfile(
+            id = SourceLangId.TR,
+            scriptFamily = ScriptFamily.LATIN,
+            textDirection = TextDirection.LTR,
+            ocrBackend = OcrBackend.MLKitLatin,
+            hintTextKind = HintTextKind.NONE,
+            wordsSeparatedByWhitespace = true,
+            isScriptChar = { c ->
+                c in 'A'..'Z'     // A-Z
+                    || c in 'a'..'z'  // a-z
+                    || c in 'À'..'ÿ'  // Latin-1 Supplement (ç, ö, ü)
+                    || c in 'Ğ'..'ğ'  // Ğ ğ
+                    || c == 'İ' || c == 'ı'  // İ ı
+                    || c in 'Ş'..'ş'  // Ş ş
+            },
+            translationCode = TranslateLanguage.TURKISH,
+        ),
+        SourceLangId.HU to SourceLanguageProfile(
+            id = SourceLangId.HU,
+            scriptFamily = ScriptFamily.LATIN,
+            textDirection = TextDirection.LTR,
+            ocrBackend = OcrBackend.MLKitLatin,
+            hintTextKind = HintTextKind.NONE,
+            wordsSeparatedByWhitespace = true,
+            isScriptChar = { c ->
+                c in 'A'..'Z'     // A-Z
+                    || c in 'a'..'z'  // a-z
+                    || c in 'À'..'ÿ'  // Latin-1 Supplement (á é í ó ö ú ü)
+                    || c in 'Ő'..'ő'  // Ő ő
+                    || c in 'Ű'..'ű'  // Ű ű
+            },
+            translationCode = TranslateLanguage.HUNGARIAN,
+        ),
+        SourceLangId.RO to SourceLanguageProfile(
+            id = SourceLangId.RO,
+            scriptFamily = ScriptFamily.LATIN,
+            textDirection = TextDirection.LTR,
+            ocrBackend = OcrBackend.MLKitLatin,
+            hintTextKind = HintTextKind.NONE,
+            wordsSeparatedByWhitespace = true,
+            isScriptChar = { c ->
+                c in 'A'..'Z'     // A-Z
+                    || c in 'a'..'z'  // a-z
+                    || c in 'À'..'ÿ'  // Latin-1 Supplement (â î)
+                    || c in 'Ă'..'ă'  // Ă ă
+                    || c in 'Ș'..'ț'  // Ș ș Ț ț (modern comma-below)
+                    || c in 'Ş'..'ş'  // Ş ş (historical cedilla)
+                    || c in 'Ţ'..'ţ'  // Ţ ţ (historical cedilla)
+            },
+            translationCode = TranslateLanguage.ROMANIAN,
+        ),
+        SourceLangId.VI to SourceLanguageProfile(
+            id = SourceLangId.VI,
+            scriptFamily = ScriptFamily.LATIN,
+            textDirection = TextDirection.LTR,
+            ocrBackend = OcrBackend.MLKitLatin,
+            hintTextKind = HintTextKind.NONE,
+            wordsSeparatedByWhitespace = true,
+            isScriptChar = { c ->
+                c in 'A'..'Z'     // A-Z
+                    || c in 'a'..'z'  // a-z
+                    || c in 'À'..'ÿ'  // Latin-1 Supplement (â ê ô and plain variants)
+                    || c in 'Ā'..'ſ'  // Latin Extended-A (đ Đ ă Ă)
+                    || c in 'Ơ'..'ư'  // ơ Ơ ư Ư
+                    || c in 'Ḁ'..'ỿ'  // Latin Extended Additional (tonal vowels)
+            },
+            translationCode = TranslateLanguage.VIETNAMESE,
+        ),
     )
+
+    /** Standard Latin-script profile: basic ASCII + Latin-1 Supplement. Used
+     *  by languages whose alphabet fits entirely in those two ranges
+     *  (German, Italian, Portuguese, Dutch, Nordic languages, Catalan,
+     *  Indonesian). Languages that need extra characters (Œ for French,
+     *  Ğ/İ/Ş for Turkish, Ă/Ș/Ț for Romanian, Ő/Ű for Hungarian, the
+     *  full Vietnamese tonal set) declare their profiles inline. */
+    private fun latinProfile(id: SourceLangId, translationCode: String): SourceLanguageProfile =
+        SourceLanguageProfile(
+            id = id,
+            scriptFamily = ScriptFamily.LATIN,
+            textDirection = TextDirection.LTR,
+            ocrBackend = OcrBackend.MLKitLatin,
+            hintTextKind = HintTextKind.NONE,
+            wordsSeparatedByWhitespace = true,
+            isScriptChar = { c ->
+                c in 'A'..'Z'     // A-Z
+                    || c in 'a'..'z'  // a-z
+                    || c in 'À'..'ÿ'  // Latin-1 Supplement
+            },
+            translationCode = translationCode,
+        )
 
     /** Non-null lookup by ID. Throws for unknown IDs (shouldn't happen in Phase 1). */
     operator fun get(id: SourceLangId): SourceLanguageProfile =

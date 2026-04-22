@@ -17,8 +17,13 @@ import java.io.File
  *         dict.sqlite    — the dictionary DB
  *         manifest.json  — per-pack schema/version metadata
  *
- * Phase 2's surface is read-only path resolution + bundled-pack bootstrap.
- * Phase 3 adds `install()`, `uninstall()`, `hasUpdate()`, and `installedPacks()`.
+ * Provides path resolution plus [install] / [installTarget] / [uninstall].
+ * There is intentionally NO `hasUpdate()` or background pack refresh —
+ * packs only change when the user installs an app update that ships a new
+ * catalog entry with a different URL/sha256 for an already-installed pack,
+ * and that case is handled implicitly because the new app build's
+ * [LanguagePackCatalog] carries the new metadata. See memory file
+ * `project_pack_update_policy.md` for the full rationale.
  *
  * Uses [Context.noBackupFilesDir] rather than [Context.filesDir] so the pack
  * data never ends up in Google Backup. The app currently sets

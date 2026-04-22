@@ -17,7 +17,7 @@ import java.io.File
 /**
  * Read-only SQLite dictionary for Latin-script source languages. Shares the
  * JMdict-derived schema that `DictionaryManager` uses (entry / kanji /
- * reading / sense tables) so `scripts/build_en_dict.py` can produce
+ * reading / sense tables) so `scripts/build_latin_dict.py` can produce
  * drop-in-compatible packs, but has a simpler lookup pipeline:
  *
  *  1. Exact-surface query against the `kanji` table (Latin headwords are

@@ -83,9 +83,13 @@ object SourceLanguageEngines {
 
     private fun create(app: Context, id: SourceLangId): SourceLanguageEngine = when (id) {
         SourceLangId.JA -> JapaneseEngine(app)
-        SourceLangId.EN -> LatinEngine(app, SourceLangId.EN)
         SourceLangId.ZH -> ChineseEngine(app, SourceLangId.ZH)
         SourceLangId.ZH_HANT -> ChineseEngine(app, SourceLangId.ZH_HANT)
-        SourceLangId.ES -> LatinEngine(app, SourceLangId.ES)
+        // Everything else is Latin-script via LatinEngine.
+        SourceLangId.EN, SourceLangId.ES, SourceLangId.FR, SourceLangId.DE,
+        SourceLangId.IT, SourceLangId.PT, SourceLangId.NL, SourceLangId.TR,
+        SourceLangId.VI, SourceLangId.ID, SourceLangId.SV, SourceLangId.DA,
+        SourceLangId.NO, SourceLangId.FI, SourceLangId.HU, SourceLangId.RO,
+        SourceLangId.CA -> LatinEngine(app, id)
     }
 }

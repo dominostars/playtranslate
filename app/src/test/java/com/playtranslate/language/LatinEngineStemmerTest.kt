@@ -38,7 +38,7 @@ class LatinEngineStemmerTest {
     @Test fun `houses stems to hous via Lucene EnglishStemmer rules`() {
         // Lucene's English stemmer strips plural -es; the surface form
         // "hous" is an intermediate stem, not a word. This still works
-        // for lookup as long as build_en_dict.py indexes the same stem
+        // for lookup as long as build_latin_dict.py indexes the same stem
         // for the noun "house" (we index lowercase surface + Lucene stem
         // and the lookup path tries both).
         assertEquals("hous", stem("houses"))

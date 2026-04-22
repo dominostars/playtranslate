@@ -16,6 +16,10 @@ app/build/
 local/
 scripts/thor-wifi-connect.sh
 
+# Python cache from scripts/
+__pycache__/
+*.pyc
+
 # Release APK (distributed via GitHub Releases, not committed)
 *.apk
 

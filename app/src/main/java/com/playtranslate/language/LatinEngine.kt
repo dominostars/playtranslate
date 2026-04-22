@@ -6,16 +6,32 @@ import com.playtranslate.model.DictionaryResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.tartarus.snowball.SnowballProgram
+import org.tartarus.snowball.ext.CatalanStemmer
+import org.tartarus.snowball.ext.DanishStemmer
+import org.tartarus.snowball.ext.DutchStemmer
 import org.tartarus.snowball.ext.EnglishStemmer
+import org.tartarus.snowball.ext.FinnishStemmer
+import org.tartarus.snowball.ext.FrenchStemmer
+import org.tartarus.snowball.ext.GermanStemmer
+import org.tartarus.snowball.ext.HungarianStemmer
+import org.tartarus.snowball.ext.ItalianStemmer
+import org.tartarus.snowball.ext.NorwegianStemmer
+import org.tartarus.snowball.ext.PortugueseStemmer
+import org.tartarus.snowball.ext.RomanianStemmer
 import org.tartarus.snowball.ext.SpanishStemmer
+import org.tartarus.snowball.ext.SwedishStemmer
+import org.tartarus.snowball.ext.TurkishStemmer
 import java.util.Locale
 
 /**
- * Source-language engine for Latin-script languages (EN, ES, and future
- * FR/DE/IT/PT/NL). Combines three off-the-shelf parts:
+ * Source-language engine for Latin-script languages. Combines three
+ * off-the-shelf parts:
  *
  *  - **Tokenization**: ICU [BreakIterator] with the language's [Locale].
- *  - **Stemming**: Lucene's Snowball stemmer for the language.
+ *  - **Stemming**: Lucene's Snowball stemmer for the language. Nullable —
+ *    isolating languages (Vietnamese, Indonesian) have no Snowball stemmer
+ *    because there is no inflection to strip; [stemOf] falls back to the
+ *    lowercased surface for them.
  *  - **Dictionary**: [LatinDictionaryManager] queries the downloaded pack
  *    with surface-first and stem-fallback semantics.
  *
@@ -31,7 +47,7 @@ class LatinEngine(
 
     private val dict: LatinDictionaryManager = LatinDictionaryManager.get(appContext, langId)
     private val breakIterator: BreakIterator = BreakIterator.getWordInstance(localeFor(langId))
-    private val stemmer: SnowballProgram = stemmerFor(langId)
+    private val stemmer: SnowballProgram? = stemmerFor(langId)
     private val stemmerLock = Any()
     private val iteratorLock = Any()
 
@@ -73,10 +89,17 @@ class LatinEngine(
         dict.close()
     }
 
-    private fun stemOf(word: String): String = synchronized(stemmerLock) {
-        stemmer.setCurrent(word.lowercase())
-        stemmer.stem()
-        stemmer.current
+    /** Returns the stem for [word], or the lowercased surface when the
+     *  language has no Snowball stemmer. Callers of [LatinDictionaryManager.lookup]
+     *  already short-circuit when `stemmed == surface`, so no extra guard
+     *  is needed downstream. */
+    private fun stemOf(word: String): String {
+        val s = stemmer ?: return word.lowercase()
+        return synchronized(stemmerLock) {
+            s.setCurrent(word.lowercase())
+            s.stem()
+            s.current
+        }
     }
 
     private fun isLookupWorthy(token: String): Boolean {
@@ -89,13 +112,42 @@ class LatinEngine(
     companion object {
         private fun localeFor(id: SourceLangId): Locale = when (id) {
             SourceLangId.EN -> Locale.ENGLISH
-            SourceLangId.ES -> Locale("es")
+            SourceLangId.FR -> Locale.FRENCH
+            SourceLangId.DE -> Locale.GERMAN
+            SourceLangId.IT -> Locale.ITALIAN
+            // Everything else maps code→Locale directly. ICU's BreakIterator
+            // gracefully falls back to the root locale if the code is
+            // unknown, so unusual codes don't throw.
             else -> Locale(id.code)
         }
 
-        private fun stemmerFor(id: SourceLangId): SnowballProgram = when (id) {
+        /** Returns a fresh Snowball stemmer instance, or null for isolating
+         *  languages with no useful stemming rules. English is the default
+         *  catch-all only for unknown IDs — callers should route through
+         *  the explicit branches. */
+        private fun stemmerFor(id: SourceLangId): SnowballProgram? = when (id) {
+            SourceLangId.EN -> EnglishStemmer()
             SourceLangId.ES -> SpanishStemmer()
-            else -> EnglishStemmer()
+            SourceLangId.FR -> FrenchStemmer()
+            SourceLangId.DE -> GermanStemmer()
+            SourceLangId.IT -> ItalianStemmer()
+            SourceLangId.PT -> PortugueseStemmer()
+            SourceLangId.NL -> DutchStemmer()
+            SourceLangId.TR -> TurkishStemmer()
+            SourceLangId.SV -> SwedishStemmer()
+            SourceLangId.DA -> DanishStemmer()
+            SourceLangId.NO -> NorwegianStemmer()
+            SourceLangId.FI -> FinnishStemmer()
+            SourceLangId.HU -> HungarianStemmer()
+            SourceLangId.RO -> RomanianStemmer()
+            SourceLangId.CA -> CatalanStemmer()
+            // Vietnamese and Indonesian have no Snowball stemmer. Vietnamese
+            // is fully isolating (no inflection to strip). Indonesian has
+            // prefix morphology (ber-, me-, di-, ter-) that Snowball doesn't
+            // model; surface-only lookup is an acceptable first pass.
+            SourceLangId.VI, SourceLangId.ID -> null
+            // Should never happen — CJK ids never reach LatinEngine.
+            SourceLangId.JA, SourceLangId.ZH, SourceLangId.ZH_HANT -> null
         }
     }
 }

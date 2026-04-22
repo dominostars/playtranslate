@@ -74,14 +74,10 @@ POS_ABBREV = {
     "expression (phrase, clause, etc.)": "Expression",
 }
 
-# Wiktionary POS values to exclude
-WIKT_EXCLUDED_POS = {"name", "character"}
-
-# Wiktionary "X of Y" redirect keys to filter out
-WIKT_REDIRECT_KEYS = {
-    "form_of", "altspell_of", "alt_of", "compound_of",
-    "abbreviation_of", "synonym_of",
-}
+# Shared constants live in scripts/wiktionary_filters.py so this script
+# and build_latin_dict.py can't drift on what "redirect" / "content POS"
+# means — a bug hidden by that drift was what prompted this refactor.
+from wiktionary_filters import WIKT_EXCLUDED_POS, WIKT_REDIRECT_KEYS
 
 
 def shorten_pos(pos_text: str) -> str:

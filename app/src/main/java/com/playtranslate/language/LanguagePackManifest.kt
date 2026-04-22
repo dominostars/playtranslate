@@ -5,17 +5,23 @@ import com.google.gson.GsonBuilder
 import java.io.File
 
 /**
- * On-disk per-pack manifest. Written once on first boot for bundled packs;
- * Phase 3+ writes updated copies after successful downloads. Separate from
- * [LanguagePackCatalog] so that installed packs carry their own version
- * record independent of the catalog's advertised version — Phase 3's update
- * detection compares manifest.packVersion against catalog.packVersion to
- * decide whether an update is available.
+ * On-disk per-pack manifest. Written once when a pack is extracted
+ * (bundled or downloaded) and then only read back for schema-version
+ * checks in [LanguagePackStore.validateManifest].
+ *
+ * [packVersion] is informational — copied from the catalog entry when the
+ * pack is installed, used for support / diagnostics only. The app never
+ * compares it against the catalog's packVersion to decide whether to
+ * re-download: pack refreshes happen via app releases, not background
+ * catalog polling. See `project_pack_update_policy.md`.
+ *
+ * [schemaVersion] is enforced: packs whose schemaVersion exceeds
+ * [LanguagePackStore.SUPPORTED_SCHEMA_VERSION] are rejected at install time.
  */
 data class LanguagePackManifest(
     val langId: String,
-    val schemaVersion: Int,   // manifest schema version (Phase 2 ships v1)
-    val packVersion: Int,
+    val schemaVersion: Int,   // manifest schema version — enforced at install
+    val packVersion: Int,     // informational; not used for update detection
     val appMinVersion: Int,
     val files: List<ManifestFile>,
     val totalSize: Long,
