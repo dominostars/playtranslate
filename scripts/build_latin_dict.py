@@ -104,6 +104,24 @@ from wiktionary_filters import (
     is_redirect_sense,
 )
 
+# Turkish case mapping: default Python `str.lower()` uses Unicode folding
+# (`I` → `i`, `İ` → `i` + combining dot), not Turkish rules (`I` → `ı`,
+# `İ` → `i`). The runtime Android side lowercases queries with
+# `SourceLangId.TR.locale`, so pack headwords have to match that output
+# or uppercase OCR of words like `TIR`/`LGBTI` silently misses.
+_TR_UPPER_MAP = str.maketrans({"I": "ı", "İ": "i"})
+
+
+def lower_for_lang(word: str, lang: str) -> str:
+    """Locale-aware lowercase for pack headword keys. Turkish needs the
+    I/İ remap before default folding; other supported languages fall back
+    to plain `str.lower()` because their case rules match Unicode default
+    for the ASCII letters we care about."""
+    if lang == "tr":
+        word = word.translate(_TR_UPPER_MAP)
+    return word.lower()
+
+
 # Frequency threshold (Zipf scale). Words with frequency below this are
 # dropped. 1e-6 = "at least one occurrence per million words" — yields
 # ~30-50k entries for well-covered languages.
@@ -281,8 +299,21 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
 
         # Frequency cut — drops rare archaic words, misspellings, and
         # obscure technical terms that bloat the pack.
-        word_lower = word.lower()
-        freq = word_frequency(word_lower, wordfreq_locale)
+        #
+        # wordfreq's Turkish corpus is inconsistent about case folding.
+        # Some words are indexed under the Unicode-default fold (e.g.
+        # `LGBTI` → `lgbti`, because `str.lower()` keeps the dotless
+        # plural mapping `I → i`). Others are indexed under the
+        # Turkish-aware fold (e.g. `İstanbul` → `istanbul`, because
+        # Python's default decomposes `İ` → `i + ◌̇` and wordfreq
+        # collapsed that during corpus build).
+        # Probing both and taking the max is the only way to keep both
+        # `LGBTI` AND `İngilizce`-style headwords in the pack.
+        word_lower = lower_for_lang(word, lang)
+        freq = max(
+            word_frequency(word.lower(), wordfreq_locale),
+            word_frequency(word_lower, wordfreq_locale),
+        )
         if freq < MIN_FREQUENCY:
             continue
 
@@ -401,7 +432,7 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         if not is_redirect_entry(obj):
             continue
 
-        source_surface = word.lower()
+        source_surface = lower_for_lang(word, lang)
         senses = obj.get("senses") or []
         for sense in senses:
             for key in ALIAS_KEYS:
@@ -411,7 +442,7 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
                 target = target_list[0] if isinstance(target_list, list) else None
                 if not isinstance(target, dict):
                     continue
-                target_word = (target.get("word") or "").lower()
+                target_word = lower_for_lang(target.get("word") or "", lang)
                 if not target_word:
                     continue
                 if source_surface == target_word:
@@ -499,6 +530,26 @@ SMOKE_FIXTURES: dict[str, dict[str, str]] = {
         "preso": "take",           # preso → prendere (form_of) → "take"
         "venuto": "come",          # venuto → venire (form_of) → "come"
     },
+    "tr": {
+        # Baseline: already-lowercase Turkish word.
+        "ışık": "light",
+        # Uppercase OCR path. `"IŞIK".lower()` under Unicode default is
+        # `"işik"` — to hit `ışık` in the DB we need the Turkish-aware
+        # lowercase (`I` → `ı`). Pins both build-time and runtime casing.
+        "IŞIK": "light",
+        # Acronym where Python's default `str.lower()` diverges from
+        # Turkish casing. Wiktionary has two entries: uppercase `TIR`
+        # (vehicle/tractor senses) and lowercase `tır` (heavy truck) —
+        # both fold to `tır` under `lower_for_lang`. Whichever wins
+        # the (word_lower, pos) dedupe, its gloss contains "truck".
+        "TIR": "truck",
+        # Dotted-İ entry that the default `word.lower()` probe would
+        # drop: `"İngilizce".lower()` is `"i̇ngilizce"` (9 codepoints
+        # with combining dot), which returns freq 0.0 in wordfreq.
+        # The max-of-both-forms probe recovers it via the Turkish
+        # fold (`ingilizce`, freq 1.45e-4).
+        "İngilizce": "English",
+    },
     # Other languages: fill in per-rebuild. Empty is OK — no fixtures
     # means "build still succeeds, just no regression guard for this lang."
 }
@@ -518,7 +569,7 @@ def run_smoke_test(db_path: Path, lang: str) -> None:
     failures: list[str] = []
     try:
         for surface, expected_substr in fixtures.items():
-            surface_l = surface.lower()
+            surface_l = lower_for_lang(surface, lang)
             # Try surface, then stem — matches LatinDictionaryManager.lookup.
             rows = conn.execute(
                 "SELECT s.glosses FROM headword h JOIN sense s ON s.entry_id=h.entry_id "

@@ -155,9 +155,9 @@
       "script": "LATIN",
       "bundled": false,
       "packVersion": 1,
-      "size": 1079010,
+      "size": 1080488,
       "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/tr-v1/tr.zip",
-      "sha256": "3acb5e20b00d0e45a37c71199ef3c97987ca57082ac0e195fc8714e7dfc4ee7f",
+      "sha256": "cc17fdfbc20c1679aa2ad279cc350c1d9a8ab8c45c4e4276ae6a11294234d07a",
       "licenses": [
         {
           "component": "Wiktionary",
