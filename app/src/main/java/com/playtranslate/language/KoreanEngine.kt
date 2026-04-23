@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import kr.co.shineware.nlp.komoran.constant.DEFAULT_MODEL
 import kr.co.shineware.nlp.komoran.core.Komoran
 import kr.co.shineware.nlp.komoran.model.Token
+import java.io.File
 import java.text.Normalizer
 
 /**
@@ -37,20 +38,35 @@ class KoreanEngine(private val appContext: Context) : SourceLanguageEngine {
         WiktionaryDictionaryManager.get(appContext, SourceLangId.KO)
 
     /**
-     * KOMORAN instance with the LIGHT model. LIGHT is Shineware's
-     * production-tuned smaller model (~5-10 MB) that trades some OOV
-     * robustness for faster load + smaller memory footprint. FULL exists
-     * for newspaper-grade text; game dialogue doesn't need it.
+     * KOMORAN instance with the LIGHT model (4 files, ~1.75 MB). FULL
+     * exists for newspaper-grade text; game dialogue doesn't need it.
      *
-     * Lazy: the Komoran constructor deserializes the model synchronously
-     * (~200-500 ms on JVM). Some call sites reach [SourceLanguageEngines.get]
-     * on the main dispatcher (e.g. DragLookupController, TranslationResultFragment's
-     * word-lookup launch). [tokenize] is the only method that touches this
-     * field, and it body-wraps in [Dispatchers.Default], so lazy construction
-     * is guaranteed to land off the UI thread even when preload hasn't run yet.
+     * Lazy + pack-aware: the LIGHT model ships inside the KO source
+     * pack under `tokenizer/` (pos.table, transition.model,
+     * observation.model, irregular.model). When the pack is present,
+     * construct from that directory so the APK can strip the bundled
+     * models via packagingOptions.resources.excludes. Pre-migration
+     * packs (no tokenizer/) fall back to KOMORAN's classpath-loaded
+     * DEFAULT_MODEL.LIGHT — which only works if the APK hasn't been
+     * resource-stripped yet (harmless during the rollout transition).
+     *
+     * KOMORAN's Komoran(String) ctor deserializes the model
+     * synchronously (~200-500 ms). [tokenize] is the only method that
+     * touches this field and it body-wraps in [Dispatchers.Default],
+     * so lazy construction is guaranteed to land off the UI thread
+     * even when preload hasn't run yet.
      */
-    private val komoran: Komoran by lazy { Komoran(DEFAULT_MODEL.LIGHT) }
+    private val komoran: Komoran by lazy { createKomoran() }
     private val komoranLock = Any()
+
+    private fun createKomoran(): Komoran {
+        val tokDir = LanguagePackStore.dirFor(appContext, SourceLangId.KO).resolve("tokenizer")
+        return if (tokDir.isDirectory && File(tokDir, "observation.model").isFile) {
+            Komoran(tokDir.absolutePath)
+        } else {
+            Komoran(DEFAULT_MODEL.LIGHT)
+        }
+    }
 
     override suspend fun preload(): PreloadResult {
         if (!LanguagePackStore.isInstalled(appContext, SourceLangId.KO)) {

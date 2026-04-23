@@ -320,14 +320,19 @@
       "script": "CJK_KOREAN",
       "bundled": false,
       "packVersion": 1,
-      "size": 2151165,
+      "size": 3895773,
       "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/ko-v1/ko.zip",
-      "sha256": "d9931c45d05cb3155a070a95377c471fd6bc8a57faf347ead214799e7ef76c3f",
+      "sha256": "97a64c0c59889e4f7cc906231469a3bf95eb988cf0be9bfe0c0f778153194ff8",
       "licenses": [
         {
           "component": "Wiktionary",
           "license": "CC-BY-SA-3.0",
           "attribution": "© Wiktionary contributors, https://en.wiktionary.org/"
+        },
+        {
+          "component": "KOMORAN",
+          "license": "Apache-2.0",
+          "attribution": "© Shineware, https://github.com/shineware/KOMORAN"
         }
       ]
     },
