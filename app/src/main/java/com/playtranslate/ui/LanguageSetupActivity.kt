@@ -547,15 +547,21 @@ class LanguageSetupActivity : AppCompatActivity() {
 
     private fun handleSourceDeleteTap(id: SourceLangId) {
         val chineseShared = id.packId == SourceLangId.ZH
-        val message = if (chineseShared) {
-            "This removes both Chinese (Simplified) and Chinese (Traditional) data from this device. You can redownload later."
+        val title: String
+        val message: String
+        if (chineseShared) {
+            // ZH and ZH_HANT share one on-disk pack, so the confirm has to
+            // name both variants that will go at once.
+            title = "Delete Languages?"
+            message = "This will remove both:\n\n" +
+                "${SourceLangId.ZH.displayName()}\n" +
+                "${SourceLangId.ZH_HANT.displayName()}\n\n" +
+                "You can redownload later."
         } else {
-            "This removes ${id.displayName()} data from this device. You can redownload later."
+            title = "Delete ${id.displayName()}?"
+            message = "This removes ${id.displayName()} data from this device. You can redownload later."
         }
-        showDeleteConfirm(
-            title = "Delete ${id.displayName()}?",
-            message = message,
-        ) {
+        showDeleteConfirm(title = title, message = message) {
             LanguagePackStore.uninstall(applicationContext, id)
             showCurrentPage()
         }
