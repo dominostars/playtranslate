@@ -71,6 +71,13 @@ android {
             // runtime path is PackAwareKuromojiBuilder reading from the
             // installed pack dir. Dropping these ~33 MB from every APK.
             excludes += "com/atilika/kuromoji/ipadic/*.bin"
+            // KOMORAN model. Now shipped inside the KO source pack (see
+            // scripts/build_latin_dict.py --komoran-jar); KoreanEngine
+            // constructs Komoran(String modelPath) pointed at the
+            // installed pack dir. Strip both LIGHT (~1.75 MB, what we
+            // ship in the pack) and FULL (~4.2 MB, unused) models.
+            excludes += "models_light/**"
+            excludes += "models_full/**"
         }
     }
 

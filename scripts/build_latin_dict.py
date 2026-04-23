@@ -555,8 +555,86 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
     )
 
 
-def build_manifest(db_path: Path, manifest_path: Path, lang: str, pack_version: int) -> None:
+# KOMORAN's LIGHT model files (~1.75 MB total). Extracted from
+# KOMORAN-*.jar into the KO pack's tokenizer/ subdir so the APK can
+# strip the bundled models via packagingOptions.resources.excludes and
+# the runtime loads them via `new Komoran(String modelPath)`.
+KOMORAN_LIGHT_FILES = (
+    "pos.table",
+    "irregular.model",
+    "transition.model",
+    "observation.model",
+)
+KOMORAN_JAR_PREFIX = "models_light/"
+
+
+def _sha256_of(path: Path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def extract_komoran_models(jar_path: Path, tokenizer_dir: Path) -> list[dict]:
+    """Extract KOMORAN models_light/ files from [jar_path] into
+    [tokenizer_dir]. Returns a list of manifest-shape dicts for
+    appending to manifest.files."""
+    tokenizer_dir.mkdir(parents=True, exist_ok=True)
+    entries: list[dict] = []
+    with zipfile.ZipFile(jar_path, "r") as jar:
+        names = set(jar.namelist())
+        for basename in KOMORAN_LIGHT_FILES:
+            jar_entry = KOMORAN_JAR_PREFIX + basename
+            if jar_entry not in names:
+                raise RuntimeError(
+                    f"KOMORAN JAR at {jar_path} is missing entry {jar_entry}. "
+                    "Pass --komoran-jar pointing at KOMORAN-3.3.9.jar (typically under "
+                    "~/.gradle/caches/modules-2/files-2.1/com.github.shin285/KOMORAN/)."
+                )
+            out_path = tokenizer_dir / basename
+            with jar.open(jar_entry) as src, out_path.open("wb") as dst:
+                while True:
+                    chunk = src.read(1 << 20)
+                    if not chunk:
+                        break
+                    dst.write(chunk)
+            entries.append({
+                "path": f"tokenizer/{basename}",
+                "size": out_path.stat().st_size,
+                "sha256": _sha256_of(out_path),
+            })
+    print(f"Extracted {len(entries)} KOMORAN files to {tokenizer_dir}")
+    return entries
+
+
+def build_manifest(
+    db_path: Path,
+    manifest_path: Path,
+    lang: str,
+    pack_version: int,
+    tokenizer_entries: list[dict] | None = None,
+) -> None:
     size = db_path.stat().st_size
+    files: list[dict] = [{"path": "dict.sqlite", "size": size, "sha256": None}]
+    total = size
+    licenses: list[dict] = [
+        {
+            "component": "Wiktionary",
+            "license": "CC-BY-SA-3.0",
+            "attribution": "© Wiktionary contributors, https://en.wiktionary.org/",
+        }
+    ]
+    if tokenizer_entries:
+        files.extend(tokenizer_entries)
+        total += sum(int(e["size"]) for e in tokenizer_entries)
+        if lang == "ko":
+            licenses.append({
+                "component": "KOMORAN",
+                "license": "Apache-2.0",
+                "attribution": "© Shineware, https://github.com/shineware/KOMORAN",
+            })
     manifest = {
         "langId": lang,
         "schemaVersion": 1,
@@ -566,28 +644,29 @@ def build_manifest(db_path: Path, manifest_path: Path, lang: str, pack_version: 
         # bundled. Downloaded packs use whatever value the server-side manifest
         # provides; use a placeholder of 0 = "any version" here.
         "appMinVersion": 0,
-        "files": [
-            {"path": "dict.sqlite", "size": size, "sha256": None}
-        ],
-        "totalSize": size,
-        "licenses": [
-            {
-                "component": "Wiktionary",
-                "license": "CC-BY-SA-3.0",
-                "attribution": "© Wiktionary contributors, https://en.wiktionary.org/",
-            }
-        ],
+        "files": files,
+        "totalSize": total,
+        "licenses": licenses,
     }
     manifest_path.write_text(json.dumps(manifest, indent=2))
-    print(f"Wrote {manifest_path} ({size} bytes dict)")
+    print(f"Wrote {manifest_path} ({size} bytes dict, {total} bytes total)")
 
 
-def build_zip(db_path: Path, manifest_path: Path, zip_path: Path) -> None:
+def build_zip(
+    db_path: Path,
+    manifest_path: Path,
+    zip_path: Path,
+    tokenizer_dir: Path | None = None,
+) -> None:
     if zip_path.exists():
         zip_path.unlink()
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
         z.write(db_path, arcname="dict.sqlite")
         z.write(manifest_path, arcname="manifest.json")
+        if tokenizer_dir is not None and tokenizer_dir.is_dir():
+            for p in sorted(tokenizer_dir.iterdir()):
+                if p.is_file():
+                    z.write(p, arcname=f"tokenizer/{p.name}")
     print(f"Wrote {zip_path} ({zip_path.stat().st_size} bytes)")
 
 
@@ -720,12 +799,21 @@ def main() -> int:
         default=1,
         help="packVersion to write into the manifest (default: 1)",
     )
+    parser.add_argument(
+        "--komoran-jar",
+        type=Path,
+        required=False,
+        help="Path to KOMORAN-*.jar. Only meaningful when --lang ko; extracts "
+             "the models_light/ files into tokenizer/ inside the pack so the "
+             "APK can strip the bundled models. Ignored for non-Korean packs.",
+    )
     args = parser.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
     db_path = args.output / "dict.sqlite"
     manifest_path = args.output / "manifest.json"
     zip_path = args.output / f"{args.lang}.zip"
+    tokenizer_dir = args.output / "tokenizer"
 
     if not args.input.exists():
         print(f"error: input not found: {args.input}", file=sys.stderr)
@@ -733,8 +821,18 @@ def main() -> int:
 
     build_sqlite(args.input, db_path, args.lang)
     run_smoke_test(db_path, args.lang)
-    build_manifest(db_path, manifest_path, args.lang, args.pack_version)
-    build_zip(db_path, manifest_path, zip_path)
+
+    tokenizer_entries = None
+    if args.lang == "ko" and args.komoran_jar is not None:
+        if not args.komoran_jar.is_file():
+            print(f"error: --komoran-jar not a file: {args.komoran_jar}", file=sys.stderr)
+            return 1
+        tokenizer_entries = extract_komoran_models(args.komoran_jar, tokenizer_dir)
+    elif args.komoran_jar is not None and args.lang != "ko":
+        print(f"warning: --komoran-jar ignored for lang={args.lang}", file=sys.stderr)
+
+    build_manifest(db_path, manifest_path, args.lang, args.pack_version, tokenizer_entries)
+    build_zip(db_path, manifest_path, zip_path, tokenizer_dir if tokenizer_entries else None)
 
     print()
     print(f"Next steps:")
