@@ -79,27 +79,6 @@ object Deinflector {
      * part-of-speech level 1, and base form (null when Kuromoji returns "*").
      * Used by [DictionaryManager] for greedy N-gram phrase detection.
      */
-    /**
-     * Converts [text] to its full kana representation by replacing each token
-     * with Kuromoji's reading (katakana). Tokens with no reading (punctuation,
-     * unknown words) are kept as-is. The result is suitable for romaji conversion.
-     */
-    fun toKana(text: String): String =
-        tokenizer.tokenize(text).joinToString("") { t ->
-            val r = t.reading
-            if (!r.isNullOrEmpty() && r != "*") r else t.surface
-        }
-
-    /**
-     * Same as [toKana] but returns one kana string per morphological token,
-     * so callers can join with spaces for word-spaced romanisation.
-     */
-    fun toKanaTokens(text: String): List<String> =
-        tokenizer.tokenize(text).map { t ->
-            val r = t.reading
-            if (!r.isNullOrEmpty() && r != "*") r else t.surface
-        }
-
     internal fun rawTokenInfos(text: String): List<TokenInfo> =
         tokenizer.tokenize(text).map { t ->
             Log.d(TAG, "token: surface=${t.surface} pos=${t.partOfSpeechLevel1} baseForm=${t.baseForm} reading=${t.reading}")

@@ -29,13 +29,11 @@ import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.R
-import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
@@ -91,7 +89,6 @@ class TranslationResultFragment : Fragment() {
     private lateinit var labelOriginal: TextView
     private lateinit var labelTranslation: TextView
     private lateinit var tvNoWords: TextView
-    private lateinit var tvTransliteration: TextView
     private lateinit var resultActionButtons: View
     private lateinit var btnResultClear: View
     private lateinit var btnResultAnki: View
@@ -107,11 +104,6 @@ class TranslationResultFragment : Fragment() {
 
     /** Called when Anki button enabled state changes (e.g. after word lookups complete). */
     var onAnkiEnabledChanged: ((Boolean) -> Unit)? = null
-
-    private val romajiTransliterator by lazy {
-        try { android.icu.text.Transliterator.getInstance("Any-Latin; NFD; [:Nonspacing Mark:] Remove; NFC") }
-        catch (_: Exception) { null }
-    }
 
     private val host: TranslationResultHost?
         get() = activity as? TranslationResultHost
@@ -164,7 +156,6 @@ class TranslationResultFragment : Fragment() {
         labelOriginal        = view.findViewById(R.id.labelOriginal)
         labelTranslation     = view.findViewById(R.id.labelTranslation)
         tvNoWords            = view.findViewById(R.id.tvNoWords)
-        tvTransliteration    = view.findViewById(R.id.tvTransliteration)
         resultActionButtons  = view.findViewById(R.id.resultActionButtons)
         btnResultClear       = view.findViewById(R.id.btnResultClear)
         btnResultAnki        = view.findViewById(R.id.btnResultAnki)
@@ -735,11 +726,8 @@ class TranslationResultFragment : Fragment() {
         tvMainWordsLoading.visibility = View.VISIBLE
         tvMainWordsLoading.text = getString(R.string.words_loading)
         tvNoWords.visibility = View.GONE
-        tvTransliteration.visibility = View.GONE
 
         wordLookupJob = viewLifecycleOwner.lifecycleScope.launch {
-            val romajiDeferred = async { buildRomaji(text) }
-
             val ctx = context ?: return@launch
             val appCtx = ctx.applicationContext
             val wordsPrefs = Prefs(appCtx)
@@ -775,11 +763,6 @@ class TranslationResultFragment : Fragment() {
                 tvMainWordsLoading.visibility = View.GONE
                 tvNoWords.visibility = View.VISIBLE
                 onAnkiEnabledChanged?.invoke(true)
-                val romaji = romajiDeferred.await()
-                if (romaji.isNotBlank() && romaji != text && false /* transliteration disabled */) {
-                    tvTransliteration.text = romaji
-                    tvTransliteration.visibility = View.VISIBLE
-                }
                 return@launch
             }
 
@@ -957,21 +940,10 @@ class TranslationResultFragment : Fragment() {
             LastSentenceCache.translation = lastResult?.translatedText
             LastSentenceCache.wordResults = mainWordResults.toMap()
             LastSentenceCache.surfaceForms = surfaces
-
-            val romaji = romajiDeferred.await()
-            if (romaji.isNotBlank() && romaji != text && false /* transliteration disabled */) {
-                tvTransliteration.text = romaji
-                tvTransliteration.visibility = View.VISIBLE
-            }
         }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
-
-    private suspend fun buildRomaji(text: String): String = withContext(Dispatchers.IO) {
-        val t = romajiTransliterator ?: return@withContext ""
-        Deinflector.toKanaTokens(text).joinToString(" ") { t.transliterate(it) }
-    }
 
     private fun selectedTargetLang() =
         Prefs(requireContext().applicationContext).targetLang
