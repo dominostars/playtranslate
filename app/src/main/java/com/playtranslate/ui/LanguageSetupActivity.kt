@@ -4,6 +4,7 @@ import android.app.Dialog
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -313,6 +314,7 @@ class LanguageSetupActivity : AppCompatActivity() {
                     } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                         // User tapped Cancel — dialog already dismissed.
                     } catch (e: Exception) {
+                        Log.e(TAG, "loadAction threw after install succeeded", e)
                         dialog.dismiss()
                         showErrorPopup(e.message ?: "Loading failed")
                     }
@@ -347,6 +349,7 @@ class LanguageSetupActivity : AppCompatActivity() {
             } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                 // User tapped Cancel — dialog already dismissed, nothing to report.
             } catch (e: Exception) {
+                Log.e(TAG, "loadAction threw", e)
                 dialog.dismiss()
                 showErrorPopup(e.message ?: "Loading failed")
             }
@@ -421,6 +424,7 @@ class LanguageSetupActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val TAG = "LangSetup"
         const val EXTRA_MODE = "mode"
         const val EXTRA_ONBOARDING = "onboarding"
         const val MODE_SOURCE = "source"
