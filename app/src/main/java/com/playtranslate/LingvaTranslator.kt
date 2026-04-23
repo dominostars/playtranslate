@@ -25,8 +25,16 @@ class LingvaTranslator(val sourceLang: String, val targetLang: String) {
         .build()
 
     fun close() {
-        client.dispatcher.executorService.shutdown()
-        client.connectionPool.evictAll()
+        // Dispatch to a background daemon thread — evictAll() synchronously
+        // writes a TLS close-notify on any live socket, which StrictMode
+        // flags as NetworkOnMainThreadException when close() is invoked from
+        // the UI thread (e.g. during a source-language switch via
+        // CaptureService.ensureLanguageManagersFor).
+        val c = client
+        Thread {
+            c.dispatcher.executorService.shutdown()
+            c.connectionPool.evictAll()
+        }.apply { isDaemon = true; name = "LingvaTranslator-close" }.start()
     }
 
     suspend fun translate(text: String): String = withContext(Dispatchers.IO) {
