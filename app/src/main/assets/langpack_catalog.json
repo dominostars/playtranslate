@@ -32,14 +32,19 @@
       "script": "CJK_CHINESE",
       "bundled": false,
       "packVersion": 1,
-      "size": 8210115,
+      "size": 15097916,
       "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/zh-v1/zh.zip",
-      "sha256": "80e312d7bbe5d7ed540d0e41d59772f89799f86471d2cbee048aeda3f0158e1f",
+      "sha256": "0494b2c9f1454c17acd787b769e3d2bb51ac0a52fc2fe5f76e61c5f6c82cf897",
       "licenses": [
         {
           "component": "CC-CEDICT",
           "license": "CC-BY-SA-4.0",
           "attribution": "© MDBG, https://cc-cedict.org/"
+        },
+        {
+          "component": "HanLP",
+          "license": "Apache-2.0",
+          "attribution": "© hankcs, https://github.com/hankcs/HanLP"
         }
       ]
     },

@@ -78,6 +78,13 @@ android {
             // ship in the pack) and FULL (~4.2 MB, unused) models.
             excludes += "models_light/**"
             excludes += "models_full/**"
+            // HanLP portable data/. Now shipped inside the ZH source
+            // pack (see scripts/build_zh_dict.py --hanlp-jar);
+            // ChineseEngine installs a PackAwareHanlpAdapter that
+            // redirects HanLP's file reads to the pack's tokenizer/
+            // dir. Strips ~23 MB of HanLP classpath resources.
+            excludes += "data/dictionary/**"
+            excludes += "data/model/**"
         }
     }
 

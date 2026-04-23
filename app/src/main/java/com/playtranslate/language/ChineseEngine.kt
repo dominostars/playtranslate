@@ -2,10 +2,16 @@ package com.playtranslate.language
 
 import android.content.Context
 import com.hankcs.hanlp.HanLP
+import com.hankcs.hanlp.corpus.io.IIOAdapter
 import com.hankcs.hanlp.dictionary.py.Pinyin
 import com.playtranslate.model.DictionaryResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.InputStream
+import java.io.OutputStream
 
 /**
  * Chinese source-language engine. Uses HanLP's CRF/perceptron segmenter for
@@ -26,6 +32,35 @@ class ChineseEngine(
     override val profile: SourceLanguageProfile = SourceLanguageProfiles[langId]
 
     private val dict: ChineseDictionaryManager = ChineseDictionaryManager.get(appContext)
+
+    init {
+        // Redirect HanLP's file reads to our pack's tokenizer/ dir BEFORE
+        // any HanLP.segment() / convertToPinyinList() call, closing the
+        // cold-start race where a UI caller on the main dispatcher could
+        // fire HanLP.segment before MainActivity's IO-dispatched preload
+        // runs. Matches the JA Deinflector.initPackDir pattern.
+        //
+        // HanLP.Config.IOAdapter is a public-static slot for a custom
+        // IIOAdapter. When null, HanLP reads via classpath/filesystem
+        // using its Config.*Path fields (which default to relative paths
+        // like "data/dictionary/CoreNatureDictionary.txt"). We install a
+        // pack-aware adapter that routes those relative paths to the
+        // installed pack's tokenizer/ dir.
+        //
+        // Fallback: if the pack has no tokenizer/ subdir (pre-migration
+        // pack), our adapter falls through to classpath — harmless while
+        // the APK still has the resources, broken once the APK strip
+        // lands. Same transition risk profile as JA/KO.
+        //
+        // ZH_HANT shares the ZH pack via SourceLangId.packId, so
+        // SourceLanguageEngines only caches one ChineseEngine instance
+        // per process. Setting the JVM-global Config.IOAdapter once in
+        // init is safe.
+        val packTokenizerDir = LanguagePackStore.dirFor(appContext, langId).resolve("tokenizer")
+        if (packTokenizerDir.isDirectory) {
+            HanLP.Config.IOAdapter = PackAwareHanlpAdapter(packTokenizerDir)
+        }
+    }
 
     override suspend fun preload(): PreloadResult {
         if (!LanguagePackStore.isInstalled(appContext, langId)) {
@@ -78,5 +113,54 @@ class ChineseEngine(
         if (token.isBlank()) return false
         if (token.all { it.code <= 0x7F }) return false
         return true
+    }
+}
+
+/**
+ * HanLP [IIOAdapter] that routes file reads through the installed ZH
+ * source pack's `tokenizer/` directory instead of the APK classpath.
+ *
+ * HanLP's `Config.*Path` fields default to relative paths rooted at
+ * `data/` (e.g. `"data/dictionary/CoreNatureDictionary.txt"`). When this
+ * adapter is installed, [open] maps those relative paths onto the pack
+ * directory: `data/dictionary/X` → `<packTokenizerDir>/data/dictionary/X`.
+ *
+ * Classpath fallback: if the requested file isn't in the pack (pre-
+ * migration pack with only dict.sqlite, or a HanLP feature we didn't
+ * anticipate), we fall back to [Class.getResourceAsStream] with a
+ * leading slash so it's interpreted as an absolute classpath path. This
+ * keeps pre-APK-strip builds working and stays resilient to HanLP
+ * loading auxiliary files we didn't explicitly ship.
+ *
+ * [create] is not exercised in the read-only tokenization + pinyin paths
+ * this app uses, but the IIOAdapter contract requires an implementation.
+ * We route create to the pack dir (even though it's under noBackupFilesDir
+ * it's still writable) so corrupt-file regeneration by HanLP wouldn't
+ * silently fail.
+ */
+private class PackAwareHanlpAdapter(private val packTokenizerDir: File) : IIOAdapter {
+    override fun open(path: String): InputStream {
+        // HanLP passes paths like "data/dictionary/...", "data/model/..."
+        // — we strip any leading slashes and resolve under packTokenizerDir.
+        val relative = path.removePrefix("/").removePrefix("\\")
+        val packFile = File(packTokenizerDir, relative)
+        if (packFile.isFile) {
+            return FileInputStream(packFile)
+        }
+        // Fallback to classpath. HanLP's relative-path convention matches
+        // the JAR resource layout verbatim, so prefix with "/" for absolute
+        // classpath lookup.
+        val cp = HanLP::class.java.getResourceAsStream("/$relative")
+            ?: throw java.io.IOException(
+                "HanLP resource not found in pack (${packFile.absolutePath}) or classpath: $path"
+            )
+        return cp
+    }
+
+    override fun create(path: String): OutputStream {
+        val relative = path.removePrefix("/").removePrefix("\\")
+        val packFile = File(packTokenizerDir, relative)
+        packFile.parentFile?.mkdirs()
+        return FileOutputStream(packFile)
     }
 }

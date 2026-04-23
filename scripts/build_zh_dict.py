@@ -179,33 +179,113 @@ def build_sqlite(input_path: Path, db_path: Path) -> None:
     print(f"Built {db_path} with {kept:,} entries ({skipped:,} skipped).")
 
 
-def build_manifest(db_path: Path, manifest_path: Path, pack_version: int) -> None:
+# HanLP portable-1.8.4 ships all its runtime dictionaries under data/
+# inside the JAR. The ChineseEngine uses HanLP.segment() +
+# HanLP.convertToPinyinList(), which between them pull core dict + ngram
+# + pinyin + char tables + (lazily) NER models. Ship the whole tree
+# rather than try to minimize — full tree is ~23 MB uncompressed,
+# compresses well in zip, and avoids a canary pass that could miss a
+# runtime-loaded file.
+HANLP_DATA_PREFIX = "data/"
+
+
+def _sha256_of(path: Path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def extract_hanlp_data(jar_path: Path, tokenizer_dir: Path) -> list[dict]:
+    """Extract HanLP's entire data/ tree from [jar_path] into
+    [tokenizer_dir]. The resulting layout is tokenizer/data/... so that
+    setting HanLP.Config.DATA_ROOT to '<tokenizer_dir>/data' at runtime
+    lets HanLP's internal path resolution work unchanged.
+
+    Returns a list of manifest-shape dicts for appending to
+    manifest.files."""
+    tokenizer_dir.mkdir(parents=True, exist_ok=True)
+    entries: list[dict] = []
+    with zipfile.ZipFile(jar_path, "r") as jar:
+        for info in jar.infolist():
+            name = info.filename
+            if not name.startswith(HANLP_DATA_PREFIX):
+                continue
+            if name.endswith("/"):
+                continue  # directory entry
+            rel_in_tokenizer = name  # e.g. "data/dictionary/CoreNature..."
+            out_path = tokenizer_dir / rel_in_tokenizer
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            with jar.open(info) as src, out_path.open("wb") as dst:
+                while True:
+                    chunk = src.read(1 << 20)
+                    if not chunk:
+                        break
+                    dst.write(chunk)
+            entries.append({
+                "path": f"tokenizer/{rel_in_tokenizer}",
+                "size": out_path.stat().st_size,
+                "sha256": _sha256_of(out_path),
+            })
+    print(f"Extracted {len(entries)} HanLP files to {tokenizer_dir}")
+    return entries
+
+
+def build_manifest(
+    db_path: Path,
+    manifest_path: Path,
+    pack_version: int,
+    tokenizer_entries: list[dict] | None = None,
+) -> None:
     size = db_path.stat().st_size
+    files: list[dict] = [{"path": "dict.sqlite", "size": size, "sha256": None}]
+    total = size
+    licenses: list[dict] = [
+        {
+            "component": "CC-CEDICT",
+            "license": "CC-BY-SA-4.0",
+            "attribution": "© MDBG, https://cc-cedict.org/",
+        }
+    ]
+    if tokenizer_entries:
+        files.extend(tokenizer_entries)
+        total += sum(int(e["size"]) for e in tokenizer_entries)
+        licenses.append({
+            "component": "HanLP",
+            "license": "Apache-2.0",
+            "attribution": "© hankcs, https://github.com/hankcs/HanLP",
+        })
     manifest = {
         "langId": "zh",
         "schemaVersion": 1,
         "packVersion": pack_version,
         "appMinVersion": 0,
-        "files": [{"path": "dict.sqlite", "size": size, "sha256": None}],
-        "totalSize": size,
-        "licenses": [
-            {
-                "component": "CC-CEDICT",
-                "license": "CC-BY-SA-4.0",
-                "attribution": "© MDBG, https://cc-cedict.org/",
-            }
-        ],
+        "files": files,
+        "totalSize": total,
+        "licenses": licenses,
     }
     manifest_path.write_text(json.dumps(manifest, indent=2))
-    print(f"Wrote {manifest_path} ({size:,} bytes dict)")
+    print(f"Wrote {manifest_path} ({size:,} bytes dict, {total:,} bytes total)")
 
 
-def build_zip(db_path: Path, manifest_path: Path, zip_path: Path) -> None:
+def build_zip(
+    db_path: Path,
+    manifest_path: Path,
+    zip_path: Path,
+    tokenizer_dir: Path | None = None,
+) -> None:
     if zip_path.exists():
         zip_path.unlink()
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
         z.write(db_path, arcname="dict.sqlite")
         z.write(manifest_path, arcname="manifest.json")
+        if tokenizer_dir is not None and tokenizer_dir.is_dir():
+            for p in sorted(tokenizer_dir.rglob("*")):
+                if p.is_file():
+                    rel = p.relative_to(tokenizer_dir)
+                    z.write(p, arcname=f"tokenizer/{rel.as_posix()}")
     print(f"Wrote {zip_path} ({zip_path.stat().st_size:,} bytes)")
 
 
@@ -213,27 +293,55 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Build the Chinese language pack")
     parser.add_argument("--input", type=Path, required=True, help="CC-CEDICT text file")
     parser.add_argument("--output", type=Path, required=True, help="Output directory")
+    parser.add_argument(
+        "--hanlp-jar",
+        type=Path,
+        required=False,
+        help="Path to hanlp-portable-*.jar. When provided, the data/ tree is "
+             "extracted into tokenizer/ in the pack so the APK can strip the "
+             "bundled HanLP data. ChineseEngine sets HanLP.Config.DATA_ROOT "
+             "to the pack's tokenizer/data dir at runtime.",
+    )
     parser.add_argument("--pack-version", type=int, default=1)
+    parser.add_argument(
+        "--rebuild-sqlite",
+        action="store_true",
+        help="Force dict.sqlite regeneration. When omitted, an existing "
+             "dict.sqlite in the output dir is reused.",
+    )
     args = parser.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
     db_path = args.output / "dict.sqlite"
     manifest_path = args.output / "manifest.json"
     zip_path = args.output / "zh.zip"
+    tokenizer_dir = args.output / "tokenizer"
 
     if not args.input.exists():
         print(f"error: input not found: {args.input}", file=sys.stderr)
         return 1
 
-    build_sqlite(args.input, db_path)
-    build_manifest(db_path, manifest_path, args.pack_version)
-    build_zip(db_path, manifest_path, zip_path)
+    if db_path.is_file() and not args.rebuild_sqlite:
+        print(f"Reusing existing {db_path} ({db_path.stat().st_size:,} bytes) — "
+              f"pass --rebuild-sqlite to regenerate from CC-CEDICT")
+    else:
+        build_sqlite(args.input, db_path)
+
+    tokenizer_entries = None
+    if args.hanlp_jar is not None:
+        if not args.hanlp_jar.is_file():
+            print(f"error: --hanlp-jar not a file: {args.hanlp_jar}", file=sys.stderr)
+            return 1
+        tokenizer_entries = extract_hanlp_data(args.hanlp_jar, tokenizer_dir)
+
+    build_manifest(db_path, manifest_path, args.pack_version, tokenizer_entries)
+    build_zip(db_path, manifest_path, zip_path, tokenizer_dir if tokenizer_entries else None)
 
     print()
     print("Next steps:")
     print(f"  1. sha256sum {zip_path}")
     print(f"  2. Upload {zip_path} to dominostars/playtranslate-langpacks tag zh-v1")
-    print(f"  3. Update assets/langpack_catalog.json with URL + sha256")
+    print(f"  3. Update assets/langpack_catalog.json with URL + sha256 + new size")
     return 0
 
 
