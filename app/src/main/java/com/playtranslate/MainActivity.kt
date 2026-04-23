@@ -410,12 +410,18 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     /**
-     * Preload the engine for [id]. On [PreloadResult.PackCorrupt], silently
-     * uninstall the broken pack so the user gets re-prompted on their next
-     * deliberate language interaction rather than hitting a crash-loop or
-     * silently-failing lookups. [PackMissing] shouldn't happen here because
-     * the caller already gated on [LanguagePackStore.isInstalled]; it's
-     * treated as a log-only anomaly if it does.
+     * Preload the engine for [id]. Recovery behavior is tiered so we
+     * don't punish transient failures with destructive pack deletion:
+     *  - [PreloadResult.PackMissing]: shouldn't happen (caller gated on
+     *    isInstalled). Log as anomaly.
+     *  - [PreloadResult.PackCorrupt]: confirmed on-disk integrity failure
+     *    (e.g. SQLite can't open). Uninstall the pack so the user's next
+     *    deliberate language interaction routes through download/recovery
+     *    rather than a silent crash loop.
+     *  - [PreloadResult.TokenizerInitFailed]: tokenizer library threw
+     *    during warm-up but the pack on disk looks fine. Likely OOM or
+     *    transient; log and let the next user action retry instead of
+     *    destroying a valid offline install.
      */
     private suspend fun preloadEngineAndRecover(id: com.playtranslate.language.SourceLangId) {
         when (val r = SourceLanguageEngines.get(applicationContext, id).preload()) {
@@ -426,6 +432,8 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                 android.util.Log.w("MainActivity", "preload($id) reported PackCorrupt: ${r.reason} — uninstalling")
                 LanguagePackStore.uninstall(applicationContext, id)
             }
+            is PreloadResult.TokenizerInitFailed ->
+                android.util.Log.w("MainActivity", "preload($id) tokenizer warm-up failed: ${r.reason} — keeping pack, next call retries")
         }
     }
 

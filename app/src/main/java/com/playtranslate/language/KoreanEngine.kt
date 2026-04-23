@@ -63,7 +63,10 @@ class KoreanEngine(private val appContext: Context) : SourceLanguageEngine {
             runCatching { tokenize("예열") }
         }
         if (warmed.isFailure) {
-            return PreloadResult.PackCorrupt(
+            // Pre-KO-migration, KOMORAN model data is in the APK
+            // classpath — a warm-up throw is almost never pack-related
+            // (would be OOM / JVM init). Don't auto-delete the pack.
+            return PreloadResult.TokenizerInitFailed(
                 "KOMORAN warm-up failed: ${warmed.exceptionOrNull()?.message ?: "unknown"}"
             )
         }
