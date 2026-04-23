@@ -46,27 +46,25 @@ object LanguagePackStore {
     fun manifestFileFor(ctx: Context, id: SourceLangId): File =
         File(dirFor(ctx, id), "manifest.json")
 
-    /** A pack is "installed" when both its DB and its manifest are present.
-     *  Special-cases Japanese: the pre-LanguagePackStore location
-     *  (`databases/jmdict.db`) also counts as installed, so upgraded users
-     *  aren't force-onboarded before [com.playtranslate.dictionary.DictionaryManager.ensureOpen]
-     *  gets a chance to migrate it into the pack layout.
+    /** A pack is "installed" when both its DB and its manifest are present
+     *  in the pack directory. For JA we additionally schema-validate the DB
+     *  and proactively delete any directory whose DB fails the check, so
+     *  stale pre-`headword`-rename packs can't sit on disk poisoning runtime
+     *  queries — forcing a redownload is cheaper than writing a migration.
      *
-     *  For JA we additionally schema-validate the DB before treating it as
-     *  installed, AND proactively delete any DB that fails the check. Two
-     *  reasons to delete rather than just report false:
-     *   1. With the JMdict asset unbundled, a migrated-from-legacy DB with
-     *      an outdated schema would otherwise pass `copyFromAssets` (the
-     *      asset no longer exists) → we'd be stuck. Deleting forces the
-     *      user through a clean `install()`.
-     *   2. The `kanji` → `headword` table rename (2026-04) invalidates every
-     *      pre-rename JA DB — both the old bundled copy at
-     *      `getDatabasePath("jmdict.db")` and any downloaded pack still on
-     *      the v1 schema. Leaving them on disk means `DictionaryManager`'s
-     *      runtime queries blow up on first use. Forcing a redownload is
-     *      cheaper than writing a migration.
+     *  Any legacy pre-LanguagePackStore copy at `databases/jmdict.db` is
+     *  eagerly deleted on sight: tokenizer binaries are no longer bundled
+     *  in the APK, so that file alone can't power the JA engine regardless
+     *  of its schema. Everyone routes through `install()` for a fresh
+     *  pack with both the DB and the `tokenizer/` payload.
      */
     fun isInstalled(ctx: Context, id: SourceLangId): Boolean {
+        if (id == SourceLangId.JA) {
+            val legacy = ctx.getDatabasePath("jmdict.db")
+            if (legacy.exists() && legacy.delete()) {
+                Log.d(TAG, "Purged orphaned legacy JMdict DB at ${legacy.path}")
+            }
+        }
         val primaryDb = dictDbFor(ctx, id)
         if (primaryDb.exists() && manifestFileFor(ctx, id).exists()) {
             if (id == SourceLangId.JA && !isJmdictSchemaCurrent(primaryDb)) {
@@ -78,26 +76,7 @@ object LanguagePackStore {
             }
             return true
         }
-        if (id == SourceLangId.JA) {
-            val legacy = ctx.getDatabasePath("jmdict.db")
-            if (legacy.exists()) {
-                if (isJmdictSchemaCurrent(legacy)) return true
-                if (legacy.delete()) {
-                    Log.d(TAG, "Deleted stale-schema legacy JMdict DB at ${legacy.path}")
-                }
-            }
-        }
         return false
-    }
-
-    /** Deletes the legacy bundled-asset JMdict DB if present. Called on a
-     *  successful JA pack install: the new pack supersedes the legacy path,
-     *  which would otherwise sit as a ~45 MB orphan forever for upgraders. */
-    internal fun purgeLegacyJaDatabase(ctx: Context) {
-        val legacy = ctx.getDatabasePath("jmdict.db")
-        if (legacy.exists() && legacy.delete()) {
-            Log.d(TAG, "Purged orphaned legacy JMdict DB at ${legacy.path}")
-        }
     }
 
     /** Matches the check in `DictionaryManager.isSchemaUpToDate`. Returns
@@ -223,15 +202,6 @@ object LanguagePackStore {
             //    backup deleted only after the new pack is confirmed in place.
             safeSwap(tmpDir, finalDir)
 
-            // 6. Purge the legacy bundled-asset DB for JA. Upgraders from the
-            //    bundled-JA era land here after the schema-stale gate routes
-            //    them through onboarding + a fresh download; the ~45 MB file
-            //    at ctx.getDatabasePath("jmdict.db") is now superseded by
-            //    dirFor(ctx, JA)/dict.sqlite and would otherwise sit orphaned.
-            if (id == SourceLangId.JA) {
-                purgeLegacyJaDatabase(app)
-            }
-
             Log.d(TAG, "Installed pack ${id.code} from $url (${zipFile.length()} bytes)")
             InstallResult.Success
         } catch (_: CancellationException) {
@@ -320,15 +290,18 @@ object LanguagePackStore {
      * repopulated on next [com.playtranslate.dictionary.DictionaryManager.ensureOpen]
      * via the asset copy + manifest bootstrap path.
      *
-     * Also evicts the engine for [id] from [SourceLanguageEngines]'s
-     * process-scoped cache. Without this, a warm engine would keep serving
-     * tokenizer + dict state from the now-deleted pack directory until the
-     * process restarts — the `isInstalled()` gate would correctly say
-     * "missing," but already-resolved engine references would still tokenize
-     * against stale data. Releasing also closes the engine's dict DB handle.
+     * Also evicts every engine whose variant shares this pack (via
+     * [SourceLangId.packId]) from [SourceLanguageEngines]'s process-scoped
+     * cache. Without this, a warm engine would keep serving tokenizer + dict
+     * state from the now-deleted pack directory until the process restarts —
+     * the `isInstalled()` gate would correctly say "missing," but already-
+     * resolved engine references would still tokenize against stale data.
+     * Sibling variants (e.g. ZH_HANT shares ZH's pack) must be evicted too,
+     * or uninstalling one would leave the other serving deleted files.
+     * Releasing also closes each engine's dict DB handle.
      */
     fun uninstall(ctx: Context, id: SourceLangId): Boolean {
-        SourceLanguageEngines.release(id)
+        SourceLanguageEngines.releaseForPack(id.packId)
         val dir = dirFor(ctx.applicationContext, id)
         return if (dir.exists()) dir.deleteRecursively() else false
     }

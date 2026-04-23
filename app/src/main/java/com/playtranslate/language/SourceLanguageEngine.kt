@@ -111,6 +111,18 @@ object SourceLanguageEngines {
         cache.remove(id)?.close()
     }
 
+    /**
+     * Evicts every cached engine whose [SourceLangId.packId] equals [packId].
+     * Used by pack uninstall so sibling variants that share an on-disk pack
+     * (e.g. ZH and ZH_HANT) both lose their warm engine — otherwise the
+     * sibling would keep serving tokenizer/dict state from the just-deleted
+     * directory until the next process restart.
+     */
+    fun releaseForPack(packId: SourceLangId) {
+        val victims = cache.keys.filter { it.packId == packId }
+        for (id in victims) cache.remove(id)?.close()
+    }
+
     private fun create(app: Context, id: SourceLangId): SourceLanguageEngine = when (id) {
         SourceLangId.JA -> JapaneseEngine(app)
         SourceLangId.ZH -> ChineseEngine(app, SourceLangId.ZH)

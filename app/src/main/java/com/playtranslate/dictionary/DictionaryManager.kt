@@ -282,36 +282,10 @@ class DictionaryManager private constructor(private val context: Context) {
 
         val dbFile = LanguagePackStore.dictDbFor(context, SourceLangId.JA)
 
-        // One-time upgrade migration: users from the bundled-asset era whose
-        // legacy DB still has the current schema land here with the pack
-        // path empty and the legacy path populated. Move it in place so the
-        // pack-path reader finds it; LanguagePackStore.isInstalled gates
-        // this call to schema-current DBs, so no byte-copy-then-schema-fail
-        // regression. Rename is best-effort (cross-mount / permission
-        // failures fall back to byte copy + delete).
-        val legacyDbFile = context.getDatabasePath("jmdict.db")
-        if (!dbFile.exists() && legacyDbFile.exists()) {
-            dbFile.parentFile?.mkdirs()
-            val renamed = try { legacyDbFile.renameTo(dbFile) } catch (_: Exception) { false }
-            if (renamed) {
-                Log.d(TAG, "Migrated JMdict ${legacyDbFile.absolutePath} -> ${dbFile.absolutePath}")
-            } else {
-                try {
-                    legacyDbFile.inputStream().use { src ->
-                        dbFile.outputStream().use { dst -> src.copyTo(dst) }
-                    }
-                    legacyDbFile.delete()
-                    Log.d(TAG, "Copied JMdict ${legacyDbFile.absolutePath} -> ${dbFile.absolutePath} (rename failed)")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Legacy migration failed: ${e.message}")
-                }
-            }
-        }
-
         if (dbFile.exists() && !isSchemaUpToDate(dbFile)) {
             // Should be unreachable: LanguagePackStore.isInstalled schema-
-            // validates before callers reach us, and the welcome-flow download
-            // deletes legacy on success. Keep the guard as defense-in-depth.
+            // validates before callers reach us. Keep the guard as
+            // defense-in-depth.
             Log.w(TAG, "JMdict schema outdated at ${dbFile.absolutePath} — deleting; user must re-run onboarding")
             dbFile.delete()
         }

@@ -48,14 +48,17 @@ object Deinflector {
     }
 
     /**
-     * Register a directory containing IPADIC bin files. Resets any previously-
-     * built tokenizer so the next [preload] or tokenize call re-initializes
-     * from the new pack. Safe to call from any thread; idempotent when called
-     * with the same directory.
+     * Register a directory containing IPADIC bin files. Always clears the
+     * cached tokenizer so the next [preload] or tokenize call re-deserializes
+     * from whatever is on disk now. Called from [JapaneseEngine]'s init block,
+     * which runs once per engine instance — a new engine appearing after
+     * [SourceLanguageEngines.release] means the pack on disk may have been
+     * swapped (install's safeSwap reuses the same directory path), so an
+     * "idempotent no-op on same path" would keep serving the old bins.
+     * Safe to call from any thread.
      */
     fun initPackDir(dir: File?) {
         synchronized(tokenizerLock) {
-            if (packDir == dir) return
             packDir = dir
             _tokenizer = null
         }

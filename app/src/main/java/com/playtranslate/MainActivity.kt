@@ -286,12 +286,10 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         startAndBindService()
         (getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
             .registerDisplayListener(displayListener, null)
-        // Only preload when the source pack is actually present. Skipping
-        // this for stale-JA / fresh-install / data-wiped users prevents
-        // DictionaryManager.ensureOpen() from destroying a legacy stale DB
-        // (the schema check deletes it, copyFromAssets is a no-op now that
-        // the JMdict asset is unbundled) before the welcome flow has had a
-        // chance to download a replacement pack.
+        // Only preload when the source pack is actually present. Fresh-
+        // install and data-wiped users route through the welcome flow to
+        // download a pack first; preloading before that would just log a
+        // PackMissing and is pointless.
         if (LanguagePackStore.isInstalled(applicationContext, prefs.sourceLangId)) {
             lifecycleScope.launch(Dispatchers.IO) {
                 preloadEngineAndRecover(prefs.sourceLangId)

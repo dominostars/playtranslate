@@ -10,15 +10,13 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * Unit tests for [LanguagePackStore.purgeLegacyJaDatabase].
- *
- * Runs under Robolectric for a real [Context.getDatabasePath] resolver.
- * Guards the upgrade-cleanup behavior: after JA pack install succeeds,
- * the legacy ~45 MB `databases/jmdict.db` file must be deleted so
- * upgraders don't carry an orphaned DB forever. A silent regression
- * (e.g. install refactor that forgets to call the purge) wouldn't
- * surface in any user bug report — users don't typically notice 45 MB
- * of dead disk.
+ * Guards the eager legacy-cleanup behavior baked into
+ * [LanguagePackStore.isInstalled]. A pre-LanguagePackStore `databases/
+ * jmdict.db` can no longer power the JA engine (tokenizer binaries are
+ * stripped from the APK), so [isInstalled] must delete it on sight and
+ * report the pack as missing to force a fresh download. A silent
+ * regression (refactor that forgets to purge) would leave upgraders
+ * carrying an orphaned ~45 MB DB forever.
  */
 @RunWith(RobolectricTestRunner::class)
 class LanguagePackStorePurgeTest {
@@ -29,24 +27,24 @@ class LanguagePackStorePurgeTest {
         ctx.getDatabasePath("jmdict.db").delete()
     }
 
-    @Test fun `purge deletes an existing legacy JMdict DB`() {
+    @Test fun `isInstalled deletes a legacy JMdict DB and reports missing`() {
         val legacy = ctx.getDatabasePath("jmdict.db").apply {
             parentFile?.mkdirs()
             writeText("stub contents")
         }
         assertTrue("precondition: legacy DB present", legacy.exists())
 
-        LanguagePackStore.purgeLegacyJaDatabase(ctx)
+        val installed = LanguagePackStore.isInstalled(ctx, SourceLangId.JA)
 
-        assertFalse("legacy DB should be gone after purge", legacy.exists())
+        assertFalse("legacy DB alone does not count as installed", installed)
+        assertFalse("legacy DB should be gone after isInstalled check", legacy.exists())
     }
 
-    @Test fun `purge is a noop when legacy DB is absent`() {
+    @Test fun `isInstalled is a noop when legacy DB is absent`() {
         val legacy = ctx.getDatabasePath("jmdict.db")
         assertFalse("precondition: no legacy DB", legacy.exists())
 
-        // No throw, no crash.
-        LanguagePackStore.purgeLegacyJaDatabase(ctx)
+        LanguagePackStore.isInstalled(ctx, SourceLangId.JA)
 
         assertFalse(legacy.exists())
     }
