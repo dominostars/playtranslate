@@ -233,15 +233,6 @@
                         android:textColor="?attr/ptText"
                         android:lineSpacingMultiplier="1" />
 
-                    <TextView
-                        android:id="@+id/tvTransliteration"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:textColor="?attr/ptTextHint"
-                        android:textSize="13sp"
-                        android:visibility="gone" />
-
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
