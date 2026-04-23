@@ -22,7 +22,7 @@ class DefinitionResolverTest {
         private val responses: Map<String, DictionaryResponse> = emptyMap(),
         override val profile: SourceLanguageProfile = SourceLanguageProfiles[SourceLangId.JA],
     ) : SourceLanguageEngine {
-        override suspend fun preload() {}
+        override suspend fun preload(): PreloadResult = PreloadResult.Success
         override suspend fun tokenize(text: String) = emptyList<TokenSpan>()
         override suspend fun lookup(word: String, reading: String?): DictionaryResponse? =
             responses[word]

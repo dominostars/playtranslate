@@ -39,6 +39,29 @@ data class HintTextAnnotation(
 typealias CharacterDetail = KanjiDetail
 
 /**
+ * Outcome of [SourceLanguageEngine.preload]. Callers that care about the
+ * distinction (the language-setup flow, and the MainActivity bootstrap)
+ * inspect this to recover gracefully from partially-broken packs:
+ *  - [Success]: every underlying resource (dict DB, tokenizer library) is
+ *    warmed and ready for [tokenize]/[lookup] calls.
+ *  - [PackMissing]: the expected pack files aren't on disk. Caller should
+ *    route the user through the download flow.
+ *  - [PackCorrupt]: the pack was present but a resource failed to load
+ *    (truncated file, wrong format, missing tokenizer dict). Caller should
+ *    uninstall the pack + re-prompt, not crash-loop.
+ *
+ * The tokenize/lookup methods themselves return empty/null on the same
+ * underlying failure modes, so non-preload callers don't need to switch on
+ * this — they just see no results. PreloadResult exists so the explicit
+ * warm-up path can route pack corruption into user-facing recovery UX.
+ */
+sealed interface PreloadResult {
+    data object Success : PreloadResult
+    data object PackMissing : PreloadResult
+    data class PackCorrupt(val reason: String) : PreloadResult
+}
+
+/**
  * Stateful runtime for one source language — wraps its tokenizer, dictionary,
  * and any morphology. One instance per active source language, cached in
  * [SourceLanguageEngines] for the lifetime of the process.
@@ -47,7 +70,7 @@ interface SourceLanguageEngine {
     val profile: SourceLanguageProfile
 
     /** Open dictionary DB, warm tokenizer. Safe to call repeatedly. */
-    suspend fun preload()
+    suspend fun preload(): PreloadResult
 
     /** Split text into dictionary-worthy tokens. */
     suspend fun tokenize(text: String): List<TokenSpan>

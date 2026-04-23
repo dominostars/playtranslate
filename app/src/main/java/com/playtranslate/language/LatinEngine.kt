@@ -39,7 +39,7 @@ import java.util.Locale
  * operations are guarded by per-instance `synchronized` blocks.
  */
 class LatinEngine(
-    appContext: Context,
+    private val appContext: Context,
     private val langId: SourceLangId = SourceLangId.EN,
 ) : SourceLanguageEngine {
 
@@ -52,8 +52,14 @@ class LatinEngine(
     private val stemmerLock = Any()
     private val iteratorLock = Any()
 
-    override suspend fun preload() {
-        dict.preload()
+    override suspend fun preload(): PreloadResult {
+        if (!LanguagePackStore.isInstalled(appContext, langId)) {
+            return PreloadResult.PackMissing
+        }
+        if (dict.preload() == null) {
+            return PreloadResult.PackCorrupt("${langId.code} dict.sqlite failed to open")
+        }
+        return PreloadResult.Success
     }
 
     override suspend fun tokenize(text: String): List<TokenSpan> = withContext(Dispatchers.Default) {

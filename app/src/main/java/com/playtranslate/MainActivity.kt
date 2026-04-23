@@ -46,6 +46,7 @@ import com.playtranslate.diagnostics.LogExporter
 import com.playtranslate.language.LanguagePackCatalogLoader
 import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.HintTextKind
+import com.playtranslate.language.PreloadResult
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.model.TextSegment
@@ -293,7 +294,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         // chance to download a replacement pack.
         if (LanguagePackStore.isInstalled(applicationContext, prefs.sourceLangId)) {
             lifecycleScope.launch(Dispatchers.IO) {
-                SourceLanguageEngines.get(applicationContext, prefs.sourceLangId).preload()
+                preloadEngineAndRecover(prefs.sourceLangId)
             }
         }
 
@@ -406,6 +407,26 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         if (isLiveMode && !isChangingConfigurations) captureService?.stopLive()
         if (serviceConnected) unbindService(serviceConnection)
         super.onDestroy()
+    }
+
+    /**
+     * Preload the engine for [id]. On [PreloadResult.PackCorrupt], silently
+     * uninstall the broken pack so the user gets re-prompted on their next
+     * deliberate language interaction rather than hitting a crash-loop or
+     * silently-failing lookups. [PackMissing] shouldn't happen here because
+     * the caller already gated on [LanguagePackStore.isInstalled]; it's
+     * treated as a log-only anomaly if it does.
+     */
+    private suspend fun preloadEngineAndRecover(id: com.playtranslate.language.SourceLangId) {
+        when (val r = SourceLanguageEngines.get(applicationContext, id).preload()) {
+            is PreloadResult.Success -> { /* nothing to do */ }
+            is PreloadResult.PackMissing ->
+                android.util.Log.w("MainActivity", "preload($id) reported PackMissing after isInstalled() passed")
+            is PreloadResult.PackCorrupt -> {
+                android.util.Log.w("MainActivity", "preload($id) reported PackCorrupt: ${r.reason} — uninstalling")
+                LanguagePackStore.uninstall(applicationContext, id)
+            }
+        }
     }
 
     // ── Setup ─────────────────────────────────────────────────────────────
@@ -1023,7 +1044,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
         if (LanguagePackStore.isInstalled(applicationContext, prefs.sourceLangId)) {
             lifecycleScope.launch(Dispatchers.IO) {
-                SourceLanguageEngines.get(applicationContext, prefs.sourceLangId).preload()
+                preloadEngineAndRecover(prefs.sourceLangId)
             }
         }
         if (wasLive) {

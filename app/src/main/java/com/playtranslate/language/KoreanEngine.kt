@@ -29,7 +29,7 @@ import java.text.Normalizer
  * not thread-safe, so [tokenize] is guarded by a per-instance lock (same
  * pattern as [LatinEngine.iteratorLock]).
  */
-class KoreanEngine(appContext: Context) : SourceLanguageEngine {
+class KoreanEngine(private val appContext: Context) : SourceLanguageEngine {
 
     override val profile: SourceLanguageProfile = SourceLanguageProfiles[SourceLangId.KO]
 
@@ -52,14 +52,25 @@ class KoreanEngine(appContext: Context) : SourceLanguageEngine {
     private val komoran: Komoran by lazy { Komoran(DEFAULT_MODEL.LIGHT) }
     private val komoranLock = Any()
 
-    override suspend fun preload() {
+    override suspend fun preload(): PreloadResult {
+        if (!LanguagePackStore.isInstalled(appContext, SourceLangId.KO)) {
+            return PreloadResult.PackMissing
+        }
         // First access to [komoran] triggers its lazy constructor, which
         // loads the LIGHT model synchronously. Do it on IO so the user's
         // first capture doesn't stall. Mirrors ChineseEngine.preload().
-        withContext(Dispatchers.IO) {
+        val warmed = withContext(Dispatchers.IO) {
             runCatching { tokenize("예열") }
         }
-        dict.preload()
+        if (warmed.isFailure) {
+            return PreloadResult.PackCorrupt(
+                "KOMORAN warm-up failed: ${warmed.exceptionOrNull()?.message ?: "unknown"}"
+            )
+        }
+        if (dict.preload() == null) {
+            return PreloadResult.PackCorrupt("KO dict.sqlite failed to open")
+        }
+        return PreloadResult.Success
     }
 
     override suspend fun tokenize(text: String): List<TokenSpan> = withContext(Dispatchers.Default) {

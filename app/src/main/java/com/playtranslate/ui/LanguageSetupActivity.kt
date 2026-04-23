@@ -23,6 +23,7 @@ import com.playtranslate.TranslationManager
 import com.playtranslate.language.DownloadProgress
 import com.playtranslate.language.InstallResult
 import com.playtranslate.language.LanguagePackStore
+import com.playtranslate.language.PreloadResult
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
@@ -141,7 +142,22 @@ class LanguageSetupActivity : AppCompatActivity() {
         val needsDownload = !LanguagePackStore.isInstalled(this, id)
 
         val sourceLoadAction: suspend () -> Unit = {
-            SourceLanguageEngines.get(applicationContext, id).preload()
+            val preloadResult = SourceLanguageEngines.get(applicationContext, id).preload()
+            when (preloadResult) {
+                is PreloadResult.Success -> { /* proceed */ }
+                is PreloadResult.PackMissing -> throw IllegalStateException(
+                    "Pack for ${id.code} missing after download — install flow did not persist files"
+                )
+                is PreloadResult.PackCorrupt -> {
+                    // Roll back the partial install so the user is re-prompted
+                    // to download on the next attempt rather than stuck with a
+                    // broken pack that every engine access crashes against.
+                    LanguagePackStore.uninstall(applicationContext, id)
+                    throw IllegalStateException(
+                        "Pack for ${id.code} is corrupt: ${preloadResult.reason}"
+                    )
+                }
+            }
             // Also download the ML Kit translation model for newSource → currentTarget
             // so translations work offline after switching.
             val currentTarget = Prefs(applicationContext).targetLang

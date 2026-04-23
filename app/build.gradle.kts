@@ -66,6 +66,11 @@ android {
             excludes += "/META-INF/CONTRIBUTORS.md"
             excludes += "/META-INF/LICENSE"
             excludes += "/META-INF/NOTICE"
+            // Kuromoji IPADIC binary dictionary. Now shipped inside the JA
+            // source pack (see scripts/build_jmdict.py --kuromoji-jar); the
+            // runtime path is PackAwareKuromojiBuilder reading from the
+            // installed pack dir. Dropping these ~33 MB from every APK.
+            excludes += "com/atilika/kuromoji/ipadic/*.bin"
         }
     }
 

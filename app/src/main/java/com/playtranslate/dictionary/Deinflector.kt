@@ -2,6 +2,7 @@ package com.playtranslate.dictionary
 
 import android.util.Log
 import com.atilika.kuromoji.ipadic.Tokenizer
+import java.io.File
 
 private const val TAG = "Deinflector"
 
@@ -22,7 +23,43 @@ object Deinflector {
     private data class Rule(val inflected: String, val dictionary: String, val reason: String)
 
     // Kuromoji tokenizer — lazy so it initialises on first use (always on IO thread).
-    private val tokenizer by lazy { Tokenizer() }
+    // Pack-aware: if [initPackDir] has been called with a directory containing
+    // IPADIC bin files before first access, the tokenizer loads them from that
+    // directory instead of the APK classpath. See [PackAwareKuromojiBuilder].
+    @Volatile private var packDir: File? = null
+    @Volatile private var _tokenizer: Tokenizer? = null
+    private val tokenizerLock = Any()
+
+    private val tokenizer: Tokenizer
+        get() = _tokenizer ?: synchronized(tokenizerLock) {
+            _tokenizer ?: createTokenizer().also { _tokenizer = it }
+        }
+
+    private fun createTokenizer(): Tokenizer {
+        val dir = packDir
+        return if (dir != null && File(dir, "doubleArrayTrie.bin").isFile) {
+            PackAwareKuromojiBuilder(dir).build()
+        } else {
+            // Classpath fallback — used when no pack dir is set, when the pack
+            // doesn't contain tokenizer files yet (pre-migration packs), or
+            // when the APK hasn't been resource-stripped.
+            Tokenizer()
+        }
+    }
+
+    /**
+     * Register a directory containing IPADIC bin files. Resets any previously-
+     * built tokenizer so the next [preload] or tokenize call re-initializes
+     * from the new pack. Safe to call from any thread; idempotent when called
+     * with the same directory.
+     */
+    fun initPackDir(dir: File?) {
+        synchronized(tokenizerLock) {
+            if (packDir == dir) return
+            packDir = dir
+            _tokenizer = null
+        }
+    }
 
     /** Call once on a background thread early in startup to avoid first-use latency. */
     fun preload() {

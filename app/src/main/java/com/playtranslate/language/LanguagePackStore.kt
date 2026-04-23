@@ -319,8 +319,16 @@ object LanguagePackStore {
      * installed. Safe to call on a bundled pack — the directory gets
      * repopulated on next [com.playtranslate.dictionary.DictionaryManager.ensureOpen]
      * via the asset copy + manifest bootstrap path.
+     *
+     * Also evicts the engine for [id] from [SourceLanguageEngines]'s
+     * process-scoped cache. Without this, a warm engine would keep serving
+     * tokenizer + dict state from the now-deleted pack directory until the
+     * process restarts — the `isInstalled()` gate would correctly say
+     * "missing," but already-resolved engine references would still tokenize
+     * against stale data. Releasing also closes the engine's dict DB handle.
      */
     fun uninstall(ctx: Context, id: SourceLangId): Boolean {
+        SourceLanguageEngines.release(id)
         val dir = dirFor(ctx.applicationContext, id)
         return if (dir.exists()) dir.deleteRecursively() else false
     }

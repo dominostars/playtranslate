@@ -6,9 +6,9 @@
       "script": "CJK_JAPANESE",
       "bundled": false,
       "packVersion": 1,
-      "size": 20257016,
+      "size": 33585770,
       "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/ja-v1/ja.zip",
-      "sha256": "4ec8cca92ac3c0b864b93b759dd5e9fe72bfc706e681a0b10b6828321c458e32",
+      "sha256": "d1fe9289b5a2817aba784f2a274f6a20a3bf14221ebc8376391b1fa7b743dc0a",
       "licenses": [
         {
           "component": "JMdict",
@@ -19,6 +19,11 @@
           "component": "KANJIDIC2",
           "license": "CC-BY-SA-4.0",
           "attribution": "© EDRDG"
+        },
+        {
+          "component": "Kuromoji IPADIC",
+          "license": "Apache-2.0",
+          "attribution": "© Atilika Inc. (IPADIC © ICOT)"
         }
       ]
     },

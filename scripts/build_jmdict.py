@@ -459,15 +459,87 @@ def build_sqlite(db_path: Path) -> None:
     conn.close()
 
 
-def build_manifest(db_path: Path, manifest_path: Path, pack_version: int) -> None:
+# The 8 IPADIC binary files Kuromoji loads from its JAR classpath. Extracted
+# from kuromoji-ipadic-*.jar into the pack's tokenizer/ subdir so the APK
+# can strip them via packagingOptions.resources.excludes. Names must match
+# exactly what SimpleResourceResolver asks for (bare filenames, no prefix).
+KUROMOJI_IPADIC_BINS = (
+    "characterDefinitions.bin",
+    "connectionCosts.bin",
+    "doubleArrayTrie.bin",
+    "tokenInfoDictionary.bin",
+    "tokenInfoFeaturesMap.bin",
+    "tokenInfoPartOfSpeechMap.bin",
+    "tokenInfoTargetMap.bin",
+    "unknownDictionary.bin",
+)
+
+# Resource path prefix inside the JAR. `SimpleResourceResolver` calls
+# `Tokenizer.class.getResourceAsStream(basename)`, which resolves to
+# "/com/atilika/kuromoji/ipadic/<basename>" at the JAR root.
+KUROMOJI_IPADIC_JAR_PREFIX = "com/atilika/kuromoji/ipadic/"
+
+
+def _sha256_of(path: Path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def extract_kuromoji_bins(jar_path: Path, tokenizer_dir: Path) -> list[dict]:
+    """Extract the IPADIC bin files from `kuromoji-ipadic-*.jar` into
+    [tokenizer_dir]. Returns a list of manifest-shape dicts (path relative
+    to the pack root, size, sha256) for appending to manifest.files."""
+    tokenizer_dir.mkdir(parents=True, exist_ok=True)
+    entries: list[dict] = []
+    with zipfile.ZipFile(jar_path, "r") as jar:
+        names = set(jar.namelist())
+        for basename in KUROMOJI_IPADIC_BINS:
+            jar_entry = KUROMOJI_IPADIC_JAR_PREFIX + basename
+            if jar_entry not in names:
+                raise RuntimeError(
+                    f"Kuromoji JAR at {jar_path} is missing entry {jar_entry}. "
+                    "Pass --kuromoji-jar pointing at kuromoji-ipadic-0.9.0.jar "
+                    "(typically under ~/.gradle/caches/modules-2/files-2.1/"
+                    "com.atilika.kuromoji/kuromoji-ipadic/0.9.0/).")
+            out_path = tokenizer_dir / basename
+            with jar.open(jar_entry) as src, out_path.open("wb") as dst:
+                while True:
+                    chunk = src.read(1 << 20)
+                    if not chunk:
+                        break
+                    dst.write(chunk)
+            entries.append({
+                "path": f"tokenizer/{basename}",
+                "size": out_path.stat().st_size,
+                "sha256": _sha256_of(out_path),
+            })
+    print(f"Extracted {len(entries)} Kuromoji files to {tokenizer_dir}")
+    return entries
+
+
+def build_manifest(
+    db_path: Path,
+    manifest_path: Path,
+    pack_version: int,
+    tokenizer_entries: list[dict] | None = None,
+) -> None:
     size = db_path.stat().st_size
+    files: list[dict] = [{"path": "dict.sqlite", "size": size, "sha256": None}]
+    total = size
+    if tokenizer_entries:
+        files.extend(tokenizer_entries)
+        total += sum(int(e["size"]) for e in tokenizer_entries)
     manifest = {
         "langId": "ja",
         "schemaVersion": 1,
         "packVersion": pack_version,
         "appMinVersion": 0,
-        "files": [{"path": "dict.sqlite", "size": size, "sha256": None}],
-        "totalSize": size,
+        "files": files,
+        "totalSize": total,
         "licenses": [
             {
                 "component": "JMdict",
@@ -479,24 +551,53 @@ def build_manifest(db_path: Path, manifest_path: Path, pack_version: int) -> Non
                 "license": "CC-BY-SA-4.0",
                 "attribution": "© EDRDG",
             },
+            {
+                "component": "Kuromoji IPADIC",
+                "license": "Apache-2.0",
+                "attribution": "© Atilika Inc. (IPADIC: IPA Dictionary, © ICOT)",
+            },
         ],
     }
     manifest_path.write_text(json.dumps(manifest, indent=2))
-    print(f"Wrote {manifest_path} ({size:,} bytes dict)")
+    print(f"Wrote {manifest_path} ({size:,} bytes dict, {total:,} bytes total)")
 
 
-def build_zip(db_path: Path, manifest_path: Path, zip_path: Path) -> None:
+def build_zip(
+    db_path: Path,
+    manifest_path: Path,
+    zip_path: Path,
+    tokenizer_dir: Path | None = None,
+) -> None:
     if zip_path.exists():
         zip_path.unlink()
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
         z.write(db_path, arcname="dict.sqlite")
         z.write(manifest_path, arcname="manifest.json")
+        if tokenizer_dir is not None and tokenizer_dir.is_dir():
+            for p in sorted(tokenizer_dir.iterdir()):
+                if p.is_file():
+                    z.write(p, arcname=f"tokenizer/{p.name}")
     print(f"Wrote {zip_path} ({zip_path.stat().st_size:,} bytes)")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build the Japanese language pack")
     parser.add_argument("--output", type=Path, required=True, help="Output directory")
+    parser.add_argument(
+        "--kuromoji-jar",
+        type=Path,
+        required=False,
+        help="Path to kuromoji-ipadic-*.jar. When provided, its 8 IPADIC "
+             "bin files are extracted into tokenizer/ in the pack so the "
+             "APK can strip them. Omit to produce a tokenizer-less pack "
+             "(dict.sqlite only, classpath-Kuromoji dependency).",
+    )
+    parser.add_argument(
+        "--rebuild-sqlite",
+        action="store_true",
+        help="Force regeneration of dict.sqlite from JMdict/KANJIDIC sources. "
+             "When omitted, an existing dict.sqlite in the output dir is reused.",
+    )
     parser.add_argument("--pack-version", type=int, default=1)
     args = parser.parse_args()
 
@@ -504,16 +605,35 @@ def main() -> int:
     db_path = args.output / "dict.sqlite"
     manifest_path = args.output / "manifest.json"
     zip_path = args.output / "ja.zip"
+    tokenizer_dir = args.output / "tokenizer"
 
-    build_sqlite(db_path)
-    build_manifest(db_path, manifest_path, args.pack_version)
-    build_zip(db_path, manifest_path, zip_path)
+    # Skip the (slow) JMdict rebuild if dict.sqlite already exists. Useful
+    # when iterating on the tokenizer extraction step without re-downloading
+    # JMdict_e.gz + KANJIDIC2 on every run. Pass --rebuild-sqlite to force.
+    if db_path.is_file() and not args.rebuild_sqlite:
+        print(f"Reusing existing {db_path} ({db_path.stat().st_size:,} bytes) — "
+              f"pass --rebuild-sqlite to regenerate from JMdict source")
+    else:
+        build_sqlite(db_path)
+    tokenizer_entries = None
+    if args.kuromoji_jar is not None:
+        if not args.kuromoji_jar.is_file():
+            print(f"error: --kuromoji-jar not a file: {args.kuromoji_jar}", file=sys.stderr)
+            return 1
+        tokenizer_entries = extract_kuromoji_bins(args.kuromoji_jar, tokenizer_dir)
+    build_manifest(db_path, manifest_path, args.pack_version, tokenizer_entries)
+    build_zip(
+        db_path,
+        manifest_path,
+        zip_path,
+        tokenizer_dir if tokenizer_entries else None,
+    )
 
     print()
     print("Next steps:")
     print(f"  1. sha256sum {zip_path}")
     print(f"  2. Upload {zip_path} to dominostars/playtranslate-langpacks tag ja-v1")
-    print(f"  3. Update assets/langpack_catalog.json with URL + sha256, flip bundled to false")
+    print(f"  3. Update assets/langpack_catalog.json with URL + sha256 + new size")
     return 0
 
 

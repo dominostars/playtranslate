@@ -15,15 +15,37 @@ import com.playtranslate.model.DictionaryResponse
  * that survives engine lifecycle changes; closing the dict here would break
  * any other caller that still reaches into [DictionaryManager.get] directly.
  */
-class JapaneseEngine(appContext: Context) : SourceLanguageEngine {
+class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
 
     override val profile: SourceLanguageProfile = SourceLanguageProfiles[SourceLangId.JA]
 
     private val dict: DictionaryManager = DictionaryManager.get(appContext)
 
-    override suspend fun preload() {
-        dict.preload()
-        Deinflector.preload()
+    override suspend fun preload(): PreloadResult {
+        if (!LanguagePackStore.isInstalled(appContext, SourceLangId.JA)) {
+            return PreloadResult.PackMissing
+        }
+        // Point Kuromoji at the pack's tokenizer/ directory so it loads
+        // IPADIC bin files from there instead of the APK classpath. The
+        // Deinflector's tokenizer is lazy; this must happen before
+        // [Deinflector.preload] triggers construction. If the pack
+        // predates the tokenizer-migration (no tokenizer/ subdir), the
+        // lazy builder falls back to classpath-backed Kuromoji — still
+        // works as long as the APK hasn't been resource-stripped yet.
+        Deinflector.initPackDir(
+            LanguagePackStore.dirFor(appContext, SourceLangId.JA).resolve("tokenizer")
+        )
+        val db = dict.preload()
+        if (db == null) {
+            return PreloadResult.PackCorrupt("JA dict.sqlite failed to open")
+        }
+        val warmup = runCatching { Deinflector.preload() }
+        if (warmup.isFailure) {
+            return PreloadResult.PackCorrupt(
+                "Kuromoji warm-up failed: ${warmup.exceptionOrNull()?.message ?: "unknown"}"
+            )
+        }
+        return PreloadResult.Success
     }
 
     override suspend fun tokenize(text: String): List<TokenSpan> =

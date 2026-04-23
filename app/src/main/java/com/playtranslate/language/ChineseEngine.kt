@@ -18,17 +18,31 @@ import kotlinx.coroutines.withContext
  * [preload] triggers this on the background IO thread so the user's first
  * capture doesn't stall.
  */
-class ChineseEngine(appContext: Context, langId: SourceLangId = SourceLangId.ZH) : SourceLanguageEngine {
+class ChineseEngine(
+    private val appContext: Context,
+    private val langId: SourceLangId = SourceLangId.ZH,
+) : SourceLanguageEngine {
 
     override val profile: SourceLanguageProfile = SourceLanguageProfiles[langId]
 
     private val dict: ChineseDictionaryManager = ChineseDictionaryManager.get(appContext)
 
-    override suspend fun preload() {
-        withContext(Dispatchers.IO) {
-            HanLP.segment("预热")
+    override suspend fun preload(): PreloadResult {
+        if (!LanguagePackStore.isInstalled(appContext, langId)) {
+            return PreloadResult.PackMissing
         }
-        dict.preload()
+        val warmed = withContext(Dispatchers.IO) {
+            runCatching { HanLP.segment("预热") }
+        }
+        if (warmed.isFailure) {
+            return PreloadResult.PackCorrupt(
+                "HanLP warm-up failed: ${warmed.exceptionOrNull()?.message ?: "unknown"}"
+            )
+        }
+        if (dict.preload() == null) {
+            return PreloadResult.PackCorrupt("ZH dict.sqlite failed to open")
+        }
+        return PreloadResult.Success
     }
 
     override suspend fun tokenize(text: String): List<TokenSpan> = withContext(Dispatchers.Default) {
