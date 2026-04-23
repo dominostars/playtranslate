@@ -245,7 +245,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         // Cost: system screenshot tools can't capture PlayTranslate's own
         // UI — users who want to share their translator UI would have to
         // screenshot externally, which is acceptable for a translation tool.
-        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        // window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
         // Seed the companion var from the Activity's own multi-window state.
         // onMultiWindowModeChanged does NOT fire on a launch-into-split-screen
