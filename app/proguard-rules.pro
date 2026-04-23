@@ -37,6 +37,14 @@
 -dontwarn org.apache.lucene.**
 -dontwarn org.tartarus.**
 
+# ── KOMORAN (Korean morphological analyzer) ──────────────────────────────────
+# KOMORAN loads its bundled model via classloader resource lookup from
+# `kr.co.shineware.nlp.komoran.*`. The models, dictionary data, and helper
+# classes (kr.co.shineware.util, kr.co.shineware.common) are referenced by
+# reflection and class name; keeping both namespaces avoids R8 stripping.
+-keep class kr.co.shineware.** { *; }
+-dontwarn kr.co.shineware.**
+
 # ── HanLP (Chinese CRF segmenter) ────────────────────────────────────────────
 # HanLP loads models, dictionaries, and nature-enum mappings by reflection.
 -keep class com.hankcs.hanlp.** { *; }

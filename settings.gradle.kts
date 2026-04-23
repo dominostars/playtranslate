@@ -18,6 +18,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // KOMORAN (Korean morphological analyzer) is distributed via JitPack.
+        maven { url = uri("https://jitpack.io") }
     }
 }
 rootProject.name = "GameLens"

@@ -8,6 +8,7 @@ import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.TextRecognizerOptionsInterface
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
+import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -62,7 +63,7 @@ object ScreenTextRecognizerFactory {
         OcrBackend.MLKitJapanese   -> MlKitRecognizer(JapaneseTextRecognizerOptions.Builder().build())
         OcrBackend.MLKitLatin      -> MlKitRecognizer(TextRecognizerOptions.DEFAULT_OPTIONS)
         OcrBackend.MLKitChinese    -> MlKitRecognizer(ChineseTextRecognizerOptions.Builder().build())
-        OcrBackend.MLKitKorean     -> error("MLKitKorean not yet available (add play-services-mlkit-text-recognition-korean dependency)")
+        OcrBackend.MLKitKorean     -> MlKitRecognizer(KoreanTextRecognizerOptions.Builder().build())
         OcrBackend.MLKitDevanagari -> error("MLKitDevanagari not yet available (add play-services-mlkit-text-recognition-devanagari dependency)")
         is OcrBackend.Tesseract    -> error("Tesseract OCR backend not yet implemented (Phase 5)")
     }

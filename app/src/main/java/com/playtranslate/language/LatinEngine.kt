@@ -32,8 +32,8 @@ import java.util.Locale
  *    isolating languages (Vietnamese, Indonesian) have no Snowball stemmer
  *    because there is no inflection to strip; [stemOf] falls back to the
  *    lowercased surface for them.
- *  - **Dictionary**: [LatinDictionaryManager] queries the downloaded pack
- *    with surface-first and stem-fallback semantics.
+ *  - **Dictionary**: [WiktionaryDictionaryManager] queries the downloaded
+ *    pack with surface-first and stem-fallback semantics.
  *
  * Tokenizer and stemmer are both stateful and not thread-safe, so both
  * operations are guarded by per-instance `synchronized` blocks.
@@ -45,7 +45,7 @@ class LatinEngine(
 
     override val profile: SourceLanguageProfile = SourceLanguageProfiles[langId]
 
-    private val dict: LatinDictionaryManager = LatinDictionaryManager.get(appContext, langId)
+    private val dict: WiktionaryDictionaryManager = WiktionaryDictionaryManager.get(appContext, langId)
     private val locale: Locale = langId.locale
     private val breakIterator: BreakIterator = BreakIterator.getWordInstance(locale)
     private val stemmer: SnowballProgram? = stemmerFor(langId)
@@ -73,7 +73,7 @@ class LatinEngine(
         }
 
         for (slice in tokenSpans) {
-            // lookupForm = surface (not stem). LatinDictionaryManager handles
+            // lookupForm = surface (not stem). WiktionaryDictionaryManager handles
             // surface-first + stem-fallback internally. Emitting the stem as
             // lookupForm would double-stem and miss dictionary entries.
             result += TokenSpan(surface = slice, lookupForm = slice, reading = null)
@@ -93,7 +93,7 @@ class LatinEngine(
     /** Returns the stem for [word], or the lowercased surface when the
      *  language has no Snowball stemmer. Lowercasing runs under the
      *  language's [locale] so Turkish `IŞIK` → `ışık` (not `işik`).
-     *  Callers of [LatinDictionaryManager.lookup] already short-circuit
+     *  Callers of [WiktionaryDictionaryManager.lookup] already short-circuit
      *  when `stemmed == surface`, so no extra guard is needed downstream. */
     private fun stemOf(word: String): String {
         val lower = word.lowercase(locale)
@@ -139,7 +139,7 @@ class LatinEngine(
             // model; surface-only lookup is an acceptable first pass.
             SourceLangId.VI, SourceLangId.ID -> null
             // Should never happen — CJK ids never reach LatinEngine.
-            SourceLangId.JA, SourceLangId.ZH, SourceLangId.ZH_HANT -> null
+            SourceLangId.JA, SourceLangId.ZH, SourceLangId.ZH_HANT, SourceLangId.KO -> null
         }
     }
 }

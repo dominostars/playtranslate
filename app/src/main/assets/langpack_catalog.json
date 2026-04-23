@@ -310,6 +310,22 @@
         }
       ]
     },
+    "ko": {
+      "display": "Korean",
+      "script": "CJK_KOREAN",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 2151165,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/ko-v1/ko.zip",
+      "sha256": "d9931c45d05cb3155a070a95377c471fd6bc8a57faf347ead214799e7ef76c3f",
+      "licenses": [
+        {
+          "component": "Wiktionary",
+          "license": "CC-BY-SA-3.0",
+          "attribution": "© Wiktionary contributors, https://en.wiktionary.org/"
+        }
+      ]
+    },
     "target-fr": {
       "display": "French definitions",
       "type": "target",

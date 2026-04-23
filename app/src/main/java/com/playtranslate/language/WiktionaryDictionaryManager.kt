@@ -15,10 +15,10 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * Read-only SQLite dictionary for Latin-script source languages. Shares the
- * JMdict-derived schema that `DictionaryManager` uses (entry / headword /
+ * Read-only SQLite dictionary for Wiktionary-derived source packs. Shares
+ * the JMdict schema that `DictionaryManager` uses (entry / headword /
  * reading / sense tables) so `scripts/build_latin_dict.py` can produce
- * drop-in-compatible packs, but has a simpler lookup pipeline:
+ * drop-in-compatible packs, with a simpler lookup pipeline than JA:
  *
  *  1. Exact-surface query against the `headword` table. The `headword`
  *     rows come in three flavors, distinguished by `position`:
@@ -30,13 +30,18 @@ import java.io.File
  *  3. Silent pass-through on miss (per decision 7 in the architecture doc).
  *
  * No de-inflection table. No N-gram phrase batching. No `kanjidic` table —
- * the Latin pack's `kanjidic` is empty by design, and this manager does
- * not probe or query it.
+ * the Wiktionary pack's `kanjidic` is empty by design, and this manager
+ * does not probe or query it.
  *
- * Process-scoped singleton keyed on [SourceLangId]. One instance per Latin
- * source language (EN, ES, FR, …), each opening its own SQLite pack.
+ * Process-scoped singleton keyed on [SourceLangId]. One instance per source
+ * language (EN, ES, FR, …, KO), each opening its own SQLite pack.
+ *
+ * Despite the "Wiktionary" name, the runtime query code is script-agnostic.
+ * Callers from non-Latin engines (e.g. [KoreanEngine]) pass `stemmed = null`
+ * and rely on lemma-exact matches, because their engine already lemmatized
+ * the surface upstream.
  */
-class LatinDictionaryManager private constructor(
+class WiktionaryDictionaryManager private constructor(
     private val context: Context,
     private val langId: SourceLangId,
 ) {
@@ -253,14 +258,14 @@ class LatinDictionaryManager private constructor(
     }
 
     companion object {
-        private const val TAG = "LatinDictionaryManager"
+        private const val TAG = "WiktionaryDictMgr"
 
         @SuppressLint("StaticFieldLeak")
-        private val instances = java.util.concurrent.ConcurrentHashMap<SourceLangId, LatinDictionaryManager>()
+        private val instances = java.util.concurrent.ConcurrentHashMap<SourceLangId, WiktionaryDictionaryManager>()
 
-        fun get(context: Context, langId: SourceLangId = SourceLangId.EN): LatinDictionaryManager =
+        fun get(context: Context, langId: SourceLangId = SourceLangId.EN): WiktionaryDictionaryManager =
             instances.getOrPut(langId) {
-                LatinDictionaryManager(context.applicationContext, langId)
+                WiktionaryDictionaryManager(context.applicationContext, langId)
             }
     }
 }

@@ -85,6 +85,7 @@ object SourceLanguageEngines {
         SourceLangId.JA -> JapaneseEngine(app)
         SourceLangId.ZH -> ChineseEngine(app, SourceLangId.ZH)
         SourceLangId.ZH_HANT -> ChineseEngine(app, SourceLangId.ZH_HANT)
+        SourceLangId.KO -> KoreanEngine(app)
         // Everything else is Latin-script via LatinEngine.
         SourceLangId.EN, SourceLangId.ES, SourceLangId.FR, SourceLangId.DE,
         SourceLangId.IT, SourceLangId.PT, SourceLangId.NL, SourceLangId.TR,

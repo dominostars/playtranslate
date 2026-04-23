@@ -31,7 +31,8 @@ enum class SourceLangId(val code: String) {
     HU("hu"),
     RO("ro"),
     CA("ca"),
-    // KO, AR — deferred (require MLKit Korean dep / Tesseract respectively)
+    KO("ko"),
+    // AR — deferred (requires Tesseract OCR backend; see project_phase5_arabic.md)
     ;
 
     /** The lang ID used for pack directory/catalog lookup. Variants that share
@@ -304,6 +305,30 @@ object SourceLanguageProfiles {
                     || c in 'Ḁ'..'ỿ'  // Latin Extended Additional (tonal vowels)
             },
             translationCode = TranslateLanguage.VIETNAMESE,
+        ),
+        SourceLangId.KO to SourceLanguageProfile(
+            id = SourceLangId.KO,
+            scriptFamily = ScriptFamily.CJK_KOREAN,
+            textDirection = TextDirection.LTR,
+            ocrBackend = OcrBackend.MLKitKorean,
+            // Modern Korean game text is Hangul-only; no character-level
+            // reading annotations needed. Hanja (rare in games) would use
+            // ReadingAttribute from Nori, out of scope for V1.
+            hintTextKind = HintTextKind.NONE,
+            // Korean DOES use whitespace between eojeol (unlike JA/ZH),
+            // even though morpheme splitting happens sub-eojeol. This flag
+            // only drives OCR line-grouping cosmetics (OcrManager:122,615),
+            // not tokenization — KoreanEngine uses Nori regardless.
+            wordsSeparatedByWhitespace = true,
+            // Hangul ranges mirror `OcrManager.isSourceLangChar("ko", …)`:
+            // Syllables U+AC00..U+D7AF, Jamo U+1100..U+11FF,
+            // Compatibility Jamo U+3130..U+318F.
+            isScriptChar = { c ->
+                c in '가'..'힯'     // Hangul Syllables
+                    || c in 'ᄀ'..'ᇿ'  // Hangul Jamo
+                    || c in '㄰'..'㆏'  // Hangul Compatibility Jamo
+            },
+            translationCode = TranslateLanguage.KOREAN,
         ),
     )
 

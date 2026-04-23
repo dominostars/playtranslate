@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
 """
-Build a Latin-script language pack for PlayTranslate from a kaikki.org
+Build a source-language pack for PlayTranslate from a kaikki.org
 Wiktionary JSON-Lines extract (English Wiktionary's <LANG> entries).
 
-One script, parameterised by `--lang`. Supports any Latin-script source
-language that kaikki.org publishes AND that has a `word_frequency` locale
-in the `wordfreq` package. Verified list:
+Originally Latin-only (hence the filename); now also handles Korean,
+which shares the same Wiktionary→SQLite pipeline because the pack
+schema (entry/headword/sense) is script-agnostic. Korean skips Snowball
+stemming entirely — runtime morphology is handled by Lucene's Nori
+tokenizer in KoreanEngine, so the pack only stores citation-form lemmas.
+TODO: rename to `build_wiktionary_dict.py` once nothing in-flight
+references the current filename.
 
-    ca cs da de en es fi fr hu id it nb nl no pl pt ro sv tr vi
+One script, parameterised by `--lang`. Supports any source language
+that kaikki.org publishes AND that has a `word_frequency` locale in
+the `wordfreq` package. Verified list:
+
+    ca cs da de en es fi fr hu id it ko nb nl no pl pt ro sv tr vi
 
 (Norwegian: pass `--lang no` — the kaikki file is named "Norwegian"
 but its lang_code is `no`. The wordfreq locale `nb` is substituted
@@ -20,7 +28,7 @@ Pipeline
 3. Drop entries where `lang_code` doesn't match `--lang`.
 4. Drop rare words (`wordfreq.word_frequency` below MIN_FREQUENCY).
 5. Write a SQLite file with the JMdict schema shared by DictionaryManager /
-   LatinDictionaryManager (`kanjidic` stays empty for Latin).
+   WiktionaryDictionaryManager (`kanjidic` stays empty for non-JA packs).
 6. Write `manifest.json` and produce `<lang>.zip`.
 
 Usage
@@ -133,10 +141,13 @@ COMMON_FREQUENCY = 1e-4
 # Map our 2-letter code → snowballstemmer algorithm name. Must match what
 # LatinEngine uses at runtime (Lucene's org.tartarus.snowball.ext.*Stemmer)
 # so stem-indexed rows are reachable by the runtime stem query.
-# Languages with no Snowball stemmer (Vietnamese, Indonesian) map to None
-# and skip stem indexing — their runtime stemmer is null too, and
-# LatinDictionaryManager's stem-fallback path short-circuits when
-# stem == surface, so the asymmetry is harmless.
+# Languages with no Snowball stemmer map to None and skip stem indexing:
+#   - Vietnamese, Indonesian: runtime stemmer is also null; the stem-fallback
+#     path in WiktionaryDictionaryManager short-circuits when stem == surface,
+#     so the asymmetry is harmless.
+#   - Korean: agglutinative; morphology is decomposed at runtime by Lucene
+#     Nori in KoreanEngine, which emits citation-form lemmas directly. The
+#     pack only stores lemma surfaces — Nori does the "stemming" equivalent.
 SNOWBALL_ALGO_FOR_LANG: dict[str, Optional[str]] = {
     "en": "english",
     "es": "spanish",
@@ -155,6 +166,7 @@ SNOWBALL_ALGO_FOR_LANG: dict[str, Optional[str]] = {
     "ca": "catalan",
     "vi": None,
     "id": None,
+    "ko": None,
 }
 
 # Norwegian: our runtime and ML Kit use `no` for Norwegian, but kaikki
@@ -183,8 +195,8 @@ def iter_kaikki(path: Path) -> Iterable[dict]:
 
 def create_schema(conn: sqlite3.Connection) -> None:
     """Matches scripts/build_jmdict.py's schema exactly so the app-side
-    readers (DictionaryManager / LatinDictionaryManager) can share query
-    code."""
+    readers (DictionaryManager / WiktionaryDictionaryManager) can share
+    query code."""
     conn.executescript(
         """
         CREATE TABLE entry (
@@ -237,9 +249,10 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
     kaikki_lang = KAIKKI_LANG_ALIASES.get(lang, lang)
 
     # Snowball stemmer for the language (or None for isolating languages
-    # with no inflection). When present, every entry gets a second
+    # with no inflection, and for Korean where KOMORAN does morphological
+    # analysis at runtime). When present, every entry gets a second
     # `headword.text` row pointing the stem at the same entry_id — this
-    # is what makes LatinDictionaryManager's stem fallback reach the
+    # is what makes WiktionaryDictionaryManager's stem fallback reach the
     # lemma for REGULAR inflections (e.g. `cani` and `cane` both stem to
     # `can`). Irregular forms (e.g. `detto` / `dire` stem to `dett` /
     # `dir`) need the redirect-alias pass below.
@@ -250,6 +263,18 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         )
     algo = SNOWBALL_ALGO_FOR_LANG[lang]
     stemmer = _snowball_stemmer(algo) if algo else None
+
+    # Korean: load the raw wordfreq corpus dict once. Bypasses wordfreq's
+    # `word_frequency()` path which tokenizes via MeCab (not available on
+    # Windows Python). The dict is morpheme-level (built from MeCab-ko-
+    # processed OpenSubtitles), so verb/adjective citation forms like
+    # `먹다` return 0 — we strip the trailing `다` for those POS before
+    # lookup to hit the real morpheme frequency (`먹`).
+    ko_freq_dict: Optional[dict[str, float]] = None
+    if lang == "ko":
+        from wordfreq import get_frequency_dict
+        ko_freq_dict = get_frequency_dict("ko")
+        print(f"  loaded wordfreq ko corpus: {len(ko_freq_dict):,} morphemes")
 
     entry_id = 0
     kept = 0
@@ -309,13 +334,35 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         # collapsed that during corpus build).
         # Probing both and taking the max is the only way to keep both
         # `LGBTI` AND `İngilizce`-style headwords in the pack.
+        #
+        # Korean: wordfreq's `word_frequency()` path tokenizes via MeCab
+        # which isn't available on Windows Python, so we consult the raw
+        # corpus dict directly (loaded once above). The corpus stores
+        # morpheme-level keys — nouns resolve as-is; verbs and adjectives
+        # need the citation `다` stripped before lookup (Wiktionary stores
+        # `먹다`, corpus stores `먹`). Entries missed by the corpus
+        # (archaic words, specialized terminology) are kept but flagged
+        # with freq=None so the fallback scoring branch below handles
+        # them with a Wiktionary-intrinsic proxy capped below the
+        # real-frequency range.
         word_lower = lower_for_lang(word, lang)
-        freq = max(
-            word_frequency(word.lower(), wordfreq_locale),
-            word_frequency(word_lower, wordfreq_locale),
-        )
-        if freq < MIN_FREQUENCY:
-            continue
+        if lang == "ko":
+            key = word_lower
+            if pos_raw in ("verb", "adj") and len(key) > 1 and key.endswith("다"):
+                key = key[:-1]
+            ko_freq = ko_freq_dict.get(key, 0.0) if ko_freq_dict is not None else 0.0
+            freq = ko_freq if ko_freq >= MIN_FREQUENCY else None
+            # No frequency cut for Korean: we want every non-redirect
+            # entry in the pack, even archaic ones (the corpus miss rate
+            # for the long tail is high, and dropping those would hurt
+            # Hanja aliases more than it helps pack size).
+        else:
+            freq = max(
+                word_frequency(word.lower(), wordfreq_locale),
+                word_frequency(word_lower, wordfreq_locale),
+            )
+            if freq < MIN_FREQUENCY:
+                continue
 
         glosses_list: list[str] = []
         for sense in (obj.get("senses") or [])[:MAX_SENSES_PER_ENTRY]:
@@ -333,7 +380,20 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
             continue
 
         # De-duplicate (word, pos) — kaikki sometimes emits repeats.
-        key = f"{word_lower}\t{pos_raw}"
+        # For Korean, distinct etymologies at the same (word, pos) are
+        # separate dictionary entries (눈 eye vs 눈 snow, 밤 night vs 밤
+        # chestnut, 배 stomach/boat/pear — all NNG homographs), so the
+        # dedupe key MUST preserve `etymology_number` or the post-first
+        # senses are silently dropped before the ko scoring branch below
+        # ever runs. Other languages fold homographs into multi-sense
+        # entries under a single etymology, so the tighter key still
+        # behaves as before for them.
+        etym_num_raw = obj.get("etymology_number") or 1
+        key = (
+            f"{word_lower}\t{pos_raw}\t{etym_num_raw}"
+            if lang == "ko"
+            else f"{word_lower}\t{pos_raw}"
+        )
         if key in seen_headwords:
             continue
         seen_headwords.add(key)
@@ -341,8 +401,32 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         # Scale frequency into an integer score for sort ordering.
         # log10(freq) ranges from ~-7 (rare) to ~-2 (very common). Shift
         # and clamp to 0..100.
-        freq_score = max(0, min(100, int((math.log10(freq) + 7) * 20)))
-        is_common = 1 if freq >= COMMON_FREQUENCY else 0
+        #
+        # Korean adds two wrinkles to the generic formula:
+        #  1. Corpus-miss fallback — entries not in wordfreq's Korean
+        #     dict (archaic lemmas, rare Hanja, specialized terms) get a
+        #     Wiktionary-intrinsic proxy (sense count + etymology order)
+        #     capped below the real-frequency range so they don't
+        #     outrank corpus-known words.
+        #  2. Homograph tie-breaking — multiple Wiktionary entries with
+        #     the same spelling share one morpheme frequency in the
+        #     corpus, so a small etymology-order offset differentiates
+        #     them. kaikki orders etymologies by Wiktionary page order
+        #     (usually primary meaning first), which is the right thing
+        #     for sort-by-freq-score-desc.
+        if lang == "ko":
+            etym_num = int(obj.get("etymology_number") or 1)
+            if freq is None:
+                sense_count = len(glosses_list)
+                freq_score = max(10, min(50, 25 + sense_count * 3 - (etym_num - 1) * 5))
+                is_common = 0
+            else:
+                base = max(0, min(100, int((math.log10(freq) + 7) * 20)))
+                freq_score = max(10, min(95, base - (etym_num - 1) * 2))
+                is_common = 1 if freq >= COMMON_FREQUENCY else 0
+        else:
+            freq_score = max(0, min(100, int((math.log10(freq) + 7) * 20)))
+            is_common = 1 if freq >= COMMON_FREQUENCY else 0
 
         entry_id += 1
         cur.execute(
@@ -361,10 +445,11 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         kept_lemma_ids.setdefault(word_lower, []).append(entry_id)
 
         # Stem row — position 1 headword pointing at the same entry_id.
-        # LatinDictionaryManager tries surface first, then the Snowball
-        # stem of the queried word; the stem row is what that fallback
-        # actually hits. Skip when the stem equals the surface (would
-        # just duplicate the row) or when the language has no stemmer.
+        # WiktionaryDictionaryManager tries surface first, then the
+        # Snowball stem of the queried word; the stem row is what that
+        # fallback actually hits. Skip when the stem equals the surface
+        # (would just duplicate the row) or when the language has no
+        # stemmer.
         if stemmer is not None:
             stem = stemmer.stemWord(word_lower)
             if stem and stem != word_lower:
@@ -393,8 +478,8 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
     # in pass 1, extract its target lemma word from any sense's
     # `form_of` / `alt_of` / `altspell_of` / `abbreviation_of` /
     # `synonym_of` field, and if that lemma is in the pack, add a
-    # position-2 headword row so `LatinDictionaryManager` can resolve
-    # the inflected/alternate surface to the lemma's entry_id.
+    # position-2 headword row so `WiktionaryDictionaryManager` can
+    # resolve the inflected/alternate surface to the lemma's entry_id.
     #
     # `compound_of` is INTENTIONALLY EXCLUDED. Italian compounds like
     # `dacci = da' + ci` would route the user to `da'`'s gloss, which
@@ -530,6 +615,17 @@ SMOKE_FIXTURES: dict[str, dict[str, str]] = {
         "preso": "take",           # preso → prendere (form_of) → "take"
         "venuto": "come",          # venuto → venire (form_of) → "come"
     },
+    "ko": {
+        # Korean fixtures are CITATION-FORM ONLY. Conjugated surfaces
+        # (e.g. "먹었습니다" / "예뻐요") are decomposed by Lucene Nori in
+        # KoreanEngine at runtime, not by the pack — so there's nothing
+        # at pack-build time that would resolve them. We pin the lemma
+        # surfaces that the pack must contain; runtime lemmatization is
+        # covered by KoreanEngineTokenizerTest on the JVM side.
+        "사람": "person",
+        "집": "house",
+        "먹다": "eat",
+    },
     "tr": {
         # Baseline: already-lowercase Turkish word.
         "ışık": "light",
@@ -556,10 +652,10 @@ SMOKE_FIXTURES: dict[str, dict[str, str]] = {
 
 
 def run_smoke_test(db_path: Path, lang: str) -> None:
-    """Replay LatinDictionaryManager.lookup against a small fixture set
-    to catch regressions where plurals/conjugations no longer resolve to
-    their lemma gloss. Raises on failure; no-op when the language has no
-    fixtures."""
+    """Replay WiktionaryDictionaryManager.lookup against a small fixture
+    set to catch regressions where plurals/conjugations no longer
+    resolve to their lemma gloss. Raises on failure; no-op when the
+    language has no fixtures."""
     fixtures = SMOKE_FIXTURES.get(lang, {})
     if not fixtures:
         return
@@ -570,7 +666,7 @@ def run_smoke_test(db_path: Path, lang: str) -> None:
     try:
         for surface, expected_substr in fixtures.items():
             surface_l = lower_for_lang(surface, lang)
-            # Try surface, then stem — matches LatinDictionaryManager.lookup.
+            # Try surface, then stem — matches WiktionaryDictionaryManager.lookup.
             rows = conn.execute(
                 "SELECT s.glosses FROM headword h JOIN sense s ON s.entry_id=h.entry_id "
                 "WHERE h.text = ? ORDER BY h.entry_id",

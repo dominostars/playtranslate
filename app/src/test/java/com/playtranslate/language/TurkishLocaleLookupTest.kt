@@ -10,7 +10,7 @@ import java.util.Locale
 
 /**
  * Pins the Turkish case-mapping contract that `LatinEngine` and
- * `LatinDictionaryManager` depend on when they lowercase OCR input
+ * `WiktionaryDictionaryManager` depend on when they lowercase OCR input
  * before the dictionary query.
  *
  * Turkish is the only supported Latin-script language whose case rules
@@ -33,7 +33,7 @@ class TurkishLocaleLookupTest {
     @Test fun `default locale mangles Turkish dotless I`() {
         // Guardrail: if this test ever starts passing with `.lowercase()`
         // (default locale), the JVM changed under us. Until then, the
-        // call sites in LatinEngine/LatinDictionaryManager must pass the
+        // call sites in LatinEngine/WiktionaryDictionaryManager must pass the
         // TR locale explicitly.
         assertNotEquals("ışık", "IŞIK".lowercase())
     }

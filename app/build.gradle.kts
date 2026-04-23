@@ -99,6 +99,7 @@ dependencies {
     implementation(libs.mlkit.text.recognition.japanese)
     implementation(libs.mlkit.text.recognition)          // Latin base SDK (Phase 3)
     implementation(libs.mlkit.text.recognition.chinese)   // Chinese OCR (Phase 4)
+    implementation(libs.mlkit.text.recognition.korean)    // Korean OCR
     implementation(libs.mlkit.translate)
     implementation(libs.mlkit.language.id)
 
@@ -111,6 +112,12 @@ dependencies {
 
     // Lucene Snowball stemmer (Phase 3: Latin/English stemming)
     implementation(libs.lucene.analyzers.common)
+
+    // KOMORAN (Korean morphological analyzer — TRIE + statistical OOV).
+    // Used instead of Lucene Nori because Nori's AttributeFactory touches
+    // java.lang.ClassValue, which Android ART does not ship. KOMORAN is
+    // pure Java and Android-compatible.
+    implementation(libs.komoran)
 
     // HanLP CRF segmenter (Phase 4: Chinese word segmentation)
     implementation(libs.hanlp)
