@@ -2,6 +2,7 @@ package com.playtranslate.ui
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -22,6 +23,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.card.MaterialCardView
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.AnkiManager
 import com.playtranslate.BuildConfig
@@ -34,6 +36,8 @@ import com.playtranslate.diagnostics.LogExporter
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.blendColors
+import com.playtranslate.compositeOver
 import com.playtranslate.themeColor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -74,6 +78,7 @@ class SettingsRenderer(
     private val rowSourceLang: View = root.findViewById(R.id.rowSourceLang)
     private val rowTargetLang: View = root.findViewById(R.id.rowTargetLang)
 
+    private val cardOnScreenControls: MaterialCardView = root.findViewById(R.id.cardOnScreenControls)
     private val rowOverlayIcon: View = root.findViewById(R.id.rowOverlayIcon)
     private val switchOverlayIcon: MaterialSwitch = rowOverlayIcon.findViewById(R.id.switchRowToggle)
 
@@ -223,8 +228,10 @@ class SettingsRenderer(
             }
             prefs.showOverlayIcon = checked
             PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
+            refreshOnScreenControlsTint(isSingle)
         }
         rowOverlayIcon.setOnClickListener { switchOverlayIcon.toggle() }
+        refreshOnScreenControlsTint(isSingle)
 
         // -- Compact icon row --
         rowCompactIcon.findViewById<TextView>(R.id.tvRowTitle).text = "Minimize icon"
@@ -245,6 +252,60 @@ class SettingsRenderer(
         val showCompact = prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled
         rowCompactIcon.visibility = if (showCompact) View.VISIBLE else View.GONE
         dividerCompactIcon.visibility = if (showCompact) View.VISIBLE else View.GONE
+    }
+
+    /** Tints the on-screen-controls card when the overlay switch is off so
+     *  the card flags itself as needing attention. Single-screen mode uses
+     *  danger (PlayTranslate can't function there without the switch on);
+     *  dual-screen uses warning (the app works but the floating helper is
+     *  missing). On = neutral card styling. */
+    private fun refreshOnScreenControlsTint(isSingle: Boolean) {
+        val enabled = prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled
+        val baseCard = ctx.themeColor(R.attr.ptCard)
+        val baseStroke = compositeOver(ctx.themeColor(R.attr.ptDivider), baseCard)
+        // Canonical theme-driven switch tints — same resources the
+        // Widget.PlayTranslate.MaterialSwitch style references at inflation.
+        val themeThumbTint = ContextCompat.getColorStateList(ctx, R.color.switch_thumb)
+        val themeTrackTint = ContextCompat.getColorStateList(ctx, R.color.switch_track)
+        val themeTrackDecorationTint =
+            ContextCompat.getColorStateList(ctx, R.color.switch_track_decoration)
+        if (enabled) {
+            cardOnScreenControls.setCardBackgroundColor(baseCard)
+            cardOnScreenControls.strokeColor = baseStroke
+            switchOverlayIcon.thumbTintList = themeThumbTint
+            switchOverlayIcon.trackTintList = themeTrackTint
+            switchOverlayIcon.trackDecorationTintList = themeTrackDecorationTint
+            return
+        }
+        val attentionAttr = if (isSingle) R.attr.ptDanger else R.attr.ptWarning
+        val attention = ctx.themeColor(attentionAttr)
+        cardOnScreenControls.setCardBackgroundColor(blendColors(attention, baseCard, 0.20f))
+        // Border uses the attention color at full strength so the card reads
+        // clearly as needing action, even on themes where the 20% fill blend
+        // lands close to the base card color.
+        cardOnScreenControls.strokeColor = attention
+        // State-aware tint lists so the switch flips cleanly to its
+        // theme-driven ON appearance mid-animation: checked-state colors
+        // come from the canonical @color/switch_* resources (so we don't
+        // drift from whatever the rest of the app's switches use), and the
+        // unchecked state gets the attention color.
+        val checkedStates = arrayOf(
+            intArrayOf(android.R.attr.state_checked),
+            intArrayOf(-android.R.attr.state_checked),
+        )
+        val themeCheckedThumb = themeThumbTint?.getColorForState(checkedStates[0], 0) ?: 0
+        val themeCheckedTrack = themeTrackTint?.getColorForState(checkedStates[0], 0) ?: 0
+        switchOverlayIcon.thumbTintList = ColorStateList(
+            checkedStates,
+            intArrayOf(themeCheckedThumb, attention),
+        )
+        switchOverlayIcon.trackTintList = ColorStateList(
+            checkedStates,
+            intArrayOf(themeCheckedTrack, blendColors(attention, baseCard, 0.30f)),
+        )
+        // Track outline (visible only when unchecked) picks up the full
+        // attention color to match the card border.
+        switchOverlayIcon.trackDecorationTintList = ColorStateList.valueOf(attention)
     }
 
     // ── Auto-translate section ───────────────────────────────────────────
@@ -837,6 +898,43 @@ class SettingsRenderer(
         wireLinkRow(rowDonate, "Buy me a coffee",
             "PlayTranslate is free, support development on Ko-Fi",
             "https://go.playtranslate.com/donate")
+        applyDonateRowTint()
+    }
+
+    /** Tints the donate row with a soft 10% accent blend so the support CTA
+     *  reads as a highlighted call-to-action without being loud. Bottom
+     *  corners track the parent card's radius (donate is the last row in
+     *  its card); top corners stay square so the row abuts the divider
+     *  above it cleanly. The row's selectableItemBackground ripple gets
+     *  moved to foreground so the custom background doesn't kill it. */
+    private fun applyDonateRowTint() {
+        val parentCard = rowDonate.parent?.parent as? MaterialCardView
+        val radiusPx = parentCard?.radius
+            ?: ctx.resources.getDimension(R.dimen.pt_radius)
+        val accent = ctx.themeColor(R.attr.ptAccent)
+        val card = ctx.themeColor(R.attr.ptCard)
+        val effectiveDivider = compositeOver(ctx.themeColor(R.attr.ptDivider), card)
+        val fill = blendColors(accent, card, 0.10f)
+        val stroke = blendColors(accent, effectiveDivider, 0.10f)
+        val dp = ctx.resources.displayMetrics.density
+        rowDonate.background = GradientDrawable().apply {
+            setColor(fill)
+            setStroke((1 * dp).toInt(), stroke)
+            cornerRadii = floatArrayOf(
+                0f, 0f,
+                0f, 0f,
+                radiusPx, radiusPx,
+                radiusPx, radiusPx,
+            )
+        }
+        val ripple = ctx.obtainStyledAttributes(
+            intArrayOf(android.R.attr.selectableItemBackground)
+        ).run {
+            val d = getDrawable(0)
+            recycle()
+            d
+        }
+        rowDonate.foreground = ripple
     }
 
     // ── Debug section ────────────────────────────────────────────────────

@@ -184,6 +184,7 @@
     <style name="Widget.PlayTranslate.MaterialSwitch" parent="Widget.Material3.CompoundButton.MaterialSwitch">
         <item name="thumbTint">@color/switch_thumb</item>
         <item name="trackTint">@color/switch_track</item>
+        <item name="trackDecorationTint">@color/switch_track_decoration</item>
     </style>
 
     <style name="Widget.PlayTranslate.SegmentedButton" parent="Widget.Material3.Button.OutlinedButton">

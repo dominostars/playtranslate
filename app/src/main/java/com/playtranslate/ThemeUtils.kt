@@ -1,6 +1,7 @@
 package com.playtranslate
 
 import android.content.Context
+import android.graphics.Color
 import androidx.annotation.AttrRes
 import androidx.annotation.ColorRes
 import androidx.core.content.ContextCompat
@@ -31,6 +32,33 @@ fun selectedActivityTheme(context: Context): Int = when (Prefs(context).themeInd
     2    -> R.style.Theme_PlayTranslate_Rainbow
     3    -> R.style.Theme_PlayTranslate_Purple
     else -> R.style.Theme_PlayTranslate
+}
+
+/** Linearly blends opaque color [a] into opaque color [b] at [ratio] of [a]
+ *  (0..1). Ignores alpha — translucent inputs should be flattened first via
+ *  [compositeOver] so we don't blend against raw RGB of a near-transparent
+ *  hairline. */
+fun blendColors(a: Int, b: Int, ratio: Float): Int {
+    val inv = 1f - ratio
+    return Color.rgb(
+        (Color.red(a) * ratio + Color.red(b) * inv).toInt(),
+        (Color.green(a) * ratio + Color.green(b) * inv).toInt(),
+        (Color.blue(a) * ratio + Color.blue(b) * inv).toInt(),
+    )
+}
+
+/** Composites translucent [fg] over opaque [bg] — returns the opaque color
+ *  that will actually render where [fg] is painted on [bg]. Use before
+ *  [blendColors] when one of the inputs is a low-alpha token like
+ *  `ptDivider`. */
+fun compositeOver(fg: Int, bg: Int): Int {
+    val a = Color.alpha(fg) / 255f
+    val inv = 1f - a
+    return Color.rgb(
+        (Color.red(fg) * a + Color.red(bg) * inv).toInt(),
+        (Color.green(fg) * a + Color.green(bg) * inv).toInt(),
+        (Color.blue(fg) * a + Color.blue(bg) * inv).toInt(),
+    )
 }
 
 /**

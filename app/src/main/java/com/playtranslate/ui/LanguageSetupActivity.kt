@@ -4,7 +4,6 @@ import android.app.Dialog
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
-import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.Log
@@ -34,6 +33,8 @@ import com.playtranslate.language.PreloadResult
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.blendColors
+import com.playtranslate.compositeOver
 import com.playtranslate.selectedActivityTheme
 import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
@@ -517,29 +518,6 @@ class LanguageSetupActivity : AppCompatActivity() {
                 bottomRadius, bottomRadius,
             )
         }
-    }
-
-    /** Linearly blends [a] into [b] at the given ratio of [a] (0..1). Ignores
-     *  alpha — callers should hand in opaque colors (see [compositeOver]). */
-    private fun blendColors(a: Int, b: Int, ratio: Float): Int {
-        val inv = 1f - ratio
-        return Color.rgb(
-            (Color.red(a) * ratio + Color.red(b) * inv).toInt(),
-            (Color.green(a) * ratio + Color.green(b) * inv).toInt(),
-            (Color.blue(a) * ratio + Color.blue(b) * inv).toInt(),
-        )
-    }
-
-    /** Composites translucent [fg] over opaque [bg] — the color that will
-     *  actually render where [fg] is painted on [bg]. */
-    private fun compositeOver(fg: Int, bg: Int): Int {
-        val a = Color.alpha(fg) / 255f
-        val inv = 1f - a
-        return Color.rgb(
-            (Color.red(fg) * a + Color.red(bg) * inv).toInt(),
-            (Color.green(fg) * a + Color.green(bg) * inv).toInt(),
-            (Color.blue(fg) * a + Color.blue(bg) * inv).toInt(),
-        )
     }
 
     private fun inflateLanguageListDivider(container: ViewGroup): View =
