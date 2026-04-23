@@ -46,19 +46,26 @@ typealias CharacterDetail = KanjiDetail
  *    warmed and ready for [tokenize]/[lookup] calls.
  *  - [PackMissing]: the expected pack files aren't on disk. Caller should
  *    route the user through the download flow.
- *  - [PackCorrupt]: the pack was present but a resource failed to load
- *    (truncated file, wrong format, missing tokenizer dict). Caller should
- *    uninstall the pack + re-prompt, not crash-loop.
+ *  - [PackCorrupt]: the pack was present but an **on-disk integrity check**
+ *    failed — dict.sqlite can't open, schema check fails, etc. Confirmed
+ *    pack-level issue. Caller should uninstall + re-prompt.
+ *  - [TokenizerInitFailed]: the pack is on disk, integrity checks passed,
+ *    but a tokenizer library threw while warming up. Not necessarily pack
+ *    corruption — could be OOM mid-deserialization, transient resource
+ *    pressure, or a runtime issue unrelated to file contents. Caller
+ *    should NOT auto-delete; log and let the next user interaction retry.
  *
  * The tokenize/lookup methods themselves return empty/null on the same
  * underlying failure modes, so non-preload callers don't need to switch on
  * this — they just see no results. PreloadResult exists so the explicit
- * warm-up path can route pack corruption into user-facing recovery UX.
+ * warm-up path can route pack corruption into user-facing recovery UX
+ * without punishing transient init failures with destructive deletion.
  */
 sealed interface PreloadResult {
     data object Success : PreloadResult
     data object PackMissing : PreloadResult
     data class PackCorrupt(val reason: String) : PreloadResult
+    data class TokenizerInitFailed(val reason: String) : PreloadResult
 }
 
 /**

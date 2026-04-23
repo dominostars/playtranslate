@@ -35,7 +35,11 @@ class ChineseEngine(
             runCatching { HanLP.segment("预热") }
         }
         if (warmed.isFailure) {
-            return PreloadResult.PackCorrupt(
+            // HanLP first-segment init failed. Pre-ZH-migration, model
+            // data is in the APK classpath — failure is almost certainly
+            // OOM or JVM-level, not a pack integrity issue. Don't delete
+            // the pack; let the caller log and the next action retry.
+            return PreloadResult.TokenizerInitFailed(
                 "HanLP warm-up failed: ${warmed.exceptionOrNull()?.message ?: "unknown"}"
             )
         }

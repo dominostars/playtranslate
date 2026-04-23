@@ -157,6 +157,17 @@ class LanguageSetupActivity : AppCompatActivity() {
                         "Pack for ${id.code} is corrupt: ${preloadResult.reason}"
                     )
                 }
+                is PreloadResult.TokenizerInitFailed -> {
+                    // Don't uninstall — the pack is on disk and its dict is
+                    // fine. Tokenizer library threw during warm-up (likely
+                    // transient OOM). Surface as a retryable error; the
+                    // user can tap the language again and we'll warm up
+                    // again from the still-installed pack.
+                    throw IllegalStateException(
+                        "Tokenizer init failed for ${id.code}: ${preloadResult.reason}. " +
+                            "Pack is installed; try again."
+                    )
+                }
             }
             // Also download the ML Kit translation model for newSource → currentTarget
             // so translations work offline after switching.
