@@ -307,6 +307,24 @@ object LanguagePackStore {
     }
 
     /**
+     * Removes an installed target gloss pack's directory. Returns true if the
+     * pack was present and is now gone; no-op (returns false) otherwise.
+     * English is never "installed" so calling with "en" is a no-op.
+     *
+     * Also evicts the cached [TargetGlossDatabase] handle so future lookups
+     * reopen from disk — otherwise warm callers would keep querying a handle
+     * pointing at a now-deleted file. The ML Kit translation model is a
+     * separate on-device asset owned by Google Play Services and is not
+     * touched here.
+     */
+    fun uninstallTarget(ctx: Context, targetLang: String): Boolean {
+        if (targetLang == "en") return false
+        TargetGlossDatabaseProvider.release(targetLang)
+        val dir = targetDirFor(ctx.applicationContext, targetLang)
+        return if (dir.exists()) dir.deleteRecursively() else false
+    }
+
+    /**
      * Validate a manifest inside an extracted pack directory. Returns null on
      * success, or an error message describing the first failure.
      */

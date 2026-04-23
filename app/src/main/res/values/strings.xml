@@ -68,6 +68,7 @@
     <string name="lang_download">Download</string>
     <string name="lang_confirm">Confirm</string>
     <string name="lang_download_error_title">Download failed</string>
+    <string name="lang_delete_pack">Delete language pack</string>
     <string name="lang_state_installed">Installed</string>
     <string name="lang_state_not_installed">Not installed</string>
     <string name="lang_state_selected">Selected</string>

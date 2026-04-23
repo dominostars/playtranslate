@@ -3,13 +3,18 @@ package com.playtranslate.ui
 import android.app.Dialog
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -17,6 +22,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.card.MaterialCardView
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.playtranslate.Prefs
 import com.playtranslate.R
@@ -28,6 +34,7 @@ import com.playtranslate.language.PreloadResult
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -118,6 +125,23 @@ class LanguageSetupActivity : AppCompatActivity() {
         val root = view.findViewById<LinearLayout>(R.id.languageListRoot)
 
         val allIds = SourceLangId.entries.toList()
+        val currentId = Prefs(this).sourceLangId
+
+        fun toRow(id: SourceLangId): LangRow {
+            val installed = LanguagePackStore.isInstalled(this, id)
+            val isSelected = id == currentId
+            // Deleting any variant that shares the selected pack (ZH ↔ ZH_HANT)
+            // would pull files out from under the current engine, so treat the
+            // sibling as non-deletable too — its trash just stays hidden.
+            val sharesPackWithSelection = id.packId == currentId.packId
+            return LangRow(
+                title = id.displayName(),
+                isSelected = isSelected,
+                canDelete = installed && !sharesPackWithSelection,
+                onRowClick = { onSourceSelected(id) },
+                onTrashClick = { handleSourceDeleteTap(id) },
+            )
+        }
 
         // Suggested: any source whose pack is already installed — bundled
         // (JA) or downloaded (ZH / ZH_HANT share the same pack, EN, ES).
@@ -126,15 +150,9 @@ class LanguageSetupActivity : AppCompatActivity() {
         val suggested = allIds.filter { LanguagePackStore.isInstalled(this, it) }
 
         if (suggested.isNotEmpty()) {
-            val suggestedRows = suggested.map { id ->
-                id.displayName() to { onSourceSelected(id) }
-            }
-            addLanguageSection(root, title = "Suggested", rows = suggestedRows)
+            addLanguageSection(root, title = "Suggested", rows = suggested.map(::toRow))
         }
-        val allRows = allIds.map { id ->
-            id.displayName() to { onSourceSelected(id) }
-        }
-        addLanguageSection(root, title = "All", rows = allRows)
+        addLanguageSection(root, title = "All", rows = allIds.map(::toRow))
 
         contentFrame.addView(view)
     }
@@ -214,6 +232,21 @@ class LanguageSetupActivity : AppCompatActivity() {
             .map { code -> code to targetDisplayName(code) }
             .sortedBy { it.second }
 
+        val currentTarget = Prefs(this).targetLang
+
+        fun toRow(code: String, displayName: String): LangRow {
+            // English has no gloss pack to manage, so trash never applies.
+            val installed = code != "en" && LanguagePackStore.isTargetInstalled(this, code)
+            val isSelected = code == currentTarget
+            return LangRow(
+                title = displayName,
+                isSelected = isSelected,
+                canDelete = installed && !isSelected,
+                onRowClick = { onTargetSelected(code) },
+                onTrashClick = { handleTargetDeleteTap(code, displayName) },
+            )
+        }
+
         // Suggested: device-locale language (if supported) + any target packs
         // already installed. Surfaces the likely target(s) without removing
         // them from the canonical alphabetical list below.
@@ -223,15 +256,9 @@ class LanguageSetupActivity : AppCompatActivity() {
         }
 
         if (suggested.isNotEmpty()) {
-            val suggestedRows = suggested.map { (code, displayName) ->
-                displayName to { onTargetSelected(code) }
-            }
-            addLanguageSection(root, title = "Suggested", rows = suggestedRows)
+            addLanguageSection(root, title = "Suggested", rows = suggested.map { (c, n) -> toRow(c, n) })
         }
-        val allRows = allLangs.map { (code, displayName) ->
-            displayName to { onTargetSelected(code) }
-        }
-        addLanguageSection(root, title = "All", rows = allRows)
+        addLanguageSection(root, title = "All", rows = allLangs.map { (c, n) -> toRow(c, n) })
 
         contentFrame.addView(view)
     }
@@ -366,6 +393,25 @@ class LanguageSetupActivity : AppCompatActivity() {
 
     // ── Helpers ───────────────────────────────────────────────────────────
 
+    /** One row in a language picker section. See [addLanguageSection].
+     *
+     *  The trailing icon is determined by these two booleans:
+     *    - [isSelected] → accent-tinted checkmark (non-interactive status mark)
+     *    - [canDelete]  → trash icon that opens the delete-confirm dialog
+     *    - neither      → no trailing icon (not installed, or sibling of the
+     *                     currently-selected pack)
+     *
+     *  [isSelected] takes precedence when both would be true; in practice they
+     *  can't be because `canDelete` excludes the selection and its siblings.
+     */
+    private data class LangRow(
+        val title: String,
+        val isSelected: Boolean,
+        val canDelete: Boolean,
+        val onRowClick: () -> Unit,
+        val onTrashClick: () -> Unit,
+    )
+
     /**
      * Adds one grouped-card section to [root]: an optional uppercase group
      * header followed by a MaterialCardView containing [rows] separated by
@@ -374,7 +420,7 @@ class LanguageSetupActivity : AppCompatActivity() {
     private fun addLanguageSection(
         root: LinearLayout,
         title: String?,
-        rows: List<Pair<String, () -> Unit>>,
+        rows: List<LangRow>,
     ) {
         if (rows.isEmpty()) return
         val inflater = LayoutInflater.from(this)
@@ -385,27 +431,159 @@ class LanguageSetupActivity : AppCompatActivity() {
             root.addView(header)
         }
 
-        val card = inflater.inflate(R.layout.language_list_section, root, false)
+        val card = inflater.inflate(R.layout.language_list_section, root, false) as MaterialCardView
         val rowContainer = card.findViewById<LinearLayout>(R.id.sectionRows)
-        rows.forEachIndexed { idx, (name, onClick) ->
+        // Read the corner radius off the card itself so the selected-row
+        // highlight's corners track whatever the card is using — no magic
+        // numbers that silently drift if the card's radius changes.
+        val cardRadius = card.radius
+        val lastIdx = rows.lastIndex
+        rows.forEachIndexed { idx, row ->
             if (idx > 0) rowContainer.addView(inflateLanguageListDivider(rowContainer))
-            rowContainer.addView(buildLanguageListRow(rowContainer, name, onClick))
+            val topRadius = if (idx == 0) cardRadius else 0f
+            val bottomRadius = if (idx == lastIdx) cardRadius else 0f
+            rowContainer.addView(buildLanguageListRow(rowContainer, row, topRadius, bottomRadius))
         }
         root.addView(card)
     }
 
-    private fun buildLanguageListRow(container: android.view.ViewGroup, name: String, onClick: () -> Unit): View {
-        val row = LayoutInflater.from(this)
-            .inflate(R.layout.settings_row_value, container, false)
-        row.findViewById<TextView>(R.id.tvRowTitle).text = name
-        row.findViewById<TextView>(R.id.tvRowValue).text = ""
-        row.setOnClickListener { onClick() }
-        return row
+    private fun buildLanguageListRow(
+        container: ViewGroup,
+        row: LangRow,
+        topCornerRadius: Float,
+        bottomCornerRadius: Float,
+    ): View {
+        val view = LayoutInflater.from(this)
+            .inflate(R.layout.language_list_row, container, false)
+        view.findViewById<TextView>(R.id.tvRowTitle).text = row.title
+        view.setOnClickListener { row.onRowClick() }
+
+        // The XML layout gives the trailing slot its default state: hidden,
+        // clickable, focusable, borderless ripple, trash drawable. We only
+        // tweak what differs from that per row-type.
+        val trailing = view.findViewById<FrameLayout>(R.id.btnDelete)
+        val trailingIcon = view.findViewById<ImageView>(R.id.ivDeleteIcon)
+        when {
+            row.isSelected -> {
+                trailing.visibility = View.VISIBLE
+                trailingIcon.setImageResource(R.drawable.ic_check)
+                trailingIcon.imageTintList = ColorStateList.valueOf(themeColor(R.attr.ptAccent))
+                // Status indicator — not tappable, no ripple.
+                trailing.isClickable = false
+                trailing.isFocusable = false
+                trailing.foreground = null
+            }
+            row.canDelete -> {
+                trailing.visibility = View.VISIBLE
+                trailingIcon.imageTintList = ColorStateList.valueOf(themeColor(R.attr.ptTextMuted))
+                trailing.setOnClickListener { row.onTrashClick() }
+            }
+            // else: stays GONE from XML default.
+        }
+
+        if (row.isSelected) {
+            view.background = buildSelectedRowBackground(topCornerRadius, bottomCornerRadius)
+        }
+        return view
     }
 
-    private fun inflateLanguageListDivider(container: android.view.ViewGroup): View =
+    /** Selected-row background: 50% accent blended into the card fill, with a
+     *  1dp stroke made from the accent blended 50% into the divider color.
+     *  Top/bottom corner radii are passed in so the drawable matches the
+     *  parent card's rounded corners on the first/last row. */
+    private fun buildSelectedRowBackground(topRadius: Float, bottomRadius: Float): GradientDrawable {
+        val dp = resources.displayMetrics.density
+        val accent = themeColor(R.attr.ptAccent)
+        val card = themeColor(R.attr.ptCard)
+        // ptDivider is a low-alpha hairline (e.g. #12FFFFFF on dark) — blending
+        // its raw RGB would treat it as pure white/black. Composite it over the
+        // card so we blend against the color that actually renders on screen.
+        val effectiveDivider = compositeOver(themeColor(R.attr.ptDivider), card)
+        val fill = blendColors(accent, card, 0.10f)
+        val stroke = blendColors(accent, effectiveDivider, 0.10f)
+        return GradientDrawable().apply {
+            setColor(fill)
+            setStroke((1 * dp).toInt(), stroke)
+            // Order: top-left, top-right, bottom-right, bottom-left (each x,y).
+            cornerRadii = floatArrayOf(
+                topRadius, topRadius,
+                topRadius, topRadius,
+                bottomRadius, bottomRadius,
+                bottomRadius, bottomRadius,
+            )
+        }
+    }
+
+    /** Linearly blends [a] into [b] at the given ratio of [a] (0..1). Ignores
+     *  alpha — callers should hand in opaque colors (see [compositeOver]). */
+    private fun blendColors(a: Int, b: Int, ratio: Float): Int {
+        val inv = 1f - ratio
+        return Color.rgb(
+            (Color.red(a) * ratio + Color.red(b) * inv).toInt(),
+            (Color.green(a) * ratio + Color.green(b) * inv).toInt(),
+            (Color.blue(a) * ratio + Color.blue(b) * inv).toInt(),
+        )
+    }
+
+    /** Composites translucent [fg] over opaque [bg] — the color that will
+     *  actually render where [fg] is painted on [bg]. */
+    private fun compositeOver(fg: Int, bg: Int): Int {
+        val a = Color.alpha(fg) / 255f
+        val inv = 1f - a
+        return Color.rgb(
+            (Color.red(fg) * a + Color.red(bg) * inv).toInt(),
+            (Color.green(fg) * a + Color.green(bg) * inv).toInt(),
+            (Color.blue(fg) * a + Color.blue(bg) * inv).toInt(),
+        )
+    }
+
+    private fun inflateLanguageListDivider(container: ViewGroup): View =
         LayoutInflater.from(this)
             .inflate(R.layout.settings_row_divider, container, false)
+
+    // ── Delete flow ─────────────────────────────────────────────────────
+    // Only reachable on rows where `canDelete=true`, so no selection /
+    // sibling checks are needed here — those rows don't render a trash.
+
+    private fun handleSourceDeleteTap(id: SourceLangId) {
+        val chineseShared = id.packId == SourceLangId.ZH
+        val message = if (chineseShared) {
+            "This removes both Chinese (Simplified) and Chinese (Traditional) data from this device. You can redownload later."
+        } else {
+            "This removes ${id.displayName()} data from this device. You can redownload later."
+        }
+        showDeleteConfirm(
+            title = "Delete ${id.displayName()}?",
+            message = message,
+        ) {
+            LanguagePackStore.uninstall(applicationContext, id)
+            showCurrentPage()
+        }
+    }
+
+    private fun handleTargetDeleteTap(code: String, displayName: String) {
+        showDeleteConfirm(
+            title = "Delete $displayName?",
+            message = "This removes $displayName dictionary data from this device. You can redownload later.",
+        ) {
+            LanguagePackStore.uninstallTarget(applicationContext, code)
+            showCurrentPage()
+        }
+    }
+
+    private fun showDeleteConfirm(title: String, message: String, onConfirm: () -> Unit) {
+        OverlayAlert.Builder(this)
+            .hideIcon()
+            .setTitle(title)
+            .setMessage(message)
+            .addButton(
+                "Delete",
+                themeColor(R.attr.ptDanger),
+                themeColor(R.attr.ptAccentOn),
+            ) { onConfirm() }
+            .addCancelButton()
+            .showInActivity(this)
+    }
 
     private fun langDisplayName(code: String): String =
         Locale(code).getDisplayLanguage(Locale.getDefault())

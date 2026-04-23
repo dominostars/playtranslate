@@ -20,6 +20,13 @@ object TargetGlossDatabaseProvider {
         return db
     }
 
+    /** Evicts the cached DB for [targetLang] (if any) and closes its handle.
+     *  Call before deleting the underlying pack files so future lookups open
+     *  a fresh DB rather than query a handle to a deleted file. */
+    fun release(targetLang: String) {
+        cache.remove(targetLang)?.close()
+    }
+
     fun close() {
         cache.values.forEach { it.close() }
         cache.clear()

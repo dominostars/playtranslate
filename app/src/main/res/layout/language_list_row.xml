@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Row for the source/target language pickers. Title on the left; trailing
+     trash button toggled visible only for installed, deletable packs. Row
+     ripple lives on foreground so a selected-state GradientDrawable can be
+     applied to background without losing the touch feedback. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="@dimen/pt_row_min_height"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="@dimen/pt_row_h_padding"
+    android:paddingEnd="@dimen/pt_row_h_padding"
+    android:paddingVertical="@dimen/pt_row_v_padding"
+    android:foreground="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true">
+
+    <TextView
+        android:id="@+id/tvRowTitle"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        style="@style/Text.PT.RowTitle" />
+
+    <FrameLayout
+        android:id="@+id/btnDelete"
+        android:layout_width="48dp"
+        android:layout_height="match_parent"
+        android:layout_marginEnd="-12dp"
+        android:foreground="?attr/selectableItemBackgroundBorderless"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone"
+        android:contentDescription="@string/lang_delete_pack">
+
+        <ImageView
+            android:id="@+id/ivDeleteIcon"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_gravity="center"
+            android:src="@drawable/ic_delete"
+            app:tint="?attr/ptTextMuted"
+            android:importantForAccessibility="no" />
+    </FrameLayout>
+
+</LinearLayout>

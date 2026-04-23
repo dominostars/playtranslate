@@ -28,7 +28,8 @@ class OverlayAlert private constructor(
     private val context: Context,
     private val title: String,
     private val message: String?,
-    private val buttons: List<ButtonConfig>
+    private val buttons: List<ButtonConfig>,
+    private val showIcon: Boolean,
 ) {
 
     data class ButtonConfig(
@@ -42,6 +43,7 @@ class OverlayAlert private constructor(
         private var title = ""
         private var message: String? = null
         private val buttons = mutableListOf<ButtonConfig>()
+        private var showIcon = true
 
         constructor(context: Context, wm: WindowManager) : this(context) {
             this.wm = wm
@@ -51,6 +53,11 @@ class OverlayAlert private constructor(
 
         fun setTitle(title: String) = apply { this.title = title }
         fun setMessage(message: String) = apply { this.message = message }
+
+        /** Suppresses the circular app-icon header above the title. Use for
+         *  utility popups where branding is noise (e.g. settings-scoped
+         *  confirms). */
+        fun hideIcon() = apply { this.showIcon = false }
 
         fun addButton(label: String, color: Int, textColor: Int = com.playtranslate.OverlayColors.card(context), onClick: () -> Unit) = apply {
             buttons.add(ButtonConfig(label, color, textColor, onClick))
@@ -67,7 +74,7 @@ class OverlayAlert private constructor(
 
         /** Shows via WindowManager as an accessibility overlay. */
         fun show(): OverlayAlert {
-            val alert = OverlayAlert(context, title, message, buttons)
+            val alert = OverlayAlert(context, title, message, buttons, showIcon)
             alert.showAsAccessibilityOverlay(
                 wm ?: error("OverlayAlert.Builder.show() requires a WindowManager")
             )
@@ -76,7 +83,7 @@ class OverlayAlert private constructor(
 
         /** Shows attached to the given Activity's decorView. */
         fun showInActivity(activity: Activity): OverlayAlert {
-            val alert = OverlayAlert(activity, title, message, buttons)
+            val alert = OverlayAlert(activity, title, message, buttons, showIcon)
             alert.showInActivity(activity)
             return alert
         }
@@ -109,32 +116,36 @@ class OverlayAlert private constructor(
             setOnClickListener { }
         }
 
-        // App icon — larger image centered in a clipped circle (matches FloatingIconMenu)
-        val circleSize = (56 * dp).toInt()
-        val imgSize = (circleSize * 1.5f).toInt()
-        val imgOffset = (circleSize - imgSize) / 2
-        val iconFrame = FrameLayout(context).apply {
-            layoutParams = LinearLayout.LayoutParams(circleSize, circleSize).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-                bottomMargin = (16 * dp).toInt()
-            }
-            clipToOutline = true
-            outlineProvider = object : android.view.ViewOutlineProvider() {
-                override fun getOutline(view: View, outline: android.graphics.Outline) {
-                    outline.setOval(0, 0, view.width, view.height)
+        // App icon — larger image centered in a clipped circle (matches FloatingIconMenu).
+        // Suppressed when the caller opted out via Builder.hideIcon() — utility
+        // popups don't need the brand mark.
+        if (showIcon) {
+            val circleSize = (56 * dp).toInt()
+            val imgSize = (circleSize * 1.5f).toInt()
+            val imgOffset = (circleSize - imgSize) / 2
+            val iconFrame = FrameLayout(context).apply {
+                layoutParams = LinearLayout.LayoutParams(circleSize, circleSize).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    bottomMargin = (16 * dp).toInt()
+                }
+                clipToOutline = true
+                outlineProvider = object : android.view.ViewOutlineProvider() {
+                    override fun getOutline(view: View, outline: android.graphics.Outline) {
+                        outline.setOval(0, 0, view.width, view.height)
+                    }
                 }
             }
-        }
-        val icon = ImageView(context).apply {
-            setImageResource(R.mipmap.ic_launcher_img)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            layoutParams = FrameLayout.LayoutParams(imgSize, imgSize).apply {
-                leftMargin = imgOffset
-                topMargin = imgOffset
+            val icon = ImageView(context).apply {
+                setImageResource(R.mipmap.ic_launcher_img)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                layoutParams = FrameLayout.LayoutParams(imgSize, imgSize).apply {
+                    leftMargin = imgOffset
+                    topMargin = imgOffset
+                }
             }
+            iconFrame.addView(icon)
+            dialog.addView(iconFrame)
         }
-        iconFrame.addView(icon)
-        dialog.addView(iconFrame)
 
         // Title
         dialog.addView(TextView(context).apply {
