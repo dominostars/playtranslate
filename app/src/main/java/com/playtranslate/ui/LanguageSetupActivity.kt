@@ -34,6 +34,7 @@ import com.playtranslate.language.PreloadResult
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.selectedActivityTheme
 import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -58,6 +59,10 @@ class LanguageSetupActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Must run before super.onCreate so the first inflation resolves
+        // ?attr/pt* against the user's selected palette instead of the
+        // manifest's Theme.PlayTranslate default.
+        setTheme(selectedActivityTheme(this))
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_language_setup)
 

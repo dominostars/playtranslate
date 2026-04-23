@@ -21,6 +21,18 @@ fun fullScreenDialogTheme(context: Context): Int = when (Prefs(context).themeInd
     else -> R.style.Theme_PlayTranslate_FullScreenDialog
 }
 
+/** Activity theme resource that matches the user's selected palette. Call
+ *  [android.app.Activity.setTheme] with this BEFORE `super.onCreate()` so
+ *  the first inflation already resolves `?attr/pt*` against the right
+ *  palette — otherwise the activity launches with the manifest's default
+ *  dark theme regardless of what the user picked. */
+fun selectedActivityTheme(context: Context): Int = when (Prefs(context).themeIndex) {
+    1    -> R.style.Theme_PlayTranslate_White
+    2    -> R.style.Theme_PlayTranslate_Rainbow
+    3    -> R.style.Theme_PlayTranslate_Purple
+    else -> R.style.Theme_PlayTranslate
+}
+
 /**
  * Resolves a color for use in overlay contexts (accessibility service, floating windows)
  * where the Activity theme isn't available. Looks up the user's theme from [Prefs]

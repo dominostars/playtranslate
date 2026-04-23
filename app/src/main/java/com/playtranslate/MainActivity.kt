@@ -1,6 +1,7 @@
 package com.playtranslate
 
 import android.Manifest
+import com.playtranslate.selectedActivityTheme
 import com.playtranslate.themeColor
 import android.content.ComponentName
 import android.content.Context
@@ -792,14 +793,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     private fun applyTheme() {
-        val idx = getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
-            .getInt("theme_index", 0)
-        setTheme(when (idx) {
-            1    -> R.style.Theme_PlayTranslate_White
-            2    -> R.style.Theme_PlayTranslate_Rainbow
-            3    -> R.style.Theme_PlayTranslate_Purple
-            else -> R.style.Theme_PlayTranslate
-        })
+        setTheme(selectedActivityTheme(this))
     }
 
     private fun openSettings() {
