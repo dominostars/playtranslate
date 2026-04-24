@@ -1004,12 +1004,6 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 resumeLiveMode()
             }
         }
-        // Called before transitioning to Anki review — prevents popup.onDismiss
-        // from resuming live mode (the Anki view should handle that instead).
-        controller.onTransitioningToAnki = {
-            liveWasPausedForPopup = false
-            overlayHiddenForDrag = false
-        }
         icon.onDragStart = {
             // Hide region preview so the user can see game text while dragging
             if (regionIndicatorView?.visibility == View.VISIBLE) {

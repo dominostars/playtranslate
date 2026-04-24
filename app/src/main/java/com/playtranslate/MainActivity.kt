@@ -325,6 +325,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         super.onNewIntent(intent)
         when (intent?.action) {
             ACTION_DRAG_SENTENCE -> handleDragSentence(intent)
+            ACTION_DRAG_WORD -> handleDragWord(intent)
             ACTION_REGION_CAPTURE -> handleRegionCapture()
             ACTION_START_LIVE -> if (!isLiveMode) {
                 // Post so onResume sets isInForeground before startLive triggers
@@ -989,6 +990,33 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         } else {
             frag.updateTranslation("")
         }
+    }
+
+    /**
+     * Drag-popup side-button → open the word detail sheet when the main
+     * app is the active surface (dual-screen + foregrounded). Reuses the
+     * existing [onWordTapped] path so behavior matches tapping a word
+     * inside the translation result view.
+     */
+    private fun handleDragWord(intent: Intent) {
+        val word = intent.getStringExtra(EXTRA_DRAG_WORD) ?: return
+        val reading = intent.getStringExtra(EXTRA_DRAG_READING)
+        val screenshotPath = intent.getStringExtra(EXTRA_DRAG_SCREENSHOT_PATH)
+        val sentenceOriginal = intent.getStringExtra(EXTRA_DRAG_SENTENCE_ORIGINAL)
+        val sentenceTranslation = intent.getStringExtra(EXTRA_DRAG_SENTENCE_TRANSLATION)
+        val wordResults = if (sentenceOriginal != null
+            && com.playtranslate.ui.LastSentenceCache.original == sentenceOriginal
+        ) {
+            com.playtranslate.ui.LastSentenceCache.wordResults.orEmpty()
+        } else emptyMap()
+        onWordTapped(
+            word = word,
+            reading = reading,
+            screenshotPath = screenshotPath,
+            sentenceOriginal = sentenceOriginal,
+            sentenceTranslation = sentenceTranslation,
+            wordResults = wordResults,
+        )
     }
 
     // ── Region capture from floating icon ─────────────────────────────────
@@ -1775,6 +1803,11 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         const val ACTION_DRAG_SENTENCE = "com.playtranslate.ACTION_DRAG_SENTENCE"
         const val EXTRA_DRAG_LINE_TEXT = "extra_drag_line_text"
         const val EXTRA_DRAG_SCREENSHOT_PATH = "extra_drag_screenshot_path"
+        const val ACTION_DRAG_WORD = "com.playtranslate.ACTION_DRAG_WORD"
+        const val EXTRA_DRAG_WORD = "extra_drag_word"
+        const val EXTRA_DRAG_READING = "extra_drag_reading"
+        const val EXTRA_DRAG_SENTENCE_ORIGINAL = "extra_drag_sentence_original"
+        const val EXTRA_DRAG_SENTENCE_TRANSLATION = "extra_drag_sentence_translation"
         const val ACTION_REGION_CAPTURE = "com.playtranslate.ACTION_REGION_CAPTURE"
         const val EXTRA_TOP_FRAC = "extra_top_frac"
         const val EXTRA_BOTTOM_FRAC = "extra_bottom_frac"

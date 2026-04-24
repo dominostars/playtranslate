@@ -51,11 +51,9 @@ class DragLookupController(
     private var ocrJob: Job? = null
     private var lookupJob: Job? = null
     private var lastWord: String? = null
-    /** Called before transitioning to Anki review so live mode isn't resumed on popup dismiss. */
-    var onTransitioningToAnki: (() -> Unit)? = null
-    /** Current dictionary entry shown in the popup — used for Anki export. */
+    /** Current dictionary entry shown in the popup. */
     private var currentEntry: DictionaryEntry? = null
-    /** Path to the screenshot captured at drag start — used for Anki export. */
+    /** Path to the screenshot captured at drag start. */
     private var screenshotPath: String? = null
     private var currentSentence: String? = null
     private var lastSentSentence: String? = null
@@ -69,13 +67,22 @@ class DragLookupController(
     private val MAX_HOLD_RETRIES = 30
 
     init {
-        val service = PlayTranslateAccessibilityService.instance
-        if (service != null && AnkiManager(service).isAnkiDroidInstalled()) {
-            popup.showAnkiButton = true
-            popup.onAnkiTap = { launchAnkiReview() }
-        } else if (Prefs.isSingleScreen(service ?: popup.ctx) || !MainActivity.isInForeground) {
-            popup.showOpenButton = true
-            popup.onOpenTap = { openSentenceInApp() }
+        // Drag-popup always wears the "open in detail view" hat. Where
+        // it leads depends on whether the main app is the active surface:
+        //   - Dual-screen + MainActivity foregrounded → open the word
+        //     detail sheet inside MainActivity (user is already looking
+        //     at the app; don't launch a new activity).
+        //   - Otherwise (single-screen or app backgrounded) → launch
+        //     TranslationResultActivity with the sentence, which is the
+        //     only way to surface the details when the app isn't visible.
+        popup.showOpenButton = true
+        popup.onOpenTap = {
+            val service = PlayTranslateAccessibilityService.instance ?: popup.ctx
+            if (!Prefs.isSingleScreen(service) && MainActivity.isInForeground) {
+                openWordDetailInApp()
+            } else {
+                openSentenceInApp()
+            }
         }
     }
 
@@ -643,13 +650,6 @@ class DragLookupController(
     private fun showPopup(data: PopupData, fingerX: Int, fingerY: Int) {
         currentEntry = data.entry
 
-        // Suppress the Anki button for fallback popups — launchAnkiReview
-        // guards on currentEntry and would silently no-op, which is worse
-        // UX than just hiding the button. Save and restore so the next
-        // real-entry popup still shows it.
-        val savedShowAnki = popup.showAnkiButton
-        if (data.entry == null) popup.showAnkiButton = false
-
         val screen = queryScreenSize()
         popup.show(
             word = data.word,
@@ -663,8 +663,6 @@ class DragLookupController(
             screenH = screen.y,
             label = if (data.machineTranslated) "⚠ Machine translated" else null
         )
-
-        popup.showAnkiButton = savedShowAnki
     }
 
     /**
@@ -734,6 +732,42 @@ class DragLookupController(
         service.startActivity(intent)
     }
 
+    /**
+     * Foreground the main app and open the word detail sheet over it.
+     * Used when the user is already looking at MainActivity on a
+     * dual-screen setup — launching TranslationResultActivity there would
+     * shove a fresh full-screen activity on top of the app they just
+     * paused to inspect a word.
+     *
+     * Needs at least the popup's currently-displayed word. Reading and
+     * sentence context are best-effort — the detail sheet handles each
+     * being null cleanly.
+     */
+    private fun openWordDetailInApp() {
+        val word = popup.currentWord ?: return
+        val service = PlayTranslateAccessibilityService.instance ?: return
+        val reading = currentEntry?.headwords?.firstOrNull()
+            ?.reading?.takeIf { it != currentEntry?.headwords?.firstOrNull()?.written }
+        popup.dismiss()
+        val intent = Intent(service, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_DRAG_WORD
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(MainActivity.EXTRA_DRAG_WORD, word)
+            if (!reading.isNullOrEmpty()) {
+                putExtra(MainActivity.EXTRA_DRAG_READING, reading)
+            }
+            screenshotPath?.let { putExtra(MainActivity.EXTRA_DRAG_SCREENSHOT_PATH, it) }
+            currentSentence?.let { sent ->
+                putExtra(MainActivity.EXTRA_DRAG_SENTENCE_ORIGINAL, sent)
+                val cache = LastSentenceCache
+                if (cache.original == sent && cache.translation != null) {
+                    putExtra(MainActivity.EXTRA_DRAG_SENTENCE_TRANSLATION, cache.translation)
+                }
+            }
+        }
+        service.startActivity(intent)
+    }
+
     private fun sendLineToMainApp(lineText: String) {
         val service = PlayTranslateAccessibilityService.instance ?: return
         if (Prefs.isSingleScreen(service)) return  // only in dual-screen mode
@@ -745,80 +779,6 @@ class DragLookupController(
             putExtra(MainActivity.EXTRA_DRAG_SCREENSHOT_PATH, screenshotPath)
         }
         service.startActivity(intent)
-    }
-
-    private fun launchAnkiReview() {
-        val entry = currentEntry ?: return
-        val service = PlayTranslateAccessibilityService.instance ?: return
-
-        val form = entry.headwords.firstOrNull()
-        val word = form?.written ?: form?.reading ?: entry.slug
-        val reading = form?.reading?.takeIf { it != word } ?: ""
-        val pos = entry.senses.firstOrNull()?.partsOfSpeech
-            ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
-        val definition = entry.senses
-            .filter { it.targetDefinitions.isNotEmpty() }
-            .mapIndexed { i, sense ->
-                val prefix = if (entry.senses.size > 1) "${i + 1}. " else ""
-                prefix + sense.targetDefinitions.joinToString("; ")
-            }
-            .joinToString("\n")
-
-        val cache = LastSentenceCache
-        val sentenceOrig = currentSentence
-        Log.d(TAG, "launchAnkiReview: sentenceOrig=${sentenceOrig?.take(50)}, cache.original=${cache.original?.take(50)}")
-        val hasCachedTranslation = sentenceOrig != null
-            && cache.original == sentenceOrig && cache.translation != null
-        Log.d(TAG, "launchAnkiReview: hasCachedTranslation=$hasCachedTranslation")
-
-        onTransitioningToAnki?.invoke()
-        popup.dismiss()
-
-        if (!hasCachedTranslation && sentenceOrig != null) {
-            // Need to translate; word lookups are already prefetching in background
-            scope.launch {
-                val translation = try {
-                    CaptureService.instance?.translateOnce(sentenceOrig)?.first
-                } catch (e: Exception) {
-                    Log.e(TAG, "Translation for Anki failed", e)
-                    null
-                }
-                // Wait for prefetch to finish before launching
-                wordLookupJob?.join()
-                cache.translation = translation
-                val intent = buildAnkiIntent(service, word, reading, pos, definition,
-                    entry.freqScore, sentenceOrig, translation)
-                service.startActivity(intent)
-            }
-        } else {
-            val intent = buildAnkiIntent(service, word, reading, pos, definition,
-                entry.freqScore, sentenceOrig,
-                if (hasCachedTranslation) cache.translation else null)
-            service.startActivity(intent)
-        }
-    }
-
-    private fun buildAnkiIntent(
-        context: android.content.Context,
-        word: String, reading: String, pos: String, definition: String,
-        freqScore: Int,
-        sentenceOriginal: String?, sentenceTranslation: String?
-    ): Intent = Intent(context, WordAnkiReviewActivity::class.java).apply {
-        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        putExtra(WordAnkiReviewActivity.EXTRA_WORD, word)
-        putExtra(WordAnkiReviewActivity.EXTRA_READING, reading)
-        putExtra(WordAnkiReviewActivity.EXTRA_POS, pos)
-        putExtra(WordAnkiReviewActivity.EXTRA_DEFINITION, definition)
-        putExtra(WordAnkiReviewActivity.EXTRA_FREQ_SCORE, freqScore)
-        putExtra(WordAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, screenshotPath)
-        putExtra(WordAnkiReviewActivity.EXTRA_SOURCE_LANG,
-            com.playtranslate.Prefs(context).sourceLangId.code)
-        if (sentenceOriginal != null) {
-            putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_ORIGINAL, sentenceOriginal)
-        }
-        if (sentenceTranslation != null) {
-            putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_TRANSLATION, sentenceTranslation)
-        }
     }
 
     private fun saveScreenshot(bitmap: Bitmap): String? {
