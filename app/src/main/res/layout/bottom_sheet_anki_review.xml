@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Sentence-only Anki review sheet. Hosts SentenceAnkiContentFragment
+     which renders the Original / Translation / Words / Screenshot
+     groups. The toolbar shows "Add to <Deck>" since this sheet has no
+     mode switch (no word side). -->
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="?attr/ptSurface">
+    android:background="?attr/ptBg">
 
-    <!-- Toolbar: back button + deck selector -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="56dp"
@@ -30,20 +34,16 @@
             android:padding="0dp" />
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/section_anki_deck"
-            android:textColor="?attr/ptTextMuted"
-            android:textSize="11sp"
-            android:textAllCaps="true"
-            android:letterSpacing="0.08"
-            android:layout_marginEnd="8dp" />
-
-        <Spinner
-            android:id="@+id/spinnerReviewDeck"
+            android:id="@+id/tvAnkiSheetTitle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1" />
+            android:layout_weight="1"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="?attr/ptText"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:text="@string/anki_sheet_title_default" />
 
     </LinearLayout>
 
@@ -52,8 +52,7 @@
         android:layout_height="1dp"
         android:background="?attr/ptDivider" />
 
-    <!-- Scrollable content — hosts SentenceAnkiContentFragment -->
-    <ScrollView
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
@@ -63,23 +62,42 @@
             android:id="@+id/sentenceContentContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="16dp" />
+            android:paddingHorizontal="@dimen/pt_section_h_padding"
+            android:paddingBottom="20dp" />
 
-    </ScrollView>
+    </androidx.core.widget.NestedScrollView>
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="?attr/ptDivider" />
-
-    <!-- Sticky Send button -->
-    <Button
-        android:id="@+id/btnSendToAnki"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="12dp"
-        android:text="@string/btn_add_to_anki"
-        android:backgroundTint="?attr/ptAccent"
-        android:textColor="?attr/ptAccentOn" />
+        android:orientation="vertical"
+        android:background="?attr/ptBg">
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/ptDivider" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSendToAnki"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="12dp"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="10dp"
+            android:minHeight="52dp"
+            android:text="@string/btn_add_to_anki"
+            android:textSize="15sp"
+            android:textAllCaps="false"
+            android:fontFamily="sans-serif-medium"
+            android:backgroundTint="?attr/ptAccent"
+            android:textColor="?attr/ptAccentOn"
+            app:icon="@drawable/ic_add"
+            app:iconTint="?attr/ptAccentOn"
+            app:iconGravity="textStart"
+            app:iconPadding="6dp"
+            app:cornerRadius="@dimen/pt_radius" />
+
+    </LinearLayout>
 
 </LinearLayout>

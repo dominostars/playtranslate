@@ -16,6 +16,7 @@ import android.view.WindowManager
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.Spinner
 import android.widget.TextView
@@ -66,6 +67,220 @@ fun Fragment.loadAnkiDecksInto(
         }
 
         onLoaded(entries)
+    }
+}
+
+/** Inflates a settings-style group header into [parent]. [suffix] sits as
+ *  the right-aligned trailing slot (10sp, ptTextHint) and is hidden when null. */
+fun ankiGroupHeader(parent: LinearLayout, title: String, suffix: String? = null) {
+    val ctx = parent.context
+    val header = android.view.LayoutInflater.from(ctx)
+        .inflate(R.layout.settings_group_header, parent, false)
+    header.findViewById<TextView>(R.id.tvGroupTitle).text =
+        title.uppercase(java.util.Locale.ROOT)
+    val badge = header.findViewById<TextView>(R.id.tvGroupBadge)
+    if (!suffix.isNullOrBlank()) {
+        badge.text = suffix
+        badge.textSize = 10f
+        badge.visibility = View.VISIBLE
+    } else {
+        badge.visibility = View.GONE
+    }
+    parent.addView(header)
+}
+
+/** Adds a flat MaterialCardView with the design-system stroke + radius to
+ *  [parent] and returns its inner vertical LinearLayout. Mirrors the
+ *  pattern Word Detail uses so headers, dividers, and rows compose
+ *  consistently across sheets. */
+fun ankiGroupCard(parent: LinearLayout): LinearLayout {
+    val ctx = parent.context
+    val density = ctx.resources.displayMetrics.density
+    val card = com.google.android.material.card.MaterialCardView(ctx).apply {
+        setCardBackgroundColor(ctx.themeColor(R.attr.ptCard))
+        radius = ctx.resources.getDimension(R.dimen.pt_radius)
+        cardElevation = 0f
+        strokeColor = ctx.themeColor(R.attr.ptDivider)
+        strokeWidth = (1 * density).toInt()
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+    }
+    val inner = LinearLayout(ctx).apply {
+        orientation = LinearLayout.VERTICAL
+        layoutParams = ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+    }
+    card.addView(inner)
+    parent.addView(card)
+    return inner
+}
+
+/** Adds a 1dp inset divider inside a group card. The default 16dp inset
+ *  keeps the line under the row content. */
+fun ankiInsetDivider(parent: LinearLayout, indentDp: Int = 16) {
+    val ctx = parent.context
+    val density = ctx.resources.displayMetrics.density
+    parent.addView(View(ctx).apply {
+        setBackgroundColor(ctx.themeColor(R.attr.ptDivider))
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, (1 * density).toInt()
+        ).also { it.marginStart = (indentDp * density).toInt() }
+    })
+}
+
+/**
+ * Loads the AnkiDroid deck list and presents a single-choice picker dialog.
+ * Persists the selection in [Prefs] and forwards the (id, name) pair to
+ * [onPicked]. Silently no-ops if AnkiDroid isn't installed or permission
+ * hasn't been granted.
+ */
+fun Fragment.showAnkiDeckPicker(onPicked: (deckId: Long, deckName: String) -> Unit) {
+    viewLifecycleOwner.lifecycleScope.launch {
+        val ctx = requireContext()
+        val prefs = Prefs(ctx)
+        val ankiManager = AnkiManager(ctx)
+        if (!ankiManager.isAnkiDroidInstalled() || !ankiManager.hasPermission()) return@launch
+
+        val decks = withContext(Dispatchers.IO) { ankiManager.getDecks() }
+        if (decks.isEmpty()) return@launch
+
+        val entries = decks.entries.toList()
+        val labels = entries.map { it.value }.toTypedArray()
+        val checkedIdx = entries.indexOfFirst { it.key == prefs.ankiDeckId }
+            .takeIf { it >= 0 } ?: 0
+
+        androidx.appcompat.app.AlertDialog.Builder(ctx)
+            .setTitle(R.string.anki_pick_deck_title)
+            .setSingleChoiceItems(labels, checkedIdx) { dialog, which ->
+                val (id, name) = entries[which].toPair()
+                prefs.ankiDeckId = id
+                prefs.ankiDeckName = name
+                onPicked(id, name)
+                dialog.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+}
+
+/**
+ * Builds a two-up pill segmented toggle inside [container] (a FrameLayout).
+ * Mirrors the [SettingsRenderer]'s buildPillToggle pattern: surface-tinted
+ * track, sliding accent indicator, transparent labels on top. Used in the
+ * Anki review toolbar to switch between Sentence and Word card flows.
+ *
+ * @param leftLabel  Label for the left segment (e.g. "Sentence").
+ * @param rightLabel Label for the right segment (e.g. "Word").
+ * @param leftActive `true` if the left segment starts selected.
+ * @param onSelect   Callback fired when the user taps the inactive segment;
+ *                   `true` = left chosen, `false` = right chosen.
+ */
+fun buildAnkiModeToggle(
+    container: FrameLayout,
+    leftLabel: String,
+    rightLabel: String,
+    leftActive: Boolean,
+    onSelect: (leftSelected: Boolean) -> Unit,
+) {
+    val ctx = container.context
+    container.removeAllViews()
+    val density = ctx.resources.displayMetrics.density
+    val trackRadius = 100 * density
+    val pillRadius = 100 * density
+    val trackPad = (3 * density).toInt()
+    val pillH = (30 * density).toInt()
+
+    val surfaceColor = ctx.themeColor(R.attr.ptSurface)
+    val accentColor = ctx.themeColor(R.attr.ptAccent)
+    val accentOnColor = ctx.themeColor(R.attr.ptAccentOn)
+    val mutedColor = ctx.themeColor(R.attr.ptTextMuted)
+
+    val track = FrameLayout(ctx).apply {
+        layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        )
+        background = GradientDrawable().apply {
+            setColor(surfaceColor)
+            cornerRadius = trackRadius
+        }
+        setPadding(trackPad, trackPad, trackPad, trackPad)
+    }
+
+    val pillRow = LinearLayout(ctx).apply {
+        orientation = LinearLayout.HORIZONTAL
+        layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        )
+    }
+
+    val indicator = View(ctx).apply {
+        background = GradientDrawable().apply {
+            setColor(accentColor)
+            cornerRadius = pillRadius
+        }
+        elevation = 2 * density
+    }
+    track.addView(indicator)
+    pillRow.elevation = 3 * density
+    track.addView(pillRow)
+
+    val labels = listOf(leftLabel, rightLabel)
+    val initialIdx = if (leftActive) 0 else 1
+    val pills = mutableListOf<TextView>()
+
+    labels.forEachIndexed { idx, label ->
+        val isActive = idx == initialIdx
+        val pill = TextView(ctx).apply {
+            text = label
+            textSize = 13f
+            typeface = Typeface.create("sans-serif-medium",
+                if (isActive) Typeface.BOLD else Typeface.NORMAL)
+            gravity = Gravity.CENTER
+            setTextColor(if (isActive) accentOnColor else mutedColor)
+            layoutParams = LinearLayout.LayoutParams(0, pillH, 1f)
+            setPadding((14 * density).toInt(), 0, (14 * density).toInt(), 0)
+            isClickable = true
+            isFocusable = true
+        }
+        pills.add(pill)
+        pillRow.addView(pill)
+    }
+
+    container.addView(track)
+
+    var currentIdx = initialIdx
+    pillRow.post {
+        if (pills.isEmpty()) return@post
+        val pillW = pills[0].width
+        indicator.layoutParams = FrameLayout.LayoutParams(pillW, pillH)
+        indicator.translationX = (pillW * currentIdx).toFloat()
+        indicator.requestLayout()
+    }
+
+    pills.forEachIndexed { idx, pill ->
+        pill.setOnClickListener {
+            if (idx == currentIdx) return@setOnClickListener
+            currentIdx = idx
+            val pillW = pills[0].width
+            indicator.animate()
+                .translationX((pillW * idx).toFloat())
+                .setDuration(200)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .start()
+            pills.forEachIndexed { i, p ->
+                val active = i == idx
+                p.setTextColor(if (active) accentOnColor else mutedColor)
+                p.typeface = Typeface.create("sans-serif-medium",
+                    if (active) Typeface.BOLD else Typeface.NORMAL)
+            }
+            onSelect(idx == 0)
+        }
     }
 }
 

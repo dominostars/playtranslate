@@ -1,13 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Word Anki review sheet. Hosts both Word and (optional) Sentence
+     card flows. The toolbar slot to the right of the back button shows
+     either a Sentence/Word segmented control (when sentence data is
+     present) or a plain "Add to <Deck>" title. -->
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="?attr/ptSurface">
+    android:background="?attr/ptBg">
 
-    <!-- Toolbar -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="56dp"
@@ -21,7 +24,7 @@
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="64dp"
             android:layout_height="match_parent"
-            android:text="&#8249;"
+            android:text="‹"
             android:textColor="?attr/ptAccent"
             android:textSize="40sp"
             android:minWidth="0dp"
@@ -31,20 +34,23 @@
             android:padding="0dp" />
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/section_anki_deck"
-            android:textColor="?attr/ptTextMuted"
-            android:textSize="11sp"
-            android:textAllCaps="true"
-            android:letterSpacing="0.08"
-            android:layout_marginEnd="8dp" />
-
-        <Spinner
-            android:id="@+id/spinnerWordAnkiDeck"
+            android:id="@+id/tvWordAnkiSheetTitle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1" />
+            android:layout_weight="1"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="?attr/ptText"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:text="@string/anki_sheet_title_default" />
+
+        <FrameLayout
+            android:id="@+id/wordAnkiToolbarToggle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:visibility="gone" />
 
     </LinearLayout>
 
@@ -53,160 +59,53 @@
         android:layout_height="1dp"
         android:background="?attr/ptDivider" />
 
-    <ScrollView
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:fillViewport="true">
 
         <LinearLayout
+            android:id="@+id/wordAnkiScrollContent"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:paddingHorizontal="@dimen/pt_section_h_padding"
+            android:paddingBottom="20dp" />
 
-            <!-- Segmented control: Sentence | Word (hidden when no sentence data) -->
-            <com.google.android.material.button.MaterialButtonToggleGroup
-                android:id="@+id/toggleCardType"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                android:visibility="gone"
-                app:singleSelection="true"
-                app:selectionRequired="true">
+    </androidx.core.widget.NestedScrollView>
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnModeSentence"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/anki_mode_sentence" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnModeWord"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/anki_mode_word" />
-
-            </com.google.android.material.button.MaterialButtonToggleGroup>
-
-            <!-- ═══ Sentence container — hosts SentenceAnkiContentFragment ═══ -->
-            <FrameLayout
-                android:id="@+id/containerSentence"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:visibility="gone" />
-
-            <!-- ═══ Word container ═══ -->
-            <LinearLayout
-                android:id="@+id/containerWord"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
-
-                <!-- Word (non-editable) -->
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="WORD"
-                    android:textColor="?attr/ptTextMuted"
-                    android:textSize="11sp"
-                    android:textAllCaps="true"
-                    android:letterSpacing="0.08"
-                    android:layout_marginBottom="4dp" />
-
-                <TextView
-                    android:id="@+id/tvWordAnkiHeadword"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textColor="?attr/ptText"
-                    android:textSize="22sp"
-                    android:textStyle="bold"
-                    android:background="?attr/ptCard"
-                    android:padding="10dp"
-                    android:layout_marginBottom="4dp" />
-
-                <LinearLayout
-                    android:id="@+id/layoutWordAnkiReadingRow"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="4dp"
-                    android:visibility="gone">
-
-                    <TextView
-                        android:id="@+id/tvWordAnkiReading"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="?attr/ptTextHint"
-                        android:textSize="13sp" />
-
-                    <TextView
-                        android:id="@+id/tvWordAnkiFreqStars"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="?attr/ptTextHint"
-                        android:textSize="12sp"
-                        android:layout_marginStart="8dp"
-                        android:visibility="gone" />
-
-                </LinearLayout>
-
-                <TextView
-                    android:id="@+id/tvWordAnkiPos"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textColor="?attr/ptTextHint"
-                    android:textSize="11sp"
-                    android:layout_marginBottom="16dp"
-                    android:visibility="gone" />
-
-                <!-- Definition (editable) -->
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="DEFINITION"
-                    android:textColor="?attr/ptTextMuted"
-                    android:textSize="11sp"
-                    android:textAllCaps="true"
-                    android:letterSpacing="0.08"
-                    android:layout_marginBottom="4dp" />
-
-                <EditText
-                    android:id="@+id/etWordAnkiDefinition"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textColor="?attr/ptText"
-                    android:textSize="14sp"
-                    android:minLines="3"
-                    android:gravity="top|start"
-                    android:background="?attr/ptCard"
-                    android:padding="10dp"
-                    android:inputType="textMultiLine"
-                    android:layout_marginBottom="16dp" />
-
-            </LinearLayout>
-
-        </LinearLayout>
-
-    </ScrollView>
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="?attr/ptDivider" />
-
-    <Button
-        android:id="@+id/btnWordAnkiSend"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="12dp"
-        android:text="@string/btn_add_to_anki"
-        android:backgroundTint="?attr/ptAccent"
-        android:textColor="?attr/ptAccentOn" />
+        android:orientation="vertical"
+        android:background="?attr/ptBg">
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/ptDivider" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnWordAnkiSend"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="12dp"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="10dp"
+            android:minHeight="52dp"
+            android:text="@string/btn_add_to_anki"
+            android:textSize="15sp"
+            android:textAllCaps="false"
+            android:fontFamily="sans-serif-medium"
+            android:backgroundTint="?attr/ptAccent"
+            android:textColor="?attr/ptAccentOn"
+            app:icon="@drawable/ic_add"
+            app:iconTint="?attr/ptAccentOn"
+            app:iconGravity="textStart"
+            app:iconPadding="6dp"
+            app:cornerRadius="@dimen/pt_radius" />
+
+    </LinearLayout>
 
 </LinearLayout>
