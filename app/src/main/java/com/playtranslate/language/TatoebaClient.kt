@@ -74,10 +74,25 @@ object TatoebaClient {
      * the API responded but had no results (distinct from failure so
      * the caller can cache and avoid re-fetching known-empty words).
      */
-    suspend fun fetch(word: String, sourceLang: String, targetLang: String): List<SentencePair>? {
+    /**
+     * True when Tatoeba can produce meaningful results for this pack
+     * pair — both codes resolve and normalize to distinct Tatoeba
+     * language codes. Used by the UI to decide whether to render the
+     * "More examples" section at all, so an unsupported pair (e.g.
+     * zh ↔ zh-Hant both collapse to `cmn`) is hidden instead of
+     * rendering a placeholder that would later flip into a misleading
+     * "check your connection" error.
+     */
+    fun supports(sourceLang: String, targetLang: String): Boolean {
         val src = ISO_639_3[sourceLang]
         val tgt = ISO_639_3[targetLang]
-        if (src == null || tgt == null || src == tgt || word.isBlank()) return null
+        return src != null && tgt != null && src != tgt
+    }
+
+    suspend fun fetch(word: String, sourceLang: String, targetLang: String): List<SentencePair>? {
+        if (!supports(sourceLang, targetLang) || word.isBlank()) return null
+        val src = ISO_639_3.getValue(sourceLang)
+        val tgt = ISO_639_3.getValue(targetLang)
 
         val cacheKey = "$word$src$tgt"
         cache.get(cacheKey)?.let { return it }

@@ -80,6 +80,17 @@ class WordDetailBottomSheet : DialogFragment() {
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View = inflater.inflate(R.layout.bottom_sheet_word_detail, container, false)
 
+    override fun onDestroyView() {
+        // Null out view references so the fragment instance doesn't
+        // retain the old view tree between onDestroyView and the next
+        // onCreateView (e.g. rotation). Scopes are tied to
+        // viewLifecycleOwner so in-flight coroutines cancel themselves;
+        // this just closes the reference-leak window.
+        moreExamplesGroup = null
+        moreExamplesBody = null
+        super.onDestroyView()
+    }
+
     override fun onStart() {
         super.onStart()
         dialog?.window?.apply {
@@ -101,7 +112,12 @@ class WordDetailBottomSheet : DialogFragment() {
         val scrollView  = view.findViewById<NestedScrollView>(R.id.detailScrollView)
         val btnAddAnki  = view.findViewById<Button>(R.id.btnWordAddToAnki)
 
-        lifecycleScope.launch {
+        // Scope to the VIEW lifecycle (cancels on onDestroyView) rather
+        // than the fragment lifecycle — config-change rotations rebuild
+        // the view while the fragment instance survives, and async work
+        // that captured references into the old view tree would otherwise
+        // write stale TextViews after they were detached.
+        viewLifecycleOwner.lifecycleScope.launch {
             val appCtx = requireContext().applicationContext
             val prefs = Prefs(appCtx)
             val engine = com.playtranslate.language.SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
@@ -349,9 +365,13 @@ class WordDetailBottomSheet : DialogFragment() {
         }
 
         // ── More examples (Tatoeba, online) ──────────────────────────────
-        // Only makes sense when source and target differ — otherwise the
-        // pair would degenerate to "English sentence / English sentence."
-        if (moreExamplesSourceLang != moreExamplesTargetLang) {
+        // Render only when Tatoeba actually supports the pair. The
+        // `supports` check normalizes codes (e.g. zh / zh-Hant both map
+        // to `cmn`) and rejects equal-normalized pairs, so we don't
+        // surface a placeholder that would later flip into a misleading
+        // "check your connection" error for a pair the API could never
+        // serve.
+        if (TatoebaClient.supports(moreExamplesSourceLang, moreExamplesTargetLang)) {
             addMoreExamplesPlaceholder(content)
         }
 
