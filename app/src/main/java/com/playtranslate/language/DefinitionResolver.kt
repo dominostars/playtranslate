@@ -25,6 +25,14 @@ sealed interface DefinitionResult {
         override val response: DictionaryResponse,
         val targetSenses: List<TargetSense>,
         val source: String,
+        /**
+         * Per-sense ML-translated definitions used as the fallback when a
+         * source sense has no match in [targetSenses] (target pack covers
+         * the entry but not every ordinal). Index-parallel to
+         * `response.entries[0].senses`. Null when no EN→target translator
+         * was available.
+         */
+        val translatedDefinitions: List<String>? = null,
     ) : DefinitionResult
 
     /** ML Kit translated the headword. Definitions may also be translated. */
@@ -68,15 +76,17 @@ class DefinitionResolver(
         }
         Log.d(TAG, "lookup($word, $reading): engine returned ${response.entries.size} entries, targetLang=$targetLang, targetGlossDb=${targetGlossDb != null}, mlKit=${mlKitTranslator != null}")
 
+        val entry = response.entries.firstOrNull()
+
         // Tier 1: target-pack native definition
         if (targetGlossDb != null && targetLang != "en") {
             val sourceLang = engine.profile.id.packId.code
             val headwords = buildSet {
-                response.entries.firstOrNull()?.let { entry ->
-                    entry.headwords.forEach { hw ->
+                entry?.let { e ->
+                    e.headwords.forEach { hw ->
                         hw.written?.let { add(it) }
                     }
-                    add(entry.slug)
+                    add(e.slug)
                 }
                 add(word)
             }
@@ -85,16 +95,22 @@ class DefinitionResolver(
                 val senses = targetGlossDb.lookup(sourceLang, hw, reading)
                 Log.d(TAG, "  Tier 1: lookup($sourceLang, $hw, $reading) -> ${senses?.size ?: "null"}")
                 if (senses != null) {
-                    Log.d(TAG, "  -> Native (${senses.first().source}, ${senses.size} senses)")
-                    return DefinitionResult.Native(response, senses, senses.first().source)
+                    // Compute MT fallbacks only when the target pack
+                    // covers fewer sense ordinals than the source entry
+                    // has — otherwise we'd pay ML Kit cost for senses the
+                    // native target already overrides.
+                    val coveredOrds = senses.map { it.senseOrd }.toSet()
+                    val hasUncovered = entry?.senses?.indices?.any { it !in coveredOrds } == true
+                    val translatedDefs = if (hasUncovered && entry != null)
+                        translateDefinitions(entry) else null
+                    Log.d(TAG, "  -> Native (${senses.first().source}, ${senses.size} senses, fallback=${translatedDefs?.size})")
+                    return DefinitionResult.Native(response, senses, senses.first().source, translatedDefs)
                 }
             }
             Log.d(TAG, "  Tier 1: no match in target DB")
         } else {
             Log.d(TAG, "  Tier 1: skipped (targetGlossDb=${targetGlossDb != null}, targetLang=$targetLang)")
         }
-
-        val entry = response.entries.firstOrNull()
 
         // Tier 2: ML Kit single-word headword translation
         if (mlKitTranslator != null && targetLang != "en") {

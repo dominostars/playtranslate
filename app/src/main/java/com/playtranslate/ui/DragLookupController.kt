@@ -447,8 +447,10 @@ class DragLookupController(
             entry != null && defResult is DefinitionResult.Native -> {
                 val form = entry.headwords.firstOrNull()
                 // Build senses by ordinal alignment: for each source sense,
-                // use the target-language gloss if senseOrd matches, else English.
+                // use the target-language gloss if senseOrd matches, else
+                // the resolver's MT fallback, else raw source English.
                 val targetByOrd = defResult.targetSenses.associateBy { it.senseOrd }
+                val mtDefs = defResult.translatedDefinitions
                 PopupData(
                     word = form?.written ?: form?.reading ?: entry.slug,
                     reading = form?.reading,
@@ -460,9 +462,10 @@ class DragLookupController(
                                 definition = target.glosses.joinToString("; ")
                             )
                         } else {
+                            val mt = mtDefs?.getOrNull(i)?.takeIf { it.isNotBlank() }
                             WordLookupPopup.SenseDisplay(
                                 pos = sense.partsOfSpeech.joinToString(", "),
-                                definition = sense.targetDefinitions.joinToString("; ")
+                                definition = mt ?: sense.targetDefinitions.joinToString("; ")
                             )
                         }
                     },

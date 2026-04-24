@@ -260,26 +260,36 @@ class WordDetailBottomSheet : DialogFragment() {
         }
         addHeaderBlock(content, allReadings, badges)
 
-        // ── Machine-translated notice ─────────────────────────────────────
+        // ── Definitions group ─────────────────────────────────────────────
         val translatedDefs = when (defResult) {
+            is DefinitionResult.Native -> defResult.translatedDefinitions
             is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
             is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
             else -> null
         }
+        val targetByOrd = if (defResult is DefinitionResult.Native)
+            defResult.targetSenses.associateBy { it.senseOrd } else null
+        val numSenses = entry.senses.count { it.targetDefinitions.isNotEmpty() }
+
+        // "Machine translated" banner fires when the user will actually
+        // see MT output — either because no Native target was available
+        // (MachineTranslated headword), or because the Native result
+        // didn't cover every source sense so MT is filling the gaps.
+        val anyMtDisplayed = entry.senses.withIndex().any { (idx, s) ->
+            if (s.targetDefinitions.isEmpty()) return@any false
+            val target = targetByOrd?.get(idx)
+            target == null && translatedDefs?.getOrNull(idx)?.isNotBlank() == true
+        }
         val mtNotice = when {
             defResult is DefinitionResult.MachineTranslated ->
                 "⚠ Machine translated: ${defResult.translatedHeadword}"
-            translatedDefs != null ->
+            anyMtDisplayed ->
                 "⚠ Machine translated"
             else -> null
         }
         if (mtNotice != null) addMachineTranslatedNotice(content, mtNotice)
 
-        // ── Definitions group ─────────────────────────────────────────────
         addGroupHeader(content, "Definitions")
-        val targetByOrd = if (defResult is DefinitionResult.Native)
-            defResult.targetSenses.associateBy { it.senseOrd } else null
-        val numSenses = entry.senses.count { it.targetDefinitions.isNotEmpty() }
         val definitionsCard = addGroupCard(content)
 
         var displayCount = 0

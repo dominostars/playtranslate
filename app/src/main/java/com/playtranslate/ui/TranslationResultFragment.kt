@@ -413,6 +413,7 @@ class TranslationResultFragment : Fragment() {
                         word = form?.written ?: form?.reading ?: entry.slug
                         popupLabel = null
                         val targetByOrd = defResult.targetSenses.associateBy { it.senseOrd }
+                        val mtDefs = defResult.translatedDefinitions
                         senses = entry.senses.mapIndexed { i, sense ->
                             val target = targetByOrd[i]
                             if (target != null) {
@@ -421,9 +422,10 @@ class TranslationResultFragment : Fragment() {
                                     definition = target.glosses.joinToString("; ")
                                 )
                             } else {
+                                val mt = mtDefs?.getOrNull(i)?.takeIf { it.isNotBlank() }
                                 WordLookupPopup.SenseDisplay(
                                     pos = sense.partsOfSpeech.joinToString(", "),
-                                    definition = sense.targetDefinitions.joinToString("; ")
+                                    definition = mt ?: sense.targetDefinitions.joinToString("; ")
                                 )
                             }
                         }
@@ -809,9 +811,11 @@ class TranslationResultFragment : Fragment() {
                                         tvWord.text = displayWord
                                         reading = primary?.reading?.takeIf { it != primary.written } ?: ""
                                         val targetByOrd = defResult.targetSenses.associateBy { it.senseOrd }
+                                        val mtDefs = defResult.translatedDefinitions
                                         meaning = entry.senses.mapIndexed { i, sense ->
                                             val target = targetByOrd[i]
                                             val glosses = target?.glosses?.joinToString("; ")
+                                                ?: mtDefs?.getOrNull(i)?.takeIf { it.isNotBlank() }
                                                 ?: sense.targetDefinitions.joinToString("; ")
                                             if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
                                         }.joinToString("\n")

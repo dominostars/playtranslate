@@ -4,6 +4,7 @@ import android.content.Context
 import com.playtranslate.Prefs
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.language.DefinitionResolver
+import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.WordTranslator
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TranslationManagerProvider
@@ -61,8 +62,20 @@ object LastSentenceCache {
                     val primary = entry.headwords.firstOrNull()
                     val displayWord = primary?.written ?: primary?.reading ?: tok.lookupForm
                     val reading = primary?.reading?.takeIf { it != primary.written } ?: ""
+                    // Same target → MT → source cascade the word panel uses.
+                    // Without it, non-English targets got raw source definitions
+                    // whenever the drag-lookup cache missed and this path fired.
+                    val targetByOrd = (defResult as? DefinitionResult.Native)
+                        ?.targetSenses?.associateBy { it.senseOrd }
+                    val mtDefs = when (defResult) {
+                        is DefinitionResult.Native -> defResult.translatedDefinitions
+                        is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
+                        is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
+                    }
                     val meaning = entry.senses.mapIndexed { i, sense ->
-                        val glosses = sense.targetDefinitions.joinToString("; ")
+                        val glosses = targetByOrd?.get(i)?.glosses?.joinToString("; ")
+                            ?: mtDefs?.getOrNull(i)?.takeIf { it.isNotBlank() }
+                            ?: sense.targetDefinitions.joinToString("; ")
                         if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
                     }.joinToString("\n")
                     if (meaning.isNotEmpty()) {
