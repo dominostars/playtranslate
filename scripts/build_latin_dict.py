@@ -122,8 +122,16 @@ _TR_UPPER_MAP = str.maketrans({"I": "ı", "İ": "i"})
 
 # Max usage examples kept per sense. Kaikki frequently ships 5-10 for
 # well-covered entries; three is enough to illustrate without ballooning
-# pack size (measured: French rises ~400 KB zipped at cap=3).
+# pack size.
 MAX_EXAMPLES_PER_SENSE = 3
+
+# Hard cap on example text length. Wiktionary (especially English) mixes
+# short usage examples with multi-paragraph literary quotations; anything
+# beyond ~200 characters reads as a wall of text in the word-detail popup
+# and bloats pack size without helping learners. We also sort examples
+# ascending by length so senses with mixed-length examples still surface
+# their shortest ones instead of getting skipped.
+MAX_EXAMPLE_CHARS = 200
 
 
 def extract_examples(sense: dict) -> list[tuple[str, str]]:
@@ -133,26 +141,34 @@ def extract_examples(sense: dict) -> list[tuple[str, str]]:
 
     Filters:
       - Empty `text`: dropped (unusable).
+      - Text longer than MAX_EXAMPLE_CHARS: dropped (quotations, not
+        illustrative usage).
       - `english` that's Wiktionary's "please add" placeholder: coerced
         to "" so the monolingual fallback path kicks in at render time
         instead of showing the placeholder verbatim.
       - Duplicate texts within the same sense: the first occurrence wins
         (kaikki occasionally ships repeats).
+
+    Kaikki examples are returned in editorial order (short usage first,
+    then quotations); sorting by length lets a sense that otherwise would
+    be skipped (all quotations happen to be long) still surface its
+    shortest example if any are under the cap.
     """
-    out: list[tuple[str, str]] = []
+    candidates: list[tuple[str, str]] = []
     seen: set[str] = set()
     for ex in sense.get("examples") or []:
         text = (ex.get("text") or "").strip()
         if not text or text in seen:
             continue
+        if len(text) > MAX_EXAMPLE_CHARS:
+            continue
         seen.add(text)
         translation = (ex.get("english") or "").strip()
         if "please add" in translation.lower():
             translation = ""
-        out.append((text, translation))
-        if len(out) >= MAX_EXAMPLES_PER_SENSE:
-            break
-    return out
+        candidates.append((text, translation))
+    candidates.sort(key=lambda p: len(p[0]))
+    return candidates[:MAX_EXAMPLES_PER_SENSE]
 
 
 def lower_for_lang(word: str, lang: str) -> str:
