@@ -106,7 +106,13 @@ class ChineseEngine(
         val entry = response.entries.firstOrNull() ?: return null
         val meanings = entry.senses.flatMap { it.targetDefinitions }
         if (meanings.isEmpty()) return null
-        val pinyin = entry.headwords.firstOrNull()?.reading?.takeIf { it.isNotBlank() }
+        // Headword.reading comes through buildEntry already tone-marked; run
+        // it through PinyinFormatter anyway (idempotent) so the hanzi row is
+        // guaranteed to match the definition's tone-mark format even if the
+        // upstream contract ever changes.
+        val pinyin = entry.headwords.firstOrNull()?.reading
+            ?.takeIf { it.isNotBlank() }
+            ?.let { PinyinFormatter.numberedToToneMarks(it) }
         return HanziDetail(
             literal = literal,
             meanings = meanings,
