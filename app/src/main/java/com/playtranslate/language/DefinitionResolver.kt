@@ -3,6 +3,9 @@ package com.playtranslate.language
 import android.util.Log
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.DictionaryResponse
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 /** Single-string translation abstraction, extracted for testability. */
 fun interface WordTranslator {
@@ -119,6 +122,47 @@ class DefinitionResolver(
         val translatedDefs = entry?.let { translateDefinitions(it) }
         Log.d(TAG, "  -> EnglishFallback (translatedDefs=${translatedDefs?.size})")
         return DefinitionResult.EnglishFallback(response, translatedDefs)
+    }
+
+    /**
+     * Translates each example's source text into the target language,
+     * parallel to `response.entries[0].senses[i].examples`. Deliberately
+     * SEPARATE from [lookup] because word-panel / drag-to-lookup flows
+     * resolve dozens of tokens per sentence and never surface examples —
+     * callers that need translated examples (the word-detail sheet) call
+     * this explicitly after [lookup] resolves.
+     *
+     * Returns null when translation would be a no-op (targetLang == "en"
+     * — the UI falls back to `Example.translation` which is already
+     * English) or when no source→target translator is available.
+     *
+     * Fires all ML Kit calls in parallel via `async` because the
+     * translator is thread-safe for concurrent requests.
+     */
+    suspend fun translateExamples(response: DictionaryResponse): List<List<String>>? {
+        if (targetLang == "en") return null
+        val translator = mlKitTranslator ?: return null
+        val firstEntry = response.entries.firstOrNull() ?: return null
+        val anyExamples = firstEntry.senses.any { it.examples.isNotEmpty() }
+        if (!anyExamples) return null
+
+        return coroutineScope {
+            firstEntry.senses.map { sense ->
+                sense.examples.map { ex ->
+                    async {
+                        if (ex.text.isBlank()) return@async ""
+                        try {
+                            translator.translate(ex.text)
+                        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Log.d(TAG, "Example translation failed: ${e.message}")
+                            ex.translation  // stored English — wrong language but better than nothing
+                        }
+                    }
+                }.awaitAll()
+            }
+        }
     }
 
     /**

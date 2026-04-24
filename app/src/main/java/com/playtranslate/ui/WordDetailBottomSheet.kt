@@ -118,7 +118,18 @@ class WordDetailBottomSheet : DialogFragment() {
                 addNotFoundNotice(content, getString(R.string.word_detail_not_found, word))
                 return@launch
             }
-            buildContent(content, entry, engine, defResult)
+            // Definitions render immediately. For target=en the pack's
+            // stored English example translations are already usable, so
+            // we pass them in as the initial translations. For non-English
+            // targets we leave the translation slots empty (the TextView
+            // stays GONE until we have real translations) and fill them
+            // in asynchronously so ML Kit latency doesn't stall the
+            // first paint.
+            val initialTranslations: List<List<String>>? = if (prefs.targetLang == "en") {
+                entry.senses.map { s -> s.examples.map { it.translation } }
+            } else null
+            val translationRegistry = mutableMapOf<Pair<Int, Int>, TextView>()
+            buildContent(content, entry, engine, defResult, initialTranslations, translationRegistry)
             scrollView?.scrollTo(0, 0)
 
             // Show Add to Anki button once we have a valid entry
@@ -129,6 +140,28 @@ class WordDetailBottomSheet : DialogFragment() {
                     showAnkiNotInstalledDialog(requireContext())
                 } else {
                     openWordAnkiReview(word, entry, screenshotPath, defResult)
+                }
+            }
+
+            // Kick off async example translation AFTER the definitions
+            // are on-screen so the user isn't staring at a blank popup
+            // while ML Kit warms up / translates. Results are dropped in
+            // via the registry of translation TextViews.
+            if (prefs.targetLang != "en" && response != null) {
+                launch {
+                    val translated = runCatching {
+                        withContext(Dispatchers.IO) { resolver.translateExamples(response) }
+                    }.getOrNull() ?: return@launch
+                    if (!isAdded) return@launch
+                    translated.forEachIndexed { sIdx, perSense ->
+                        perSense.forEachIndexed { eIdx, tr ->
+                            if (tr.isBlank()) return@forEachIndexed
+                            translationRegistry[sIdx to eIdx]?.let { tv ->
+                                tv.text = tr
+                                tv.visibility = View.VISIBLE
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -213,7 +246,9 @@ class WordDetailBottomSheet : DialogFragment() {
         content: LinearLayout,
         entry: DictionaryEntry,
         engine: com.playtranslate.language.SourceLanguageEngine,
-        defResult: DefinitionResult?
+        defResult: DefinitionResult?,
+        initialTranslations: List<List<String>>?,
+        translationRegistry: MutableMap<Pair<Int, Int>, TextView>,
     ) {
         // ── Header block: readings + badges ───────────────────────────────
         val allReadings = entry.headwords.mapNotNull { f ->
@@ -264,6 +299,9 @@ class WordDetailBottomSheet : DialogFragment() {
                 glossText = prefix + glosses,
                 miscText = sense.misc.takeIf { it.isNotEmpty() }?.joinToString(" · "),
                 examples = sense.examples,
+                exampleTranslations = initialTranslations?.getOrNull(origIdx),
+                senseIndex = origIdx,
+                translationRegistry = translationRegistry,
             )
             displayCount++
         }
@@ -394,6 +432,9 @@ class WordDetailBottomSheet : DialogFragment() {
         glossText: String,
         miscText: String?,
         examples: List<com.playtranslate.model.Example> = emptyList(),
+        exampleTranslations: List<String>? = null,
+        senseIndex: Int = -1,
+        translationRegistry: MutableMap<Pair<Int, Int>, TextView>? = null,
     ) {
         val ctx = requireContext()
         val row = LinearLayout(ctx).apply {
@@ -448,16 +489,28 @@ class WordDetailBottomSheet : DialogFragment() {
             })
         }
 
-        examples.forEach { ex -> row.addView(buildExampleBlock(ctx, ex)) }
+        examples.forEachIndexed { i, ex ->
+            // Initial translation: non-null from `exampleTranslations` when
+            // the caller supplied stored English (target=en), else "" so
+            // the translation TextView starts hidden and waits for the
+            // async ML Kit update to populate via translationRegistry.
+            val initialTranslation = exampleTranslations?.getOrNull(i) ?: ""
+            val (block, translationTv) = buildExampleBlock(ctx, ex.text, initialTranslation)
+            row.addView(block)
+            if (senseIndex >= 0 && translationRegistry != null) {
+                translationRegistry[senseIndex to i] = translationTv
+            }
+        }
 
         parent.addView(row)
     }
 
-    private fun buildExampleBlock(ctx: android.content.Context, example: com.playtranslate.model.Example): View {
+    private fun buildExampleBlock(ctx: android.content.Context, text: String, initialTranslation: String): Pair<View, TextView> {
         // Quoted-example block: indented column with italic source text on
-        // top and muted translation beneath. Simple vertical layout — a
-        // horizontal-bar variant ran into MATCH_PARENT-inside-WRAP_CONTENT
-        // measurement quirks that hid the bar on some devices.
+        // top and muted translation beneath. The translation TextView is
+        // always added but starts GONE when empty — this lets the async
+        // ML Kit update just flip visibility + set text instead of
+        // rebuilding the view hierarchy when translations arrive.
         val block = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), 0, 0, 0)
@@ -467,23 +520,23 @@ class WordDetailBottomSheet : DialogFragment() {
             ).also { it.topMargin = dp(8) }
         }
         block.addView(TextView(ctx).apply {
-            text = example.text
+            this.text = text
             textSize = 14f
             setTextColor(ctx.themeColor(R.attr.ptText))
             setTypeface(null, Typeface.ITALIC)
         })
-        if (example.translation.isNotBlank()) {
-            block.addView(TextView(ctx).apply {
-                text = example.translation
-                textSize = 13f
-                setTextColor(ctx.themeColor(R.attr.ptTextMuted))
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).also { it.topMargin = dp(2) }
-            })
+        val translationTv = TextView(ctx).apply {
+            this.text = initialTranslation
+            visibility = if (initialTranslation.isNotBlank()) View.VISIBLE else View.GONE
+            textSize = 13f
+            setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).also { it.topMargin = dp(2) }
         }
-        return block
+        block.addView(translationTv)
+        return block to translationTv
     }
 
     private fun addCharacterRow(parent: LinearLayout, detail: CharacterDetail) {
