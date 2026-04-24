@@ -262,7 +262,8 @@ class WordDetailBottomSheet : DialogFragment() {
                 parent = definitionsCard,
                 posLabels = posLabels,
                 glossText = prefix + glosses,
-                miscText = sense.misc.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+                miscText = sense.misc.takeIf { it.isNotEmpty() }?.joinToString(" · "),
+                examples = sense.examples,
             )
             displayCount++
         }
@@ -391,7 +392,8 @@ class WordDetailBottomSheet : DialogFragment() {
         parent: LinearLayout,
         posLabels: List<String>,
         glossText: String,
-        miscText: String?
+        miscText: String?,
+        examples: List<com.playtranslate.model.Example> = emptyList(),
     ) {
         val ctx = requireContext()
         val row = LinearLayout(ctx).apply {
@@ -446,7 +448,42 @@ class WordDetailBottomSheet : DialogFragment() {
             })
         }
 
+        examples.forEach { ex -> row.addView(buildExampleBlock(ctx, ex)) }
+
         parent.addView(row)
+    }
+
+    private fun buildExampleBlock(ctx: android.content.Context, example: com.playtranslate.model.Example): View {
+        // Quoted-example block: indented column with italic source text on
+        // top and muted translation beneath. Simple vertical layout — a
+        // horizontal-bar variant ran into MATCH_PARENT-inside-WRAP_CONTENT
+        // measurement quirks that hid the bar on some devices.
+        val block = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), 0, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).also { it.topMargin = dp(8) }
+        }
+        block.addView(TextView(ctx).apply {
+            text = example.text
+            textSize = 14f
+            setTextColor(ctx.themeColor(R.attr.ptText))
+            setTypeface(null, Typeface.ITALIC)
+        })
+        if (example.translation.isNotBlank()) {
+            block.addView(TextView(ctx).apply {
+                text = example.translation
+                textSize = 13f
+                setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).also { it.topMargin = dp(2) }
+            })
+        }
+        return block
     }
 
     private fun addCharacterRow(parent: LinearLayout, detail: CharacterDetail) {

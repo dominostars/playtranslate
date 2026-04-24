@@ -44,7 +44,18 @@ data class Sense(
     val tags: List<String>,
     val restrictions: List<String>,
     val info: List<String>,
-    val misc: List<String> = emptyList()
+    val misc: List<String> = emptyList(),
+    val examples: List<Example> = emptyList(),
+)
+
+/**
+ * One usage example attached to a [Sense]. [translation] is the English
+ * rendering when the source provides one (Wiktionary frequently ships
+ * bilingual examples); empty string otherwise.
+ */
+data class Example(
+    val text: String,
+    val translation: String,
 )
 
 /**

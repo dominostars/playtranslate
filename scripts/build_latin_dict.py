@@ -120,6 +120,41 @@ from wiktionary_filters import (
 _TR_UPPER_MAP = str.maketrans({"I": "ı", "İ": "i"})
 
 
+# Max usage examples kept per sense. Kaikki frequently ships 5-10 for
+# well-covered entries; three is enough to illustrate without ballooning
+# pack size (measured: French rises ~400 KB zipped at cap=3).
+MAX_EXAMPLES_PER_SENSE = 3
+
+
+def extract_examples(sense: dict) -> list[tuple[str, str]]:
+    """Pull up to MAX_EXAMPLES_PER_SENSE usage examples out of a kaikki
+    sense dict. Each example becomes a (text, translation) tuple where
+    translation is "" when the example is monolingual.
+
+    Filters:
+      - Empty `text`: dropped (unusable).
+      - `english` that's Wiktionary's "please add" placeholder: coerced
+        to "" so the monolingual fallback path kicks in at render time
+        instead of showing the placeholder verbatim.
+      - Duplicate texts within the same sense: the first occurrence wins
+        (kaikki occasionally ships repeats).
+    """
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for ex in sense.get("examples") or []:
+        text = (ex.get("text") or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        translation = (ex.get("english") or "").strip()
+        if "please add" in translation.lower():
+            translation = ""
+        out.append((text, translation))
+        if len(out) >= MAX_EXAMPLES_PER_SENSE:
+            break
+    return out
+
+
 def lower_for_lang(word: str, lang: str) -> str:
     """Locale-aware lowercase for pack headword keys. Turkish needs the
     I/İ remap before default folding; other supported languages fall back
@@ -222,6 +257,13 @@ def create_schema(conn: sqlite3.Connection) -> None:
             glosses    TEXT    NOT NULL,
             misc       TEXT    NOT NULL DEFAULT ''
         );
+        CREATE TABLE example (
+            entry_id       INTEGER NOT NULL,
+            sense_position INTEGER NOT NULL,
+            position       INTEGER NOT NULL,
+            text           TEXT    NOT NULL,
+            translation    TEXT    NOT NULL DEFAULT ''
+        );
         CREATE TABLE kanjidic (
             literal      TEXT    PRIMARY KEY,
             meanings     TEXT    NOT NULL DEFAULT '',
@@ -233,6 +275,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX idx_headword_text ON headword(text);
         CREATE INDEX idx_reading_text  ON reading(text);
+        CREATE INDEX idx_example_entry ON example(entry_id, sense_position);
         """
     )
 
@@ -280,6 +323,7 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
     kept = 0
     dropped_redirect = 0
     stem_rows = 0
+    example_rows = 0
     seen_headwords: set[str] = set()
 
     # Pass 1 populates this map; pass 2 consults it to check whether a
@@ -364,6 +408,12 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
             if freq < MIN_FREQUENCY:
                 continue
 
+        # Collect senses into structured records (glosses + examples) so we
+        # can emit one sense row per kaikki sense and thread each sense's
+        # examples through the new example table. `glosses_list` is kept as
+        # a flat view for the Korean freq-score heuristic below, which only
+        # needs gloss count.
+        senses_data: list[dict] = []
         glosses_list: list[str] = []
         for sense in (obj.get("senses") or [])[:MAX_SENSES_PER_ENTRY]:
             # Skip individual redirect senses even on entries we're keeping
@@ -371,12 +421,17 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
             # ALL senses are redirects).
             if is_redirect_sense(sense):
                 continue
-            glosses = sense.get("glosses") or []
-            for g in glosses:
+            this_glosses: list[str] = []
+            for g in sense.get("glosses") or []:
                 g_clean = (g or "").strip()
                 if g_clean:
+                    this_glosses.append(g_clean)
                     glosses_list.append(g_clean)
-        if not glosses_list:
+            if not this_glosses:
+                continue
+            this_examples = extract_examples(sense)
+            senses_data.append({"glosses": this_glosses, "examples": this_examples})
+        if not senses_data:
             continue
 
         # De-duplicate (word, pos) — kaikki sometimes emits repeats.
@@ -460,16 +515,23 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
                 stem_rows += 1
         # No reading rows for Latin.
 
-        cur.execute(
-            "INSERT INTO sense VALUES (?, ?, ?, ?, ?)",
-            (
-                entry_id,
-                0,
-                pos_raw,
-                "\t".join(glosses_list),
-                "",
-            ),
-        )
+        for sense_pos, sense in enumerate(senses_data):
+            cur.execute(
+                "INSERT INTO sense VALUES (?, ?, ?, ?, ?)",
+                (
+                    entry_id,
+                    sense_pos,
+                    pos_raw,
+                    "\t".join(sense["glosses"]),
+                    "",
+                ),
+            )
+            for ex_pos, (text, translation) in enumerate(sense["examples"]):
+                cur.execute(
+                    "INSERT INTO example VALUES (?, ?, ?, ?, ?)",
+                    (entry_id, sense_pos, ex_pos, text, translation),
+                )
+                example_rows += 1
 
         kept += 1
 
@@ -551,7 +613,8 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         f"Built {db_path} with {kept:,} entries "
         f"({dropped_redirect:,} redirects filtered, "
         f"{stem_rows:,} stem rows indexed, "
-        f"{len(alias_pairs):,} alias rows covering {distinct_targets:,} lemmas)."
+        f"{len(alias_pairs):,} alias rows covering {distinct_targets:,} lemmas, "
+        f"{example_rows:,} example rows)."
     )
 
 
