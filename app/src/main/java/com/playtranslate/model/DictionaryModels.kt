@@ -48,18 +48,41 @@ data class Sense(
 )
 
 /**
- * Per-kanji detail from KANJIDIC2. Japanese-specific — stays named [KanjiDetail]
- * rather than a generic "CharacterDetail" because the fields (on/kun readings,
- * JLPT level, school grade) are intrinsically tied to Japanese kanji pedagogy.
+ * Character-level dictionary result. Sealed because each source language's
+ * character metadata is intrinsic to its script — JA ships KANJIDIC2
+ * (on/kun readings, JLPT, school grade, stroke count), while ZH reuses the
+ * single-character CC-CEDICT entries already in its pack (pinyin, meanings,
+ * frequency).
+ */
+sealed interface CharacterDetail {
+    val literal: Char
+    val meanings: List<String>
+}
+
+/**
+ * Per-kanji detail from KANJIDIC2.
  * [jlpt] uses new N-levels: 5=N5 (easiest) … 2=N2, 0=not in JLPT.
  * [grade] is school grade 1-6, 8=secondary school, 0=ungraded.
  */
 data class KanjiDetail(
-    val literal: Char,
-    val meanings: List<String>,
+    override val literal: Char,
+    override val meanings: List<String>,
     val onReadings: List<String>,
     val kunReadings: List<String>,
     val jlpt: Int,
     val grade: Int,
     val strokeCount: Int
-)
+) : CharacterDetail
+
+/**
+ * Per-hanzi detail reconstituted from the Chinese pack's single-character
+ * CC-CEDICT entries. Pinyin is tone-marked; [freqScore] matches the 0-5 star
+ * scale used by [DictionaryEntry.freqScore].
+ */
+data class HanziDetail(
+    override val literal: Char,
+    override val meanings: List<String>,
+    val pinyin: String?,
+    val isCommon: Boolean,
+    val freqScore: Int
+) : CharacterDetail

@@ -4,7 +4,9 @@ import android.content.Context
 import com.hankcs.hanlp.HanLP
 import com.hankcs.hanlp.corpus.io.IIOAdapter
 import com.hankcs.hanlp.dictionary.py.Pinyin
+import com.playtranslate.model.CharacterDetail
 import com.playtranslate.model.DictionaryResponse
+import com.playtranslate.model.HanziDetail
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -92,6 +94,27 @@ class ChineseEngine(
 
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? =
         dict.lookup(word, profile.preferTraditional)
+
+    /**
+     * CC-CEDICT contains most common hanzi as single-character entries with
+     * pinyin + definitions, so we reuse the word-level dict path rather than
+     * maintaining a separate per-character table. The highest-frequency entry
+     * wins when a character has multiple senses under different readings.
+     */
+    override suspend fun lookupCharacter(literal: Char): CharacterDetail? {
+        val response = dict.lookup(literal.toString(), profile.preferTraditional) ?: return null
+        val entry = response.entries.firstOrNull() ?: return null
+        val meanings = entry.senses.flatMap { it.targetDefinitions }
+        if (meanings.isEmpty()) return null
+        val pinyin = entry.headwords.firstOrNull()?.reading?.takeIf { it.isNotBlank() }
+        return HanziDetail(
+            literal = literal,
+            meanings = meanings,
+            pinyin = pinyin,
+            isCommon = entry.isCommon == true,
+            freqScore = entry.freqScore,
+        )
+    }
 
     override fun annotateForHintText(text: String): List<HintTextAnnotation> {
         val pinyinList = HanLP.convertToPinyinList(text)

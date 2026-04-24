@@ -1,8 +1,8 @@
 package com.playtranslate.language
 
 import android.content.Context
+import com.playtranslate.model.CharacterDetail
 import com.playtranslate.model.DictionaryResponse
-import com.playtranslate.model.KanjiDetail
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -29,14 +29,6 @@ data class HintTextAnnotation(
     val baseEnd: Int,
     val hintText: String,
 )
-
-/**
- * Character-level dictionary lookup result. Phase 1 aliases to [KanjiDetail]
- * because JA is the only engine with character detail support. When Phase 4
- * (Chinese) adds per-character detail, this becomes a sealed interface with
- * `JapaneseKanji` and `ChineseHanzi` variants.
- */
-typealias CharacterDetail = KanjiDetail
 
 /**
  * Outcome of [SourceLanguageEngine.preload]. Callers that care about the
@@ -85,7 +77,8 @@ interface SourceLanguageEngine {
     /** Full dictionary lookup. [reading] is a narrowing hint (JA hiragana). */
     suspend fun lookup(word: String, reading: String? = null): DictionaryResponse?
 
-    /** Character-level lookup. Only JA returns non-null in Phase 1. */
+    /** Character-level lookup. JA returns [com.playtranslate.model.KanjiDetail];
+     *  ZH returns [com.playtranslate.model.HanziDetail]. Other engines return null. */
     suspend fun lookupCharacter(literal: Char): CharacterDetail? = null
 
     /** Hint-text annotations. Only JA returns non-empty (furigana) in Phase 1. */

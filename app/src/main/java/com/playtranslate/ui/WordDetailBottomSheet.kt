@@ -25,7 +25,9 @@ import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.WordTranslator
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TranslationManagerProvider
+import com.playtranslate.model.CharacterDetail
 import com.playtranslate.model.DictionaryEntry
+import com.playtranslate.model.HanziDetail
 import com.playtranslate.model.KanjiDetail
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -265,21 +267,25 @@ class WordDetailBottomSheet : DialogFragment() {
             displayCount++
         }
 
-        // ── Kanji group ───────────────────────────────────────────────────
+        // ── Character breakdown group (Kanji / Hanzi) ────────────────────
         val cjkChars = (entry.headwords.firstOrNull()?.written ?: entry.slug)
             .filter { c -> c.code in 0x4E00..0x9FFF || c.code in 0x3400..0x4DBF }
             .toList().distinct()
 
         if (cjkChars.isNotEmpty()) {
-            val kanjiDetails = withContext(Dispatchers.IO) {
+            val characterDetails = withContext(Dispatchers.IO) {
                 cjkChars.mapNotNull { engine.lookupCharacter(it) }
             }
-            if (isAdded && kanjiDetails.isNotEmpty()) {
-                addGroupHeader(content, "Kanji")
-                val kanjiCard = addGroupCard(content)
-                kanjiDetails.forEachIndexed { index, detail ->
-                    if (index > 0) addInsetDivider(kanjiCard)
-                    addKanjiRow(kanjiCard, detail)
+            if (isAdded && characterDetails.isNotEmpty()) {
+                val header = when (characterDetails.first()) {
+                    is KanjiDetail -> "Kanji"
+                    is HanziDetail -> "Hanzi"
+                }
+                addGroupHeader(content, header)
+                val charCard = addGroupCard(content)
+                characterDetails.forEachIndexed { index, detail ->
+                    if (index > 0) addInsetDivider(charCard)
+                    addCharacterRow(charCard, detail)
                 }
             }
         }
@@ -443,7 +449,7 @@ class WordDetailBottomSheet : DialogFragment() {
         parent.addView(row)
     }
 
-    private fun addKanjiRow(parent: LinearLayout, detail: KanjiDetail) {
+    private fun addCharacterRow(parent: LinearLayout, detail: CharacterDetail) {
         val ctx = requireContext()
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -486,9 +492,12 @@ class WordDetailBottomSheet : DialogFragment() {
             })
         }
 
-        val readings = buildList {
-            if (detail.onReadings.isNotEmpty())  add("on: ${detail.onReadings.joinToString(", ")}")
-            if (detail.kunReadings.isNotEmpty()) add("kun: ${detail.kunReadings.take(3).joinToString(", ")}")
+        val readings = when (detail) {
+            is KanjiDetail -> buildList {
+                if (detail.onReadings.isNotEmpty())  add("on: ${detail.onReadings.joinToString(", ")}")
+                if (detail.kunReadings.isNotEmpty()) add("kun: ${detail.kunReadings.take(3).joinToString(", ")}")
+            }
+            is HanziDetail -> listOfNotNull(detail.pinyin)
         }
         if (readings.isNotEmpty()) {
             col.addView(TextView(ctx).apply {
@@ -502,11 +511,17 @@ class WordDetailBottomSheet : DialogFragment() {
             })
         }
 
-        val meta = buildList {
-            if (detail.jlpt > 0)       add("JLPT N${detail.jlpt}")
-            if (detail.grade in 1..6)  add("Grade ${detail.grade}")
-            else if (detail.grade == 8) add("Secondary")
-            if (detail.strokeCount > 0) add("${detail.strokeCount} strokes")
+        val meta = when (detail) {
+            is KanjiDetail -> buildList {
+                if (detail.jlpt > 0)       add("JLPT N${detail.jlpt}")
+                if (detail.grade in 1..6)  add("Grade ${detail.grade}")
+                else if (detail.grade == 8) add("Secondary")
+                if (detail.strokeCount > 0) add("${detail.strokeCount} strokes")
+            }
+            is HanziDetail -> buildList {
+                if (detail.isCommon) add("Common")
+                if (detail.freqScore > 0) add("★".repeat(detail.freqScore))
+            }
         }
         if (meta.isNotEmpty()) {
             col.addView(TextView(ctx).apply {

@@ -3,6 +3,7 @@ package com.playtranslate.language
 import android.content.Context
 import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.dictionary.DictionaryManager
+import com.playtranslate.model.CharacterDetail
 import com.playtranslate.model.DictionaryResponse
 
 /**
