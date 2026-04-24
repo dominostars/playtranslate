@@ -89,6 +89,8 @@ class WordDetailBottomSheet : DialogFragment() {
     override fun onDestroyView() {
         moreExamplesGroup = null
         moreExamplesBody = null
+        bigHeadwordView = null
+        toolbarHeadwordView = null
         super.onDestroyView()
     }
 
@@ -111,17 +113,22 @@ class WordDetailBottomSheet : DialogFragment() {
         val content     = view.findViewById<LinearLayout>(R.id.detailContent)
         val scrollView  = view.findViewById<NestedScrollView>(R.id.detailScrollView)
         val btnAddAnki  = view.findViewById<Button>(R.id.btnWordAddToAnki)
-        val tvLangPair  = view.findViewById<TextView>(R.id.tvDetailLangPair)
+        val tvToolbar   = view.findViewById<TextView>(R.id.tvDetailToolbarHeadword)
 
-        // Prefill the language-pair eyebrow synchronously so the toolbar
-        // isn't blank during the (brief) async dictionary lookup.
         val prefs = Prefs(requireContext().applicationContext)
         val sourceLangId = prefs.sourceLangId
         val targetLangCode = prefs.targetLang
-        tvLangPair.text = getString(
-            R.string.word_detail_lang_pair,
-            sourceLangId.displayName(),
-            langDisplayName(targetLangCode),
+        toolbarHeadwordView = tvToolbar
+
+        // The big in-content headword fades the toolbar copy in as it
+        // scrolls off the top: alpha 0 at scrollY=0, alpha 1 once the
+        // headword is fully hidden behind the toolbar. Anchored here so
+        // the listener stays bound for the lifetime of the scroll view
+        // (the headword reference is filled in by addHeaderBlock).
+        scrollView.setOnScrollChangeListener(
+            androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
+                updateToolbarHeadwordAlpha(scrollY)
+            }
         )
 
         viewLifecycleOwner.lifecycleScope.launch {
@@ -271,6 +278,15 @@ class WordDetailBottomSheet : DialogFragment() {
     private var moreExamplesGroup: LinearLayout? = null
     private var moreExamplesBody: LinearLayout? = null
 
+    /** Big in-content headword (set by [addHeaderBlock]). Drives the
+     *  toolbar fade — when this view's height is fully scrolled past,
+     *  [toolbarHeadwordView] sits at alpha=1. */
+    private var bigHeadwordView: TextView? = null
+    /** Pinned toolbar copy of the headword. Fades in via
+     *  [updateToolbarHeadwordAlpha] as the user scrolls past the big
+     *  headword. */
+    private var toolbarHeadwordView: TextView? = null
+
     private suspend fun buildContent(
         content: LinearLayout,
         entry: DictionaryEntry,
@@ -407,26 +423,42 @@ class WordDetailBottomSheet : DialogFragment() {
         val written = firstHeadword?.written?.takeIf { it.isNotBlank() } ?: entry.slug
         val reading = firstHeadword?.reading?.takeIf { it.isNotBlank() && it != written }
 
-        block.addView(TextView(ctx).apply {
+        // The spec asks for Noto Serif JP / Noto Sans SC. We don't ship
+        // those fonts, so approximate with Typeface.SERIF for JA (Android's
+        // serif fallback defers to a CJK serif face when available) and
+        // the system sans for everything else. BOLD stands in for the
+        // requested 600 weight.
+        val headwordFace = if (sourceLangId == SourceLangId.JA)
+            Typeface.SERIF
+        else
+            Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        val bigHeadword = TextView(ctx).apply {
             text = written
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 38f)
             setTextColor(ctx.themeColor(R.attr.ptText))
-            // The spec asks for Noto Serif JP / Noto Sans SC. We don't
-            // ship those fonts, so approximate with Typeface.SERIF for JA
-            // (Android's serif fallback defers to a CJK serif face when
-            // available) and the system sans for everything else. BOLD
-            // stands in for the requested 600 weight.
-            val base = if (sourceLangId == SourceLangId.JA)
-                Typeface.SERIF
-            else
-                Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            setTypeface(base, Typeface.BOLD)
+            setTypeface(headwordFace, Typeface.BOLD)
             letterSpacing = -0.02f
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
-        })
+        }
+        block.addView(bigHeadword)
+        bigHeadwordView = bigHeadword
+
+        // Pre-fill the toolbar copy with the same word + typeface so it's
+        // ready when the scroll-driven alpha fade kicks in. Then run the
+        // alpha update once after layout in case the content opens with a
+        // non-zero scrollY (e.g. saved state).
+        toolbarHeadwordView?.let { tv ->
+            tv.text = written
+            tv.setTypeface(headwordFace, Typeface.BOLD)
+            bigHeadword.post {
+                updateToolbarHeadwordAlpha(
+                    requireView().findViewById<NestedScrollView>(R.id.detailScrollView).scrollY
+                )
+            }
+        }
 
         if (reading != null) {
             block.addView(TextView(ctx).apply {
@@ -1138,12 +1170,19 @@ class WordDetailBottomSheet : DialogFragment() {
         })
     }
 
-    /** Display name for a target-language ML Kit code, rendered in the
-     *  user's own locale (so an English user sees "Spanish", a Japanese
-     *  user sees "スペイン語"). */
-    private fun langDisplayName(code: String): String =
-        Locale(code).getDisplayLanguage(Locale.getDefault())
-            .replaceFirstChar { it.uppercase(Locale.getDefault()) }
+    /**
+     * Drive the toolbar headword fade from the scroll position. Linear
+     * ramp from alpha=0 at scrollY=0 to alpha=1 once the big in-content
+     * headword has been fully scrolled past. No-ops until the big
+     * headword is laid out (height > 0).
+     */
+    private fun updateToolbarHeadwordAlpha(scrollY: Int) {
+        val tv = toolbarHeadwordView ?: return
+        val big = bigHeadwordView ?: return
+        val h = big.height
+        if (h <= 0) return
+        tv.alpha = (scrollY.toFloat() / h).coerceIn(0f, 1f)
+    }
 
     /** Returns [color] with its alpha channel replaced by [alpha] (0..1). */
     private fun withAlpha(color: Int, alpha: Float): Int {
