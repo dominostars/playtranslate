@@ -44,6 +44,12 @@ class WordDetailBottomSheet : DialogFragment() {
 
     companion object {
         const val TAG = "WordDetailBottomSheet"
+        /** Scroll distance over which the overlay headword scales from
+         *  full size to [TOOLBAR_SCALE]. By 40dp of scroll it's fully
+         *  shrunk into the toolbar slot. */
+        private const val COLLAPSE_DISTANCE_DP = 40
+        /** Scale at the pinned end of the animation: 18sp / 38sp. */
+        private const val TOOLBAR_SCALE = 0.47f
         private const val ARG_WORD            = "word"
         private const val ARG_READING         = "reading"
         private const val ARG_SCREENSHOT_PATH = "screenshot_path"
@@ -90,7 +96,6 @@ class WordDetailBottomSheet : DialogFragment() {
         moreExamplesGroup = null
         moreExamplesBody = null
         bigHeadwordView = null
-        toolbarHeadwordView = null
         super.onDestroyView()
     }
 
@@ -113,21 +118,51 @@ class WordDetailBottomSheet : DialogFragment() {
         val content     = view.findViewById<LinearLayout>(R.id.detailContent)
         val scrollView  = view.findViewById<NestedScrollView>(R.id.detailScrollView)
         val btnAddAnki  = view.findViewById<Button>(R.id.btnWordAddToAnki)
-        val tvToolbar   = view.findViewById<TextView>(R.id.tvDetailToolbarHeadword)
+        val tvHeadword  = view.findViewById<TextView>(R.id.tvDetailHeadword)
 
         val prefs = Prefs(requireContext().applicationContext)
         val sourceLangId = prefs.sourceLangId
         val targetLangCode = prefs.targetLang
-        toolbarHeadwordView = tvToolbar
 
-        // The big in-content headword fades the toolbar copy in as it
-        // scrolls off the top: alpha 0 at scrollY=0, alpha 1 once the
-        // headword is fully hidden behind the toolbar. Anchored here so
-        // the listener stays bound for the lifetime of the scroll view
-        // (the headword reference is filled in by addHeaderBlock).
+        // Configure the overlay headword up front so the typeface and
+        // pivot are right before the first measure. The text starts as
+        // the queried [word] so something is on screen during the
+        // (brief) async dictionary lookup; addHeaderBlock overwrites it
+        // with the resolved canonical headword once the entry is back.
+        bigHeadwordView = tvHeadword
+        val headwordFace = if (sourceLangId == SourceLangId.JA)
+            Typeface.SERIF
+        else
+            Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        tvHeadword.setTypeface(headwordFace, Typeface.BOLD)
+        tvHeadword.text = word
+        // Top-left pivot keeps the visible text anchored to the same
+        // (x, y) point under translation while the rest of the glyph
+        // shrinks toward it — matches where the toolbar's title slot
+        // would natively sit.
+        tvHeadword.pivotX = 0f
+        tvHeadword.pivotY = 0f
+
+        // Reserve detailContent paddingTop equal to the overlay's
+        // measured height + 8dp gap, so the reading/badges/definitions
+        // sit just below the headword regardless of whether it wraps to
+        // multiple lines. setText triggers requestLayout which fires
+        // this listener, so the padding tracks text changes.
+        tvHeadword.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            val target = (tvHeadword.bottom - dp(56)) + dp(8)
+            if (content.paddingTop != target && target > 0) {
+                content.setPadding(
+                    content.paddingStart,
+                    target,
+                    content.paddingEnd,
+                    content.paddingBottom,
+                )
+            }
+        }
+
         scrollView.setOnScrollChangeListener(
             androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
-                updateToolbarHeadwordAlpha(scrollY)
+                updateHeadwordCollapse(scrollY)
             }
         )
 
@@ -278,14 +313,10 @@ class WordDetailBottomSheet : DialogFragment() {
     private var moreExamplesGroup: LinearLayout? = null
     private var moreExamplesBody: LinearLayout? = null
 
-    /** Big in-content headword (set by [addHeaderBlock]). Drives the
-     *  toolbar fade — when this view's height is fully scrolled past,
-     *  [toolbarHeadwordView] sits at alpha=1. */
+    /** Overlay headword that lives above the toolbar in z-order; the
+     *  scroll listener drives its translationY + scale so it shrinks
+     *  down into the toolbar's empty left slot as the user scrolls. */
     private var bigHeadwordView: TextView? = null
-    /** Pinned toolbar copy of the headword. Fades in via
-     *  [updateToolbarHeadwordAlpha] as the user scrolls past the big
-     *  headword. */
-    private var toolbarHeadwordView: TextView? = null
 
     private suspend fun buildContent(
         content: LinearLayout,
@@ -399,17 +430,32 @@ class WordDetailBottomSheet : DialogFragment() {
     // ── Section builders ──────────────────────────────────────────────────
 
     /**
-     * Header block at the top of the scroll content: big headword
-     * (serif for JA, sans for everything else), reading line (if
-     * distinct from the headword), then a badge row with the Common
-     * pill and star-rating row.
+     * Reading + badge row that lives in the scroll content beneath the
+     * overlay headword. The overlay TextView itself is set up in
+     * [onViewCreated] (typeface, pivot, scroll listener); here we just
+     * rewrite its text to the canonical headword from the resolved
+     * entry and emit the reading + Common pill + stars row.
      */
     private fun addHeaderBlock(
         parent: LinearLayout,
         entry: DictionaryEntry,
-        sourceLangId: SourceLangId,
+        @Suppress("UNUSED_PARAMETER") sourceLangId: SourceLangId,
     ) {
         val ctx = requireContext()
+        val firstHeadword = entry.headwords.firstOrNull()
+        val written = firstHeadword?.written?.takeIf { it.isNotBlank() } ?: entry.slug
+        val reading = firstHeadword?.reading?.takeIf { it.isNotBlank() && it != written }
+
+        // Replace the placeholder (the queried word) with the canonical
+        // headword from the entry. The typeface was already set in
+        // onViewCreated, and the layout listener there will resync the
+        // scroll content's paddingTop after this re-measure.
+        bigHeadwordView?.text = written
+
+        val isCommon = entry.isCommon == true
+        val freqStars = entry.freqScore.coerceIn(0, 5)
+        if (reading == null && !isCommon && freqStars == 0) return
+
         val block = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(4), 0, dp(4), dp(12))
@@ -417,47 +463,6 @@ class WordDetailBottomSheet : DialogFragment() {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
-        }
-
-        val firstHeadword = entry.headwords.firstOrNull()
-        val written = firstHeadword?.written?.takeIf { it.isNotBlank() } ?: entry.slug
-        val reading = firstHeadword?.reading?.takeIf { it.isNotBlank() && it != written }
-
-        // The spec asks for Noto Serif JP / Noto Sans SC. We don't ship
-        // those fonts, so approximate with Typeface.SERIF for JA (Android's
-        // serif fallback defers to a CJK serif face when available) and
-        // the system sans for everything else. BOLD stands in for the
-        // requested 600 weight.
-        val headwordFace = if (sourceLangId == SourceLangId.JA)
-            Typeface.SERIF
-        else
-            Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        val bigHeadword = TextView(ctx).apply {
-            text = written
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 38f)
-            setTextColor(ctx.themeColor(R.attr.ptText))
-            setTypeface(headwordFace, Typeface.BOLD)
-            letterSpacing = -0.02f
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-        block.addView(bigHeadword)
-        bigHeadwordView = bigHeadword
-
-        // Pre-fill the toolbar copy with the same word + typeface so it's
-        // ready when the scroll-driven alpha fade kicks in. Then run the
-        // alpha update once after layout in case the content opens with a
-        // non-zero scrollY (e.g. saved state).
-        toolbarHeadwordView?.let { tv ->
-            tv.text = written
-            tv.setTypeface(headwordFace, Typeface.BOLD)
-            bigHeadword.post {
-                updateToolbarHeadwordAlpha(
-                    requireView().findViewById<NestedScrollView>(R.id.detailScrollView).scrollY
-                )
-            }
         }
 
         if (reading != null) {
@@ -468,12 +473,10 @@ class WordDetailBottomSheet : DialogFragment() {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).also { it.topMargin = dp(8) }
+                )
             })
         }
 
-        val isCommon = entry.isCommon == true
-        val freqStars = entry.freqScore.coerceIn(0, 5)
         if (isCommon || freqStars > 0) {
             val badgeRow = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -481,7 +484,7 @@ class WordDetailBottomSheet : DialogFragment() {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).also { it.topMargin = dp(12) }
+                ).also { it.topMargin = if (reading != null) dp(12) else 0 }
             }
             if (isCommon) {
                 badgeRow.addView(buildCommonPill())
@@ -1171,17 +1174,20 @@ class WordDetailBottomSheet : DialogFragment() {
     }
 
     /**
-     * Drive the toolbar headword fade from the scroll position. Linear
-     * ramp from alpha=0 at scrollY=0 to alpha=1 once the big in-content
-     * headword has been fully scrolled past. No-ops until the big
-     * headword is laid out (height > 0).
+     * Shrink the overlay headword in place as the user scrolls so it
+     * collapses to fit inside the toolbar's left slot. The label is
+     * already anchored to the top of the page (no gap above), so this
+     * only animates scale — no translation. Linear interpolation
+     * across [COLLAPSE_DISTANCE_DP] of scroll.
      */
-    private fun updateToolbarHeadwordAlpha(scrollY: Int) {
-        val tv = toolbarHeadwordView ?: return
-        val big = bigHeadwordView ?: return
-        val h = big.height
-        if (h <= 0) return
-        tv.alpha = (scrollY.toFloat() / h).coerceIn(0f, 1f)
+    private fun updateHeadwordCollapse(scrollY: Int) {
+        val hw = bigHeadwordView ?: return
+        val threshold = dp(COLLAPSE_DISTANCE_DP)
+        if (threshold <= 0) return
+        val progress = (scrollY.toFloat() / threshold).coerceIn(0f, 1f)
+        val scale = 1f + (TOOLBAR_SCALE - 1f) * progress
+        hw.scaleX = scale
+        hw.scaleY = scale
     }
 
     /** Returns [color] with its alpha channel replaced by [alpha] (0..1). */
