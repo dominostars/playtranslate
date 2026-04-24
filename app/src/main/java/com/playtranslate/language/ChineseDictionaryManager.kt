@@ -118,7 +118,7 @@ class ChineseDictionaryManager private constructor(private val context: Context)
         ).use { c -> while (c.moveToNext()) readings.add(c.getString(0)) }
 
         // CC-CEDICT has one reading per entry shared by all headword forms
-        val primaryReading = readings.firstOrNull()?.let { numberedToToneMarks(it) }
+        val primaryReading = readings.firstOrNull()?.let { PinyinFormatter.numberedToToneMarks(it) }
         val headwords = headwordTexts.map { written ->
             Headword(written = written, reading = primaryReading)
         }.let { if (preferTraditional && it.size > 1) it.reversed() else it }
@@ -131,7 +131,7 @@ class ChineseDictionaryManager private constructor(private val context: Context)
             while (c.moveToNext()) {
                 val posList   = c.getString(0).split(',').filter { it.isNotBlank() }
                 val glossList = c.getString(1).split('\t').filter { it.isNotBlank() }
-                    .map { convertPinyinInBrackets(it) }
+                    .map { PinyinFormatter.convertPinyinInBrackets(it) }
                 val miscList  = c.getString(2).split('\t').filter { it.isNotBlank() }
                 senses.add(
                     Sense(
@@ -158,66 +158,8 @@ class ChineseDictionaryManager private constructor(private val context: Context)
         )
     }
 
-    /**
-     * Converts numbered pinyin (e.g. "fu4 wu4") to tone-marked pinyin ("fù wù").
-     * Handles syllables separated by spaces. Tone 5 (neutral) = no mark.
-     * Preserves leading-letter capitalization so proper nouns like "Bei3 jing1"
-     * render as "Běi jīng" rather than lowercased.
-     */
-    private fun numberedToToneMarks(numbered: String): String =
-        numbered.split(' ').joinToString(" ") { syllable ->
-            val tone = syllable.lastOrNull()?.digitToIntOrNull()
-            if (tone == null || tone == 0) return@joinToString syllable
-            val base = if (tone in 1..5) syllable.dropLast(1) else syllable
-            if (tone == 5 || tone !in 1..4) return@joinToString base
-            val wasCapital = base.firstOrNull()?.isUpperCase() == true
-            // Pinyin syllables are ASCII — ROOT avoids Turkish-locale
-            // devices mangling `"Yin"` into `"yın"`.
-            val marked = applyToneMark(base.lowercase(java.util.Locale.ROOT), tone)
-            if (wasCapital) marked.replaceFirstChar { it.uppercase(java.util.Locale.ROOT) } else marked
-        }
-
-    /**
-     * CC-CEDICT definitions embed pinyin cross-references in brackets, e.g.
-     * `"capital of Hebei Province 河北省[He2 bei3 sheng3] in China"`. Convert
-     * only the content inside `[...]` so numeric tones become accents while
-     * surrounding English text (which may legitimately contain digits like
-     * "H2O") is left untouched.
-     */
-    private fun convertPinyinInBrackets(text: String): String =
-        PINYIN_BRACKET_REGEX.replace(text) { m ->
-            "[${numberedToToneMarks(m.groupValues[1])}]"
-        }
-
-    private fun applyToneMark(syllable: String, tone: Int): String {
-        // Standard rule: mark goes on 'a' or 'e' if present, 'o' in 'ou', else last vowel
-        val vowels = "aeiouü"
-        val toneMap = mapOf(
-            'a' to arrayOf("ā", "á", "ǎ", "à"),
-            'e' to arrayOf("ē", "é", "ě", "è"),
-            'i' to arrayOf("ī", "í", "ǐ", "ì"),
-            'o' to arrayOf("ō", "ó", "ǒ", "ò"),
-            'u' to arrayOf("ū", "ú", "ǔ", "ù"),
-            'ü' to arrayOf("ǖ", "ǘ", "ǚ", "ǜ"),
-        )
-        // Map v → ü (CC-CEDICT uses v for ü)
-        val s = syllable.replace('v', 'ü')
-
-        val idx = when {
-            'a' in s -> s.indexOf('a')
-            'e' in s -> s.indexOf('e')
-            "ou" in s -> s.indexOf('o')
-            else -> s.indexOfLast { it in vowels }
-        }
-        if (idx < 0) return s
-        val vowel = s[idx]
-        val marked = toneMap[vowel]?.getOrNull(tone - 1) ?: return s
-        return s.substring(0, idx) + marked + s.substring(idx + 1)
-    }
-
     companion object {
         private const val TAG = "ChineseDictMgr"
-        private val PINYIN_BRACKET_REGEX = Regex("""\[([^\[\]]+)\]""")
 
         @SuppressLint("StaticFieldLeak")
         @Volatile private var instance: ChineseDictionaryManager? = null
