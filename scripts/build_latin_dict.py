@@ -140,23 +140,28 @@ def extract_examples(sense: dict) -> list[tuple[str, str]]:
     translation is "" when the example is monolingual.
 
     Filters:
+      - `type != "example"`: dropped. Kaikki tags editor-written usage
+        examples as `type="example"` and historical citations as
+        `type="quotation"`; untyped entries are a messy long-tail that
+        leans heavily toward old literary extracts on English
+        Wiktionary. For a learner app we only want the usage flavor.
       - Empty `text`: dropped (unusable).
-      - Text longer than MAX_EXAMPLE_CHARS: dropped (quotations, not
-        illustrative usage).
+      - Text longer than MAX_EXAMPLE_CHARS: dropped (defensive — usage
+        examples are typically short, but a few outliers slip through).
       - `english` that's Wiktionary's "please add" placeholder: coerced
         to "" so the monolingual fallback path kicks in at render time
         instead of showing the placeholder verbatim.
       - Duplicate texts within the same sense: the first occurrence wins
         (kaikki occasionally ships repeats).
 
-    Kaikki examples are returned in editorial order (short usage first,
-    then quotations); sorting by length lets a sense that otherwise would
-    be skipped (all quotations happen to be long) still surface its
-    shortest example if any are under the cap.
+    Kaikki examples are returned in editorial order; sorting by length
+    lets a sense surface its shortest example first when several qualify.
     """
     candidates: list[tuple[str, str]] = []
     seen: set[str] = set()
     for ex in sense.get("examples") or []:
+        if ex.get("type") != "example":
+            continue
         text = (ex.get("text") or "").strip()
         if not text or text in seen:
             continue

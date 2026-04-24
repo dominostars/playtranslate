@@ -22,6 +22,7 @@ import com.playtranslate.R
 import com.playtranslate.fullScreenDialogTheme
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
+import com.playtranslate.language.TatoebaClient
 import com.playtranslate.language.WordTranslator
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TranslationManagerProvider
@@ -104,6 +105,8 @@ class WordDetailBottomSheet : DialogFragment() {
             val appCtx = requireContext().applicationContext
             val prefs = Prefs(appCtx)
             val engine = com.playtranslate.language.SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
+            moreExamplesSourceLang = prefs.sourceLangId.code
+            moreExamplesTargetLang = prefs.targetLang
             val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, prefs.targetLang)
             val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
             val enToTarget = TranslationManagerProvider.getEnToTarget(prefs.targetLang)
@@ -162,6 +165,22 @@ class WordDetailBottomSheet : DialogFragment() {
                             }
                         }
                     }
+                }
+            }
+
+            // Tatoeba "More examples" — only if the section placeholder
+            // was rendered (source != target and a candidate word exists).
+            if (moreExamplesGroup != null) {
+                launch {
+                    val lookupWord = entry.headwords.firstOrNull()?.written
+                        ?: entry.slug
+                    val pairs = TatoebaClient.fetch(
+                        word = lookupWord,
+                        sourceLang = moreExamplesSourceLang,
+                        targetLang = moreExamplesTargetLang,
+                    )
+                    if (!isAdded) return@launch
+                    applyMoreExamples(pairs)
                 }
             }
         }
@@ -242,6 +261,19 @@ class WordDetailBottomSheet : DialogFragment() {
         ).show(childFragmentManager, WordAnkiReviewSheet.TAG)
     }
 
+    /** Source language code for the "More examples" section; set in
+     *  [onViewCreated] and compared against [moreExamplesTargetLang] to
+     *  decide whether the section appears at all. */
+    private var moreExamplesSourceLang: String = ""
+    private var moreExamplesTargetLang: String = ""
+
+    /** Set inside [addMoreExamplesPlaceholder] so the async Tatoeba
+     *  fetch can populate or hide the section once the first paint is
+     *  already on screen. Cleared if the check in [buildContent] skips
+     *  the placeholder. */
+    private var moreExamplesGroup: LinearLayout? = null
+    private var moreExamplesBody: LinearLayout? = null
+
     private suspend fun buildContent(
         content: LinearLayout,
         entry: DictionaryEntry,
@@ -314,6 +346,13 @@ class WordDetailBottomSheet : DialogFragment() {
                 translationRegistry = translationRegistry,
             )
             displayCount++
+        }
+
+        // ── More examples (Tatoeba, online) ──────────────────────────────
+        // Only makes sense when source and target differ — otherwise the
+        // pair would degenerate to "English sentence / English sentence."
+        if (moreExamplesSourceLang != moreExamplesTargetLang) {
+            addMoreExamplesPlaceholder(content)
         }
 
         // ── Character breakdown group (Kanji / Hanzi) ────────────────────
@@ -434,6 +473,139 @@ class WordDetailBottomSheet : DialogFragment() {
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(1)
             ).also { it.marginStart = dpRes(R.dimen.pt_row_h_padding) }
         })
+    }
+
+    /**
+     * Adds a "More examples" group (header + card with placeholder +
+     * attribution) to [parent]. The outer group and the inner sentences
+     * container are stashed in [moreExamplesGroup] / [moreExamplesBody]
+     * so [applyMoreExamples] can replace the placeholder asynchronously
+     * without rebuilding the hierarchy.
+     *
+     * Card structure:
+     *   MaterialCardView
+     *     LinearLayout vertical
+     *       moreExamplesBody  — holds the "Loading…" row, then sentences
+     *       inset divider
+     *       attribution row    — "Sentences from Tatoeba (CC BY 2.0 FR)"
+     */
+    private fun addMoreExamplesPlaceholder(parent: LinearLayout) {
+        val ctx = requireContext()
+        val group = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        addGroupHeader(group, getString(R.string.word_detail_more_examples))
+        val card = addGroupCard(group)
+
+        val body = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(
+                dpRes(R.dimen.pt_row_h_padding),
+                dpRes(R.dimen.pt_row_v_padding),
+                dpRes(R.dimen.pt_row_h_padding),
+                dpRes(R.dimen.pt_row_v_padding),
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        body.addView(TextView(ctx).apply {
+            text = getString(R.string.word_detail_more_examples_loading)
+            textSize = 13f
+            setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+            setTypeface(null, Typeface.ITALIC)
+        })
+        card.addView(body)
+
+        addInsetDivider(card)
+
+        card.addView(TextView(ctx).apply {
+            text = getString(R.string.word_detail_tatoeba_attribution)
+            textSize = 11f
+            setTextColor(ctx.themeColor(R.attr.ptTextHint))
+            setPadding(
+                dpRes(R.dimen.pt_row_h_padding),
+                dp(8),
+                dpRes(R.dimen.pt_row_h_padding),
+                dp(8),
+            )
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                runCatching {
+                    val i = android.content.Intent(
+                        android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://tatoeba.org/")
+                    )
+                    startActivity(i)
+                }
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        })
+
+        parent.addView(group)
+        moreExamplesGroup = group
+        moreExamplesBody = body
+    }
+
+    /**
+     * Replace the placeholder rendered by [addMoreExamplesPlaceholder]
+     * with the supplied [pairs]. A non-null empty list hides the whole
+     * group (empty-state noise outweighs its value). A null [pairs]
+     * means network/API failure — surface a muted error instead of
+     * hiding so the user knows the feature exists.
+     */
+    private fun applyMoreExamples(pairs: List<TatoebaClient.SentencePair>?) {
+        val body = moreExamplesBody ?: return
+        val group = moreExamplesGroup ?: return
+        val ctx = requireContext()
+        body.removeAllViews()
+
+        when {
+            pairs == null -> {
+                body.addView(TextView(ctx).apply {
+                    text = getString(R.string.word_detail_more_examples_error)
+                    textSize = 13f
+                    setTextColor(ctx.themeColor(R.attr.ptTextHint))
+                })
+            }
+            pairs.isEmpty() -> {
+                group.visibility = View.GONE
+            }
+            else -> {
+                pairs.forEachIndexed { i, p ->
+                    if (i > 0) {
+                        body.addView(View(ctx).apply {
+                            setBackgroundColor(ctx.themeColor(R.attr.ptDivider))
+                            layoutParams = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT, dp(1)
+                            ).also { it.topMargin = dp(8); it.bottomMargin = dp(6) }
+                        })
+                    }
+                    val (block, tv) = buildExampleBlock(ctx, p.source, p.target)
+                    // buildExampleBlock top-margins the first item by 8dp;
+                    // trim that for the leading card row since we already
+                    // pad the body container.
+                    if (i == 0) {
+                        (block.layoutParams as? LinearLayout.LayoutParams)?.topMargin = 0
+                    }
+                    body.addView(block)
+                    // Translation is present and non-blank; ensure the
+                    // TextView is visible (buildExampleBlock hides it when
+                    // initial translation is empty, which isn't the case
+                    // here but set explicitly for clarity).
+                    tv.visibility = View.VISIBLE
+                }
+            }
+        }
     }
 
     private fun addSenseRow(

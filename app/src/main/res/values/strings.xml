@@ -57,6 +57,10 @@
 
     <!-- Word detail -->
     <string name="word_detail_not_found">No dictionary entry found for \"%1$s\"</string>
+    <string name="word_detail_more_examples">More examples</string>
+    <string name="word_detail_more_examples_loading">Loading…</string>
+    <string name="word_detail_more_examples_error">Couldn\'t load more examples — check your connection.</string>
+    <string name="word_detail_tatoeba_attribution">Sentences from Tatoeba · CC BY 2.0 FR</string>
 
     <!-- Banner / language pair -->
 
