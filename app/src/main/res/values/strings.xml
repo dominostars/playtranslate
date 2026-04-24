@@ -61,7 +61,6 @@
     <string name="word_detail_more_examples_loading">Loading examples…</string>
     <string name="word_detail_more_examples_error">Couldn\'t load examples.</string>
     <string name="word_detail_tatoeba_attribution">Sentences from Tatoeba · CC BY 2.0 FR</string>
-    <string name="word_detail_lang_pair">%1$s → %2$s</string>
     <string name="word_detail_common">Common</string>
     <string name="word_detail_senses_count">%d senses</string>
     <string name="word_detail_chars_count">%d characters</string>

@@ -7,10 +7,10 @@
     android:orientation="vertical"
     android:background="?attr/ptBg">
 
-    <!-- Toolbar: left-aligned uppercase "<Source> → <Target>" eyebrow
-         replaces the old headword label; the headword itself now lives
-         in the scroll content so it scrolls away and maximises list
-         space. -->
+    <!-- Toolbar: holds the close button and a "collapsed" copy of the
+         headword that fades in as the big in-content headword scrolls
+         off the top. The TextView starts at alpha=0 and is updated by
+         a NestedScrollView listener in WordDetailBottomSheet. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="56dp"
@@ -21,15 +21,17 @@
         android:paddingEnd="4dp">
 
         <TextView
-            android:id="@+id/tvDetailLangPair"
+            android:id="@+id/tvDetailToolbarHeadword"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:textSize="11sp"
-            android:textAllCaps="true"
-            android:letterSpacing="0.14"
+            android:textSize="18sp"
+            android:textColor="?attr/ptText"
             android:fontFamily="sans-serif-medium"
-            android:textColor="?attr/ptTextMuted" />
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:alpha="0" />
 
         <ImageButton
             android:id="@+id/btnBackDetail"
