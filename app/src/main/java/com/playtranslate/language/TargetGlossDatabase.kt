@@ -69,7 +69,6 @@ class TargetGlossDatabase private constructor(private val db: SQLiteDatabase) : 
             val db = SQLiteDatabase.openDatabase(
                 dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY
             )
-            db.rawQuery("PRAGMA journal_mode=WAL", null).use { it.moveToFirst() }
             return TargetGlossDatabase(db)
         }
     }
