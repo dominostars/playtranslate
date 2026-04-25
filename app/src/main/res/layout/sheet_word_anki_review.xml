@@ -43,7 +43,7 @@
             android:textColor="?attr/ptText"
             android:maxLines="1"
             android:ellipsize="end"
-            android:text="@string/anki_sheet_title_default" />
+            android:text="@string/anki_sheet_title_new_card" />
 
         <FrameLayout
             android:id="@+id/wordAnkiToolbarToggle"
@@ -86,25 +86,63 @@
             android:layout_height="1dp"
             android:background="?attr/ptDivider" />
 
-        <com.google.android.material.button.MaterialButton
+        <FrameLayout
             android:id="@+id/btnWordAnkiSend"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="12dp"
-            android:layout_marginTop="10dp"
-            android:layout_marginBottom="10dp"
-            android:minHeight="52dp"
-            android:text="@string/btn_add_to_anki"
-            android:textSize="15sp"
-            android:textAllCaps="false"
-            android:fontFamily="sans-serif-medium"
-            android:backgroundTint="?attr/ptAccent"
-            android:textColor="?attr/ptAccentOn"
-            app:icon="@drawable/ic_add"
-            app:iconTint="?attr/ptAccentOn"
-            app:iconGravity="textStart"
-            app:iconPadding="6dp"
-            app:cornerRadius="@dimen/pt_radius" />
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp"
+            android:minHeight="60dp"
+            android:background="@drawable/bg_anki_save_button"
+            android:clickable="true"
+            android:focusable="true">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:duplicateParentState="true">
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:src="@drawable/ic_save"
+                    app:tint="?attr/ptAccentOn"
+                    android:layout_marginEnd="12dp"
+                    android:duplicateParentState="true"
+                    android:importantForAccessibility="no" />
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:duplicateParentState="true">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/anki_save_button_label"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:fontFamily="sans-serif-medium"
+                        android:textColor="?attr/ptAccentOn"
+                        android:duplicateParentState="true" />
+
+                    <TextView
+                        android:id="@+id/tvWordAnkiSendSubtitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="13sp"
+                        android:textColor="?attr/ptAccentOn"
+                        android:duplicateParentState="true" />
+
+                </LinearLayout>
+            </LinearLayout>
+
+        </FrameLayout>
 
     </LinearLayout>
 

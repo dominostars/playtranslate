@@ -150,9 +150,12 @@
     <!-- Anki review redesign -->
     <string name="anki_sheet_title_default">Add to Anki</string>
     <string name="anki_sheet_add_to_deck">Add to %1$s</string>
+    <string name="anki_sheet_title_new_card">New Anki card</string>
     <string name="anki_deck_row_label">Deck</string>
     <string name="anki_deck_row_empty">Pick a deck</string>
-    <string name="anki_group_deck">Deck</string>
+    <string name="anki_deck_label_format">Deck: %1$s</string>
+    <string name="anki_save_button_label">Save Anki Card</string>
+    <string name="anki_group_deck">Anki Deck</string>
     <string name="anki_group_original">Original</string>
     <string name="anki_group_translation">Translation</string>
     <string name="anki_group_words">Words on card</string>

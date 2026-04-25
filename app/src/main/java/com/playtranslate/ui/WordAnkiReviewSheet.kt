@@ -48,6 +48,7 @@ class WordAnkiReviewSheet : DialogFragment() {
     private lateinit var titleView: TextView
     private lateinit var toggleHost: FrameLayout
     private lateinit var scrollContent: LinearLayout
+    private var deckSubtitleView: TextView? = null
     private lateinit var sentenceContainer: FrameLayout
     private lateinit var wordContainer: LinearLayout
     private var definitionsCard: LinearLayout? = null
@@ -113,6 +114,7 @@ class WordAnkiReviewSheet : DialogFragment() {
         moreExamplesGroup = null
         moreExamplesBody = null
         screenshotHeaderView = null
+        deckSubtitleView = null
         super.onDestroyView()
     }
 
@@ -150,7 +152,9 @@ class WordAnkiReviewSheet : DialogFragment() {
             ) { leftSelected -> setMode(sentenceMode = leftSelected) }
         }
 
-        addAnkiDeckRow(scrollContent) { refreshTitle() }
+        deckSubtitleView = view.findViewById(R.id.tvWordAnkiSendSubtitle)
+        addAnkiDeckRow(scrollContent) { refreshDeckSubtitle() }
+        refreshDeckSubtitle()
 
         sentenceContainer = FrameLayout(requireContext()).apply {
             id = View.generateViewId()
@@ -186,7 +190,6 @@ class WordAnkiReviewSheet : DialogFragment() {
         }
 
         isSentenceMode = hasSentenceData
-        refreshTitle()
 
         // Kick off the same dictionary lookup the Word Detail sheet does.
         // Once it lands we replace the loading placeholder in the
@@ -945,13 +948,14 @@ class WordAnkiReviewSheet : DialogFragment() {
 
     // ── Deck group ───────────────────────────────────────────────────────
 
-    private fun refreshTitle() {
-        if (toggleHost.visibility == View.VISIBLE) return
-        val deckName = Prefs(requireContext()).ankiDeckName
-        titleView.text = if (deckName.isBlank())
-            getString(R.string.anki_sheet_title_default)
-        else
-            getString(R.string.anki_sheet_add_to_deck, deckName)
+    /** Updates the save button's "Deck: <name>" subtitle whenever the
+     *  user picks a different deck. Plain `?attr/ptAccentOn` text — the
+     *  button's accent background would swallow an accent-tinted span. */
+    private fun refreshDeckSubtitle() {
+        val sub = deckSubtitleView ?: return
+        val ctx = requireContext()
+        val deckName = Prefs(ctx).ankiDeckName.ifBlank { ctx.getString(R.string.anki_deck_row_empty) }
+        sub.text = ctx.getString(R.string.anki_deck_label_format, deckName)
     }
 
     private fun getContentFragment(): SentenceAnkiContentFragment? =
