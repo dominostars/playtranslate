@@ -511,57 +511,90 @@ class SettingsRenderer(
 
     fun buildDisplayRows(prefs: Prefs) {
         llDisplayOptions.removeAllViews()
-        displayList.forEachIndexed { idx, display ->
-            llDisplayOptions.addView(buildDisplayRow(idx, display, prefs))
-        }
         if (displayList.isEmpty()) {
             llDisplayOptions.addView(TextView(ctx).apply {
                 text = ctx.getString(R.string.settings_no_displays_found)
                 setTextColor(ctx.themeColor(R.attr.ptTextHint))
                 textSize = 13f
-                setPadding(0, 8, 0, 8)
+                val pad = (16 * ctx.resources.displayMetrics.density).toInt()
+                setPadding(pad, pad, pad, pad)
             })
+            return
+        }
+        displayList.forEachIndexed { idx, display ->
+            if (idx > 0) {
+                llDisplayOptions.addView(
+                    LayoutInflater.from(ctx)
+                        .inflate(R.layout.settings_row_divider, llDisplayOptions, false)
+                )
+            }
+            val isFirst = idx == 0
+            val isLast = idx == displayList.size - 1
+            llDisplayOptions.addView(buildDisplayRow(idx, display, prefs, isFirst, isLast))
         }
     }
 
     private fun buildDisplayRow(
         idx: Int,
         display: android.view.Display,
-        prefs: Prefs
+        prefs: Prefs,
+        isFirst: Boolean,
+        isLast: Boolean,
     ): View {
         val dp = ctx.resources.displayMetrics.density
         val isSelected = idx == selectedDisplayIdx
-        val thumbW = (80 * dp).toInt()
-        val thumbH = (50 * dp).toInt()
+        // 10dp buffer on top, bottom, and left of the thumbnail; right side
+        // gets the standard row padding so the checkmark sits in the usual
+        // place. Row height = thumbH + 10×2 = 66dp, matching the toggle and
+        // support-link rows.
+        val rowHPad = ctx.resources.getDimensionPixelSize(R.dimen.pt_row_h_padding)
+        val bufferPx = (10 * dp).toInt()
+        val halfV = bufferPx
+        val halfH = bufferPx
+        val thumbH = (46 * dp).toInt()
+        val thumbW = (thumbH * 1.6f).toInt()
 
-        val outlineColor = ctx.themeColor(
-            if (isSelected) R.attr.ptAccent else R.attr.ptTextHint
-        )
+        val accent = ctx.themeColor(R.attr.ptAccent)
+        val cardColor = ctx.themeColor(R.attr.ptCard)
+        // Selected row fill: ptCard composited with 10% of the active accent.
+        val accent10 = androidx.core.graphics.ColorUtils.setAlphaComponent(accent, 26)
+        val selectedBg = compositeOver(accent10, cardColor)
+        val cardRadius = ctx.resources.getDimension(R.dimen.pt_radius)
+
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding((12 * dp).toInt(), (8 * dp).toInt(), (12 * dp).toInt(), (8 * dp).toInt())
-            val accent = ctx.themeColor(R.attr.ptAccent)
-            val rowBg = if (isSelected) Color.argb(
-                15,
-                Color.red(accent),
-                Color.green(accent),
-                Color.blue(accent)
-            ) else ctx.themeColor(R.attr.ptSurface)
-            background = GradientDrawable().apply {
-                setColor(rowBg)
-                setStroke((1 * dp).toInt(), outlineColor)
-                cornerRadius = 8 * dp
-            }
+            setPadding(halfH, halfV, rowHPad, halfV)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).also { it.bottomMargin = (4 * dp).toInt() }
+            )
+            isClickable = true
+            isFocusable = true
+            if (isSelected) {
+                // Highlight extends edge-to-edge so it visually IS the cell.
+                // Round only the corners that touch the card's outer rounding
+                // (first row → top corners, last row → bottom corners, middle
+                // rows → no rounding) so the fill follows the card cleanly.
+                val tl = if (isFirst) cardRadius else 0f
+                val tr = if (isFirst) cardRadius else 0f
+                val br = if (isLast)  cardRadius else 0f
+                val bl = if (isLast)  cardRadius else 0f
+                background = GradientDrawable().apply {
+                    setColor(selectedBg)
+                    cornerRadii = floatArrayOf(tl, tl, tr, tr, br, br, bl, bl)
+                }
+            }
+            // Ripple in the foreground overlays the selected fill.
+            foreground = android.util.TypedValue().let { tv ->
+                ctx.theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
+                ContextCompat.getDrawable(ctx, tv.resourceId)
+            }
         }
 
         val iv = ImageView(ctx).apply {
             layoutParams = LinearLayout.LayoutParams(thumbW, thumbH).also {
-                it.marginEnd = (10 * dp).toInt()
+                it.marginEnd = (12 * dp).toInt()
             }
             scaleType = ImageView.ScaleType.FIT_CENTER
             setBackgroundColor(ctx.themeColor(R.attr.ptDivider))
@@ -571,26 +604,37 @@ class SettingsRenderer(
 
         val tv = TextView(ctx).apply {
             text = "Display ${display.displayId}  —  ${display.name}"
-            textSize = 15f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            setTextColor(
-                ctx.themeColor(if (isSelected) R.attr.ptAccent else R.attr.ptTextHint)
+            setTextColor(ctx.themeColor(if (isSelected) R.attr.ptText else R.attr.ptTextMuted))
+            setTextAppearance(R.style.Text_PT_RowTitle)
+            layoutParams = LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
             )
-            layoutParams =
-                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
         row.addView(iv)
         row.addView(tv)
+        if (isSelected) {
+            val checkSize = (20 * dp).toInt()
+            row.addView(ImageView(ctx).apply {
+                layoutParams = LinearLayout.LayoutParams(checkSize, checkSize).also {
+                    it.marginStart = (8 * dp).toInt()
+                }
+                setImageResource(R.drawable.ic_check)
+                imageTintList = android.content.res.ColorStateList.valueOf(accent)
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            })
+        }
         row.setOnClickListener {
-            selectedDisplayIdx = idx
-            val newDisplayId =
-                displayList.getOrNull(idx)?.displayId ?: prefs.captureDisplayId
-            if (newDisplayId != prefs.captureDisplayId) {
-                prefs.captureDisplayId = newDisplayId
-                callbacks.onDisplayChanged()
+            if (idx != selectedDisplayIdx) {
+                selectedDisplayIdx = idx
+                val newDisplayId =
+                    displayList.getOrNull(idx)?.displayId ?: prefs.captureDisplayId
+                if (newDisplayId != prefs.captureDisplayId) {
+                    prefs.captureDisplayId = newDisplayId
+                    callbacks.onDisplayChanged()
+                }
+                buildDisplayRows(prefs)
             }
-            buildDisplayRows(prefs)
         }
         return row
     }
