@@ -81,8 +81,13 @@ class SentenceAnkiContentFragment : Fragment() {
         root = view as LinearLayout
         val args = arguments ?: return
 
-        val original    = args.getString(ARG_ORIGINAL) ?: ""
-        val translation = args.getString(ARG_TRANSLATION) ?: ""
+        // The hosting Anki dialog locks orientation, so onViewCreated
+        // only runs once per fragment open. Defensive clears stay
+        // because the model collections are class-level fields — if
+        // anything ever does cause a re-attach we don't want to
+        // accumulate duplicates.
+        words.clear()
+        selectedWords.clear()
 
         val wordArr    = args.getStringArray(ARG_WORDS) ?: emptyArray()
         val readingArr = args.getStringArray(ARG_READINGS) ?: emptyArray()
@@ -99,9 +104,7 @@ class SentenceAnkiContentFragment : Fragment() {
             ))
         }
 
-        // Auto-target the looked-up word (passed from WordAnkiReviewSheet)
-        // and float target words to the top — same behavior the previous
-        // design carried, just minus the "Target" pill label.
+        // Auto-target the looked-up word and float targets to the top.
         val targetWord = args.getString(ARG_TARGET_WORD)
         if (targetWord != null && words.any { it.word == targetWord }) {
             selectedWords.add(targetWord)
@@ -112,6 +115,8 @@ class SentenceAnkiContentFragment : Fragment() {
             words.addAll(sorted)
         }
 
+        val original = args.getString(ARG_ORIGINAL) ?: ""
+        val translation = args.getString(ARG_TRANSLATION) ?: ""
         val screenshotPath = args.getString(ARG_SCREENSHOT_PATH)
         buildContent(original, translation, screenshotPath)
     }

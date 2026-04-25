@@ -166,4 +166,5 @@
     <string name="anki_word_remove_content_description">Remove from card</string>
     <string name="anki_screenshot_remove_content_description">Remove screenshot</string>
     <string name="anki_pick_deck_title">Pick a deck</string>
+    <string name="cd_back">Back</string>
 </resources>

@@ -47,8 +47,15 @@ class WordAnkiReviewSheet : DialogFragment() {
 
     private lateinit var titleView: TextView
     private lateinit var toggleHost: FrameLayout
-    private lateinit var scrollContent: LinearLayout
     private var deckSubtitleView: TextView? = null
+
+    /** Mutable screenshot path. Initialised from [ARG_SCREENSHOT_PATH]
+     *  at view creation, set to null when the user removes the photo
+     *  via the screenshot card's ×. The Send handler reads from this
+     *  field at click time so a deleted screenshot never gets uploaded
+     *  to Anki — the previous code captured the original path in a
+     *  local val and ignored later removals. */
+    private var currentScreenshotPath: String? = null
     private lateinit var sentenceContainer: FrameLayout
     private lateinit var wordContainer: LinearLayout
     private var definitionsCard: LinearLayout? = null
@@ -115,6 +122,7 @@ class WordAnkiReviewSheet : DialogFragment() {
         moreExamplesBody = null
         screenshotHeaderView = null
         deckSubtitleView = null
+        currentScreenshotPath = null
         super.onDestroyView()
     }
 
@@ -129,7 +137,11 @@ class WordAnkiReviewSheet : DialogFragment() {
         val fallbackDefinition = args.getString(ARG_DEFINITION) ?: ""
         val freqScore      = args.getInt(ARG_FREQ_SCORE, 0)
         val isCommon       = args.getBoolean(ARG_IS_COMMON, false)
-        val screenshotPath = args.getString(ARG_SCREENSHOT_PATH)
+        // Re-seed from args every time the view is created. If the user
+        // removed the screenshot in a previous instance we also cleared
+        // ARG_SCREENSHOT_PATH, so this returns null on subsequent
+        // restorations and the photo stays gone.
+        currentScreenshotPath = args.getString(ARG_SCREENSHOT_PATH)
 
         val sentenceOriginal    = args.getString(ARG_SENTENCE_ORIGINAL)
         val sentenceTranslation = args.getString(ARG_SENTENCE_TRANSLATION) ?: ""
@@ -137,9 +149,17 @@ class WordAnkiReviewSheet : DialogFragment() {
 
         val sourceLangId = SourceLangId.fromCode(args.getString(ARG_SOURCE_LANG)) ?: SourceLangId.JA
 
+        // Curation sets always start empty: the dialog is locked to its
+        // launch orientation (see onStart), so onViewCreated only fires
+        // on the dialog's first open per fragment instance — there's no
+        // saved-state restore path to honour.
+        removedSenses.clear()
+        removedExamples.clear()
+        removedTatoebaIdx.clear()
+        isSentenceMode = hasSentenceData
+
         titleView = view.findViewById(R.id.tvWordAnkiSheetTitle)
         toggleHost = view.findViewById(R.id.wordAnkiToolbarToggle)
-        scrollContent = view.findViewById(R.id.wordAnkiScrollContent)
 
         if (hasSentenceData) {
             titleView.visibility = View.GONE
@@ -152,44 +172,34 @@ class WordAnkiReviewSheet : DialogFragment() {
             ) { leftSelected -> setMode(sentenceMode = leftSelected) }
         }
 
+        // Find the three stable hosts from XML. The fragment-host needs
+        // a fixed ID so the FragmentManager can re-attach the
+        // SentenceAnkiContentFragment to the same container after
+        // rotation; the deck and word hosts are populated
+        // programmatically every onViewCreated.
+        val deckHost = view.findViewById<LinearLayout>(R.id.wordAnkiDeckHost)
+        sentenceContainer = view.findViewById(R.id.wordAnkiSentenceHost)
+        wordContainer = view.findViewById(R.id.wordAnkiWordHost)
+        sentenceContainer.visibility = if (hasSentenceData) View.VISIBLE else View.GONE
+        wordContainer.visibility = if (hasSentenceData) View.GONE else View.VISIBLE
+
         deckSubtitleView = view.findViewById(R.id.tvWordAnkiSendSubtitle)
-        addAnkiDeckRow(scrollContent) { refreshDeckSubtitle() }
+        addAnkiDeckRow(deckHost) { refreshDeckSubtitle() }
         refreshDeckSubtitle()
 
-        sentenceContainer = FrameLayout(requireContext()).apply {
-            id = View.generateViewId()
-            visibility = if (hasSentenceData) View.VISIBLE else View.GONE
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            )
-        }
-        scrollContent.addView(sentenceContainer)
-
-        wordContainer = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = if (hasSentenceData) View.GONE else View.VISIBLE
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            )
-        }
-        scrollContent.addView(wordContainer)
         buildWordContent(wordContainer, word, reading, pos, fallbackDefinition,
-            freqScore, isCommon, sourceLangId, screenshotPath)
+            freqScore, isCommon, sourceLangId, currentScreenshotPath)
 
         if (hasSentenceData && savedInstanceState == null) {
             val sentenceWords = buildWordEntries(args)
             val contentFragment = SentenceAnkiContentFragment.newInstance(
                 sentenceOriginal ?: return, sentenceTranslation, sentenceWords,
-                screenshotPath, targetWord = word, sourceLangId = sourceLangId
+                currentScreenshotPath, targetWord = word, sourceLangId = sourceLangId
             )
             childFragmentManager.beginTransaction()
-                .replace(sentenceContainer.id, contentFragment, TAG_CONTENT)
+                .replace(R.id.wordAnkiSentenceHost, contentFragment, TAG_CONTENT)
                 .commitNow()
         }
-
-        isSentenceMode = hasSentenceData
 
         // Kick off the same dictionary lookup the Word Detail sheet does.
         // Once it lands we replace the loading placeholder in the
@@ -212,8 +222,11 @@ class WordAnkiReviewSheet : DialogFragment() {
                 if (isSentenceMode) {
                     sendSentenceToAnki(deckId)
                 } else {
+                    // Read currentScreenshotPath at click time, not
+                    // capture it from the surrounding scope, so the
+                    // screenshot's removed state actually wins.
                     sendWordToAnki(word, reading, pos,
-                        fallbackDefinition, freqScore, deckId, screenshotPath)
+                        fallbackDefinition, freqScore, deckId, currentScreenshotPath)
                 }
                 btn.isEnabled = true
             }
@@ -359,6 +372,10 @@ class WordAnkiReviewSheet : DialogFragment() {
                     parent.removeView(ssHeaderRef)
                     parent.removeView(ssCardRef)
                     screenshotHeaderView = null
+                    // Clear both the live field (Send reads from here)
+                    // and the persisted argument (so a config-change
+                    // recreate doesn't resurrect the photo).
+                    currentScreenshotPath = null
                     arguments?.remove(ARG_SCREENSHOT_PATH)
                 }
             }
