@@ -4,7 +4,9 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Spinner
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.core.os.bundleOf
 import androidx.fragment.app.DialogFragment
@@ -21,13 +23,18 @@ import java.io.File
 
 class AnkiReviewBottomSheet : DialogFragment() {
 
-    private var deckEntries: List<Map.Entry<Long, String>> = emptyList()
+    private var deckSubtitleView: TextView? = null
 
     override fun getTheme(): Int = fullScreenDialogTheme(requireContext())
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View = inflater.inflate(R.layout.bottom_sheet_anki_review, container, false)
+
+    override fun onDestroyView() {
+        deckSubtitleView = null
+        super.onDestroyView()
+    }
 
     override fun onStart() {
         super.onStart()
@@ -39,7 +46,6 @@ class AnkiReviewBottomSheet : DialogFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
         view.findViewById<View>(R.id.btnBackReview).setOnClickListener { dismiss() }
 
         val args = arguments ?: return
@@ -47,7 +53,6 @@ class AnkiReviewBottomSheet : DialogFragment() {
         val translation    = args.getString(ARG_TRANSLATION) ?: ""
         val screenshotPath = args.getString(ARG_SCREENSHOT_PATH)
 
-        // Build word entries for the content fragment
         val words = mutableListOf<SentenceAnkiHtmlBuilder.WordEntry>()
         val wordArr    = args.getStringArray(ARG_WORDS) ?: emptyArray()
         val readingArr = args.getStringArray(ARG_READINGS) ?: emptyArray()
@@ -65,22 +70,27 @@ class AnkiReviewBottomSheet : DialogFragment() {
 
         val sourceLangId = SourceLangId.fromCode(args.getString(ARG_SOURCE_LANG)) ?: SourceLangId.JA
 
-        // Embed the shared sentence content fragment
+        // Both child hosts come from the layout XML — fragment-host IDs
+        // need to stay stable so FragmentManager can re-attach the
+        // SentenceAnkiContentFragment to the same container after
+        // rotation / process recreation. Generated IDs change every
+        // inflation and break the restore path.
+        val deckHost = view.findViewById<LinearLayout>(R.id.sentenceAnkiDeckHost)
+        deckSubtitleView = view.findViewById(R.id.tvAnkiSendSubtitle)
+        addAnkiDeckRow(deckHost) { refreshDeckSubtitle() }
+        refreshDeckSubtitle()
+
         if (savedInstanceState == null) {
             val contentFragment = SentenceAnkiContentFragment.newInstance(
                 original, translation, words, screenshotPath, sourceLangId = sourceLangId
             )
             childFragmentManager.beginTransaction()
-                .replace(R.id.sentenceContentContainer, contentFragment, TAG_CONTENT)
+                .replace(R.id.sentenceAnkiFragmentHost, contentFragment, TAG_CONTENT)
                 .commitNow()
         }
 
-        val spinnerDeck = view.findViewById<Spinner>(R.id.spinnerReviewDeck)
-        loadAnkiDecksInto(spinnerDeck) { entries -> deckEntries = entries }
-
         view.findViewById<View>(R.id.btnSendToAnki).setOnClickListener { btn ->
-            val deckId = deckEntries.getOrNull(spinnerDeck.selectedItemPosition)?.key
-                ?: Prefs(requireContext()).ankiDeckId
+            val deckId = Prefs(requireContext()).ankiDeckId
             if (deckId < 0L) {
                 Toast.makeText(requireContext(), getString(R.string.anki_no_deck_selected), Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
@@ -91,6 +101,17 @@ class AnkiReviewBottomSheet : DialogFragment() {
                 btn.isEnabled = true
             }
         }
+    }
+
+    /** Updates the save button's "Deck: <name>" subtitle whenever the
+     *  user picks a different deck. Renders as plain `?attr/ptAccentOn`
+     *  text so the deck name reads against the button's accent fill —
+     *  spannable accent highlighting would vanish into the bg. */
+    private fun refreshDeckSubtitle() {
+        val sub = deckSubtitleView ?: return
+        val ctx = requireContext()
+        val deckName = Prefs(ctx).ankiDeckName.ifBlank { ctx.getString(R.string.anki_deck_row_empty) }
+        sub.text = ctx.getString(R.string.anki_deck_label_format, deckName)
     }
 
     private fun getContentFragment(): SentenceAnkiContentFragment? =
@@ -137,7 +158,7 @@ class AnkiReviewBottomSheet : DialogFragment() {
             translation: String,
             wordResults: Map<String, Triple<String, String, Int>>,
             screenshotPath: String?,
-            sourceLangId: SourceLangId = SourceLangId.JA
+            sourceLangId: SourceLangId = SourceLangId.JA,
         ): AnkiReviewBottomSheet {
             return AnkiReviewBottomSheet().apply {
                 arguments = Bundle().apply {

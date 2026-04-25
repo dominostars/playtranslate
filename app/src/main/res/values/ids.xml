@@ -2,4 +2,12 @@
 <resources>
     <item name="tag_bg_color" type="id" />
     <item name="tag_dirty" type="id" />
+
+    <!-- Stable IDs for the Anki review editor's programmatic Original /
+         Translation EditTexts (SentenceAnkiContentFragment). Android's
+         view-hierarchy save/restore is keyed by view ID, so giving these
+         fixed IDs lets TextView.SavedState round-trip the user's typed
+         text across process death. -->
+    <item name="etAnkiOriginal" type="id" />
+    <item name="etAnkiTranslation" type="id" />
 </resources>
