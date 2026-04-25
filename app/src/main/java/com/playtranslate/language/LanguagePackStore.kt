@@ -93,6 +93,10 @@ object LanguagePackStore {
             db.rawQuery("SELECT text FROM headword LIMIT 1", null).use { }
             db.rawQuery("SELECT misc FROM sense LIMIT 1", null).use { }
             db.rawQuery("SELECT literal FROM kanjidic LIMIT 1", null).use { }
+            // kanji_meaning was split out from kanjidic so non-English
+            // KANJIDIC2 glosses can be served natively. Packs without this
+            // table are pre-multilingual and must be re-downloaded.
+            db.rawQuery("SELECT literal, lang, meanings FROM kanji_meaning LIMIT 1", null).use { }
         }
         true
     } catch (_: Exception) {

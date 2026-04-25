@@ -78,8 +78,15 @@ interface SourceLanguageEngine {
     suspend fun lookup(word: String, reading: String? = null): DictionaryResponse?
 
     /** Character-level lookup. JA returns [com.playtranslate.model.KanjiDetail];
-     *  ZH returns [com.playtranslate.model.HanziDetail]. Other engines return null. */
-    suspend fun lookupCharacter(literal: Char): CharacterDetail? = null
+     *  ZH returns [com.playtranslate.model.HanziDetail]. Other engines return null.
+     *
+     *  [targetLang] selects which language's meanings to return when the pack
+     *  carries multiple (KANJIDIC2 ships en/fr/es/pt). Implementations fall
+     *  back to English when the requested language isn't available and set
+     *  [com.playtranslate.model.CharacterDetail.meaningsLang] to what they
+     *  actually returned, so the caller can decide whether to machine-translate.
+     */
+    suspend fun lookupCharacter(literal: Char, targetLang: String = "en"): CharacterDetail? = null
 
     /** Hint-text annotations. Only JA returns non-empty (furigana) in Phase 1. */
     fun annotateForHintText(text: String): List<HintTextAnnotation> = emptyList()

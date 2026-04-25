@@ -250,24 +250,68 @@ class DictionaryManager private constructor(private val context: Context) {
     /**
      * Look up a single kanji character in KANJIDIC2. Returns null if not found
      * or the database isn't ready. Call from a background coroutine.
+     *
+     * Meanings resolve as follows:
+     *  1. `kanji_meaning(literal, [targetLang])` if the pack ships glosses in
+     *     the requested language (KANJIDIC2 natively has en/fr/es/pt).
+     *  2. `kanji_meaning(literal, "en")` otherwise.
+     *
+     * The resolved language is returned on [KanjiDetail.meaningsLang] so the
+     * caller can decide whether to machine-translate before display.
      */
-    suspend fun lookupKanji(literal: Char): KanjiDetail? = withContext(Dispatchers.IO) {
+    suspend fun lookupKanji(literal: Char, targetLang: String = "en"): KanjiDetail? = withContext(Dispatchers.IO) {
         val database = ensureOpen() ?: return@withContext null
         database.rawQuery(
-            "SELECT meanings, on_readings, kun_readings, jlpt, grade, stroke_count FROM kanjidic WHERE literal=?",
+            "SELECT on_readings, kun_readings, jlpt, grade, stroke_count FROM kanjidic WHERE literal=?",
             arrayOf(literal.toString())
         ).use { c ->
             if (!c.moveToFirst()) return@withContext null
+            val onReadings   = c.getString(0).split(',').filter { it.isNotBlank() }
+            val kunReadings  = c.getString(1).split(',').filter { it.isNotBlank() }
+            val jlpt         = c.getInt(2)
+            val grade        = c.getInt(3)
+            val strokeCount  = c.getInt(4)
+
+            val (meanings, resolvedLang) = loadKanjiMeanings(database, literal, targetLang)
+            if (meanings.isEmpty()) return@withContext null
             KanjiDetail(
                 literal      = literal,
-                meanings     = c.getString(0).split('\t').filter { it.isNotBlank() },
-                onReadings   = c.getString(1).split(',').filter { it.isNotBlank() },
-                kunReadings  = c.getString(2).split(',').filter { it.isNotBlank() },
-                jlpt         = c.getInt(3),
-                grade        = c.getInt(4),
-                strokeCount  = c.getInt(5)
+                meanings     = meanings,
+                meaningsLang = resolvedLang,
+                onReadings   = onReadings,
+                kunReadings  = kunReadings,
+                jlpt         = jlpt,
+                grade        = grade,
+                strokeCount  = strokeCount,
             )
         }
+    }
+
+    /**
+     * Resolve meanings for [literal] in [targetLang] with English fallback.
+     * Returns the meanings list plus the language code they actually came
+     * from ("en" when we fell back). Empty list if even the English row is
+     * missing (rare but possible for CJK extensions without full coverage).
+     */
+    private fun loadKanjiMeanings(
+        database: SQLiteDatabase,
+        literal: Char,
+        targetLang: String,
+    ): Pair<List<String>, String> {
+        fun query(lang: String): List<String>? =
+            database.rawQuery(
+                "SELECT meanings FROM kanji_meaning WHERE literal=? AND lang=?",
+                arrayOf(literal.toString(), lang),
+            ).use { c ->
+                if (!c.moveToFirst()) null
+                else c.getString(0).split('\t').filter { it.isNotBlank() }
+            }
+
+        if (targetLang != "en") {
+            query(targetLang)?.let { if (it.isNotEmpty()) return it to targetLang }
+        }
+        val english = query("en") ?: emptyList()
+        return english to "en"
     }
 
     fun close() {

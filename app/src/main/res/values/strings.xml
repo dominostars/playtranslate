@@ -71,6 +71,7 @@
     <string name="word_detail_group_tatoeba">Tatoeba</string>
     <string name="word_detail_mt_banner">Machine translated</string>
     <string name="word_detail_mt_banner_named">Machine translated: %1$s</string>
+    <string name="word_detail_char_meanings_mt">Machine translated · %1$s</string>
 
     <!-- Banner / language pair -->
 

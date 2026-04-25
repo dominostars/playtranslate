@@ -216,12 +216,22 @@ def create_schema(conn: sqlite3.Connection) -> None:
         );
         CREATE TABLE kanjidic (
             literal      TEXT    PRIMARY KEY,
-            meanings     TEXT    NOT NULL DEFAULT '',
             on_readings  TEXT    NOT NULL DEFAULT '',
             kun_readings TEXT    NOT NULL DEFAULT '',
             jlpt         INTEGER NOT NULL DEFAULT 0,
             grade        INTEGER NOT NULL DEFAULT 0,
             stroke_count INTEGER NOT NULL DEFAULT 0
+        );
+        -- Per-language kanji glosses. KANJIDIC2 ships native meanings in
+        -- multiple languages (en, fr, es, pt); this table stores each
+        -- language's list of meanings as a \t-separated string so the
+        -- runtime can serve the user's target language natively when the
+        -- pack has coverage, and fall back to English otherwise.
+        CREATE TABLE kanji_meaning (
+            literal  TEXT NOT NULL,
+            lang     TEXT NOT NULL,
+            meanings TEXT NOT NULL,
+            PRIMARY KEY (literal, lang)
         );
         CREATE INDEX idx_headword_text ON headword(text);
         CREATE INDEX idx_reading_text  ON reading(text);
@@ -394,7 +404,10 @@ def parse_and_insert_kanjidic(xml_bytes: bytes, conn: sqlite3.Connection) -> Non
 
         on_readings = []
         kun_readings = []
-        meanings = []
+        # Meanings keyed by BCP-47 language code. KANJIDIC2 ships several;
+        # meanings without an xml:lang attribute default to English per the
+        # KANJIDIC2 spec.
+        meanings_by_lang: dict[str, list[str]] = {}
         rm = char.find("reading_meaning")
         if rm is not None:
             for rmg in rm.findall("rmgroup"):
@@ -406,17 +419,18 @@ def parse_and_insert_kanjidic(xml_bytes: bytes, conn: sqlite3.Connection) -> Non
                         elif r_type == "ja_kun":
                             kun_readings.append(r.text)
                 for m in rmg.findall("meaning"):
-                    lang = m.get("{http://www.w3.org/XML/1998/namespace}lang", "en")
-                    if lang == "en" and m.text:
-                        meanings.append(m.text)
-                    elif not m.get("{http://www.w3.org/XML/1998/namespace}lang") and m.text:
-                        meanings.append(m.text)
+                    if not m.text:
+                        continue
+                    # KANJIDIC2 tags non-English meanings with a bare
+                    # `m_lang` attribute (not xml:lang like JMdict). Absent
+                    # attribute means English per the KANJIDIC2 spec.
+                    lang = m.get("m_lang", "en")
+                    meanings_by_lang.setdefault(lang, []).append(m.text)
 
         cur.execute(
-            "INSERT OR IGNORE INTO kanjidic VALUES (?,?,?,?,?,?,?)",
+            "INSERT OR IGNORE INTO kanjidic VALUES (?,?,?,?,?,?)",
             (
                 literal,
-                "\t".join(meanings),
                 ",".join(on_readings),
                 ",".join(kun_readings),
                 jlpt_n,
@@ -424,10 +438,23 @@ def parse_and_insert_kanjidic(xml_bytes: bytes, conn: sqlite3.Connection) -> Non
                 stroke_count,
             ),
         )
+        for lang, meanings in meanings_by_lang.items():
+            if not meanings:
+                continue
+            cur.execute(
+                "INSERT OR IGNORE INTO kanji_meaning VALUES (?,?,?)",
+                (literal, lang, "\t".join(meanings)),
+            )
         count += 1
 
     conn.commit()
-    print(f"  Total: {count:,} kanji inserted")
+    # Summarize per-language coverage so whoever runs the build can sanity-
+    # check that native non-English meanings landed in the pack.
+    lang_counts = cur.execute(
+        "SELECT lang, COUNT(*) FROM kanji_meaning GROUP BY lang ORDER BY lang"
+    ).fetchall()
+    coverage = ", ".join(f"{lang}={n:,}" for lang, n in lang_counts)
+    print(f"  Total: {count:,} kanji inserted ({coverage})")
 
 
 def build_sqlite(db_path: Path) -> None:

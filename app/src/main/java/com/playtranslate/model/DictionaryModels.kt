@@ -64,10 +64,17 @@ data class Example(
  * (on/kun readings, JLPT, school grade, stroke count), while ZH reuses the
  * single-character CC-CEDICT entries already in its pack (pinyin, meanings,
  * frequency).
+ *
+ * [meaningsLang] is the BCP-47 code of the language [meanings] are currently
+ * expressed in. For Japanese this can be one of the languages KANJIDIC2 ships
+ * natively (en/fr/es/pt); for Chinese it's always "en" (CC-CEDICT source).
+ * Callers compare against the user's target language to decide whether the
+ * UI needs to run the meanings through machine translation.
  */
 sealed interface CharacterDetail {
     val literal: Char
     val meanings: List<String>
+    val meaningsLang: String
 }
 
 /**
@@ -78,6 +85,7 @@ sealed interface CharacterDetail {
 data class KanjiDetail(
     override val literal: Char,
     override val meanings: List<String>,
+    override val meaningsLang: String,
     val onReadings: List<String>,
     val kunReadings: List<String>,
     val jlpt: Int,
@@ -88,7 +96,8 @@ data class KanjiDetail(
 /**
  * Per-hanzi detail reconstituted from the Chinese pack's single-character
  * CC-CEDICT entries. Pinyin is tone-marked; [freqScore] matches the 0-5 star
- * scale used by [DictionaryEntry.freqScore].
+ * scale used by [DictionaryEntry.freqScore]. CC-CEDICT is Chinese↔English so
+ * [meaningsLang] is always "en" — non-English UIs rely on MT fallback.
  */
 data class HanziDetail(
     override val literal: Char,
@@ -96,4 +105,6 @@ data class HanziDetail(
     val pinyin: String?,
     val isCommon: Boolean,
     val freqScore: Int
-) : CharacterDetail
+) : CharacterDetail {
+    override val meaningsLang: String get() = "en"
+}
