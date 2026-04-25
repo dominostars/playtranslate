@@ -64,6 +64,11 @@ class WordAnkiReviewSheet : DialogFragment() {
      *  immediately above the Screenshot group rather than appended to
      *  the bottom. Null when the entry has no screenshot. */
     private var screenshotHeaderView: View? = null
+    /** Card-wrapper sibling of [screenshotHeaderView]. Held alongside so
+     *  the screenshot group can be torn down from outside the
+     *  user-initiated × callback (e.g., when the sentence tab removes
+     *  the photo and we need to clear the word tab's mirror). */
+    private var screenshotCardView: View? = null
     /** Outer wrapper of the More examples group (header + card). Stashed
      *  so we can hide the whole group when the user removes every row. */
     private var moreExamplesGroup: LinearLayout? = null
@@ -121,6 +126,7 @@ class WordAnkiReviewSheet : DialogFragment() {
         moreExamplesGroup = null
         moreExamplesBody = null
         screenshotHeaderView = null
+        screenshotCardView = null
         deckSubtitleView = null
         currentScreenshotPath = null
         super.onDestroyView()
@@ -365,18 +371,14 @@ class WordAnkiReviewSheet : DialogFragment() {
             if (file.exists()) {
                 ankiGroupHeader(parent, getString(R.string.anki_group_screenshot))
                 val ssCard = ankiGroupCard(parent)
-                val ssHeaderRef = parent.getChildAt(parent.childCount - 2)
-                val ssCardRef = parent.getChildAt(parent.childCount - 1)
-                screenshotHeaderView = ssHeaderRef
+                screenshotHeaderView = parent.getChildAt(parent.childCount - 2)
+                screenshotCardView = parent.getChildAt(parent.childCount - 1)
                 addWordScreenshotRow(ssCard, file) {
-                    parent.removeView(ssHeaderRef)
-                    parent.removeView(ssCardRef)
-                    screenshotHeaderView = null
-                    // Clear both the live field (Send reads from here)
-                    // and the persisted argument (so a config-change
-                    // recreate doesn't resurrect the photo).
-                    currentScreenshotPath = null
-                    arguments?.remove(ARG_SCREENSHOT_PATH)
+                    removeWordScreenshotFromUi()
+                    // Keep the sentence tab in sync — its child fragment
+                    // carries its own includePhoto flag and can leak the
+                    // photo into the sentence card otherwise.
+                    getContentFragment()?.removeScreenshotFromUi()
                 }
             }
         }
@@ -401,6 +403,32 @@ class WordAnkiReviewSheet : DialogFragment() {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             )
         }
+    }
+
+    /** Tear down the word-mode Screenshot group from the live view tree
+     *  and clear the related state. Called both by the user-initiated ×
+     *  on the word card and by [notifyScreenshotRemoved] when the
+     *  sentence tab signals a removal. Idempotent — safe to call when
+     *  the screenshot was never built or has already been cleared. */
+    private fun removeWordScreenshotFromUi() {
+        if (currentScreenshotPath == null && screenshotHeaderView == null) return
+        screenshotHeaderView?.let { wordContainer.removeView(it) }
+        screenshotCardView?.let { wordContainer.removeView(it) }
+        screenshotHeaderView = null
+        screenshotCardView = null
+        // Clear both the live field (Send reads from here) and the
+        // persisted argument (so a config-change recreate doesn't
+        // resurrect the photo, and so addAnkiDeckRow / similar restarts
+        // see the photo as gone).
+        currentScreenshotPath = null
+        arguments?.remove(ARG_SCREENSHOT_PATH)
+    }
+
+    /** Public hook for [SentenceAnkiContentFragment] to call when the
+     *  user removes the photo from the sentence tab — keeps the word
+     *  tab's mirror of the same shared media in sync. */
+    fun notifyScreenshotRemoved() {
+        removeWordScreenshotFromUi()
     }
 
     private fun addWordScreenshotRow(card: LinearLayout, file: File, onRemove: () -> Unit) {

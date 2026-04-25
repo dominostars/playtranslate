@@ -195,6 +195,27 @@ fun Fragment.addAnkiDeckRow(parent: LinearLayout, onDeckChanged: () -> Unit): Te
         }
     }
     card.addView(row)
+
+    // Heal stale prefs against AnkiDroid's live deck list. If the deck
+    // the user previously chose was renamed or deleted in AnkiDroid,
+    // [Prefs.ankiDeckId] would otherwise be carried into the Send call
+    // and fail at note-creation time. Mirrors the recovery
+    // SettingsRenderer.validateAnkiDeck does on the settings sheet.
+    viewLifecycleOwner.lifecycleScope.launch {
+        val ankiManager = AnkiManager(ctx)
+        if (!ankiManager.isAnkiDroidInstalled() || !ankiManager.hasPermission()) return@launch
+        val decks = withContext(Dispatchers.IO) { ankiManager.getDecks() }
+        if (decks.isEmpty()) return@launch
+        val prefs = Prefs(ctx)
+        if (decks.containsKey(prefs.ankiDeckId)) return@launch
+        val first = decks.entries.first()
+        prefs.ankiDeckId = first.key
+        prefs.ankiDeckName = first.value
+        titleTv.text = first.value
+        titleTv.setTextColor(accent)
+        onDeckChanged()
+    }
+
     return titleTv
 }
 
