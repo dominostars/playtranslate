@@ -89,7 +89,7 @@
                 android:backgroundTint="?attr/ptAccent"
                 android:textColor="?attr/ptAccentOn"
                 android:visibility="gone"
-                app:icon="@drawable/ic_add"
+                app:icon="@drawable/ic_card_stack"
                 app:iconTint="?attr/ptAccentOn"
                 app:iconGravity="textStart"
                 app:iconPadding="6dp"
