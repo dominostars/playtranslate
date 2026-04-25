@@ -6,6 +6,8 @@ import android.hardware.display.DisplayManager
 import com.playtranslate.BuildConfig
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.ui.AccentColor
+import com.playtranslate.ui.ThemeMode
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -161,16 +163,39 @@ class Prefs(context: Context) {
      */
     fun migrateLegacyPrefs() {
         val legacyKey = "auto_translation_mode"
-        if (!sp.contains(legacyKey)) return
-        val legacyOrdinal = try {
-            sp.getInt(legacyKey, 0)
-        } catch (_: ClassCastException) {
-            0
+        if (sp.contains(legacyKey)) {
+            val legacyOrdinal = try {
+                sp.getInt(legacyKey, 0)
+            } catch (_: ClassCastException) {
+                0
+            }
+            if (legacyOrdinal == 1) {
+                hideGameOverlays = true
+            }
+            sp.edit().remove(legacyKey).apply()
         }
-        if (legacyOrdinal == 1) {
-            hideGameOverlays = true
+
+        // Migrate the pre-redesign 4-theme picker (Black/White/Rainbow/Purple)
+        // to the new (themeMode, accentName) split. Only run if the new keys
+        // haven't been written yet so we don't clobber an explicit choice.
+        if (sp.contains(KEY_LEGACY_THEME_INDEX) && !sp.contains(KEY_THEME_MODE)) {
+            val legacyIndex = try {
+                sp.getInt(KEY_LEGACY_THEME_INDEX, 0)
+            } catch (_: ClassCastException) {
+                0
+            }
+            val (mode, accent) = when (legacyIndex) {
+                1 -> ThemeMode.LIGHT to AccentColor.Teal     // White
+                2 -> ThemeMode.LIGHT to AccentColor.Coral    // Rainbow
+                3 -> ThemeMode.DARK  to AccentColor.Violet   // Purple
+                else -> ThemeMode.DARK to AccentColor.Teal   // Black
+            }
+            sp.edit()
+                .putString(KEY_THEME_MODE, mode.storageKey)
+                .putString(KEY_ACCENT_NAME, accent.name)
+                .remove(KEY_LEGACY_THEME_INDEX)
+                .apply()
         }
-        sp.edit().remove(legacyKey).apply()
     }
 
     /** Hotkey combo for hold-to-show translations. Empty = not set. Format: keyCodes joined by "+". */
@@ -252,10 +277,18 @@ class Prefs(context: Context) {
         set(v) = sp.edit().putString(KEY_UPDATE_SKIP_TAG, v).apply()
 
 
-    /** 0 = Black, 1 = White, 2 = Rainbow, 3 = Purple */
-    var themeIndex: Int
-        get() = sp.getInt(KEY_THEME_INDEX, 0)
-        set(v) = sp.edit().putInt(KEY_THEME_INDEX, v).apply()
+    /** SYSTEM follows the OS uiMode; DARK/LIGHT are explicit overrides. */
+    var themeMode: ThemeMode
+        get() = ThemeMode.fromKey(sp.getString(KEY_THEME_MODE, null))
+        set(v) = sp.edit().putString(KEY_THEME_MODE, v.storageKey).apply()
+
+    /** Name of the active accent (matches [AccentColor] enum constant name). */
+    var accentName: String
+        get() = sp.getString(KEY_ACCENT_NAME, AccentColor.Default.name) ?: AccentColor.Default.name
+        set(v) = sp.edit().putString(KEY_ACCENT_NAME, v).apply()
+
+    /** Resolved accent — falls back to [AccentColor.Default] for unknown names. */
+    val accent: AccentColor get() = AccentColor.byName(accentName)
 
     fun getRegionList(): MutableList<RegionEntry> {
         val json = sp.getString(KEY_REGION_LIST, null)
@@ -305,7 +338,9 @@ class Prefs(context: Context) {
         private const val KEY_ANKI_DECK_NAME = "anki_deck_name"
         private const val KEY_REGION_LIST    = "region_list"
         private const val KEY_DEEPL_KEY      = "deepl_api_key"
-        private const val KEY_THEME_INDEX           = "theme_index"
+        private const val KEY_LEGACY_THEME_INDEX    = "theme_index"
+        private const val KEY_THEME_MODE            = "theme_mode"
+        private const val KEY_ACCENT_NAME           = "accent_name"
         private const val KEY_CAPTURE_INTERVAL_SEC  = "capture_interval_sec"
         private const val KEY_CAPTURE_METHOD           = "capture_method"
         private const val KEY_OVERLAY_MODE               = "overlay_mode"

@@ -2,13 +2,15 @@
 <resources>
 
     <!--
-        Base theme — defines the semantic pt* colour tokens and maps them
-        into the Material component colour system.
-        Acts as the DEFAULT (Black) theme.
+        Base themes — define the semantic pt* colour tokens (palette only).
+        Accent attributes (ptAccent, ptAccentTint, ptTextLink) are defaulted
+        to Teal here, but are overridden at runtime by one of the
+        ThemeOverlay.PT.Accent.* overlays via theme.applyStyle().
+        See ThemeUtils.applyTheme().
     -->
     <style name="Theme.PlayTranslate" parent="Theme.Material3.DayNight.NoActionBar">
 
-        <!-- ── Dark palette + teal accent ────────────────────────────────── -->
+        <!-- ── Dark palette ──────────────────────────────────────────────── -->
         <item name="ptBg">@color/pt_dark_bg</item>
         <item name="ptSurface">@color/pt_dark_surface</item>
         <item name="ptCard">@color/pt_dark_card</item>
@@ -19,13 +21,15 @@
         <item name="ptTextMuted">@color/pt_dark_text_muted</item>
         <item name="ptTextHint">@color/pt_dark_text_hint</item>
         <item name="ptTextTranslation">@color/pt_dark_translation</item>
-        <item name="ptTextLink">@color/pt_accent_teal</item>
-        <item name="ptAccent">@color/pt_accent_teal</item>
-        <item name="ptAccentTint">@color/pt_accent_teal_tint_dark</item>
         <item name="ptAccentOn">@color/pt_dark_text_on_accent</item>
         <item name="ptDanger">@color/pt_dark_danger</item>
         <item name="ptWarning">@color/pt_dark_warning</item>
         <item name="ptRadius">14dp</item>
+
+        <!-- ── Accent fallback (Teal) — overridden by accent overlay ─────── -->
+        <item name="ptAccent">@color/pt_accent_teal</item>
+        <item name="ptAccentTint">@color/pt_accent_teal_tint</item>
+        <item name="ptTextLink">@color/pt_accent_teal</item>
 
         <!-- ── Material component mapping ────────────────────────────────── -->
         <item name="colorPrimary">?attr/ptAccent</item>
@@ -39,7 +43,7 @@
         <item name="materialSwitchStyle">@style/Widget.PlayTranslate.MaterialSwitch</item>
     </style>
 
-    <!-- ── White theme (Light palette + teal accent) ─────────────────────── -->
+    <!-- ── Light palette ──────────────────────────────────────────────────── -->
     <style name="Theme.PlayTranslate.White" parent="Theme.Material3.Light.NoActionBar">
         <item name="ptBg">@color/pt_light_bg</item>
         <item name="ptSurface">@color/pt_light_surface</item>
@@ -51,13 +55,16 @@
         <item name="ptTextMuted">@color/pt_light_text_muted</item>
         <item name="ptTextHint">@color/pt_light_text_hint</item>
         <item name="ptTextTranslation">@color/pt_light_translation</item>
-        <item name="ptTextLink">@color/pt_accent_teal</item>
+        <item name="ptAccentOn">@color/pt_light_text_on_accent</item>
+        <item name="ptDanger">@color/pt_light_danger</item>
+        <item name="ptWarning">@color/pt_light_warning</item>
+        <item name="ptRadius">14dp</item>
+
+        <!-- ── Accent fallback (Teal) — overridden by accent overlay ─────── -->
         <item name="ptAccent">@color/pt_accent_teal</item>
-        <item name="ptAccentTint">@color/pt_accent_teal_tint_light</item>
-        <item name="ptAccentOn">@color/pt_light_text_on_accent</item>
-        <item name="ptDanger">@color/pt_light_danger</item>
-        <item name="ptWarning">@color/pt_light_warning</item>
-        <item name="ptRadius">14dp</item>
+        <item name="ptAccentTint">@color/pt_accent_teal_tint</item>
+        <item name="ptTextLink">@color/pt_accent_teal</item>
+
         <item name="colorPrimary">?attr/ptAccent</item>
         <item name="colorOnPrimary">?attr/ptAccentOn</item>
         <item name="colorPrimaryContainer">?attr/ptAccent</item>
@@ -76,81 +83,7 @@
         <item name="materialSwitchStyle">@style/Widget.PlayTranslate.MaterialSwitch</item>
     </style>
 
-    <!-- ── Rainbow theme (Light palette + coral accent) ──────────────────── -->
-    <style name="Theme.PlayTranslate.Rainbow" parent="Theme.Material3.Light.NoActionBar">
-        <item name="ptBg">@color/pt_light_bg</item>
-        <item name="ptSurface">@color/pt_light_surface</item>
-        <item name="ptCard">@color/pt_light_card</item>
-        <item name="ptElevated">@color/pt_light_elevated</item>
-        <item name="ptDivider">@color/pt_light_divider</item>
-        <item name="ptOutline">@color/pt_light_outline</item>
-        <item name="ptText">@color/pt_light_text</item>
-        <item name="ptTextMuted">@color/pt_light_text_muted</item>
-        <item name="ptTextHint">@color/pt_light_text_hint</item>
-        <item name="ptTextTranslation">@color/pt_light_translation</item>
-        <item name="ptTextLink">@color/pt_accent_coral</item>
-        <item name="ptAccent">@color/pt_accent_coral</item>
-        <item name="ptAccentTint">@color/pt_accent_coral_tint</item>
-        <item name="ptAccentOn">@color/pt_light_text_on_accent</item>
-        <item name="ptDanger">@color/pt_light_danger</item>
-        <item name="ptWarning">@color/pt_light_warning</item>
-        <item name="ptRadius">14dp</item>
-        <item name="colorPrimary">?attr/ptAccent</item>
-        <item name="colorOnPrimary">?attr/ptAccentOn</item>
-        <item name="colorPrimaryContainer">?attr/ptAccent</item>
-        <item name="colorOnPrimaryContainer">?attr/ptAccentOn</item>
-        <item name="colorPrimaryDark">?attr/ptAccent</item>
-        <item name="colorAccent">?attr/ptAccent</item>
-        <item name="colorSurface">?attr/ptSurface</item>
-        <item name="colorOnSurface">?attr/ptText</item>
-        <item name="colorOnSurfaceVariant">?attr/ptTextMuted</item>
-        <item name="colorOutline">?attr/ptDivider</item>
-        <item name="android:windowBackground">?attr/ptBg</item>
-        <item name="android:statusBarColor">?attr/ptBg</item>
-        <item name="android:navigationBarColor">?attr/ptBg</item>
-        <item name="android:textColor">?attr/ptText</item>
-        <item name="android:fontFamily">sans-serif</item>
-        <item name="materialSwitchStyle">@style/Widget.PlayTranslate.MaterialSwitch</item>
-    </style>
-
-    <!-- ── Purple theme (Dark palette + purple accent) ───────────────────── -->
-    <style name="Theme.PlayTranslate.Purple" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="ptBg">@color/pt_dark_bg</item>
-        <item name="ptSurface">@color/pt_dark_surface</item>
-        <item name="ptCard">@color/pt_dark_card</item>
-        <item name="ptElevated">@color/pt_dark_elevated</item>
-        <item name="ptDivider">@color/pt_dark_divider</item>
-        <item name="ptOutline">@color/pt_dark_outline</item>
-        <item name="ptText">@color/pt_dark_text</item>
-        <item name="ptTextMuted">@color/pt_dark_text_muted</item>
-        <item name="ptTextHint">@color/pt_dark_text_hint</item>
-        <item name="ptTextTranslation">@color/pt_dark_translation</item>
-        <item name="ptTextLink">@color/pt_accent_purple</item>
-        <item name="ptAccent">@color/pt_accent_purple</item>
-        <item name="ptAccentTint">@color/pt_accent_purple_tint</item>
-        <item name="ptAccentOn">@color/pt_dark_text_on_accent</item>
-        <item name="ptDanger">@color/pt_dark_danger</item>
-        <item name="ptWarning">@color/pt_dark_warning</item>
-        <item name="ptRadius">14dp</item>
-        <item name="colorPrimary">?attr/ptAccent</item>
-        <item name="colorOnPrimary">?attr/ptAccentOn</item>
-        <item name="colorPrimaryContainer">?attr/ptAccent</item>
-        <item name="colorOnPrimaryContainer">?attr/ptAccentOn</item>
-        <item name="colorPrimaryDark">?attr/ptAccent</item>
-        <item name="colorAccent">?attr/ptAccent</item>
-        <item name="colorSurface">?attr/ptSurface</item>
-        <item name="colorOnSurface">?attr/ptText</item>
-        <item name="colorOnSurfaceVariant">?attr/ptTextMuted</item>
-        <item name="colorOutline">?attr/ptDivider</item>
-        <item name="android:windowBackground">?attr/ptBg</item>
-        <item name="android:statusBarColor">?attr/ptBg</item>
-        <item name="android:navigationBarColor">?attr/ptBg</item>
-        <item name="android:textColor">?attr/ptText</item>
-        <item name="android:fontFamily">sans-serif</item>
-        <item name="materialSwitchStyle">@style/Widget.PlayTranslate.MaterialSwitch</item>
-    </style>
-
-    <!-- ── Full-screen dialog overlays (one per theme) ────────────────────── -->
+    <!-- ── Full-screen dialog overlays ──────────────────────────────────── -->
     <style name="Theme.PlayTranslate.FullScreenDialog" parent="Theme.PlayTranslate">
         <item name="android:windowIsFloating">false</item>
         <item name="android:windowSoftInputMode">adjustResize</item>
@@ -165,18 +98,70 @@
         <item name="android:statusBarColor">?attr/ptSurface</item>
     </style>
 
-    <style name="Theme.PlayTranslate.Rainbow.FullScreenDialog" parent="Theme.PlayTranslate.Rainbow">
-        <item name="android:windowIsFloating">false</item>
-        <item name="android:windowSoftInputMode">adjustResize</item>
-        <item name="android:windowBackground">?attr/ptSurface</item>
-        <item name="android:statusBarColor">?attr/ptSurface</item>
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- Accent overlays — applied on top of either base theme via         -->
+    <!-- theme.applyStyle(R.style.ThemeOverlay_PT_Accent_<Name>, true).    -->
+    <!-- Each overrides the three accent slots; everything else inherits.  -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+
+    <style name="ThemeOverlay.PT.Accent.Coral" parent="">
+        <item name="ptAccent">@color/pt_accent_coral</item>
+        <item name="ptAccentTint">@color/pt_accent_coral_tint</item>
+        <item name="ptTextLink">@color/pt_accent_coral</item>
     </style>
 
-    <style name="Theme.PlayTranslate.Purple.FullScreenDialog" parent="Theme.PlayTranslate.Purple">
-        <item name="android:windowIsFloating">false</item>
-        <item name="android:windowSoftInputMode">adjustResize</item>
-        <item name="android:windowBackground">?attr/ptSurface</item>
-        <item name="android:statusBarColor">?attr/ptSurface</item>
+    <style name="ThemeOverlay.PT.Accent.Amber" parent="">
+        <item name="ptAccent">@color/pt_accent_amber</item>
+        <item name="ptAccentTint">@color/pt_accent_amber_tint</item>
+        <item name="ptTextLink">@color/pt_accent_amber</item>
+    </style>
+
+    <style name="ThemeOverlay.PT.Accent.Lime" parent="">
+        <item name="ptAccent">@color/pt_accent_lime</item>
+        <item name="ptAccentTint">@color/pt_accent_lime_tint</item>
+        <item name="ptTextLink">@color/pt_accent_lime</item>
+    </style>
+
+    <style name="ThemeOverlay.PT.Accent.Mint" parent="">
+        <item name="ptAccent">@color/pt_accent_mint</item>
+        <item name="ptAccentTint">@color/pt_accent_mint_tint</item>
+        <item name="ptTextLink">@color/pt_accent_mint</item>
+    </style>
+
+    <style name="ThemeOverlay.PT.Accent.Teal" parent="">
+        <item name="ptAccent">@color/pt_accent_teal</item>
+        <item name="ptAccentTint">@color/pt_accent_teal_tint</item>
+        <item name="ptTextLink">@color/pt_accent_teal</item>
+    </style>
+
+    <style name="ThemeOverlay.PT.Accent.Sky" parent="">
+        <item name="ptAccent">@color/pt_accent_sky</item>
+        <item name="ptAccentTint">@color/pt_accent_sky_tint</item>
+        <item name="ptTextLink">@color/pt_accent_sky</item>
+    </style>
+
+    <style name="ThemeOverlay.PT.Accent.Steel" parent="">
+        <item name="ptAccent">@color/pt_accent_steel</item>
+        <item name="ptAccentTint">@color/pt_accent_steel_tint</item>
+        <item name="ptTextLink">@color/pt_accent_steel</item>
+    </style>
+
+    <style name="ThemeOverlay.PT.Accent.Violet" parent="">
+        <item name="ptAccent">@color/pt_accent_violet</item>
+        <item name="ptAccentTint">@color/pt_accent_violet_tint</item>
+        <item name="ptTextLink">@color/pt_accent_violet</item>
+    </style>
+
+    <style name="ThemeOverlay.PT.Accent.Orchid" parent="">
+        <item name="ptAccent">@color/pt_accent_orchid</item>
+        <item name="ptAccentTint">@color/pt_accent_orchid_tint</item>
+        <item name="ptTextLink">@color/pt_accent_orchid</item>
+    </style>
+
+    <style name="ThemeOverlay.PT.Accent.Rose" parent="">
+        <item name="ptAccent">@color/pt_accent_rose</item>
+        <item name="ptAccentTint">@color/pt_accent_rose_tint</item>
+        <item name="ptTextLink">@color/pt_accent_rose</item>
     </style>
 
     <!-- ── Widget styles (reference attrs, resolve at inflation time) ───── -->

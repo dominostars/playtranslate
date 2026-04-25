@@ -14,6 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.applyAccentOverlay
 import com.playtranslate.fullScreenDialogTheme
 import com.playtranslate.language.SourceLangId
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +27,12 @@ class AnkiReviewBottomSheet : DialogFragment() {
     private var deckSubtitleView: TextView? = null
 
     override fun getTheme(): Int = fullScreenDialogTheme(requireContext())
+
+    override fun onCreateDialog(savedInstanceState: Bundle?): android.app.Dialog {
+        val dialog = super.onCreateDialog(savedInstanceState)
+        applyAccentOverlay(dialog.context.theme, requireContext())
+        return dialog
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?

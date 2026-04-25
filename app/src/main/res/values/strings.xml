@@ -168,4 +168,20 @@
     <string name="anki_screenshot_remove_content_description">Remove screenshot</string>
     <string name="anki_pick_deck_title">Pick a deck</string>
     <string name="cd_back">Back</string>
+
+    <!-- Appearance — theme mode + accent picker -->
+    <string name="pt_theme_mode_system">System</string>
+    <string name="pt_theme_mode_dark">Dark</string>
+    <string name="pt_theme_mode_light">Light</string>
+    <string name="pt_accent_label">Accent</string>
+    <string name="pt_accent_coral">Coral</string>
+    <string name="pt_accent_amber">Amber</string>
+    <string name="pt_accent_lime">Lime</string>
+    <string name="pt_accent_mint">Mint</string>
+    <string name="pt_accent_teal">Teal</string>
+    <string name="pt_accent_sky">Sky</string>
+    <string name="pt_accent_steel">Steel</string>
+    <string name="pt_accent_violet">Violet</string>
+    <string name="pt_accent_orchid">Orchid</string>
+    <string name="pt_accent_rose">Rose</string>
 </resources>

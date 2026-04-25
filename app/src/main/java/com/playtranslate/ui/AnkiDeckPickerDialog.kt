@@ -13,6 +13,7 @@ import androidx.lifecycle.lifecycleScope
 import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.applyAccentOverlay
 import com.playtranslate.fullScreenDialogTheme
 import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +29,12 @@ class AnkiDeckPickerDialog : DialogFragment() {
     var onDeckSelected: (() -> Unit)? = null
 
     override fun getTheme(): Int = fullScreenDialogTheme(requireContext())
+
+    override fun onCreateDialog(savedInstanceState: Bundle?): android.app.Dialog {
+        val dialog = super.onCreateDialog(savedInstanceState)
+        applyAccentOverlay(dialog.context.theme, requireContext())
+        return dialog
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?

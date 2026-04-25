@@ -1,7 +1,7 @@
 package com.playtranslate
 
 import android.Manifest
-import com.playtranslate.selectedActivityTheme
+import com.playtranslate.applyTheme
 import com.playtranslate.themeColor
 import android.content.ComponentName
 import android.content.Context
@@ -234,9 +234,12 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     // ── Lifecycle ─────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Migration must run before applyTheme so first launch after the
+        // 4-themes → mode+accent rollout already shows the user's intended
+        // palette (otherwise they'd see Default until next recreate).
+        prefs.migrateLegacyPrefs()
         applyTheme()
         super.onCreate(savedInstanceState)
-        prefs.migrateLegacyPrefs()
         maybePromptForCrashShare()
         // Suppress the window transition that would otherwise flash when recreating for a theme change
         if (prefs.suppressNextTransition) {
@@ -809,7 +812,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     private fun applyTheme() {
-        setTheme(selectedActivityTheme(this))
+        com.playtranslate.applyTheme(this)
     }
 
     private fun openSettings() {

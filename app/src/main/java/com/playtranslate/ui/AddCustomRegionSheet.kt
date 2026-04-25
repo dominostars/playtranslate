@@ -13,6 +13,7 @@ import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.Prefs
 import com.playtranslate.RegionEntry
 import com.playtranslate.R
+import com.playtranslate.applyAccentOverlay
 import com.playtranslate.fullScreenDialogTheme
 
 class AddCustomRegionSheet : DialogFragment() {
@@ -44,6 +45,12 @@ class AddCustomRegionSheet : DialogFragment() {
     private var translateOnceLabel = "Custom Region"
 
     override fun getTheme(): Int = fullScreenDialogTheme(requireContext())
+
+    override fun onCreateDialog(savedInstanceState: Bundle?): android.app.Dialog {
+        val dialog = super.onCreateDialog(savedInstanceState)
+        applyAccentOverlay(dialog.context.theme, requireContext())
+        return dialog
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
