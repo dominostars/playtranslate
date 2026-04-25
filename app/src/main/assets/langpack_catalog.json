@@ -686,6 +686,142 @@
           "attribution": "© Wiktionary contributors"
         }
       ]
+    },
+    "target-ar": {
+      "display": "Arabic definitions",
+      "type": "target",
+      "script": "ARABIC",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 98281317,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-ar-v1/ar.zip",
+      "sha256": "4a7a517e64f71861f4046635bcc669860400739b26c9caa9ef44defe2e5e86e4",
+      "licenses": [
+        {
+          "component": "PanLex",
+          "license": "CC0-1.0",
+          "attribution": "(c) PanLex (CC0 1.0 Universal), https://panlex.org/"
+        }
+      ]
+    },
+    "target-hi": {
+      "display": "Hindi definitions",
+      "type": "target",
+      "script": "DEVANAGARI",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 69196300,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-hi-v1/hi.zip",
+      "sha256": "5aa364a50dd16f672453ee65f68e1b79aff6e2b389308aa39a606d823533d3ec",
+      "licenses": [
+        {
+          "component": "PanLex",
+          "license": "CC0-1.0",
+          "attribution": "(c) PanLex (CC0 1.0 Universal), https://panlex.org/"
+        }
+      ]
+    },
+    "target-he": {
+      "display": "Hebrew definitions",
+      "type": "target",
+      "script": "HEBREW",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 57950293,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-he-v1/he.zip",
+      "sha256": "8d29615eddd80ede0cfd77266e6e3fc7170feaa4d945c354fafb9ce88f76fdb5",
+      "licenses": [
+        {
+          "component": "PanLex",
+          "license": "CC0-1.0",
+          "attribution": "(c) PanLex (CC0 1.0 Universal), https://panlex.org/"
+        }
+      ]
+    },
+    "target-fa": {
+      "display": "Persian definitions",
+      "type": "target",
+      "script": "ARABIC",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 67565165,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-fa-v1/fa.zip",
+      "sha256": "74c76c56ec3970c3dc9e853f6ba3d8c4bd525107ed20aee9b029fac42c7e9cd5",
+      "licenses": [
+        {
+          "component": "PanLex",
+          "license": "CC0-1.0",
+          "attribution": "(c) PanLex (CC0 1.0 Universal), https://panlex.org/"
+        }
+      ]
+    },
+    "target-uk": {
+      "display": "Ukrainian definitions",
+      "type": "target",
+      "script": "CYRILLIC",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 62617523,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-uk-v1/uk.zip",
+      "sha256": "9818567df00f272bdb85762058117fe744f948cc298dc534884a7e85de76897b",
+      "licenses": [
+        {
+          "component": "PanLex",
+          "license": "CC0-1.0",
+          "attribution": "(c) PanLex (CC0 1.0 Universal), https://panlex.org/"
+        }
+      ]
+    },
+    "target-hu": {
+      "display": "Hungarian definitions",
+      "type": "target",
+      "script": "LATIN",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 94975624,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-hu-v1/hu.zip",
+      "sha256": "1c245cac1be74a5270ddca912e592f38e58d97033707aeb266a0c23dac543016",
+      "licenses": [
+        {
+          "component": "PanLex",
+          "license": "CC0-1.0",
+          "attribution": "(c) PanLex (CC0 1.0 Universal), https://panlex.org/"
+        }
+      ]
+    },
+    "target-fi": {
+      "display": "Finnish definitions",
+      "type": "target",
+      "script": "LATIN",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 132942473,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-fi-v1/fi.zip",
+      "sha256": "b08560deaa6107ad8400c85aad106b25bb9ac86d446f8597d577d26ac6615e1a",
+      "licenses": [
+        {
+          "component": "PanLex",
+          "license": "CC0-1.0",
+          "attribution": "(c) PanLex (CC0 1.0 Universal), https://panlex.org/"
+        }
+      ]
+    },
+    "target-sv": {
+      "display": "Swedish definitions",
+      "type": "target",
+      "script": "LATIN",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 97904321,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-sv-v1/sv.zip",
+      "sha256": "105bcbff4787f93fbef8684e237a3f4d1f0fd97250c82024a2f9026d5e43dcc0",
+      "licenses": [
+        {
+          "component": "PanLex",
+          "license": "CC0-1.0",
+          "attribution": "(c) PanLex (CC0 1.0 Universal), https://panlex.org/"
+        }
+      ]
     }
   }
 }
