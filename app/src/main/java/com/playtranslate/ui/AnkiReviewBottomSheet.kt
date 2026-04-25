@@ -1,7 +1,6 @@
 package com.playtranslate.ui
 
 import android.os.Bundle
-import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -17,7 +16,6 @@ import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.fullScreenDialogTheme
 import com.playtranslate.language.SourceLangId
-import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -25,7 +23,6 @@ import java.io.File
 
 class AnkiReviewBottomSheet : DialogFragment() {
 
-    private lateinit var deckRowValue: TextView
     private lateinit var titleView: TextView
     private var sentenceContainer: FrameLayout? = null
 
@@ -82,7 +79,7 @@ class AnkiReviewBottomSheet : DialogFragment() {
         }
         scrollContent.addView(column)
 
-        addDeckGroup(column)
+        addAnkiDeckRow(column) { refreshTitle() }
         sentenceContainer = FrameLayout(requireContext()).apply {
             id = View.generateViewId()
             layoutParams = LinearLayout.LayoutParams(
@@ -115,67 +112,6 @@ class AnkiReviewBottomSheet : DialogFragment() {
                 btn.isEnabled = true
             }
         }
-    }
-
-    private fun addDeckGroup(parent: LinearLayout) {
-        val ctx = requireContext()
-        val density = resources.displayMetrics.density
-        ankiGroupHeader(parent, getString(R.string.anki_group_deck))
-        val card = ankiGroupCard(parent)
-
-        val row = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = (56 * density).toInt()
-            setPadding((16 * density).toInt(), (14 * density).toInt(),
-                (16 * density).toInt(), (14 * density).toInt())
-            background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).run {
-                val d = getDrawable(0)
-                recycle()
-                d
-            }
-            isClickable = true
-            isFocusable = true
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-        row.addView(TextView(ctx).apply {
-            text = getString(R.string.anki_deck_row_label)
-            textSize = 15f
-            setTextColor(ctx.themeColor(R.attr.ptText))
-            setTypeface(typeface, android.graphics.Typeface.NORMAL)
-            layoutParams = LinearLayout.LayoutParams(
-                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
-            )
-        })
-        deckRowValue = TextView(ctx).apply {
-            text = Prefs(ctx).ankiDeckName.ifBlank { getString(R.string.anki_deck_row_empty) }
-            textSize = 13f
-            setTextColor(ctx.themeColor(R.attr.ptTextMuted))
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).also { it.marginEnd = (4 * density).toInt() }
-        }
-        row.addView(deckRowValue)
-        row.addView(android.widget.ImageView(ctx).apply {
-            setImageResource(R.drawable.ic_chevron_right)
-            setColorFilter(ctx.themeColor(R.attr.ptTextMuted))
-            layoutParams = LinearLayout.LayoutParams(
-                (20 * density).toInt(), (20 * density).toInt()
-            )
-        })
-        row.setOnClickListener {
-            showAnkiDeckPicker { _, name ->
-                deckRowValue.text = name
-                refreshTitle()
-            }
-        }
-        card.addView(row)
     }
 
     /** Updates the toolbar title to "Add to <Deck>" once a deck is known. */

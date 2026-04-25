@@ -126,13 +126,13 @@ class SentenceAnkiContentFragment : Fragment() {
         ankiGroupHeader(root, getString(R.string.anki_group_original))
         val originalCard = ankiGroupCard(root)
         etOriginal = buildEditField(initial = original)
-        originalCard.addView(etOriginal)
+        originalCard.addView(buildEditableFrame(etOriginal))
 
         // Translation
         ankiGroupHeader(root, getString(R.string.anki_group_translation))
         val translationCard = ankiGroupCard(root)
         etTranslation = buildEditField(initial = translation)
-        translationCard.addView(etTranslation)
+        translationCard.addView(buildEditableFrame(etTranslation))
 
         // Words on card
         ankiGroupHeader(root, getString(R.string.anki_group_words_count, words.size))
@@ -161,6 +161,44 @@ class SentenceAnkiContentFragment : Fragment() {
                 }
             }
         }
+    }
+
+    /** Wrap an [EditText] in a FrameLayout with a small pencil icon
+     *  overlaid at top-right, marking the field as editable. The pencil
+     *  is purely decorative — tapping anywhere on the field still gives
+     *  it focus. */
+    private fun buildEditableFrame(editText: EditText): FrameLayout {
+        val ctx = requireContext()
+        val density = resources.displayMetrics.density
+        val frame = FrameLayout(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
+        }
+        // Reserve room on the right so the typed text doesn't run under
+        // the pencil glyph.
+        editText.setPadding(
+            editText.paddingLeft,
+            editText.paddingTop,
+            (32 * density).toInt(),
+            editText.paddingBottom,
+        )
+        frame.addView(editText)
+        frame.addView(ImageView(ctx).apply {
+            setImageResource(R.drawable.ic_edit)
+            setColorFilter(ctx.themeColor(R.attr.ptTextHint))
+            layoutParams = FrameLayout.LayoutParams(
+                (14 * density).toInt(),
+                (14 * density).toInt(),
+                Gravity.TOP or Gravity.END,
+            ).also {
+                it.topMargin = (14 * density).toInt()
+                it.marginEnd = (12 * density).toInt()
+            }
+            isClickable = false
+        })
+        return frame
     }
 
     /** Editable field used by both Original and Translation. Multi-line,
