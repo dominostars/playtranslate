@@ -41,6 +41,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.playtranslate.BuildConfig
 import com.playtranslate.diagnostics.LogExporter
@@ -260,6 +262,8 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         // screenshot externally, which is acceptable for a translation tool.
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
+        hideNavigationBar()
+
         // Seed the companion var from the Activity's own multi-window state.
         // onMultiWindowModeChanged does NOT fire on a launch-into-split-screen
         // start (the state didn't "change" — it just began in that state), so
@@ -354,7 +358,18 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) dimController?.onInteraction()
+        if (hasFocus) {
+            dimController?.onInteraction()
+            hideNavigationBar()
+        }
+    }
+
+    private fun hideNavigationBar() {
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.navigationBars())
+            systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
     }
 
     override fun onResume() {
