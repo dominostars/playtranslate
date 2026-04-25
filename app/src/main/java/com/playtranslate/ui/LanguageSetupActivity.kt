@@ -131,15 +131,20 @@ class LanguageSetupActivity : AppCompatActivity() {
         val root = view.findViewById<LinearLayout>(R.id.languageListRoot)
 
         val allIds = SourceLangId.entries.toList()
-        val currentId = Prefs(this).sourceLangId
+        // Treat the stored id as "no selection" when its pack isn't installed:
+        // Prefs defaults to JA even on a fresh onboarding where the user hasn't
+        // chosen anything yet, so without this check JA would render with a
+        // checkmark before any download.
+        val storedId = Prefs(this).sourceLangId
+        val currentId = storedId.takeIf { LanguagePackStore.isInstalled(this, it) }
 
         fun toRow(id: SourceLangId): LangRow {
             val installed = LanguagePackStore.isInstalled(this, id)
-            val isSelected = id == currentId
+            val isSelected = currentId != null && id == currentId
             // Deleting any variant that shares the selected pack (ZH ↔ ZH_HANT)
             // would pull files out from under the current engine, so treat the
             // sibling as non-deletable too — its trash just stays hidden.
-            val sharesPackWithSelection = id.packId == currentId.packId
+            val sharesPackWithSelection = currentId != null && id.packId == currentId.packId
             return LangRow(
                 title = id.displayName(),
                 isSelected = isSelected,
