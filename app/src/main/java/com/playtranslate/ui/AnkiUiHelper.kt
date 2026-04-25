@@ -133,38 +133,83 @@ fun ankiInsetDivider(parent: LinearLayout, indentDp: Int = 16) {
 }
 
 /**
- * Loads the AnkiDroid deck list and presents a single-choice picker dialog.
- * Persists the selection in [Prefs] and forwards the (id, name) pair to
- * [onPicked]. Silently no-ops if AnkiDroid isn't installed or permission
- * hasn't been granted.
+ * Adds the "Deck" group (header + single tappable row) to [parent]. The
+ * row's title IS the current deck name (or a "Pick a deck" placeholder
+ * when none is set), with a trailing chevron — no separate label. Tapping
+ * launches the same full-screen [AnkiDeckPickerDialog] used in Settings.
+ *
+ * @return the row's title TextView so callers can refresh it after the
+ *         picker dismisses (e.g., to also update a sheet title).
+ */
+fun Fragment.addAnkiDeckRow(parent: LinearLayout, onDeckChanged: () -> Unit): TextView {
+    val ctx = requireContext()
+    val density = ctx.resources.displayMetrics.density
+    ankiGroupHeader(parent, ctx.getString(R.string.anki_group_deck))
+    val card = ankiGroupCard(parent)
+
+    val row = LinearLayout(ctx).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        minimumHeight = (56 * density).toInt()
+        setPadding((16 * density).toInt(), (14 * density).toInt(),
+            (16 * density).toInt(), (14 * density).toInt())
+        background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).run {
+            val d = getDrawable(0)
+            recycle()
+            d
+        }
+        isClickable = true
+        isFocusable = true
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+    }
+    val titleTv = TextView(ctx).apply {
+        text = Prefs(ctx).ankiDeckName.ifBlank { ctx.getString(R.string.anki_deck_row_empty) }
+        textSize = 15f
+        setTextColor(ctx.themeColor(R.attr.ptText))
+        maxLines = 1
+        ellipsize = android.text.TextUtils.TruncateAt.END
+        layoutParams = LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f,
+        )
+    }
+    row.addView(titleTv)
+    row.addView(android.widget.ImageView(ctx).apply {
+        setImageResource(R.drawable.ic_chevron_right)
+        setColorFilter(ctx.themeColor(R.attr.ptTextMuted))
+        layoutParams = LinearLayout.LayoutParams(
+            (20 * density).toInt(), (20 * density).toInt(),
+        )
+    })
+    row.setOnClickListener {
+        showAnkiDeckPicker { _, name ->
+            titleTv.text = name.ifBlank { ctx.getString(R.string.anki_deck_row_empty) }
+            onDeckChanged()
+        }
+    }
+    card.addView(row)
+    return titleTv
+}
+
+/**
+ * Launches the same full-screen [AnkiDeckPickerDialog] the Settings sheet
+ * uses for picking an Anki deck. The dialog persists the selection to
+ * [Prefs] itself; [onPicked] fires after dismissal so the caller can
+ * refresh row text / titles. No-ops silently when AnkiDroid isn't
+ * installed or permission hasn't been granted.
  */
 fun Fragment.showAnkiDeckPicker(onPicked: (deckId: Long, deckName: String) -> Unit) {
-    viewLifecycleOwner.lifecycleScope.launch {
-        val ctx = requireContext()
+    val ctx = requireContext()
+    val ankiManager = AnkiManager(ctx)
+    if (!ankiManager.isAnkiDroidInstalled() || !ankiManager.hasPermission()) return
+    val picker = AnkiDeckPickerDialog.newInstance()
+    picker.onDeckSelected = {
         val prefs = Prefs(ctx)
-        val ankiManager = AnkiManager(ctx)
-        if (!ankiManager.isAnkiDroidInstalled() || !ankiManager.hasPermission()) return@launch
-
-        val decks = withContext(Dispatchers.IO) { ankiManager.getDecks() }
-        if (decks.isEmpty()) return@launch
-
-        val entries = decks.entries.toList()
-        val labels = entries.map { it.value }.toTypedArray()
-        val checkedIdx = entries.indexOfFirst { it.key == prefs.ankiDeckId }
-            .takeIf { it >= 0 } ?: 0
-
-        androidx.appcompat.app.AlertDialog.Builder(ctx)
-            .setTitle(R.string.anki_pick_deck_title)
-            .setSingleChoiceItems(labels, checkedIdx) { dialog, which ->
-                val (id, name) = entries[which].toPair()
-                prefs.ankiDeckId = id
-                prefs.ankiDeckName = name
-                onPicked(id, name)
-                dialog.dismiss()
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+        onPicked(prefs.ankiDeckId, prefs.ankiDeckName)
     }
+    picker.show(childFragmentManager, AnkiDeckPickerDialog.TAG)
 }
 
 /**

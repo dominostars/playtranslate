@@ -29,6 +29,7 @@ import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TargetGlossDatabaseProvider
+import com.playtranslate.language.TatoebaClient
 import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.language.WordTranslator
 import com.playtranslate.model.DictionaryEntry
@@ -46,16 +47,44 @@ class WordAnkiReviewSheet : DialogFragment() {
 
     private lateinit var titleView: TextView
     private lateinit var toggleHost: FrameLayout
-    private lateinit var deckRowValue: TextView
     private lateinit var scrollContent: LinearLayout
     private lateinit var sentenceContainer: FrameLayout
     private lateinit var wordContainer: LinearLayout
     private var definitionsCard: LinearLayout? = null
+    /** First child of the Screenshot group inside [wordContainer] (its
+     *  header). Tracked so the lazy More examples group can be inserted
+     *  immediately above the Screenshot group rather than appended to
+     *  the bottom. Null when the entry has no screenshot. */
+    private var screenshotHeaderView: View? = null
+    /** Outer wrapper of the More examples group (header + card). Stashed
+     *  so we can hide the whole group when the user removes every row. */
+    private var moreExamplesGroup: LinearLayout? = null
+    /** Inner sentences container inside the More examples card; the
+     *  Tatoeba fetch result and the per-row × handlers mutate this. */
+    private var moreExamplesBody: LinearLayout? = null
+    private var moreExamplesSourceLang: String = ""
+    private var moreExamplesTargetLang: String = ""
     /** Cached resolved entry from the in-sheet dictionary lookup; the
      *  Definitions group renders from this and the Anki-card HTML is
      *  built from it on send. Null until the async lookup completes. */
     private var resolvedEntry: DictionaryEntry? = null
     private var resolvedDefResult: DefinitionResult? = null
+
+    /** Sense ords the user has removed via the row × — they're skipped
+     *  in both the rendered Definitions card and the Anki HTML payload. */
+    private val removedSenses = mutableSetOf<Int>()
+    /** (sense ord, example index) pairs the user has removed via the
+     *  per-example × inside a sense row. */
+    private val removedExamples = mutableSetOf<Pair<Int, Int>>()
+    /** Tatoeba pairs the user has removed via the More examples × . */
+    private val removedTatoebaIdx = mutableSetOf<Int>()
+    /** Per-sense per-example translation cache. Async ML-Kit results
+     *  land here so subsequent re-renders (after ×-driven removals)
+     *  pick up translations that already arrived. */
+    private val exampleTranslationCache = mutableMapOf<Pair<Int, Int>, String>()
+    /** Tatoeba "More examples" pairs (set after [TatoebaClient.fetch]
+     *  resolves). Null = not yet fetched / unsupported / fetch failed. */
+    private var tatoebaPairs: List<TatoebaClient.SentencePair>? = null
 
     /** Optional listener called when this sheet is dismissed (used by WordAnkiReviewActivity). */
     var onDismissListener: DialogInterface.OnDismissListener? = null
@@ -81,6 +110,9 @@ class WordAnkiReviewSheet : DialogFragment() {
 
     override fun onDestroyView() {
         definitionsCard = null
+        moreExamplesGroup = null
+        moreExamplesBody = null
+        screenshotHeaderView = null
         super.onDestroyView()
     }
 
@@ -118,7 +150,7 @@ class WordAnkiReviewSheet : DialogFragment() {
             ) { leftSelected -> setMode(sentenceMode = leftSelected) }
         }
 
-        addDeckGroup(scrollContent)
+        addAnkiDeckRow(scrollContent) { refreshTitle() }
 
         sentenceContainer = FrameLayout(requireContext()).apply {
             id = View.generateViewId()
@@ -177,9 +209,8 @@ class WordAnkiReviewSheet : DialogFragment() {
                 if (isSentenceMode) {
                     sendSentenceToAnki(deckId)
                 } else {
-                    val definitionString = composeDefinitionString(fallbackDefinition)
                     sendWordToAnki(word, reading, pos,
-                        definitionString, freqScore, deckId, screenshotPath)
+                        fallbackDefinition, freqScore, deckId, screenshotPath)
                 }
                 btn.isEnabled = true
             }
@@ -320,9 +351,11 @@ class WordAnkiReviewSheet : DialogFragment() {
                 val ssCard = ankiGroupCard(parent)
                 val ssHeaderRef = parent.getChildAt(parent.childCount - 2)
                 val ssCardRef = parent.getChildAt(parent.childCount - 1)
+                screenshotHeaderView = ssHeaderRef
                 addWordScreenshotRow(ssCard, file) {
                     parent.removeView(ssHeaderRef)
                     parent.removeView(ssCardRef)
+                    screenshotHeaderView = null
                     arguments?.remove(ARG_SCREENSHOT_PATH)
                 }
             }
@@ -403,6 +436,8 @@ class WordAnkiReviewSheet : DialogFragment() {
         val appCtx = requireContext().applicationContext
         val prefs = Prefs(appCtx)
         val targetLangCode = prefs.targetLang
+        moreExamplesSourceLang = sourceLangId.code
+        moreExamplesTargetLang = targetLangCode
         val engine = SourceLanguageEngines.get(appCtx, sourceLangId)
         val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, targetLangCode)
         val mlKit = TranslationManagerProvider.get(engine.profile.translationCode, targetLangCode)
@@ -420,20 +455,19 @@ class WordAnkiReviewSheet : DialogFragment() {
         resolvedEntry = entry
         resolvedDefResult = defResult
 
-        // First paint of the per-sense rows. Stored English example
-        // translations come from the pack for target=en; otherwise we
-        // wait for ML Kit to fill them in.
-        val initialTranslations: List<List<String>>? = if (targetLangCode == "en") {
-            entry.senses.map { s -> s.examples.map { it.translation } }
-        } else null
-        val translationRegistry = mutableMapOf<Pair<Int, Int>, TextView>()
-        renderDefinitions(entry, defResult, initialTranslations, translationRegistry)
+        // Seed the translation cache with stored pack translations for
+        // target=en; ML-Kit fallback fills the rest in below.
+        if (targetLangCode == "en") {
+            entry.senses.forEachIndexed { sIdx, s ->
+                s.examples.forEachIndexed { eIdx, ex ->
+                    if (ex.translation.isNotBlank()) {
+                        exampleTranslationCache[sIdx to eIdx] = ex.translation
+                    }
+                }
+            }
+        }
+        rebuildDefinitions()
 
-        // Async translate examples for non-English targets so the user
-        // doesn't stare at empty translation slots while ML Kit warms up.
-        // Uses the view lifecycle scope (rather than the enclosing
-        // suspend caller) so this child coroutine is independently
-        // cancellable on view teardown.
         if (targetLangCode != "en") {
             viewLifecycleOwner.lifecycleScope.launch {
                 val translated = runCatching {
@@ -443,25 +477,45 @@ class WordAnkiReviewSheet : DialogFragment() {
                 translated.forEachIndexed { sIdx, perSense ->
                     perSense.forEachIndexed { eIdx, tr ->
                         if (tr.isBlank()) return@forEachIndexed
-                        translationRegistry[sIdx to eIdx]?.let { tv ->
-                            tv.text = tr
-                            tv.visibility = View.VISIBLE
-                        }
+                        exampleTranslationCache[sIdx to eIdx] = tr
                     }
                 }
+                rebuildDefinitions()
+            }
+        }
+
+        // Tatoeba "More examples" — only when the API supports the pair.
+        // Mirrors WordDetailBottomSheet's gating so we don't show a
+        // placeholder that would later flip to "couldn't load examples"
+        // for an unsupported language pair.
+        if (TatoebaClient.supports(moreExamplesSourceLang, moreExamplesTargetLang)) {
+            ensureMoreExamplesPlaceholder()
+            viewLifecycleOwner.lifecycleScope.launch {
+                val lookupWord = entry.headwords.firstOrNull()?.written ?: entry.slug
+                val pairs = TatoebaClient.fetch(
+                    word = lookupWord,
+                    sourceLang = moreExamplesSourceLang,
+                    targetLang = moreExamplesTargetLang,
+                )
+                if (!isAdded) return@launch
+                tatoebaPairs = pairs
+                applyMoreExamples(pairs)
             }
         }
     }
 
-    private fun renderDefinitions(
-        entry: DictionaryEntry,
-        defResult: DefinitionResult?,
-        initialTranslations: List<List<String>>?,
-        translationRegistry: MutableMap<Pair<Int, Int>, TextView>,
-    ) {
+    /**
+     * Rebuilds the Definitions card from the resolved entry, the current
+     * removal sets ([removedSenses], [removedExamples]) and the latest
+     * cached example translations. Called both on initial paint and
+     * after every × tap so the visible state stays in sync.
+     */
+    private fun rebuildDefinitions() {
+        val entry = resolvedEntry ?: return
         val card = definitionsCard ?: return
         card.removeAllViews()
 
+        val defResult = resolvedDefResult
         val translatedDefs = when (defResult) {
             is DefinitionResult.Native -> defResult.translatedDefinitions
             is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
@@ -470,56 +524,54 @@ class WordAnkiReviewSheet : DialogFragment() {
         }
         val targetByOrd = if (defResult is DefinitionResult.Native)
             defResult.targetSenses.associateBy { it.senseOrd } else null
-        val numSenses = entry.senses.count { it.targetDefinitions.isNotEmpty() }
+
+        val visibleSenses = entry.senses.withIndex().filter { (idx, s) ->
+            s.targetDefinitions.isNotEmpty() && idx !in removedSenses
+        }
+        val numVisibleSenses = visibleSenses.size
 
         var displayCount = 0
-        entry.senses.forEachIndexed { origIdx, sense ->
-            if (sense.targetDefinitions.isEmpty()) return@forEachIndexed
+        visibleSenses.forEach { (origIdx, sense) ->
             val target = targetByOrd?.get(origIdx)
             val posLabels = (target?.pos ?: sense.partsOfSpeech).filter { it.isNotBlank() }
             val glossList = target?.glosses
                 ?: translatedDefs?.getOrNull(origIdx)?.let { listOf(it) }
                 ?: sense.targetDefinitions
-            val senseNumber = if (numSenses > 1) displayCount + 1 else null
+            val senseNumber = if (numVisibleSenses > 1) displayCount + 1 else null
             if (displayCount > 0) {
                 ankiInsetDivider(card, indentDp = if (senseNumber != null) 42 else 16)
             }
+            val visibleExamples = sense.examples.withIndex()
+                .filter { (eIdx, _) -> (origIdx to eIdx) !in removedExamples }
             addAnkiSenseRow(
                 parent = card,
                 posLabels = posLabels,
                 glossList = glossList,
                 senseNumber = senseNumber,
                 miscText = sense.misc.takeIf { it.isNotEmpty() }?.joinToString(" · "),
-                examples = sense.examples,
-                exampleTranslations = initialTranslations?.getOrNull(origIdx),
+                examples = visibleExamples,
                 senseIndex = origIdx,
-                translationRegistry = translationRegistry,
             )
             displayCount++
         }
 
-        // Defensive: if every sense was empty we'd have left the card
-        // empty. Fall back to the muted "no definitions" line so the
-        // user isn't staring at a blank card slot.
         if (displayCount == 0) {
             card.addView(buildLoadingDefinitionsRow(""))
         }
     }
 
-    /** Mirror of WordDetailBottomSheet.addSenseRow: number column +
-     *  POS eyebrow + gloss + misc + accent-bar example blocks. The
-     *  registry pattern lets the async resolver patch each example's
-     *  translation TextView in place after first paint. */
+    /** Per-sense row: number column + POS eyebrow + gloss + misc +
+     *  accent-bar example blocks (each with its own × to remove that
+     *  example), plus a trailing × on the row that drops the entire
+     *  sense from the card. */
     private fun addAnkiSenseRow(
         parent: LinearLayout,
         posLabels: List<String>,
         glossList: List<String>,
         senseNumber: Int?,
         miscText: String?,
-        examples: List<Example>,
-        exampleTranslations: List<String>?,
+        examples: List<IndexedValue<Example>>,
         senseIndex: Int,
-        translationRegistry: MutableMap<Pair<Int, Int>, TextView>,
     ) {
         val ctx = requireContext()
         val density = resources.displayMetrics.density
@@ -591,21 +643,65 @@ class WordAnkiReviewSheet : DialogFragment() {
                 ).also { it.topMargin = (4 * density).toInt() }
             })
         }
-        examples.forEachIndexed { i, ex ->
-            val initial = exampleTranslations?.getOrNull(i) ?: ""
-            val (block, translationTv) = buildAnkiExampleBlock(ctx, ex.text, initial)
-            val topGap = if (i == 0) (10 * density).toInt() else (2 * density).toInt()
+        examples.forEachIndexed { displayIdx, indexedEx ->
+            val originalIdx = indexedEx.index
+            val ex = indexedEx.value
+            val cached = exampleTranslationCache[senseIndex to originalIdx] ?: ""
+            val block = buildAnkiExampleBlock(ctx, ex.text, cached) {
+                removedExamples.add(senseIndex to originalIdx)
+                rebuildDefinitions()
+            }
+            val topGap = if (displayIdx == 0) (10 * density).toInt() else (2 * density).toInt()
             (block.layoutParams as LinearLayout.LayoutParams).topMargin = topGap
             col.addView(block)
-            translationRegistry[senseIndex to i] = translationTv
         }
         row.addView(col)
+        // Trailing × — only render it when there's more than one
+        // visible sense, so removing the only sense doesn't strand the
+        // card with no definition.
+        if (resolvedEntry?.let { e ->
+                e.senses.withIndex().count { (idx, s) ->
+                    s.targetDefinitions.isNotEmpty() && idx !in removedSenses
+                }
+            } ?: 0 > 1) {
+            row.addView(buildPlainRemoveGlyph(ctx, leadingMargin = 8) {
+                removedSenses.add(senseIndex)
+                rebuildDefinitions()
+            })
+        }
         parent.addView(row)
+    }
+
+    /** Plain "✕" used by the in-card row removers (sense, example,
+     *  Tatoeba). Pads to keep the hit target reasonable; no styled
+     *  background so it stays subordinate to the content. */
+    private fun buildPlainRemoveGlyph(
+        ctx: Context,
+        leadingMargin: Int = 0,
+        onRemove: () -> Unit,
+    ): TextView {
+        val density = ctx.resources.displayMetrics.density
+        return TextView(ctx).apply {
+            text = "✕"
+            textSize = 14f
+            setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+            isClickable = true
+            isFocusable = true
+            contentDescription = ctx.getString(R.string.anki_word_remove_content_description)
+            setPadding((10 * density).toInt(), (4 * density).toInt(),
+                (10 * density).toInt(), (4 * density).toInt())
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).also { it.marginStart = (leadingMargin * density).toInt() }
+            setOnClickListener { onRemove() }
+        }
     }
 
     private fun buildAnkiExampleBlock(
         ctx: Context, text: String, initialTranslation: String,
-    ): Pair<View, TextView> {
+        onRemove: () -> Unit,
+    ): View {
         val density = ctx.resources.displayMetrics.density
         val accent = ctx.themeColor(R.attr.ptAccent)
         val accentRing = Color.argb(
@@ -652,70 +748,202 @@ class WordAnkiReviewSheet : DialogFragment() {
         }
         inner.addView(translationTv)
         block.addView(inner)
-        return block to translationTv
+        // Per-example × — strips just this example from the card
+        // without dropping the surrounding sense.
+        block.addView(buildPlainRemoveGlyph(ctx, leadingMargin = 4, onRemove))
+        return block
     }
 
-    // ── Deck group ───────────────────────────────────────────────────────
+    // ── Tatoeba "More examples" ─────────────────────────────────────────
 
-    private fun addDeckGroup(parent: LinearLayout) {
+    /** Adds the More examples group (header + card with placeholder +
+     *  attribution) to the word container if it isn't already there.
+     *  Calling more than once is a no-op so we can lazily create it on
+     *  first paint and re-use the same body on subsequent rebuilds. */
+    private fun ensureMoreExamplesPlaceholder() {
+        if (moreExamplesGroup != null) return
         val ctx = requireContext()
         val density = resources.displayMetrics.density
-        ankiGroupHeader(parent, getString(R.string.anki_group_deck))
-        val card = ankiGroupCard(parent)
-
-        val row = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = (56 * density).toInt()
-            setPadding((16 * density).toInt(), (14 * density).toInt(),
-                (16 * density).toInt(), (14 * density).toInt())
-            background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).run {
-                val d = getDrawable(0)
-                recycle()
-                d
-            }
-            isClickable = true
-            isFocusable = true
+        val group = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             )
         }
-        row.addView(TextView(ctx).apply {
-            text = getString(R.string.anki_deck_row_label)
-            textSize = 15f
-            setTextColor(ctx.themeColor(R.attr.ptText))
-            layoutParams = LinearLayout.LayoutParams(
-                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+        ankiGroupHeader(
+            group,
+            getString(R.string.word_detail_more_examples),
+            getString(R.string.word_detail_group_tatoeba),
+        )
+        val card = ankiGroupCard(group)
+        val body = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(
+                (16 * density).toInt(), (14 * density).toInt(),
+                (16 * density).toInt(), (14 * density).toInt(),
             )
-        })
-        deckRowValue = TextView(ctx).apply {
-            text = Prefs(ctx).ankiDeckName.ifBlank { getString(R.string.anki_deck_row_empty) }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
+        }
+        body.addView(TextView(ctx).apply {
+            text = getString(R.string.word_detail_more_examples_loading)
             textSize = 13f
             setTextColor(ctx.themeColor(R.attr.ptTextMuted))
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).also { it.marginEnd = (4 * density).toInt() }
-        }
-        row.addView(deckRowValue)
-        row.addView(ImageView(ctx).apply {
-            setImageResource(R.drawable.ic_chevron_right)
-            setColorFilter(ctx.themeColor(R.attr.ptTextMuted))
-            layoutParams = LinearLayout.LayoutParams(
-                (20 * density).toInt(), (20 * density).toInt(),
-            )
+            setTypeface(null, Typeface.ITALIC)
         })
-        row.setOnClickListener {
-            showAnkiDeckPicker { _, name ->
-                deckRowValue.text = name
-                refreshTitle()
+        card.addView(body)
+        card.addView(buildTatoebaAttributionFooter())
+        // Park the group just above the Screenshot group when one's
+        // present; otherwise append to the bottom. Insertion-by-index
+        // beats appending so the user sees the natural reading order:
+        // Definitions → More examples → Screenshot.
+        val anchor = screenshotHeaderView
+        if (anchor != null) {
+            val anchorIdx = wordContainer.indexOfChild(anchor).coerceAtLeast(0)
+            wordContainer.addView(group, anchorIdx)
+        } else {
+            wordContainer.addView(group)
+        }
+        moreExamplesGroup = group
+        moreExamplesBody = body
+    }
+
+    private fun buildTatoebaAttributionFooter(): View {
+        val ctx = requireContext()
+        val density = resources.displayMetrics.density
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundResource(R.drawable.bg_word_tatoeba_attribution)
+            setPadding(
+                (16 * density).toInt(), (10 * density).toInt(),
+                (16 * density).toInt(), (10 * density).toInt(),
+            )
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                runCatching {
+                    val i = android.content.Intent(
+                        android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://tatoeba.org/")
+                    )
+                    startActivity(i)
+                }
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
+        }
+        row.addView(ImageView(ctx).apply {
+            setImageResource(R.drawable.ic_open_in_new)
+            setColorFilter(ctx.themeColor(R.attr.ptTextHint))
+            layoutParams = LinearLayout.LayoutParams(
+                (12 * density).toInt(), (12 * density).toInt(),
+            ).also { it.marginEnd = (6 * density).toInt() }
+        })
+        row.addView(TextView(ctx).apply {
+            text = getString(R.string.word_detail_tatoeba_attribution)
+            textSize = 11f
+            setTextColor(ctx.themeColor(R.attr.ptTextHint))
+        })
+        return row
+    }
+
+    /** Replaces the placeholder body with the supplied [pairs] (or an
+     *  error/empty state). Each rendered row carries a × that drops just
+     *  that example from the card without taking down the whole group. */
+    private fun applyMoreExamples(pairs: List<TatoebaClient.SentencePair>?) {
+        val body = moreExamplesBody ?: return
+        val group = moreExamplesGroup ?: return
+        val ctx = requireContext()
+        val density = resources.displayMetrics.density
+        body.removeAllViews()
+        body.setPadding(0, 0, 0, 0)
+
+        when {
+            pairs == null -> {
+                body.setPadding(
+                    (16 * density).toInt(), (14 * density).toInt(),
+                    (16 * density).toInt(), (14 * density).toInt(),
+                )
+                body.addView(TextView(ctx).apply {
+                    text = getString(R.string.word_detail_more_examples_error)
+                    textSize = 13f
+                    setTextColor(ctx.themeColor(R.attr.ptTextHint))
+                })
+            }
+            pairs.isEmpty() -> {
+                group.visibility = View.GONE
+            }
+            else -> {
+                val visible = pairs.withIndex()
+                    .filter { (idx, _) -> idx !in removedTatoebaIdx }
+                if (visible.isEmpty()) {
+                    group.visibility = View.GONE
+                    return
+                }
+                visible.forEachIndexed { displayIdx, indexed ->
+                    val origIdx = indexed.index
+                    val pair = indexed.value
+                    if (displayIdx > 0) ankiInsetDivider(body, indentDp = 16)
+                    body.addView(buildTatoebaRow(pair) {
+                        removedTatoebaIdx.add(origIdx)
+                        applyMoreExamples(tatoebaPairs)
+                    })
+                }
             }
         }
-        card.addView(row)
     }
+
+    private fun buildTatoebaRow(
+        pair: TatoebaClient.SentencePair,
+        onRemove: () -> Unit,
+    ): View {
+        val ctx = requireContext()
+        val density = resources.displayMetrics.density
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(
+                (16 * density).toInt(), (12 * density).toInt(),
+                (12 * density).toInt(), (12 * density).toInt(),
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
+        }
+        val col = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f,
+            )
+        }
+        col.addView(TextView(ctx).apply {
+            text = pair.source
+            textSize = 15f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(ctx.themeColor(R.attr.ptText))
+        })
+        col.addView(TextView(ctx).apply {
+            text = pair.target
+            textSize = 13f
+            setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).also { it.topMargin = (3 * density).toInt() }
+        })
+        row.addView(col)
+        row.addView(buildPlainRemoveGlyph(ctx, leadingMargin = 4, onRemove))
+        return row
+    }
+
+    // ── Deck group ───────────────────────────────────────────────────────
 
     private fun refreshTitle() {
         if (toggleHost.visibility == View.VISIBLE) return
@@ -746,38 +974,10 @@ class WordAnkiReviewSheet : DialogFragment() {
         }
     }
 
-    /** Build the flat definition string the Anki HTML builder wants
-     *  from the resolved entry — same logic the Word Detail sheet uses
-     *  when launching the review. Falls back to the original ARG_DEFINITION
-     *  if the lookup never landed. */
-    private fun composeDefinitionString(fallback: String): String {
-        val entry = resolvedEntry ?: return fallback
-        val defResult = resolvedDefResult
-        val targetByOrd = if (defResult is DefinitionResult.Native)
-            defResult.targetSenses.associateBy { it.senseOrd } else null
-        val translatedDefs = when (defResult) {
-            is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
-            is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
-            else -> null
-        }
-        val numSenses = entry.senses.count { it.targetDefinitions.isNotEmpty() }
-        var displayNum = 0
-        val pieces = entry.senses.mapIndexedNotNull { i, sense ->
-            if (sense.targetDefinitions.isEmpty()) return@mapIndexedNotNull null
-            displayNum++
-            val glosses = targetByOrd?.get(i)?.glosses?.joinToString("; ")
-                ?: translatedDefs?.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
-                ?: sense.targetDefinitions.joinToString("; ")
-            val prefix = if (numSenses > 1) "$displayNum. " else ""
-            prefix + glosses
-        }
-        return pieces.joinToString("\n").ifBlank { fallback }
-    }
-
     // ── Send: word mode ──────────────────────────────────────────────────────
 
     private suspend fun sendWordToAnki(
-        word: String, reading: String, pos: String, definition: String,
+        word: String, reading: String, pos: String, fallbackDefinition: String,
         freqScore: Int, deckId: Long, screenshotPath: String?
     ) {
         val ankiManager = AnkiManager(requireContext())
@@ -787,7 +987,8 @@ class WordAnkiReviewSheet : DialogFragment() {
         } else null
 
         val front = buildWordFrontHtml(word)
-        val back  = buildWordBackHtml(word, reading, pos, definition, freqScore, imageFilename)
+        val back  = buildWordBackHtml(word, reading, pos, fallbackDefinition,
+            freqScore, imageFilename)
 
         val success = withContext(Dispatchers.IO) { ankiManager.addNote(deckId, front, back) }
         val msg = if (success) getString(R.string.anki_added) else getString(R.string.anki_failed)
@@ -802,15 +1003,30 @@ class WordAnkiReviewSheet : DialogFragment() {
         append("<div class=\"gl-front\" style=\"text-align:center;font-size:2.2em;padding:32px 16px;\">$word</div>")
     }
 
+    /**
+     * Renders the back of the Anki word card. Prefers the resolved
+     * dictionary entry (per-sense glosses + accent-rail example blocks
+     * + Tatoeba "More examples"), filtered by the [removedSenses],
+     * [removedExamples], and [removedTatoebaIdx] sets so what the user
+     * sees on screen is exactly what lands on the card. Falls back to
+     * the flat [fallbackDefinition] string when no entry is resolved.
+     */
     private fun buildWordBackHtml(
         word: String, reading: String, pos: String,
-        definition: String, freqScore: Int, imageFilename: String?
+        fallbackDefinition: String, freqScore: Int, imageFilename: String?,
     ): String = buildString {
         append("<style>")
         append("body{visibility:hidden!important;white-space:normal!important;}")
         append(".gl-front{display:none!important;}")
         append("#answer{display:none!important;}")
         append(".gl-back{visibility:visible!important;}")
+        append(".gl-sense{margin:14px 4px;}")
+        append(".gl-pos{font-size:0.78em;letter-spacing:0.08em;color:#888;text-transform:uppercase;}")
+        append(".gl-gloss{font-size:1.1em;margin-top:4px;}")
+        append(".gl-misc{font-size:0.85em;color:#888;font-style:italic;margin-top:2px;}")
+        append(".gl-ex{margin:8px 0 0 8px;padding-left:10px;border-left:2px solid #6cd1c2;}")
+        append(".gl-ex-tr{font-size:0.92em;color:#888;margin-top:2px;}")
+        append(".gl-section{font-size:0.78em;letter-spacing:0.08em;color:#888;text-transform:uppercase;margin:18px 4px 6px;}")
         append("</style>")
         append("<div class=\"gl-back\">")
         if (imageFilename != null) {
@@ -831,11 +1047,107 @@ class WordAnkiReviewSheet : DialogFragment() {
         }
         append("<div style=\"margin-bottom:12px;\"></div>")
         append("<hr>")
-        val defHtml = definition.lines().filter { it.isNotBlank() }
-            .joinToString("<br>") { it.trimStart() }
-        append("<div style=\"font-size:1.1em;margin:12px 4px;\">$defHtml</div>")
+
+        val entry = resolvedEntry
+        if (entry != null) {
+            appendSensesHtml(entry, fallbackDefinition)
+            appendMoreExamplesHtml()
+        } else {
+            val defHtml = fallbackDefinition.lines().filter { it.isNotBlank() }
+                .joinToString("<br>") { it.trimStart() }
+            append("<div style=\"font-size:1.1em;margin:12px 4px;\">$defHtml</div>")
+        }
         append("</div>")
     }
+
+    private fun StringBuilder.appendSensesHtml(
+        entry: DictionaryEntry, fallback: String,
+    ) {
+        val defResult = resolvedDefResult
+        val targetByOrd = if (defResult is DefinitionResult.Native)
+            defResult.targetSenses.associateBy { it.senseOrd } else null
+        val translatedDefs = when (defResult) {
+            is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
+            is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
+            else -> null
+        }
+        val visibleSenses = entry.senses.withIndex().filter { (idx, s) ->
+            s.targetDefinitions.isNotEmpty() && idx !in removedSenses
+        }
+        if (visibleSenses.isEmpty()) {
+            // User stripped every sense — the renderer hides the × on
+            // the last visible sense, but defensive: emit the fallback
+            // so the card never goes empty.
+            val defHtml = fallback.lines().filter { it.isNotBlank() }
+                .joinToString("<br>") { it.trimStart() }
+            append("<div style=\"font-size:1.1em;margin:12px 4px;\">$defHtml</div>")
+            return
+        }
+        val numVisible = visibleSenses.size
+        visibleSenses.forEachIndexed { displayIdx, (origIdx, sense) ->
+            val target = targetByOrd?.get(origIdx)
+            val posLabels = (target?.pos ?: sense.partsOfSpeech).filter { it.isNotBlank() }
+            val gloss = target?.glosses?.joinToString("; ")
+                ?: translatedDefs?.getOrNull(origIdx)
+                ?: sense.targetDefinitions.joinToString("; ")
+            val numberPrefix = if (numVisible > 1) "${displayIdx + 1}. " else ""
+            append("<div class=\"gl-sense\">")
+            if (posLabels.isNotEmpty()) {
+                append("<div class=\"gl-pos\">")
+                append(htmlEscape(posLabels.joinToString(" · ")))
+                append("</div>")
+            }
+            append("<div class=\"gl-gloss\">")
+            append(numberPrefix)
+            append(htmlEscape(gloss))
+            append("</div>")
+            val miscText = sense.misc.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+            if (miscText != null) {
+                append("<div class=\"gl-misc\">")
+                append(htmlEscape(miscText))
+                append("</div>")
+            }
+            sense.examples.withIndex()
+                .filter { (eIdx, _) -> (origIdx to eIdx) !in removedExamples }
+                .forEach { (eIdx, ex) ->
+                    val tr = exampleTranslationCache[origIdx to eIdx] ?: ex.translation
+                    append("<div class=\"gl-ex\">")
+                    append(htmlEscape(ex.text))
+                    if (tr.isNotBlank()) {
+                        append("<div class=\"gl-ex-tr\">")
+                        append(htmlEscape(tr))
+                        append("</div>")
+                    }
+                    append("</div>")
+                }
+            append("</div>")
+        }
+    }
+
+    private fun StringBuilder.appendMoreExamplesHtml() {
+        val pairs = tatoebaPairs ?: return
+        val visible = pairs.withIndex().filter { (idx, _) -> idx !in removedTatoebaIdx }
+        if (visible.isEmpty()) return
+        append("<div class=\"gl-section\">")
+        append(getString(R.string.word_detail_more_examples))
+        append("</div>")
+        visible.forEach { (_, p) ->
+            append("<div class=\"gl-ex\">")
+            append(htmlEscape(p.source))
+            if (p.target.isNotBlank()) {
+                append("<div class=\"gl-ex-tr\">")
+                append(htmlEscape(p.target))
+                append("</div>")
+            }
+            append("</div>")
+        }
+    }
+
+    private fun htmlEscape(s: String): String = s
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
 
     // ── Send: sentence mode ──────────────────────────────────────────────────
 
