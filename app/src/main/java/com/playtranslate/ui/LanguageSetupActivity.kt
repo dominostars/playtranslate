@@ -41,6 +41,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.Collator
 import java.util.Locale
 
 class LanguageSetupActivity : AppCompatActivity() {
@@ -130,7 +131,12 @@ class LanguageSetupActivity : AppCompatActivity() {
         val view = LayoutInflater.from(this).inflate(R.layout.page_language_list, contentFrame, false)
         val root = view.findViewById<LinearLayout>(R.id.languageListRoot)
 
-        val allIds = SourceLangId.entries.toList()
+        // Sort by the system-locale display name so the order matches what
+        // the user actually reads (and is meaningful in their locale's
+        // collation rules — Collator handles accented chars / non-Latin scripts).
+        val collator = Collator.getInstance(Locale.getDefault())
+        val allIds = SourceLangId.entries
+            .sortedWith(compareBy(collator) { it.displayName() })
         // Treat the stored id as "no selection" when its pack isn't installed:
         // Prefs defaults to JA even on a fresh onboarding where the user hasn't
         // chosen anything yet, so without this check JA would render with a
@@ -239,9 +245,10 @@ class LanguageSetupActivity : AppCompatActivity() {
         val view = LayoutInflater.from(this).inflate(R.layout.page_language_list, contentFrame, false)
         val root = view.findViewById<LinearLayout>(R.id.languageListRoot)
 
+        val collator = Collator.getInstance(Locale.getDefault())
         val allLangs = TranslateLanguage.getAllLanguages()
             .map { code -> code to targetDisplayName(code) }
-            .sortedBy { it.second }
+            .sortedWith(compareBy(collator) { it.second })
 
         val currentTarget = Prefs(this).targetLang
 
@@ -583,10 +590,12 @@ class LanguageSetupActivity : AppCompatActivity() {
         Locale(code).getDisplayLanguage(Locale.getDefault())
             .replaceFirstChar { it.uppercase(Locale.getDefault()) }
 
-    /** Display name for target languages — shows the native language name. */
+    /** Display name for target languages, rendered in the system locale to
+     *  match the source picker (e.g. on an English device, Japanese shows as
+     *  "Japanese", not "日本語"). */
     private fun targetDisplayName(code: String): String {
-        val locale = Locale(code)
-        return locale.getDisplayLanguage(locale)
+        val locale = Locale.getDefault()
+        return Locale(code).getDisplayLanguage(locale)
             .replaceFirstChar { it.uppercase(locale) }
     }
 
