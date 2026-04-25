@@ -23,7 +23,6 @@ import java.io.File
 
 class AnkiReviewBottomSheet : DialogFragment() {
 
-    private var sentenceContainer: FrameLayout? = null
     private var deckSubtitleView: TextView? = null
 
     override fun getTheme(): Int = fullScreenDialogTheme(requireContext())
@@ -71,36 +70,22 @@ class AnkiReviewBottomSheet : DialogFragment() {
 
         val sourceLangId = SourceLangId.fromCode(args.getString(ARG_SOURCE_LANG)) ?: SourceLangId.JA
 
-        // Build the scroll content: Deck group on top, then a host
-        // FrameLayout for the SentenceAnkiContentFragment's groups.
-        val scrollContent = view.findViewById<FrameLayout>(R.id.sentenceContentContainer)
-        val column = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            )
-        }
-        scrollContent.addView(column)
-
+        // Both child hosts come from the layout XML — fragment-host IDs
+        // need to stay stable so FragmentManager can re-attach the
+        // SentenceAnkiContentFragment to the same container after
+        // rotation / process recreation. Generated IDs change every
+        // inflation and break the restore path.
+        val deckHost = view.findViewById<LinearLayout>(R.id.sentenceAnkiDeckHost)
         deckSubtitleView = view.findViewById(R.id.tvAnkiSendSubtitle)
-        addAnkiDeckRow(column) { refreshDeckSubtitle() }
+        addAnkiDeckRow(deckHost) { refreshDeckSubtitle() }
         refreshDeckSubtitle()
-        sentenceContainer = FrameLayout(requireContext()).apply {
-            id = View.generateViewId()
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            )
-        }
-        column.addView(sentenceContainer)
 
         if (savedInstanceState == null) {
             val contentFragment = SentenceAnkiContentFragment.newInstance(
                 original, translation, words, screenshotPath, sourceLangId = sourceLangId
             )
             childFragmentManager.beginTransaction()
-                .replace(sentenceContainer!!.id, contentFragment, TAG_CONTENT)
+                .replace(R.id.sentenceAnkiFragmentHost, contentFragment, TAG_CONTENT)
                 .commitNow()
         }
 

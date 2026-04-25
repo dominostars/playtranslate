@@ -305,12 +305,24 @@ fun buildAnkiModeToggle(
     container.addView(track)
 
     var currentIdx = initialIdx
-    pillRow.post {
-        if (pills.isEmpty()) return@post
+    // Resize + reposition the indicator on every layout pass: the
+    // initial measurement (via `pillRow.post`) wasn't enough because
+    // the activity now handles config changes itself, so a rotation
+    // resizes the toolbar without recreating the toggle. We need the
+    // indicator width / translation to track the new pill width as
+    // pills resize. Guarded against no-op writes to avoid a relayout
+    // loop.
+    pillRow.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+        if (pills.isEmpty()) return@addOnLayoutChangeListener
         val pillW = pills[0].width
-        indicator.layoutParams = FrameLayout.LayoutParams(pillW, pillH)
-        indicator.translationX = (pillW * currentIdx).toFloat()
-        indicator.requestLayout()
+        if (pillW <= 0) return@addOnLayoutChangeListener
+        val targetX = (pillW * currentIdx).toFloat()
+        val curLp = indicator.layoutParams
+        if (curLp == null || curLp.width != pillW || indicator.translationX != targetX) {
+            indicator.layoutParams = FrameLayout.LayoutParams(pillW, pillH)
+            indicator.translationX = targetX
+            indicator.requestLayout()
+        }
     }
 
     pills.forEachIndexed { idx, pill ->
