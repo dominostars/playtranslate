@@ -101,7 +101,7 @@ class ChineseEngine(
      * maintaining a separate per-character table. The highest-frequency entry
      * wins when a character has multiple senses under different readings.
      */
-    override suspend fun lookupCharacter(literal: Char): CharacterDetail? {
+    override suspend fun lookupCharacter(literal: Char, targetLang: String): CharacterDetail? {
         val response = dict.lookup(literal.toString(), profile.preferTraditional) ?: return null
         val entry = response.entries.firstOrNull() ?: return null
         val meanings = entry.senses.flatMap { it.targetDefinitions }

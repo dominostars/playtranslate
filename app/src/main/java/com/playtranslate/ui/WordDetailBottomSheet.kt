@@ -174,9 +174,10 @@ class WordDetailBottomSheet : DialogFragment() {
             val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, targetLangCode)
             val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, targetLangCode)
             val enToTarget = TranslationManagerProvider.getEnToTarget(targetLangCode)
+            val enToTargetWrapper = enToTarget?.let { WordTranslator(it::translate) }
             val resolver = DefinitionResolver(engine, targetGlossDb,
                 mlKitTranslator?.let { WordTranslator(it::translate) }, targetLangCode,
-                enToTarget?.let { WordTranslator(it::translate) })
+                enToTargetWrapper)
             val defResult = withContext(Dispatchers.IO) { resolver.lookup(word, readingHint) }
             val response = defResult?.response
             val entry = response?.entries?.firstOrNull()
@@ -189,7 +190,10 @@ class WordDetailBottomSheet : DialogFragment() {
                 entry.senses.map { s -> s.examples.map { it.translation } }
             } else null
             val translationRegistry = mutableMapOf<Pair<Int, Int>, TextView>()
-            buildContent(content, entry, engine, sourceLangId, defResult, initialTranslations, translationRegistry)
+            buildContent(
+                content, entry, engine, sourceLangId, defResult, initialTranslations,
+                translationRegistry, targetLangCode, enToTargetWrapper,
+            )
             scrollView?.scrollTo(0, 0)
 
             val ankiManager = AnkiManager(requireContext())
@@ -327,6 +331,8 @@ class WordDetailBottomSheet : DialogFragment() {
         defResult: DefinitionResult?,
         initialTranslations: List<List<String>>?,
         translationRegistry: MutableMap<Pair<Int, Int>, TextView>,
+        targetLangCode: String,
+        enToTargetTranslator: WordTranslator?,
     ) {
         // ── Header block: headword + reading + badges ─────────────────────
         addHeaderBlock(content, entry, sourceLangId)
@@ -407,22 +413,57 @@ class WordDetailBottomSheet : DialogFragment() {
 
         if (cjkChars.isNotEmpty()) {
             val characterDetails = withContext(Dispatchers.IO) {
-                cjkChars.mapNotNull { engine.lookupCharacter(it) }
+                cjkChars.mapNotNull { engine.lookupCharacter(it, targetLangCode) }
             }
             if (isAdded && characterDetails.isNotEmpty()) {
                 val headerTitle = when (characterDetails.first()) {
                     is KanjiDetail -> getString(R.string.word_detail_group_kanji)
                     is HanziDetail -> getString(R.string.word_detail_group_hanzi)
                 }
-                val suffix = if (characterDetails.size == 1)
+                // Rows whose pack-resolved meanings are still in English while
+                // the user asked for something else. CC-CEDICT hanzi always
+                // land here; JA kanji only when KANJIDIC2 has no native gloss
+                // in the user's target language (i.e. outside en/fr/es/pt).
+                val needsMt = targetLangCode != "en" && characterDetails.any {
+                    it.meaningsLang != targetLangCode
+                }
+                val countLabel = if (characterDetails.size == 1)
                     getString(R.string.word_detail_char_count_one)
                 else
                     getString(R.string.word_detail_chars_count, characterDetails.size)
+                val suffix = if (needsMt && enToTargetTranslator != null)
+                    getString(R.string.word_detail_char_meanings_mt, countLabel)
+                else
+                    countLabel
                 addGroupHeader(content, headerTitle, suffix)
                 val charCard = addGroupCard(content)
+                val meaningsRegistry = mutableMapOf<Int, TextView>()
                 characterDetails.forEachIndexed { index, detail ->
                     if (index > 0) addInsetDivider(charCard, indentPx = dpRes(R.dimen.pt_row_h_padding))
-                    addCharacterRow(charCard, detail)
+                    addCharacterRow(charCard, detail, index, meaningsRegistry)
+                }
+
+                if (needsMt && enToTargetTranslator != null) {
+                    // Launch translations on the viewLifecycleOwner scope so
+                    // buildContent returns immediately and the Anki button /
+                    // more-examples setup in onViewCreated isn't blocked
+                    // behind ML Kit. Each row updates as its MT resolves.
+                    characterDetails.forEachIndexed { index, detail ->
+                        if (detail.meaningsLang == targetLangCode) return@forEachIndexed
+                        if (detail.meanings.isEmpty()) return@forEachIndexed
+                        viewLifecycleOwner.lifecycleScope.launch {
+                            // Mirror addCharacterRow's display — first 4 meanings
+                            // joined by ", " — so the translator sees the same
+                            // surface the user would otherwise read.
+                            val source = detail.meanings.take(4).joinToString(", ")
+                            val translated = runCatching {
+                                withContext(Dispatchers.IO) { enToTargetTranslator.translate(source) }
+                            }.getOrNull()
+                            if (!translated.isNullOrBlank() && isAdded) {
+                                meaningsRegistry[index]?.text = translated
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -989,8 +1030,18 @@ class WordDetailBottomSheet : DialogFragment() {
      * flex meaning column with labelled readings and mono meta, and
      * (JA only, when stroke count is known) a 36dp accent-tinted
      * stroke pill on the right.
+     *
+     * [meaningsRegistry] (when non-null) records the meanings [TextView]
+     * by [index] so a background MT coroutine can swap its text once the
+     * translator returns. [index] defaults to -1 for call sites that don't
+     * need async updates.
      */
-    private fun addCharacterRow(parent: LinearLayout, detail: CharacterDetail) {
+    private fun addCharacterRow(
+        parent: LinearLayout,
+        detail: CharacterDetail,
+        index: Int = -1,
+        meaningsRegistry: MutableMap<Int, TextView>? = null,
+    ) {
         val ctx = requireContext()
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -1037,12 +1088,16 @@ class WordDetailBottomSheet : DialogFragment() {
         }
 
         if (detail.meanings.isNotEmpty()) {
-            col.addView(TextView(ctx).apply {
+            val meaningsTv = TextView(ctx).apply {
                 text = detail.meanings.take(4).joinToString(", ")
                 textSize = 14f
                 setTextColor(ctx.themeColor(R.attr.ptText))
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            })
+            }
+            col.addView(meaningsTv)
+            if (index >= 0 && meaningsRegistry != null) {
+                meaningsRegistry[index] = meaningsTv
+            }
         }
 
         // Labelled readings — the "on:" / "kun:" / "pinyin:" labels use a
