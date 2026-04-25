@@ -272,7 +272,7 @@ class DictionaryManager private constructor(private val context: Context) {
             val grade        = c.getInt(3)
             val strokeCount  = c.getInt(4)
 
-            val (meanings, resolvedLang) = loadKanjiMeanings(database, literal, targetLang)
+            val (meanings, resolvedLang) = resolveKanjiMeanings(database, literal, targetLang)
             if (meanings.isEmpty()) return@withContext null
             KanjiDetail(
                 literal      = literal,
@@ -285,33 +285,6 @@ class DictionaryManager private constructor(private val context: Context) {
                 strokeCount  = strokeCount,
             )
         }
-    }
-
-    /**
-     * Resolve meanings for [literal] in [targetLang] with English fallback.
-     * Returns the meanings list plus the language code they actually came
-     * from ("en" when we fell back). Empty list if even the English row is
-     * missing (rare but possible for CJK extensions without full coverage).
-     */
-    private fun loadKanjiMeanings(
-        database: SQLiteDatabase,
-        literal: Char,
-        targetLang: String,
-    ): Pair<List<String>, String> {
-        fun query(lang: String): List<String>? =
-            database.rawQuery(
-                "SELECT meanings FROM kanji_meaning WHERE literal=? AND lang=?",
-                arrayOf(literal.toString(), lang),
-            ).use { c ->
-                if (!c.moveToFirst()) null
-                else c.getString(0).split('\t').filter { it.isNotBlank() }
-            }
-
-        if (targetLang != "en") {
-            query(targetLang)?.let { if (it.isNotEmpty()) return it to targetLang }
-        }
-        val english = query("en") ?: emptyList()
-        return english to "en"
     }
 
     fun close() {
@@ -551,5 +524,35 @@ class DictionaryManager private constructor(private val context: Context) {
                 instance ?: DictionaryManager(context.applicationContext).also { instance = it }
             }
 
+        /**
+         * Resolve meanings for [literal] in [targetLang] with English fallback.
+         * Returns the meanings list plus the language code they actually came
+         * from ("en" when we fell back, or the request was already English).
+         * Empty list if neither the requested language nor English have a row.
+         *
+         * Stateless wrapper around the [kanji_meaning] schema so the lookup
+         * order is testable in isolation from the [DictionaryManager]
+         * singleton + filesystem cache.
+         */
+        internal fun resolveKanjiMeanings(
+            database: SQLiteDatabase,
+            literal: Char,
+            targetLang: String,
+        ): Pair<List<String>, String> {
+            fun query(lang: String): List<String>? =
+                database.rawQuery(
+                    "SELECT meanings FROM kanji_meaning WHERE literal=? AND lang=?",
+                    arrayOf(literal.toString(), lang),
+                ).use { c ->
+                    if (!c.moveToFirst()) null
+                    else c.getString(0).split('\t').filter { it.isNotBlank() }
+                }
+
+            if (targetLang != "en") {
+                query(targetLang)?.let { if (it.isNotEmpty()) return it to targetLang }
+            }
+            val english = query("en") ?: emptyList()
+            return english to "en"
+        }
     }
 }

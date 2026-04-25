@@ -32,6 +32,7 @@ import com.playtranslate.language.TatoebaClient
 import com.playtranslate.language.WordTranslator
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TranslationManagerProvider
+import com.playtranslate.language.dedupeMtCsv
 import com.playtranslate.model.CharacterDetail
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.HanziDetail
@@ -467,7 +468,7 @@ class WordDetailBottomSheet : DialogFragment() {
                                 withContext(Dispatchers.IO) { enToTargetTranslator.translate(source) }
                             }.getOrNull()
                             if (!translated.isNullOrBlank() && isAdded) {
-                                meaningsRegistry[index]?.text = translated
+                                meaningsRegistry[index]?.text = dedupeMtCsv(translated)
                             }
                         }
                     }
