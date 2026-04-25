@@ -128,17 +128,19 @@ class RegionDragView(context: Context) : View(context) {
         drawScreenSpaceDashes(canvas, l, b, r, b, dashPx, gapPx, period, true)  // bottom
         drawScreenSpaceDashes(canvas, l, t, l, b, dashPx, gapPx, period, false) // left
 
-        // 8 dots (muted fill + accent border): 4 corners + 4 midpoints
+        // 8 dots (muted fill + accent border): 4 corners + 4 midpoints,
+        // each pushed 3dp outward from the box center along its axis.
         val cx = (l + r) / 2f
         val cy = (t + b) / 2f
-        drawDot(canvas, l, t, dotRadius)
-        drawDot(canvas, r, t, dotRadius)
-        drawDot(canvas, l, b, dotRadius)
-        drawDot(canvas, r, b, dotRadius)
-        drawDot(canvas, cx, t, dotRadius)
-        drawDot(canvas, cx, b, dotRadius)
-        drawDot(canvas, l, cy, dotRadius)
-        drawDot(canvas, r, cy, dotRadius)
+        val out = 3f * dp
+        drawDot(canvas, l - out, t - out, dotRadius)
+        drawDot(canvas, r + out, t - out, dotRadius)
+        drawDot(canvas, l - out, b + out, dotRadius)
+        drawDot(canvas, r + out, b + out, dotRadius)
+        drawDot(canvas, cx, t - out, dotRadius)
+        drawDot(canvas, cx, b + out, dotRadius)
+        drawDot(canvas, l - out, cy, dotRadius)
+        drawDot(canvas, r + out, cy, dotRadius)
     }
 
     private fun drawDot(canvas: Canvas, x: Float, y: Float, radius: Float) {
