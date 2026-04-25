@@ -45,6 +45,7 @@ class SentenceAnkiContentFragment : Fragment() {
     private lateinit var etTranslation: EditText
     private lateinit var wordsCard: LinearLayout
     private lateinit var wordsHeaderTitle: TextView
+    private var screenshotHeader: View? = null
     private var screenshotGroup: View? = null
     private var ivPhoto: ImageView? = null
 
@@ -161,18 +162,33 @@ class SentenceAnkiContentFragment : Fragment() {
             val file = File(screenshotPath)
             if (file.exists()) {
                 ankiGroupHeader(root, getString(R.string.anki_group_screenshot))
-                val screenshotHeader = root.getChildAt(root.childCount - 1)
+                screenshotHeader = root.getChildAt(root.childCount - 1)
                 val screenshotCard = ankiGroupCard(root)
-                val screenshotCardWrapper = root.getChildAt(root.childCount - 1)
-                screenshotGroup = screenshotCardWrapper // remove this card on dismiss
+                screenshotGroup = root.getChildAt(root.childCount - 1)
                 addScreenshotRow(screenshotCard, file) {
-                    includePhoto = false
-                    root.removeView(screenshotHeader)
-                    root.removeView(screenshotCardWrapper)
-                    screenshotGroup = null
+                    removeScreenshotFromUi()
+                    // Mirror the removal back into the word tab when this
+                    // fragment lives under WordAnkiReviewSheet — the two
+                    // tabs share the same source media and would otherwise
+                    // get out of sync.
+                    (parentFragment as? WordAnkiReviewSheet)?.notifyScreenshotRemoved()
                 }
             }
         }
+    }
+
+    /** Tear down the screenshot group from the live view tree and flip
+     *  [includePhoto] off so [getCardData] no longer reports a photo
+     *  for this side. Public so the parent sheet can keep both tabs in
+     *  sync — when the user removes the photo in word-mode, the
+     *  sentence-tab screenshot needs to disappear too. */
+    fun removeScreenshotFromUi() {
+        if (!includePhoto) return
+        includePhoto = false
+        screenshotHeader?.let { root.removeView(it) }
+        screenshotGroup?.let { root.removeView(it) }
+        screenshotHeader = null
+        screenshotGroup = null
     }
 
     /** Wrap an [EditText] in a FrameLayout with a small pencil icon
