@@ -165,10 +165,14 @@ fun Fragment.addAnkiDeckRow(parent: LinearLayout, onDeckChanged: () -> Unit): Te
             LinearLayout.LayoutParams.WRAP_CONTENT
         )
     }
+    val accent = ctx.themeColor(R.attr.ptAccent)
+    val empty = ctx.themeColor(R.attr.ptTextMuted)
+    val initialName = Prefs(ctx).ankiDeckName
     val titleTv = TextView(ctx).apply {
-        text = Prefs(ctx).ankiDeckName.ifBlank { ctx.getString(R.string.anki_deck_row_empty) }
+        text = initialName.ifBlank { ctx.getString(R.string.anki_deck_row_empty) }
+        setTextColor(if (initialName.isBlank()) empty else accent)
         textSize = 15f
-        setTextColor(ctx.themeColor(R.attr.ptText))
+        setTypeface(typeface, android.graphics.Typeface.BOLD)
         maxLines = 1
         ellipsize = android.text.TextUtils.TruncateAt.END
         layoutParams = LinearLayout.LayoutParams(
@@ -186,6 +190,7 @@ fun Fragment.addAnkiDeckRow(parent: LinearLayout, onDeckChanged: () -> Unit): Te
     row.setOnClickListener {
         showAnkiDeckPicker { _, name ->
             titleTv.text = name.ifBlank { ctx.getString(R.string.anki_deck_row_empty) }
+            titleTv.setTextColor(if (name.isBlank()) empty else accent)
             onDeckChanged()
         }
     }

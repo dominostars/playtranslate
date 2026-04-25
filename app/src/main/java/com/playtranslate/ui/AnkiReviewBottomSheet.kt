@@ -23,14 +23,19 @@ import java.io.File
 
 class AnkiReviewBottomSheet : DialogFragment() {
 
-    private lateinit var titleView: TextView
     private var sentenceContainer: FrameLayout? = null
+    private var deckSubtitleView: TextView? = null
 
     override fun getTheme(): Int = fullScreenDialogTheme(requireContext())
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View = inflater.inflate(R.layout.bottom_sheet_anki_review, container, false)
+
+    override fun onDestroyView() {
+        deckSubtitleView = null
+        super.onDestroyView()
+    }
 
     override fun onStart() {
         super.onStart()
@@ -43,7 +48,6 @@ class AnkiReviewBottomSheet : DialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         view.findViewById<View>(R.id.btnBackReview).setOnClickListener { dismiss() }
-        titleView = view.findViewById(R.id.tvAnkiSheetTitle)
 
         val args = arguments ?: return
         val original       = args.getString(ARG_ORIGINAL) ?: ""
@@ -79,7 +83,9 @@ class AnkiReviewBottomSheet : DialogFragment() {
         }
         scrollContent.addView(column)
 
-        addAnkiDeckRow(column) { refreshTitle() }
+        deckSubtitleView = view.findViewById(R.id.tvAnkiSendSubtitle)
+        addAnkiDeckRow(column) { refreshDeckSubtitle() }
+        refreshDeckSubtitle()
         sentenceContainer = FrameLayout(requireContext()).apply {
             id = View.generateViewId()
             layoutParams = LinearLayout.LayoutParams(
@@ -98,8 +104,6 @@ class AnkiReviewBottomSheet : DialogFragment() {
                 .commitNow()
         }
 
-        refreshTitle()
-
         view.findViewById<View>(R.id.btnSendToAnki).setOnClickListener { btn ->
             val deckId = Prefs(requireContext()).ankiDeckId
             if (deckId < 0L) {
@@ -114,13 +118,15 @@ class AnkiReviewBottomSheet : DialogFragment() {
         }
     }
 
-    /** Updates the toolbar title to "Add to <Deck>" once a deck is known. */
-    private fun refreshTitle() {
-        val deckName = Prefs(requireContext()).ankiDeckName
-        titleView.text = if (deckName.isBlank())
-            getString(R.string.anki_sheet_title_default)
-        else
-            getString(R.string.anki_sheet_add_to_deck, deckName)
+    /** Updates the save button's "Deck: <name>" subtitle whenever the
+     *  user picks a different deck. Renders as plain `?attr/ptAccentOn`
+     *  text so the deck name reads against the button's accent fill —
+     *  spannable accent highlighting would vanish into the bg. */
+    private fun refreshDeckSubtitle() {
+        val sub = deckSubtitleView ?: return
+        val ctx = requireContext()
+        val deckName = Prefs(ctx).ankiDeckName.ifBlank { ctx.getString(R.string.anki_deck_row_empty) }
+        sub.text = ctx.getString(R.string.anki_deck_label_format, deckName)
     }
 
     private fun getContentFragment(): SentenceAnkiContentFragment? =
