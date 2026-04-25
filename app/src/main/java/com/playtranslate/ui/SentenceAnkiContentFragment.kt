@@ -127,16 +127,23 @@ class SentenceAnkiContentFragment : Fragment() {
         val ctx = requireContext()
         root.removeAllViews()
 
-        // Original
+        // Original — id is pinned to a resource id (etAnkiOriginal) so
+        // Android's automatic view-state save/restore can round-trip
+        // the typed text across process death without us writing a
+        // manual onSaveInstanceState pipeline.
         ankiGroupHeader(root, getString(R.string.anki_group_original))
         val originalCard = ankiGroupCard(root)
-        etOriginal = buildEditField(initial = original)
+        etOriginal = buildEditField(initial = original).apply {
+            id = R.id.etAnkiOriginal
+        }
         originalCard.addView(buildEditableFrame(etOriginal))
 
-        // Translation
+        // Translation — same trick with R.id.etAnkiTranslation.
         ankiGroupHeader(root, getString(R.string.anki_group_translation))
         val translationCard = ankiGroupCard(root)
-        etTranslation = buildEditField(initial = translation)
+        etTranslation = buildEditField(initial = translation).apply {
+            id = R.id.etAnkiTranslation
+        }
         translationCard.addView(buildEditableFrame(etTranslation))
 
         // Words on card
