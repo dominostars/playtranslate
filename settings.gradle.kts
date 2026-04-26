@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "GameLens"
 include(":app")
+include(":build-tools")

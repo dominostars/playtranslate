@@ -22,6 +22,7 @@ recyclerview = "1.3.2"
 activityKtx = "1.8.2"
 fragmentKtx = "1.6.2"
 kuromoji = "0.9.0"
+sqliteJdbc = "3.45.3.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -40,6 +41,8 @@ mlkit-translate = { group = "com.google.mlkit", name = "translate", version.ref 
 mlkit-language-id = { group = "com.google.mlkit", name = "language-id", version.ref = "mlkitLanguageId" }
 hanlp = { group = "com.hankcs", name = "hanlp", version.ref = "hanlp" }
 lucene-analyzers-common = { group = "org.apache.lucene", name = "lucene-analyzers-common", version.ref = "lucene" }
+lucene-core = { group = "org.apache.lucene", name = "lucene-core", version.ref = "lucene" }
+sqlite-jdbc = { group = "org.xerial", name = "sqlite-jdbc", version.ref = "sqliteJdbc" }
 komoran = { group = "com.github.shin285", name = "KOMORAN", version.ref = "komoran" }
 mlkit-text-recognition-chinese = { group = "com.google.mlkit", name = "text-recognition-chinese", version.ref = "mlkitTextRecognitionChinese" }
 mlkit-text-recognition-korean = { group = "com.google.mlkit", name = "text-recognition-korean", version.ref = "mlkitTextRecognitionKorean" }
@@ -50,3 +53,4 @@ kuromoji-ipadic = { group = "com.atilika.kuromoji", name = "kuromoji-ipadic", ve
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
