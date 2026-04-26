@@ -425,8 +425,11 @@ class TranslationResultFragment : Fragment() {
                                 )
                             }
                         } else {
+                            // Reached only when target == "en" (Native is not
+                            // returned for English targets) or for the empty-
+                            // target-senses defensive case. Both render straight
+                            // off the entry's English glosses.
                             val targetByOrd = targetSensesSorted.associateBy { it.senseOrd }
-                            val mtDefs = defResult.translatedDefinitions
                             entry.senses.mapIndexed { i, sense ->
                                 val target = targetByOrd[i]
                                 if (target != null) {
@@ -435,10 +438,9 @@ class TranslationResultFragment : Fragment() {
                                         definition = target.glosses.joinToString("; "),
                                     )
                                 } else {
-                                    val mt = mtDefs?.getOrNull(i)?.takeIf { it.isNotBlank() }
                                     WordLookupPopup.SenseDisplay(
                                         pos = sense.partsOfSpeech.joinToString(", "),
-                                        definition = mt ?: sense.targetDefinitions.joinToString("; "),
+                                        definition = sense.targetDefinitions.joinToString("; "),
                                     )
                                 }
                             }
@@ -824,15 +826,23 @@ class TranslationResultFragment : Fragment() {
                                         displayWord = primary?.written ?: primary?.reading ?: word
                                         tvWord.text = displayWord
                                         reading = primary?.reading?.takeIf { it != primary.written } ?: ""
-                                        val targetByOrd = defResult.targetSenses.associateBy { it.senseOrd }
-                                        val mtDefs = defResult.translatedDefinitions
-                                        meaning = entry.senses.mapIndexed { i, sense ->
-                                            val target = targetByOrd[i]
-                                            val glosses = target?.glosses?.joinToString("; ")
-                                                ?: mtDefs?.getOrNull(i)?.takeIf { it.isNotBlank() }
-                                                ?: sense.targetDefinitions.joinToString("; ")
-                                            if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
-                                        }.joinToString("\n")
+                                        val targetSensesSorted = defResult.targetSenses.sortedBy { it.senseOrd }
+                                        val isTargetDriven = wordsPrefs.targetLang != "en" && targetSensesSorted.isNotEmpty()
+                                        meaning = if (isTargetDriven) {
+                                            targetSensesSorted.mapIndexed { i, target ->
+                                                val glosses = target.glosses.joinToString("; ")
+                                                if (targetSensesSorted.size > 1) "${i + 1}. $glosses" else glosses
+                                            }.joinToString("\n")
+                                        } else {
+                                            // English-target or defensive empty-targetSenses path.
+                                            val targetByOrd = targetSensesSorted.associateBy { it.senseOrd }
+                                            entry.senses.mapIndexed { i, sense ->
+                                                val target = targetByOrd[i]
+                                                val glosses = target?.glosses?.joinToString("; ")
+                                                    ?: sense.targetDefinitions.joinToString("; ")
+                                                if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
+                                            }.joinToString("\n")
+                                        }
                                     }
                                     is DefinitionResult.MachineTranslated -> {
                                         displayWord = primary?.written ?: primary?.reading ?: word

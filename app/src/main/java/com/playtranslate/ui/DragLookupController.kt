@@ -471,8 +471,10 @@ class DragLookupController(
                         )
                     }
                 } else {
+                    // English-target or empty-targetSenses defensive path —
+                    // entry's English glosses, no MT bridge (Native no
+                    // longer carries one).
                     val targetByOrd = targetSenses.associateBy { it.senseOrd }
-                    val mtDefs = defResult.translatedDefinitions
                     entry.senses.mapIndexed { i, sense ->
                         val target = targetByOrd[i]
                         if (target != null) {
@@ -481,10 +483,9 @@ class DragLookupController(
                                 definition = target.glosses.joinToString("; "),
                             )
                         } else {
-                            val mt = mtDefs?.getOrNull(i)?.takeIf { it.isNotBlank() }
                             WordLookupPopup.SenseDisplay(
                                 pos = sense.partsOfSpeech.joinToString(", "),
-                                definition = mt ?: sense.targetDefinitions.joinToString("; "),
+                                definition = sense.targetDefinitions.joinToString("; "),
                             )
                         }
                     }
