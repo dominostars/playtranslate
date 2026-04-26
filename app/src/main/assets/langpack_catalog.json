@@ -6,9 +6,9 @@
       "script": "CJK_JAPANESE",
       "bundled": false,
       "packVersion": 1,
-      "size": 33823933,
+      "size": 35711663,
       "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/ja-v1/ja.zip",
-      "sha256": "8a269b9b460123a444a667cddf957267cd0840b7805e8d164cb5c42888454057",
+      "sha256": "c0fc8a17384aae5fc751cd4ba8a6c45c385932e42499a04def2d89d7be0d6294",
       "licenses": [
         {
           "component": "JMdict",
@@ -24,6 +24,11 @@
           "component": "Kuromoji IPADIC",
           "license": "Apache-2.0",
           "attribution": "© Atilika Inc. (IPADIC © ICOT)"
+        },
+        {
+          "component": "Tatoeba example sentences",
+          "license": "CC-BY-2.0",
+          "attribution": "© Tatoeba contributors, https://tatoeba.org"
         }
       ]
     },
