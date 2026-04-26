@@ -68,6 +68,14 @@ CREATE TABLE glosses (
     pos            TEXT NOT NULL DEFAULT '',
     glosses        TEXT NOT NULL,
     source         TEXT NOT NULL,
+    -- PanLex doesn't ship example sentences or editorial misc tags,
+    -- but the FST builder + reader expect every glosses-table row to
+    -- carry these columns alongside the kaikki/JMdict fields. Default
+    -- to empty strings so PanLex packs round-trip through the same
+    -- BuildTargetPack pipeline as the Wiktionary-derived ones.
+    examples       TEXT NOT NULL DEFAULT '',
+    example_trans  TEXT NOT NULL DEFAULT '',
+    misc           TEXT NOT NULL DEFAULT '',
     schema_version INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY (source_lang, written, reading, sense_ord)
 ) WITHOUT ROWID;
