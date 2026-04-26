@@ -20,19 +20,19 @@ fun interface WordTranslator {
 sealed interface DefinitionResult {
     val response: DictionaryResponse
 
-    /** Target-language definition from the downloaded pack. */
+    /**
+     * Target-language definition from the downloaded pack. The renderer
+     * iterates [targetSenses] directly (target-driven mode) — JMdict's
+     * non-English sense blocks don't reliably align with English sense
+     * ordinals, so by-ordinal merging with the source entry is gone.
+     * Source-language meanings are not surfaced when this variant is
+     * returned; English is hidden when the user picked a non-English
+     * target. See WordDetailBottomSheet.setupPanel for the render path.
+     */
     data class Native(
         override val response: DictionaryResponse,
         val targetSenses: List<TargetSense>,
         val source: String,
-        /**
-         * Per-sense ML-translated definitions used as the fallback when a
-         * source sense has no match in [targetSenses] (target pack covers
-         * the entry but not every ordinal). Index-parallel to
-         * `response.entries[0].senses`. Null when no EN→target translator
-         * was available.
-         */
-        val translatedDefinitions: List<String>? = null,
     ) : DefinitionResult
 
     /** ML Kit translated the headword. Definitions may also be translated. */
@@ -97,12 +97,12 @@ class DefinitionResolver(
                 if (senses != null) {
                     // Native pack hit → renderer iterates target senses
                     // directly (target-driven mode). No per-sense MT
-                    // fallback needed; we save N ML Kit calls per word
-                    // tap. The translatedDefinitions field is kept on
-                    // the data class for English-target callers and
-                    // backward shape compatibility, but is left null.
-                    Log.d(TAG, "  -> Native (${senses.first().source}, ${senses.size} senses)")
-                    return DefinitionResult.Native(response, senses, senses.first().source, null)
+                    // fallback computed; we save N ML Kit calls per word
+                    // tap and don't pretend non-English senses align with
+                    // English ordinals (they don't — see the long
+                    // discussion when this path was added).
+                    Log.d(TAG, "  -> Native target-driven (${senses.first().source}, ${senses.size} target senses, sourceLang=$sourceLang, targetLang=$targetLang)")
+                    return DefinitionResult.Native(response, senses, senses.first().source)
                 }
             }
             Log.d(TAG, "  Tier 1: no match in target DB")

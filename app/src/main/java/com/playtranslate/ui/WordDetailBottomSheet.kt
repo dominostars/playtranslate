@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -302,26 +303,40 @@ class WordDetailBottomSheet : DialogFragment() {
         val pos = entry.senses.firstOrNull()?.partsOfSpeech
             ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
 
-        val targetByOrd = if (defResult is DefinitionResult.Native)
-            defResult.targetSenses.associateBy { it.senseOrd } else null
-        val translatedDefs = when (defResult) {
-            is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
-            is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
-            else -> null
-        }
-        val nonEmptySenseCount = entry.senses.count { it.targetDefinitions.isNotEmpty() }
-        var displayNum = 0
-        val definition = entry.senses
-            .mapIndexedNotNull { i, sense ->
-                if (sense.targetDefinitions.isEmpty()) return@mapIndexedNotNull null
-                displayNum++
-                val glosses = targetByOrd?.get(i)?.glosses?.joinToString("; ")
-                    ?: translatedDefs?.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
-                    ?: sense.targetDefinitions.joinToString("; ")
-                val prefix = if (nonEmptySenseCount > 1) "$displayNum. " else ""
-                prefix + glosses
+        val targetLangCode = Prefs(requireContext()).targetLang
+        val nativeTargetSenses = (defResult as? DefinitionResult.Native)
+            ?.targetSenses
+            ?.sortedBy { it.senseOrd }
+            ?.takeIf { it.isNotEmpty() }
+        val isTargetDriven = targetLangCode != "en" && nativeTargetSenses != null
+
+        val definition = if (isTargetDriven) {
+            nativeTargetSenses!!.mapIndexed { i, target ->
+                val prefix = if (nativeTargetSenses.size > 1) "${i + 1}. " else ""
+                prefix + target.glosses.joinToString("; ")
+            }.joinToString("\n")
+        } else {
+            val targetByOrd = if (defResult is DefinitionResult.Native)
+                defResult.targetSenses.associateBy { it.senseOrd } else null
+            val translatedDefs = when (defResult) {
+                is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
+                is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
+                else -> null
             }
-            .joinToString("\n")
+            val nonEmptySenseCount = entry.senses.count { it.targetDefinitions.isNotEmpty() }
+            var displayNum = 0
+            entry.senses
+                .mapIndexedNotNull { i, sense ->
+                    if (sense.targetDefinitions.isEmpty()) return@mapIndexedNotNull null
+                    displayNum++
+                    val glosses = targetByOrd?.get(i)?.glosses?.joinToString("; ")
+                        ?: translatedDefs?.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
+                        ?: sense.targetDefinitions.joinToString("; ")
+                    val prefix = if (nonEmptySenseCount > 1) "$displayNum. " else ""
+                    prefix + glosses
+                }
+                .joinToString("\n")
+        }
 
         val args = arguments
         val sentenceOriginal = args?.getString(ARG_SENTENCE_ORIGINAL)
@@ -391,9 +406,15 @@ class WordDetailBottomSheet : DialogFragment() {
             ?.sortedBy { it.senseOrd }
             ?.takeIf { it.isNotEmpty() }
         val isTargetDriven = targetLangCode != "en" && nativeTargetSenses != null
+        Log.d(TAG, "render entry=${entry.slug} target=$targetLangCode " +
+            "defResult=${defResult?.let { it::class.simpleName } ?: "null"} " +
+            "targetDriven=$isTargetDriven " +
+            "(${nativeTargetSenses?.size ?: 0} target senses, ${entry.senses.size} source senses)")
 
         val translatedDefs = when (defResult) {
-            is DefinitionResult.Native -> defResult.translatedDefinitions
+            // Native no longer carries per-sense MT fallback (target-driven
+            // render handles it); only MT/English-fallback variants populate
+            // translatedDefinitions for the entry-driven path below.
             is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
             is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
             else -> null

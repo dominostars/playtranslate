@@ -5,9 +5,13 @@ import java.io.File
 
 /**
  * One sense from the target-language gloss pack. [senseOrd] is the 0-based
- * sense index matching the source entry's sense list — the UI aligns by
- * ordinal, not list position, so sparse target coverage (e.g. French glosses
- * for senses 0 and 2 but not 1) renders correctly.
+ * sense index in the target pack's own ordering — it does NOT reliably
+ * align with the source entry's sense.position. JMdict's per-language
+ * sense blocks (German/French/etc.) are appended after the English ones
+ * in arbitrary order, so by-ordinal merging with the source dict was
+ * always producing wrong attributions. Renderers iterate target senses
+ * directly (target-driven render) for non-English targets and only fall
+ * back to ordinal alignment for English-target paths.
  */
 data class TargetSense(
     val senseOrd: Int,

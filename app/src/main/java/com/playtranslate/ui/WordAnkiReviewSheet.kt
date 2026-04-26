@@ -604,7 +604,8 @@ class WordAnkiReviewSheet : DialogFragment() {
 
         val defResult = resolvedDefResult
         val translatedDefs = when (defResult) {
-            is DefinitionResult.Native -> defResult.translatedDefinitions
+            // Native renders target-driven and doesn't surface per-sense MT
+            // fallback; only MT/English-fallback variants populate the field.
             is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
             is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
             else -> null
