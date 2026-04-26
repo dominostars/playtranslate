@@ -59,12 +59,17 @@ class FstTargetGlossDatabase private constructor(
             val sourceId = readVarUInt(view)
             val glossCount = readVarUInt(view)
             val glossIds = IntArray(glossCount) { readVarUInt(view) }
+            val miscId = readVarUInt(view)
+            val exampleCount = readVarUInt(view)
+            val exampleIds = IntArray(exampleCount * 2) { readVarUInt(view) }
             out.add(DecodedRow(
                 reading = strings.get(readingId),
                 senseOrd = senseOrd,
                 posId = posId,
                 sourceId = sourceId,
                 glossIds = glossIds,
+                miscId = miscId,
+                exampleIds = exampleIds,
             ))
         }
         return out
@@ -75,6 +80,15 @@ class FstTargetGlossDatabase private constructor(
         pos = strings.get(posId).split(',').filter { it.isNotBlank() },
         glosses = glossIds.map { strings.get(it) }.filter { it.isNotEmpty() },
         source = strings.get(sourceId),
+        examples = buildList(exampleIds.size / 2) {
+            for (i in exampleIds.indices step 2) {
+                add(com.playtranslate.model.Example(
+                    text = strings.get(exampleIds[i]),
+                    translation = strings.get(exampleIds[i + 1]),
+                ))
+            }
+        },
+        misc = strings.get(miscId).split(',').filter { it.isNotBlank() },
     )
 
     fun close() {
@@ -87,6 +101,8 @@ class FstTargetGlossDatabase private constructor(
         val posId: Int,
         val sourceId: Int,
         val glossIds: IntArray,
+        val miscId: Int,
+        val exampleIds: IntArray,
     )
 
     companion object {

@@ -471,9 +471,9 @@ class WordDetailBottomSheet : DialogFragment() {
                     posLabels = entryPos,
                     glossList = target.glosses,
                     senseNumber = senseNumber,
-                    miscText = null,
-                    examples = emptyList(),
-                    exampleTranslations = null,
+                    miscText = target.misc.takeIf { it.isNotEmpty() }?.joinToString(" · "),
+                    examples = target.examples,
+                    exampleTranslations = target.examples.map { it.translation },
                     senseIndex = -1,
                     translationRegistry = null,
                 )

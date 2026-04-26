@@ -88,17 +88,75 @@ def shorten_pos(pos_text: str) -> str:
 
 CREATE_SQL = """
 CREATE TABLE glosses (
-    source_lang    TEXT NOT NULL,
-    written        TEXT NOT NULL,
-    reading        TEXT,
-    sense_ord      INTEGER NOT NULL,
-    pos            TEXT NOT NULL DEFAULT '',
-    glosses        TEXT NOT NULL,
-    source         TEXT NOT NULL,
-    schema_version INTEGER NOT NULL DEFAULT 1,
+    source_lang     TEXT NOT NULL,
+    written         TEXT NOT NULL,
+    reading         TEXT,
+    sense_ord       INTEGER NOT NULL,
+    pos             TEXT NOT NULL DEFAULT '',
+    glosses         TEXT NOT NULL,
+    source          TEXT NOT NULL,
+    examples        TEXT NOT NULL DEFAULT '',  -- tab-separated example texts
+    example_trans   TEXT NOT NULL DEFAULT '',  -- tab-separated translations (parallel to examples)
+    misc            TEXT NOT NULL DEFAULT '',  -- comma-separated misc/tag flags
+    schema_version  INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY (source_lang, written, reading, sense_ord)
 ) WITHOUT ROWID;
 """
+
+# DE Wiktionary doesn't tag examples with type="example" / type="quotation"
+# the way EN Wiktionary does, so we can't filter by type here — just length-
+# cap and cap-per-sense. Target packs cap at one example per sense: enough
+# to illustrate usage in the word panel, keeps pack size + UI clutter down.
+MAX_EXAMPLES_PER_SENSE = 1
+MAX_EXAMPLE_CHARS = 200
+
+
+def extract_kaikki_examples(sense: dict) -> Tuple[str, str]:
+    """Returns (examples_tab_joined, translations_tab_joined). Translations are
+    positionally aligned with examples — empty string when an example is
+    monolingual. Caps per sense and per-example length to keep packs lean.
+    """
+    texts: List[str] = []
+    trans: List[str] = []
+    seen: Set[str] = set()
+    for ex in sense.get("examples") or []:
+        text = (ex.get("text") or "").strip()
+        if not text or text in seen:
+            continue
+        if len(text) > MAX_EXAMPLE_CHARS:
+            continue
+        seen.add(text)
+        texts.append(text)
+        translation = (ex.get("translation") or ex.get("english") or "").strip()
+        # Wiktionary "[please add a translation]"-style placeholders show up
+        # as raw english strings; coerce to "" so the runtime knows there's
+        # no translation and the source-language line stands alone.
+        if translation.startswith("[please") or translation.startswith("(please"):
+            translation = ""
+        trans.append(translation)
+        if len(texts) >= MAX_EXAMPLES_PER_SENSE:
+            break
+    return "\t".join(texts), "\t".join(trans)
+
+
+def extract_kaikki_misc(sense: dict) -> str:
+    """Returns comma-joined misc flags from kaikki tags + raw_tags. Dedup
+    preserves first-occurrence order. Tags (machine-normalized) come before
+    raw_tags (German editorial labels) so the more useful identifiers
+    surface first when the runtime renders them inline.
+    """
+    out: List[str] = []
+    seen: Set[str] = set()
+    for src in (sense.get("tags") or [], sense.get("raw_tags") or []):
+        for t in src:
+            if not isinstance(t, str):
+                continue
+            s = t.strip()
+            if not s or s in seen:
+                continue
+            seen.add(s)
+            out.append(s)
+    return ",".join(out)
 
 
 # ── JMdict parsing ─────────────────────────────────────────────────────
@@ -126,6 +184,40 @@ def parse_jmdict(
         if not keb_list and not reb_list:
             continue
 
+        # JMdict puts <misc> tags on the English-bearing sense, not on the
+        # per-language sense blocks. We can ONLY safely attach English misc
+        # to the target-language rows when there's an unambiguous 1:1
+        # mapping — i.e. exactly 1 English sense and exactly 1 target
+        # sense. Multi-sense entries have unknown alignment between English
+        # and target blocks (proven for 取る: 2/17 positions matched), so
+        # attaching English misc to a target block could attribute the
+        # flag to the wrong meaning. In those cases we drop misc entirely.
+        en_sense_count = 0
+        target_sense_count = 0
+        for sense in entry.iter("sense"):
+            has_eng = any(
+                g.get("{http://www.w3.org/XML/1998/namespace}lang", "eng") == "eng"
+                for g in sense.iter("gloss") if g.text
+            )
+            has_target = any(
+                g.get("{http://www.w3.org/XML/1998/namespace}lang", "eng") == target_lang_3
+                for g in sense.iter("gloss") if g.text
+            )
+            if has_eng:
+                en_sense_count += 1
+            if has_target:
+                target_sense_count += 1
+        misc_str = ""
+        if en_sense_count == 1 and target_sense_count == 1:
+            seen_misc: Set[str] = set()
+            entry_misc: List[str] = []
+            for sense in entry.iter("sense"):
+                for m in sense.iter("misc"):
+                    if m.text and m.text not in seen_misc:
+                        seen_misc.add(m.text)
+                        entry_misc.append(m.text)
+            misc_str = ",".join(entry_misc)
+
         # For each sense, check if it has glosses in the target language
         for sense_ord, sense in enumerate(entry.iter("sense")):
             target_glosses = []
@@ -140,6 +232,10 @@ def parse_jmdict(
             pos_tags = [shorten_pos(p.text) for p in sense.iter("pos") if p.text]
             pos_str = ",".join(pos_tags)
             gloss_str = "\t".join(target_glosses)
+            # misc_str is collected entry-wide above (JMdict puts <misc> on
+            # the English sense, not the per-language blocks). Examples stay
+            # empty for JA — JMdict's <example> element is unpopulated across
+            # all 216k entries (verified).
 
             # Emit one row per (written, reading) combination.
             # If no keb, use reb as written with reading=NULL.
@@ -148,20 +244,20 @@ def parse_jmdict(
                     for reb in reb_list:
                         rows.append((
                             "ja", keb, reb, sense_ord, pos_str,
-                            gloss_str, "jmdict",
+                            gloss_str, "jmdict", "", "", misc_str,
                         ))
                         covered.add(keb)
                     # Also emit empty-reading row for fallback queries
                     rows.append((
                         "ja", keb, "", sense_ord, pos_str,
-                        gloss_str, "jmdict",
+                        gloss_str, "jmdict", "", "", misc_str,
                     ))
                     covered.add(keb)
             else:
                 for reb in reb_list:
                     rows.append((
                         "ja", reb, "", sense_ord, pos_str,
-                        gloss_str, "jmdict",
+                        gloss_str, "jmdict", "", "", misc_str,
                     ))
                     covered.add(reb)
 
@@ -208,17 +304,18 @@ def parse_cfdict(cfdict_path: str, source_label: str) -> Tuple[List[tuple], Set[
             if bracket_start >= 0 and bracket_end > bracket_start:
                 pinyin = rest[bracket_start + 1:bracket_end]
 
-            # Emit as single sense (CEDICT doesn't have per-sense structure)
+            # Emit as single sense (CEDICT doesn't have per-sense structure).
+            # CFDICT/HanDeDict don't ship example sentences or misc tags.
             gloss_str = "\t".join(definitions[:8])
             rows.append((
                 "zh", simplified, pinyin, 0, "",
-                gloss_str, source_label,
+                gloss_str, source_label, "", "", "",
             ))
             # Also emit without reading for fallback
             if pinyin:
                 rows.append((
                     "zh", simplified, "", 0, "",
-                    gloss_str, source_label,
+                    gloss_str, source_label, "", "", "",
                 ))
             covered.add(simplified)
 
@@ -318,10 +415,13 @@ def parse_wiktionary_dir(
 
                     pos_str = pos if pos else ""
                     gloss_str = "\t".join(glosses[:8])
+                    examples_str, example_trans_str = extract_kaikki_examples(sense)
+                    misc_str = extract_kaikki_misc(sense)
 
                     rows.append((
                         source_lang, word, "", sense_ord, pos_str,
                         gloss_str, "wiktionary",
+                        examples_str, example_trans_str, misc_str,
                     ))
                     file_rows += 1
 
@@ -364,8 +464,9 @@ def build_target_pack(args: argparse.Namespace) -> None:
             if jmdict_rows:
                 conn.executemany(
                     "INSERT OR IGNORE INTO glosses "
-                    "(source_lang, written, reading, sense_ord, pos, glosses, source) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "(source_lang, written, reading, sense_ord, pos, glosses, source, "
+                    " examples, example_trans, misc) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     jmdict_rows,
                 )
                 excluded_headwords["ja"] = jmdict_covered
@@ -382,8 +483,9 @@ def build_target_pack(args: argparse.Namespace) -> None:
         if cfdict_rows:
             conn.executemany(
                 "INSERT OR IGNORE INTO glosses "
-                "(source_lang, written, reading, sense_ord, pos, glosses, source) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "(source_lang, written, reading, sense_ord, pos, glosses, source, "
+                " examples, example_trans, misc) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 cfdict_rows,
             )
             excluded_headwords.setdefault("zh", set()).update(cfdict_covered)
@@ -397,8 +499,9 @@ def build_target_pack(args: argparse.Namespace) -> None:
         if wikt_rows:
             conn.executemany(
                 "INSERT OR IGNORE INTO glosses "
-                "(source_lang, written, reading, sense_ord, pos, glosses, source) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "(source_lang, written, reading, sense_ord, pos, glosses, source, "
+                " examples, example_trans, misc) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 wikt_rows,
             )
             # Collect unique source languages from wiktionary

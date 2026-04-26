@@ -640,8 +640,8 @@ class WordAnkiReviewSheet : DialogFragment() {
                     posLabels = entryPos,
                     glossList = target.glosses,
                     senseNumber = senseNumber,
-                    miscText = null,
-                    examples = emptyList(),
+                    miscText = target.misc.takeIf { it.isNotEmpty() }?.joinToString(" · "),
+                    examples = target.examples.withIndex().toList(),
                     senseIndex = idx,
                 )
             }
@@ -1231,6 +1231,21 @@ class WordAnkiReviewSheet : DialogFragment() {
                 append(numberPrefix)
                 append(htmlEscape(target.glosses.joinToString("; ")))
                 append("</div>")
+                if (target.misc.isNotEmpty()) {
+                    append("<div class=\"gl-misc\">")
+                    append(htmlEscape(target.misc.joinToString(" · ")))
+                    append("</div>")
+                }
+                for (ex in target.examples) {
+                    append("<div class=\"gl-ex\">")
+                    append(htmlEscape(ex.text))
+                    if (ex.translation.isNotBlank()) {
+                        append("<div class=\"gl-ex-tr\">")
+                        append(htmlEscape(ex.translation))
+                        append("</div>")
+                    }
+                    append("</div>")
+                }
                 append("</div>")
             }
             return

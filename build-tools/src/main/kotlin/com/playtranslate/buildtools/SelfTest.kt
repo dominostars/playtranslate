@@ -28,7 +28,8 @@ object SelfTest {
             c.createStatement().use { st ->
                 st.fetchSize = 1000
                 val rs = st.executeQuery(
-                    "SELECT source_lang, written, reading, sense_ord, pos, source, glosses " +
+                    "SELECT source_lang, written, reading, sense_ord, pos, source, glosses, " +
+                        "       examples, example_trans, misc " +
                         "FROM glosses ORDER BY source_lang, written, reading, sense_ord"
                 )
                 var curKey: ByteArray? = null
@@ -54,6 +55,16 @@ object SelfTest {
                     val expectedGlossesRaw = rs.getString(7) ?: ""
                     val expectedGlosses = if (expectedGlossesRaw.isEmpty()) emptyList()
                     else expectedGlossesRaw.split('\t').filter { it.isNotEmpty() }
+                    val expectedExamplesRaw = rs.getString(8) ?: ""
+                    val expectedExampleTransRaw = rs.getString(9) ?: ""
+                    val expectedExampleTexts = if (expectedExamplesRaw.isEmpty()) emptyList()
+                    else expectedExamplesRaw.split('\t')
+                    val expectedExampleTrans = if (expectedExampleTransRaw.isEmpty()) emptyList()
+                    else expectedExampleTransRaw.split('\t')
+                    val expectedExamples = expectedExampleTexts.mapIndexed { i, t ->
+                        Pair(t, expectedExampleTrans.getOrNull(i) ?: "")
+                    }
+                    val expectedMisc = rs.getString(10) ?: ""
 
                     require(curIdx < curRows.size) {
                         "block at ${sl}/${w} ran out of rows (idx=$curIdx, size=${curRows.size})"
@@ -64,11 +75,15 @@ object SelfTest {
                         || got.pos != expectedPos
                         || got.source != expectedSource
                         || got.glosses != expectedGlosses
+                        || got.misc != expectedMisc
+                        || got.examples != expectedExamples
                     ) {
                         error(
                             "self-test mismatch at ${sl}/${w}/${expectedReading}#${expectedSenseOrd}\n" +
                                 "  expected: pos=$expectedPos source=$expectedSource glosses=$expectedGlosses\n" +
-                                "  got:      pos=${got.pos} source=${got.source} glosses=${got.glosses}"
+                                "            misc=$expectedMisc examples=$expectedExamples\n" +
+                                "  got:      pos=${got.pos} source=${got.source} glosses=${got.glosses}\n" +
+                                "            misc=${got.misc} examples=${got.examples}"
                         )
                     }
                     curIdx++
@@ -94,6 +109,14 @@ object SelfTest {
             val glossCount = r.read()
             val glosses = ArrayList<String>(glossCount)
             repeat(glossCount) { glosses.add(table.get(r.read())) }
+            val miscId = r.read()
+            val exampleCount = r.read()
+            val examples = ArrayList<Pair<String, String>>(exampleCount)
+            repeat(exampleCount) {
+                val text = table.get(r.read())
+                val tr = table.get(r.read())
+                examples.add(Pair(text, tr))
+            }
             out.add(
                 GlossRowDecoded(
                     reading = table.get(readingId),
@@ -101,6 +124,8 @@ object SelfTest {
                     pos = table.get(posId),
                     source = table.get(sourceId),
                     glosses = glosses,
+                    misc = table.get(miscId),
+                    examples = examples,
                 )
             )
         }
@@ -114,6 +139,8 @@ private data class GlossRowDecoded(
     val pos: String,
     val source: String,
     val glosses: List<String>,
+    val misc: String,
+    val examples: List<Pair<String, String>>,
 )
 
 /** Build-time lite reader for strings.bin (no Android class deps; runtime version lives in app/). */

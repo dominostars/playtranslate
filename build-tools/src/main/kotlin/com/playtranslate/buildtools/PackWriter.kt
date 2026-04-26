@@ -60,13 +60,18 @@ fun writeStringsBin(out: OutputStream, frozen: StringIntern.Frozen) {
     body.writeTo(out)
 }
 
-/** One row inside a (source_lang, written) group. */
+/** One row inside a (source_lang, written) group.
+ *  [exampleIds] is paired (text_id, translation_id) — interleaved so each
+ *  example is two consecutive entries. Translation ID 0 means no translation
+ *  (monolingual example). Total length is always even. */
 data class GlossRow(
     val readingId: Int,
     val senseOrd: Int,
     val posId: Int,
     val sourceId: Int,
     val glossIds: IntArray,
+    val miscId: Int,
+    val exampleIds: IntArray,
 )
 
 fun writeKeyBlock(out: OutputStream, rows: List<GlossRow>) {
@@ -78,6 +83,12 @@ fun writeKeyBlock(out: OutputStream, rows: List<GlossRow>) {
         writeVarUInt(out, r.sourceId)
         writeVarUInt(out, r.glossIds.size)
         for (g in r.glossIds) writeVarUInt(out, g)
+        writeVarUInt(out, r.miscId)
+        require(r.exampleIds.size % 2 == 0) {
+            "exampleIds must be paired (text, translation); got ${r.exampleIds.size}"
+        }
+        writeVarUInt(out, r.exampleIds.size / 2)
+        for (id in r.exampleIds) writeVarUInt(out, id)
     }
 }
 

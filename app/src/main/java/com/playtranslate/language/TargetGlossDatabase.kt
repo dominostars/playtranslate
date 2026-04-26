@@ -12,12 +12,22 @@ import java.io.File
  * always producing wrong attributions. Renderers iterate target senses
  * directly (target-driven render) for non-English targets and only fall
  * back to ordinal alignment for English-target paths.
+ *
+ * [examples] are pulled from the same kaikki entry the glosses came from
+ * (for Wiktionary-derived rows) — properly attached per-target-sense, no
+ * alignment guesswork. JMdict-derived rows have empty examples (JMdict
+ * ships zero <example> tags). PanLex-derived rows also have empty
+ * examples (CC0 dump is gloss-only). [misc] flags carry editorial labels
+ * like "informal", "archaic", "honorific" — sourced from JMdict <misc>
+ * for JA rows or kaikki tags/raw_tags for Wiktionary rows.
  */
 data class TargetSense(
     val senseOrd: Int,
     val pos: List<String>,
     val glosses: List<String>,
     val source: String,
+    val examples: List<com.playtranslate.model.Example> = emptyList(),
+    val misc: List<String> = emptyList(),
 )
 
 /** Lookup interface extracted for testability (no Android dependency). */

@@ -44,7 +44,9 @@ fun main(args: Array<String>) {
         DriverManager.getConnection(jdbcUrl).use { c ->
             c.createStatement().use { st ->
                 st.fetchSize = 1000
-                val rs = st.executeQuery("SELECT pos, source, glosses, reading FROM glosses")
+                val rs = st.executeQuery(
+                    "SELECT pos, source, glosses, reading, examples, example_trans, misc FROM glosses"
+                )
                 var rows = 0
                 while (rs.next()) {
                     intern.observe(rs.getString(1) ?: "")
@@ -54,6 +56,15 @@ fun main(args: Array<String>) {
                         for (g in glosses.split('\t')) intern.observe(g)
                     }
                     intern.observe(rs.getString(4) ?: "")
+                    val examples = rs.getString(5) ?: ""
+                    if (examples.isNotEmpty()) {
+                        for (e in examples.split('\t')) intern.observe(e)
+                    }
+                    val exTrans = rs.getString(6) ?: ""
+                    if (exTrans.isNotEmpty()) {
+                        for (t in exTrans.split('\t')) intern.observe(t)
+                    }
+                    intern.observe(rs.getString(7) ?: "")
                     if (++rows % 1_000_000 == 0) println("  $rows rows scanned")
                 }
                 println("  $rows rows scanned total")
@@ -80,7 +91,8 @@ fun main(args: Array<String>) {
                 c.createStatement().use { st ->
                     st.fetchSize = 1000
                     val rs = st.executeQuery(
-                        "SELECT source_lang, written, reading, sense_ord, pos, source, glosses " +
+                        "SELECT source_lang, written, reading, sense_ord, pos, source, glosses, " +
+                            "       examples, example_trans, misc " +
                             "FROM glosses ORDER BY source_lang, written, reading, sense_ord"
                     )
                     var curKey: ByteArray? = null
@@ -162,12 +174,31 @@ private fun rowFromCursor(rs: ResultSet, ids: StringIntern.Frozen): GlossRow {
     val glossList = if (glossesRaw.isEmpty()) emptyList()
     else glossesRaw.split('\t').filter { it.isNotEmpty() }
     val glossIds = IntArray(glossList.size) { ids.id(glossList[it]) }
+
+    val examplesRaw = rs.getString(8) ?: ""
+    val exampleTransRaw = rs.getString(9) ?: ""
+    val exampleTexts = if (examplesRaw.isEmpty()) emptyList()
+    else examplesRaw.split('\t')
+    // example_trans column is positionally aligned with examples — splitting
+    // an empty string yields [""], which is fine; alignment is preserved
+    // because we cap at the texts' length below.
+    val exampleTrans = if (exampleTransRaw.isEmpty()) emptyList()
+    else exampleTransRaw.split('\t')
+    val exampleIds = IntArray(exampleTexts.size * 2)
+    for (i in exampleTexts.indices) {
+        exampleIds[i * 2] = ids.id(exampleTexts[i])
+        val tr = exampleTrans.getOrNull(i) ?: ""
+        exampleIds[i * 2 + 1] = ids.id(tr)
+    }
+
     return GlossRow(
         readingId = ids.id(reading),
         senseOrd = senseOrd,
         posId = ids.id(pos),
         sourceId = ids.id(source),
         glossIds = glossIds,
+        miscId = ids.id(rs.getString(10) ?: ""),
+        exampleIds = exampleIds,
     )
 }
 

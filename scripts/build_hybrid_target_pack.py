@@ -174,10 +174,14 @@ def build_hybrid(target_app: str, kaikki_pack: Path, output_dir: Path,
     rows_dropped_redundant = 0
     row_buffer: list = []
     BUFFER_FLUSH = 500_000
+    # PanLex rows ship empty examples/misc — its CC0 dump is gloss-only
+    # (no example sentences, no editorial tags). The kaikki pack we copy
+    # from already populates these columns where the data exists.
     SQL = (
         "INSERT OR IGNORE INTO glosses "
-        "(source_lang, written, reading, sense_ord, pos, glosses, source) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "(source_lang, written, reading, sense_ord, pos, glosses, source, "
+        " examples, example_trans, misc) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, '', '', '')"
     )
 
     for i, sf in enumerate(source_files):
