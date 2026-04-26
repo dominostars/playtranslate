@@ -102,6 +102,12 @@ class TranslationResultFragment : Fragment() {
     private var wordSpans = mutableListOf<Triple<IntRange, String, String>>()
     private var furiganaPopup: PopupWindow? = null
 
+    /** Char range currently highlighted with the accent background while a
+     *  word-lookup popup is active. Tracked separately from the span object
+     *  so [applyFurigana] can re-attach the highlight after rebuilding the
+     *  spannable. */
+    private var highlightedWordRange: IntRange? = null
+
     /** Called when Anki button enabled state changes (e.g. after word lookups complete). */
     var onAnkiEnabledChanged: ((Boolean) -> Unit)? = null
 
@@ -261,6 +267,10 @@ class TranslationResultFragment : Fragment() {
         } else {
             tvOriginal.text = plainText
         }
+        // The text reference just got swapped, so any active accent
+        // highlight span was dropped on the floor — re-attach it from the
+        // tracked range so toggling furigana mid-popup doesn't lose it.
+        highlightedWordRange?.let { setWordHighlight(it) }
     }
 
     // ── Public API ────────────────────────────────────────────────────────
@@ -563,7 +573,9 @@ class TranslationResultFragment : Fragment() {
                             mainWordResults.toMap()
                         )
                     }
+                    onDismiss = { setWordHighlight(null) }
                 }
+                setWordHighlight(span.first)
                 wordPopup?.show(word, lookupReading, senses, freqScore,
                     isCommon, screenX, screenY, dm.widthPixels, dm.heightPixels,
                     anchorHeight = lineH, label = popupLabel)
@@ -576,6 +588,49 @@ class TranslationResultFragment : Fragment() {
     private fun dismissWordPopup() {
         wordPopup?.dismiss()
         wordPopup = null
+    }
+
+    /**
+     * Highlight the character [range] inside [tvOriginal] with the accent
+     * background, or clear any active highlight when [range] is null.
+     * Promotes the text to a [android.text.SpannableString] on first use so
+     * the BackgroundColorSpan has somewhere to land — [ClickableTextView]'s
+     * default text is a plain String.
+     */
+    private fun setWordHighlight(range: IntRange?) {
+        if (view == null) return
+        val ctx = context ?: return
+        val current = tvOriginal.text ?: return
+        // Rebuild a fresh Spannable from current so any FuriganaSpans
+        // already on the text are preserved (SpannableString's copy
+        // constructor brings spans across), and so we can strip prior
+        // BackgroundColorSpans cleanly before adding the new one. Mutating
+        // the existing text in place is unreliable: TextView's setText
+        // routes Spannables through Spannable.Factory, which wraps them in
+        // a new instance, so the reference we held would be orphaned and
+        // subsequent setSpan calls wouldn't show up on screen.
+        val rebuilt = android.text.SpannableString(current)
+        rebuilt.getSpans(0, rebuilt.length, android.text.style.BackgroundColorSpan::class.java)
+            .forEach { rebuilt.removeSpan(it) }
+        highlightedWordRange = range
+        if (range != null) {
+            val safeEnd = (range.last + 1).coerceAtMost(rebuilt.length)
+            val safeStart = range.first.coerceAtLeast(0).coerceAtMost(safeEnd)
+            if (safeStart < safeEnd) {
+                val accentBg = withAlpha(ctx.themeColor(R.attr.ptAccent), 0.30f)
+                rebuilt.setSpan(
+                    android.text.style.BackgroundColorSpan(accentBg),
+                    safeStart, safeEnd,
+                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+            }
+        }
+        tvOriginal.text = rebuilt
+    }
+
+    private fun withAlpha(color: Int, alpha: Float): Int {
+        val a = (alpha.coerceIn(0f, 1f) * 255).toInt()
+        return Color.argb(a, Color.red(color), Color.green(color), Color.blue(color))
     }
 
     private fun showFurigana(range: IntRange, reading: String) {
