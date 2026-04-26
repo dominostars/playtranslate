@@ -33,6 +33,7 @@ import com.playtranslate.language.PreloadResult
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.blendColors
 import com.playtranslate.compositeOver
 import com.playtranslate.applyTheme
@@ -284,11 +285,20 @@ class LanguageSetupActivity : AppCompatActivity() {
     private fun onTargetSelected(code: String) {
         val sourceId = selectedSource ?: Prefs(this).sourceLangId
         val sourceLangCode = SourceLanguageProfiles[sourceId].translationCode
+        // Capture the previous target before installAndLoad runs so we can
+        // evict its cached FST after the new one is in place. Eviction is
+        // gated on installation success — we never drop the previous pack
+        // until the new one is fully downloaded and loaded, so a failed
+        // switch keeps the prior selection working.
+        val previousTarget = Prefs(this).targetLang
         targetInstaller.installAndLoad(
             sourceLangCode = sourceLangCode,
             targetCode = code,
             onSuccess = {
                 Prefs(this@LanguageSetupActivity).targetLang = code
+                if (previousTarget.isNotBlank() && previousTarget != code) {
+                    TargetGlossDatabaseProvider.release(previousTarget)
+                }
                 selectionDelegate?.onTargetSelectionDone(code)
                 finish()
             },
