@@ -111,9 +111,19 @@ object LanguagePackStore {
     fun targetIndexFstFor(ctx: Context, targetLang: String): File =
         File(targetDirFor(ctx, targetLang), "index.fst")
 
-    /** English target needs no pack — definitions are already in every source pack. */
-    fun isTargetInstalled(ctx: Context, targetLang: String): Boolean =
-        targetLang == "en" || targetIndexFstFor(ctx, targetLang).exists()
+    /** English target needs no pack — definitions are already in every source pack.
+     *  All three FST payload files must be present; a partial directory left
+     *  by an interrupted install or a manual file delete would otherwise look
+     *  installed to the picker / installer while [FstTargetGlossDatabase.open]
+     *  refuses to load it, soft-locking the user on English fallback with no
+     *  reinstall affordance. */
+    fun isTargetInstalled(ctx: Context, targetLang: String): Boolean {
+        if (targetLang == "en") return true
+        val dir = targetDirFor(ctx, targetLang)
+        return File(dir, "index.fst").exists() &&
+            File(dir, "data.bin").exists() &&
+            File(dir, "strings.bin").exists()
+    }
 
     /**
      * Writes the manifest for a bundled pack if it isn't already present.

@@ -118,7 +118,7 @@ class DefinitionResolver(
                 val translated = mlKitTranslator.translate(headword)
                 Log.d(TAG, "  Tier 2: translate($headword) -> $translated")
                 if (translated.isNotBlank() && !translated.equals(headword, ignoreCase = true)) {
-                    val translatedDefs = entry?.let { translateDefinitions(it) }
+                    val translatedDefs = translateDefinitions(response)
                     Log.d(TAG, "  -> MachineTranslated (translatedDefs=${translatedDefs?.size})")
                     return DefinitionResult.MachineTranslated(response, translated, translatedDefs)
                 }
@@ -133,18 +133,20 @@ class DefinitionResolver(
         }
 
         // Tier 3: English fallback (with translated definitions when possible)
-        val translatedDefs = entry?.let { translateDefinitions(it) }
+        val translatedDefs = translateDefinitions(response)
         Log.d(TAG, "  -> EnglishFallback (translatedDefs=${translatedDefs?.size})")
         return DefinitionResult.EnglishFallback(response, translatedDefs)
     }
 
     /**
      * Translates each example's source text into the target language,
-     * parallel to `response.entries[0].senses[i].examples`. Deliberately
-     * SEPARATE from [lookup] because word-panel / drag-to-lookup flows
-     * resolve dozens of tokens per sentence and never surface examples —
-     * callers that need translated examples (the word-detail sheet) call
-     * this explicitly after [lookup] resolves.
+     * parallel to the flat sense list `response.entries.flatMap { it.senses }`
+     * — same flattening WordDetailBottomSheet uses to render senses across
+     * the (often multiple) entries Wiktionary-derived packs return for one
+     * surface. Deliberately SEPARATE from [lookup] because word-panel /
+     * drag-to-lookup flows resolve dozens of tokens per sentence and
+     * never surface examples — callers that need translated examples
+     * (the word-detail sheet) call this explicitly after [lookup] resolves.
      *
      * Returns null when translation would be a no-op (targetLang == "en"
      * — the UI falls back to `Example.translation` which is already
@@ -156,12 +158,12 @@ class DefinitionResolver(
     suspend fun translateExamples(response: DictionaryResponse): List<List<String>>? {
         if (targetLang == "en") return null
         val translator = mlKitTranslator ?: return null
-        val firstEntry = response.entries.firstOrNull() ?: return null
-        val anyExamples = firstEntry.senses.any { it.examples.isNotEmpty() }
-        if (!anyExamples) return null
+        val flatSenses = response.entries.flatMap { it.senses }
+        if (flatSenses.isEmpty()) return null
+        if (flatSenses.none { it.examples.isNotEmpty() }) return null
 
         return coroutineScope {
-            firstEntry.senses.map { sense ->
+            flatSenses.map { sense ->
                 sense.examples.map { ex ->
                     async {
                         if (ex.text.isBlank()) return@async ""
@@ -180,12 +182,17 @@ class DefinitionResolver(
     }
 
     /**
-     * Translates each sense's English definitions to the target language.
-     * Returns null if no EN→target translator is available.
+     * Translates each sense's English definitions to the target language,
+     * parallel to `response.entries.flatMap { it.senses }` — same flat
+     * ordering WordDetailBottomSheet uses to render senses across the
+     * (often multiple) entries Wiktionary-derived packs return for one
+     * surface. Returns null if no EN→target translator is available.
      */
-    private suspend fun translateDefinitions(entry: DictionaryEntry): List<String>? {
+    private suspend fun translateDefinitions(response: DictionaryResponse): List<String>? {
         if (enToTargetTranslator == null || targetLang == "en") return null
-        return entry.senses.map { sense ->
+        val flatSenses = response.entries.flatMap { it.senses }
+        if (flatSenses.isEmpty()) return null
+        return flatSenses.map { sense ->
             val english = sense.targetDefinitions.joinToString("; ")
             if (english.isBlank()) ""
             else try {

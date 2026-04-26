@@ -446,7 +446,15 @@ class DragLookupController(
             enToTarget?.let { WordTranslator(it::translate) })
         val defResult = resolver.lookup(lookupForm, matchedToken?.reading)
         val response = defResult?.response
-        val entry = response?.entries?.firstOrNull()
+        // Wiktionary source packs split each POS section into its own entry;
+        // [primary] drives the popup's word/reading/freq fields while
+        // [flatSenses] feeds the sense rows so multi-POS headwords (e.g.
+        // English "man" — noun + verb) don't lose senses. JMdict (single
+        // entry per surface) flatSenses == primary.senses, so behavior is
+        // unchanged for JA.
+        val entries = response?.entries.orEmpty()
+        val entry = entries.firstOrNull()
+        val flatSenses = entries.flatMap { it.senses }
 
         // Build popup data based on DefinitionResult tier.
         val reading = matchedToken?.reading
@@ -461,21 +469,28 @@ class DragLookupController(
                 val targetSenses = defResult.targetSenses.sortedBy { it.senseOrd }
                 val isTargetDriven = prefs.targetLang != "en" && targetSenses.isNotEmpty()
                 val senses = if (isTargetDriven) {
-                    val entryPos = entry.senses.firstNotNullOfOrNull { s ->
-                        s.partsOfSpeech.filter { it.isNotBlank() }.takeIf { it.isNotEmpty() }
-                    }.orEmpty().joinToString(", ")
+                    // Blank-pos target rows (PanLex) inherit the source-
+                    // entry POS only when entries agree; multi-POS source
+                    // (e.g. "surprise" → noun + verb + intj) yields an
+                    // empty fallback so we don't mislabel cells.
+                    val fallbackPos = com.playtranslate.model.unambiguousFallbackPos(entries)
+                        .joinToString(", ")
                     targetSenses.map { target ->
+                        val pos = target.pos.filter { it.isNotBlank() }
+                            .takeIf { it.isNotEmpty() }
+                            ?.joinToString(", ")
+                            ?: fallbackPos
                         WordLookupPopup.SenseDisplay(
-                            pos = entryPos,
+                            pos = pos,
                             definition = target.glosses.joinToString("; "),
                         )
                     }
                 } else {
                     // English-target or empty-targetSenses defensive path —
-                    // entry's English glosses, no MT bridge (Native no
-                    // longer carries one).
+                    // flat-sense ordinals across all entries, no MT bridge
+                    // (Native no longer carries one).
                     val targetByOrd = targetSenses.associateBy { it.senseOrd }
-                    entry.senses.mapIndexed { i, sense ->
+                    flatSenses.mapIndexed { i, sense ->
                         val target = targetByOrd[i]
                         if (target != null) {
                             WordLookupPopup.SenseDisplay(
@@ -507,7 +522,7 @@ class DragLookupController(
                     reading = form?.reading,
                     senses = if (defs != null) {
                         // Translated definitions available — show them directly
-                        entry.senses.mapIndexed { i, sense ->
+                        flatSenses.mapIndexed { i, sense ->
                             WordLookupPopup.SenseDisplay(
                                 pos = sense.partsOfSpeech.joinToString(", "),
                                 definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
@@ -517,7 +532,7 @@ class DragLookupController(
                         // No translated definitions — headword + English context
                         buildList {
                             add(WordLookupPopup.SenseDisplay(pos = "", definition = defResult.translatedHeadword))
-                            entry.senses.forEach { sense ->
+                            flatSenses.forEach { sense ->
                                 add(WordLookupPopup.SenseDisplay(
                                     pos = sense.partsOfSpeech.joinToString(", "),
                                     definition = sense.targetDefinitions.joinToString("; ")
@@ -538,7 +553,7 @@ class DragLookupController(
                 PopupData(
                     word = form?.written ?: form?.reading ?: entry.slug,
                     reading = form?.reading,
-                    senses = entry.senses.mapIndexed { i, sense ->
+                    senses = flatSenses.mapIndexed { i, sense ->
                         WordLookupPopup.SenseDisplay(
                             pos = sense.partsOfSpeech.joinToString(", "),
                             definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
@@ -556,7 +571,7 @@ class DragLookupController(
                 PopupData(
                     word = form?.written ?: form?.reading ?: entry.slug,
                     reading = form?.reading,
-                    senses = entry.senses.map { sense ->
+                    senses = flatSenses.map { sense ->
                         WordLookupPopup.SenseDisplay(
                             pos = sense.partsOfSpeech.joinToString(", "),
                             definition = sense.targetDefinitions.joinToString("; ")
