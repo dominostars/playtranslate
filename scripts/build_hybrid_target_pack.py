@@ -146,29 +146,15 @@ def build_hybrid(target_app: str, kaikki_pack: Path, output_dir: Path,
     )}
     print(f"  kaikki rows: {pre_rows:,}  per-source: {pre_per_src}", flush=True)
 
-    # ── 2. Build kaikki indices per (source_lang, written) ────────────
-    #    - max sense_ord at reading='' (PanLex always emits reading='', so we
-    #      need to know where to start its sense_ord to avoid PK collisions)
-    #    - the set of all kaikki gloss strings the user can already see for
-    #      that key (across ANY reading) — PanLex glosses already covered by
-    #      kaikki are dropped, so PanLex is strictly supplementary.
-    print("Indexing kaikki sense_ords + gloss sets per key...", flush=True)
-    kaikki_max: dict[tuple[str, str], int] = {}
-    for sl, w, mx in conn.execute(
-        "SELECT source_lang, written, MAX(sense_ord) "
-        "FROM glosses WHERE reading='' GROUP BY source_lang, written"
-    ):
-        kaikki_max[(sl, w)] = mx
-
-    kaikki_glosses_per_key: dict[tuple[str, str], set[str]] = defaultdict(set)
+    # ── 2. Index which (source_lang, written) keys kaikki covers ─────
+    # PanLex rows are dropped wholesale for any key kaikki touches; we
+    # only need a presence check, not the gloss strings themselves.
+    print("Indexing kaikki keys...", flush=True)
+    kaikki_glosses_per_key: set[tuple[str, str]] = set()
     for sl, w, g in conn.execute("SELECT source_lang, written, glosses FROM glosses"):
-        if g:
-            for piece in g.split("\t"):
-                p = piece.strip()
-                if p:
-                    kaikki_glosses_per_key[(sl, w)].add(p)
-    print(f"  {len(kaikki_max):,} keys with kaikki reading='' rows; "
-          f"{len(kaikki_glosses_per_key):,} keys with any kaikki coverage",
+        if g and g.strip():
+            kaikki_glosses_per_key.add((sl, w))
+    print(f"  {len(kaikki_glosses_per_key):,} keys with kaikki coverage",
           flush=True)
 
     # ── 3. Load target meaning index from PanLex ──────────────────────
@@ -217,8 +203,7 @@ def build_hybrid(target_app: str, kaikki_pack: Path, output_dir: Path,
 
         # For each (src_app, written): collapse all PanLex glosses across
         # every contributing meaning_id into a single deduplicated set,
-        # subtract the gloss strings the user can already see in kaikki for
-        # that key, drop the row entirely if nothing new remains.
+        # then drop the entire row if kaikki already covers the key.
         for written, meanings in written_to_meanings.items():
             if is_garbage_written(written):
                 rows_dropped_garbage += 1
@@ -233,20 +218,22 @@ def build_hybrid(target_app: str, kaikki_pack: Path, output_dir: Path,
             if not panlex_glosses:
                 continue
 
-            already_in_kaikki = kaikki_glosses_per_key.get((src_app, written),
-                                                            set())
-            new_glosses = panlex_glosses - already_in_kaikki
-            if not new_glosses:
+            # PanLex aggregates many small upstream dictionaries of variable
+            # quality. When kaikki/Wiktionary already provides ANY gloss for
+            # this key, we drop the PanLex row entirely — kaikki tends to be
+            # cleaner and the runtime renders senses target-driven, so PanLex
+            # extras would only show up as a noisier additional sense block.
+            # PanLex still wins for keys kaikki doesn't cover.
+            if (src_app, written) in kaikki_glosses_per_key:
                 rows_dropped_redundant += 1
                 continue
 
             # Cap at 8 to match what build_target_pack.py + build_panlex_target_pack.py
             # already enforce. Sort for deterministic output.
-            final = sorted(new_glosses)[:8]
+            final = sorted(panlex_glosses)[:8]
             gloss_str = "\t".join(final)
-            sense_ord = kaikki_max.get((src_app, written), -1) + 1
             row_buffer.append((
-                src_app, written, "", sense_ord, "",
+                src_app, written, "", 0, "",
                 gloss_str, "panlex",
             ))
             panlex_per_src[src_app] += 1
@@ -338,7 +325,7 @@ def build_hybrid(target_app: str, kaikki_pack: Path, output_dir: Path,
     print(f"  kaikki rows:           {pre_rows:>10,}  ({pre_per_src})")
     print(f"  panlex rows added:     {panlex_added:>10,}")
     print(f"  panlex dropped garbage:{rows_dropped_garbage:>10,}")
-    print(f"  panlex dropped redundant (subsumed by kaikki):{rows_dropped_redundant:>10,}")
+    print(f"  panlex dropped (kaikki already covers key): {rows_dropped_redundant:>10,}")
     print(f"  total rows:            {final_rows:>10,}  ({final_per_src})")
     print(f"  covers:                {len(covers):>10,} src codes")
     print(f"  db on-disk:            {db_size:>10,} bytes ({db_size/1e6:.1f} MB)")
