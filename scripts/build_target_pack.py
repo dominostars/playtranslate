@@ -127,7 +127,15 @@ def extract_kaikki_examples(sense: dict) -> Tuple[str, str]:
             continue
         seen.add(text)
         texts.append(text)
-        translation = (ex.get("translation") or ex.get("english") or "").strip()
+        # Use only kaikki's `translation` field (which carries text in the
+        # Wiktionary edition's own language — German for kaikki-de, French
+        # for kaikki-fr, etc., aligning with our target language). The
+        # legacy fallback to `ex.get("english")` is intentionally dropped:
+        # that field, when present, contains English text and would leak
+        # English glosses into non-English target packs. Empirically
+        # kaikki-de never populates `english` on examples, but ruling it
+        # out at the boundary keeps the runtime guarantee straightforward.
+        translation = (ex.get("translation") or "").strip()
         # Wiktionary "[please add a translation]"-style placeholders show up
         # as raw english strings; coerce to "" so the runtime knows there's
         # no translation and the source-language line stands alone.
@@ -350,6 +358,20 @@ def parse_wiktionary_dir(
         print(f"  No JSONL files found in {wikt_dir}")
         return rows
 
+    # Many headwords have multiple kaikki entries split by POS — e.g. English
+    # `man` ships as both noun and verb in the German Wiktionary dump. The
+    # `glosses` table's PK is (source_lang, written, reading, sense_ord) and
+    # we use INSERT OR IGNORE downstream, so if every entry restarted
+    # sense_ord at 0 the second/third POS entry would silently collide with
+    # the first. Tracking the next free ord per (source_lang, word, reading)
+    # appends each entry's senses after the prior entry's range, preserving
+    # all senses across POS entries. Same trick the hybrid build script
+    # already uses to layer PanLex onto kaikki — see
+    # build_hybrid_target_pack.py's "Sense ordinal collisions" doc block.
+    next_ord_by_key: Dict[Tuple[str, str, str], int] = {}
+    multi_pos_keys: Set[Tuple[str, str, str]] = set()
+    seen_pos_by_key: Dict[Tuple[str, str, str], str] = {}
+
     for jsonl_file in jsonl_files:
         file_rows = 0
         print(f"  Processing {jsonl_file.name}...")
@@ -395,7 +417,15 @@ def parse_wiktionary_dir(
                 if not senses_data:
                     continue
 
-                for sense_ord, sense in enumerate(senses_data):
+                key = (source_lang, word, "")
+                start_ord = next_ord_by_key.get(key, 0)
+                prior_pos = seen_pos_by_key.get(key)
+                if prior_pos is not None and prior_pos != pos:
+                    multi_pos_keys.add(key)
+                seen_pos_by_key[key] = pos
+                senses_added = 0
+
+                for sense in senses_data:
                     # Get glosses from the sense
                     glosses = []
                     for g in sense.get("glosses", []):
@@ -419,18 +449,31 @@ def parse_wiktionary_dir(
                     misc_str = extract_kaikki_misc(sense)
 
                     rows.append((
-                        source_lang, word, "", sense_ord, pos_str,
+                        source_lang, word, "", start_ord + senses_added, pos_str,
                         gloss_str, "wiktionary",
                         examples_str, example_trans_str, misc_str,
                     ))
                     file_rows += 1
+                    senses_added += 1
 
-                    # Cap senses per word
-                    if sense_ord >= 7:
+                    # Cap at 8 senses per kaikki entry (a single POS section).
+                    # Words with multiple POS entries can therefore exceed 8
+                    # senses overall — that's intentional: capping per entry
+                    # preserves diversity across POS instead of starving the
+                    # later entries.
+                    if senses_added >= 8:
                         break
+
+                if senses_added > 0:
+                    next_ord_by_key[key] = start_ord + senses_added
 
         print(f"    {file_rows} rows from {jsonl_file.name}")
 
+    if multi_pos_keys:
+        print(
+            f"  Wiktionary multi-POS headwords merged across entries: "
+            f"{len(multi_pos_keys):,}"
+        )
     print(f"  Wiktionary total: {len(rows)} rows")
     return rows
 

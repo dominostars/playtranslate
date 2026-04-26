@@ -474,9 +474,9 @@
       "script": "LATIN",
       "bundled": false,
       "packVersion": 1,
-      "size": 26229994,
+      "size": 108363691,
       "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-de-v1/de.zip",
-      "sha256": "a149622855408464c5934c591e6c7dfa1795be899daa5702d7ec571f4f74911c",
+      "sha256": "4f35743d1a1ea322f68420e6926998e5b626a93506fb4cf36bcf7e66800a910e",
       "licenses": [
         {
           "component": "JMdict",

@@ -58,8 +58,13 @@ object LastSentenceCache {
                 val defResult = resolver.lookup(tok.lookupForm, tok.reading)
                 val response = defResult?.response
                 if (response != null && response.entries.isNotEmpty()) {
-                    val entry = response.entries.first()
-                    val primary = entry.headwords.firstOrNull()
+                    val entry      = response.entries.first()
+                    // Wiktionary multi-POS lookups split into separate
+                    // entries; flatten so cached meanings include verb /
+                    // intj / etc. instead of dropping every non-primary
+                    // sense.
+                    val flatSenses = response.entries.flatMap { it.senses }
+                    val primary    = entry.headwords.firstOrNull()
                     val displayWord = primary?.written ?: primary?.reading ?: tok.lookupForm
                     val reading = primary?.reading?.takeIf { it != primary.written } ?: ""
                     // Mirror the word panel's render cascade: target-driven
@@ -89,11 +94,11 @@ object LastSentenceCache {
                             is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
                             else -> null
                         }
-                        entry.senses.mapIndexed { i, sense ->
+                        flatSenses.mapIndexed { i, sense ->
                             val glosses = targetByOrd?.get(i)?.glosses?.joinToString("; ")
                                 ?: mtDefs?.getOrNull(i)?.takeIf { it.isNotBlank() }
                                 ?: sense.targetDefinitions.joinToString("; ")
-                            if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
+                            if (flatSenses.size > 1) "${i + 1}. $glosses" else glosses
                         }.joinToString("\n")
                     }
                     if (meaning.isNotEmpty()) {
