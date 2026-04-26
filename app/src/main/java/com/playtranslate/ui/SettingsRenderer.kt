@@ -28,9 +28,11 @@ import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.AnkiManager
 import com.playtranslate.BuildConfig
 import com.playtranslate.CaptureService
+import com.playtranslate.OverlayHost
 import com.playtranslate.OverlayMode
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.Prefs
+import com.playtranslate.ProjectionOverlayHost
 import com.playtranslate.R
 import com.playtranslate.diagnostics.LogExporter
 import com.playtranslate.language.HintTextKind
@@ -81,10 +83,17 @@ class SettingsRenderer(
     private val cardOnScreenControls: MaterialCardView = root.findViewById(R.id.cardOnScreenControls)
     private val rowOverlayIcon: View = root.findViewById(R.id.rowOverlayIcon)
     private val switchOverlayIcon: MaterialSwitch = rowOverlayIcon.findViewById(R.id.switchRowToggle)
+    /** Guard for the [switchOverlayIcon] listener so a programmatic
+     *  isChecked flip (used to revert the visual state when capture isn't
+     *  ready yet) doesn't recursively re-enter the listener and clobber
+     *  [Prefs.showOverlayIcon] back to false. */
+    private var suppressIconListener: Boolean = false
 
     private val rowCompactIcon: View = root.findViewById(R.id.rowCompactIcon)
     private val switchCompactIcon: MaterialSwitch = rowCompactIcon.findViewById(R.id.switchRowToggle)
     private val dividerCompactIcon: View = root.findViewById(R.id.dividerCompactIcon)
+    private val rowChooseWorkMode: View = root.findViewById(R.id.rowChooseWorkMode)
+    private val dividerChooseWorkMode: View = root.findViewById(R.id.dividerChooseWorkMode)
 
     private val overlayModeSection: View = root.findViewById(R.id.overlayModeSection)
     private val overlayModeToggleContainer: FrameLayout = root.findViewById(R.id.overlayModeToggleContainer)
@@ -194,6 +203,10 @@ class SettingsRenderer(
 
     // ── On-screen controls ───────────────────────────────────────────────
 
+    private val isCaptureEnabled: Boolean
+        get() = if (prefs.isMediaProjectionMode) ProjectionOverlayHost.instance != null
+        else PlayTranslateAccessibilityService.isEnabled
+
     private fun setupOnScreenControls() {
         val isSingle = Prefs.isSingleScreen(ctx)
 
@@ -210,24 +223,50 @@ class SettingsRenderer(
         subtitleOverlay.visibility = View.VISIBLE
         subtitleOverlay.setTextColor(ctx.themeColor(R.attr.ptText))
 
-        switchOverlayIcon.isChecked =
-            prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled
+        switchOverlayIcon.isChecked = prefs.showOverlayIcon && isCaptureEnabled
 
         switchOverlayIcon.setOnCheckedChangeListener { _, checked ->
-            if (checked && !PlayTranslateAccessibilityService.isEnabled) {
+            // Guard re-entry: the OFF-revert below (`isChecked = false`)
+            // re-fires this listener with checked=false, which would
+            // otherwise persist `showOverlayIcon = false` and hide the
+            // icon \u2014 exactly the opposite of the user's intent. The flag
+            // makes the second invocation a no-op so we keep the pref.
+            if (suppressIconListener) return@setOnCheckedChangeListener
+            if (checked && !isCaptureEnabled) {
+                suppressIconListener = true
                 switchOverlayIcon.isChecked = false
-                AlertDialog.Builder(ctx)
-                    .setTitle(R.string.overlay_icon_a11y_required_title)
-                    .setMessage(R.string.overlay_icon_a11y_required_message)
-                    .setPositiveButton(R.string.btn_open_a11y_settings) { _, _ ->
-                        ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                suppressIconListener = false
+                if (prefs.isMediaProjectionMode) {
+                    // Share-Screen mode: kick off SYSTEM_ALERT_WINDOW + MediaProjection
+                    // consent. On grant, the projection host's ensureFloatingIcon()
+                    // already runs (see CaptureService.startProjection); we just
+                    // commit the showOverlayIcon pref + refresh UI.
+                    val act = ctx as? com.playtranslate.MainActivity
+                    if (act == null) {
+                        Toast.makeText(ctx, R.string.toast_screen_share_required, Toast.LENGTH_SHORT).show()
+                    } else {
+                        act.startShareScreenEnableFlow {
+                            prefs.showOverlayIcon = true
+                            ProjectionOverlayHost.instance?.ensureFloatingIcon()
+                            refreshOverlayIconSwitch()
+                            refreshOnScreenControlsTint(isSingle)
+                        }
                     }
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .show()
+                } else {
+                    AlertDialog.Builder(ctx)
+                        .setTitle(R.string.overlay_icon_a11y_required_title)
+                        .setMessage(R.string.overlay_icon_a11y_required_message)
+                        .setPositiveButton(R.string.btn_open_a11y_settings) { _, _ ->
+                            ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                        }
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .show()
+                }
                 return@setOnCheckedChangeListener
             }
             prefs.showOverlayIcon = checked
-            PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
+            if (checked) OverlayHost.current?.ensureFloatingIcon()
+            else OverlayHost.current?.hideFloatingIcon("settings_toggle_off")
             refreshOnScreenControlsTint(isSingle)
         }
         rowOverlayIcon.setOnClickListener { switchOverlayIcon.toggle() }
@@ -238,18 +277,66 @@ class SettingsRenderer(
         switchCompactIcon.isChecked = prefs.compactOverlayIcon
         switchCompactIcon.setOnCheckedChangeListener { _, checked ->
             prefs.compactOverlayIcon = checked
-            val a11y = PlayTranslateAccessibilityService.instance
-            a11y?.hideFloatingIcon("settings_compact_recreate")
-            a11y?.ensureFloatingIcon()
+            // Re-create the floating icon (whichever host owns it) so the
+            // new compact-mode setting takes effect immediately.
+            OverlayHost.current?.hideFloatingIcon("settings_compact_recreate")
+            OverlayHost.current?.ensureFloatingIcon()
         }
         rowCompactIcon.setOnClickListener { switchCompactIcon.toggle() }
+
+        // -- Choose Work Mode row --
+        val tvWorkModeTitle = rowChooseWorkMode.findViewById<TextView>(R.id.tvRowTitle)
+        val tvWorkModeValue = rowChooseWorkMode.findViewById<TextView>(R.id.tvRowValue)
+        tvWorkModeTitle.setText(R.string.settings_choose_work_mode)
+        tvWorkModeValue.text = ctx.getString(
+            if (prefs.isMediaProjectionMode) R.string.settings_work_mode_share_screen
+            else R.string.settings_work_mode_accessibility
+        )
+        rowChooseWorkMode.setOnClickListener {
+            val items = arrayOf(
+                ctx.getString(R.string.settings_work_mode_accessibility),
+                ctx.getString(R.string.settings_work_mode_share_screen),
+            )
+            val selectedIdx = if (prefs.isMediaProjectionMode) 1 else 0
+            AlertDialog.Builder(ctx)
+                .setTitle(R.string.settings_choose_work_mode)
+                .setSingleChoiceItems(items, selectedIdx) { dialog, which ->
+                    dialog.dismiss()
+                    when (which) {
+                        0 -> {
+                            if (prefs.isMediaProjectionMode) {
+                                CaptureService.instance?.stopProjection()
+                                prefs.captureMethod = Prefs.CAPTURE_METHOD_ACCESSIBILITY
+                                callbacks.onScreenModeChanged()
+                                (ctx as? android.app.Activity)?.recreate()
+                            }
+                        }
+                        1 -> {
+                            val act = ctx as? com.playtranslate.MainActivity
+                            if (act == null) {
+                                Toast.makeText(ctx, R.string.toast_screen_share_required, Toast.LENGTH_SHORT).show()
+                            } else {
+                                act.startShareScreenEnableFlow {
+                                    prefs.showOverlayIcon = true
+                                    ProjectionOverlayHost.instance?.ensureFloatingIcon()
+                                    refreshOverlayIconSwitch()
+                                    tvWorkModeValue.text = ctx.getString(R.string.settings_work_mode_share_screen)
+                                    refreshOnScreenControlsTint(isSingle)
+                                }
+                            }
+                        }
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+        }
 
         // Show compact row only when overlay icon is on
         updateCompactIconVisibility()
     }
 
     private fun updateCompactIconVisibility() {
-        val showCompact = prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled
+        val showCompact = prefs.showOverlayIcon && isCaptureEnabled
         rowCompactIcon.visibility = if (showCompact) View.VISIBLE else View.GONE
         dividerCompactIcon.visibility = if (showCompact) View.VISIBLE else View.GONE
     }
@@ -260,7 +347,7 @@ class SettingsRenderer(
      *  dual-screen uses warning (the app works but the floating helper is
      *  missing). On = neutral card styling. */
     private fun refreshOnScreenControlsTint(isSingle: Boolean) {
-        val enabled = prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled
+        val enabled = prefs.showOverlayIcon && isCaptureEnabled
         val baseCard = ctx.themeColor(R.attr.ptCard)
         val baseStroke = compositeOver(ctx.themeColor(R.attr.ptDivider), baseCard)
         // Canonical theme-driven switch tints — same resources the
@@ -1005,8 +1092,12 @@ class SettingsRenderer(
     }
 
     fun refreshOverlayIconSwitch() {
-        switchOverlayIcon.isChecked =
-            prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled
+        // Same re-entry concern as the click handler \u2014 a programmatic
+        // isChecked flip would otherwise mutate the underlying pref through
+        // the listener.
+        suppressIconListener = true
+        switchOverlayIcon.isChecked = prefs.showOverlayIcon && isCaptureEnabled
+        suppressIconListener = false
         updateCompactIconVisibility()
     }
 

@@ -55,13 +55,13 @@ import kotlinx.coroutines.launch
  * Settings → Accessibility → Installed apps → PlayTranslate → Enable
  * The app detects the enabled state via [isEnabled].
  */
-class PlayTranslateAccessibilityService : AccessibilityService() {
+class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
 
     private var dragView: RegionDragView? = null
     private var dragWm: WindowManager? = null
     /** True when the region drag editor overlay is showing. */
     val isRegionEditorActive: Boolean get() = dragView != null
-    internal var floatingIcon: FloatingOverlayIcon? = null
+    override var floatingIcon: FloatingOverlayIcon? = null
         set(value) {
             field = value
             CaptureService.instance?.updateForegroundState()
@@ -184,18 +184,11 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
     // ── Overlay state for ScreenshotManager ──────────────────────────────
 
-    /** State returned by [prepareForCleanCapture], passed to [restoreAfterCapture]. */
-    data class OverlayState(
-        val hadTranslation: Boolean,
-        val hadDebug: Boolean,
-        val hadRegionIndicator: Boolean
-    )
-
     /**
      * Hides overlays so they don't appear in a clean screenshot.
      * Returns the previous state so [restoreAfterCapture] can restore it.
      */
-    fun prepareForCleanCapture(): OverlayState {
+    override fun prepareForCleanCapture(): OverlayState {
         val state = OverlayState(
             hadTranslation = translationOverlayView != null,
             hadDebug = debugOverlayView != null,
@@ -208,7 +201,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     }
 
     /** Restores overlays that were hidden by [prepareForCleanCapture]. */
-    fun restoreAfterCapture(state: OverlayState) {
+    override fun restoreAfterCapture(state: OverlayState) {
         if (state.hadDebug) debugOverlayView?.visibility = View.VISIBLE
         if (state.hadTranslation) translationOverlayView?.visibility = View.VISIBLE
         if (state.hadRegionIndicator && floatingIcon?.inDragMode != true) {
@@ -224,10 +217,10 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      * with a fade-out. Call [hideRegionIndicator] to force-remove instantly
      * (e.g. before taking another screenshot).
      */
-    fun showRegionIndicator(
+    override fun showRegionIndicator(
         display: Display,
         region: RegionEntry,
-        persistent: Boolean = false
+        persistent: Boolean,
     ) {
         hideRegionIndicator(force = true)
 
@@ -360,7 +353,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      * Hides the region indicator. If [force] is false, persistent indicators
      * (from the region picker) are left alone — only flash indicators are cleared.
      */
-    fun hideRegionIndicator(force: Boolean = false) {
+    override fun hideRegionIndicator(force: Boolean) {
         if (!force && regionIndicatorPersistent) return
         regionIndicatorHandler.removeCallbacksAndMessages(null)
         val view = regionIndicatorView
@@ -600,12 +593,12 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
     // ── Live translation overlay ─────────────────────────────────────────
 
-    fun showTranslationOverlay(
+    override fun showTranslationOverlay(
         display: Display,
         boxes: List<TranslationOverlayView.TextBox>,
         cropLeft: Int, cropTop: Int,
         screenshotW: Int, screenshotH: Int,
-        pinholeMode: Boolean = false
+        pinholeMode: Boolean,
     ) {
         // Overlay is appearing — dismiss loading spinner
         floatingIcon?.showLoading = false
@@ -660,7 +653,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         dirtyOverlayView = dirtyView
     }
 
-    fun hideTranslationOverlay() {
+    override fun hideTranslationOverlay() {
         try { translationOverlayView?.let { translationOverlayWm?.removeView(it) } } catch (_: Exception) {}
         translationOverlayView = null
         translationOverlayWm = null
@@ -671,7 +664,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     }
 
     /** Remove specific overlay boxes without rebuilding the entire view. */
-    fun removeOverlayBoxes(toRemove: List<TranslationOverlayView.TextBox>) {
+    override fun removeOverlayBoxes(toRemove: List<TranslationOverlayView.TextBox>) {
         translationOverlayView?.removeBoxesByContent(toRemove)
     }
 
@@ -926,7 +919,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      *
      * Shows, hides, or relocates the icon based on current state.
      */
-    fun ensureFloatingIcon() {
+    override fun ensureFloatingIcon() {
         val prefs = Prefs(this)
         if (!prefs.showOverlayIcon) {
             hideFloatingIcon("pref_disabled")
@@ -1064,7 +1057,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     }
 
     /** Remove and re-add the floating icon so it draws above newly added overlays. */
-    private fun bringFloatingIconToFront() {
+    override fun bringFloatingIconToFront() {
         val icon = floatingIcon ?: return
         val wm = floatingIconWm ?: return
         // Never re-add the icon while it's being dragged — removing it
@@ -1076,7 +1069,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         } catch (_: Exception) {}
     }
 
-    fun hideFloatingIcon(reason: String = "unspecified") {
+    override fun hideFloatingIcon(reason: String) {
         Log.i(TAG, "hideFloatingIcon: $reason")
         dragLookupController?.destroy()
         dragLookupController = null
@@ -1464,7 +1457,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      * if the icon is not showing. Used by CaptureService to black out the icon
      * area before OCR so it doesn't interfere with text recognition.
      */
-    fun getFloatingIconRect(): android.graphics.Rect? {
+    override fun getFloatingIconRect(): android.graphics.Rect? {
         val icon = floatingIcon ?: return null
         val p = icon.params ?: return null
         return android.graphics.Rect(p.x, p.y, p.x + icon.viewSizePx, p.y + icon.viewSizePx)

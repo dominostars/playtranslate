@@ -334,6 +334,21 @@
                 android:textColor="?attr/ptAccentOn"
                 app:cornerRadius="8dp" />
 
+            <!-- Optional: opt into MediaProjection-based capture instead of
+                 Accessibility. Visible after the language pair is configured;
+                 see MainActivity.refreshWelcomeRowsAndButton. -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnUseShareScreen"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="8dp"
+                android:text="@string/onboarding_welcome_use_share_screen"
+                android:textSize="14sp"
+                android:textAllCaps="false"
+                android:visibility="gone"
+                app:cornerRadius="8dp" />
+
         </LinearLayout>
 
         <!-- Page 1: Notification permission -->
@@ -449,6 +464,17 @@
                 app:cornerRadius="8dp" />
 
             <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnUseShareScreenA11ySingle"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="8dp"
+                android:text="@string/onboarding_welcome_use_share_screen"
+                android:textSize="14sp"
+                android:textAllCaps="false"
+                app:cornerRadius="8dp" />
+
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnCantEnableA11ySingle"
                 style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="match_parent"
@@ -519,6 +545,17 @@
                 android:textSize="16sp"
                 android:backgroundTint="?attr/ptAccent"
                 android:textColor="?attr/ptAccentOn"
+                app:cornerRadius="8dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnUseShareScreenA11y"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="8dp"
+                android:text="@string/onboarding_welcome_use_share_screen"
+                android:textSize="14sp"
+                android:textAllCaps="false"
                 app:cornerRadius="8dp" />
 
             <com.google.android.material.button.MaterialButton

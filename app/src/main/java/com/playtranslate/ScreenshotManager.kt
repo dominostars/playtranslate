@@ -28,7 +28,7 @@ private const val TAG = "ScreenshotManager"
  * of each call and `delay()`s the precise remaining cooldown, eliminating
  * guessing, retries, and wasted attempts.
  */
-class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
+class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : ScreenshotProvider {
 
     /** Single-thread executor for HardwareBuffer → software Bitmap copies. */
     private val bitmapExecutor = Executors.newSingleThreadExecutor()
@@ -50,7 +50,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
     // ── File cache ───────────────────────────────────────────────────────
 
     /** Path to the most recently saved clean screenshot (JPEG). */
-    var lastCleanPath: String? = null
+    override var lastCleanPath: String? = null
         private set
 
     // ── Public API ───────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
      * compositor to flush the overlay-free frame, captures, and restores
      * overlays. The caller owns the returned [Bitmap] and must recycle it.
      */
-    suspend fun requestClean(displayId: Int): Bitmap? {
+    override suspend fun requestClean(displayId: Int): Bitmap? {
         awaitScreenshotInterval()
 
         val hideStart = System.currentTimeMillis()
@@ -102,7 +102,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
      * capture with the restored UI visible, contaminating the bitmap. Callers
      * that need retry must re-prepare UI state and call again.
      */
-    suspend fun requestRaw(displayId: Int, onCaptured: (() -> Unit)? = null): Bitmap? {
+    override suspend fun requestRaw(displayId: Int, onCaptured: (() -> Unit)?): Bitmap? {
         awaitScreenshotInterval()
         val bitmap = doTakeScreenshot(displayId, onCaptured)
         if (bitmap == null) DetectionLog.log("Raw capture failed")
@@ -114,7 +114,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
      * Returns the file path. Uses JPEG for speed (~10-30 ms vs PNG's
      * 50-200 ms). Keeps up to 5 files, rotating oldest.
      */
-    fun saveToCache(bitmap: Bitmap): String? {
+    override fun saveToCache(bitmap: Bitmap): String? {
         return try {
             val dir = File(a11y.cacheDir, "screenshots").apply { mkdirs() }
             val file = File(dir, "capture.jpg")
@@ -140,11 +140,11 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
      * Call [requestCleanCapture] to flag the next frame as clean (overlays
      * hidden before capture, restored after).
      */
-    fun startLoop(
+    override fun startLoop(
         displayId: Int,
         scope: CoroutineScope,
         onCleanFrame: (Bitmap) -> Unit,
-        onRawFrame: (Bitmap) -> Unit
+        onRawFrame: (Bitmap) -> Unit,
     ) {
         stopLoop()
         loopJob = scope.launch {
@@ -182,19 +182,19 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
     }
 
     /** Flag the next loop iteration to take a clean capture (overlays hidden). */
-    fun requestCleanCapture() {
+    override fun requestCleanCapture() {
         cleanRequested = true
     }
 
-    fun stopLoop() {
+    override fun stopLoop() {
         loopJob?.cancel()
         loopJob = null
         // Don't reset cleanRequested — it may have been set for the next startLoop
     }
 
-    val isLoopRunning: Boolean get() = loopJob?.isActive == true
+    override val isLoopRunning: Boolean get() = loopJob?.isActive == true
 
-    fun destroy() {
+    override fun destroy() {
         stopLoop()
         bitmapExecutor.shutdown()
     }

@@ -131,10 +131,18 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_SHOW_FURIGANA_INLINE, false)
         set(v) = sp.edit().putBoolean(KEY_SHOW_FURIGANA_INLINE, v).apply()
 
-    /** Capture method chosen during onboarding: "" = not set, "accessibility", "media_projection" */
+    /** Capture method chosen during onboarding.
+     *  One of [CAPTURE_METHOD_NONE], [CAPTURE_METHOD_ACCESSIBILITY],
+     *  [CAPTURE_METHOD_MEDIA_PROJECTION]. */
     var captureMethod: String
-        get() = sp.getString(KEY_CAPTURE_METHOD, "") ?: ""
+        get() = sp.getString(KEY_CAPTURE_METHOD, CAPTURE_METHOD_NONE) ?: CAPTURE_METHOD_NONE
         set(v) = sp.edit().putString(KEY_CAPTURE_METHOD, v).apply()
+
+    /** True when the user has opted into MediaProjection-based capture
+     *  ("Share Screen Mode") in onboarding. The accessibility-based path
+     *  remains the default for users who haven't picked. */
+    val isMediaProjectionMode: Boolean
+        get() = captureMethod == CAPTURE_METHOD_MEDIA_PROJECTION
 
     var overlayMode: OverlayMode
         get() = OverlayMode.fromStorageName(sp.getString(KEY_OVERLAY_MODE, null))
@@ -296,6 +304,11 @@ class Prefs(context: Context) {
     companion object {
         const val MIN_CAPTURE_INTERVAL_SEC = 0.5f
         const val DEFAULT_CAPTURE_INTERVAL_SEC = 1.0f
+
+        /** Capture-method values stored under [KEY_CAPTURE_METHOD]. */
+        const val CAPTURE_METHOD_NONE = ""
+        const val CAPTURE_METHOD_ACCESSIBILITY = "accessibility"
+        const val CAPTURE_METHOD_MEDIA_PROJECTION = "media_projection"
 
         private const val KEY_SOURCE_LANG    = "source_lang"
         private const val KEY_TARGET_LANG    = "target_lang"

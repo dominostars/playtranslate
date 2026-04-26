@@ -10,6 +10,7 @@ import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.hardware.display.DisplayManager
+import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -98,6 +99,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private lateinit var rowWelcomeGameLang: View
     private lateinit var rowWelcomeYourLang: View
     private lateinit var btnWelcomeContinue: Button
+    private lateinit var btnUseShareScreen: View
     // Shared across Continue taps so the installer's single-flight guard
     // engages on rapid double-taps. Lazy so we construct after lifecycleScope
     // is available.
@@ -199,6 +201,142 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     ) { granted ->
         if (!granted) Toast.makeText(this, getString(R.string.anki_permission_denied), Toast.LENGTH_SHORT).show()
     }
+
+    // ── MediaProjection (Share Screen mode) ───────────────────────────────
+
+    /**
+     * Pending continuation for the projection-grant flow. Set when the user
+     * taps Enable PlayTranslate / Use Share Screen Mode and we still need
+     * to navigate the SYSTEM_ALERT_WINDOW → MediaProjection picker chain;
+     * cleared after the projection picker resolves (granted or denied).
+     */
+    private var pendingProjectionAction: (() -> Unit)? = null
+
+    private val overlayPermLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { _ ->
+        // The Settings screen doesn't return a meaningful result; re-check.
+        if (Settings.canDrawOverlays(this)) {
+            // Continue the chain — ask for MediaProjection consent now.
+            requestProjectionConsent()
+        } else {
+            Toast.makeText(
+                this,
+                getString(R.string.toast_overlay_perm_required),
+                Toast.LENGTH_LONG,
+            ).show()
+            pendingProjectionAction = null
+        }
+    }
+
+    private val projectionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val data = result.data
+        if (result.resultCode == RESULT_OK && data != null) {
+            // Hand the consent tuple to the running CaptureService. Use a
+            // startService Intent so the service receives it via
+            // onStartCommand even if the binder isn't connected yet.
+            val launch = Intent(this, CaptureService::class.java).apply {
+                action = CaptureService.ACTION_START_PROJECTION
+                putExtra(CaptureService.EXTRA_PROJECTION_RESULT_CODE, result.resultCode)
+                putExtra(CaptureService.EXTRA_PROJECTION_DATA, data)
+            }
+            android.util.Log.i(
+                "MainActivity",
+                "projectionLauncher OK rc=${result.resultCode} extraData=${data != null}",
+            )
+            try {
+                ContextCompat.startForegroundService(this, launch)
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "startForegroundService failed", e)
+                Toast.makeText(
+                    this,
+                    "Share Screen failed to start service: ${e.message ?: e.javaClass.simpleName}",
+                    Toast.LENGTH_LONG,
+                ).show()
+                pendingProjectionAction = null
+                return@registerForActivityResult
+            }
+            // Wait for the service to actually register the projection
+            // host before invoking the post-grant callback. A fixed delay
+            // races the system: on slower devices onStartCommand may not
+            // have fired yet at 250 ms, so [ProjectionOverlayHost.instance]
+            // is still null and any ensureFloatingIcon() in the callback
+            // becomes a no-op. Poll up to ~3 s instead.
+            val pollIntervalMs = 50L
+            val maxWaitMs = 3000L
+            val deadline = android.os.SystemClock.uptimeMillis() + maxWaitMs
+            lateinit var poll: Runnable
+            poll = Runnable {
+                val ready = ProjectionOverlayHost.instance != null
+                val timedOut = android.os.SystemClock.uptimeMillis() >= deadline
+                if (ready || timedOut) {
+                    if (timedOut && !ready) {
+                        Toast.makeText(
+                            this,
+                            getString(R.string.toast_screen_share_required),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                    pendingProjectionAction?.invoke()
+                    pendingProjectionAction = null
+                    checkOnboardingState()
+                } else {
+                    window.decorView.postDelayed(poll, pollIntervalMs)
+                }
+            }
+            window.decorView.postDelayed(poll, pollIntervalMs)
+        } else {
+            Toast.makeText(
+                this,
+                getString(R.string.toast_screen_share_required),
+                Toast.LENGTH_LONG,
+            ).show()
+            pendingProjectionAction = null
+        }
+    }
+
+    private fun requestProjectionConsent() {
+        val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        try {
+            projectionLauncher.launch(mpm.createScreenCaptureIntent())
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "projection launch failed", e)
+            pendingProjectionAction = null
+        }
+    }
+
+    /**
+     * Public entry point used by [com.playtranslate.ui.SettingsRenderer]
+     * (and the Welcome page button) to start a Share-Screen session,
+     * navigating the SYSTEM_ALERT_WINDOW → MediaProjection picker chain
+     * as needed. [onGranted] runs after the projection has been handed to
+     * [CaptureService.startProjection] (best-effort; not invoked on denial).
+     */
+    fun startShareScreenEnableFlow(onGranted: (() -> Unit)? = null) {
+        pendingProjectionAction = onGranted
+        Prefs(this).captureMethod = Prefs.CAPTURE_METHOD_MEDIA_PROJECTION
+        if (!Settings.canDrawOverlays(this)) {
+            // Let the user grant SYSTEM_ALERT_WINDOW first.
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                android.net.Uri.parse("package:$packageName"),
+            )
+            try {
+                overlayPermLauncher.launch(intent)
+            } catch (_: Exception) {
+                pendingProjectionAction = null
+            }
+            return
+        }
+        requestProjectionConsent()
+    }
+
+    /** True when a Share-Screen session is already active (foreground service
+     *  has a non-null [ProjectionOverlayHost]). */
+    private val isProjectionReady: Boolean
+        get() = ProjectionOverlayHost.instance != null && Settings.canDrawOverlays(this)
 
     // ── TranslationResultHost ─────────────────────────────────────────────
 
@@ -463,6 +601,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         rowWelcomeGameLang   = findViewById(R.id.rowWelcomeGameLang)
         rowWelcomeYourLang   = findViewById(R.id.rowWelcomeYourLang)
         btnWelcomeContinue   = findViewById(R.id.btnWelcomeContinue)
+        btnUseShareScreen    = findViewById(R.id.btnUseShareScreen)
         editOverlay          = findViewById(R.id.editOverlay)
         etEditOriginal       = findViewById(R.id.etEditOriginal)
     }
@@ -565,7 +704,29 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     private fun toggleLiveMode() {
-        if (isLiveMode) stopLiveMode() else withAccessibility { startLiveMode() }
+        if (isLiveMode) stopLiveMode() else withCaptureReady { startLiveMode() }
+    }
+
+    /**
+     * Run [action] once a working capture method is available.
+     *
+     * In Accessibility mode this is identical to the legacy
+     * [withAccessibility]: route to the system Accessibility settings if
+     * the service isn't enabled. In Share-Screen mode we ensure that
+     * SYSTEM_ALERT_WINDOW is granted and that a MediaProjection session is
+     * active, kicking off the consent flow if not.
+     */
+    private fun withCaptureReady(action: () -> Unit) {
+        if (prefs.isMediaProjectionMode) {
+            if (isProjectionReady) {
+                ensureConfigured()
+                action()
+                return
+            }
+            startShareScreenEnableFlow { ensureConfigured(); action() }
+            return
+        }
+        withAccessibility(action)
     }
 
     private fun startLiveMode() {
@@ -1002,6 +1163,13 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     // ── Accessibility service flow ─────────────────────────────────────────
 
     private fun withAccessibility(action: () -> Unit) {
+        // In Share-Screen mode the broader [withCaptureReady] handles routing;
+        // existing call sites that say "withAccessibility" still work because
+        // they delegate here.
+        if (prefs.isMediaProjectionMode) {
+            withCaptureReady(action)
+            return
+        }
         if (PlayTranslateAccessibilityService.isEnabled) {
             ensureConfigured()
             action()
@@ -1199,6 +1367,25 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             return
         }
 
+        // Share-Screen mode: skip the Accessibility-permission gate entirely.
+        // The user enables PlayTranslate via the Settings toggle, which kicks
+        // off the SYSTEM_ALERT_WINDOW + MediaProjection consent chain via
+        // [startShareScreenEnableFlow].
+        if (prefs.isMediaProjectionMode) {
+            onboardingContainer.visibility = View.GONE
+            if (singleScreen) {
+                val isAlreadySingleScreenSheet = existingSheet != null &&
+                    existingSheet.arguments?.getBoolean("hide_dismiss", false) == true
+                if (!isAlreadySingleScreenSheet) {
+                    existingSheet?.dismissAllowingStateLoss()
+                    showSettingsSheet(hideDismiss = true)
+                }
+            } else if (existingSheet?.arguments?.getBoolean("hide_dismiss", false) == true) {
+                existingSheet.dismissAllowingStateLoss()
+            }
+            return
+        }
+
         if (singleScreen) {
             if (!a11yEnabled) {
                 existingSheet?.dismissAllowingStateLoss()
@@ -1233,6 +1420,12 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         val p = Prefs(this)
         val srcInstalled = LanguagePackStore.isInstalled(this, p.sourceLangId)
         val tgtSet = p.hasTargetLangBeenSet
+        // Always show the projection-mode entry on the welcome page so the
+        // user can opt into Share-Screen mode at any time \u2014 gating it on
+        // `srcInstalled && tgtSet` would hide it forever in practice, since
+        // [checkOnboardingState] leaves pageWelcome the moment that pair
+        // becomes true.
+        btnUseShareScreen.visibility = View.VISIBLE
         // Effective target — explicit if set, else the computed default.
         // Used both for the Your Language row display and for localizing the
         // Game Language name.
@@ -1294,6 +1487,14 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         rowWelcomeYourLang.setOnClickListener {
             launchLanguagePicker(com.playtranslate.ui.LanguageSetupActivity.MODE_TARGET)
         }
+        btnUseShareScreen.setOnClickListener {
+            // Persist the choice immediately so a checkOnboardingState reflow
+            // routes through the projection-mode branch even before the
+            // permission flow finishes.
+            startShareScreenEnableFlow {
+                checkOnboardingState()
+            }
+        }
         btnWelcomeContinue.setOnClickListener {
             val p = Prefs(this)
             when {
@@ -1336,6 +1537,17 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         val cantEnableClick = View.OnClickListener { showRestrictedSettingsDialog() }
         pageA11y.findViewById<View>(R.id.btnCantEnableA11y).setOnClickListener(cantEnableClick)
         pageA11ySingle.findViewById<View>(R.id.btnCantEnableA11ySingle).setOnClickListener(cantEnableClick)
+        // "Use Share Screen Mode" opt-out — same flow as the welcome page
+        // button. Available on both single- and multi-screen Accessibility
+        // pages so users who land here without seeing the welcome screen
+        // (e.g. languages already configured) can still opt into projection.
+        val useShareScreenFromA11y = View.OnClickListener {
+            startShareScreenEnableFlow { checkOnboardingState() }
+        }
+        pageA11y.findViewById<View>(R.id.btnUseShareScreenA11y)
+            .setOnClickListener(useShareScreenFromA11y)
+        pageA11ySingle.findViewById<View>(R.id.btnUseShareScreenA11ySingle)
+            .setOnClickListener(useShareScreenFromA11y)
         // Highlight "PlayTranslate" in the hint text with the theme accent color
         val accentColor = themeColor(R.attr.ptTextTranslation)
         colorizeAppName(pageA11y.findViewById(R.id.tvA11yHintDual), accentColor)

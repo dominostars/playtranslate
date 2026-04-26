@@ -118,8 +118,8 @@ class CaptureService : Service() {
         val newRegion = overrideRegion ?: savedRegion
         activeRegionLiveData.value = newRegion
 
-        PlayTranslateAccessibilityService.instance?.hideRegionIndicator()
-        PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+        OverlayHost.current?.hideRegionIndicator()
+        OverlayHost.current?.hideTranslationOverlay()
         oneShotCaptureJob?.cancel()
         oneShotManager.cancel()
         if (liveActive) {
@@ -158,10 +158,20 @@ class CaptureService : Service() {
      *  by [liveActive] setter, [setDegraded], and when a new icon is created
      *  (via [PlayTranslateAccessibilityService.floatingIcon] setter). */
     fun syncIconState() {
-        val icon = PlayTranslateAccessibilityService.instance?.floatingIcon ?: return
+        val icon = OverlayHost.current?.floatingIcon ?: return
         icon.liveMode = isLive
         icon.degraded = translationDegraded
     }
+
+    // ── Capture-mode dispatch ──────────────────────────────────────
+
+    /** The currently active screenshot provider, or `null` if neither
+     *  Accessibility nor MediaProjection capture is initialised yet.
+     *  In projection mode the projection host is used; otherwise we fall
+     *  back to the Accessibility-mode [ScreenshotManager]. */
+    internal fun currentScreenshotProvider(): ScreenshotProvider? =
+        ProjectionOverlayHost.instance
+            ?: PlayTranslateAccessibilityService.instance?.screenshotManager
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -177,11 +187,58 @@ class CaptureService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i(TAG, "onStartCommand action=${intent?.action}")
-        // Android requires startForeground() within 5s of startForegroundService()
-        startForeground(NOTIF_ID, buildNotification())
-        // Immediately evaluate — may stopForeground if no game-screen presence yet
+        // Routed start-projection request from MainActivity — [startProjection]
+        // handles the foreground promotion itself with the correct
+        // mediaProjection type (must happen *before* getMediaProjection()).
+        if (intent?.action == ACTION_START_PROJECTION) {
+            // NOTE: [Activity.RESULT_OK] is -1, so we MUST use a sentinel
+            // that can never collide with a real resultCode. Using -1 as
+            // default would make a successful grant indistinguishable from
+            // a missing extra and reject every consent.
+            val rc = intent.getIntExtra(EXTRA_PROJECTION_RESULT_CODE, Int.MIN_VALUE)
+            // Use the type-safe API on Android 13+ — the legacy
+            // getParcelableExtra<Intent> can silently return null for
+            // Intent-in-Intent extras under stricter Parcelable validation.
+            val data: Intent? = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(EXTRA_PROJECTION_DATA, Intent::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra(EXTRA_PROJECTION_DATA)
+            }
+            Log.i(TAG, "ACTION_START_PROJECTION rc=$rc data=${data != null}")
+            if (rc != Int.MIN_VALUE && data != null) {
+                startProjection(rc, data)
+                return START_STICKY
+            } else {
+                Log.e(TAG, "ACTION_START_PROJECTION missing extras (rc=$rc, data=${data != null})")
+                Toast.makeText(
+                    this,
+                    "Share Screen: missing consent data (rc=$rc)",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+        // Default path: promote with SPECIAL_USE only. The manifest declares
+        // `specialUse|mediaProjection`; calling 2-arg startForeground would
+        // make Android validate the mediaProjection type, which requires
+        // the project_media appop (only granted after consent) and crashes
+        // with SecurityException at startup. Always pass the explicit type.
+        startForegroundForCurrentMode()
         updateForegroundState()
         return START_STICKY
+    }
+
+    /** Start (or re-start) the foreground service with the foreground-service
+     *  type that matches the current capture state: [FOREGROUND_SERVICE_TYPE_
+     *  MEDIA_PROJECTION] when a projection session is active, else
+     *  [FOREGROUND_SERVICE_TYPE_SPECIAL_USE]. Both types are declared in the
+     *  manifest; the 3-arg overload tells Android which subset to validate. */
+    private fun startForegroundForCurrentMode() {
+        val type = if (ProjectionOverlayHost.instance != null)
+            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+        else
+            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        startForeground(NOTIF_ID, buildNotification(), type)
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -194,6 +251,7 @@ class CaptureService : Service() {
         Log.w(TAG, "onDestroy")
         instance = null
         stopLive()
+        ProjectionOverlayHost.instance?.stop()
         serviceScope.cancel()
         translationManager?.close()
         deeplTranslator?.close()
@@ -331,6 +389,24 @@ class CaptureService : Service() {
     }
 
     /**
+     * One-shot translate driven by a tap on the floating icon. Same flow as
+     * the in-app Translate button's hold-release sequence — runs OCR on a
+     * clean capture and paints the translation overlay on the game screen
+     * — but completes on its own (no companion release event required).
+     *
+     * Used by [ProjectionOverlayHost] in Share-Screen mode where there's no
+     * accessibility floating-menu surface to present a Translate action.
+     */
+    fun translateOnceOnScreen() {
+        if (!isConfigured) {
+            onError?.invoke("Not configured \u2014 set source/target language first")
+            return
+        }
+        OverlayHost.current?.hideTranslationOverlay()
+        oneShotManager.runHoldOverlay()
+    }
+
+    /**
      * Processes a pre-captured screenshot bitmap instead of taking a new one.
      * Used when the screenshot must be taken before an activity appears on screen
      * (e.g. single-screen region capture from the floating menu).
@@ -349,8 +425,7 @@ class CaptureService : Service() {
         var bitmap: Bitmap = raw
         try {
             onStatusUpdate?.invoke(getString(R.string.status_capturing))
-            val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
-            val screenshotPath = mgr?.saveToCache(raw)
+            val screenshotPath = currentScreenshotProvider()?.saveToCache(raw)
 
             val statusBarHeight = getStatusBarHeightForDisplay(gameDisplayId)
             val top    = maxOf((raw.height * activeRegion.top).toInt(), statusBarHeight)
@@ -459,14 +534,19 @@ class CaptureService : Service() {
             // connected, bail out of live mode rather than constructing a mode
             // that can't function.
             InAppOnlyMode(this)
+        } else if (prefs.isMediaProjectionMode) {
+            // Share-Screen mode has no accessibility-driven input monitoring
+            // for change detection \u2014 fall back to a simple polled mode that
+            // re-captures + dedups by OCR text. Renders through the active
+            // [OverlayHost] (= ProjectionOverlayHost) so the on-screen
+            // overlay still appears.
+            ProjectionLiveMode(this)
         } else {
             val a11y = PlayTranslateAccessibilityService.instance
             if (a11y == null) {
-                Log.w(
-                    TAG,
-                    "startLive: accessibility service not connected; cannot start " +
-                        "${prefs.overlayMode}. Live mode aborted."
-                )
+                val msg = "Enable PlayTranslate in Accessibility Settings to start live mode."
+                Log.w(TAG, "startLive aborted: $msg")
+                Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
                 liveMode = null
                 liveActive = false
                 return
@@ -571,10 +651,78 @@ class CaptureService : Service() {
         liveMode?.stop()
         liveMode = null
         liveActive = false
-        PlayTranslateAccessibilityService.instance?.screenshotManager?.stopLoop()
+        currentScreenshotProvider()?.stopLoop()
+        // Input monitoring is Accessibility-only — no-op in projection mode.
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
-        PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+        OverlayHost.current?.hideTranslationOverlay()
         setDegraded(false)
+    }
+
+    // ── MediaProjection lifecycle ──────────────────────────────────────
+
+    /**
+     * Begin a Share-Screen (MediaProjection) session using the consent
+     * tuple obtained from [android.media.projection.MediaProjectionManager.
+     * createScreenCaptureIntent]. Replaces any previously active host.
+     *
+     * Android 14+ requires the service to be running in foreground with
+     * the `mediaProjection` type **before** [MediaProjectionManager.
+     * getMediaProjection] is called — we re-promote the foreground
+     * notification with that type here. The notification itself is
+     * unchanged; only the FGS type bitmask is amended.
+     */
+    fun startProjection(resultCode: Int, data: Intent): Boolean {
+        // Promote to mediaProjection FGS type *before* obtaining the
+        // projection. The manifest declares `specialUse|mediaProjection`,
+        // so passing FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION is a valid
+        // subset. The system also validates that we hold the project_media
+        // appop — the consent token in [data] grants it as part of
+        // [MediaProjectionManager.getMediaProjection].
+        try {
+            startForeground(
+                NOTIF_ID, buildNotification(),
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "startForeground(mediaProjection) failed", e)
+            Toast.makeText(
+                this,
+                "Share Screen failed to start: ${e.message ?: e.javaClass.simpleName}",
+                Toast.LENGTH_LONG,
+            ).show()
+            return false
+        }
+        val host = ProjectionOverlayHost.start(this, resultCode, data) ?: run {
+            Log.e(TAG, "ProjectionOverlayHost.start returned null")
+            Toast.makeText(
+                this,
+                "Share Screen failed to acquire MediaProjection.",
+                Toast.LENGTH_LONG,
+            ).show()
+            return false
+        }
+        // Default game display = primary in projection mode.
+        gameDisplayId = android.view.Display.DEFAULT_DISPLAY
+        Prefs(this).captureDisplayId = gameDisplayId
+        // Make sure the user actually sees a tap target after granting:
+        // force the pref on so a previously-disabled icon doesn't suppress
+        // the post-grant ensureFloatingIcon() below.
+        Prefs(this).showOverlayIcon = true
+        host.ensureFloatingIcon()
+        updateForegroundState()
+        return true
+    }
+
+    /** Tear down any active MediaProjection session. Safe to call when none is active. */
+    fun stopProjection() {
+        if (liveActive) stopLive()
+        ProjectionOverlayHost.instance?.stop()
+        // Foreground type stays elevated for the rest of this service's life
+        // \u2014 explicitly downgrading to specialUse-only requires the API-34
+        // FOREGROUND_SERVICE_TYPE_SPECIAL_USE constant. The notification
+        // itself goes away naturally if no other surface keeps the service
+        // foregrounded (see [updateForegroundState]).
+        updateForegroundState()
     }
 
     // ── Unified loop handlers ─────────────────────────────────────────────
@@ -591,9 +739,9 @@ class CaptureService : Service() {
     /** True while a hold gesture or modal UI is active — suppresses overlay display in live mode. */
     var holdActive = false
 
-    /** Path to the last clean screenshot. Delegates to [ScreenshotManager]. */
+    /** Path to the last clean screenshot. Delegates to the active provider. */
     val lastCleanScreenshotPath: String?
-        get() = PlayTranslateAccessibilityService.instance?.screenshotManager?.lastCleanPath
+        get() = currentScreenshotProvider()?.lastCleanPath
 
     /**
      * Common hold-to-preview begin sequence used by both the in-app button
@@ -613,10 +761,8 @@ class CaptureService : Service() {
     private fun beginHoldPreview(mode: OverlayMode?) {
         holdActive = true
         if (liveActive) {
-            PlayTranslateAccessibilityService.instance
-                ?.screenshotManager?.stopLoop()
-            PlayTranslateAccessibilityService.instance
-                ?.hideTranslationOverlay()
+            currentScreenshotProvider()?.stopLoop()
+            OverlayHost.current?.hideTranslationOverlay()
         }
         oneShotManager.runHoldOverlay(forceMode = mode)
     }
@@ -642,7 +788,7 @@ class CaptureService : Service() {
         // PinholeOverlayMode's cycle polls [holdActive] and pauses itself.
         if (liveActive && liveMode !is FuriganaMode && !isInAppOnly) {
             holdActive = true
-            PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+            OverlayHost.current?.hideTranslationOverlay()
             return
         }
         onHoldLoadingChanged?.invoke(true)
@@ -705,10 +851,10 @@ class CaptureService : Service() {
     }
 
     internal fun flashRegionIndicator() {
-        val a11y = PlayTranslateAccessibilityService.instance ?: return
+        val host = OverlayHost.current ?: return
         val dm = getSystemService(DisplayManager::class.java)
         val display = dm.getDisplay(gameDisplayId) ?: return
-        a11y.showRegionIndicator(display, activeRegion)
+        host.showRegionIndicator(display, activeRegion)
     }
 
     /** Run the shared OCR pipeline on a clean frame. Caller still owns raw bitmap. */
@@ -716,7 +862,7 @@ class CaptureService : Service() {
         return OverlayToolkit.runOcrPipeline(
             raw, activeRegion, sourceLang, ocrManager,
             getStatusBarHeightForDisplay(gameDisplayId),
-            PlayTranslateAccessibilityService.instance?.getFloatingIconRect(),
+            OverlayHost.current?.getFloatingIconRect(),
             Prefs(this).compactOverlayIcon
         )
     }
@@ -753,13 +899,13 @@ class CaptureService : Service() {
 
     /** Called when OCR finds no source-language text: hides overlays and notifies the UI. */
     internal fun handleNoTextDetected() {
-        PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+        OverlayHost.current?.hideTranslationOverlay()
         onLiveNoText?.invoke()
     }
 
     /** Remove specific overlay boxes without rebuilding the entire view. */
     internal fun removeOverlayBoxes(toRemove: List<TranslationOverlayView.TextBox>) {
-        PlayTranslateAccessibilityService.instance?.removeOverlayBoxes(toRemove)
+        OverlayHost.current?.removeOverlayBoxes(toRemove)
     }
 
     internal fun showLiveOverlay(
@@ -770,21 +916,18 @@ class CaptureService : Service() {
         pinholeMode: Boolean = false
     ) {
         if (!force && holdActive) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: holdActive=true"); return }
-        val a11y = PlayTranslateAccessibilityService.instance
-        if (a11y == null) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: a11y=null"); return }
+        val host = OverlayHost.current
+        if (host == null) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: host=null"); return }
         val dm = getSystemService(DisplayManager::class.java)
         val display = dm.getDisplay(gameDisplayId)
         if (display == null) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: display=null for id=$gameDisplayId"); return }
         Log.d("FuriganaDbg", "showLiveOverlay: ${boxes.size} boxes, crop=($cropLeft,$cropTop), screen=${screenshotW}x$screenshotH")
-        a11y.showTranslationOverlay(display, boxes, cropLeft, cropTop, screenshotW, screenshotH, pinholeMode)
+        host.showTranslationOverlay(display, boxes, cropLeft, cropTop, screenshotW, screenshotH, pinholeMode)
     }
 
-    /**
-     * Captures a clean screenshot via [ScreenshotManager].
-     */
+    /** Captures a clean screenshot via the active provider. */
     internal suspend fun captureScreen(displayId: Int): Bitmap? {
-        val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
-        return mgr?.requestClean(displayId)
+        return currentScreenshotProvider()?.requestClean(displayId)
     }
 
     /**
@@ -792,6 +935,11 @@ class CaptureService : Service() {
      *   screenshot. Used by scene detection which already has a clean frame.
      */
     companion object {
+        /** Action consumed in [onStartCommand] to launch a MediaProjection
+         *  session with `resultCode` (Int) and `data` (Intent) extras. */
+        const val ACTION_START_PROJECTION = "com.playtranslate.action.START_PROJECTION"
+        const val EXTRA_PROJECTION_RESULT_CODE = "resultCode"
+        const val EXTRA_PROJECTION_DATA = "data"
 
         /** Process-scoped reference for in-process callers (e.g. DragLookupController). */
         @Volatile
@@ -811,7 +959,7 @@ class CaptureService : Service() {
     /** Convenience: blackout floating icon using current service state. Delegates to OverlayToolkit. */
     private fun blackoutFloatingIcon(bitmap: Bitmap, cropLeft: Int = 0, cropTop: Int = 0): Bitmap =
         OverlayToolkit.blackoutFloatingIcon(bitmap, cropLeft, cropTop,
-            PlayTranslateAccessibilityService.instance?.getFloatingIconRect(),
+            OverlayHost.current?.getFloatingIconRect(),
             Prefs(this).compactOverlayIcon)
 
     fun resetConfiguration() {
@@ -854,8 +1002,7 @@ class CaptureService : Service() {
         onScreenshotTaken?.invoke()
         var bitmap: Bitmap? = raw
         try {
-            val screenshotPath = PlayTranslateAccessibilityService.instance
-                ?.screenshotManager?.saveToCache(raw)
+            val screenshotPath = currentScreenshotProvider()?.saveToCache(raw)
 
             val statusBarHeight = getStatusBarHeightForDisplay(gameDisplayId)
             val top    = maxOf((raw.height * activeRegion.top).toInt(), statusBarHeight)
@@ -1096,7 +1243,7 @@ class CaptureService : Service() {
      *  - [PlayTranslateAccessibilityService.floatingIcon] property setter
      */
     fun updateForegroundState() {
-        val iconShowing = PlayTranslateAccessibilityService.instance?.floatingIcon != null
+        val iconShowing = OverlayHost.current?.floatingIcon != null
 
         // Stop live mode if the user can no longer see or manage it.
         if (liveActive) {
@@ -1114,8 +1261,8 @@ class CaptureService : Service() {
             }
         }
 
-        if (iconShowing || liveActive) {
-            startForeground(NOTIF_ID, buildNotification())
+        if (iconShowing || liveActive || ProjectionOverlayHost.instance != null) {
+            startForegroundForCurrentMode()
         } else {
             stopForeground(STOP_FOREGROUND_REMOVE)
         }

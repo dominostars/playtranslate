@@ -131,6 +131,18 @@
                     <include layout="@layout/settings_row_switch"
                         android:id="@+id/rowCompactIcon" />
 
+                    <View
+                        android:id="@+id/dividerChooseWorkMode"
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="@dimen/pt_row_h_padding"
+                        android:background="?attr/ptDivider" />
+
+                    <!-- Re-opens the Welcome page so the user can switch
+                         between Accessibility and Share-Screen modes. -->
+                    <include layout="@layout/settings_row_value"
+                        android:id="@+id/rowChooseWorkMode" />
+
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
