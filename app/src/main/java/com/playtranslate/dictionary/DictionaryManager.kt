@@ -9,6 +9,7 @@ import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.DictionaryResponse
+import com.playtranslate.model.Example
 import com.playtranslate.model.Headword
 import com.playtranslate.model.KanjiDetail
 import com.playtranslate.model.Sense
@@ -472,15 +473,39 @@ class DictionaryManager private constructor(private val context: Context) {
         }
         if (headwords.isEmpty()) return null
 
+        // Tatoeba example sentences keyed by sense_position. The `example`
+        // table is optional: JA packs that predate the Tatoeba indexing
+        // pass (build_jmdict.py without --tatoeba-dir) won't have it, so a
+        // missing-table SQLiteException degrades silently to "no examples."
+        val examplesBySense = mutableMapOf<Int, MutableList<Example>>()
+        try {
+            db.rawQuery(
+                "SELECT sense_position, text, translation FROM example " +
+                    "WHERE entry_id=? ORDER BY sense_position, position",
+                arrayOf(idStr)
+            ).use { c ->
+                while (c.moveToNext()) {
+                    val sensePos = c.getInt(0)
+                    val text = c.getString(1)
+                    val translation = c.getString(2) ?: ""
+                    examplesBySense.getOrPut(sensePos) { mutableListOf() }
+                        .add(Example(text = text, translation = translation))
+                }
+            }
+        } catch (_: android.database.sqlite.SQLiteException) {
+            // Older pack without the example table — leave examplesBySense empty.
+        }
+
         val senses = mutableListOf<Sense>()
         db.rawQuery(
-            "SELECT pos, glosses, misc FROM sense WHERE entry_id=? ORDER BY position LIMIT 8",
+            "SELECT position, pos, glosses, misc FROM sense WHERE entry_id=? ORDER BY position LIMIT 8",
             arrayOf(idStr)
         ).use { c ->
             while (c.moveToNext()) {
-                val posList   = c.getString(0).split(',').filter { it.isNotBlank() }
-                val glossList = c.getString(1).split('\t').filter { it.isNotBlank() }
-                val miscList  = c.getString(2).split('\t').filter { it.isNotBlank() }
+                val sensePos  = c.getInt(0)
+                val posList   = c.getString(1).split(',').filter { it.isNotBlank() }
+                val glossList = c.getString(2).split('\t').filter { it.isNotBlank() }
+                val miscList  = c.getString(3).split('\t').filter { it.isNotBlank() }
                 val finalPos  = if (inflectionNote != null && senses.isEmpty())
                     listOf("[$inflectionNote]") + posList
                 else
@@ -492,7 +517,8 @@ class DictionaryManager private constructor(private val context: Context) {
                         tags = emptyList(),
                         restrictions = emptyList(),
                         info = emptyList(),
-                        misc = miscList
+                        misc = miscList,
+                        examples = examplesBySense[sensePos].orEmpty(),
                     )
                 )
             }

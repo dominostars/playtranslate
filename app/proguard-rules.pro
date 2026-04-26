@@ -37,6 +37,12 @@
 -dontwarn org.apache.lucene.**
 -dontwarn org.tartarus.**
 
+# Lucene FST + DataInput/Output wrappers (target gloss pack reader).
+# Outputs.getSingleton() resolves singleton fields reflectively; FST
+# constructors and Util.get touch internal classes through method handles.
+-keep class org.apache.lucene.util.fst.** { *; }
+-keep class org.apache.lucene.store.** { *; }
+
 # ── KOMORAN (Korean morphological analyzer) ──────────────────────────────────
 # KOMORAN loads its bundled model via classloader resource lookup from
 # `kr.co.shineware.nlp.komoran.*`. The models, dictionary data, and helper

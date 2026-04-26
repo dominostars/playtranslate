@@ -37,6 +37,8 @@ import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.Example
 import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -78,10 +80,22 @@ class WordAnkiReviewSheet : DialogFragment() {
     private var moreExamplesBody: LinearLayout? = null
     private var moreExamplesSourceLang: String = ""
     private var moreExamplesTargetLang: String = ""
-    /** Cached resolved entry from the in-sheet dictionary lookup; the
-     *  Definitions group renders from this and the Anki-card HTML is
-     *  built from it on send. Null until the async lookup completes. */
+    /** Cached resolved primary entry from the in-sheet dictionary lookup;
+     *  Anki-card metadata (headword/freqScore/isCommon) reads from this.
+     *  Null until the async lookup completes. */
     private var resolvedEntry: DictionaryEntry? = null
+    /** Every entry the lookup returned. Used by the target-driven path's
+     *  POS-fallback logic (blank-pos PanLex rows inherit the source-
+     *  entry POS only when all entries agree). */
+    private var resolvedEntries: List<DictionaryEntry> = emptyList()
+    /** Flat sense list across every entry the lookup returned. Wiktionary
+     *  packs split each POS section into its own entry, so multi-POS
+     *  headwords ("man" → noun + verb) only render every sense when we
+     *  iterate this. JMdict (single entry per surface) flatSenses ==
+     *  resolvedEntry.senses, behavior unchanged. removedSenses /
+     *  removedExamples key off positions in this list, so a sheet
+     *  instance never juggles two index spaces. */
+    private var resolvedFlatSenses: List<com.playtranslate.model.Sense> = emptyList()
     private var resolvedDefResult: DefinitionResult? = null
 
     /** Sense ords the user has removed via the row × — they're skipped
@@ -505,15 +519,19 @@ class WordAnkiReviewSheet : DialogFragment() {
         )
         val defResult = withContext(Dispatchers.IO) { resolver.lookup(word, readingHint) }
         val response = defResult?.response
-        val entry = response?.entries?.firstOrNull()
+        val entries = response?.entries.orEmpty()
+        val entry = entries.firstOrNull()
         if (!isAdded || entry == null) return
         resolvedEntry = entry
+        resolvedEntries = entries
+        resolvedFlatSenses = entries.flatMap { it.senses }
         resolvedDefResult = defResult
 
         // Seed the translation cache with stored pack translations for
-        // target=en; ML-Kit fallback fills the rest in below.
+        // target=en; ML-Kit fallback fills the rest in below. Indexed by
+        // flat sense position so it lines up with the renderer.
         if (targetLangCode == "en") {
-            entry.senses.forEachIndexed { sIdx, s ->
+            resolvedFlatSenses.forEachIndexed { sIdx, s ->
                 s.examples.forEachIndexed { eIdx, ex ->
                     if (ex.translation.isNotBlank()) {
                         exampleTranslationCache[sIdx to eIdx] = ex.translation
@@ -526,7 +544,7 @@ class WordAnkiReviewSheet : DialogFragment() {
         if (targetLangCode != "en") {
             viewLifecycleOwner.lifecycleScope.launch {
                 val translated = runCatching {
-                    withContext(Dispatchers.IO) { resolver.translateExamples(response) }
+                    withContext(Dispatchers.IO) { resolver.translateExamples(response!!) }
                 }.getOrNull() ?: return@launch
                 if (!isAdded) return@launch
                 translated.forEachIndexed { sIdx, perSense ->
@@ -553,8 +571,40 @@ class WordAnkiReviewSheet : DialogFragment() {
                     targetLang = moreExamplesTargetLang,
                 )
                 if (!isAdded) return@launch
-                tatoebaPairs = pairs
-                applyMoreExamples(pairs)
+                // When Tatoeba returns nothing (no results / network), fall
+                // back to the entry's per-sense examples. Wiktionary stores
+                // translations in English; for target≠en we ML-translate
+                // them in parallel before showing. Pulling from every
+                // returned entry mirrors the multi-entry render below.
+                val effective = if (!pairs.isNullOrEmpty()) pairs
+                else {
+                    val raw = entries
+                        .flatMap { it.senses }
+                        .flatMap { it.examples }
+                        .filter { it.text.isNotBlank() }
+                    when {
+                        raw.isEmpty() -> null
+                        targetLangCode == "en" || enToTarget == null ->
+                            raw.map { TatoebaClient.SentencePair(it.text, it.translation) }
+                        else -> withContext(Dispatchers.IO) {
+                            raw.map { ex ->
+                                async {
+                                    val translated = if (ex.translation.isBlank()) ""
+                                    else try {
+                                        enToTarget.translate(ex.translation)
+                                    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                                        throw e
+                                    } catch (_: Exception) {
+                                        ex.translation
+                                    }
+                                    TatoebaClient.SentencePair(ex.text, translated)
+                                }
+                            }.awaitAll()
+                        }
+                    }
+                }
+                tatoebaPairs = effective
+                applyMoreExamples(effective)
             }
         }
     }
@@ -567,37 +617,93 @@ class WordAnkiReviewSheet : DialogFragment() {
      */
     private fun rebuildDefinitions() {
         val entry = resolvedEntry ?: return
+        val flatSenses = resolvedFlatSenses
         val card = definitionsCard ?: return
         card.removeAllViews()
 
         val defResult = resolvedDefResult
         val translatedDefs = when (defResult) {
-            is DefinitionResult.Native -> defResult.translatedDefinitions
+            // Native renders target-driven and doesn't surface per-sense MT
+            // fallback; only MT/English-fallback variants populate the field.
             is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
             is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
             else -> null
         }
+
+        // Target-driven render path mirrors WordDetailBottomSheet — for
+        // non-English targets with a Native pack hit, iterate the target
+        // pack's senses directly. removedSenses keys on the target sense
+        // index in this mode (entry-driven mode keeps using entry sense
+        // indices); a sheet instance never switches modes mid-session, so
+        // the two index spaces don't collide.
+        val nativeTargetSenses = (defResult as? DefinitionResult.Native)
+            ?.targetSenses
+            ?.sortedBy { it.senseOrd }
+            ?.takeIf { it.isNotEmpty() }
+        val isTargetDriven = moreExamplesTargetLang != "en" && nativeTargetSenses != null
+
+        if (isTargetDriven) {
+            // Blank-pos target rows (PanLex) inherit the source-entry POS
+            // only when every entry agrees; multi-POS source words yield
+            // an empty fallback so blank rows render without a label.
+            val fallbackPos = com.playtranslate.model
+                .unambiguousFallbackPos(resolvedEntries)
+            val visibleTarget = nativeTargetSenses!!.withIndex()
+                .filter { (idx, _) -> idx !in removedSenses }
+            val numVisible = visibleTarget.size
+            visibleTarget.forEachIndexed { displayIdx, (idx, target) ->
+                val senseNumber = if (numVisible > 1) displayIdx + 1 else null
+                if (displayIdx > 0) {
+                    ankiInsetDivider(card, indentDp = if (senseNumber != null) 42 else 16)
+                }
+                val posLabels = target.pos.filter { it.isNotBlank() }
+                    .takeIf { it.isNotEmpty() }
+                    ?: fallbackPos
+                // removedExamples is keyed (senseIndex, exampleIndex);
+                // target-driven mode uses the target sense ordinal as
+                // senseIndex (the entry-driven branch uses flat-sense
+                // ordinals). Filter by the same key so the × glyph's
+                // removal is durable across rebuilds.
+                val visibleExamples = target.examples.withIndex()
+                    .filter { (eIdx, _) -> (idx to eIdx) !in removedExamples }
+                addAnkiSenseRow(
+                    parent = card,
+                    posLabels = posLabels,
+                    glossList = target.glosses,
+                    senseNumber = senseNumber,
+                    miscText = target.misc.takeIf { it.isNotEmpty() }?.joinToString(" · "),
+                    examples = visibleExamples,
+                    senseIndex = idx,
+                    visibleSiblingCount = numVisible,
+                )
+            }
+            if (visibleTarget.isEmpty()) {
+                card.addView(buildLoadingDefinitionsRow(""))
+            }
+            return
+        }
+
         val targetByOrd = if (defResult is DefinitionResult.Native)
             defResult.targetSenses.associateBy { it.senseOrd } else null
 
-        val visibleSenses = entry.senses.withIndex().filter { (idx, s) ->
+        val visibleSenses = flatSenses.withIndex().filter { (idx, s) ->
             s.targetDefinitions.isNotEmpty() && idx !in removedSenses
         }
         val numVisibleSenses = visibleSenses.size
 
         var displayCount = 0
-        visibleSenses.forEach { (origIdx, sense) ->
-            val target = targetByOrd?.get(origIdx)
+        visibleSenses.forEach { (flatIdx, sense) ->
+            val target = targetByOrd?.get(flatIdx)
             val posLabels = (target?.pos ?: sense.partsOfSpeech).filter { it.isNotBlank() }
             val glossList = target?.glosses
-                ?: translatedDefs?.getOrNull(origIdx)?.let { listOf(it) }
+                ?: translatedDefs?.getOrNull(flatIdx)?.let { listOf(it) }
                 ?: sense.targetDefinitions
             val senseNumber = if (numVisibleSenses > 1) displayCount + 1 else null
             if (displayCount > 0) {
                 ankiInsetDivider(card, indentDp = if (senseNumber != null) 42 else 16)
             }
             val visibleExamples = sense.examples.withIndex()
-                .filter { (eIdx, _) -> (origIdx to eIdx) !in removedExamples }
+                .filter { (eIdx, _) -> (flatIdx to eIdx) !in removedExamples }
             addAnkiSenseRow(
                 parent = card,
                 posLabels = posLabels,
@@ -605,7 +711,8 @@ class WordAnkiReviewSheet : DialogFragment() {
                 senseNumber = senseNumber,
                 miscText = sense.misc.takeIf { it.isNotEmpty() }?.joinToString(" · "),
                 examples = visibleExamples,
-                senseIndex = origIdx,
+                senseIndex = flatIdx,
+                visibleSiblingCount = numVisibleSenses,
             )
             displayCount++
         }
@@ -627,6 +734,7 @@ class WordAnkiReviewSheet : DialogFragment() {
         miscText: String?,
         examples: List<IndexedValue<Example>>,
         senseIndex: Int,
+        visibleSiblingCount: Int,
     ) {
         val ctx = requireContext()
         val density = resources.displayMetrics.density
@@ -701,7 +809,14 @@ class WordAnkiReviewSheet : DialogFragment() {
         examples.forEachIndexed { displayIdx, indexedEx ->
             val originalIdx = indexedEx.index
             val ex = indexedEx.value
-            val cached = exampleTranslationCache[senseIndex to originalIdx] ?: ""
+            // Prefer the ML-Kit-translated text when present; otherwise
+            // fall back to the example's stored translation. Target-driven
+            // mode has no cache entry (cache is keyed by flat source-sense
+            // ord, but here senseIndex is a target-sense ord) and relies
+            // on the stored target-pack `Example.translation`. Entry-
+            // driven mode uses the cache once translateExamples lands.
+            val cached = exampleTranslationCache[senseIndex to originalIdx]
+                ?: ex.translation
             val block = buildAnkiExampleBlock(ctx, ex.text, cached) {
                 removedExamples.add(senseIndex to originalIdx)
                 rebuildDefinitions()
@@ -713,12 +828,13 @@ class WordAnkiReviewSheet : DialogFragment() {
         row.addView(col)
         // Trailing × — only render it when there's more than one
         // visible sense, so removing the only sense doesn't strand the
-        // card with no definition.
-        if (resolvedEntry?.let { e ->
-                e.senses.withIndex().count { (idx, s) ->
-                    s.targetDefinitions.isNotEmpty() && idx !in removedSenses
-                }
-            } ?: 0 > 1) {
+        // card with no definition. The count is supplied by the caller
+        // because the relevant universe differs per render mode: target-
+        // driven counts target senses, entry-driven counts the flat
+        // source senses across every Wiktionary entry. Using the wrong
+        // list strands the user with no remove glyph (or with one that
+        // would empty the card).
+        if (visibleSiblingCount > 1) {
             row.addView(buildPlainRemoveGlyph(ctx, leadingMargin = 8) {
                 removedSenses.add(senseIndex)
                 rebuildDefinitions()
@@ -1119,15 +1235,73 @@ class WordAnkiReviewSheet : DialogFragment() {
     private fun StringBuilder.appendSensesHtml(
         entry: DictionaryEntry, fallback: String,
     ) {
+        val flatSenses = resolvedFlatSenses
         val defResult = resolvedDefResult
-        val targetByOrd = if (defResult is DefinitionResult.Native)
-            defResult.targetSenses.associateBy { it.senseOrd } else null
         val translatedDefs = when (defResult) {
             is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
             is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
             else -> null
         }
-        val visibleSenses = entry.senses.withIndex().filter { (idx, s) ->
+
+        val nativeTargetSenses = (defResult as? DefinitionResult.Native)
+            ?.targetSenses
+            ?.sortedBy { it.senseOrd }
+            ?.takeIf { it.isNotEmpty() }
+        val isTargetDriven = moreExamplesTargetLang != "en" && nativeTargetSenses != null
+
+        if (isTargetDriven) {
+            // See rebuildDefinitions for the unambiguous-fallback rationale.
+            val fallbackPos = com.playtranslate.model
+                .unambiguousFallbackPos(resolvedEntries)
+            val visibleTarget = nativeTargetSenses!!.withIndex()
+                .filter { (idx, _) -> idx !in removedSenses }
+            if (visibleTarget.isEmpty()) {
+                val defHtml = fallback.lines().filter { it.isNotBlank() }
+                    .joinToString("<br>") { it.trimStart() }
+                append("<div style=\"font-size:1.1em;margin:12px 4px;\">$defHtml</div>")
+                return
+            }
+            val numVisible = visibleTarget.size
+            visibleTarget.forEachIndexed { displayIdx, (idx, target) ->
+                val numberPrefix = if (numVisible > 1) "${displayIdx + 1}. " else ""
+                val posLabels = target.pos.filter { it.isNotBlank() }
+                    .takeIf { it.isNotEmpty() }
+                    ?: fallbackPos
+                append("<div class=\"gl-sense\">")
+                if (posLabels.isNotEmpty()) {
+                    append("<div class=\"gl-pos\">")
+                    append(htmlEscape(posLabels.joinToString(" · ")))
+                    append("</div>")
+                }
+                append("<div class=\"gl-gloss\">")
+                append(numberPrefix)
+                append(htmlEscape(target.glosses.joinToString("; ")))
+                append("</div>")
+                if (target.misc.isNotEmpty()) {
+                    append("<div class=\"gl-misc\">")
+                    append(htmlEscape(target.misc.joinToString(" · ")))
+                    append("</div>")
+                }
+                target.examples.withIndex()
+                    .filter { (eIdx, _) -> (idx to eIdx) !in removedExamples }
+                    .forEach { (_, ex) ->
+                        append("<div class=\"gl-ex\">")
+                        append(htmlEscape(ex.text))
+                        if (ex.translation.isNotBlank()) {
+                            append("<div class=\"gl-ex-tr\">")
+                            append(htmlEscape(ex.translation))
+                            append("</div>")
+                        }
+                        append("</div>")
+                    }
+                append("</div>")
+            }
+            return
+        }
+
+        val targetByOrd = if (defResult is DefinitionResult.Native)
+            defResult.targetSenses.associateBy { it.senseOrd } else null
+        val visibleSenses = flatSenses.withIndex().filter { (idx, s) ->
             s.targetDefinitions.isNotEmpty() && idx !in removedSenses
         }
         if (visibleSenses.isEmpty()) {
@@ -1140,11 +1314,11 @@ class WordAnkiReviewSheet : DialogFragment() {
             return
         }
         val numVisible = visibleSenses.size
-        visibleSenses.forEachIndexed { displayIdx, (origIdx, sense) ->
-            val target = targetByOrd?.get(origIdx)
+        visibleSenses.forEachIndexed { displayIdx, (flatIdx, sense) ->
+            val target = targetByOrd?.get(flatIdx)
             val posLabels = (target?.pos ?: sense.partsOfSpeech).filter { it.isNotBlank() }
             val gloss = target?.glosses?.joinToString("; ")
-                ?: translatedDefs?.getOrNull(origIdx)
+                ?: translatedDefs?.getOrNull(flatIdx)
                 ?: sense.targetDefinitions.joinToString("; ")
             val numberPrefix = if (numVisible > 1) "${displayIdx + 1}. " else ""
             append("<div class=\"gl-sense\">")
@@ -1164,9 +1338,9 @@ class WordAnkiReviewSheet : DialogFragment() {
                 append("</div>")
             }
             sense.examples.withIndex()
-                .filter { (eIdx, _) -> (origIdx to eIdx) !in removedExamples }
+                .filter { (eIdx, _) -> (flatIdx to eIdx) !in removedExamples }
                 .forEach { (eIdx, ex) ->
-                    val tr = exampleTranslationCache[origIdx to eIdx] ?: ex.translation
+                    val tr = exampleTranslationCache[flatIdx to eIdx] ?: ex.translation
                     append("<div class=\"gl-ex\">")
                     append(htmlEscape(ex.text))
                     if (tr.isNotBlank()) {

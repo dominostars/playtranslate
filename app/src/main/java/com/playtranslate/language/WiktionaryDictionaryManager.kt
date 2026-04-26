@@ -157,6 +157,21 @@ class WiktionaryDictionaryManager private constructor(
      * MIN(position)` means each entry appears once with its best-priority
      * match position (0 = direct lemma, 1 = stem, 2 = form_of alias). The
      * caller uses that position to derive the POS marker shown to users.
+     *
+     * Sort order is freq_score DESC → match position ASC → entry_id ASC.
+     *  - `pos ASC` keeps direct-lemma matches (position 0) ahead of stem
+     *    matches (1) and `form_of` aliases (2). Otherwise a query string
+     *    that's both a standalone lemma AND an inflected alias of another
+     *    entry could surface the alias as primary, mislabeling the popup
+     *    header (e.g. "ran" → "run" with an inflection note instead of
+     *    "ran" itself).
+     *  - `entry_id ASC` is the freq_score tiebreaker. Wiktionary sections
+     *    are typically Noun → Verb → Adjective → Interjection in
+     *    dictionary order; the kaikki extractor emits them in that order
+     *    so lower entry_id == more "primary" POS. Without the tiebreaker,
+     *    ties (common since each POS-split entry inherits the same
+     *    frequency stats) sort arbitrarily — e.g. `surprise` would put
+     *    intj before noun.
      */
     private fun queryEntryIds(db: SQLiteDatabase, word: String): List<Pair<Long, Int>> {
         val results = mutableListOf<Pair<Long, Int>>()
@@ -165,7 +180,7 @@ class WiktionaryDictionaryManager private constructor(
                 "JOIN entry e ON e.id = h.entry_id " +
                 "WHERE h.text = ? " +
                 "GROUP BY h.entry_id " +
-                "ORDER BY e.freq_score DESC LIMIT 8",
+                "ORDER BY e.freq_score DESC, pos ASC, h.entry_id ASC LIMIT 8",
             arrayOf(word)
         ).use { c ->
             while (c.moveToNext()) results.add(c.getLong(0) to c.getInt(1))

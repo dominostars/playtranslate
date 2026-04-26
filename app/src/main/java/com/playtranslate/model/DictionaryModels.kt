@@ -108,3 +108,24 @@ data class HanziDetail(
 ) : CharacterDetail {
     override val meaningsLang: String get() = "en"
 }
+
+/**
+ * Returns a POS label suitable for blank-`pos` target rows (PanLex,
+ * which doesn't carry POS metadata). When every sense across every
+ * returned entry shares the same POS list — JMdict entries that are
+ * uniformly verb/noun, Wiktionary single-POS entries — that shared list
+ * is used. When senses disagree (Wiktionary multi-POS lookups like
+ * "surprise" → noun/verb/intj, OR a JMdict entry that mixes noun and
+ * verb senses under one headword), there's no way to align blank-pos
+ * target senses to a specific source sense, so we return an empty list
+ * and let the renderer suppress the label rather than mislabel rows as
+ * the first sense's POS.
+ */
+fun unambiguousFallbackPos(entries: List<DictionaryEntry>): List<String> {
+    val perSense = entries
+        .flatMap { it.senses }
+        .map { s -> s.partsOfSpeech.filter { it.isNotBlank() } }
+        .filter { it.isNotEmpty() }
+        .distinct()
+    return if (perSense.size == 1) perSense.first() else emptyList()
+}

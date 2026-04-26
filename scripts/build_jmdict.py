@@ -85,6 +85,17 @@ COMMON_PRIORITIES = {"ichi1", "ichi2", "spec1", "spec2", "news1", "news2"}
 
 KANJIDIC2_URL = "https://www.edrdg.org/kanjidic/kanjidic2.xml.gz"
 
+# Cap how many Tatoeba example sentences are bundled per (entry, sense). One
+# keeps the per-sense UI rows compact (matching the convention target packs
+# use) and bounds the JA pack's example-table growth to a small fraction of
+# the DB. Bump if you want more examples per sense at the cost of pack size.
+MAX_EXAMPLES_PER_SENSE = 1
+
+# Hard cap on JA example text length. Tatoeba contributors occasionally upload
+# multi-clause monsters that bloat the pack and overwhelm the per-sense rows;
+# 200 codepoints lops off the worst outliers without hurting normal sentences.
+MAX_EXAMPLE_LEN = 200
+
 # Shorten verbose JMdict misc/field/dialect tags for display
 MISC_ABBREV = {
     "usually written using kana alone": "Kana only",
@@ -238,6 +249,11 @@ def create_schema(conn: sqlite3.Connection) -> None:
         """
     )
 
+    # The `example` table is owned by parse_and_insert_tatoeba and only
+    # exists when --tatoeba-dir is supplied. Keeping it out of the base
+    # schema means the JA reader's missing-table try/catch covers builds
+    # where the contributor doesn't have Tatoeba data on disk.
+
 
 def shorten_pos(raw: str) -> str:
     return POS_ABBREV.get(raw, raw)
@@ -336,6 +352,337 @@ def parse_and_insert(xml_bytes: bytes, conn: sqlite3.Connection) -> None:
 
     conn.commit()
     print(f"  Total: {count:,} entries inserted")
+
+
+# ── Tatoeba example sentences ────────────────────────────────────────────────
+#
+# Tatoeba publishes monthly dumps under https://downloads.tatoeba.org/exports/
+# (CC-BY 2.0). For example-sentence indexing we need:
+#
+#   * `per_language/jpn/jpn_sentences.tsv.bz2`  — JA sentence id → text
+#   * `per_language/eng/eng_sentences.tsv.bz2`  — EN sentence id → text
+#   * `links.tar.bz2`                            — sentence_id ↔ translation_id
+#   * `jpn_indices.tar.bz2`                      — JA sentences indexed against
+#                                                  JMdict entries (the headword
+#                                                  carries an ent_seq via
+#                                                  embedded headword/sense info)
+#
+# `jpn_indices.csv` row format (TSV; one row per JA sentence):
+#
+#   <ja_sentence_id>\t<meaning_id>\t<indices>
+#
+# `<indices>` is a space-separated list of tokens, each like:
+#
+#   <headword>(<reading>)[sense_index_1based]{token_in_sentence}~
+#
+# Where the `(<reading>)`, `[sense]`, `{token}`, and trailing `~` are all
+# optional. `~` flags Tatoeba's "good example" — hand-curated and high quality.
+# The `[sense]` index is 1-based against JMdict's enumerated <sense> children
+# (so sense 1 maps to entry.sense.position == 0).
+#
+# We resolve the headword token to a JMdict entry_id by looking it up in the
+# `headword` (kanji) and `reading` (kana) tables we already built. This is
+# robust whether Tatoeba ships ent_seq numerics or surface forms.
+
+
+def _open_text(path: Path):
+    """Open a file for line-by-line text reading. Auto-decompresses .bz2."""
+    import bz2
+    if path.suffix == ".bz2":
+        return bz2.open(path, "rt", encoding="utf-8", errors="replace")
+    return open(path, "r", encoding="utf-8", errors="replace")
+
+
+def _parse_index_token(
+    token: str,
+) -> tuple[str, int | None, int | None, bool] | None:
+    """Parse one token out of the `<indices>` column.
+
+    Token format (anything after the headword is optional):
+        <headword>(<reading_or_#entseq>)[<sense_1based>]{<surface>}~
+
+    Returns (headword, ent_seq_or_None, sense_idx_1based_or_None, good_flag)
+    or None when the token is malformed. The `(#NNNNNNN)` form carries the
+    JMdict ent_seq for homograph disambiguation; we surface it so the
+    indexer can look up the entry directly instead of guessing among
+    candidates that share a surface.
+    """
+    if not token:
+        return None
+    good = token.endswith("~")
+    if good:
+        token = token[:-1]
+    # Drop {...} surface form
+    brace = token.find("{")
+    if brace >= 0:
+        end = token.find("}", brace)
+        if end < 0:
+            return None
+        token = token[:brace] + token[end + 1 :]
+    # Pull off [sense]
+    sense: int | None = None
+    bracket = token.find("[")
+    if bracket >= 0:
+        end = token.find("]", bracket)
+        if end < 0:
+            return None
+        try:
+            sense = int(token[bracket + 1 : end])
+        except ValueError:
+            sense = None
+        token = token[:bracket] + token[end + 1 :]
+    # Pull off (reading) — or (#ent_seq) for explicit homograph disambiguation
+    ent_seq: int | None = None
+    paren = token.find("(")
+    if paren >= 0:
+        end = token.find(")", paren)
+        if end < 0:
+            return None
+        inner = token[paren + 1 : end]
+        if inner.startswith("#"):
+            try:
+                ent_seq = int(inner[1:])
+            except ValueError:
+                ent_seq = None
+        token = token[:paren] + token[end + 1 :]
+    headword = token.strip()
+    if not headword:
+        return None
+    return headword, ent_seq, sense, good
+
+
+def _build_headword_index(
+    conn: sqlite3.Connection,
+) -> tuple[dict[str, list[int]], set[int]]:
+    """Map every kanji surface and reading to its candidate entry_ids, plus
+    the set of `is_common = 1` entry_ids for ambiguity tie-breaking.
+
+    Multiple JMdict entries can share a surface (homographs). When the
+    Tatoeba token ships an explicit `(#ent_seq)` disambiguator we look up
+    the entry directly; when it doesn't, the indexer prefers a common
+    candidate over a rare one to avoid attaching examples to obscure
+    homographs.
+    """
+    index: dict[str, list[int]] = {}
+    cur = conn.cursor()
+    for table in ("headword", "reading"):
+        for entry_id, text in cur.execute(f"SELECT entry_id, text FROM {table}"):
+            index.setdefault(text, []).append(entry_id)
+    # Dedup per key — a text can appear under both headword and reading
+    # rows for the same entry.
+    deduped = {k: list(dict.fromkeys(v)) for k, v in index.items()}
+    common = {
+        row[0]
+        for row in cur.execute("SELECT id FROM entry WHERE is_common = 1")
+    }
+    return deduped, common
+
+
+def parse_and_insert_tatoeba(
+    tatoeba_dir: Path, conn: sqlite3.Connection
+) -> int:
+    """Index Tatoeba JA sentences against JMdict entries and insert into the
+    `example` table. Returns the number of rows written.
+
+    Skips silently when any of the four required files are missing — the
+    pack still builds, just with no example sentences (the prior behavior).
+    """
+    jpn_sentences = tatoeba_dir / "jpn_sentences.tsv.bz2"
+    eng_sentences = tatoeba_dir / "eng_sentences.tsv.bz2"
+    links_csv = tatoeba_dir / "links.csv"
+    jpn_indices = tatoeba_dir / "jpn_indices.csv"
+
+    missing = [
+        str(p)
+        for p in (jpn_sentences, eng_sentences, links_csv, jpn_indices)
+        if not p.is_file()
+    ]
+    if missing:
+        print(f"Tatoeba: skipping example-sentence index — missing: {missing}")
+        return 0
+
+    print("Tatoeba: indexing example sentences...")
+
+    # parse_and_insert_tatoeba owns the example table; recreate from scratch
+    # so a re-run on a previously-built dict.sqlite (--rebuild-sqlite omitted)
+    # doesn't accumulate stale rows.
+    conn.executescript(
+        """
+        DROP TABLE IF EXISTS example;
+        CREATE TABLE example (
+            entry_id       INTEGER NOT NULL,
+            sense_position INTEGER NOT NULL,
+            position       INTEGER NOT NULL,
+            text           TEXT    NOT NULL,
+            translation    TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE INDEX idx_example_entry ON example(entry_id, sense_position);
+        """
+    )
+
+    print(f"  Loading JA sentences from {jpn_sentences.name}...")
+    ja_text: dict[int, str] = {}
+    with _open_text(jpn_sentences) as f:
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 3:
+                continue
+            try:
+                sid = int(parts[0])
+            except ValueError:
+                continue
+            ja_text[sid] = parts[2]
+    print(f"    {len(ja_text):,} JA sentences")
+
+    print(f"  Loading EN sentences from {eng_sentences.name}...")
+    en_text: dict[int, str] = {}
+    with _open_text(eng_sentences) as f:
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 3:
+                continue
+            try:
+                sid = int(parts[0])
+            except ValueError:
+                continue
+            en_text[sid] = parts[2]
+    print(f"    {len(en_text):,} EN sentences")
+
+    # Map each JA sentence to its first available EN translation. links.csv
+    # is symmetric (id, translation_id), so a JA sentence can appear on
+    # either side. We iterate once and bucket by JA-id.
+    print(f"  Loading JA->EN links from {links_csv.name}...")
+    ja_to_en: dict[int, int] = {}
+    with _open_text(links_csv) as f:
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 2:
+                continue
+            try:
+                a = int(parts[0]); b = int(parts[1])
+            except ValueError:
+                continue
+            # Pair must be JA on one side and EN on the other.
+            if a in ja_text and b in en_text:
+                ja_to_en.setdefault(a, b)
+            elif b in ja_text and a in en_text:
+                ja_to_en.setdefault(b, a)
+    print(f"    {len(ja_to_en):,} JA sentences with at least one EN translation")
+
+    print("  Building headword -> entry_id index from JMdict tables...")
+    headword_index, common_ids = _build_headword_index(conn)
+    sense_counts: dict[int, int] = {
+        row[0]: row[1]
+        for row in conn.execute(
+            "SELECT entry_id, COUNT(*) FROM sense GROUP BY entry_id"
+        )
+    }
+    print(
+        f"    {len(headword_index):,} unique surface forms; "
+        f"{len(common_ids):,} entries marked is_common; "
+        f"{len(sense_counts):,} entries with senses"
+    )
+
+    # Bucket: (entry_id, sense_position_0based) → list of (sentence_id, good)
+    # Tatoeba's [sense] is "specify when ambiguous, omit otherwise" — most
+    # tokens carrying real demonstrations (~6× more than indexed ones) come
+    # in without an explicit sense. We attach those to sense 0 when the
+    # entry has exactly one sense (unambiguous), and skip otherwise so we
+    # don't bias the first sense of multi-sense entries with mismatched
+    # examples.
+    print(f"  Parsing {jpn_indices.name}...")
+    buckets: dict[tuple[int, int], list[tuple[int, bool]]] = {}
+    rows = 0
+    matched = 0
+    matched_default_sense = 0
+    sense_missing_multi = 0
+    surface_unmatched = 0
+    with _open_text(jpn_indices) as f:
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 3:
+                continue
+            try:
+                jid = int(parts[0])
+            except ValueError:
+                continue
+            if jid not in ja_to_en:
+                continue
+            rows += 1
+            for tok in parts[2].split(" "):
+                parsed = _parse_index_token(tok)
+                if parsed is None:
+                    continue
+                headword, ent_seq, sense_1b, good = parsed
+                # Resolve to a single entry_id: explicit (#ent_seq)
+                # disambiguator wins; otherwise prefer a common candidate;
+                # otherwise pick the first (lowest ent_seq, which JMdict
+                # tends to assign to higher-frequency variants).
+                entry_id: int | None = None
+                if ent_seq is not None:
+                    entry_id = ent_seq
+                else:
+                    candidates = headword_index.get(headword)
+                    if not candidates:
+                        surface_unmatched += 1
+                        continue
+                    entry_id = next(
+                        (c for c in candidates if c in common_ids),
+                        candidates[0],
+                    )
+                if sense_1b is None:
+                    # Sense-less token: only attach when the entry has a
+                    # single sense. Multi-sense entries get skipped to
+                    # avoid biasing sense 0.
+                    if sense_counts.get(entry_id) != 1:
+                        sense_missing_multi += 1
+                        continue
+                    sense_0b = 0
+                    matched_default_sense += 1
+                else:
+                    sense_0b = sense_1b - 1
+                matched += 1
+                buckets.setdefault((entry_id, sense_0b), []).append((jid, good))
+    print(
+        f"    {rows:,} indexed JA sentences; "
+        f"{matched:,} (entry,sense) attachments "
+        f"({matched_default_sense:,} via single-sense default); "
+        f"{sense_missing_multi:,} skipped (no sense index, multi-sense entry); "
+        f"{surface_unmatched:,} skipped (surface not in JMdict)"
+    )
+
+    print(f"  Selecting up to {MAX_EXAMPLES_PER_SENSE} examples per sense...")
+    cur = conn.cursor()
+    inserted = 0
+    for (entry_id, sense_pos), entries in buckets.items():
+        # Prefer ~-flagged "good examples", then shorter sentences.
+        scored: list[tuple[int, int, str, str]] = []
+        for sid, good in entries:
+            ja = ja_text.get(sid)
+            if ja is None:
+                continue
+            if len(ja) > MAX_EXAMPLE_LEN:
+                continue
+            en = en_text.get(ja_to_en[sid], "")
+            if len(en) > MAX_EXAMPLE_LEN * 2:
+                # Allow the EN translation a bit more slack but still cap.
+                continue
+            # (good_first, length) — sort ascending picks ~-flagged shortest.
+            scored.append((0 if good else 1, len(ja), ja, en))
+        if not scored:
+            continue
+        scored.sort(key=lambda t: (t[0], t[1]))
+        kept = scored[:MAX_EXAMPLES_PER_SENSE]
+        for pos, (_, _, ja, en) in enumerate(kept):
+            cur.execute(
+                "INSERT INTO example VALUES (?, ?, ?, ?, ?)",
+                (entry_id, sense_pos, pos, ja, en),
+            )
+            inserted += 1
+
+    conn.commit()
+    print(f"  Inserted {inserted:,} example rows across {len(buckets):,} (entry,sense) pairs")
+    return inserted
 
 
 def download_kanjidic() -> bytes:
@@ -553,6 +900,7 @@ def build_manifest(
     manifest_path: Path,
     pack_version: int,
     tokenizer_entries: list[dict] | None = None,
+    include_tatoeba_license: bool = False,
 ) -> None:
     size = db_path.stat().st_size
     files: list[dict] = [{"path": "dict.sqlite", "size": size, "sha256": None}]
@@ -560,6 +908,31 @@ def build_manifest(
     if tokenizer_entries:
         files.extend(tokenizer_entries)
         total += sum(int(e["size"]) for e in tokenizer_entries)
+    licenses = [
+        {
+            "component": "JMdict",
+            "license": "CC-BY-SA-4.0",
+            "attribution": "© EDRDG, https://www.edrdg.org/jmdict/edict_doc.html",
+        },
+        {
+            "component": "KANJIDIC2",
+            "license": "CC-BY-SA-4.0",
+            "attribution": "© EDRDG",
+        },
+        {
+            "component": "Kuromoji IPADIC",
+            "license": "Apache-2.0",
+            "attribution": "© Atilika Inc. (IPADIC: IPA Dictionary, © ICOT)",
+        },
+    ]
+    if include_tatoeba_license:
+        licenses.append(
+            {
+                "component": "Tatoeba example sentences",
+                "license": "CC-BY-2.0",
+                "attribution": "© Tatoeba contributors, https://tatoeba.org",
+            }
+        )
     manifest = {
         "langId": "ja",
         "schemaVersion": 1,
@@ -567,23 +940,7 @@ def build_manifest(
         "appMinVersion": 0,
         "files": files,
         "totalSize": total,
-        "licenses": [
-            {
-                "component": "JMdict",
-                "license": "CC-BY-SA-4.0",
-                "attribution": "© EDRDG, https://www.edrdg.org/jmdict/edict_doc.html",
-            },
-            {
-                "component": "KANJIDIC2",
-                "license": "CC-BY-SA-4.0",
-                "attribution": "© EDRDG",
-            },
-            {
-                "component": "Kuromoji IPADIC",
-                "license": "Apache-2.0",
-                "attribution": "© Atilika Inc. (IPADIC: IPA Dictionary, © ICOT)",
-            },
-        ],
+        "licenses": licenses,
     }
     manifest_path.write_text(json.dumps(manifest, indent=2))
     print(f"Wrote {manifest_path} ({size:,} bytes dict, {total:,} bytes total)")
@@ -625,6 +982,18 @@ def main() -> int:
         help="Force regeneration of dict.sqlite from JMdict/KANJIDIC sources. "
              "When omitted, an existing dict.sqlite in the output dir is reused.",
     )
+    parser.add_argument(
+        "--tatoeba-dir",
+        type=Path,
+        required=False,
+        help="Path to a directory containing Tatoeba CSV exports "
+             "(jpn_sentences.tsv.bz2, eng_sentences.tsv.bz2, links.csv, "
+             "jpn_indices.csv). When provided, the build indexes Tatoeba "
+             "JA sentences against JMdict entries and inserts them into the "
+             "`example` table. Omit to produce a pack without examples "
+             "(prior behavior; the JA reader's missing-table guard handles "
+             "it).",
+    )
     parser.add_argument("--pack-version", type=int, default=1)
     args = parser.parse_args()
 
@@ -642,13 +1011,44 @@ def main() -> int:
               f"pass --rebuild-sqlite to regenerate from JMdict source")
     else:
         build_sqlite(db_path)
+
+    # Tatoeba pass runs as its own step so it can either (a) extend a fresh
+    # build_sqlite() output, or (b) be re-run against an existing dict.sqlite
+    # without the slow JMdict rebuild. The function recreates the `example`
+    # table from scratch, so a re-run is idempotent.
+    if args.tatoeba_dir is not None:
+        if not args.tatoeba_dir.is_dir():
+            print(
+                f"error: --tatoeba-dir not a directory: {args.tatoeba_dir}",
+                file=sys.stderr,
+            )
+            return 1
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA journal_mode=OFF")
+        conn.execute("PRAGMA synchronous=OFF")
+        conn.execute("PRAGMA cache_size=65536")
+        try:
+            inserted = parse_and_insert_tatoeba(args.tatoeba_dir, conn)
+            if inserted > 0:
+                print("Re-optimizing after example inserts (ANALYZE + VACUUM)...")
+                conn.execute("ANALYZE")
+                conn.execute("VACUUM")
+        finally:
+            conn.close()
+
     tokenizer_entries = None
     if args.kuromoji_jar is not None:
         if not args.kuromoji_jar.is_file():
             print(f"error: --kuromoji-jar not a file: {args.kuromoji_jar}", file=sys.stderr)
             return 1
         tokenizer_entries = extract_kuromoji_bins(args.kuromoji_jar, tokenizer_dir)
-    build_manifest(db_path, manifest_path, args.pack_version, tokenizer_entries)
+    build_manifest(
+        db_path,
+        manifest_path,
+        args.pack_version,
+        tokenizer_entries,
+        include_tatoeba_license=args.tatoeba_dir is not None,
+    )
     build_zip(
         db_path,
         manifest_path,

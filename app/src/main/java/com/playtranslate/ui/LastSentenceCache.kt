@@ -58,26 +58,49 @@ object LastSentenceCache {
                 val defResult = resolver.lookup(tok.lookupForm, tok.reading)
                 val response = defResult?.response
                 if (response != null && response.entries.isNotEmpty()) {
-                    val entry = response.entries.first()
-                    val primary = entry.headwords.firstOrNull()
+                    val entry      = response.entries.first()
+                    // Wiktionary multi-POS lookups split into separate
+                    // entries; flatten so cached meanings include verb /
+                    // intj / etc. instead of dropping every non-primary
+                    // sense.
+                    val flatSenses = response.entries.flatMap { it.senses }
+                    val primary    = entry.headwords.firstOrNull()
                     val displayWord = primary?.written ?: primary?.reading ?: tok.lookupForm
                     val reading = primary?.reading?.takeIf { it != primary.written } ?: ""
-                    // Same target → MT → source cascade the word panel uses.
-                    // Without it, non-English targets got raw source definitions
-                    // whenever the drag-lookup cache missed and this path fired.
-                    val targetByOrd = (defResult as? DefinitionResult.Native)
-                        ?.targetSenses?.associateBy { it.senseOrd }
-                    val mtDefs = when (defResult) {
-                        is DefinitionResult.Native -> defResult.translatedDefinitions
-                        is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
-                        is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
+                    // Mirror the word panel's render cascade: target-driven
+                    // for non-EN Native hits, entry-driven (target→MT→source)
+                    // for everything else. Without this, sentence-mode word
+                    // rows showed raw English to non-EN users whenever the
+                    // drag-lookup cache missed and this path repopulated it.
+                    val nativeTargetSenses = (defResult as? DefinitionResult.Native)
+                        ?.targetSenses?.sortedBy { it.senseOrd }
+                        ?.takeIf { it.isNotEmpty() }
+                    val isTargetDriven = prefs.targetLang != "en" && nativeTargetSenses != null
+                    val meaning = if (isTargetDriven) {
+                        nativeTargetSenses!!.mapIndexed { i, target ->
+                            val glosses = target.glosses.joinToString("; ")
+                            if (nativeTargetSenses.size > 1) "${i + 1}. $glosses" else glosses
+                        }.joinToString("\n")
+                    } else {
+                        val targetByOrd = (defResult as? DefinitionResult.Native)
+                            ?.targetSenses?.associateBy { it.senseOrd }
+                        // Native no longer carries per-sense MT fallback —
+                        // it always renders target-driven, so reaching this
+                        // entry-driven branch with Native is unreachable in
+                        // practice (target=en + Native isn't returned by
+                        // DefinitionResolver).
+                        val mtDefs = when (defResult) {
+                            is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
+                            is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
+                            else -> null
+                        }
+                        flatSenses.mapIndexed { i, sense ->
+                            val glosses = targetByOrd?.get(i)?.glosses?.joinToString("; ")
+                                ?: mtDefs?.getOrNull(i)?.takeIf { it.isNotBlank() }
+                                ?: sense.targetDefinitions.joinToString("; ")
+                            if (flatSenses.size > 1) "${i + 1}. $glosses" else glosses
+                        }.joinToString("\n")
                     }
-                    val meaning = entry.senses.mapIndexed { i, sense ->
-                        val glosses = targetByOrd?.get(i)?.glosses?.joinToString("; ")
-                            ?: mtDefs?.getOrNull(i)?.takeIf { it.isNotBlank() }
-                            ?: sense.targetDefinitions.joinToString("; ")
-                        if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
-                    }.joinToString("\n")
                     if (meaning.isNotEmpty()) {
                         results[displayWord] = Triple(reading, meaning, entry.freqScore)
                         if (tok.surface != displayWord) {

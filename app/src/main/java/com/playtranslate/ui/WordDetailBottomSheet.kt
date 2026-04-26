@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -37,7 +38,10 @@ import com.playtranslate.model.CharacterDetail
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.HanziDetail
 import com.playtranslate.model.KanjiDetail
+import com.playtranslate.model.unambiguousFallbackPos
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
@@ -188,18 +192,27 @@ class WordDetailBottomSheet : DialogFragment() {
                 enToTargetWrapper)
             val defResult = withContext(Dispatchers.IO) { resolver.lookup(word, readingHint) }
             val response = defResult?.response
-            val entry = response?.entries?.firstOrNull()
+            // Wiktionary-derived source packs (en/de/fr/es/...) split each
+            // POS section into its own entry, so a lookup of "surprise"
+            // returns three entries: noun, verb, intj. Render them all back
+            // to back so the user sees every sense; the per-cell POS label
+            // makes the boundaries visible without a manual divider.
+            // [primary] is the first entry — used for the header block,
+            // Anki, and character breakdown which are word-level (and the
+            // headwords are duplicated across entries anyway).
+            val entries = response?.entries.orEmpty()
+            val primary = entries.firstOrNull()
             if (!isAdded) return@launch
-            if (entry == null) {
+            if (primary == null) {
                 addNotFoundNotice(content, getString(R.string.word_detail_not_found, word))
                 return@launch
             }
             val initialTranslations: List<List<String>>? = if (targetLangCode == "en") {
-                entry.senses.map { s -> s.examples.map { it.translation } }
+                entries.flatMap { it.senses }.map { s -> s.examples.map { it.translation } }
             } else null
             val translationRegistry = mutableMapOf<Pair<Int, Int>, TextView>()
             buildContent(
-                content, entry, engine, sourceLangId, defResult, initialTranslations,
+                content, entries, engine, sourceLangId, defResult, initialTranslations,
                 translationRegistry, targetLangCode, enToTargetWrapper,
             )
             scrollView?.scrollTo(0, 0)
@@ -210,14 +223,14 @@ class WordDetailBottomSheet : DialogFragment() {
                 if (!ankiManager.isAnkiDroidInstalled()) {
                     showAnkiNotInstalledDialog(requireContext())
                 } else {
-                    openWordAnkiReview(word, entry, screenshotPath, defResult)
+                    openWordAnkiReview(word, primary, screenshotPath, defResult)
                 }
             }
 
             if (targetLangCode != "en") {
                 launch {
                     val translated = runCatching {
-                        withContext(Dispatchers.IO) { resolver.translateExamples(response) }
+                        withContext(Dispatchers.IO) { resolver.translateExamples(response!!) }
                     }.getOrNull() ?: return@launch
                     if (!isAdded) return@launch
                     translated.forEachIndexed { sIdx, perSense ->
@@ -234,15 +247,47 @@ class WordDetailBottomSheet : DialogFragment() {
 
             if (moreExamplesGroup != null) {
                 launch {
-                    val lookupWord = entry.headwords.firstOrNull()?.written
-                        ?: entry.slug
+                    val lookupWord = primary.headwords.firstOrNull()?.written
+                        ?: primary.slug
                     val pairs = TatoebaClient.fetch(
                         word = lookupWord,
                         sourceLang = moreExamplesSourceLang,
                         targetLang = moreExamplesTargetLang,
                     )
                     if (!isAdded) return@launch
-                    applyMoreExamples(pairs)
+                    // Build the entry-level fallback only if Tatoeba came up
+                    // empty. Wiktionary stores the translation in English;
+                    // for target≠en we ML-translate each in parallel so the
+                    // user sees source + target-language sentence (instead
+                    // of source + English). Pulling examples across every
+                    // returned entry mirrors the multi-entry render above.
+                    val entryExampleFallback = if (!pairs.isNullOrEmpty()) {
+                        emptyList()
+                    } else {
+                        val raw = entries
+                            .flatMap { it.senses }
+                            .flatMap { it.examples }
+                            .filter { it.text.isNotBlank() }
+                        if (raw.isEmpty()) emptyList()
+                        else if (targetLangCode == "en" || enToTargetWrapper == null) {
+                            raw.map { TatoebaClient.SentencePair(it.text, it.translation) }
+                        } else withContext(Dispatchers.IO) {
+                            raw.map { ex ->
+                                async {
+                                    val translated = if (ex.translation.isBlank()) ""
+                                    else try {
+                                        enToTargetWrapper.translate(ex.translation)
+                                    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                                        throw e
+                                    } catch (_: Exception) {
+                                        ex.translation
+                                    }
+                                    TatoebaClient.SentencePair(ex.text, translated)
+                                }
+                            }.awaitAll()
+                        }
+                    }
+                    applyMoreExamples(pairs, entryExampleFallback)
                 }
             }
         }
@@ -270,26 +315,40 @@ class WordDetailBottomSheet : DialogFragment() {
         val pos = entry.senses.firstOrNull()?.partsOfSpeech
             ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
 
-        val targetByOrd = if (defResult is DefinitionResult.Native)
-            defResult.targetSenses.associateBy { it.senseOrd } else null
-        val translatedDefs = when (defResult) {
-            is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
-            is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
-            else -> null
-        }
-        val nonEmptySenseCount = entry.senses.count { it.targetDefinitions.isNotEmpty() }
-        var displayNum = 0
-        val definition = entry.senses
-            .mapIndexedNotNull { i, sense ->
-                if (sense.targetDefinitions.isEmpty()) return@mapIndexedNotNull null
-                displayNum++
-                val glosses = targetByOrd?.get(i)?.glosses?.joinToString("; ")
-                    ?: translatedDefs?.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
-                    ?: sense.targetDefinitions.joinToString("; ")
-                val prefix = if (nonEmptySenseCount > 1) "$displayNum. " else ""
-                prefix + glosses
+        val targetLangCode = Prefs(requireContext()).targetLang
+        val nativeTargetSenses = (defResult as? DefinitionResult.Native)
+            ?.targetSenses
+            ?.sortedBy { it.senseOrd }
+            ?.takeIf { it.isNotEmpty() }
+        val isTargetDriven = targetLangCode != "en" && nativeTargetSenses != null
+
+        val definition = if (isTargetDriven) {
+            nativeTargetSenses!!.mapIndexed { i, target ->
+                val prefix = if (nativeTargetSenses.size > 1) "${i + 1}. " else ""
+                prefix + target.glosses.joinToString("; ")
+            }.joinToString("\n")
+        } else {
+            val targetByOrd = if (defResult is DefinitionResult.Native)
+                defResult.targetSenses.associateBy { it.senseOrd } else null
+            val translatedDefs = when (defResult) {
+                is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
+                is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
+                else -> null
             }
-            .joinToString("\n")
+            val nonEmptySenseCount = entry.senses.count { it.targetDefinitions.isNotEmpty() }
+            var displayNum = 0
+            entry.senses
+                .mapIndexedNotNull { i, sense ->
+                    if (sense.targetDefinitions.isEmpty()) return@mapIndexedNotNull null
+                    displayNum++
+                    val glosses = targetByOrd?.get(i)?.glosses?.joinToString("; ")
+                        ?: translatedDefs?.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
+                        ?: sense.targetDefinitions.joinToString("; ")
+                    val prefix = if (nonEmptySenseCount > 1) "$displayNum. " else ""
+                    prefix + glosses
+                }
+                .joinToString("\n")
+        }
 
         val args = arguments
         val sentenceOriginal = args?.getString(ARG_SENTENCE_ORIGINAL)
@@ -333,7 +392,7 @@ class WordDetailBottomSheet : DialogFragment() {
 
     private suspend fun buildContent(
         content: LinearLayout,
-        entry: DictionaryEntry,
+        entries: List<DictionaryEntry>,
         engine: com.playtranslate.language.SourceLanguageEngine,
         sourceLangId: SourceLangId,
         defResult: DefinitionResult?,
@@ -342,25 +401,60 @@ class WordDetailBottomSheet : DialogFragment() {
         targetLangCode: String,
         enToTargetTranslator: WordTranslator?,
     ) {
+        // [primary] is the first entry. Header / Anki / character-breakdown
+        // sections are word-level, so they pull from primary even when the
+        // sense list below merges senses from sibling entries (typical for
+        // Wiktionary-derived packs that POS-split into separate entries).
+        val primary = entries.first()
         // ── Header block: headword + reading + badges ─────────────────────
-        addHeaderBlock(content, entry, sourceLangId)
+        addHeaderBlock(content, primary, sourceLangId)
 
         // ── Definitions group ─────────────────────────────────────────────
+        // Target-driven render path: for non-English targets with a Native
+        // pack hit, the target pack's sense list is the canonical structure
+        // (JMdict's English-vs-target sense alignment is unrecoverable, so
+        // we stop pretending it exists and render the German/Spanish/etc.
+        // senses on their own terms — see the long discussion in commit
+        // history). Falls back to the entry-driven path for English
+        // targets, MachineTranslated/EnglishFallback results, and the
+        // defensive case of an empty Native.targetSenses.
+        val nativeTargetSenses = (defResult as? DefinitionResult.Native)
+            ?.targetSenses
+            ?.sortedBy { it.senseOrd }
+            ?.takeIf { it.isNotEmpty() }
+        val isTargetDriven = targetLangCode != "en" && nativeTargetSenses != null
+        // Flat sense list: senses across all returned entries, in order.
+        // The entry-driven render iterates this; for Wiktionary-derived
+        // packs each (POS-distinct) entry contributes its own slice, so
+        // "surprise" yields noun/verb/intj cells in sequence. Target-
+        // driven render still uses primary.senses since `targetByOrd`
+        // is keyed against the primary entry's sense ordinals.
+        val flatSenses = entries.flatMap { it.senses }
+        Log.d(TAG, "render entry=${primary.slug} target=$targetLangCode " +
+            "defResult=${defResult?.let { it::class.simpleName } ?: "null"} " +
+            "targetDriven=$isTargetDriven " +
+            "(${nativeTargetSenses?.size ?: 0} target senses, ${flatSenses.size} source senses across ${entries.size} entries)")
+
         val translatedDefs = when (defResult) {
-            is DefinitionResult.Native -> defResult.translatedDefinitions
+            // Native no longer carries per-sense MT fallback (target-driven
+            // render handles it); only MT/English-fallback variants populate
+            // translatedDefinitions for the entry-driven path below.
             is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
             is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
             else -> null
         }
-        val targetByOrd = if (defResult is DefinitionResult.Native)
+        val targetByOrd = if (!isTargetDriven && defResult is DefinitionResult.Native)
             defResult.targetSenses.associateBy { it.senseOrd } else null
-        val numSenses = entry.senses.count { it.targetDefinitions.isNotEmpty() }
+        val numSenses = if (isTargetDriven) nativeTargetSenses!!.size
+            else flatSenses.count { it.targetDefinitions.isNotEmpty() }
 
         // "Machine translated" banner fires when the user will actually
         // see MT output — either because no Native target was available
         // (MachineTranslated headword), or because the Native result
         // didn't cover every source sense so MT is filling the gaps.
-        val anyMtDisplayed = entry.senses.withIndex().any { (idx, s) ->
+        // Target-driven rendering never falls back to MT, so the banner
+        // is suppressed there.
+        val anyMtDisplayed = !isTargetDriven && flatSenses.withIndex().any { (idx, s) ->
             if (s.targetDefinitions.isEmpty()) return@any false
             val target = targetByOrd?.get(idx)
             target == null && translatedDefs?.getOrNull(idx)?.isNotBlank() == true
@@ -379,34 +473,70 @@ class WordDetailBottomSheet : DialogFragment() {
         addGroupHeader(content, getString(R.string.word_detail_group_definitions), definitionsSuffix)
         val definitionsCard = addGroupCard(content)
 
-        var displayCount = 0
-        entry.senses.forEachIndexed { origIdx, sense ->
-            if (sense.targetDefinitions.isEmpty()) return@forEachIndexed
-            val target = targetByOrd?.get(origIdx)
-            val posLabels = (target?.pos ?: sense.partsOfSpeech).filter { it.isNotBlank() }
-            val glossList = target?.glosses
-                ?: translatedDefs?.getOrNull(origIdx)?.let { listOf(it) }
-                ?: sense.targetDefinitions
-            val senseNumber = if (numSenses > 1) displayCount + 1 else null
-
-            if (displayCount > 0) {
-                // Numbered rows indent divider to 42dp (16dp row padding +
-                // 16dp number column + 10dp gap) to align with the gloss
-                // column; single-sense rows use the standard 16dp inset.
-                addInsetDivider(definitionsCard, indentPx = if (senseNumber != null) dp(42) else dpRes(R.dimen.pt_row_h_padding))
+        if (isTargetDriven) {
+            // Each target sense carries its own POS (kaikki tags it per
+            // sense and the FST format preserves it). When a target row's
+            // pos is blank — only happens for PanLex-derived rows, which
+            // don't ship POS metadata — fall back to the source entry's
+            // POS *only if it's unambiguous*. Wiktionary multi-POS lookups
+            // (e.g. "surprise" → noun + verb + intj) have no way to align
+            // a blank-pos target sense to a specific source entry, so we
+            // suppress the label rather than mislabel verb/intj rows as
+            // the primary entry's POS.
+            val fallbackPos = unambiguousFallbackPos(entries)
+            nativeTargetSenses!!.forEachIndexed { idx, target ->
+                val senseNumber = if (nativeTargetSenses.size > 1) idx + 1 else null
+                if (idx > 0) {
+                    addInsetDivider(
+                        definitionsCard,
+                        indentPx = if (senseNumber != null) dp(42)
+                            else dpRes(R.dimen.pt_row_h_padding),
+                    )
+                }
+                val posLabels = target.pos.filter { it.isNotBlank() }.takeIf { it.isNotEmpty() }
+                    ?: fallbackPos
+                addSenseRow(
+                    parent = definitionsCard,
+                    posLabels = posLabels,
+                    glossList = target.glosses,
+                    senseNumber = senseNumber,
+                    miscText = target.misc.takeIf { it.isNotEmpty() }?.joinToString(" · "),
+                    examples = target.examples,
+                    exampleTranslations = target.examples.map { it.translation },
+                    senseIndex = -1,
+                    translationRegistry = null,
+                )
             }
-            addSenseRow(
-                parent = definitionsCard,
-                posLabels = posLabels,
-                glossList = glossList,
-                senseNumber = senseNumber,
-                miscText = sense.misc.takeIf { it.isNotEmpty() }?.joinToString(" · "),
-                examples = sense.examples,
-                exampleTranslations = initialTranslations?.getOrNull(origIdx),
-                senseIndex = origIdx,
-                translationRegistry = translationRegistry,
-            )
-            displayCount++
+        } else {
+            var displayCount = 0
+            flatSenses.forEachIndexed { flatIdx, sense ->
+                if (sense.targetDefinitions.isEmpty()) return@forEachIndexed
+                val target = targetByOrd?.get(flatIdx)
+                val posLabels = (target?.pos ?: sense.partsOfSpeech).filter { it.isNotBlank() }
+                val glossList = target?.glosses
+                    ?: translatedDefs?.getOrNull(flatIdx)?.let { listOf(it) }
+                    ?: sense.targetDefinitions
+                val senseNumber = if (numSenses > 1) displayCount + 1 else null
+
+                if (displayCount > 0) {
+                    // Numbered rows indent divider to 42dp (16dp row padding +
+                    // 16dp number column + 10dp gap) to align with the gloss
+                    // column; single-sense rows use the standard 16dp inset.
+                    addInsetDivider(definitionsCard, indentPx = if (senseNumber != null) dp(42) else dpRes(R.dimen.pt_row_h_padding))
+                }
+                addSenseRow(
+                    parent = definitionsCard,
+                    posLabels = posLabels,
+                    glossList = glossList,
+                    senseNumber = senseNumber,
+                    miscText = sense.misc.takeIf { it.isNotEmpty() }?.joinToString(" · "),
+                    examples = sense.examples,
+                    exampleTranslations = initialTranslations?.getOrNull(flatIdx),
+                    senseIndex = flatIdx,
+                    translationRegistry = translationRegistry,
+                )
+                displayCount++
+            }
         }
 
         // ── More examples (Tatoeba, online) ──────────────────────────────
@@ -415,7 +545,7 @@ class WordDetailBottomSheet : DialogFragment() {
         }
 
         // ── Character breakdown group (Kanji / Hanzi) ────────────────────
-        val cjkChars = (entry.headwords.firstOrNull()?.written ?: entry.slug)
+        val cjkChars = (primary.headwords.firstOrNull()?.written ?: primary.slug)
             .filter { c -> c.code in 0x4E00..0x9FFF || c.code in 0x3400..0x4DBF }
             .toList().distinct()
 
@@ -797,7 +927,10 @@ class WordDetailBottomSheet : DialogFragment() {
      * means network/API failure — surface a muted error instead of
      * hiding so the user knows the feature exists.
      */
-    private fun applyMoreExamples(pairs: List<TatoebaClient.SentencePair>?) {
+    private fun applyMoreExamples(
+        pairs: List<TatoebaClient.SentencePair>?,
+        entryExampleFallback: List<TatoebaClient.SentencePair> = emptyList(),
+    ) {
         val body = moreExamplesBody ?: return
         val group = moreExamplesGroup ?: return
         val ctx = requireContext()
@@ -806,7 +939,23 @@ class WordDetailBottomSheet : DialogFragment() {
         // so drop the body's outer padding before inserting them.
         body.setPadding(0, 0, 0, 0)
 
+        // Tatoeba result OR fallback to entry-level examples (the JMdict
+        // examples attached to source senses) when Tatoeba returns
+        // nothing or fails — non-English targets lose per-sense example
+        // alignment entirely, so this is the only place those examples
+        // surface for them.
+        val effective = when {
+            !pairs.isNullOrEmpty() -> pairs
+            entryExampleFallback.isNotEmpty() -> entryExampleFallback
+            else -> null
+        }
         when {
+            effective != null -> {
+                effective.forEachIndexed { i, p ->
+                    if (i > 0) addInsetDivider(body, indentPx = dpRes(R.dimen.pt_row_h_padding))
+                    body.addView(buildTatoebaRow(p.source, p.target))
+                }
+            }
             pairs == null -> {
                 body.setPadding(
                     dpRes(R.dimen.pt_row_h_padding),
@@ -820,15 +969,7 @@ class WordDetailBottomSheet : DialogFragment() {
                     setTextColor(ctx.themeColor(R.attr.ptTextHint))
                 })
             }
-            pairs.isEmpty() -> {
-                group.visibility = View.GONE
-            }
-            else -> {
-                pairs.forEachIndexed { i, p ->
-                    if (i > 0) addInsetDivider(body, indentPx = dpRes(R.dimen.pt_row_h_padding))
-                    body.addView(buildTatoebaRow(p.source, p.target))
-                }
-            }
+            else -> group.visibility = View.GONE
         }
     }
 
