@@ -37,6 +37,8 @@ import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.Example
 import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -553,8 +555,38 @@ class WordAnkiReviewSheet : DialogFragment() {
                     targetLang = moreExamplesTargetLang,
                 )
                 if (!isAdded) return@launch
-                tatoebaPairs = pairs
-                applyMoreExamples(pairs)
+                // When Tatoeba returns nothing (no results / network), fall
+                // back to the entry's per-sense examples. Wiktionary stores
+                // translations in English; for target≠en we ML-translate
+                // them in parallel before showing.
+                val effective = if (!pairs.isNullOrEmpty()) pairs
+                else {
+                    val raw = entry.senses
+                        .flatMap { it.examples }
+                        .filter { it.text.isNotBlank() }
+                    when {
+                        raw.isEmpty() -> null
+                        targetLangCode == "en" || enToTarget == null ->
+                            raw.map { TatoebaClient.SentencePair(it.text, it.translation) }
+                        else -> withContext(Dispatchers.IO) {
+                            raw.map { ex ->
+                                async {
+                                    val translated = if (ex.translation.isBlank()) ""
+                                    else try {
+                                        enToTarget.translate(ex.translation)
+                                    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                                        throw e
+                                    } catch (_: Exception) {
+                                        ex.translation
+                                    }
+                                    TatoebaClient.SentencePair(ex.text, translated)
+                                }
+                            }.awaitAll()
+                        }
+                    }
+                }
+                tatoebaPairs = effective
+                applyMoreExamples(effective)
             }
         }
     }
@@ -577,6 +609,47 @@ class WordAnkiReviewSheet : DialogFragment() {
             is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
             else -> null
         }
+
+        // Target-driven render path mirrors WordDetailBottomSheet — for
+        // non-English targets with a Native pack hit, iterate the target
+        // pack's senses directly. removedSenses keys on the target sense
+        // index in this mode (entry-driven mode keeps using entry sense
+        // indices); a sheet instance never switches modes mid-session, so
+        // the two index spaces don't collide.
+        val nativeTargetSenses = (defResult as? DefinitionResult.Native)
+            ?.targetSenses
+            ?.sortedBy { it.senseOrd }
+            ?.takeIf { it.isNotEmpty() }
+        val isTargetDriven = moreExamplesTargetLang != "en" && nativeTargetSenses != null
+
+        if (isTargetDriven) {
+            val entryPos = entry.senses.firstNotNullOfOrNull { sense ->
+                sense.partsOfSpeech.filter { it.isNotBlank() }.takeIf { it.isNotEmpty() }
+            }.orEmpty()
+            val visibleTarget = nativeTargetSenses!!.withIndex()
+                .filter { (idx, _) -> idx !in removedSenses }
+            val numVisible = visibleTarget.size
+            visibleTarget.forEachIndexed { displayIdx, (idx, target) ->
+                val senseNumber = if (numVisible > 1) displayIdx + 1 else null
+                if (displayIdx > 0) {
+                    ankiInsetDivider(card, indentDp = if (senseNumber != null) 42 else 16)
+                }
+                addAnkiSenseRow(
+                    parent = card,
+                    posLabels = entryPos,
+                    glossList = target.glosses,
+                    senseNumber = senseNumber,
+                    miscText = null,
+                    examples = emptyList(),
+                    senseIndex = idx,
+                )
+            }
+            if (visibleTarget.isEmpty()) {
+                card.addView(buildLoadingDefinitionsRow(""))
+            }
+            return
+        }
+
         val targetByOrd = if (defResult is DefinitionResult.Native)
             defResult.targetSenses.associateBy { it.senseOrd } else null
 
@@ -1120,13 +1193,50 @@ class WordAnkiReviewSheet : DialogFragment() {
         entry: DictionaryEntry, fallback: String,
     ) {
         val defResult = resolvedDefResult
-        val targetByOrd = if (defResult is DefinitionResult.Native)
-            defResult.targetSenses.associateBy { it.senseOrd } else null
         val translatedDefs = when (defResult) {
             is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
             is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
             else -> null
         }
+
+        val nativeTargetSenses = (defResult as? DefinitionResult.Native)
+            ?.targetSenses
+            ?.sortedBy { it.senseOrd }
+            ?.takeIf { it.isNotEmpty() }
+        val isTargetDriven = moreExamplesTargetLang != "en" && nativeTargetSenses != null
+
+        if (isTargetDriven) {
+            val entryPos = entry.senses.firstNotNullOfOrNull { sense ->
+                sense.partsOfSpeech.filter { it.isNotBlank() }.takeIf { it.isNotEmpty() }
+            }.orEmpty()
+            val visibleTarget = nativeTargetSenses!!.withIndex()
+                .filter { (idx, _) -> idx !in removedSenses }
+            if (visibleTarget.isEmpty()) {
+                val defHtml = fallback.lines().filter { it.isNotBlank() }
+                    .joinToString("<br>") { it.trimStart() }
+                append("<div style=\"font-size:1.1em;margin:12px 4px;\">$defHtml</div>")
+                return
+            }
+            val numVisible = visibleTarget.size
+            visibleTarget.forEachIndexed { displayIdx, (_, target) ->
+                val numberPrefix = if (numVisible > 1) "${displayIdx + 1}. " else ""
+                append("<div class=\"gl-sense\">")
+                if (entryPos.isNotEmpty()) {
+                    append("<div class=\"gl-pos\">")
+                    append(htmlEscape(entryPos.joinToString(" · ")))
+                    append("</div>")
+                }
+                append("<div class=\"gl-gloss\">")
+                append(numberPrefix)
+                append(htmlEscape(target.glosses.joinToString("; ")))
+                append("</div>")
+                append("</div>")
+            }
+            return
+        }
+
+        val targetByOrd = if (defResult is DefinitionResult.Native)
+            defResult.targetSenses.associateBy { it.senseOrd } else null
         val visibleSenses = entry.senses.withIndex().filter { (idx, s) ->
             s.targetDefinitions.isNotEmpty() && idx !in removedSenses
         }

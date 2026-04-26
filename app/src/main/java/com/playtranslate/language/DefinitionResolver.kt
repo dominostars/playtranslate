@@ -95,16 +95,14 @@ class DefinitionResolver(
                 val senses = targetGlossDb.lookup(sourceLang, hw, reading)
                 Log.d(TAG, "  Tier 1: lookup($sourceLang, $hw, $reading) -> ${senses?.size ?: "null"}")
                 if (senses != null) {
-                    // Compute MT fallbacks only when the target pack
-                    // covers fewer sense ordinals than the source entry
-                    // has — otherwise we'd pay ML Kit cost for senses the
-                    // native target already overrides.
-                    val coveredOrds = senses.map { it.senseOrd }.toSet()
-                    val hasUncovered = entry?.senses?.indices?.any { it !in coveredOrds } == true
-                    val translatedDefs = if (hasUncovered && entry != null)
-                        translateDefinitions(entry) else null
-                    Log.d(TAG, "  -> Native (${senses.first().source}, ${senses.size} senses, fallback=${translatedDefs?.size})")
-                    return DefinitionResult.Native(response, senses, senses.first().source, translatedDefs)
+                    // Native pack hit → renderer iterates target senses
+                    // directly (target-driven mode). No per-sense MT
+                    // fallback needed; we save N ML Kit calls per word
+                    // tap. The translatedDefinitions field is kept on
+                    // the data class for English-target callers and
+                    // backward shape compatibility, but is left null.
+                    Log.d(TAG, "  -> Native (${senses.first().source}, ${senses.size} senses)")
+                    return DefinitionResult.Native(response, senses, senses.first().source, null)
                 }
             }
             Log.d(TAG, "  Tier 1: no match in target DB")

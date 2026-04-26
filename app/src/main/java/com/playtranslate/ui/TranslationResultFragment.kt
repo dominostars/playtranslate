@@ -412,21 +412,35 @@ class TranslationResultFragment : Fragment() {
                         val form = entry.headwords.firstOrNull()
                         word = form?.written ?: form?.reading ?: entry.slug
                         popupLabel = null
-                        val targetByOrd = defResult.targetSenses.associateBy { it.senseOrd }
-                        val mtDefs = defResult.translatedDefinitions
-                        senses = entry.senses.mapIndexed { i, sense ->
-                            val target = targetByOrd[i]
-                            if (target != null) {
+                        val targetSensesSorted = defResult.targetSenses.sortedBy { it.senseOrd }
+                        val isTargetDriven = prefs.targetLang != "en" && targetSensesSorted.isNotEmpty()
+                        senses = if (isTargetDriven) {
+                            val entryPos = entry.senses.firstNotNullOfOrNull { s ->
+                                s.partsOfSpeech.filter { it.isNotBlank() }.takeIf { it.isNotEmpty() }
+                            }.orEmpty().joinToString(", ")
+                            targetSensesSorted.map { target ->
                                 WordLookupPopup.SenseDisplay(
-                                    pos = target.pos.joinToString(", "),
-                                    definition = target.glosses.joinToString("; ")
+                                    pos = entryPos,
+                                    definition = target.glosses.joinToString("; "),
                                 )
-                            } else {
-                                val mt = mtDefs?.getOrNull(i)?.takeIf { it.isNotBlank() }
-                                WordLookupPopup.SenseDisplay(
-                                    pos = sense.partsOfSpeech.joinToString(", "),
-                                    definition = mt ?: sense.targetDefinitions.joinToString("; ")
-                                )
+                            }
+                        } else {
+                            val targetByOrd = targetSensesSorted.associateBy { it.senseOrd }
+                            val mtDefs = defResult.translatedDefinitions
+                            entry.senses.mapIndexed { i, sense ->
+                                val target = targetByOrd[i]
+                                if (target != null) {
+                                    WordLookupPopup.SenseDisplay(
+                                        pos = target.pos.joinToString(", "),
+                                        definition = target.glosses.joinToString("; "),
+                                    )
+                                } else {
+                                    val mt = mtDefs?.getOrNull(i)?.takeIf { it.isNotBlank() }
+                                    WordLookupPopup.SenseDisplay(
+                                        pos = sense.partsOfSpeech.joinToString(", "),
+                                        definition = mt ?: sense.targetDefinitions.joinToString("; "),
+                                    )
+                                }
                             }
                         }
                         freqScore = entry.freqScore

@@ -453,29 +453,46 @@ class DragLookupController(
         val popupData: PopupData = when {
             entry != null && defResult is DefinitionResult.Native -> {
                 val form = entry.headwords.firstOrNull()
-                // Build senses by ordinal alignment: for each source sense,
-                // use the target-language gloss if senseOrd matches, else
-                // the resolver's MT fallback, else raw source English.
-                val targetByOrd = defResult.targetSenses.associateBy { it.senseOrd }
-                val mtDefs = defResult.translatedDefinitions
-                PopupData(
-                    word = form?.written ?: form?.reading ?: entry.slug,
-                    reading = form?.reading,
-                    senses = entry.senses.mapIndexed { i, sense ->
+                // Target-driven for non-English targets: render the pack's
+                // sense list directly, no JMdict-position alignment (which
+                // is unrecoverable — see WordDetailBottomSheet for full
+                // explanation). For English targets, keep the by-ordinal
+                // alignment using English glosses + per-sense MT fallback.
+                val targetSenses = defResult.targetSenses.sortedBy { it.senseOrd }
+                val isTargetDriven = prefs.targetLang != "en" && targetSenses.isNotEmpty()
+                val senses = if (isTargetDriven) {
+                    val entryPos = entry.senses.firstNotNullOfOrNull { s ->
+                        s.partsOfSpeech.filter { it.isNotBlank() }.takeIf { it.isNotEmpty() }
+                    }.orEmpty().joinToString(", ")
+                    targetSenses.map { target ->
+                        WordLookupPopup.SenseDisplay(
+                            pos = entryPos,
+                            definition = target.glosses.joinToString("; "),
+                        )
+                    }
+                } else {
+                    val targetByOrd = targetSenses.associateBy { it.senseOrd }
+                    val mtDefs = defResult.translatedDefinitions
+                    entry.senses.mapIndexed { i, sense ->
                         val target = targetByOrd[i]
                         if (target != null) {
                             WordLookupPopup.SenseDisplay(
                                 pos = target.pos.joinToString(", "),
-                                definition = target.glosses.joinToString("; ")
+                                definition = target.glosses.joinToString("; "),
                             )
                         } else {
                             val mt = mtDefs?.getOrNull(i)?.takeIf { it.isNotBlank() }
                             WordLookupPopup.SenseDisplay(
                                 pos = sense.partsOfSpeech.joinToString(", "),
-                                definition = mt ?: sense.targetDefinitions.joinToString("; ")
+                                definition = mt ?: sense.targetDefinitions.joinToString("; "),
                             )
                         }
-                    },
+                    }
+                }
+                PopupData(
+                    word = form?.written ?: form?.reading ?: entry.slug,
+                    reading = form?.reading,
+                    senses = senses,
                     freqScore = entry.freqScore,
                     isCommon = entry.isCommon == true,
                     entry = entry
