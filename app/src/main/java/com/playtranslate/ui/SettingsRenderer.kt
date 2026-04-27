@@ -250,6 +250,7 @@ class SettingsRenderer(
                             ProjectionOverlayHost.instance?.ensureFloatingIcon()
                             refreshOverlayIconSwitch()
                             refreshOnScreenControlsTint(isSingle)
+                            act.keepMainUiAfterShareScreenEnabled()
                         }
                     }
                 } else {
@@ -327,6 +328,7 @@ class SettingsRenderer(
                                     refreshOverlayIconSwitch()
                                     tvWorkModeValue.text = ctx.getString(R.string.settings_work_mode_share_screen)
                                     refreshOnScreenControlsTint(isSingle)
+                                    act.keepMainUiAfterShareScreenEnabled()
                                 }
                             }
                         }

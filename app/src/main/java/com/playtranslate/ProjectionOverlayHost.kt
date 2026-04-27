@@ -87,13 +87,20 @@ class ProjectionOverlayHost private constructor(
 
     /** Soft mirror of [Image] — converted to Bitmap on demand to avoid blocking the reader thread. */
     @Volatile private var lastFrameTimeNs: Long = 0L
+    @Volatile private var appInitiatedStop: Boolean = false
 
     /** Re-fires automatically when MediaProjection is revoked (e.g. user
      *  taps "Stop sharing" in the system notification). */
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
             Log.i(TAG, "MediaProjection stopped by system")
-            main.post { service.stopProjection() }
+            main.post {
+                if (appInitiatedStop) {
+                    stop(skipProjectionStop = true)
+                } else {
+                    service.stopProjection()
+                }
+            }
         }
     }
 
@@ -296,6 +303,10 @@ class ProjectionOverlayHost private constructor(
     override val isLoopRunning: Boolean get() = loopJob?.isActive == true
 
     override fun destroy() {
+        destroy(stopProjection = true)
+    }
+
+    private fun destroy(stopProjection: Boolean) {
         stopLoop()
         try { virtualDisplay?.release() } catch (_: Exception) {}
         virtualDisplay = null
@@ -307,7 +318,10 @@ class ProjectionOverlayHost private constructor(
         }
         try { displayManager?.unregisterDisplayListener(displayListener) } catch (_: Exception) {}
         try { projection.unregisterCallback(projectionCallback) } catch (_: Exception) {}
-        try { projection.stop() } catch (_: Exception) {}
+        if (stopProjection) {
+            appInitiatedStop = true
+            try { projection.stop() } catch (_: Exception) {}
+        }
         captureThread.quitSafely()
         bitmapExecutor.shutdown()
     }
@@ -785,7 +799,7 @@ class ProjectionOverlayHost private constructor(
     }
 
     /** Tear down the host. Idempotent — safe to call multiple times. */
-    fun stop() {
+    fun stop(skipProjectionStop: Boolean = false) {
         fun doStop() {
             if (stopped) return
             stopped = true
@@ -794,7 +808,7 @@ class ProjectionOverlayHost private constructor(
             hideTranslationOverlay()
             hideRegionIndicator(force = true)
             hideFloatingIcon("projection_stop")
-            destroy()
+            destroy(stopProjection = !skipProjectionStop)
             service.updateForegroundState()
         }
         if (Looper.myLooper() == Looper.getMainLooper()) {

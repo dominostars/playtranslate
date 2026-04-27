@@ -272,17 +272,18 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                 val ready = ProjectionOverlayHost.instance != null
                 val timedOut = android.os.SystemClock.uptimeMillis() >= deadline
                 if (ready || timedOut) {
+                    val action = pendingProjectionAction
+                    pendingProjectionAction = null
                     if (timedOut && !ready) {
                         Toast.makeText(
                             this,
                             getString(R.string.toast_screen_share_required),
                             Toast.LENGTH_LONG,
                         ).show()
+                        checkOnboardingState()
                     } else {
-                        pendingProjectionAction?.invoke()
+                        action?.invoke()
                     }
-                    pendingProjectionAction = null
-                    checkOnboardingState()
                 } else {
                     window.decorView.postDelayed(poll, pollIntervalMs)
                 }
@@ -1002,6 +1003,17 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             .commitAllowingStateLoss()
     }
 
+    fun keepMainUiAfterShareScreenEnabled() {
+        onboardingContainer.visibility = View.GONE
+        supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG)?.let { fragment ->
+            if ((fragment as? SettingsBottomSheet)?.showsDialog == true) {
+                fragment.dismissAllowingStateLoss()
+            }
+        }
+        selectTab(Tab.SETTINGS)
+        openSettingsInline()
+    }
+
     /** Apply the new theme by recreating the activity. */
     private fun applyThemeInPlace(settingsScrollY: Int) {
         prefs.settingsScrollY = settingsScrollY
@@ -1501,7 +1513,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             // routes through the projection-mode branch even before the
             // permission flow finishes.
             startShareScreenEnableFlow {
-                checkOnboardingState()
+                keepMainUiAfterShareScreenEnabled()
             }
         }
         btnWelcomeContinue.setOnClickListener {
@@ -1551,7 +1563,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         // pages so users who land here without seeing the welcome screen
         // (e.g. languages already configured) can still opt into projection.
         val useShareScreenFromA11y = View.OnClickListener {
-            startShareScreenEnableFlow { checkOnboardingState() }
+            startShareScreenEnableFlow { keepMainUiAfterShareScreenEnabled() }
         }
         pageA11y.findViewById<View>(R.id.btnUseShareScreenA11y)
             .setOnClickListener(useShareScreenFromA11y)
