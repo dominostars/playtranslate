@@ -130,13 +130,15 @@ class SettingsBottomSheet : DialogFragment() {
         val isDialog = showsDialog
         val prefs = Prefs(requireContext())
 
-        // Toolbar (dialog mode only)
+        // Toolbar (dialog mode only). Dialog mode is only entered from the
+        // single-screen onboarding/main path (MainActivity.checkOnboardingState),
+        // so the toolbar appears only in single-screen mode and the title is
+        // the app name. Dual-screen flows use inline mode where the toolbar
+        // stays GONE per its XML default.
         if (isDialog) {
             view.findViewById<View>(R.id.settingsToolbar).visibility = View.VISIBLE
-            if (!Prefs.hasMultipleDisplays(requireContext())) {
-                view.findViewById<android.widget.TextView>(R.id.tvSettingsTitle)
-                    .text = getString(R.string.app_name)
-            }
+            view.findViewById<android.widget.TextView>(R.id.tvSettingsTitle)
+                .text = getString(R.string.app_name)
             val closeBtn = view.findViewById<View>(R.id.btnCloseSettings)
             if (hideDismiss) {
                 closeBtn.visibility = View.GONE
