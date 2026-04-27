@@ -43,7 +43,11 @@ ROOT = Path(__file__).resolve().parent.parent
 PANLEX_DIR = ROOT / "local" / "panlex-spike"
 
 # 2-letter app code → PanLex ISO 639-3
-# All app source-pack codes plus the 8 new target codes the user requested.
+# Covers app source-pack codes plus every ML Kit target language we surface
+# in the picker. For et/lv/sw the macro-language TSVs aren't in the PanLex
+# snapshot — Standard Estonian (ekk), Standard Latvian (lvs), and Coastal
+# Swahili (swh) are the available dialects and stand in for the umbrella
+# codes ML Kit uses.
 APP_TO_PANLEX = {
     "ja": "jpn", "zh": "cmn", "ko": "kor", "en": "eng",
     "es": "spa", "fr": "fra", "de": "deu", "it": "ita",
@@ -53,6 +57,13 @@ APP_TO_PANLEX = {
     "ar": "arb", "hi": "hin", "he": "heb", "fa": "pes",
     "uk": "ukr", "th": "tha", "pl": "pol", "cs": "ces",
     "el": "ell", "ru": "rus", "ms": "zsm",
+    "af": "afr", "sq": "sqi", "be": "bel", "bg": "bul",
+    "bn": "ben", "cy": "cym", "eo": "epo", "et": "ekk",
+    "ga": "gle", "gl": "glg", "gu": "guj", "hr": "hrv",
+    "ht": "hat", "is": "isl", "ka": "kat", "kn": "kan",
+    "lt": "lit", "lv": "lvs", "mk": "mkd", "mr": "mar",
+    "mt": "mlt", "sk": "slk", "sl": "slv", "sw": "swh",
+    "ta": "tam", "te": "tel", "tl": "tgl", "ur": "urd",
 }
 PANLEX_TO_APP = {v: k for k, v in APP_TO_PANLEX.items()}
 
