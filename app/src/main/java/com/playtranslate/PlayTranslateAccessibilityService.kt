@@ -183,37 +183,89 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         hideRegionIndicator(force = true)
     }
 
-    // ── Overlay state for ScreenshotManager ──────────────────────────────
+    // ── Overlay window registry ──────────────────────────────────────────
+    //
+    // Every accessibility-overlay window the service owns goes through
+    // [addOverlayWindow] / [removeOverlayWindow]. [prepareForCleanCapture]
+    // walks the registry and blanks each window via window-level alpha so
+    // none of them appear in the captured frame. This replaces a previous
+    // patchwork of per-overlay flags + View.alpha tweaks that left newly
+    // added windows (e.g. the magnifier) silently in the screenshot.
 
-    /** State returned by [prepareForCleanCapture], passed to [restoreAfterCapture]. */
-    data class OverlayState(
-        val hadTranslation: Boolean,
-        val hadDebug: Boolean,
-        val hadRegionIndicator: Boolean
+    /** Registered overlay window. Stored handle keeps the wm + params so
+     *  blanking can flip [WindowManager.LayoutParams.alpha] and call
+     *  [WindowManager.updateViewLayout] without each call site managing
+     *  its own state. */
+    data class OverlayHandle(
+        val view: View,
+        val wm: WindowManager,
+        val params: WindowManager.LayoutParams,
+    )
+
+    /** Main-thread only — every WindowManager mutation happens on Main. */
+    private val overlayWindows = mutableListOf<OverlayHandle>()
+
+    /**
+     * Add a window via [WindowManager.addView] AND register it for
+     * clean-capture blanking. Returns true on success.
+     */
+    fun addOverlayWindow(
+        view: View,
+        wm: WindowManager,
+        params: WindowManager.LayoutParams,
+    ): Boolean {
+        return try {
+            wm.addView(view, params)
+            overlayWindows += OverlayHandle(view, wm, params)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "addOverlayWindow failed: ${e.message}")
+            false
+        }
+    }
+
+    /** Unregister and call [WindowManager.removeView]. Safe if the view
+     *  was never registered (silent no-op). */
+    fun removeOverlayWindow(view: View) {
+        val handle = overlayWindows.firstOrNull { it.view === view } ?: return
+        overlayWindows -= handle
+        try { handle.wm.removeView(view) } catch (_: Exception) {}
+    }
+
+    /** Opaque snapshot returned by [prepareForCleanCapture]. */
+    class OverlayState internal constructor(
+        internal val saved: List<Pair<OverlayHandle, Float>>
     )
 
     /**
-     * Hides overlays so they don't appear in a clean screenshot.
-     * Returns the previous state so [restoreAfterCapture] can restore it.
+     * Hide every registered overlay so it doesn't appear in a screenshot.
+     * Uses [WindowManager.LayoutParams.alpha] (window-level, applied by
+     * SurfaceFlinger during composition) rather than [View.alpha] (applied
+     * during view drawing, which can lag a frame behind). Combined with
+     * the 2-vsync wait in [ScreenshotManager.requestClean], this reliably
+     * composites the overlay-free frame before capture.
      */
     fun prepareForCleanCapture(): OverlayState {
-        val state = OverlayState(
-            hadTranslation = translationOverlayView != null,
-            hadDebug = debugOverlayView != null,
-            hadRegionIndicator = regionIndicatorView != null
-        )
-        if (state.hadRegionIndicator) regionIndicatorView?.visibility = View.INVISIBLE
-        if (state.hadDebug) debugOverlayView?.visibility = View.INVISIBLE
-        if (state.hadTranslation) translationOverlayView?.visibility = View.INVISIBLE
-        return state
+        val saved = mutableListOf<Pair<OverlayHandle, Float>>()
+        for (handle in overlayWindows) {
+            val original = handle.params.alpha
+            if (original <= 0f) continue
+            handle.params.alpha = 0f
+            try {
+                handle.wm.updateViewLayout(handle.view, handle.params)
+                saved += handle to original
+            } catch (_: Exception) {
+                handle.params.alpha = original
+            }
+        }
+        return OverlayState(saved)
     }
 
-    /** Restores overlays that were hidden by [prepareForCleanCapture]. */
+    /** Restores alphas saved by [prepareForCleanCapture]. */
     fun restoreAfterCapture(state: OverlayState) {
-        if (state.hadDebug) debugOverlayView?.visibility = View.VISIBLE
-        if (state.hadTranslation) translationOverlayView?.visibility = View.VISIBLE
-        if (state.hadRegionIndicator && floatingIcon?.inDragMode != true) {
-            regionIndicatorView?.visibility = View.VISIBLE
+        for ((handle, alpha) in state.saved) {
+            handle.params.alpha = alpha
+            try { handle.wm.updateViewLayout(handle.view, handle.params) } catch (_: Exception) {}
         }
     }
 
@@ -339,7 +391,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
-        wm.addView(view, params)
+        addOverlayWindow(view, wm, params)
         regionIndicatorView = view
         regionIndicatorWm = wm
         regionIndicatorPersistent = persistent
@@ -367,7 +419,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         if (view != null) {
             view.animate().cancel()
             view.visibility = View.INVISIBLE
-            try { regionIndicatorWm?.removeView(view) } catch (_: Exception) {}
+            removeOverlayWindow(view)
         }
         regionIndicatorView = null
         regionIndicatorWm = null
@@ -442,7 +494,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             y = (40 * dp).toInt()
         }
 
-        wm.addView(view, params)
+        addOverlayWindow(view, wm, params)
         pillView = view
         pillWm = wm
 
@@ -461,7 +513,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val view = pillView
         if (view != null) {
             view.animate().cancel()
-            try { pillWm?.removeView(view) } catch (_: Exception) {}
+            removeOverlayWindow(view)
         }
         pillView = null
         pillWm = null
@@ -486,13 +538,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
-        wm.addView(view, params)
+        addOverlayWindow(view, wm, params)
         dragWm = wm
         dragView = view
     }
 
     fun hideRegionDragOverlay() {
-        try { dragView?.let { dragWm?.removeView(it) } } catch (_: Exception) {}
+        dragView?.let { removeOverlayWindow(it) }
         dragView = null
         dragWm = null
     }
@@ -586,13 +638,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
-        wm.addView(view, params)
+        addOverlayWindow(view, wm, params)
         debugOverlayWm = wm
         debugOverlayView = view
     }
 
     fun hideDebugOverlay() {
-        try { debugOverlayView?.let { debugOverlayWm?.removeView(it) } } catch (_: Exception) {}
+        debugOverlayView?.let { removeOverlayWindow(it) }
         debugOverlayView = null
         debugOverlayWm = null
     }
@@ -636,7 +688,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply { windowAnimations = 0 }
-        wm.addView(view, params)
+        addOverlayWindow(view, wm, params)
         translationOverlayWm = wm
         translationOverlayView = view
         translationOverlayDisplayId = display.displayId
@@ -652,17 +704,17 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply { windowAnimations = 0 }
-        wm.addView(dirtyView, dirtyParams)
+        addOverlayWindow(dirtyView, wm, dirtyParams)
         dirtyOverlayWm = wm
         dirtyOverlayView = dirtyView
     }
 
     fun hideTranslationOverlay() {
-        try { translationOverlayView?.let { translationOverlayWm?.removeView(it) } } catch (_: Exception) {}
+        translationOverlayView?.let { removeOverlayWindow(it) }
         translationOverlayView = null
         translationOverlayWm = null
         translationOverlayDisplayId = -1
-        try { dirtyOverlayView?.let { dirtyOverlayWm?.removeView(it) } } catch (_: Exception) {}
+        dirtyOverlayView?.let { removeOverlayWindow(it) }
         dirtyOverlayView = null
         dirtyOverlayWm = null
     }
@@ -751,13 +803,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         )
-        wm.addView(view, params)
+        addOverlayWindow(view, wm, params)
         touchSentinelView = view
         touchSentinelWm = wm
     }
 
     private fun removeTouchSentinel() {
-        try { touchSentinelView?.let { touchSentinelWm?.removeView(it) } } catch (_: Exception) {}
+        touchSentinelView?.let { removeOverlayWindow(it) }
         touchSentinelView = null
         touchSentinelWm = null
     }
@@ -1043,16 +1095,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         icon.onAnyTouch   = { DimController.notifyInteraction() }
         dragLookupController = controller
 
-        try {
-            wm.addView(icon, params)
+        if (addOverlayWindow(icon, wm, params)) {
             // Set position after addView so the icon can query its own window bounds
             icon.setPosition(prefs.overlayIconEdge, prefs.overlayIconFraction)
-            wm.updateViewLayout(icon, params)
+            try { wm.updateViewLayout(icon, params) } catch (_: Exception) {}
             floatingIconWm = wm
             floatingIcon = icon
             floatingIconDisplayId = display.displayId
-        } catch (e: Exception) {
-            Log.e(TAG, "showFloatingIcon: addView failed", e)
         }
     }
 
@@ -1060,13 +1109,12 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     private fun bringFloatingIconToFront() {
         val icon = floatingIcon ?: return
         val wm = floatingIconWm ?: return
+        val params = icon.params ?: return
         // Never re-add the icon while it's being dragged — removing it
         // mid-drag breaks the touch event sequence and freezes the icon.
         if (icon.inDragMode) return
-        try {
-            wm.removeView(icon)
-            wm.addView(icon, icon.params)
-        } catch (_: Exception) {}
+        removeOverlayWindow(icon)
+        addOverlayWindow(icon, wm, params)
     }
 
     fun hideFloatingIcon(reason: String = "unspecified") {
@@ -1074,7 +1122,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         dragLookupController?.destroy()
         dragLookupController = null
         floatingIcon?.destroy()
-        try { floatingIcon?.let { floatingIconWm?.removeView(it) } } catch (_: Exception) {}
+        floatingIcon?.let { removeOverlayWindow(it) }
         floatingIcon = null
         floatingIconWm = null
         floatingIconDisplayId = -1
@@ -1205,7 +1253,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             PixelFormat.TRANSLUCENT
         )
 
-        wm.addView(menu, params)
+        addOverlayWindow(menu, wm, params)
         floatingMenuWm = wm
         floatingMenu = menu
 
@@ -1218,7 +1266,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
     private fun dismissFloatingMenu() {
         val wasShowing = floatingMenu != null
-        try { floatingMenu?.let { floatingMenuWm?.removeView(it) } } catch (_: Exception) {}
+        floatingMenu?.let { removeOverlayWindow(it) }
         floatingMenu = null
         floatingMenuWm = null
         if (wasShowing) {
@@ -1396,7 +1444,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             y = (32 * dp).toInt()
         }
 
-        wm.addView(bar, barParams)
+        addOverlayWindow(bar, wm, barParams)
         regionEditorBarWm = wm
         regionEditorBar = bar
 
@@ -1432,17 +1480,17 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             y = (16 * dp).toInt()
         }
-        wm.addView(label, labelParams)
+        addOverlayWindow(label, wm, labelParams)
         regionEditorLabelWm = wm
         regionEditorLabel = label
     }
 
     private fun hideRegionEditor() {
         hideRegionDragOverlay()
-        try { regionEditorBar?.let { regionEditorBarWm?.removeView(it) } } catch (_: Exception) {}
+        regionEditorBar?.let { removeOverlayWindow(it) }
         regionEditorBar = null
         regionEditorBarWm = null
-        try { regionEditorLabel?.let { regionEditorLabelWm?.removeView(it) } } catch (_: Exception) {}
+        regionEditorLabel?.let { removeOverlayWindow(it) }
         regionEditorLabel = null
         regionEditorLabelWm = null
         CaptureService.instance?.holdActive = false
@@ -1580,5 +1628,29 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         var instance: PlayTranslateAccessibilityService? = null
 
         val isEnabled: Boolean get() = instance != null
+
+        /**
+         * Static convenience for overlay owners that don't have a service
+         * reference handy (MagnifierLens, WordLookupPopup, etc.). When the
+         * service isn't connected the window is added without registration —
+         * it just won't participate in clean-capture blanking.
+         */
+        fun addOverlay(
+            view: View,
+            wm: WindowManager,
+            params: WindowManager.LayoutParams,
+        ): Boolean {
+            instance?.let { return it.addOverlayWindow(view, wm, params) }
+            return try { wm.addView(view, params); true } catch (_: Exception) { false }
+        }
+
+        fun removeOverlay(view: View, wm: WindowManager) {
+            val svc = instance
+            if (svc != null) {
+                svc.removeOverlayWindow(view)
+            } else {
+                try { wm.removeView(view) } catch (_: Exception) {}
+            }
+        }
     }
 }

@@ -16,6 +16,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
+import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.R
 
 /**
@@ -244,9 +245,9 @@ class OverlayAlert private constructor(
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
-        wm.addView(scrimView, params)
+        if (!PlayTranslateAccessibilityService.addOverlay(scrimView, wm, params)) return
         scrim = scrimView
-        dismissAction = { try { wm.removeView(scrimView) } catch (_: Exception) {} }
+        dismissAction = { PlayTranslateAccessibilityService.removeOverlay(scrimView, wm) }
     }
 
     private fun showInActivity(activity: Activity) {

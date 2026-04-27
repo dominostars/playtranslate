@@ -219,10 +219,15 @@ class DragLookupController(
         ocrJob?.cancel()
         recycleDragBitmap()
         dragInProgress = true
-        // Magnifier appears immediately with a placeholder; the bitmap lands
-        // a few hundred ms later when [captureAndOcr] settles.
-        val screen = queryScreenSize()
-        magnifier.show(lastX.toInt(), lastY.toInt(), screen.x, screen.y)
+        // Show the magnifier immediately at the finger position. It briefly
+        // displays a placeholder pill until [onScreenshotCaptured] feeds in
+        // the bitmap (~50 ms later). The screenshot pipeline blanks every
+        // registered overlay window during the actual capture, so showing
+        // the magnifier here doesn't contaminate the captured pixels.
+        if (!popup.isShowing) {
+            val screen = queryScreenSize()
+            magnifier.show(lastX.toInt(), lastY.toInt(), screen.x, screen.y)
+        }
         ocrJob = scope.launch {
             try {
                 if (existingScreenshotPath != null) {
@@ -247,9 +252,7 @@ class DragLookupController(
             captureAndOcr()
             return
         }
-        // Hand off to the magnifier before kicking off OCR — same lifetime
-        // contract as [captureAndOcr]: bitmap survives until drag end.
-        attachDragBitmap(bitmap, path)
+        onScreenshotCaptured(bitmap, path)
         val lines = withContext(Dispatchers.Default) {
             ocrManager.recogniseWithPositions(bitmap, Prefs(popup.ctx).sourceLang)
         }
@@ -447,11 +450,8 @@ class DragLookupController(
             return
         }
 
-        // Hand off to the magnifier first, then run OCR. The bitmap is owned
-        // by [dragBitmap] from here on and is recycled when the drag ends —
-        // OCR using the same bitmap is safe because we're not racing a recycle.
         val savedPath = withContext(Dispatchers.IO) { saveScreenshot(bitmap) }
-        attachDragBitmap(bitmap, savedPath)
+        onScreenshotCaptured(bitmap, savedPath)
 
         val lines = withContext(Dispatchers.Default) {
             ocrManager.recogniseWithPositions(bitmap, Prefs(service).sourceLang)
@@ -462,6 +462,13 @@ class DragLookupController(
         }
         Log.d(TAG, "OCR found ${lines.size} lines")
         ocrLines = lines
+    }
+
+    /** Run on the main thread once the drag-start bitmap is in hand. The
+     *  magnifier window already exists (shown immediately at drag start);
+     *  attaching the bitmap swaps it from a placeholder to the zoomed view. */
+    private fun onScreenshotCaptured(bitmap: Bitmap, savedPath: String?) {
+        attachDragBitmap(bitmap, savedPath)
     }
 
     /**

@@ -15,6 +15,7 @@ import android.view.VelocityTracker
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
+import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.R
 import kotlin.math.abs
 
@@ -131,13 +132,17 @@ class FloatingOverlayIcon(context: Context) : View(context) {
             gravity = android.view.Gravity.TOP or android.view.Gravity.LEFT
         }
 
-        try { wm.addView(spinner, lp) } catch (_: Exception) { return }
+        if (!PlayTranslateAccessibilityService.addOverlay(spinner, wm, lp)) return
         spinnerView = spinner
         spinnerWm = wm
     }
 
     private fun hideSpinnerWindow() {
-        try { spinnerView?.let { spinnerWm?.removeView(it) } } catch (_: Exception) {}
+        val view = spinnerView
+        val w = spinnerWm
+        if (view != null && w != null) {
+            PlayTranslateAccessibilityService.removeOverlay(view, w)
+        }
         spinnerView = null
         spinnerWm = null
     }
@@ -204,7 +209,12 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     /** Saved position before drag started (for restoring when popup is shown). */
     private var savedParamX = 0
     private var savedParamY = 0
-    /** True while in drag mode (ring appearance). */
+    /** True while a drag gesture is active. Set as soon as the user crosses
+     *  the tap threshold so other code (popup dismissal, region-indicator
+     *  restore) can tell "the user is dragging" before the screenshot lands.
+     *  Also gates the ring + mag-glass appearance — the screenshot pipeline
+     *  blanks the icon's window during capture, so we can flip the visuals
+     *  immediately without contaminating the captured pixels. */
     var inDragMode = false
         private set
     /** Whether onDragStart has already been called for this gesture. */
@@ -251,7 +261,10 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         }
 
         if (inDragMode) {
-            // Ring only (transparent inside so text is visible for screenshot)
+            // Ring only (transparent inside so text is visible for screenshot).
+            // The screenshot path blanks the icon's window via window-level
+            // alpha during the actual capture, so the ring won't appear in
+            // the captured pixels even though we paint it immediately.
             canvas.drawCircle(center, center, r - ringPaint.strokeWidth / 2, ringPaint)
             // Small magnifying glass icon in center
             drawMagnifyingGlass(canvas, center, center, r * 0.4f)
@@ -391,10 +404,8 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                         downParamY = p.y
                         try { wm?.updateViewLayout(this, p) } catch (_: Exception) {}
 
-                        // Switch to ring appearance, then notify controller to screenshot
                         enterDragMode()
                         dragStartFired = true
-                        // Post so the WM redraws the ring before screenshot is taken
                         post { onDragStart?.invoke() }
                     }
                     onDragMove?.invoke(event.rawX, event.rawY)

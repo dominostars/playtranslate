@@ -12,6 +12,7 @@ import android.graphics.RectF
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.R
 import com.playtranslate.themeColor
 
@@ -84,7 +85,7 @@ class MagnifierLens(
         lensView = null
         params = null
         if (view != null) {
-            try { wm.removeView(view) } catch (_: Exception) {}
+            PlayTranslateAccessibilityService.removeOverlay(view, wm)
         }
     }
 
@@ -104,7 +105,7 @@ class MagnifierLens(
             x = 0
             y = 0
         }
-        try { wm.addView(view, lp) } catch (_: Exception) { return }
+        if (!PlayTranslateAccessibilityService.addOverlay(view, wm, lp)) return
         lensView = view
         params = lp
     }
