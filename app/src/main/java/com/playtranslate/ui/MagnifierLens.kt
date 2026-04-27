@@ -255,7 +255,7 @@ class MagnifierLens(
         ctx: Context,
         private val lensW: Int,
         private val lensH: Int,
-        leftPanelW: Int,
+        private val leftPanelW: Int,
         private val cornerR: Float,
         private val zoom: Float,
         private val onOpenTap: () -> Unit,
@@ -341,10 +341,25 @@ class MagnifierLens(
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             maxLines = 1
-            setAutoSizeTextTypeUniformWithConfiguration(
-                10, 22, 1, TypedValue.COMPLEX_UNIT_SP
+            // ellipsize handles the case where even minSp doesn't fit
+            // leftPanelW — without it the word would clip mid-glyph.
+            ellipsize = TextUtils.TruncateAt.END
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
             )
         }
+        // Paint mirroring wordView's typeface/size knobs, used to compute
+        // the largest fitting text size manually. Replaces TextView's
+        // built-in autosize, which caches state across setText calls in the
+        // reused lens window — once a long word shrunk the view, shorter
+        // words later never grew back. Manual sizing is stateless: every
+        // call measures from scratch against the fixed leftPanelW.
+        private val wordSizingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = Typeface.DEFAULT_BOLD
+        }
+        private val wordMaxSp = 22f
+        private val wordMinSp = 10f
         // Left column hosts the labels and supplies the accent fill via its
         // background — the panel and labels appear/disappear together by
         // toggling its visibility, no separate canvas pass for the fill.
@@ -470,9 +485,36 @@ class MagnifierLens(
             val w = word?.takeIf { it.isNotEmpty() }
             val r = reading?.takeIf { it.isNotEmpty() }
             wordView.text = w.orEmpty()
+            wordView.setTextSize(TypedValue.COMPLEX_UNIT_SP, fitWordSize(w.orEmpty()))
             readingView.text = r.orEmpty()
             readingView.visibility = if (r == null) GONE else VISIBLE
             leftCol.visibility = if (w == null) GONE else VISIBLE
+        }
+
+        /** Largest integer sp in `wordMinSp..wordMaxSp` whose rendered width
+         *  fits `leftPanelW`. Binary search over the sp range — stateless
+         *  across word changes (the previous Android-autosize approach
+         *  cached state across setText and never grew back). If nothing in
+         *  the range fits, returns `wordMinSp` and lets the TextView's
+         *  ellipsize handle the overflow. */
+        private fun fitWordSize(text: String): Float {
+            if (text.isEmpty()) return wordMaxSp
+            val availablePx = leftPanelW.toFloat()
+            if (availablePx <= 0f) return wordMaxSp
+            var lo = wordMinSp.toInt()
+            var hi = wordMaxSp.toInt()
+            var best = lo
+            while (lo <= hi) {
+                val mid = (lo + hi) ushr 1
+                wordSizingPaint.textSize = mid * density
+                if (wordSizingPaint.measureText(text) <= availablePx) {
+                    best = mid
+                    lo = mid + 1
+                } else {
+                    hi = mid - 1
+                }
+            }
+            return best.toFloat()
         }
 
         fun setDefinitions(data: MagnifierLens.LensDefinitionData?, label: String?) {
