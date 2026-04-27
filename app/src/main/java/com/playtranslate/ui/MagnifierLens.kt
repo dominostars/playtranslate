@@ -12,8 +12,10 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.SystemClock
 import android.text.TextUtils
 import android.util.TypedValue
+import android.view.GestureDetector
 import android.view.Gravity
 import android.view.InputDevice
 import android.view.MotionEvent
@@ -426,7 +428,7 @@ class MagnifierLens(
                 marginEnd = dp(4f)
             }
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setOnClickListener { onOpenTap() }
+            setOnClickListener { fireOpenTap() }
         }
         private val definitionsPanel = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -479,6 +481,47 @@ class MagnifierLens(
                 0f, 0f, lensW.toFloat(), lensH.toFloat(),
                 cornerR, cornerR, Path.Direction.CW,
             )
+        }
+
+        /** Single source of truth for "user tapped to open the detail
+         *  view." Both the open button's onClick and the lens-wide
+         *  gesture detector route through here, debounced so a tap that
+         *  lands on the open button can't fire twice (button click +
+         *  bubbled-up gesture detection on the same UP). */
+        private var lastOpenTapMs = 0L
+        private fun fireOpenTap() {
+            val now = SystemClock.uptimeMillis()
+            if (now - lastOpenTapMs < 300L) return
+            lastOpenTapMs = now
+            onOpenTap()
+        }
+
+        // Tap-anywhere-to-open detector. SimpleOnGestureListener.
+        // onSingleTapUp fires only when the gesture is a confirmed single
+        // tap — DOWN/UP without movement past the system touch slop — so
+        // scrolling the definitions ScrollView (movement past slop) won't
+        // fire it. The detector observes events from dispatchTouchEvent
+        // (see below) without consuming them, so the ScrollView still
+        // gets to scroll and the open button still gets its ripple. We
+        // intentionally don't override onDown(true): SimpleOnGestureListener's
+        // onDown=false is fine for SingleTapUp delivery; returning true
+        // would only matter for double-tap / long-press.
+        private val tapDetector = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapUp(e: MotionEvent): Boolean {
+                fireOpenTap()
+                return false
+            }
+        })
+
+        /** Observe (don't consume) every touch when the lens is in
+         *  sticky-definitions mode so a tap anywhere inside the lens
+         *  fires the same action as the open button. ZOOM-mode dispatch
+         *  is unchanged — the lens window has FLAG_NOT_TOUCHABLE during
+         *  drag, so events don't reach this method anyway. */
+        override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+            val handled = super.dispatchTouchEvent(ev)
+            if (isInteractive) tapDetector.onTouchEvent(ev)
+            return handled
         }
 
         fun setSourceBitmap(bitmap: Bitmap?) {
