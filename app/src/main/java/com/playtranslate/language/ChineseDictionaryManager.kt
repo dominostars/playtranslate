@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.util.Log
+import com.hankcs.hanlp.dictionary.CustomDictionary
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.DictionaryResponse
 import com.playtranslate.model.Headword
@@ -29,7 +30,78 @@ class ChineseDictionaryManager private constructor(private val context: Context)
     private var db: SQLiteDatabase? = null
     private val mutex = Mutex()
 
+    @Volatile private var customDictInjected = false
+    private val customDictMutex = Mutex()
+
     suspend fun preload() = ensureOpen()
+
+    /**
+     * Walks every length-≥2 headword in the open pack and adds it to
+     * HanLP's [CustomDictionary] runtime BinTrie. Idempotent across
+     * calls; cheap to invoke from [ChineseEngine.preload] regardless
+     * of warm/cold state.
+     *
+     * Why we need this: HanLP portable-1.8.4 ships only the *mini*
+     * CoreNatureDictionary, which doesn't know modern compounds like
+     * 赋能 / 用户体验 / 用户名 — HanLP segments them into single chars
+     * even on whitespace-clean input, and the downstream dict.sqlite
+     * lookup never sees the compound surface. Augmenting HanLP's
+     * runtime trie with every CC-CEDICT headword (already in
+     * dict.sqlite) closes the gap without rebuilding the pack.
+     *
+     * Why runtime instead of the pack's CustomDictionary.txt: HanLP
+     * ships its CustomDictionary as a precompiled .txt.bin only — the
+     * .txt source isn't recoverable. Replacing the .bin with one
+     * derived from CC-CEDICT loses HanLP's curated everyday compounds
+     * (很好, 魔法石, …). Adding via [CustomDictionary.add] populates
+     * a separate runtime BinTrie that ViterbiSegment consults
+     * alongside the static DAT, so neither set is displaced.
+     *
+     * Why skip single-char entries: HanLP's CoreNatureDictionary
+     * already covers single hanzi with carefully tuned frequencies,
+     * and adding our own with a uniform freq distorts Viterbi enough
+     * to split known compounds (e.g. 很好 → 很 + 好). Single-char
+     * dictionary lookups still resolve via [lookup] regardless.
+     *
+     * Pack-lifecycle note: the [customDictInjected] guard is keyed to
+     * the no-in-process-pack-refresh policy (project_pack_update_policy.md).
+     * If that policy ever loosens — hasUpdate(), background refresh, or
+     * any path that swaps pack content while the process is live — this
+     * needs a reset on uninstall AND a remove() pass for stale words,
+     * because HanLP's runtime BinTrie is JVM-global.
+     */
+    suspend fun injectCustomDictEntriesOnce() {
+        if (customDictInjected) return
+        customDictMutex.withLock {
+            if (customDictInjected) return@withLock
+            withContext(Dispatchers.IO) {
+                val database = ensureOpen() ?: return@withContext
+                val started = System.currentTimeMillis()
+                var added = 0
+                database.rawQuery(
+                    "SELECT DISTINCT h.text, e.freq_score FROM headword h " +
+                        "JOIN entry e ON e.id = h.entry_id WHERE LENGTH(h.text) >= 2",
+                    null,
+                ).use { c ->
+                    while (c.moveToNext()) {
+                        val word = c.getString(0) ?: continue
+                        val freq = maxOf(1, c.getInt(1))
+                        // HanLP's add() takes either a bare word (assumed
+                        // n 1) or a word + nature/freq spec. Use "n <freq>"
+                        // so freq carries through; POS isn't read
+                        // anywhere in the app.
+                        CustomDictionary.add(word, "n $freq")
+                        added++
+                    }
+                }
+                Log.d(
+                    TAG,
+                    "Injected $added CC-CEDICT entries into HanLP CustomDictionary in ${System.currentTimeMillis() - started} ms",
+                )
+                customDictInjected = true
+            }
+        }
+    }
 
     suspend fun lookup(surface: String, preferTraditional: Boolean = false): DictionaryResponse? = withContext(Dispatchers.IO) {
         val database = ensureOpen() ?: return@withContext null
