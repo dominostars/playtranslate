@@ -1086,7 +1086,7 @@ class WordDetailBottomSheet : DialogFragment() {
 
         col.addView(TextView(ctx).apply {
             text = glossList.joinToString("; ")
-            textSize = 16f
+            textSize = 18f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             setTextColor(ctx.themeColor(R.attr.ptText))
             layoutParams = LinearLayout.LayoutParams(
