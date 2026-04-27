@@ -401,14 +401,37 @@ class DragLookupController(
         lastY = rawY
         val screen = queryScreenSize()
         magnifier.show(rawX.toInt(), rawY.toInt(), screen.x, screen.y)
-        val currentHit = detectLabelTokenAt(rawX.toInt(), rawY.toInt())
+        refreshLabelAndDwell()
+    }
+
+    /** Re-evaluate the token under the finger at the current [lastX]/[lastY],
+     *  refresh the lens label, and (re-)arm the dwell timer.
+     *
+     *  Called from [onDragMove] for every ACTION_MOVE event AND from
+     *  [pretokenizeLines] each time the cache is republished. The second
+     *  call site is what keeps the dwell preview working when OCR / cache
+     *  state lands AFTER the user has already stopped moving — without
+     *  it, the last onDragMove ran with `currentHit == null`, no timer
+     *  was scheduled, and the user holds still forever waiting for the
+     *  inline definitions to appear.
+     *
+     *  No-op when the drag has ended; pretokenizeLines may continue to
+     *  publish briefly between cancellation request and the coroutine
+     *  actually exiting at its next suspension point. */
+    private fun refreshLabelAndDwell() {
+        if (!dragInProgress) return
+        val currentHit = detectLabelTokenAt(lastX.toInt(), lastY.toInt())
         magnifier.setLabel(currentHit?.token?.lookupForm, currentHit?.token?.reading)
 
         // Dwell tracking: reset on movement past tolerance OR when the
         // token under the finger changes (rare — different word at the
-        // same physical position, e.g. when scrolling text).
-        val dx = rawX - dwellAnchorX
-        val dy = rawY - dwellAnchorY
+        // same physical position, e.g. when scrolling text). When called
+        // from pretokenize after the finger stopped moving, dx/dy are 0
+        // and the reset is driven entirely by anchorKey != currentKey:
+        // anchor was null pre-cache, becomes non-null post-cache, so we
+        // arm the timer for the first time.
+        val dx = lastX - dwellAnchorX
+        val dy = lastY - dwellAnchorY
         val movedFar = (dx * dx + dy * dy) > dwellTolerancePx * dwellTolerancePx
         val anchorKey = dwellAnchorToken?.let { it.line.text to it.token.charOffset }
         val currentKey = currentHit?.let { it.line.text to it.token.charOffset }
@@ -421,8 +444,8 @@ class DragLookupController(
             // Definitions panel was visible if dwell already fired; revert
             // the lens to ZOOM mode for the new anchor.
             magnifier.setDefinitions(null, null)
-            dwellAnchorX = rawX
-            dwellAnchorY = rawY
+            dwellAnchorX = lastX
+            dwellAnchorY = lastY
             dwellAnchorToken = currentHit
         }
         // Schedule the dwell timer only when we're over a word and not
@@ -583,6 +606,10 @@ class DragLookupController(
             // (onDragMove) and writer run on the controller's Main scope,
             // so the shared mutable map is safe to share by reference.
             lineTokensCache = cache
+            // Re-evaluate at the finger's last position. If the user
+            // stopped moving before this line's cache landed, this is
+            // what arms the dwell timer that onDragMove couldn't.
+            refreshLabelAndDwell()
         }
 
         // Phase 2: per-unique-lookupForm canonicalization.
@@ -614,6 +641,9 @@ class DragLookupController(
                 if (dirty) cache[lineText] = patched
             }
             lineTokensCache = cache
+            // Phase 2 patches the label's lookupForm/reading; refresh so
+            // the visible label upgrades to the canonical form mid-drag.
+            refreshLabelAndDwell()
         }
     }
 
