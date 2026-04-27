@@ -35,10 +35,13 @@ class MagnifierLens(
 
     private val pillW = dp(220f)
     private val pillH = dp(110f)
-    /** Distance in px between finger center and the near edge of the pill.
-     *  Sized to clear the floating icon (≈80dp diameter, half = 40dp). */
-    private val verticalMarginPx = dp(50f)
+    /** Distance in px between finger center and the near edge of the pill. */
+    private val verticalMarginPx = dp(25f)
     private val zoom = 2f
+    /** How far the lens may slide off the top of the screen before we flip
+     *  it below the finger. Tolerating some clipping avoids a jarring flip
+     *  the instant the lens touches the top edge. */
+    private val topOverhangTolerancePx = pillH / 5
 
     private var lensView: LensView? = null
     private var params: WindowManager.LayoutParams? = null
@@ -55,12 +58,12 @@ class MagnifierLens(
         val view = lensView ?: return
         val p = params ?: return
 
-        view.setSourcePoint(fingerX.toFloat(), fingerY.toFloat())
+        view.setSourcePoint(fingerX.toFloat(), fingerY.toFloat(), screenW, screenH)
         view.visibility = View.VISIBLE
 
         val x = (fingerX - pillW / 2).coerceIn(0, (screenW - pillW).coerceAtLeast(0))
         val aboveY = fingerY - verticalMarginPx - pillH
-        val y = if (aboveY >= 0) {
+        val y = if (aboveY >= -topOverhangTolerancePx) {
             aboveY
         } else {
             (fingerY + verticalMarginPx).coerceAtMost((screenH - pillH).coerceAtLeast(0))
@@ -125,8 +128,12 @@ class MagnifierLens(
             style = Paint.Style.STROKE
             strokeWidth = borderPx
         }
-        private val placeholderPaint = Paint().apply {
-            color = Color.parseColor("#33000000")
+        // Painted under the zoom every frame so the parts of the lens that
+        // would otherwise sample outside the source bitmap (finger near a
+        // screen edge, or before the screenshot lands) read as solid black
+        // instead of revealing the screen behind the lens window.
+        private val backgroundPaint = Paint().apply {
+            color = Color.BLACK
             style = Paint.Style.FILL
         }
         private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
@@ -139,15 +146,23 @@ class MagnifierLens(
         private var sourceBitmap: Bitmap? = null
         private var sourceX = 0f
         private var sourceY = 0f
+        // Screen dimensions used as the in/out-screenshot boundary while the
+        // bitmap hasn't landed yet. The boundary is the same as the bitmap's
+        // own bounds once it arrives (screenshots are display-sized), so the
+        // lens can mark off-screen regions black even before OCR runs.
+        private var sourceScreenW = 0
+        private var sourceScreenH = 0
 
         fun setSourceBitmap(bitmap: Bitmap?) {
             sourceBitmap = bitmap
             invalidate()
         }
 
-        fun setSourcePoint(x: Float, y: Float) {
+        fun setSourcePoint(x: Float, y: Float, screenW: Int, screenH: Int) {
             sourceX = x
             sourceY = y
+            sourceScreenW = screenW
+            sourceScreenH = screenH
             invalidate()
         }
 
@@ -162,27 +177,55 @@ class MagnifierLens(
             canvas.clipPath(clipPath)
 
             val bitmap = sourceBitmap
-            if (bitmap != null && !bitmap.isRecycled) {
-                val srcW = (pillW / zoom).toInt().coerceAtLeast(1)
-                val srcH = (pillH / zoom).toInt().coerceAtLeast(1)
-                val cx = sourceX.toInt()
-                val cy = sourceY.toInt()
-                srcRect.set(
-                    cx - srcW / 2,
-                    cy - srcH / 2,
-                    cx - srcW / 2 + srcW,
-                    cy - srcH / 2 + srcH,
-                )
-                dstRect.set(0f, 0f, w, h)
-                if (srcRect.right > 0 && srcRect.bottom > 0 &&
-                    srcRect.left < bitmap.width && srcRect.top < bitmap.height
-                ) {
+            // Boundary is the bitmap once it arrives, otherwise the screen
+            // size — they match for full-display screenshots, so the in/out
+            // partition is consistent before and after the bitmap lands.
+            val boundsW = if (bitmap != null && !bitmap.isRecycled) bitmap.width else sourceScreenW
+            val boundsH = if (bitmap != null && !bitmap.isRecycled) bitmap.height else sourceScreenH
+
+            val srcW = (pillW / zoom).toInt().coerceAtLeast(1)
+            val srcH = (pillH / zoom).toInt().coerceAtLeast(1)
+            val cx = sourceX.toInt()
+            val cy = sourceY.toInt()
+            val srcLeft = cx - srcW / 2
+            val srcTop = cy - srcH / 2
+            val srcRight = srcLeft + srcW
+            val srcBottom = srcTop + srcH
+
+            // Compute the in-screenshot slice (in source coords, then
+            // mapped to dst). Anything outside this slice is "outside the
+            // screenshot" and gets painted black; the in-slice stays
+            // transparent so the live screen shows through until the
+            // bitmap is ready, and shows the zoomed bitmap once it lands.
+            val cSrcLeft = srcLeft.coerceAtLeast(0)
+            val cSrcTop = srcTop.coerceAtLeast(0)
+            val cSrcRight = srcRight.coerceAtMost(boundsW)
+            val cSrcBottom = srcBottom.coerceAtMost(boundsH)
+
+            val haveInSlice = cSrcLeft < cSrcRight && cSrcTop < cSrcBottom
+            if (haveInSlice) {
+                val srcWf = srcW.toFloat()
+                val srcHf = srcH.toFloat()
+                val dstInLeft = w * (cSrcLeft - srcLeft) / srcWf
+                val dstInTop = h * (cSrcTop - srcTop) / srcHf
+                val dstInRight = w * (cSrcRight - srcLeft) / srcWf
+                val dstInBottom = h * (cSrcBottom - srcTop) / srcHf
+
+                // Black out the four strips around the in-slice.
+                if (dstInTop > 0f) canvas.drawRect(0f, 0f, w, dstInTop, backgroundPaint)
+                if (dstInBottom < h) canvas.drawRect(0f, dstInBottom, w, h, backgroundPaint)
+                if (dstInLeft > 0f) canvas.drawRect(0f, dstInTop, dstInLeft, dstInBottom, backgroundPaint)
+                if (dstInRight < w) canvas.drawRect(dstInRight, dstInTop, w, dstInBottom, backgroundPaint)
+
+                if (bitmap != null && !bitmap.isRecycled) {
+                    srcRect.set(cSrcLeft, cSrcTop, cSrcRight, cSrcBottom)
+                    dstRect.set(dstInLeft, dstInTop, dstInRight, dstInBottom)
                     canvas.drawBitmap(bitmap, srcRect, dstRect, bitmapPaint)
-                } else {
-                    canvas.drawRect(0f, 0f, w, h, placeholderPaint)
                 }
             } else {
-                canvas.drawRect(0f, 0f, w, h, placeholderPaint)
+                // Source rect entirely outside the screenshot — whole lens
+                // is "outside" and reads as black.
+                canvas.drawRect(0f, 0f, w, h, backgroundPaint)
             }
 
             canvas.restore()
