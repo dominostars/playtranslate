@@ -425,13 +425,28 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                 velocityTracker?.recycle()
                 velocityTracker = null
 
+                // Capture before exitDragMode clears it. dragStartFired is the
+                // canonical "this gesture became a drag" signal — totalMovement
+                // can't be trusted here because the drag-start logic rebases
+                // downRawX/Y to the finger position when crossing the tap
+                // threshold, so a user who barely moves past the threshold and
+                // then releases ends up with totalMovement below it again.
+                // Without this capture, the ACTION_UP would take the onTap
+                // branch and skip onDragEnd, leaving the magnifier on screen.
+                val wasDragStarted = dragStartFired
                 exitDragMode()
                 removeCallbacks(holdRunnable)
 
                 // Check both the flag AND elapsed time — the holdRunnable may
                 // not have executed yet if the main thread was busy.
                 val heldLongEnough = event.eventTime - event.downTime >= holdDelayMs
-                if (holdFired || (heldLongEnough && totalMovement < tapThresholdPx)) {
+                if (wasDragStarted) {
+                    if (onDragEnd?.invoke() == true) {
+                        restorePosition()
+                    } else {
+                        snapToEdge(lastXVel, lastYVel)
+                    }
+                } else if (holdFired || (heldLongEnough && totalMovement < tapThresholdPx)) {
                     holdFired = false
                     val p = params
                     if (p != null) {
@@ -442,10 +457,6 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                     onHoldEnd?.invoke()
                 } else if (totalMovement < tapThresholdPx) {
                     onTap?.invoke()
-                } else if (onDragEnd?.invoke() == true) {
-                    restorePosition()
-                } else {
-                    snapToEdge(lastXVel, lastYVel)
                 }
                 return true
             }
