@@ -515,13 +515,27 @@ class DragLookupController(
      *  synchronously during onDragMove. Called from the OCR coroutine
      *  after recognition completes.
      *
-     *  Each token is resolved through the dictionary via [engine.lookup]
-     *  so the cached `lookupForm` matches the JMdict-canonical headword
-     *  (e.g. "住む" for the 住んで surface span), not whatever kuromoji's
-     *  baseForm happens to produce or whatever the n-gram phrase match
-     *  pinned the lookupForm to. Without this, the lens label during
-     *  drag and the dictionary panel after dwell could disagree on the
-     *  word's form.
+     *  Two phases for speed + correctness:
+     *
+     *  **Phase 1** — kuromoji tokenize per line, cache the surface span /
+     *  base form / surface-form reading. Cheap (single-digit ms per line)
+     *  so the label can appear under the finger almost immediately after
+     *  OCR finishes. Surface-form readings are sometimes wrong for
+     *  inflected verbs/adjectives — kuromoji tags 住ん with reading スン
+     *  even though the base form 住む reads すむ — and sometimes absent
+     *  (n-gram phrase matches in `tokenizeWithSurfaces` carry null
+     *  readings).
+     *
+     *  **Phase 2** — canonicalize each unique lookupForm against the
+     *  dictionary. Per-form (not per-token) dedupe is the key cost
+     *  control: a screen with 240 tokens commonly has ~50 unique
+     *  lookupForms, so we pay 50 SQLite queries instead of 240. Each
+     *  resolved form patches every cache entry that uses it — fixes both
+     *  the wrong-reading case (replaces kuromoji's surface reading with
+     *  JMdict's lemma reading) and the missing-reading case (fills in
+     *  what tokenizeWithSurfaces left null). Reader (onDragMove) re-reads
+     *  the cache on every tick so the label updates in place as Phase 2
+     *  progresses.
      *
      *  Re-throws [CancellationException] before the generic catch so a
      *  cancelled drag's coroutine actually exits without overwriting
@@ -533,6 +547,8 @@ class DragLookupController(
         val service = PlayTranslateAccessibilityService.instance ?: return
         val engine = SourceLanguageEngines.get(service, Prefs(service).sourceLangId)
         val cache = mutableMapOf<String, List<LabelToken>>()
+
+        // Phase 1: kuromoji-only pass.
         for (line in lines) {
             if (line.text.isEmpty() || cache.containsKey(line.text)) continue
             try {
@@ -542,25 +558,15 @@ class DragLookupController(
                 for (r in results) {
                     val idx = line.text.indexOf(r.surface, pos)
                     if (idx < 0) continue
-                    // Resolve to the JMdict canonical headword so the
-                    // cached form matches what the dictionary panel would
-                    // show after dwell. Without this, a verb conjugation
-                    // like 住んで shows the kuromoji surface in the lens
-                    // label during drag, then flips to 住む once the
-                    // dwell-triggered DefinitionResolver.lookup runs.
-                    val (resolvedWord, resolvedReading) = resolveHeadword(
-                        engine, r.lookupForm, r.reading,
-                    )
                     // Same "show reading when it adds info" gate the
                     // popup applies internally: drop blanks, drop reading
                     // equal to the word, drop readings for words with no
                     // kanji (kuromoji can return a katakana reading for
                     // a hiragana word, etc.).
-                    val reading = resolvedReading
-                        ?.takeIf { readingAddsInfo(resolvedWord, it) }
+                    val reading = r.reading?.takeIf { readingAddsInfo(r.lookupForm, it) }
                     labels += LabelToken(
                         surface = r.surface,
-                        lookupForm = resolvedWord,
+                        lookupForm = r.lookupForm,
                         reading = reading,
                         charOffset = idx,
                     )
@@ -570,46 +576,45 @@ class DragLookupController(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.w(TAG, "pretokenize failed for line: ${e.message}")
+                Log.w(TAG, "pretokenize phase 1 failed for line: ${e.message}")
             }
-            // Publish progressively so labels for already-resolved lines
-            // become hit-testable without waiting for the rest. Per-token
-            // engine.lookup is on IO but each line is sequential here, so
-            // dense screens (many lines × many tokens) can take hundreds
-            // of ms total — incremental publish removes the all-or-nothing
-            // wait window. Both reader (onDragMove) and writer
-            // (pretokenizeLines) run on the controller's Main scope, so
-            // the shared mutable map is safe to share by reference; the
-            // assignment is just a republish of the same handle to make
-            // the intent obvious.
+            // Publish progressively so labels for earlier lines become
+            // hit-testable without waiting for the rest. Both reader
+            // (onDragMove) and writer run on the controller's Main scope,
+            // so the shared mutable map is safe to share by reference.
             lineTokensCache = cache
         }
-    }
 
-    /** Single source of truth for "given a kuromoji-derived (lookupForm,
-     *  reading), what does the dictionary call this word?". Both the
-     *  pretokenize cache and the post-dwell definitions panel should
-     *  agree on the answer; collapsing the resolution into one helper
-     *  keeps them in lockstep.
-     *
-     *  Falls back to the input pair when the dictionary has no entry —
-     *  proper-name / unknown word case. */
-    private suspend fun resolveHeadword(
-        engine: com.playtranslate.language.SourceLanguageEngine,
-        lookupForm: String,
-        reading: String?,
-    ): Pair<String, String?> {
-        val response = try {
-            engine.lookup(lookupForm, reading)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            null
+        // Phase 2: per-unique-lookupForm canonicalization.
+        val uniqueForms = LinkedHashSet<String>()
+        for (tokens in cache.values) for (t in tokens) uniqueForms.add(t.lookupForm)
+        for (form in uniqueForms) {
+            val (canonicalWord, canonicalReading) = try {
+                val head = engine.lookup(form, null)?.entries?.firstOrNull()
+                    ?.headwords?.firstOrNull()
+                if (head != null) (head.written ?: head.reading ?: form) to head.reading
+                else continue  // not in dict — leave Phase 1 entry as-is
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "pretokenize phase 2 failed for $form: ${e.message}")
+                continue
+            }
+            val gatedReading = canonicalReading?.takeIf { readingAddsInfo(canonicalWord, it) }
+            for ((lineText, tokens) in cache.toMap()) {
+                var dirty = false
+                val patched = tokens.map { t ->
+                    if (t.lookupForm == form &&
+                        (t.lookupForm != canonicalWord || t.reading != gatedReading)
+                    ) {
+                        dirty = true
+                        t.copy(lookupForm = canonicalWord, reading = gatedReading)
+                    } else t
+                }
+                if (dirty) cache[lineText] = patched
+            }
+            lineTokensCache = cache
         }
-        val head = response?.entries?.firstOrNull()?.headwords?.firstOrNull()
-            ?: return lookupForm to reading
-        val word = head.written ?: head.reading ?: lookupForm
-        return word to head.reading
     }
 
     /** True when [reading] adds information beyond [word] — non-blank,
