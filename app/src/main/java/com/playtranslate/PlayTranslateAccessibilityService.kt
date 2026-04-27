@@ -224,12 +224,16 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         }
     }
 
-    /** Unregister and call [WindowManager.removeView]. Safe if the view
-     *  was never registered (silent no-op). */
-    fun removeOverlayWindow(view: View) {
-        val handle = overlayWindows.firstOrNull { it.view === view } ?: return
+    /** Unregister and call [WindowManager.removeView]. Returns true if the
+     *  view was registered (and thus removed). Returns false if the view was
+     *  never registered — the static [removeOverlay] uses this to fall back
+     *  to a direct removeView for windows that were added before the service
+     *  connected. */
+    fun removeOverlayWindow(view: View): Boolean {
+        val handle = overlayWindows.firstOrNull { it.view === view } ?: return false
         overlayWindows -= handle
         try { handle.wm.removeView(view) } catch (_: Exception) {}
+        return true
     }
 
     /** Opaque snapshot returned by [prepareForCleanCapture]. */
@@ -1637,12 +1641,14 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         }
 
         fun removeOverlay(view: View, wm: WindowManager) {
-            val svc = instance
-            if (svc != null) {
-                svc.removeOverlayWindow(view)
-            } else {
-                try { wm.removeView(view) } catch (_: Exception) {}
-            }
+            // If the service is connected and the view is in the registry,
+            // removeOverlayWindow handles both unregister + removeView. If
+            // the view was added via the no-service fallback path of
+            // [addOverlay] (service connected later), it's not in the
+            // registry — fall through to a direct removeView so the window
+            // doesn't leak.
+            if (instance?.removeOverlayWindow(view) == true) return
+            try { wm.removeView(view) } catch (_: Exception) {}
         }
     }
 }

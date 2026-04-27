@@ -456,8 +456,17 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                 if (holdFired) { holdFired = false; onHoldEnd?.invoke() }
                 val wasInDrag = inDragMode
                 exitDragMode()
-                snapToEdge(0f, 0f)
-                if (wasInDrag) onDragCancel?.invoke()
+                if (wasInDrag) {
+                    // System-driven cancellation (focus loss, parent intercept).
+                    // Revert to the icon's pre-gesture position rather than
+                    // snapping to an edge — the user didn't pick a new spot,
+                    // so an interrupted drag shouldn't reposition their icon
+                    // as a side effect.
+                    restorePosition()
+                    onDragCancel?.invoke()
+                } else {
+                    snapToEdge(0f, 0f)
+                }
                 return true
             }
         }
