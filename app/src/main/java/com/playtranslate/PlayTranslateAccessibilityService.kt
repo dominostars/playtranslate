@@ -1050,14 +1050,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             }
         }
 
-        popup.onDismiss = {
-            controller.onPopupDismissed()
-            // Resume only if drag is finished (not mid-drag word change).
-            // If the user is still dragging, resumption waits for onDragEnd.
-            if (!icon.inDragMode) {
-                restoreRegionOverlay()
-                resumeLiveMode()
-            }
+        // The controller fires onSettled from every "drag flow done, no popup
+        // pending" path: drag end with no OCR / no hit / async lookup miss,
+        // popup dismissed post-drag, and gesture cancel. The restore lambdas
+        // are idempotent (gated on overlayHiddenForDrag / liveWasPausedForPopup).
+        controller.onSettled = {
+            restoreRegionOverlay()
+            resumeLiveMode()
         }
         icon.onDragStart = {
             // Hide region preview so the user can see game text while dragging
@@ -1080,15 +1079,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             controller.onDragStart()
         }
         icon.onDragMove = { rawX, rawY -> controller.onDragMove(rawX, rawY) }
-        icon.onDragEnd = {
-            val popupShowing = controller.onDragEnd()
-            // If no popup visible on lift, restore immediately
-            if (!popupShowing) {
-                restoreRegionOverlay()
-                resumeLiveMode()
-            }
-            popupShowing
-        }
+        icon.onDragEnd = { controller.onDragEnd() }
+        icon.onDragCancel = { controller.cancelDrag() }
         icon.onHoldCancel = { CaptureService.instance?.holdCancel() }
         icon.onHoldStart  = { CaptureService.instance?.holdStart() }
         icon.onHoldEnd    = { CaptureService.instance?.holdEnd() }

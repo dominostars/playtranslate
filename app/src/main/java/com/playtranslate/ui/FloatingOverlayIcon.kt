@@ -168,6 +168,11 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     var onDragMove: ((Float, Float) -> Unit)? = null
     /** Called on ACTION_UP after a drag. Return true if popup is active (icon returns to saved pos). */
     var onDragEnd: (() -> Boolean)? = null
+    /** Called on ACTION_CANCEL while a drag was active — system cancellation
+     *  (focus loss, parent intercept, etc.). Drag teardown for the gesture
+     *  goes through here instead of [onDragEnd] so no lift-time lookup runs
+     *  and the controller can fire its settle callback for state restore. */
+    var onDragCancel: (() -> Unit)? = null
     /** Called when the user holds the icon without moving (long press). */
     var onHoldStart: (() -> Unit)? = null
     /** Called when the user lifts after a hold (without having dragged). */
@@ -449,8 +454,10 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                 velocityTracker = null
                 removeCallbacks(holdRunnable)
                 if (holdFired) { holdFired = false; onHoldEnd?.invoke() }
+                val wasInDrag = inDragMode
                 exitDragMode()
                 snapToEdge(0f, 0f)
+                if (wasInDrag) onDragCancel?.invoke()
                 return true
             }
         }
