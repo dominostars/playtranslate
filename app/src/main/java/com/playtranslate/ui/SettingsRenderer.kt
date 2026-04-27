@@ -265,8 +265,13 @@ class SettingsRenderer(
                 return@setOnCheckedChangeListener
             }
             prefs.showOverlayIcon = checked
-            if (checked) OverlayHost.current?.ensureFloatingIcon()
-            else OverlayHost.current?.hideFloatingIcon("settings_toggle_off")
+            if (checked) {
+                OverlayHost.current?.ensureFloatingIcon()
+            } else if (prefs.isMediaProjectionMode) {
+                CaptureService.instance?.stopProjection()
+            } else {
+                OverlayHost.current?.hideFloatingIcon("settings_toggle_off")
+            }
             refreshOnScreenControlsTint(isSingle)
         }
         rowOverlayIcon.setOnClickListener { switchOverlayIcon.toggle() }

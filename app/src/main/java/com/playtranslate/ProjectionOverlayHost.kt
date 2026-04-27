@@ -34,7 +34,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.util.concurrent.Executors
 import kotlin.coroutines.resume
@@ -63,13 +62,14 @@ private const val TAG = "ProjectionOverlay"
 class ProjectionOverlayHost private constructor(
     private val service: CaptureService,
     private val projection: MediaProjection,
-    private val captureWidth: Int,
-    private val captureHeight: Int,
-    private val captureDpi: Int,
+    private var captureWidth: Int,
+    private var captureHeight: Int,
+    private var captureDpi: Int,
 ) : OverlayHost, ScreenshotProvider {
 
     private val context: Context = service
     private val main = Handler(Looper.getMainLooper())
+    private val displayManager = context.getSystemService(DisplayManager::class.java)
 
     // ── Capture (VirtualDisplay + ImageReader) ───────────────────────────
 
@@ -79,6 +79,7 @@ class ProjectionOverlayHost private constructor(
 
     private var imageReader: ImageReader? = null
     private var virtualDisplay: VirtualDisplay? = null
+    private var stopped = false
 
     /** Latest captured image (raw RGBA, owned by [imageReader]). */
     @Volatile private var latestImage: Image? = null
@@ -96,11 +97,20 @@ class ProjectionOverlayHost private constructor(
         }
     }
 
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) = Unit
+        override fun onDisplayRemoved(displayId: Int) = Unit
+        override fun onDisplayChanged(displayId: Int) {
+            if (displayId == Display.DEFAULT_DISPLAY) main.post { handlePrimaryDisplayChanged() }
+        }
+    }
+
     init {
         // Android 14+ requires the callback to be registered BEFORE
         // createVirtualDisplay or it throws SecurityException.
         projection.registerCallback(projectionCallback, main)
         setupVirtualDisplay()
+        displayManager?.registerDisplayListener(displayListener, main)
     }
 
     private fun setupVirtualDisplay() {
@@ -126,6 +136,38 @@ class ProjectionOverlayHost private constructor(
             /* callback = */ null,
             captureHandler,
         )
+    }
+
+    private fun recreateVirtualDisplay(width: Int, height: Int, dpi: Int) {
+        try { virtualDisplay?.release() } catch (_: Exception) {}
+        virtualDisplay = null
+        try { imageReader?.close() } catch (_: Exception) {}
+        imageReader = null
+        synchronized(imageLock) {
+            latestImage?.close()
+            latestImage = null
+        }
+        captureWidth = width
+        captureHeight = height
+        captureDpi = dpi
+        setupVirtualDisplay()
+        lastCaptureTimeMs = 0L
+    }
+
+    private fun handlePrimaryDisplayChanged() {
+        if (stopped) return
+        val display = displayManager?.getDisplay(Display.DEFAULT_DISPLAY) ?: return
+        val (w, h, dpi) = primaryDisplayMetrics(display)
+        val sizeChanged = w != captureWidth || h != captureHeight || dpi != captureDpi
+        if (sizeChanged) {
+            Log.i(TAG, "Primary display changed: ${captureWidth}x$captureHeight@$captureDpi -> ${w}x$h@$dpi")
+            recreateVirtualDisplay(w, h, dpi)
+            hideTranslationOverlay()
+            service.refreshLiveOverlay()
+        }
+        if (Prefs(context).showOverlayIcon) {
+            showFloatingIconInternal(display, Prefs(context))
+        }
     }
 
     // ── ScreenshotProvider ───────────────────────────────────────────────
@@ -263,6 +305,7 @@ class ProjectionOverlayHost private constructor(
             latestImage?.close()
             latestImage = null
         }
+        try { displayManager?.unregisterDisplayListener(displayListener) } catch (_: Exception) {}
         try { projection.unregisterCallback(projectionCallback) } catch (_: Exception) {}
         try { projection.stop() } catch (_: Exception) {}
         captureThread.quitSafely()
@@ -286,7 +329,12 @@ class ProjectionOverlayHost private constructor(
         // Projection mode supports primary display only for the icon.
         val display = context.getSystemService(DisplayManager::class.java)
             ?.getDisplay(Display.DEFAULT_DISPLAY) ?: return
-        if (floatingIcon != null && floatingIconDisplayId == display.displayId) return
+        if (floatingIcon != null && floatingIconDisplayId == display.displayId) {
+            val icon = floatingIcon ?: return
+            icon.setPosition(prefs.overlayIconEdge, prefs.overlayIconFraction)
+            try { floatingIconWm?.updateViewLayout(icon, icon.params) } catch (_: Exception) {}
+            return
+        }
         showFloatingIconInternal(display, prefs)
     }
 
@@ -297,6 +345,7 @@ class ProjectionOverlayHost private constructor(
 
         val icon = FloatingOverlayIcon(displayCtx).apply {
             this.wm = wm
+            windowType = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             compactMode = prefs.compactOverlayIcon
         }
 
@@ -353,12 +402,13 @@ class ProjectionOverlayHost private constructor(
 
     override fun hideFloatingIcon(reason: String) {
         Log.i(TAG, "hideFloatingIcon: $reason")
+        dismissFloatingMenu()
         floatingIcon?.destroy()
         try { floatingIcon?.let { floatingIconWm?.removeView(it) } } catch (_: Exception) {}
         floatingIcon = null
         floatingIconWm = null
         floatingIconDisplayId = -1
-        service.updateForegroundState()
+        if (reason != "recreating") service.updateForegroundState()
     }
 
     override fun getFloatingIconRect(): Rect? {
@@ -410,20 +460,16 @@ class ProjectionOverlayHost private constructor(
         menu.onHideIcon = {
             dismissFloatingMenu()
             prefs.showOverlayIcon = false
-            hideFloatingIcon("menu_turn_off")
+            service.stopProjection()
         }
         menu.onHideTemporary = {
             dismissFloatingMenu()
-            hideFloatingIcon("menu_hide_temporary")
+            service.stopProjection()
         }
         menu.onCloseRequested = {
-            // The Hide button: drop the floating icon but keep the
-            // projection alive so the user can bring the icon back from
-            // Settings without re-granting consent. Persists the pref so
-            // the icon doesn't auto-reappear on the next service start.
             dismissFloatingMenu()
             prefs.showOverlayIcon = false
-            hideFloatingIcon("menu_hide")
+            service.stopProjection()
         }
         menu.onDismiss = {
             val needsRefresh = floatingMenu != null && service.isLive
@@ -466,7 +512,7 @@ class ProjectionOverlayHost private constructor(
             dismissFloatingMenu()
             val launch = Intent(context, MainActivity::class.java).apply {
                 action = MainActivity.ACTION_ADD_CUSTOM_REGION
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
             context.startActivity(launch)
         }
@@ -474,7 +520,7 @@ class ProjectionOverlayHost private constructor(
             dismissFloatingMenu()
             val launch = Intent(context, MainActivity::class.java).apply {
                 action = MainActivity.ACTION_OPEN_SETTINGS
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
             context.startActivity(launch)
         }
@@ -528,8 +574,6 @@ class ProjectionOverlayHost private constructor(
     private var translationOverlayView: TranslationOverlayView? = null
     private var translationOverlayWm: WindowManager? = null
     private var translationOverlayDisplayId: Int = -1
-    private var dirtyOverlayView: TranslationOverlayView? = null
-    private var dirtyOverlayWm: WindowManager? = null
 
     override fun showTranslationOverlay(
         display: Display,
@@ -591,9 +635,6 @@ class ProjectionOverlayHost private constructor(
         translationOverlayView = null
         translationOverlayWm = null
         translationOverlayDisplayId = -1
-        try { dirtyOverlayView?.let { dirtyOverlayWm?.removeView(it) } } catch (_: Exception) {}
-        dirtyOverlayView = null
-        dirtyOverlayWm = null
     }
 
     override fun removeOverlayBoxes(toRemove: List<TranslationOverlayView.TextBox>) {
@@ -745,13 +786,21 @@ class ProjectionOverlayHost private constructor(
 
     /** Tear down the host. Idempotent — safe to call multiple times. */
     fun stop() {
-        main.post {
+        fun doStop() {
+            if (stopped) return
+            stopped = true
+            if (instance === this) instance = null
             dismissFloatingMenu()
             hideTranslationOverlay()
             hideRegionIndicator(force = true)
             hideFloatingIcon("projection_stop")
             destroy()
-            if (instance === this) instance = null
+            service.updateForegroundState()
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            doStop()
+        } else {
+            main.post { doStop() }
         }
     }
 
@@ -790,15 +839,21 @@ class ProjectionOverlayHost private constructor(
                 projection.stop()
                 return null
             }
-            val (w, h, dpi) = primaryDisplayMetrics(service, display)
+            val (w, h, dpi) = primaryDisplayMetrics(display)
 
-            val host = ProjectionOverlayHost(service, projection, w, h, dpi)
+            val host = try {
+                ProjectionOverlayHost(service, projection, w, h, dpi)
+            } catch (e: Exception) {
+                Log.e(TAG, "ProjectionOverlayHost init failed", e)
+                try { projection.stop() } catch (_: Exception) {}
+                return null
+            }
             instance = host
             return host
         }
 
         @Suppress("DEPRECATION")
-        private fun primaryDisplayMetrics(ctx: Context, display: Display): Triple<Int, Int, Int> {
+        private fun primaryDisplayMetrics(display: Display): Triple<Int, Int, Int> {
             // Prefer Display.getRealSize for raw pixel size; falls back to
             // displayMetrics for DPI. Both APIs are stable since API 17+.
             val size = Point()

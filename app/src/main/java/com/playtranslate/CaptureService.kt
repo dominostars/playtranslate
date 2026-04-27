@@ -244,6 +244,7 @@ class CaptureService : Service() {
     override fun onTaskRemoved(rootIntent: Intent?) {
         Log.w(TAG, "onTaskRemoved")
         super.onTaskRemoved(rootIntent)
+        if (ProjectionOverlayHost.instance != null) stopProjection()
         PlayTranslateAccessibilityService.instance?.hideFloatingIcon("task_removed")
     }
 
@@ -685,6 +686,12 @@ class CaptureService : Service() {
             )
         } catch (e: Exception) {
             Log.e(TAG, "startForeground(mediaProjection) failed", e)
+            try {
+                startForegroundForCurrentMode()
+            } catch (fallback: Exception) {
+                Log.e(TAG, "fallback foreground start failed", fallback)
+                stopSelf()
+            }
             Toast.makeText(
                 this,
                 "Share Screen failed to start: ${e.message ?: e.javaClass.simpleName}",
@@ -694,6 +701,12 @@ class CaptureService : Service() {
         }
         val host = ProjectionOverlayHost.start(this, resultCode, data) ?: run {
             Log.e(TAG, "ProjectionOverlayHost.start returned null")
+            try {
+                startForegroundForCurrentMode()
+            } catch (fallback: Exception) {
+                Log.e(TAG, "foreground downgrade after projection failure failed", fallback)
+                stopSelf()
+            }
             Toast.makeText(
                 this,
                 "Share Screen failed to acquire MediaProjection.",

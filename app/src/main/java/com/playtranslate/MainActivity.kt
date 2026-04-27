@@ -278,8 +278,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                             getString(R.string.toast_screen_share_required),
                             Toast.LENGTH_LONG,
                         ).show()
+                    } else {
+                        pendingProjectionAction?.invoke()
                     }
-                    pendingProjectionAction?.invoke()
                     pendingProjectionAction = null
                     checkOnboardingState()
                 } else {
@@ -478,8 +479,12 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                 refreshRegionPicker()
             }
             ACTION_OPEN_SETTINGS -> {
-                selectTab(Tab.SETTINGS)
-                openSettingsInline()
+                window.decorView.post {
+                    if (!isDestroyed && !isFinishing) {
+                        selectTab(Tab.SETTINGS)
+                        openSettingsInline()
+                    }
+                }
             }
         }
     }
@@ -968,6 +973,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
     /** Add the settings fragment to the already-visible settings container. */
     private fun openSettingsInline() {
+        supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG)?.let {
+            supportFragmentManager.beginTransaction().remove(it).commitNowAllowingStateLoss()
+        }
         val sheet = SettingsBottomSheet.newInstance(hideDismiss = false).apply {
             setShowsDialog(false)
             onDisplayChanged = {
@@ -1373,12 +1381,13 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         // [startShareScreenEnableFlow].
         if (prefs.isMediaProjectionMode) {
             onboardingContainer.visibility = View.GONE
-            if (singleScreen) {
-                val isAlreadySingleScreenSheet = existingSheet != null &&
-                    existingSheet.arguments?.getBoolean("hide_dismiss", false) == true
-                if (!isAlreadySingleScreenSheet) {
+            if (!isProjectionReady) {
+                val shouldHideDismiss = singleScreen
+                val isAlreadyCorrectSheet = existingSheet != null &&
+                    existingSheet.arguments?.getBoolean("hide_dismiss", false) == shouldHideDismiss
+                if (!isAlreadyCorrectSheet) {
                     existingSheet?.dismissAllowingStateLoss()
-                    showSettingsSheet(hideDismiss = true)
+                    showSettingsSheet(hideDismiss = shouldHideDismiss)
                 }
             } else if (existingSheet?.arguments?.getBoolean("hide_dismiss", false) == true) {
                 existingSheet.dismissAllowingStateLoss()

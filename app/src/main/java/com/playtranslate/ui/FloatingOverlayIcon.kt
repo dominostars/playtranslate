@@ -121,7 +121,7 @@ class FloatingOverlayIcon(context: Context) : View(context) {
 
         val lp = WindowManager.LayoutParams(
             totalSize, totalSize,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            windowType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
             android.graphics.PixelFormat.TRANSLUCENT
@@ -174,13 +174,12 @@ class FloatingOverlayIcon(context: Context) : View(context) {
 
     var wm: WindowManager? = null
     var params: WindowManager.LayoutParams? = null
+    var windowType: Int = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
 
     /** Context tied to this overlay's display + window type, so that
      *  WindowMetrics returns the correct display's dimensions. */
     private val overlayContext: Context by lazy {
-        context.createWindowContext(
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, null
-        )
+        context.createWindowContext(windowType, null)
     }
 
     private fun queryScreenSize(): Point {
