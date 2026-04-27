@@ -641,17 +641,24 @@ class DragLookupController(
         // word with a successful lookup.
         ocrJob?.cancel()
         lookupJob?.cancel()
-        handOffDragBitmap()
+        // handOffDragBitmap is deferred until the lens settles (definitions
+        // shown OR dismissed). Calling it here would clear the lens's
+        // bitmap immediately, causing a transparent flash in the zoom
+        // region during the lookup gap (~100 ms). Keeping the screenshot
+        // visible until the definitions panel renders is purely cosmetic
+        // — the bitmap will still be recycled on every exit path below.
 
         val lines = ocrLines ?: run {
             // OCR didn't finish in time. Drag yielded nothing — lens
             // dismissal fires onSettled via onDismiss.
             magnifier.dismiss()
+            handOffDragBitmap()
             return false
         }
         val hitLine = findLineAt(lastX.toInt(), lastY.toInt(), lines) ?: run {
             // Released somewhere with no text under the finger.
             magnifier.dismiss()
+            handOffDragBitmap()
             return false
         }
 
@@ -673,7 +680,10 @@ class DragLookupController(
                     resolveLookupData(lastX.toInt(), lastY.toInt(), lines, isDwell = false)
                 }
                 if (resolved == null) {
-                    withContext(Dispatchers.Main) { magnifier.dismiss() }
+                    withContext(Dispatchers.Main) {
+                        magnifier.dismiss()
+                        handOffDragBitmap()
+                    }
                     return@launch
                 }
                 val (popupData, label) = resolved
@@ -689,12 +699,18 @@ class DragLookupController(
                 withContext(Dispatchers.Main) {
                     magnifier.setDefinitions(popupData.toLensData(), label)
                     magnifier.makeInteractive()
+                    // Lens is now in DEFINITIONS mode — the zoom no longer
+                    // renders, so the bitmap can be released.
+                    handOffDragBitmap()
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Lift-time lookup failed", e)
-                withContext(Dispatchers.Main) { magnifier.dismiss() }
+                withContext(Dispatchers.Main) {
+                    magnifier.dismiss()
+                    handOffDragBitmap()
+                }
             }
         }
         return true
