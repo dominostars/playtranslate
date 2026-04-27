@@ -40,14 +40,12 @@ class DragLookupController(
     private val popup: WordLookupPopup,
     private val magnifier: MagnifierLens
 ) {
-    /** Fires once per drag, on the main thread, when the drag is fully done
-     *  with no popup pending: drag end with no OCR / no hit / async lookup
-     *  miss, popup dismissed post-drag, or [cancelDrag]. The service uses
-     *  this to restore the region indicator + resume live mode. Mid-drag
-     *  popup dismissal (user moved off the word, drag continues) does NOT
-     *  fire this — the controller re-shows the magnifier instead. The
-     *  underlying restore lambdas are idempotent, so duplicate fires are
-     *  safe — but the design fires exactly once per settled drag. */
+    /** Fires once per drag, on the main thread, when no popup will surface
+     *  from this drag (release with no OCR / no hit / async lookup miss) or
+     *  when an existing popup is dismissed post-drag. The service uses this
+     *  to restore the region indicator + resume live mode. The release path
+     *  that launches a lookup defers the signal — popup.onDismiss fires it
+     *  later when the user closes the popup. */
     var onSettled: (() -> Unit)? = null
 
     private val handler = Handler(Looper.getMainLooper())
@@ -76,20 +74,24 @@ class DragLookupController(
      *  block; the magnifier needs it to outlive OCR. */
     private var dragBitmap: Bitmap? = null
     /** True between [onDragStart] and [onDragEnd]/[cancelDrag]. The
-     *  popup-dismiss handler reads this to distinguish a mid-drag dismissal
-     *  (re-show the magnifier) from a post-drag dismissal (fire [onSettled]). */
+     *  popup-dismiss handler reads this to distinguish a dismissal triggered
+     *  by a new drag starting (skip onSettled — drag2 wants the paused state)
+     *  from a normal post-drag dismissal (fire onSettled). */
     private var dragInProgress = false
     /** Most recent finger position seen by [onDragMove]. The release point
      *  is read from these in [onDragEnd] for the lift-time lookup. */
     private var lastX = 0f
     private var lastY = 0f
 
-    // Hold-still detection with wobble tolerance
-    private var anchorX = 0f
-    private var anchorY = 0f
-    private var holdTimerScheduled = false
-    private var holdRetryCount = 0
-    private val MAX_HOLD_RETRIES = 30
+    /** Cached per-line token info for the magnifier label readout. We store
+     *  the visible surface (for hit-testing), the dictionary form (for the
+     *  label), and the token's character offset within the line text — the
+     *  offset disambiguates duplicate surfaces in the same line, which can
+     *  resolve to different lemmas in context. Filled on the OCR coroutine
+     *  after recognition completes because [engine.tokenize] is suspend;
+     *  per-frame label detection then reads this map synchronously. */
+    private data class LabelToken(val surface: String, val lookupForm: String, val charOffset: Int)
+    private var lineTokensCache: Map<String, List<LabelToken>>? = null
 
     init {
         // Drag-popup always wears the "open in detail view" hat. Where
@@ -109,20 +111,15 @@ class DragLookupController(
                 openSentenceInApp()
             }
         }
-        // The controller owns popup dismissal so all drag-flow teardown
-        // funnels through one place. Mid-drag dismissal (user moved off the
-        // current word) re-shows the magnifier and stays in drag mode.
-        // Post-drag dismissal fires [onSettled] so the service can restore
-        // region indicator + live mode.
+        // Popup only ever surfaces on release (see [onDragEnd]); dismissal
+        // post-drag fires [onSettled] so the service can restore region
+        // indicator + live mode. If a new drag starts and dismisses an
+        // existing popup, dragInProgress is true at that moment and onSettled
+        // is suppressed — drag2 wants the paused state and will fire its own
+        // settle when its release-time popup is eventually dismissed.
         popup.onDismiss = {
-            cancelTimers()
             lastWord = null
-            if (dragInProgress) {
-                val screen = queryScreenSize()
-                magnifier.show(lastX.toInt(), lastY.toInt(), screen.x, screen.y)
-            } else {
-                onSettled?.invoke()
-            }
+            if (!dragInProgress) onSettled?.invoke()
         }
     }
 
@@ -130,16 +127,18 @@ class DragLookupController(
 
     companion object {
         private const val TAG = "DragLookup"
-        private const val HOLD_STILL_MS = 200L
-        /** Wobble radius — finger movement within this distance doesn't reset the timer. */
-        private const val WOBBLE_RADIUS_DP = 8f
-        /** Horizontal expansion around finger for line hit-testing (3 tiers). */
-        private const val HIT_EXPAND_X_PX_1 = 80
-        private const val HIT_EXPAND_Y_PX_1 = 30
-        private const val HIT_EXPAND_X_PX_2 = 160
-        private const val HIT_EXPAND_Y_PX_2 = 60
-        private const val HIT_EXPAND_X_PX_3 = 300
-        private const val HIT_EXPAND_Y_PX_3 = 100
+        /** Expansion around the line bounds for hit-testing (3 tiers, tight
+         *  to looser). Sized for the crosshair-magnifier feedback loop —
+         *  the user sees exactly where the finger is via the lens, so we
+         *  only need a tiny amount of slack for ML Kit bounds being snug
+         *  to the glyphs and for finger jitter. The previous values were
+         *  ~5× larger and tuned for blind dragging without visual feedback. */
+        private const val HIT_EXPAND_X_PX_1 = 16
+        private const val HIT_EXPAND_Y_PX_1 = 6
+        private const val HIT_EXPAND_X_PX_2 = 40
+        private const val HIT_EXPAND_Y_PX_2 = 16
+        private const val HIT_EXPAND_X_PX_3 = 80
+        private const val HIT_EXPAND_Y_PX_3 = 30
 
         /** Sentence-ending punctuation for extracting sentences from group text. */
         private val SENTENCE_END_PUNCTUATION = setOf(
@@ -220,10 +219,6 @@ class DragLookupController(
         }
     }
 
-    private val wobbleRadiusPx: Float by lazy {
-        WOBBLE_RADIUS_DP * popup.ctx.resources.displayMetrics.density
-    }
-
     private fun queryScreenSize(): Point {
         val wm = popup.ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
             ?: return Point()
@@ -238,44 +233,38 @@ class DragLookupController(
      * and runs full-screen OCR. If [existingScreenshotPath] is provided
      * (e.g. from a hold-to-preview capture), OCR runs on that file instead
      * of taking a new screenshot — avoids OS rate-limit failures.
+     *
+     * No popup surfaces during the drag — only the magnifier is live. The
+     * popup is committed at release ([onDragEnd]).
      */
     fun onDragStart(existingScreenshotPath: String? = null) {
-        // Tear down everything left over from the previous drag before this
-        // one starts. The previous drag's lift-time [lookupJob] can otherwise
-        // reach showPopup *during* this drag — surfacing the prior word at
-        // the prior coordinates and hiding this drag's magnifier — and a
-        // popup left up from a late lookup would block this drag's own
-        // popup path via the `popup.isShowing` early-return in onDragEnd.
-        //
-        // Hand the previous drag's bitmap off to its (now-cancelled) OCR job
-        // so the bitmap isn't recycled while ML Kit may still be reading it.
-        // [Job.cancel] is cooperative and ML Kit's text recognition is
-        // non-cancellable at the native layer — the worker keeps the bitmap
-        // alive until it returns. handOffDragBitmap waits via invokeOnCompletion.
+        // Tear down everything left over from the previous drag. Previous
+        // drag's lift-time lookupJob may still be in flight; cancel it so it
+        // doesn't surface a popup over this drag. Hand the previous drag's
+        // bitmap off to its (now-cancelled) OCR job — Job.cancel() is
+        // cooperative and ML Kit text recognition is non-cancellable at the
+        // native layer, so the worker keeps the bitmap alive until it
+        // returns; handOffDragBitmap waits via invokeOnCompletion.
         handOffDragBitmap()
         ocrJob?.cancel()
         lookupJob?.cancel()
-        // Set dragInProgress=true BEFORE dismissing the stale popup. The
-        // controller's popup.onDismiss handler branches on this flag: true →
-        // re-show magnifier (mid-drag transition); false → fire onSettled
-        // (post-drag). We're starting a new drag, not settling, so the
-        // mid-drag branch is the right one — otherwise the dismissal would
-        // resume live mode that the service's own onDragStart wrapper just
-        // paused for this drag. A briefly-stale magnifier position is
-        // acceptable; it self-corrects on the first onDragMove.
+        // dragInProgress=true BEFORE dismissing the stale popup so the
+        // popup.onDismiss handler suppresses onSettled — drag2's onDragStart
+        // wrapper has just paused live mode for this drag and we don't want
+        // to immediately resume it.
         dragInProgress = true
         if (popup.isShowing) popup.dismiss()
         ocrLines = null
         lastSentSentence = null
-        // Show the magnifier immediately at the finger position. It briefly
-        // displays a placeholder pill until [onScreenshotCaptured] feeds in
-        // the bitmap (~50 ms later). The screenshot pipeline blanks every
-        // registered overlay window during the actual capture, so showing
-        // the magnifier here doesn't contaminate the captured pixels.
-        if (!popup.isShowing) {
-            val screen = queryScreenSize()
-            magnifier.show(lastX.toInt(), lastY.toInt(), screen.x, screen.y)
-        }
+        lineTokensCache = null
+        // Show the magnifier immediately. It briefly displays a placeholder
+        // pill until [onScreenshotCaptured] feeds in the bitmap (~50 ms).
+        // The screenshot pipeline blanks every registered overlay window
+        // during the actual capture, so showing the magnifier here doesn't
+        // contaminate the captured pixels.
+        val screen = queryScreenSize()
+        magnifier.show(lastX.toInt(), lastY.toInt(), screen.x, screen.y)
+        magnifier.setLabel(null)
         ocrJob = scope.launch {
             try {
                 if (existingScreenshotPath != null) {
@@ -309,98 +298,130 @@ class DragLookupController(
             return
         }
         Log.d(TAG, "OCR from file found ${lines.size} lines")
+        // Publish ocrLines BEFORE pretokenizing — the release-time lookup
+        // does its own [engine.tokenize] in performLookupInner and only
+        // needs the recognized lines. Pretokenization fills the live-label
+        // cache, which is purely for the magnifier's word readout; gating
+        // ocrLines on it would drop release-time lookups during the ~50-
+        // 300 ms pretokenize window.
         ocrLines = lines
+        pretokenizeLines(lines)
     }
 
     /**
-     * Called on every ACTION_MOVE during a drag.
-     * Uses wobble-tolerant hold-still detection: the timer only resets when
-     * the finger moves beyond [wobbleRadiusPx] from the anchor point.
+     * Called on every ACTION_MOVE during a drag. Magnifier follows the
+     * finger and shows a small readout of the word currently under the
+     * finger; the popup stays out of the way until release.
      */
     fun onDragMove(rawX: Float, rawY: Float) {
         lastX = rawX
         lastY = rawY
-        // Reposition the lens on every move (and re-anchor the source point
-        // it magnifies). Skip while the popup is up — magnifier is hidden then,
-        // and re-shown when the popup dismisses mid-drag.
-        if (!popup.isShowing) {
-            val screen = queryScreenSize()
-            magnifier.show(rawX.toInt(), rawY.toInt(), screen.x, screen.y)
-        }
-
-        val dx = rawX - anchorX
-        val dy = rawY - anchorY
-        val movedBeyondWobble = dx * dx + dy * dy > wobbleRadiusPx * wobbleRadiusPx
-
-        if (movedBeyondWobble) {
-            anchorX = rawX
-            anchorY = rawY
-            handler.removeCallbacks(holdStillRunnable)
-            holdTimerScheduled = false
-
-            // Immediately try a lookup at the new position (keeps popup up during transition)
-            if (popup.isShowing) {
-                lookupJob?.cancel()
-                lookupJob = scope.launch {
-                    try {
-                        val lines = ocrLines ?: return@launch
-                        performLookup(rawX.toInt(), rawY.toInt(), lines, dismissOnMiss = true)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Move-lookup failed", e)
-                    }
-                }
-            }
-        }
-
-        if (!holdTimerScheduled && lookupJob?.isActive != true) {
-            handler.postDelayed(holdStillRunnable, HOLD_STILL_MS)
-            holdTimerScheduled = true
-        }
+        val screen = queryScreenSize()
+        magnifier.show(rawX.toInt(), rawY.toInt(), screen.x, screen.y)
+        magnifier.setLabel(detectWordAt(rawX.toInt(), rawY.toInt()))
     }
 
-    /** Called on ACTION_UP. Returns true if a popup is showing OR a lift-time
-     *  async lookup is in flight (icon should restore to its saved position).
-     *  Returns false when the drag ended without any popup target (icon snaps
-     *  to edge). Fires [onSettled] from every path that won't produce a popup;
-     *  the popup-showing / popup-pending paths defer settlement to the popup's
-     *  own dismissal. */
+    /** Synchronous "what's under the finger right now" — line hit-test +
+     *  pre-tokenized cache + nearest-token. Returns the token's dictionary
+     *  form (e.g. "住む" for "住んで") or null if no text is targeted, or
+     *  the cache hasn't been populated yet by the OCR coroutine. */
+    private fun detectWordAt(rawX: Int, rawY: Int): String? {
+        val lines = ocrLines ?: return null
+        val cache = lineTokensCache ?: return null
+        val hitLine = findLineAt(rawX, rawY, lines) ?: return null
+        val lineText = hitLine.text
+        if (lineText.isEmpty()) return null
+        val tokens = cache[lineText] ?: return null
+        if (tokens.isEmpty()) return null
+        val isVertical = hitLine.orientation == com.playtranslate.language.TextOrientation.VERTICAL
+        val lineExtent = if (isVertical) hitLine.bounds.height().toFloat()
+            else hitLine.bounds.width().toFloat()
+        val charExtent = lineExtent / lineText.length
+        val match = findClosestToken(
+            lineText = lineText,
+            tokens = tokens.map { it.surface },
+            fingerPos = if (isVertical) rawY else rawX,
+            symbols = hitLine.symbols,
+            fallbackLineStart = if (isVertical) hitLine.bounds.top else hitLine.bounds.left,
+            fallbackCharExtent = charExtent,
+            vertical = isVertical,
+        ) ?: return null
+        // Disambiguate via character offset — the second of findClosestToken's
+        // pair is the matched span's start in lineText. Without this, a line
+        // with two occurrences of the same surface would always resolve to the
+        // first occurrence's lookupForm even when the user aimed at the second.
+        val matchedOffset = match.second
+        return tokens.firstOrNull { it.charOffset == matchedOffset }?.lookupForm ?: match.first
+    }
+
+    /** Pre-tokenize every OCR line so [detectWordAt] can run synchronously
+     *  during onDragMove. Called from the OCR coroutine after recognition
+     *  completes (engine.tokenize is a suspend function).
+     *
+     *  Re-throws [CancellationException] before the generic catch so a
+     *  cancelled drag's coroutine actually exits without overwriting
+     *  [lineTokensCache] with stale data — without the explicit re-throw,
+     *  the catch (Exception) at the bottom would swallow cancellation
+     *  silently, the loop would run to completion, and the assignment at
+     *  the end would clobber the next drag's reset. */
+    private suspend fun pretokenizeLines(lines: List<OcrManager.OcrLine>) {
+        val service = PlayTranslateAccessibilityService.instance ?: return
+        val engine = SourceLanguageEngines.get(service, Prefs(service).sourceLangId)
+        val cache = mutableMapOf<String, List<LabelToken>>()
+        for (line in lines) {
+            if (line.text.isEmpty() || cache.containsKey(line.text)) continue
+            try {
+                val results = engine.tokenize(line.text)
+                val labels = mutableListOf<LabelToken>()
+                var pos = 0
+                for (r in results) {
+                    val idx = line.text.indexOf(r.surface, pos)
+                    if (idx < 0) continue
+                    labels += LabelToken(r.surface, r.lookupForm ?: r.surface, idx)
+                    pos = idx + r.surface.length
+                }
+                cache[line.text] = labels
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "pretokenize failed for line: ${e.message}")
+            }
+        }
+        lineTokensCache = cache
+    }
+
+    /** Called on ACTION_UP. Returns true if the icon should restore to its
+     *  saved position (popup is about to show via async lookup). Returns
+     *  false when the drag ended cleanly with no popup target (icon snaps
+     *  to edge).
+     *
+     *  Release-commit: this is the only path that surfaces the popup.
+     *  Lookup is async; the icon restores immediately so the popup has a
+     *  stable anchor when it appears. If the lookup misses, [onSettled]
+     *  fires so the service can restore live mode / region overlay. */
     fun onDragEnd(): Boolean {
-        cancelTimers()
         dragInProgress = false
         magnifier.dismiss()
-        // Cancel any pending OCR. For paths that have ocrLines (popup-showing,
-        // hit-line-found, no-hit-line), the job is already COMPLETED and this
-        // is a no-op. For the ocrLines==null path, this prevents wasted ML Kit
-        // work after the drag is over and lets the orphan-check in
-        // [attachDragBitmap] schedule a prompt bitmap recycle.
+        // Cancel any pending OCR. If ocrLines is set the job is already
+        // COMPLETED (no-op). Otherwise this stops wasted ML Kit work and
+        // lets the orphan check in [attachDragBitmap] schedule a prompt
+        // bitmap recycle.
         ocrJob?.cancel()
+        lookupJob?.cancel()
         handOffDragBitmap()
 
-        // Mid-drag popup is up. Settle deferred to popup.onDismiss handler.
-        if (popup.isShowing) return true
-
-        val lines = ocrLines
-        if (lines == null) {
-            // OCR never finished — nothing to look up.
+        val lines = ocrLines ?: run {
+            // OCR didn't finish in time. Drag yielded nothing.
             onSettled?.invoke()
             return false
         }
-        val hitLine = findLineAt(lastX.toInt(), lastY.toInt(), lines)
-        if (hitLine == null) {
-            // Finger not over any line.
+        val hitLine = findLineAt(lastX.toInt(), lastY.toInt(), lines) ?: run {
+            // Released somewhere with no text under the finger.
             onSettled?.invoke()
             return false
         }
 
-        // Lift-time lookup: the user may have released over a word before the
-        // hold timer fired. Hit-testing a line is necessary but not sufficient —
-        // tokenization, dictionary lookup, and reading-fallback all have real
-        // failure paths. The async miss path fires onSettled so the service
-        // doesn't strand region-overlay / live-mode in their paused state.
         Log.d(TAG, "Lift-time lookup at (${lastX.toInt()}, ${lastY.toInt()}), line: ${hitLine.text}")
-        lookupJob?.cancel()
         lookupJob = scope.launch {
             try {
                 val showed = performLookup(lastX.toInt(), lastY.toInt(), lines, dismissOnMiss = false)
@@ -416,15 +437,15 @@ class DragLookupController(
     }
 
     /**
-     * Tear everything down: timers, OCR / lookup jobs, magnifier, popup.
-     * Used both by [cancelDrag] (system gesture cancellation) and by
-     * external callers (e.g. game button press dismissing an open popup).
-     * popup.dismiss() fires the controller's onDismiss handler, which then
-     * fires [onSettled] — so this method does NOT call onSettled directly.
+     * Tear everything down: OCR / lookup jobs, magnifier, popup. Used both
+     * by [cancelDrag] (system gesture cancellation) and by external callers
+     * (e.g. game button press dismissing an open popup). popup.dismiss()
+     * fires the controller's onDismiss handler, which fires [onSettled] —
+     * so this method does NOT call onSettled directly.
      */
     fun dismiss() {
-        cancelTimers()
         ocrJob?.cancel()
+        lookupJob?.cancel()
         dragInProgress = false
         magnifier.dismiss()
         handOffDragBitmap()
@@ -437,13 +458,12 @@ class DragLookupController(
     fun cancelDrag() = dismiss()
 
     fun destroy() {
-        cancelTimers()
-        // Clear dragInProgress BEFORE popup.dismiss so the controller's
-        // onDismiss handler takes the post-drag branch (settle) instead of
-        // the mid-drag branch (re-show magnifier). Otherwise a destroy that
-        // races a still-open drag popup would re-create the magnifier window
-        // we just dismissed.
+        // Clear dragInProgress BEFORE popup.dismiss so the popup-dismiss
+        // handler fires onSettled (the post-drag branch). Otherwise a
+        // destroy mid-drag with a popup somehow up would suppress settle.
         dragInProgress = false
+        ocrJob?.cancel()
+        lookupJob?.cancel()
         magnifier.dismiss()
         handOffDragBitmap()
         popup.dismiss()
@@ -495,38 +515,6 @@ class DragLookupController(
 
     // ── Internals ────────────────────────────────────────────────────────
 
-    private fun cancelTimers() {
-        handler.removeCallbacks(holdStillRunnable)
-        holdTimerScheduled = false
-        lookupJob?.cancel()
-    }
-
-    private val holdStillRunnable: Runnable = Runnable { onHoldStill() }
-
-    private fun onHoldStill() {
-        holdTimerScheduled = false
-        val lines = ocrLines
-        if (lines == null) {
-            // OCR not ready yet — retry shortly (with limit to avoid infinite loop)
-            if (holdRetryCount++ < MAX_HOLD_RETRIES) {
-                handler.postDelayed(holdStillRunnable, 100)
-                holdTimerScheduled = true
-            }
-            return
-        }
-        holdRetryCount = 0
-        lookupJob?.cancel()
-        lookupJob = scope.launch {
-            try {
-                performLookup(anchorX.toInt(), anchorY.toInt(), lines)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.e(TAG, "Lookup failed", e)
-            }
-        }
-    }
-
     @OptIn(ExperimentalCoroutinesApi::class)
     private suspend fun captureAndOcr() {
         val service = PlayTranslateAccessibilityService.instance ?: return
@@ -551,7 +539,10 @@ class DragLookupController(
             return
         }
         Log.d(TAG, "OCR found ${lines.size} lines")
+        // See ocrFromFile — publish ocrLines first so a quick release
+        // doesn't get gated on the per-line pretokenization pass.
         ocrLines = lines
+        pretokenizeLines(lines)
     }
 
     /** Run on the main thread once the drag-start bitmap is in hand. The
@@ -616,8 +607,20 @@ class DragLookupController(
 
         val matchedSurface = tokenMatch.first
         val matchedIdx = tokenMatch.second
-        // Find the corresponding lookup form and reading
-        val matchedToken = tokenResults.firstOrNull { it.surface == matchedSurface }
+        // Walk tokenResults the same way findClosestToken did and pick the
+        // one whose start position equals matchedIdx. Disambiguates lines
+        // where the same surface appears multiple times with potentially
+        // different context-dependent lemmas.
+        val matchedToken: com.playtranslate.language.TokenSpan? = run {
+            var pos = 0
+            for (t in tokenResults) {
+                val idx = lineText.indexOf(t.surface, pos)
+                if (idx < 0) continue
+                if (idx == matchedIdx) return@run t
+                pos = idx + t.surface.length
+            }
+            null
+        }
         val lookupForm = matchedToken?.lookupForm ?: matchedSurface
 
         // Skip if same word already showing (counts as "found")

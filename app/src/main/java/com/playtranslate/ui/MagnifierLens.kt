@@ -2,6 +2,7 @@ package com.playtranslate.ui
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -9,12 +10,15 @@ import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Typeface
+import android.text.TextPaint
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import com.playtranslate.OverlayColors
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.R
-import com.playtranslate.themeColor
 
 /**
  * Pill-shaped overlay that magnifies the area of [sourceBitmap] under the
@@ -50,6 +54,14 @@ class MagnifierLens(
         lensView?.setSourceBitmap(bitmap)
     }
 
+    /** Set the small label drawn at the top-center of the lens. Pass null
+     *  (or empty) to hide the label. The controller calls this from
+     *  onDragMove with the surface text of the token under the finger so
+     *  the user has a live readout of which word they're targeting. */
+    fun setLabel(text: String?) {
+        lensView?.setLabel(text)
+    }
+
     /** Show the lens (creates the window on first call) or update its position
      *  for subsequent calls during the same drag. [fingerX]/[fingerY] are raw
      *  display coordinates. */
@@ -58,12 +70,13 @@ class MagnifierLens(
         val view = lensView ?: return
         val p = params ?: return
 
-        view.setSourcePoint(fingerX.toFloat(), fingerY.toFloat(), screenW, screenH)
+        val aboveY = fingerY - verticalMarginPx - pillH
+        val flipped = aboveY < -topOverhangTolerancePx
+        view.setSourcePoint(fingerX.toFloat(), fingerY.toFloat(), screenW, screenH, flipped)
         view.visibility = View.VISIBLE
 
         val x = (fingerX - pillW / 2).coerceIn(0, (screenW - pillW).coerceAtLeast(0))
-        val aboveY = fingerY - verticalMarginPx - pillH
-        val y = if (aboveY >= -topOverhangTolerancePx) {
+        val y = if (!flipped) {
             aboveY
         } else {
             (fingerY + verticalMarginPx).coerceAtMost((screenH - pillH).coerceAtLeast(0))
@@ -119,12 +132,19 @@ class MagnifierLens(
         private val pillH: Int,
         private val zoom: Float,
     ) : View(ctx) {
-        private val borderPx = ctx.resources.displayMetrics.density * 2f
+        private val density = ctx.resources.displayMetrics.density
+        private val borderPx = density * 2f
         private val cornerR = pillH / 2f
 
+        // Overlay-context color resolution: themeColor(R.attr.pt*) is
+        // unreliable from the accessibility service / floating-window
+        // contexts because the Activity theme isn't applied. OverlayColors
+        // reads the user's mode + accent directly from Prefs.
+        private val accentColor = OverlayColors.accent(ctx)
+        private val accentOnColor = OverlayColors.accentOn(ctx)
+
         private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = ctx.themeColor(R.attr.ptAccent).takeIf { it != 0 }
-                ?: Color.parseColor("#4DD0C2")
+            color = accentColor
             style = Paint.Style.STROKE
             strokeWidth = borderPx
         }
@@ -137,6 +157,62 @@ class MagnifierLens(
             style = Paint.Style.FILL
         }
         private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+
+        // Inset drop-shadow stroke just inside the border. The stroke is
+        // drawn while the round-rect clip is active, so its outer half is
+        // clipped to the lens shape and the inner half blurs softly toward
+        // the zoom — a "lens-depth" effect that recesses the magnified
+        // content beneath the accent border.
+        private val insetShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(70, 0, 0, 0)
+            style = Paint.Style.STROKE
+            strokeWidth = density * 14f
+            maskFilter = BlurMaskFilter(density * 8f, BlurMaskFilter.Blur.NORMAL)
+        }
+        private val insetShadowRect = RectF()
+        private val insetShadowInset = density * 4f
+
+        // Small accent-colored crosshair marking the focal point.
+        private val crosshairPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = accentColor
+            style = Paint.Style.STROKE
+            strokeWidth = density * 1.5f
+            strokeCap = Paint.Cap.ROUND
+        }
+        private val crosshairHalfLen = density * 6f
+
+        // Top-center label showing the word currently under the finger.
+        // Painted in the app's accent color with on-accent text — same
+        // treatment used for accent-background buttons elsewhere.
+        private val labelPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = accentOnColor
+            textSize = density * 30f
+            textAlign = Paint.Align.CENTER
+            // isFakeBoldText synthesizes bold by drawing each glyph with
+            // a small stroke offset — works uniformly for Latin AND CJK,
+            // unlike Typeface.BOLD or sans-serif-medium which often fall
+            // back to regular-weight Noto Sans CJK because no native bold
+            // CJK variant exists in the Android fallback chain.
+            typeface = Typeface.DEFAULT
+            isFakeBoldText = true
+        }
+        private val labelBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = accentColor
+            style = Paint.Style.FILL
+        }
+        // Label sits flush against the top of the lens. The lens's own
+        // rounded clip naturally trims the label's top corners to follow
+        // the pill's curvature.
+        private val labelTopMargin = 0f
+        private val labelPadX = density * 12f
+        private val labelPadY = density * 2f
+        // Soft cap on label width so we can ellipsize gracefully for long
+        // compound words. Leaves a margin from each pill edge.
+        private val labelMaxW: Float = pillW - density * 24f
+        private val labelBgRect = RectF()
+        // Reused so we don't allocate per frame.
+        private val labelBgPath = Path()
+        private val labelBgRadii = FloatArray(8)
 
         private val clipPath = Path()
         private val srcRect = Rect()
@@ -152,17 +228,42 @@ class MagnifierLens(
         // lens can mark off-screen regions black even before OCR runs.
         private var sourceScreenW = 0
         private var sourceScreenH = 0
+        private var labelText: String? = null
+        // True when the lens is positioned below the finger (because there
+        // wasn't enough room above). The label moves to the bottom edge so
+        // it stays on the side away from the finger.
+        private var flipped = false
+
+        init {
+            // BlurMaskFilter (used by the inset shadow) is unreliable on
+            // hardware-accelerated layers across devices; software layer
+            // is the consistent path. Same convention as the region
+            // indicator overlay elsewhere in the app.
+            setLayerType(LAYER_TYPE_SOFTWARE, null)
+        }
 
         fun setSourceBitmap(bitmap: Bitmap?) {
             sourceBitmap = bitmap
             invalidate()
         }
 
-        fun setSourcePoint(x: Float, y: Float, screenW: Int, screenH: Int) {
+        fun setSourcePoint(x: Float, y: Float, screenW: Int, screenH: Int, flipped: Boolean) {
             sourceX = x
             sourceY = y
             sourceScreenW = screenW
             sourceScreenH = screenH
+            if (this.flipped != flipped) {
+                this.flipped = flipped
+                invalidate()
+                return
+            }
+            invalidate()
+        }
+
+        fun setLabel(text: String?) {
+            val normalized = text?.takeIf { it.isNotEmpty() }
+            if (labelText == normalized) return
+            labelText = normalized
             invalidate()
         }
 
@@ -226,6 +327,74 @@ class MagnifierLens(
                 // Source rect entirely outside the screenshot — whole lens
                 // is "outside" and reads as black.
                 canvas.drawRect(0f, 0f, w, h, backgroundPaint)
+            }
+
+            // Inset drop shadow around the inside of the lens border.
+            // The stroke is centered slightly inside the lens edge; the
+            // outer half clips against the round-rect clip path while the
+            // inner half blurs toward the zoom. Drawn before crosshair
+            // and label so both render on top of the shadow.
+            insetShadowRect.set(
+                insetShadowInset,
+                insetShadowInset,
+                w - insetShadowInset,
+                h - insetShadowInset,
+            )
+            canvas.drawRoundRect(
+                insetShadowRect,
+                cornerR - insetShadowInset,
+                cornerR - insetShadowInset,
+                insetShadowPaint,
+            )
+
+            // Crosshair at the lens center, accent-colored.
+            val lensCx = w / 2f
+            val lensCy = h / 2f
+            canvas.drawLine(lensCx - crosshairHalfLen, lensCy, lensCx + crosshairHalfLen, lensCy, crosshairPaint)
+            canvas.drawLine(lensCx, lensCy - crosshairHalfLen, lensCx, lensCy + crosshairHalfLen, crosshairPaint)
+
+            // Word label, kept on the lens edge that points away from the
+            // finger (top when the lens floats above, bottom when flipped
+            // below). Drawn inside the round-rect clip so it can't escape
+            // the lens shape, on top of the zoom so the text is readable.
+            // The flat edge sits flush against the corresponding lens edge;
+            // the opposite edge is rounded to look like a half-pill cap.
+            val text = labelText
+            if (text != null) {
+                val fitted = TextUtils.ellipsize(
+                    text, labelPaint, labelMaxW - 2 * labelPadX, TextUtils.TruncateAt.END,
+                ).toString()
+                if (fitted.isNotEmpty()) {
+                    val fm = labelPaint.fontMetrics
+                    val textHeight = fm.descent - fm.ascent
+                    val textWidth = labelPaint.measureText(fitted)
+                    val bgW = textWidth + 2 * labelPadX
+                    val bgH = textHeight + 2 * labelPadY
+                    val bgLeft = (w - bgW) / 2f
+                    val bgRight = bgLeft + bgW
+                    val bgTop = if (flipped) h - bgH - labelTopMargin else labelTopMargin
+                    val bgBottom = bgTop + bgH
+                    labelBgRect.set(bgLeft, bgTop, bgRight, bgBottom)
+                    val r = bgH  // rounded-end radius = label height
+                    if (flipped) {
+                        // Flat bottom (against lens bottom edge), rounded top.
+                        labelBgRadii[0] = r; labelBgRadii[1] = r        // top-left
+                        labelBgRadii[2] = r; labelBgRadii[3] = r        // top-right
+                        labelBgRadii[4] = 0f; labelBgRadii[5] = 0f      // bottom-right
+                        labelBgRadii[6] = 0f; labelBgRadii[7] = 0f      // bottom-left
+                    } else {
+                        // Flat top (against lens top edge), rounded bottom.
+                        labelBgRadii[0] = 0f; labelBgRadii[1] = 0f      // top-left
+                        labelBgRadii[2] = 0f; labelBgRadii[3] = 0f      // top-right
+                        labelBgRadii[4] = r; labelBgRadii[5] = r        // bottom-right
+                        labelBgRadii[6] = r; labelBgRadii[7] = r        // bottom-left
+                    }
+                    labelBgPath.reset()
+                    labelBgPath.addRoundRect(labelBgRect, labelBgRadii, Path.Direction.CW)
+                    canvas.drawPath(labelBgPath, labelBgPaint)
+                    val baseline = bgTop + labelPadY - fm.ascent
+                    canvas.drawText(fitted, w / 2f, baseline, labelPaint)
+                }
             }
 
             canvas.restore()
