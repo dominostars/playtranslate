@@ -84,13 +84,22 @@ class DragLookupController(
     private var lastY = 0f
 
     /** Cached per-line token info for the magnifier label readout. We store
-     *  the visible surface (for hit-testing), the dictionary form (for the
-     *  label), and the token's character offset within the line text — the
-     *  offset disambiguates duplicate surfaces in the same line, which can
-     *  resolve to different lemmas in context. Filled on the OCR coroutine
-     *  after recognition completes because [engine.tokenize] is suspend;
-     *  per-frame label detection then reads this map synchronously. */
-    private data class LabelToken(val surface: String, val lookupForm: String, val charOffset: Int)
+     *  the visible surface (for hit-testing), the dictionary form (the
+     *  word shown in the lens left panel), the reading (furigana/pinyin
+     *  shown above the word), and the token's character offset within the
+     *  line text — the offset disambiguates duplicate surfaces in the same
+     *  line, which can resolve to different lemmas in context. Filled on
+     *  the OCR coroutine after recognition completes because
+     *  [engine.tokenize] is suspend; per-frame label detection then reads
+     *  this map synchronously. */
+    private data class LabelToken(
+        val surface: String,
+        val lookupForm: String,
+        val reading: String?,
+        val charOffset: Int,
+    )
+    /** Result of [detectWordAt]. */
+    private data class WordReadout(val word: String, val reading: String?)
     private var lineTokensCache: Map<String, List<LabelToken>>? = null
 
     init {
@@ -127,6 +136,19 @@ class DragLookupController(
 
     companion object {
         private const val TAG = "DragLookup"
+        /** True if [s] contains any CJK ideograph (kanji / hanzi). Used as
+         *  the gate for whether a reading is worth showing — for fully
+         *  kana / hangul / Latin words a phonetic readout is redundant.
+         *  The popup's dict-headword path rarely hits this case because
+         *  JMdict stores written/reading consistently, but kuromoji's
+         *  tokenize output can return a katakana reading for a hiragana
+         *  word (or vice versa), which would otherwise show up as a
+         *  redundant furigana in the lens. */
+        private fun hasKanji(s: String): Boolean = s.any { c ->
+            val code = c.code
+            code in 0x4E00..0x9FFF || code in 0x3400..0x4DBF
+        }
+
         /** Expansion around the line bounds for hit-testing (3 tiers, tight
          *  to looser). Sized for the crosshair-magnifier feedback loop —
          *  the user sees exactly where the finger is via the lens, so we
@@ -264,7 +286,7 @@ class DragLookupController(
         // contaminate the captured pixels.
         val screen = queryScreenSize()
         magnifier.show(lastX.toInt(), lastY.toInt(), screen.x, screen.y)
-        magnifier.setLabel(null)
+        magnifier.setLabel(null, null)
         ocrJob = scope.launch {
             try {
                 if (existingScreenshotPath != null) {
@@ -318,14 +340,16 @@ class DragLookupController(
         lastY = rawY
         val screen = queryScreenSize()
         magnifier.show(rawX.toInt(), rawY.toInt(), screen.x, screen.y)
-        magnifier.setLabel(detectWordAt(rawX.toInt(), rawY.toInt()))
+        val readout = detectWordAt(rawX.toInt(), rawY.toInt())
+        magnifier.setLabel(readout?.word, readout?.reading)
     }
 
     /** Synchronous "what's under the finger right now" — line hit-test +
      *  pre-tokenized cache + nearest-token. Returns the token's dictionary
-     *  form (e.g. "住む" for "住んで") or null if no text is targeted, or
-     *  the cache hasn't been populated yet by the OCR coroutine. */
-    private fun detectWordAt(rawX: Int, rawY: Int): String? {
+     *  form (e.g. "住む" for "住んで") plus its reading (furigana/pinyin)
+     *  for the lens panel, or null if no text is targeted, or the cache
+     *  hasn't been populated yet by the OCR coroutine. */
+    private fun detectWordAt(rawX: Int, rawY: Int): WordReadout? {
         val lines = ocrLines ?: return null
         val cache = lineTokensCache ?: return null
         val hitLine = findLineAt(rawX, rawY, lines) ?: return null
@@ -351,7 +375,10 @@ class DragLookupController(
         // with two occurrences of the same surface would always resolve to the
         // first occurrence's lookupForm even when the user aimed at the second.
         val matchedOffset = match.second
-        return tokens.firstOrNull { it.charOffset == matchedOffset }?.lookupForm ?: match.first
+        val matched = tokens.firstOrNull { it.charOffset == matchedOffset }
+        val word = matched?.lookupForm ?: match.first
+        // reading is already filtered in pretokenizeLines (kanji check etc.).
+        return WordReadout(word, matched?.reading)
     }
 
     /** Pre-tokenize every OCR line so [detectWordAt] can run synchronously
@@ -377,7 +404,21 @@ class DragLookupController(
                 for (r in results) {
                     val idx = line.text.indexOf(r.surface, pos)
                     if (idx < 0) continue
-                    labels += LabelToken(r.surface, r.lookupForm ?: r.surface, idx)
+                    val word = r.lookupForm ?: r.surface
+                    // Match the popup's "show reading when it adds info"
+                    // intent: drop blanks, drop readings equal to the word
+                    // (popup uses `reading != word`), and drop readings
+                    // for words with no kanji — the popup is shielded
+                    // from that via JMdict-stored headwords; we have to
+                    // gate it ourselves on raw kuromoji output.
+                    val reading = r.reading
+                        ?.takeIf { it.isNotBlank() && it != word && hasKanji(word) }
+                    labels += LabelToken(
+                        surface = r.surface,
+                        lookupForm = word,
+                        reading = reading,
+                        charOffset = idx,
+                    )
                     pos = idx + r.surface.length
                 }
                 cache[line.text] = labels
