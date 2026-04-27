@@ -22,6 +22,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.graphics.drawable.DrawableCompat
+import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.R
 
 /**
@@ -196,7 +197,13 @@ class WordLookupPopup(
             this.y = y
         }
 
-        wm.addView(container, popupParams)
+        if (useActivityWindow) {
+            try { wm.addView(container, popupParams) } catch (_: Exception) { return }
+        } else {
+            // Accessibility-overlay flavor: register so it gets blanked
+            // alongside the icon/magnifier during clean screenshots.
+            if (!PlayTranslateAccessibilityService.addOverlay(container, wm, popupParams)) return
+        }
         // Request window focus so onGenericMotionListener receives joystick
         // events (the previous architecture got focus via the backdrop).
         container.requestFocus()
@@ -204,7 +211,14 @@ class WordLookupPopup(
     }
 
     fun dismiss() {
-        try { popupView?.let { wm.removeView(it) } } catch (_: Exception) {}
+        val view = popupView
+        if (view != null) {
+            if (useActivityWindow) {
+                try { wm.removeView(view) } catch (_: Exception) {}
+            } else {
+                PlayTranslateAccessibilityService.removeOverlay(view, wm)
+            }
+        }
         popupView = null
         currentWord = null
         if (!suppressDismissCallback) onDismiss?.invoke()
