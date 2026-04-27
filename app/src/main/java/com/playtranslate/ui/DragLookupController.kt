@@ -240,6 +240,13 @@ class DragLookupController(
      * of taking a new screenshot — avoids OS rate-limit failures.
      */
     fun onDragStart(existingScreenshotPath: String? = null) {
+        // Tear down everything left over from the previous drag before this
+        // one starts. The previous drag's lift-time [lookupJob] can otherwise
+        // reach showPopup *during* this drag — surfacing the prior word at
+        // the prior coordinates and hiding this drag's magnifier — and a
+        // popup left up from a late lookup would block this drag's own
+        // popup path via the `popup.isShowing` early-return in onDragEnd.
+        //
         // Hand the previous drag's bitmap off to its (now-cancelled) OCR job
         // so the bitmap isn't recycled while ML Kit may still be reading it.
         // [Job.cancel] is cooperative and ML Kit's text recognition is
@@ -247,9 +254,19 @@ class DragLookupController(
         // alive until it returns. handOffDragBitmap waits via invokeOnCompletion.
         handOffDragBitmap()
         ocrJob?.cancel()
+        lookupJob?.cancel()
+        // Set dragInProgress=true BEFORE dismissing the stale popup. The
+        // controller's popup.onDismiss handler branches on this flag: true →
+        // re-show magnifier (mid-drag transition); false → fire onSettled
+        // (post-drag). We're starting a new drag, not settling, so the
+        // mid-drag branch is the right one — otherwise the dismissal would
+        // resume live mode that the service's own onDragStart wrapper just
+        // paused for this drag. A briefly-stale magnifier position is
+        // acceptable; it self-corrects on the first onDragMove.
+        dragInProgress = true
+        if (popup.isShowing) popup.dismiss()
         ocrLines = null
         lastSentSentence = null
-        dragInProgress = true
         // Show the magnifier immediately at the finger position. It briefly
         // displays a placeholder pill until [onScreenshotCaptured] feeds in
         // the bitmap (~50 ms later). The screenshot pipeline blanks every
@@ -353,6 +370,12 @@ class DragLookupController(
         cancelTimers()
         dragInProgress = false
         magnifier.dismiss()
+        // Cancel any pending OCR. For paths that have ocrLines (popup-showing,
+        // hit-line-found, no-hit-line), the job is already COMPLETED and this
+        // is a no-op. For the ocrLines==null path, this prevents wasted ML Kit
+        // work after the drag is over and lets the orphan-check in
+        // [attachDragBitmap] schedule a prompt bitmap recycle.
+        ocrJob?.cancel()
         handOffDragBitmap()
 
         // Mid-drag popup is up. Settle deferred to popup.onDismiss handler.
@@ -415,6 +438,12 @@ class DragLookupController(
 
     fun destroy() {
         cancelTimers()
+        // Clear dragInProgress BEFORE popup.dismiss so the controller's
+        // onDismiss handler takes the post-drag branch (settle) instead of
+        // the mid-drag branch (re-show magnifier). Otherwise a destroy that
+        // races a still-open drag popup would re-create the magnifier window
+        // we just dismissed.
+        dragInProgress = false
         magnifier.dismiss()
         handOffDragBitmap()
         popup.dismiss()
@@ -430,6 +459,15 @@ class DragLookupController(
         dragBitmap = bitmap
         screenshotPath = path
         magnifier.setBitmap(bitmap)
+        if (!dragInProgress) {
+            // Drag ended between screenshot capture and this callback (user
+            // released before OCR even produced a bitmap). Hand off again so
+            // the bitmap is recycled when ocrJob exits — ML Kit may still be
+            // reading the local `bitmap` reference, but invokeOnCompletion
+            // only fires after the worker actually returns. Without this,
+            // dragBitmap leaks until the next drag or controller destroy.
+            handOffDragBitmap()
+        }
     }
 
     /** Detach the current bitmap from the magnifier and schedule its recycle
@@ -768,14 +806,16 @@ class DragLookupController(
         currentSentence = sentence
         prefetchWordLookups(sentence)
 
-        withContext(Dispatchers.Main) {
-            showPopup(popupData, wordCenterX, fingerY)
+        return withContext(Dispatchers.Main) {
+            val popupShown = showPopup(popupData, wordCenterX, fingerY)
             if (sentence != lastSentSentence) {
                 lastSentSentence = sentence
                 sendLineToMainApp(sentence)
             }
+            // Propagate add-failure so callers (lift-time lookup in onDragEnd)
+            // don't strand the drag flow waiting on a popup that never attached.
+            popupShown
         }
-        return true
     }
 
     /** Resolved data for a single showPopup call — either a real JMdict entry
@@ -829,7 +869,8 @@ class DragLookupController(
     }
 
 
-    private fun showPopup(data: PopupData, fingerX: Int, fingerY: Int) {
+    /** Returns true if the popup is attached after this call. */
+    private fun showPopup(data: PopupData, fingerX: Int, fingerY: Int): Boolean {
         currentEntry = data.entry
         // Popup takes over the same real estate as the magnifier — hide the
         // lens so the two don't visually fight. If the user keeps dragging,
@@ -837,7 +878,7 @@ class DragLookupController(
         magnifier.hide()
 
         val screen = queryScreenSize()
-        popup.show(
+        return popup.show(
             word = data.word,
             reading = data.reading,
             senses = data.senses,
