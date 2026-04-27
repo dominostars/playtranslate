@@ -858,7 +858,7 @@ class TranslationResultFragment : Fragment() {
             val rows = tokens.map { word ->
                 val row = inflater.inflate(R.layout.item_word_lookup, mainWordsContainer, false)
                 row.findViewById<TextView>(R.id.tvItemWord).text = word
-                row.findViewById<TextView>(R.id.tvItemMeaning).text = "…"
+                row.findViewById<TextView>(R.id.tvItemMeaning).text = "Loading..."
                 if (mainWordsContainer.childCount > 0) {
                     mainWordsContainer.addView(inflateWordDivider())
                 }
