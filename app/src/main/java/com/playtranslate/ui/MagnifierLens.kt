@@ -11,37 +11,59 @@ import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
+import androidx.appcompat.content.res.AppCompatResources
+import androidx.core.graphics.drawable.DrawableCompat
 import com.playtranslate.OverlayColors
 import com.playtranslate.PlayTranslateAccessibilityService
+import com.playtranslate.R
 
 /**
- * Rounded-rect magnifier overlay shown while the floating icon is dragged.
- * Owns a `TYPE_ACCESSIBILITY_OVERLAY` window — non-touchable, non-focusable,
- * so it never steals events from the dragged icon underneath.
+ * Rounded-rect magnifier overlay shown while the floating icon is dragged
+ * and persists post-release as the dictionary surface (replaces the
+ * separate `WordLookupPopup` in the drag flow).
  *
- * Layout: split horizontally into a fixed-width accent-colored left panel
- * showing the word/reading currently under the finger (mirroring the
- * dictionary popup's left column), and a transparent right panel that
- * holds the zoom and the focal-point crosshair. Dimensions and proportions
- * intentionally match the dictionary popup so the lens during drag and
- * the popup after release feel like the same UI element.
+ * Three render modes:
+ *  - **ZOOM** (default during drag): zoomed screenshot + crosshair on the
+ *    right, optional accent left panel with word + reading.
+ *  - **DEFINITIONS_DRAG**: dwell-triggered preview during drag — left panel
+ *    stays, right side becomes the popup-formatted definitions panel.
+ *  - **DEFINITIONS_STICKY**: post-release interactive lens — same visuals
+ *    as DEFINITIONS_DRAG, but the window flags flip to focusable +
+ *    touchable + outside-watch so tap-outside / joystick / Open-button
+ *    interactions work. Set via [makeInteractive].
  *
- * Position: the right panel's center is placed over the finger so the
- * crosshair stays at the actual focal point. Above the finger by default;
- * flips below if the lens would overrun the top of the screen.
+ * Position: centered over the finger during drag; sticky lens stays where
+ * the drag ended. Above the finger by default; flips below if the lens
+ * would overrun the top of the screen.
  */
 class MagnifierLens(
     private val ctx: Context,
     private val wm: WindowManager,
 ) {
+    /** Definitions payload for the right panel. Mirrors the fields the popup
+     *  shows in its middle column. `senses` is reused from `WordLookupPopup`
+     *  so the controller can pass the same display rows it builds today. */
+    data class LensDefinitionData(
+        val word: String,
+        val reading: String?,
+        val senses: List<WordLookupPopup.SenseDisplay>,
+        val freqScore: Int,
+        val isCommon: Boolean,
+    )
+
     private val density = ctx.resources.displayMetrics.density
     private fun dp(v: Float) = (v * density).toInt()
 
@@ -59,6 +81,20 @@ class MagnifierLens(
     private var lensView: LensView? = null
     private var params: WindowManager.LayoutParams? = null
 
+    /** Fires once per actual window teardown — tap-outside in sticky mode,
+     *  new drag start, [cancelDrag], or any [dismiss] caller. The drag
+     *  controller wires this to its `onSettled` to resume live mode. */
+    var onDismiss: (() -> Unit)? = null
+    /** Fires when the Open button on the definitions panel is tapped. */
+    var onOpenTap: (() -> Unit)? = null
+
+    /** True when the lens is in sticky-definitions mode — focusable,
+     *  touchable, watch-outside-touch active. Single source of truth
+     *  driven by [makeInteractive] / [resetToZoom] / [dismiss]; the
+     *  controller's `isPopupShowing` queries this directly so there's
+     *  no parallel state to drift. */
+    val isInteractive: Boolean get() = lensView?.isInteractive == true
+
     fun setBitmap(bitmap: Bitmap?) {
         lensView?.setSourceBitmap(bitmap)
     }
@@ -70,11 +106,59 @@ class MagnifierLens(
         lensView?.setLabel(word, reading)
     }
 
+    /** Switch the lens between ZOOM and DEFINITIONS rendering. Pass `data`
+     *  to populate the right-side definitions panel and switch to
+     *  DEFINITIONS mode; pass null to revert to ZOOM. The left-panel label
+     *  is updated from `data.word/reading` when entering DEFINITIONS mode;
+     *  ZOOM mode leaves whatever label the controller most recently set. */
+    fun setDefinitions(data: LensDefinitionData?, label: String?) {
+        lensView?.setDefinitions(data, label)
+    }
+
+    /** Promote the lens from drag-mode (NOT_FOCUSABLE | NOT_TOUCHABLE) to
+     *  sticky-mode (focusable, touchable, outside-watch). After this call,
+     *  taps outside the lens fire [onDismiss], the Open button accepts
+     *  clicks, and joystick deflection past the dead-zone dismisses too. */
+    fun makeInteractive() {
+        val view = lensView ?: return
+        val p = params ?: return
+        // Wholesale flag rewrite: drop NOT_FOCUSABLE | NOT_TOUCHABLE, add
+        // NOT_TOUCH_MODAL | WATCH_OUTSIDE_TOUCH. Keep LAYOUT_NO_LIMITS so
+        // the existing top-edge overhang doesn't jump on transition.
+        p.flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+        try { wm.updateViewLayout(view, p) } catch (_: Exception) {}
+        view.attachInteractiveListeners(onDismissRequest = { dismiss() })
+    }
+
+    /** Demote the lens window back to drag-mode flags + zoom rendering and
+     *  clear any lingering sticky state. Used by the controller at the
+     *  start of a new drag — preferred over `dismiss()`+`show()` because
+     *  it keeps the existing window registered with the overlay registry,
+     *  avoiding the race where a fresh lens at alpha=1 lands inside an
+     *  in-flight clean-capture's prepare/take window and contaminates the
+     *  screenshot. No-op if the lens window doesn't exist. */
+    fun resetToZoom() {
+        val view = lensView ?: return
+        val p = params ?: return
+        p.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+        try { wm.updateViewLayout(view, p) } catch (_: Exception) {}
+        view.detachInteractiveListeners()
+        view.setDefinitions(null, null)
+        view.setLabel(null, null)
+        view.setSourceBitmap(null)
+    }
+
     /** Lens width tracks WordLookupPopup's `baseW` (no open-button column —
-     *  the lens has no buttons on the right, just zoom). The popup subtracts
-     *  dp(24) for its root FrameLayout's 12dp+12dp horizontal padding before
-     *  splitting; the lens has no such padding, so left-panel width is a
-     *  flat 25% of lensW.
+     *  the lens has no buttons on the right while zooming). The popup
+     *  subtracts dp(24) for its root FrameLayout's 12dp+12dp horizontal
+     *  padding before splitting; the lens has no such padding, so left-
+     *  panel width is a flat 25% of lensW.
      *    lensW = min(screenW × 0.85, dp(360))
      *    leftW = lensW × 0.25
      *  Returns (lensW, leftPanelW) — both in pixels. */
@@ -119,19 +203,28 @@ class MagnifierLens(
         lensView?.visibility = View.INVISIBLE
     }
 
-    /** Tear down the window entirely. Call once per drag (on drag end). */
+    /** Tear down the window entirely. Fires [onDismiss] exactly once per
+     *  teardown so a single code path serves tap-outside, new-drag,
+     *  cancelDrag, and destroy paths. Subsequent calls are no-ops. */
     fun dismiss() {
-        val view = lensView
+        val view = lensView ?: return
         lensView = null
         params = null
-        if (view != null) {
-            PlayTranslateAccessibilityService.removeOverlay(view, wm)
-        }
+        PlayTranslateAccessibilityService.removeOverlay(view, wm)
+        onDismiss?.invoke()
     }
 
     private fun ensureWindow(lensW: Int, leftPanelW: Int) {
         if (lensView != null) return
-        val view = LensView(ctx, lensW, lensH, leftPanelW, cornerR, zoom)
+        val view = LensView(
+            ctx = ctx,
+            lensW = lensW,
+            lensH = lensH,
+            leftPanelW = leftPanelW,
+            cornerR = cornerR,
+            zoom = zoom,
+            onOpenTap = { onOpenTap?.invoke() },
+        )
         val lp = WindowManager.LayoutParams(
             lensW, lensH,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
@@ -151,11 +244,12 @@ class MagnifierLens(
     }
 
     /**
-     * The lens is a FrameLayout so the word/reading text can be hosted as
-     * real TextViews — letting the framework handle SP sizing, autoSize,
-     * ellipsize, and centering instead of reimplementing them with paint /
-     * StaticLayout. The custom canvas work (zoom, inset shadow, crosshair,
-     * border) lives in onDraw / draw around the children.
+     * The lens is a FrameLayout so the word/reading text and the definitions
+     * rows can be hosted as real TextViews — letting the framework handle
+     * SP sizing, autoSize, ellipsize, scrolling, and centering instead of
+     * reimplementing them with paint / StaticLayout. The custom canvas work
+     * (zoom, inset shadow, crosshair, border) lives in onDraw / draw around
+     * the children, gated by [mode].
      */
     private class LensView(
         ctx: Context,
@@ -164,9 +258,15 @@ class MagnifierLens(
         leftPanelW: Int,
         private val cornerR: Float,
         private val zoom: Float,
+        private val onOpenTap: () -> Unit,
     ) : FrameLayout(ctx) {
         private val density = ctx.resources.displayMetrics.density
+        private fun dp(v: Float): Int = (density * v).toInt()
         private val borderPx = density * 2f
+        private val rightPanelW = lensW - leftPanelW
+
+        private enum class Mode { ZOOM, DEFINITIONS }
+        private var mode: Mode = Mode.ZOOM
 
         // Overlay-context color resolution: themeColor(R.attr.pt*) is
         // unreliable from the accessibility service / floating-window
@@ -174,6 +274,16 @@ class MagnifierLens(
         // reads the user's mode + accent directly from Prefs.
         private val accentColor = OverlayColors.accent(ctx)
         private val accentOnColor = OverlayColors.accentOn(ctx)
+
+        // Popup-theme constants (intentionally hardcoded — these are popup
+        // chrome colors, not user-facing accent/mode-aware tokens).
+        private val popupBgColor = Color.parseColor("#242424")
+        private val popupSecondaryText = Color.parseColor("#A0A0A0")
+        private val popupPrimaryText = Color.parseColor("#EFEFEF")
+        private val popupStarColor = Color.parseColor("#606060")
+        private val popupBadgeBg = Color.parseColor("#383838")
+        private val popupDividerColor = Color.parseColor("#2E2E2E")
+        private val popupWarnColor = Color.parseColor("#D4A017")
 
         private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = accentColor
@@ -194,7 +304,8 @@ class MagnifierLens(
         // drawn while the round-rect clip is active (see [draw]), so its
         // outer half is clipped to the lens shape and the inner half blurs
         // softly toward the content — a "lens-depth" effect that recesses
-        // both panels beneath the accent border.
+        // the zoom beneath the accent border. Skipped in DEFINITIONS mode
+        // so the blur doesn't bleed under the panel's edges.
         private val insetShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.argb(70, 0, 0, 0)
             style = Paint.Style.STROKE
@@ -254,6 +365,66 @@ class MagnifierLens(
             )
         }
 
+        // Definitions panel mirrors the popup's middle scrollable column +
+        // divider + right Open button. Built once at init with empty
+        // content; setDefinitions populates the meta/label/sense rows on
+        // mode entry. Visibility toggled via setDefinitions.
+        private val definitionsContent = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 0, dp(4f), 0)
+        }
+        private val definitionsScroll = ScrollView(ctx).apply {
+            // Width=0 + weight=1 fills horizontally inside HORIZONTAL parent.
+            // WRAP_CONTENT height + CENTER_VERTICAL gravity keeps short
+            // definitions vertically centered in the panel; longer content
+            // gets capped by the panel's bounded height and scrolls.
+            layoutParams = LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f,
+            ).apply { gravity = Gravity.CENTER_VERTICAL }
+            isVerticalScrollBarEnabled = true
+            isFillViewport = false
+            addView(definitionsContent)
+        }
+        private val openButton = ImageView(ctx).apply {
+            val drawable = AppCompatResources
+                .getDrawable(ctx, R.drawable.ic_open_in_new)
+                ?.mutate()
+            if (drawable != null) {
+                DrawableCompat.setTint(drawable, popupSecondaryText)
+                setImageDrawable(drawable)
+            }
+            setPadding(dp(7f), dp(4f), dp(1f), dp(4f))
+            layoutParams = LinearLayout.LayoutParams(
+                dp(31f),
+                LinearLayout.LayoutParams.MATCH_PARENT,
+            ).apply { gravity = Gravity.CENTER_VERTICAL }
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setOnClickListener { onOpenTap() }
+        }
+        private val openDivider = View(ctx).apply {
+            setBackgroundColor(popupDividerColor)
+            layoutParams = LinearLayout.LayoutParams(
+                dp(1f),
+                LinearLayout.LayoutParams.MATCH_PARENT,
+            ).apply { setMargins(dp(8f), 0, dp(4f), 0) }
+        }
+        private val definitionsPanel = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(popupBgColor)
+            setPadding(dp(8f), dp(8f), 0, dp(8f))
+            visibility = GONE
+            addView(definitionsScroll)
+            addView(openDivider)
+            addView(openButton)
+            layoutParams = LayoutParams(
+                rightPanelW,
+                LayoutParams.MATCH_PARENT,
+                Gravity.END or Gravity.CENTER_VERTICAL,
+            )
+        }
+
         private val clipPath = Path()
         private val srcRect = Rect()
         private val dstRect = RectF()
@@ -279,7 +450,14 @@ class MagnifierLens(
             // FrameLayout sets willNotDraw based on background/foreground;
             // we paint zoom + shadow in onDraw, so we need it cleared.
             setWillNotDraw(false)
+            // Pre-configure for sticky-mode focus + joystick events.
+            // Listeners and requestFocus are attached only when
+            // attachInteractiveListeners runs; setting the focusable bits
+            // up front avoids needing to mutate them later.
+            isFocusable = true
+            isFocusableInTouchMode = true
             addView(leftCol)
+            addView(definitionsPanel)
             clipPath.addRoundRect(
                 0f, 0f, lensW.toFloat(), lensH.toFloat(),
                 cornerR, cornerR, Path.Direction.CW,
@@ -308,10 +486,150 @@ class MagnifierLens(
             leftCol.visibility = if (w == null) GONE else VISIBLE
         }
 
-        // Below: the accent-colored left panel and its labels are drawn by
-        // dispatchDraw (children) inside [draw]; onDraw only handles the
-        // zoom + inset shadow that sit underneath them.
+        fun setDefinitions(data: MagnifierLens.LensDefinitionData?, label: String?) {
+            if (data == null) {
+                if (mode == Mode.ZOOM) return
+                mode = Mode.ZOOM
+                definitionsPanel.visibility = GONE
+                invalidate()
+                return
+            }
+            mode = Mode.DEFINITIONS
+            setLabel(data.word, data.reading)
+            populateDefinitions(data, label)
+            // Lens windows are reused across drags via [resetToZoom], so the
+            // ScrollView keeps whatever scrollY the previous entry left
+            // behind. Reset it so each new word opens from the top — the
+            // "common" badge / freq stars / first senses must always be
+            // visible at first show.
+            definitionsScroll.scrollTo(0, 0)
+            definitionsPanel.visibility = VISIBLE
+            invalidate()
+        }
+
+        /** True when sticky-mode listeners are attached (set by
+         *  [attachInteractiveListeners], cleared by
+         *  [detachInteractiveListeners]). The lens is the single source
+         *  of truth — `MagnifierLens.isInteractive` reads this. */
+        var isInteractive: Boolean = false
+            private set
+
+        fun attachInteractiveListeners(onDismissRequest: () -> Unit) {
+            // ACTION_OUTSIDE delivery requires the host window to have
+            // FLAG_WATCH_OUTSIDE_TOUCH; calling dismiss() (not just the
+            // callback) actually tears the window down — without it the
+            // sticky lens stays up after tap-outside.
+            setOnTouchListener { _, event ->
+                if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) {
+                    onDismissRequest()
+                    false
+                } else false
+            }
+            // Joystick deflection past the dead-zone dismisses, mirroring
+            // WordLookupPopup.kt:150-161. Requires window focus, hence
+            // requestFocus below.
+            setOnGenericMotionListener { _, event ->
+                if (event.source and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK
+                    && event.action == MotionEvent.ACTION_MOVE
+                ) {
+                    val axisX = event.getAxisValue(MotionEvent.AXIS_X)
+                    val axisY = event.getAxisValue(MotionEvent.AXIS_Y)
+                    if (axisX * axisX + axisY * axisY > 0.25f) {
+                        onDismissRequest()
+                        true
+                    } else false
+                } else false
+            }
+            requestFocus()
+            isInteractive = true
+        }
+
+        /** Reverse of [attachInteractiveListeners] — clears the touch /
+         *  joystick listeners and drops focus. Used by [resetToZoom] when
+         *  a new drag starts so the lens window can be reused without
+         *  carrying sticky-mode wiring into ZOOM rendering. */
+        fun detachInteractiveListeners() {
+            setOnTouchListener(null)
+            setOnGenericMotionListener(null)
+            clearFocus()
+            isInteractive = false
+        }
+
+        /** Rebuilds the meta / label / sense rows from [data] inside
+         *  [definitionsContent]. Called every entry to DEFINITIONS mode —
+         *  the row count is small (≤ a few sense lines) so rebuild cost is
+         *  negligible; keeping it simple beats reusing pooled views. */
+        private fun populateDefinitions(
+            data: MagnifierLens.LensDefinitionData,
+            label: String?,
+        ) {
+            val ctx = context
+            definitionsContent.removeAllViews()
+
+            if (data.isCommon || data.freqScore > 0) {
+                val metaRow = LinearLayout(ctx).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, 0, 0, dp(4f))
+                }
+                if (data.isCommon) {
+                    metaRow.addView(TextView(ctx).apply {
+                        text = "common"
+                        setTextColor(popupSecondaryText)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+                        typeface = Typeface.DEFAULT_BOLD
+                        setPadding(dp(5f), dp(1f), dp(5f), dp(1f))
+                        background = GradientDrawable().apply {
+                            setColor(popupBadgeBg)
+                            cornerRadius = density * 4f
+                        }
+                    })
+                }
+                if (data.freqScore > 0) {
+                    metaRow.addView(TextView(ctx).apply {
+                        text = "★".repeat(data.freqScore.coerceAtMost(5))
+                        setTextColor(popupStarColor)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                        if (data.isCommon) setPadding(dp(6f), 0, 0, 0)
+                    })
+                }
+                definitionsContent.addView(metaRow)
+            }
+
+            if (label != null) {
+                definitionsContent.addView(TextView(ctx).apply {
+                    text = label
+                    setTextColor(popupWarnColor)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                    typeface = Typeface.DEFAULT_BOLD
+                    setPadding(0, 0, 0, dp(4f))
+                })
+            }
+
+            data.senses.forEachIndexed { i, sense ->
+                if (sense.pos.isNotBlank()) {
+                    definitionsContent.addView(TextView(ctx).apply {
+                        text = sense.pos
+                        setTextColor(popupSecondaryText)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                        typeface = Typeface.DEFAULT_BOLD
+                        if (i > 0) setPadding(0, dp(6f), 0, 0)
+                    })
+                }
+                definitionsContent.addView(TextView(ctx).apply {
+                    text = "${i + 1}. ${sense.definition}"
+                    setTextColor(popupPrimaryText)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                })
+            }
+        }
+
+        // ZOOM-mode-only canvas painting. DEFINITIONS modes skip the zoom
+        // (covered by the panel's #242424 bg + accent leftCol) and the
+        // inset shadow (whose blur would otherwise bleed under the panel
+        // edges and fringe the divider).
         override fun onDraw(canvas: Canvas) {
+            if (mode != Mode.ZOOM) return
             val w = lensW.toFloat()
             val h = lensH.toFloat()
 
@@ -332,25 +650,27 @@ class MagnifierLens(
         }
 
         /** Wraps the entire draw pass (background, onDraw, children) in
-         *  the rounded-rect clip, then paints the crosshair and border
-         *  on top of the restored canvas — they need to sit visually
-         *  above both the zoom and the left panel labels. */
+         *  the rounded-rect clip, then paints the crosshair (ZOOM mode
+         *  only) and border on top of the restored canvas — they need to
+         *  sit visually above the zoom and the left panel labels. */
         override fun draw(canvas: Canvas) {
             canvas.save()
             canvas.clipPath(clipPath)
             super.draw(canvas)
             canvas.restore()
 
-            val crosshairCx = lensW / 2f
-            val crosshairCy = lensH / 2f
-            canvas.drawLine(
-                crosshairCx - crosshairHalfLen, crosshairCy,
-                crosshairCx + crosshairHalfLen, crosshairCy, crosshairPaint,
-            )
-            canvas.drawLine(
-                crosshairCx, crosshairCy - crosshairHalfLen,
-                crosshairCx, crosshairCy + crosshairHalfLen, crosshairPaint,
-            )
+            if (mode == Mode.ZOOM) {
+                val crosshairCx = lensW / 2f
+                val crosshairCy = lensH / 2f
+                canvas.drawLine(
+                    crosshairCx - crosshairHalfLen, crosshairCy,
+                    crosshairCx + crosshairHalfLen, crosshairCy, crosshairPaint,
+                )
+                canvas.drawLine(
+                    crosshairCx, crosshairCy - crosshairHalfLen,
+                    crosshairCx, crosshairCy + crosshairHalfLen, crosshairPaint,
+                )
+            }
 
             val inset = borderPx / 2f
             borderRect.set(inset, inset, lensW - inset, lensH - inset)

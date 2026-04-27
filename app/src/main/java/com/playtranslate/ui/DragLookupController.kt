@@ -9,6 +9,7 @@ import android.view.WindowManager
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.util.TypedValue
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.MainActivity
@@ -98,21 +99,49 @@ class DragLookupController(
         val reading: String?,
         val charOffset: Int,
     )
+    /** A line + the LabelToken under the finger, returned from
+     *  [detectLabelTokenAt]. The (line.text, token.charOffset) pair is the
+     *  identity used by the dwell logic to detect "different word, same
+     *  position" cases and to key cached lookup results. */
+    private data class TokenHit(val line: OcrManager.OcrLine, val token: LabelToken)
     /** Result of [detectWordAt]. */
     private data class WordReadout(val word: String, val reading: String?)
+    /** Cache key for the dwell-triggered lookup result so a release at the
+     *  same word can reuse it instead of re-running tokenize + dictionary. */
+    private data class DwellKey(val lineText: String, val charOffset: Int)
     private var lineTokensCache: Map<String, List<LabelToken>>? = null
 
+    // Dwell-preview state. Drives the 1-second hold timer that fires
+    // [runDwellLookup] when the finger is still over a word, plus the
+    // cached result so [onDragEnd] can transition to the sticky lens
+    // without re-running the lookup.
+    private val dwellRunnable = Runnable { runDwellLookup() }
+    private var dwellAnchorX = 0f
+    private var dwellAnchorY = 0f
+    private var dwellAnchorToken: TokenHit? = null
+    private var dwellScheduled = false
+    private var dwellLookupJob: Job? = null
+    private var dwellResult: Pair<DwellKey, PopupData>? = null
+    private val dwellTolerancePx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP,
+        DWELL_TOLERANCE_DP,
+        popup.ctx.resources.displayMetrics,
+    )
+
     init {
-        // Drag-popup always wears the "open in detail view" hat. Where
-        // it leads depends on whether the main app is the active surface:
-        //   - Dual-screen + MainActivity foregrounded → open the word
-        //     detail sheet inside MainActivity (user is already looking
-        //     at the app; don't launch a new activity).
-        //   - Otherwise (single-screen or app backgrounded) → launch
-        //     TranslationResultActivity with the sentence, which is the
-        //     only way to surface the details when the app isn't visible.
-        popup.showOpenButton = true
-        popup.onOpenTap = {
+        // Lens absorbs the popup's role in the drag flow (see plan
+        // "Lens-Replaces-Popup"). The popup constructor parameter stays
+        // for non-drag consumers (TranslationResultFragment) and as a
+        // context fallback below; drag-flow callbacks live on the lens.
+        magnifier.onOpenTap = {
+            // "Open in detail view" — context picks the destination:
+            //   - Dual-screen + MainActivity foregrounded → open the word
+            //     detail sheet inside MainActivity (user is already looking
+            //     at the app; don't launch a new activity).
+            //   - Otherwise (single-screen or app backgrounded) → launch
+            //     TranslationResultActivity with the sentence, which is
+            //     the only way to surface the details when the app isn't
+            //     visible.
             val service = PlayTranslateAccessibilityService.instance ?: popup.ctx
             if (!Prefs.isSingleScreen(service) && MainActivity.isInForeground) {
                 openWordDetailInApp()
@@ -120,22 +149,38 @@ class DragLookupController(
                 openSentenceInApp()
             }
         }
-        // Popup only ever surfaces on release (see [onDragEnd]); dismissal
-        // post-drag fires [onSettled] so the service can restore region
-        // indicator + live mode. If a new drag starts and dismisses an
-        // existing popup, dragInProgress is true at that moment and onSettled
-        // is suppressed — drag2 wants the paused state and will fire its own
-        // settle when its release-time popup is eventually dismissed.
-        popup.onDismiss = {
+        // Lens dismissal post-drag fires [onSettled] so the service can
+        // restore region indicator + live mode. If a new drag starts and
+        // tears down a sticky lens, dragInProgress is true at that moment
+        // and onSettled is suppressed — the new drag will fire its own
+        // settle when its lens is eventually dismissed.
+        magnifier.onDismiss = {
             lastWord = null
+            currentEntry = null
             if (!dragInProgress) onSettled?.invoke()
         }
     }
 
-    val isPopupShowing: Boolean get() = popup.isShowing
+    /** True when the lens is in sticky-definitions mode (drag has ended,
+     *  user is reading the result). Callers use this to decide whether
+     *  game-input or live-mode toggles should dismiss it first. Property
+     *  name kept as `isPopupShowing` for compat with callers wired during
+     *  the popup-era; semantically it now means "is the drag-flow lookup
+     *  surface attached and interactive". Reads directly from the lens —
+     *  the lens is the single source of truth for its own mode. */
+    val isPopupShowing: Boolean get() = magnifier.isInteractive
 
     companion object {
         private const val TAG = "DragLookup"
+        /** Hold time before dwell triggers definitions. */
+        private const val DWELL_MS = 1000L
+        /** Movement (px equivalent of dp) tolerance during dwell — finger
+         *  jitter under this threshold doesn't reset the timer or revert
+         *  the lens from DEFINITIONS back to ZOOM. */
+        private const val DWELL_TOLERANCE_DP = 8f
+        /** Machine-translated label rendered above the senses, mirroring
+         *  the popup's same-named warning. */
+        private const val MACHINE_TRANSLATED_LABEL = "⚠ Machine translated"
         /** True if [s] contains any CJK ideograph (kanji / hanzi). Used as
          *  the gate for whether a reading is worth showing — for fully
          *  kana / hangul / Latin words a phonetic readout is redundant.
@@ -262,20 +307,35 @@ class DragLookupController(
     fun onDragStart(existingScreenshotPath: String? = null) {
         // Tear down everything left over from the previous drag. Previous
         // drag's lift-time lookupJob may still be in flight; cancel it so it
-        // doesn't surface a popup over this drag. Hand the previous drag's
-        // bitmap off to its (now-cancelled) OCR job — Job.cancel() is
-        // cooperative and ML Kit text recognition is non-cancellable at the
-        // native layer, so the worker keeps the bitmap alive until it
-        // returns; handOffDragBitmap waits via invokeOnCompletion.
+        // doesn't transition the lens after this drag has started. Hand the
+        // previous drag's bitmap off to its (now-cancelled) OCR job —
+        // Job.cancel() is cooperative and ML Kit text recognition is non-
+        // cancellable at the native layer, so the worker keeps the bitmap
+        // alive until it returns; handOffDragBitmap waits via
+        // invokeOnCompletion.
         handOffDragBitmap()
         ocrJob?.cancel()
         lookupJob?.cancel()
-        // dragInProgress=true BEFORE dismissing the stale popup so the
-        // popup.onDismiss handler suppresses onSettled — drag2's onDragStart
-        // wrapper has just paused live mode for this drag and we don't want
-        // to immediately resume it.
+        handler.removeCallbacks(dwellRunnable)
+        dwellLookupJob?.cancel()
+        dwellScheduled = false
+        dwellResult = null
+        dwellAnchorToken = null
+        // dragInProgress=true BEFORE any lens mutation that could fire
+        // onDismiss — the suppression check in the onDismiss handler
+        // depends on it.
         dragInProgress = true
-        if (popup.isShowing) popup.dismiss()
+        // A sticky lens from the previous drag carries focusable+touchable
+        // flags + populated definitions panel + outside-touch listener —
+        // none of which are correct for a fresh ZOOM-mode drag. Reset the
+        // existing window in place rather than dismiss + re-add: the
+        // dismiss + addOverlayWindow cycle races with in-flight clean
+        // captures (the new window lands at alpha=1 after
+        // prepareForCleanCapture's snapshot, then takeScreenshot picks
+        // it up before restoreAfterCapture runs). resetToZoom mutates
+        // the same registered handle, so its alpha state under capture
+        // stays consistent.
+        magnifier.resetToZoom()
         ocrLines = null
         lastSentSentence = null
         lineTokensCache = null
@@ -332,24 +392,94 @@ class DragLookupController(
 
     /**
      * Called on every ACTION_MOVE during a drag. Magnifier follows the
-     * finger and shows a small readout of the word currently under the
-     * finger; the popup stays out of the way until release.
+     * finger, shows a small readout of the word currently under the
+     * finger, and schedules the 1-second dwell timer that triggers the
+     * inline definitions preview when the finger holds still over a word.
      */
     fun onDragMove(rawX: Float, rawY: Float) {
         lastX = rawX
         lastY = rawY
         val screen = queryScreenSize()
         magnifier.show(rawX.toInt(), rawY.toInt(), screen.x, screen.y)
-        val readout = detectWordAt(rawX.toInt(), rawY.toInt())
-        magnifier.setLabel(readout?.word, readout?.reading)
+        val currentHit = detectLabelTokenAt(rawX.toInt(), rawY.toInt())
+        magnifier.setLabel(currentHit?.token?.lookupForm, currentHit?.token?.reading)
+
+        // Dwell tracking: reset on movement past tolerance OR when the
+        // token under the finger changes (rare — different word at the
+        // same physical position, e.g. when scrolling text).
+        val dx = rawX - dwellAnchorX
+        val dy = rawY - dwellAnchorY
+        val movedFar = (dx * dx + dy * dy) > dwellTolerancePx * dwellTolerancePx
+        val anchorKey = dwellAnchorToken?.let { it.line.text to it.token.charOffset }
+        val currentKey = currentHit?.let { it.line.text to it.token.charOffset }
+        if (movedFar || anchorKey != currentKey) {
+            handler.removeCallbacks(dwellRunnable)
+            dwellLookupJob?.cancel()
+            dwellLookupJob = null
+            dwellResult = null
+            dwellScheduled = false
+            // Definitions panel was visible if dwell already fired; revert
+            // the lens to ZOOM mode for the new anchor.
+            magnifier.setDefinitions(null, null)
+            dwellAnchorX = rawX
+            dwellAnchorY = rawY
+            dwellAnchorToken = currentHit
+        }
+        // Schedule the dwell timer only when we're over a word and not
+        // already counting down. If a previous dwell fired and the lens
+        // is in DEFINITIONS mode, dwellResult is still set — don't re-
+        // schedule until movement clears it.
+        if (currentHit != null && !dwellScheduled && dwellResult == null) {
+            handler.postDelayed(dwellRunnable, DWELL_MS)
+            dwellScheduled = true
+        }
     }
 
-    /** Synchronous "what's under the finger right now" — line hit-test +
-     *  pre-tokenized cache + nearest-token. Returns the token's dictionary
-     *  form (e.g. "住む" for "住んで") plus its reading (furigana/pinyin)
-     *  for the lens panel, or null if no text is targeted, or the cache
-     *  hasn't been populated yet by the OCR coroutine. */
-    private fun detectWordAt(rawX: Int, rawY: Int): WordReadout? {
+    /** Runs on the main thread when the dwell timer fires. Re-resolves the
+     *  token at the dwell anchor, runs the dictionary lookup, and feeds
+     *  the result into the lens's definitions panel. The result is also
+     *  cached in [dwellResult] so a release at the same word can reuse it
+     *  without re-fetching. */
+    private fun runDwellLookup() {
+        dwellScheduled = false
+        val anchor = dwellAnchorToken ?: return
+        val lines = ocrLines ?: return
+        val anchorX = dwellAnchorX.toInt()
+        val anchorY = dwellAnchorY.toInt()
+        val key = DwellKey(anchor.line.text, anchor.token.charOffset)
+        Log.d(TAG, "Dwell fired at ($anchorX, $anchorY) over '${anchor.token.lookupForm}'")
+        dwellLookupJob = scope.launch {
+            try {
+                val resolved = resolveLookupData(anchorX, anchorY, lines, isDwell = true)
+                    ?: return@launch
+                withContext(Dispatchers.Main) {
+                    // Anchor may have changed while the lookup was in-
+                    // flight; only publish if the user is still hovering
+                    // the same word and the drag is still active.
+                    val stillHere = dragInProgress && dwellAnchorToken?.let {
+                        it.line.text == anchor.line.text &&
+                            it.token.charOffset == anchor.token.charOffset
+                    } == true
+                    if (!stillHere) return@withContext
+                    val (popupData, label) = resolved
+                    dwellResult = key to popupData
+                    magnifier.setDefinitions(popupData.toLensData(), label)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Dwell lookup failed: ${e.message}")
+            }
+        }
+    }
+
+    /** Synchronous "what token is under the finger right now" — line
+     *  hit-test against [ocrLines] + lookup against the pre-tokenized
+     *  [lineTokensCache] + nearest-token. Returns the matched line + token,
+     *  or null if no text is targeted or the cache hasn't been populated
+     *  yet. Disambiguates duplicate surfaces on the same line via
+     *  charOffset, which is also the dwell logic's identity key. */
+    private fun detectLabelTokenAt(rawX: Int, rawY: Int): TokenHit? {
         val lines = ocrLines ?: return null
         val cache = lineTokensCache ?: return null
         val hitLine = findLineAt(rawX, rawY, lines) ?: return null
@@ -370,20 +500,28 @@ class DragLookupController(
             fallbackCharExtent = charExtent,
             vertical = isVertical,
         ) ?: return null
-        // Disambiguate via character offset — the second of findClosestToken's
-        // pair is the matched span's start in lineText. Without this, a line
-        // with two occurrences of the same surface would always resolve to the
-        // first occurrence's lookupForm even when the user aimed at the second.
         val matchedOffset = match.second
         val matched = tokens.firstOrNull { it.charOffset == matchedOffset }
-        val word = matched?.lookupForm ?: match.first
-        // reading is already filtered in pretokenizeLines (kanji check etc.).
-        return WordReadout(word, matched?.reading)
+            ?: return null
+        return TokenHit(hitLine, matched)
     }
 
-    /** Pre-tokenize every OCR line so [detectWordAt] can run synchronously
-     *  during onDragMove. Called from the OCR coroutine after recognition
-     *  completes (engine.tokenize is a suspend function).
+    /** Thin wrapper around [detectLabelTokenAt] for callers that only need
+     *  the lookup form + reading for the lens label. */
+    private fun detectWordAt(rawX: Int, rawY: Int): WordReadout? =
+        detectLabelTokenAt(rawX, rawY)?.let { WordReadout(it.token.lookupForm, it.token.reading) }
+
+    /** Pre-tokenize every OCR line so [detectLabelTokenAt] can run
+     *  synchronously during onDragMove. Called from the OCR coroutine
+     *  after recognition completes.
+     *
+     *  Each token is resolved through the dictionary via [engine.lookup]
+     *  so the cached `lookupForm` matches the JMdict-canonical headword
+     *  (e.g. "住む" for the 住んで surface span), not whatever kuromoji's
+     *  baseForm happens to produce or whatever the n-gram phrase match
+     *  pinned the lookupForm to. Without this, the lens label during
+     *  drag and the dictionary panel after dwell could disagree on the
+     *  word's form.
      *
      *  Re-throws [CancellationException] before the generic catch so a
      *  cancelled drag's coroutine actually exits without overwriting
@@ -404,18 +542,25 @@ class DragLookupController(
                 for (r in results) {
                     val idx = line.text.indexOf(r.surface, pos)
                     if (idx < 0) continue
-                    val word = r.lookupForm ?: r.surface
-                    // Match the popup's "show reading when it adds info"
-                    // intent: drop blanks, drop readings equal to the word
-                    // (popup uses `reading != word`), and drop readings
-                    // for words with no kanji — the popup is shielded
-                    // from that via JMdict-stored headwords; we have to
-                    // gate it ourselves on raw kuromoji output.
-                    val reading = r.reading
-                        ?.takeIf { it.isNotBlank() && it != word && hasKanji(word) }
+                    // Resolve to the JMdict canonical headword so the
+                    // cached form matches what the dictionary panel would
+                    // show after dwell. Without this, a verb conjugation
+                    // like 住んで shows the kuromoji surface in the lens
+                    // label during drag, then flips to 住む once the
+                    // dwell-triggered DefinitionResolver.lookup runs.
+                    val (resolvedWord, resolvedReading) = resolveHeadword(
+                        engine, r.lookupForm, r.reading,
+                    )
+                    // Same "show reading when it adds info" gate the
+                    // popup applies internally: drop blanks, drop reading
+                    // equal to the word, drop readings for words with no
+                    // kanji (kuromoji can return a katakana reading for
+                    // a hiragana word, etc.).
+                    val reading = resolvedReading
+                        ?.takeIf { readingAddsInfo(resolvedWord, it) }
                     labels += LabelToken(
                         surface = r.surface,
-                        lookupForm = word,
+                        lookupForm = resolvedWord,
                         reading = reading,
                         charOffset = idx,
                     )
@@ -427,70 +572,155 @@ class DragLookupController(
             } catch (e: Exception) {
                 Log.w(TAG, "pretokenize failed for line: ${e.message}")
             }
+            // Publish progressively so labels for already-resolved lines
+            // become hit-testable without waiting for the rest. Per-token
+            // engine.lookup is on IO but each line is sequential here, so
+            // dense screens (many lines × many tokens) can take hundreds
+            // of ms total — incremental publish removes the all-or-nothing
+            // wait window. Both reader (onDragMove) and writer
+            // (pretokenizeLines) run on the controller's Main scope, so
+            // the shared mutable map is safe to share by reference; the
+            // assignment is just a republish of the same handle to make
+            // the intent obvious.
+            lineTokensCache = cache
         }
-        lineTokensCache = cache
     }
 
-    /** Called on ACTION_UP. Returns true if the icon should restore to its
-     *  saved position (popup is about to show via async lookup). Returns
-     *  false when the drag ended cleanly with no popup target (icon snaps
-     *  to edge).
+    /** Single source of truth for "given a kuromoji-derived (lookupForm,
+     *  reading), what does the dictionary call this word?". Both the
+     *  pretokenize cache and the post-dwell definitions panel should
+     *  agree on the answer; collapsing the resolution into one helper
+     *  keeps them in lockstep.
      *
-     *  Release-commit: this is the only path that surfaces the popup.
-     *  Lookup is async; the icon restores immediately so the popup has a
-     *  stable anchor when it appears. If the lookup misses, [onSettled]
-     *  fires so the service can restore live mode / region overlay. */
+     *  Falls back to the input pair when the dictionary has no entry —
+     *  proper-name / unknown word case. */
+    private suspend fun resolveHeadword(
+        engine: com.playtranslate.language.SourceLanguageEngine,
+        lookupForm: String,
+        reading: String?,
+    ): Pair<String, String?> {
+        val response = try {
+            engine.lookup(lookupForm, reading)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+        val head = response?.entries?.firstOrNull()?.headwords?.firstOrNull()
+            ?: return lookupForm to reading
+        val word = head.written ?: head.reading ?: lookupForm
+        return word to head.reading
+    }
+
+    /** True when [reading] adds information beyond [word] — non-blank,
+     *  not redundant, and the word actually contains kanji that the
+     *  reading clarifies. Mirrors the popup's intent (`reading != word`
+     *  on the TextView side) and the cache's hasKanji gate so both
+     *  paths converge on the same display rule. */
+    private fun readingAddsInfo(word: String, reading: String): Boolean =
+        reading.isNotBlank() && reading != word && hasKanji(word)
+
+    /** Called on ACTION_UP. Returns true if the icon should restore to its
+     *  saved position (the lens is about to settle into sticky mode with
+     *  definitions). Returns false when the drag ended cleanly with no
+     *  word target (lens torn down, icon snaps to edge).
+     *
+     *  Release-commit: instead of opening a separate popup window, the
+     *  lens stays up and is promoted to sticky mode (focusable, touchable,
+     *  outside-watch) with the definitions panel rendered in place of the
+     *  zoom. If the lookup misses, the lens dismisses and its onDismiss
+     *  fires [onSettled] so the service can restore live mode. */
     fun onDragEnd(): Boolean {
         dragInProgress = false
-        magnifier.dismiss()
-        // Cancel any pending OCR. If ocrLines is set the job is already
-        // COMPLETED (no-op). Otherwise this stops wasted ML Kit work and
-        // lets the orphan check in [attachDragBitmap] schedule a prompt
-        // bitmap recycle.
+        handler.removeCallbacks(dwellRunnable)
+        dwellLookupJob?.cancel()
+        dwellLookupJob = null
+        dwellScheduled = false
+        // NOTE: do NOT call magnifier.dismiss() unconditionally — the lens
+        // may transition to STICKY mode below if the release is over a
+        // word with a successful lookup.
         ocrJob?.cancel()
         lookupJob?.cancel()
         handOffDragBitmap()
 
         val lines = ocrLines ?: run {
-            // OCR didn't finish in time. Drag yielded nothing.
-            onSettled?.invoke()
+            // OCR didn't finish in time. Drag yielded nothing — lens
+            // dismissal fires onSettled via onDismiss.
+            magnifier.dismiss()
             return false
         }
         val hitLine = findLineAt(lastX.toInt(), lastY.toInt(), lines) ?: run {
             // Released somewhere with no text under the finger.
-            onSettled?.invoke()
+            magnifier.dismiss()
             return false
         }
 
-        Log.d(TAG, "Lift-time lookup at (${lastX.toInt()}, ${lastY.toInt()}), line: ${hitLine.text}")
+        // Reuse a still-fresh dwell result if the release happens on the
+        // same token we already looked up — saves an entire tokenize +
+        // dictionary round-trip.
+        val releaseHit = detectLabelTokenAt(lastX.toInt(), lastY.toInt())
+        val cachedKey = dwellResult?.first
+        val releaseKey = releaseHit?.let { DwellKey(it.line.text, it.token.charOffset) }
+        val cachedData = if (cachedKey != null && cachedKey == releaseKey) dwellResult?.second else null
+
+        Log.d(TAG, "Lift-time lookup at (${lastX.toInt()}, ${lastY.toInt()}), " +
+            "line: ${hitLine.text}, cached=${cachedData != null}")
         lookupJob = scope.launch {
             try {
-                val showed = performLookup(lastX.toInt(), lastY.toInt(), lines, dismissOnMiss = false)
-                if (!showed) onSettled?.invoke()
+                val resolved = if (cachedData != null) {
+                    cachedData to cachedData.machineTranslatedLabel()
+                } else {
+                    resolveLookupData(lastX.toInt(), lastY.toInt(), lines, isDwell = false)
+                }
+                if (resolved == null) {
+                    withContext(Dispatchers.Main) { magnifier.dismiss() }
+                    return@launch
+                }
+                val (popupData, label) = resolved
+                // Release-only side effects (only when lookup succeeded).
+                lastWord = popupData.word
+                currentEntry = popupData.entry
+                currentSentence?.let { sent ->
+                    if (sent != lastSentSentence) {
+                        lastSentSentence = sent
+                        sendLineToMainApp(sent)
+                    }
+                }
+                withContext(Dispatchers.Main) {
+                    magnifier.setDefinitions(popupData.toLensData(), label)
+                    magnifier.makeInteractive()
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Lift-time lookup failed", e)
-                onSettled?.invoke()
+                withContext(Dispatchers.Main) { magnifier.dismiss() }
             }
         }
         return true
     }
 
     /**
-     * Tear everything down: OCR / lookup jobs, magnifier, popup. Used both
-     * by [cancelDrag] (system gesture cancellation) and by external callers
-     * (e.g. game button press dismissing an open popup). popup.dismiss()
-     * fires the controller's onDismiss handler, which fires [onSettled] —
-     * so this method does NOT call onSettled directly.
+     * Tear everything down: OCR / lookup jobs, dwell timer, magnifier
+     * (the drag-flow surface). Used both by [cancelDrag] (system gesture
+     * cancellation) and by external callers (e.g. game button press
+     * dismissing an open lens). magnifier.dismiss() fires the controller's
+     * onDismiss handler, which fires [onSettled] — so this method does
+     * NOT call onSettled directly. Clears dragInProgress *before* the
+     * dismiss so the dismiss handler takes the post-drag branch.
      */
     fun dismiss() {
+        dragInProgress = false
         ocrJob?.cancel()
         lookupJob?.cancel()
-        dragInProgress = false
+        handler.removeCallbacks(dwellRunnable)
+        dwellLookupJob?.cancel()
+        dwellScheduled = false
         magnifier.dismiss()
         handOffDragBitmap()
-        popup.dismiss()
+        // Popup is not the drag-flow surface anymore, but other callers
+        // (TranslationResultFragment) might have it up — leave them alone
+        // unless this controller's destroy specifically tears down.
         ocrLines = null
     }
 
@@ -499,14 +729,19 @@ class DragLookupController(
     fun cancelDrag() = dismiss()
 
     fun destroy() {
-        // Clear dragInProgress BEFORE popup.dismiss so the popup-dismiss
+        // Clear dragInProgress BEFORE magnifier.dismiss so the lens-dismiss
         // handler fires onSettled (the post-drag branch). Otherwise a
-        // destroy mid-drag with a popup somehow up would suppress settle.
+        // destroy mid-drag with a sticky lens up would suppress settle.
         dragInProgress = false
         ocrJob?.cancel()
         lookupJob?.cancel()
+        handler.removeCallbacks(dwellRunnable)
+        dwellLookupJob?.cancel()
+        dwellScheduled = false
         magnifier.dismiss()
         handOffDragBitmap()
+        // Best-effort dismiss for any non-drag popup still attached
+        // (TranslationResultFragment owns those). Benign no-op otherwise.
         popup.dismiss()
         ocrLines = null
         scope.cancel()
@@ -594,27 +829,29 @@ class DragLookupController(
     }
 
     /**
-     * Looks up the word at (fingerX, fingerY). If [dismissOnMiss] is true and no word
-     * is found, dismisses the popup. Returns true if a word was found and shown.
+     * Tokenizes the line under (fingerX, fingerY), runs the dictionary
+     * lookup, and returns a (PopupData, label) pair ready to feed into
+     * the lens — or null if no word can be resolved.
+     *
+     * Idempotent side effects (`prefetchWordLookups`, `currentSentence`
+     * write) run in both dwell and release branches. Release-only side
+     * effects (`lastWord`, `currentEntry`, `sendLineToMainApp`) live in
+     * the [onDragEnd] caller, NOT here — running them on dwell would push
+     * sentence intents to MainActivity before the user committed by
+     * releasing.
      */
-    private suspend fun performLookup(fingerX: Int, fingerY: Int, lines: List<OcrManager.OcrLine>, dismissOnMiss: Boolean = false): Boolean {
-        val found = performLookupInner(fingerX, fingerY, lines)
-        if (!found && dismissOnMiss) {
-            withContext(Dispatchers.Main) {
-                popup.dismiss()
-                lastWord = null
-            }
-        }
-        return found
-    }
-
-    private suspend fun performLookupInner(fingerX: Int, fingerY: Int, lines: List<OcrManager.OcrLine>): Boolean {
+    private suspend fun resolveLookupData(
+        fingerX: Int,
+        fingerY: Int,
+        lines: List<OcrManager.OcrLine>,
+        @Suppress("UNUSED_PARAMETER") isDwell: Boolean,
+    ): Pair<PopupData, String?>? {
         // Find the line the finger is over
         val hitLine = findLineAt(fingerX, fingerY, lines)
 
         if (hitLine == null) {
             Log.d(TAG, "No line near ($fingerX, $fingerY)")
-            return false
+            return null
         }
 
         Log.d(TAG, "Hit line: \"${hitLine.text}\" at ($fingerX, $fingerY)")
@@ -626,11 +863,11 @@ class DragLookupController(
         val charExtent = lineExtent / lineText.length
 
         // Tokenize the line (surface spans for position mapping, lookup forms for dictionary)
-        val service = PlayTranslateAccessibilityService.instance ?: return false
+        val service = PlayTranslateAccessibilityService.instance ?: return null
         val engine = SourceLanguageEngines.get(service, Prefs(service).sourceLangId)
         val tokenResults = engine.tokenize(lineText)
 
-        if (tokenResults.isEmpty()) return false
+        if (tokenResults.isEmpty()) return null
 
         // Find the token whose screen position is closest to the finger.
         // For vertical text, match along the Y axis; for horizontal, along X.
@@ -644,7 +881,7 @@ class DragLookupController(
             fallbackCharExtent = charExtent,
             vertical = isVertical,
         )
-        if (tokenMatch == null) return false
+        if (tokenMatch == null) return null
 
         val matchedSurface = tokenMatch.first
         val matchedIdx = tokenMatch.second
@@ -663,9 +900,6 @@ class DragLookupController(
             null
         }
         val lookupForm = matchedToken?.lookupForm ?: matchedSurface
-
-        // Skip if same word already showing (counts as "found")
-        if (lookupForm == lastWord && popup.isShowing) return true
 
         // Dictionary lookup using the base/dictionary form + reading hint
         val prefs = Prefs(service)
@@ -828,39 +1062,40 @@ class DragLookupController(
                     entry = null
                 )
             }
-            else -> return false
-        }
-
-        // Estimate the word's center position along the text flow axis.
-        val tokenCenterIdx = matchedIdx + matchedSurface.length / 2f
-        val wordCenterX = if (isVertical) {
-            // For vertical text, use the column's center X for popup positioning
-            hitLine.bounds.centerX()
-        } else {
-            (hitLine.bounds.left + tokenCenterIdx * charExtent).toInt()
+            else -> return null
         }
 
         Log.d(TAG, "Found: $matchedSurface ($lookupForm) → ${entry?.slug ?: "(fallback)"}")
-        lastWord = lookupForm
 
-        // Use the pre-built group text (same combination logic as the main OCR pipeline)
+        // Sentence + cache prefetch — idempotent on dwell, so safe to run
+        // here. The release-only side effects (lastWord, currentEntry,
+        // sendLineToMainApp) live in onDragEnd, NOT here.
         val groupText = hitLine.groupText
         val sentence = extractSentence(groupText, hitLine.text, matchedSurface, matchedIdx)
-
         currentSentence = sentence
         prefetchWordLookups(sentence)
 
-        return withContext(Dispatchers.Main) {
-            val popupShown = showPopup(popupData, wordCenterX, fingerY)
-            if (sentence != lastSentSentence) {
-                lastSentSentence = sentence
-                sendLineToMainApp(sentence)
-            }
-            // Propagate add-failure so callers (lift-time lookup in onDragEnd)
-            // don't strand the drag flow waiting on a popup that never attached.
-            popupShown
-        }
+        return popupData to popupData.machineTranslatedLabel()
     }
+
+    /** Convert the controller's popup-shaped data into the lens's data
+     *  class. The lens doesn't carry `entry` or `machineTranslated`; the
+     *  former is controller-side state for openWordDetailInApp, the
+     *  latter becomes the [machineTranslatedLabel]. The reading is run
+     *  through the same [readingAddsInfo] gate the cache uses so the
+     *  lens shows or hides furigana consistently across drag (cache-fed)
+     *  and dwell/release (lookup-fed) paths. */
+    private fun PopupData.toLensData(): MagnifierLens.LensDefinitionData =
+        MagnifierLens.LensDefinitionData(
+            word = word,
+            reading = reading?.takeIf { readingAddsInfo(word, it) },
+            senses = senses,
+            freqScore = freqScore,
+            isCommon = isCommon,
+        )
+
+    private fun PopupData.machineTranslatedLabel(): String? =
+        if (machineTranslated) MACHINE_TRANSLATED_LABEL else null
 
     /** Resolved data for a single showPopup call — either a real JMdict entry
      *  or a reading-only fallback for tokens missing from the dictionary. */
@@ -912,29 +1147,6 @@ class DragLookupController(
         return null
     }
 
-
-    /** Returns true if the popup is attached after this call. */
-    private fun showPopup(data: PopupData, fingerX: Int, fingerY: Int): Boolean {
-        currentEntry = data.entry
-        // Popup takes over the same real estate as the magnifier — hide the
-        // lens so the two don't visually fight. If the user keeps dragging,
-        // the popup-dismiss handler in [init] brings the magnifier back.
-        magnifier.hide()
-
-        val screen = queryScreenSize()
-        return popup.show(
-            word = data.word,
-            reading = data.reading,
-            senses = data.senses,
-            freqScore = data.freqScore,
-            isCommon = data.isCommon,
-            screenX = fingerX,
-            screenY = fingerY,
-            screenW = screen.x,
-            screenH = screen.y,
-            label = if (data.machineTranslated) "⚠ Machine translated" else null
-        )
-    }
 
     /**
      * Extracts the sentence containing [word] from the combined [groupText].
@@ -994,7 +1206,10 @@ class DragLookupController(
     private fun openSentenceInApp() {
         val sentence = currentSentence ?: return
         val service = PlayTranslateAccessibilityService.instance ?: return
-        popup.dismiss()
+        // Tear down the lens (sticky drag-flow surface) before launching
+        // the activity. Lens dismiss → onDismiss → onSettled, which is
+        // what the service expects post-drag.
+        magnifier.dismiss()
         val intent = Intent(service, TranslationResultActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
             putExtra(TranslationResultActivity.EXTRA_SENTENCE_TEXT, sentence)
@@ -1010,16 +1225,16 @@ class DragLookupController(
      * shove a fresh full-screen activity on top of the app they just
      * paused to inspect a word.
      *
-     * Needs at least the popup's currently-displayed word. Reading and
-     * sentence context are best-effort — the detail sheet handles each
-     * being null cleanly.
+     * Needs the controller's currently-displayed word ([lastWord]).
+     * Reading and sentence context are best-effort — the detail sheet
+     * handles each being null cleanly.
      */
     private fun openWordDetailInApp() {
-        val word = popup.currentWord ?: return
+        val word = lastWord ?: return
         val service = PlayTranslateAccessibilityService.instance ?: return
         val reading = currentEntry?.headwords?.firstOrNull()
             ?.reading?.takeIf { it != currentEntry?.headwords?.firstOrNull()?.written }
-        popup.dismiss()
+        magnifier.dismiss()
         val intent = Intent(service, MainActivity::class.java).apply {
             action = MainActivity.ACTION_DRAG_WORD
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
