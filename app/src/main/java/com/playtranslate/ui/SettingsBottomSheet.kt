@@ -261,30 +261,48 @@ class SettingsBottomSheet : DialogFragment() {
         val newCount = dm.displays.size
         if (newCount != lastDisplayCount && isAdded) {
             lastDisplayCount = newCount
-            reinflateContent()
+            val r = renderer ?: return
+            val v = currentView ?: return
+            
+            val displays = dm.displays.toList()
+            val prefs = Prefs(requireContext())
+            r.displayList = displays
+            r.selectedDisplayIdx = displays.indexOfFirst { it.displayId == prefs.captureDisplayId }
+                .takeIf { it >= 0 } ?: 0
+
+            // Recapture thumbnails
+            val myDisplayId = requireActivity().display?.displayId ?: android.view.Display.DEFAULT_DISPLAY
+            displays.forEach { display ->
+                val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
+                if (mgr != null) {
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        val bitmap = mgr.requestClean(display.displayId)
+                        if (bitmap != null) {
+                            r.displayThumbnails[display.displayId] = scaleThumbnail(bitmap)
+                            v.post { if (isAdded) r.refreshDisplayRows(Prefs(requireContext())) }
+                        } else if (display.displayId == myDisplayId) {
+                            captureActivityWindow { thumb ->
+                                r.displayThumbnails[display.displayId] = thumb
+                                if (isAdded) r.refreshDisplayRows(Prefs(requireContext()))
+                            }
+                        }
+                    }
+                } else if (display.displayId == myDisplayId) {
+                    captureActivityWindow { thumb ->
+                        r.displayThumbnails[display.displayId] = thumb
+                        if (isAdded) r.refreshDisplayRows(Prefs(requireContext()))
+                    }
+                }
+            }
+            
+            r.refreshDisplayRows(prefs)
         }
     }
 
     // ── Re-inflate (used for theme changes in dialog mode) ──────────────
 
     fun reinflateContent() {
-        val old = currentView ?: return
-        val parent = old.parent as? ViewGroup ?: return
-        val index = parent.indexOfChild(old)
-        parent.removeView(old)
-        val newView = LayoutInflater.from(requireActivity())
-            .inflate(R.layout.dialog_settings, parent, false)
-        parent.addView(newView, index)
-        currentView = newView
-        setupViews(newView)
-        val ctx = requireActivity()
-        val bgColor = ctx.themeColor(R.attr.ptBg)
-        dialog?.window?.apply {
-            statusBarColor = bgColor
-            navigationBarColor = bgColor
-            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(
-                ctx.themeColor(R.attr.ptSurface)))
-        }
+        // Not used anymore since we update the renderer directly
     }
 
     // ── Language delegate ────────────────────────────────────────────────

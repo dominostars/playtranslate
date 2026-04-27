@@ -95,6 +95,10 @@ class ProjectionOverlayHost private constructor(
         override fun onStop() {
             Log.i(TAG, "MediaProjection stopped by system")
             main.post {
+                if (instance !== this@ProjectionOverlayHost) {
+                    stop(skipProjectionStop = true)
+                    return@post
+                }
                 if (appInitiatedStop) {
                     stop(skipProjectionStop = true)
                 } else {
@@ -342,22 +346,22 @@ class ProjectionOverlayHost private constructor(
 
     private fun destroy(stopProjection: Boolean) {
         stopLoop()
-        try { virtualDisplay?.release() } catch (_: Exception) {}
+        try { virtualDisplay?.release() } catch (_: Throwable) {}
         virtualDisplay = null
-        try { imageReader?.close() } catch (_: Exception) {}
+        try { imageReader?.close() } catch (_: Throwable) {}
         imageReader = null
         synchronized(imageLock) {
-            latestImage?.close()
+            try { latestImage?.close() } catch (_: Throwable) {}
             latestImage = null
         }
-        try { displayManager?.unregisterDisplayListener(displayListener) } catch (_: Exception) {}
-        try { projection.unregisterCallback(projectionCallback) } catch (_: Exception) {}
+        try { displayManager?.unregisterDisplayListener(displayListener) } catch (_: Throwable) {}
+        try { projection.unregisterCallback(projectionCallback) } catch (_: Throwable) {}
         if (stopProjection) {
             appInitiatedStop = true
-            try { projection.stop() } catch (_: Exception) {}
+            try { projection.stop() } catch (_: Throwable) {}
         }
-        captureThread.quitSafely()
-        bitmapExecutor.shutdown()
+        try { captureThread.quitSafely() } catch (_: Throwable) {}
+        try { bitmapExecutor.shutdown() } catch (_: Throwable) {}
     }
 
     // ── OverlayHost: floating icon ───────────────────────────────────────
@@ -456,7 +460,7 @@ class ProjectionOverlayHost private constructor(
         floatingIcon = null
         floatingIconWm = null
         floatingIconDisplayId = -1
-        if (reason != "recreating") service.updateForegroundState()
+        if (reason != "recreating" && reason != "projection_stop") service.updateForegroundState()
     }
 
     override fun getFloatingIconRect(): Rect? {
@@ -508,15 +512,18 @@ class ProjectionOverlayHost private constructor(
         menu.onHideIcon = {
             dismissFloatingMenu()
             prefs.showOverlayIcon = false
+            openMainSettings()
             service.stopProjection()
         }
         menu.onHideTemporary = {
             dismissFloatingMenu()
+            openMainSettings()
             service.stopProjection()
         }
         menu.onCloseRequested = {
             dismissFloatingMenu()
             prefs.showOverlayIcon = false
+            openMainSettings()
             service.stopProjection()
         }
         menu.onDismiss = {
@@ -608,6 +615,14 @@ class ProjectionOverlayHost private constructor(
         floatingMenu = null
         floatingMenuWm = null
         if (wasShowing) service.holdActive = false
+    }
+
+    private fun openMainSettings() {
+        val launch = Intent(context, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_OPEN_SETTINGS
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        try { context.startActivity(launch) } catch (_: Exception) {}
     }
 
     private fun primaryDisplaySize(display: Display): Pair<Int, Int> {
@@ -837,6 +852,7 @@ class ProjectionOverlayHost private constructor(
         fun doStop() {
             if (stopped) return
             stopped = true
+            if (!skipProjectionStop) appInitiatedStop = true
             if (instance === this) instance = null
             dismissFloatingMenu()
             hideTranslationOverlay()
@@ -871,13 +887,11 @@ class ProjectionOverlayHost private constructor(
             resultCode: Int,
             data: Intent,
         ): ProjectionOverlayHost? {
-            instance?.stop()
-
             val mpm = service.getSystemService(Context.MEDIA_PROJECTION_SERVICE)
                 as MediaProjectionManager
             val projection = try {
                 mpm.getMediaProjection(resultCode, data)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.e(TAG, "getMediaProjection failed", e)
                 null
             } ?: return null
@@ -891,9 +905,9 @@ class ProjectionOverlayHost private constructor(
 
             val host = try {
                 ProjectionOverlayHost(service, projection, w, h, dpi)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.e(TAG, "ProjectionOverlayHost init failed", e)
-                try { projection.stop() } catch (_: Exception) {}
+                try { projection.stop() } catch (_: Throwable) {}
                 return null
             }
             instance = host

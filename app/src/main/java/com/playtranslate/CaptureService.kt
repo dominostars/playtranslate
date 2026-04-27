@@ -17,6 +17,7 @@ import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
@@ -68,6 +69,8 @@ class CaptureService : Service() {
     // ── Coroutines ────────────────────────────────────────────────────────
 
     internal val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    @Volatile private var projectionStopCooldownUntilMs: Long = 0L
+    @Volatile private var projectionStartInProgress: Boolean = false
 
     // ── Region session ───────────────────────────────────────────────────
     //
@@ -173,6 +176,11 @@ class CaptureService : Service() {
         ProjectionOverlayHost.instance
             ?: PlayTranslateAccessibilityService.instance?.screenshotManager
 
+    fun projectionRestartDelayMs(): Long {
+        val remaining = projectionStopCooldownUntilMs - SystemClock.uptimeMillis()
+        return remaining.coerceAtLeast(0L)
+    }
+
     // ── Lifecycle ─────────────────────────────────────────────────────────
 
     override fun onCreate() {
@@ -238,7 +246,11 @@ class CaptureService : Service() {
             android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
         else
             android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-        startForeground(NOTIF_ID, buildNotification(), type)
+        try {
+            startForeground(NOTIF_ID, buildNotification(), type)
+        } catch (e: Throwable) {
+            Log.e(TAG, "startForegroundForCurrentMode failed type=$type", e)
+        }
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -673,6 +685,14 @@ class CaptureService : Service() {
      * unchanged; only the FGS type bitmask is amended.
      */
     fun startProjection(resultCode: Int, data: Intent): Boolean {
+        if (projectionStartInProgress) {
+            Log.w(TAG, "startProjection ignored: another start is already in progress")
+            return false
+        }
+        projectionStartInProgress = true
+        return try {
+        try { ProjectionOverlayHost.instance?.stop() } catch (e: Throwable) { Log.e(TAG, "Failed to stop previous projection", e) }
+        projectionStopCooldownUntilMs = 0L
         // Promote to mediaProjection FGS type *before* obtaining the
         // projection. The manifest declares `specialUse|mediaProjection`,
         // so passing FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION is a valid
@@ -721,13 +741,24 @@ class CaptureService : Service() {
         // force the pref on so a previously-disabled icon doesn't suppress
         // the post-grant ensureFloatingIcon() below.
         Prefs(this).showOverlayIcon = true
-        host.ensureFloatingIcon()
+        try {
+            host.ensureFloatingIcon()
+        } catch (e: Throwable) {
+            Log.e(TAG, "ensureFloatingIcon after projection start failed", e)
+        }
         updateForegroundState()
-        return true
+        true
+        } finally {
+            projectionStartInProgress = false
+        }
     }
 
     /** Tear down any active MediaProjection session. Safe to call when none is active. */
     fun stopProjection() {
+        val hadProjection = ProjectionOverlayHost.instance != null
+        if (hadProjection) {
+            projectionStopCooldownUntilMs = SystemClock.uptimeMillis() + PROJECTION_RESTART_COOLDOWN_MS
+        }
         if (liveActive) stopLive()
         ProjectionOverlayHost.instance?.stop()
         // Foreground type stays elevated for the rest of this service's life
@@ -736,6 +767,11 @@ class CaptureService : Service() {
         // itself goes away naturally if no other surface keeps the service
         // foregrounded (see [updateForegroundState]).
         updateForegroundState()
+        if (hadProjection) {
+            mainHandler.postDelayed({
+                updateForegroundState()
+            }, PROJECTION_RESTART_COOLDOWN_MS + 100L)
+        }
     }
 
     // ── Unified loop handlers ─────────────────────────────────────────────
@@ -948,16 +984,15 @@ class CaptureService : Service() {
      *   screenshot. Used by scene detection which already has a clean frame.
      */
     companion object {
+        @Volatile
+        var instance: CaptureService? = null
+            private set
         /** Action consumed in [onStartCommand] to launch a MediaProjection
          *  session with `resultCode` (Int) and `data` (Intent) extras. */
         const val ACTION_START_PROJECTION = "com.playtranslate.action.START_PROJECTION"
         const val EXTRA_PROJECTION_RESULT_CODE = "resultCode"
         const val EXTRA_PROJECTION_DATA = "data"
-
-        /** Process-scoped reference for in-process callers (e.g. DragLookupController). */
-        @Volatile
-        var instance: CaptureService? = null
-            private set
+        private const val PROJECTION_RESTART_COOLDOWN_MS = 1800L
     }
 
     /**
@@ -1274,10 +1309,15 @@ class CaptureService : Service() {
             }
         }
 
-        if (iconShowing || liveActive || ProjectionOverlayHost.instance != null) {
+        val projectionStopCoolingDown = projectionRestartDelayMs() > 0L
+        if (iconShowing || liveActive || ProjectionOverlayHost.instance != null || projectionStopCoolingDown) {
             startForegroundForCurrentMode()
         } else {
-            stopForeground(STOP_FOREGROUND_REMOVE)
+            try {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } catch (e: Throwable) {
+                Log.e(TAG, "stopForeground failed", e)
+            }
         }
     }
 

@@ -211,6 +211,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
      * cleared after the projection picker resolves (granted or denied).
      */
     private var pendingProjectionAction: (() -> Unit)? = null
+    private var pendingProjectionRequest: Runnable? = null
 
     private val overlayPermLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -319,6 +320,8 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     fun startShareScreenEnableFlow(onGranted: (() -> Unit)? = null) {
         pendingProjectionAction = onGranted
         Prefs(this).captureMethod = Prefs.CAPTURE_METHOD_MEDIA_PROJECTION
+        pendingProjectionRequest?.let { window.decorView.removeCallbacks(it) }
+        pendingProjectionRequest = null
         if (!Settings.canDrawOverlays(this)) {
             // Let the user grant SYSTEM_ALERT_WINDOW first.
             val intent = Intent(
@@ -330,6 +333,16 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             } catch (_: Exception) {
                 pendingProjectionAction = null
             }
+            return
+        }
+        val restartDelayMs = CaptureService.instance?.projectionRestartDelayMs() ?: 0L
+        if (restartDelayMs > 0L) {
+            val request = Runnable {
+                pendingProjectionRequest = null
+                if (!isDestroyed && !isFinishing) requestProjectionConsent()
+            }
+            pendingProjectionRequest = request
+            window.decorView.postDelayed(request, restartDelayMs)
             return
         }
         requestProjectionConsent()
@@ -376,6 +389,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         super.onCreate(savedInstanceState)
         prefs.migrateLegacyPrefs()
         maybePromptForCrashShare()
+        showRecentCrashLogIfNeeded()
         // Suppress the window transition that would otherwise flash when recreating for a theme change
         if (prefs.suppressNextTransition) {
             prefs.suppressNextTransition = false
@@ -445,9 +459,15 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         resultFragment?.setOnEditOriginalListener { showEditOverlay() }
 
         // Restore previously selected tab (survives recreate for theme changes)
-        val restoredTab = Tab.entries.getOrElse(
-            savedInstanceState?.getInt("selected_tab", 0) ?: 0
-        ) { Tab.TRANSLATE }
+        var restoredTabOrdinal = savedInstanceState?.getInt("selected_tab", prefs.selectedTab) ?: prefs.selectedTab
+        if (prefs.isMediaProjectionMode && ProjectionOverlayHost.instance == null) {
+            restoredTabOrdinal = Tab.SETTINGS.ordinal
+        }
+        val restoredTab = if (intent?.action == ACTION_OPEN_SETTINGS) {
+            Tab.SETTINGS
+        } else {
+            Tab.entries.getOrElse(restoredTabOrdinal) { Tab.SETTINGS }
+        }
         selectTab(restoredTab)
         when (restoredTab) {
             Tab.SETTINGS -> openSettingsInline()
@@ -459,6 +479,8 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         if (Prefs.hasMultipleDisplays(this) && !isLiveMode) {
             dimController = DimController(findViewById(R.id.dimOverlay))
         }
+
+        checkOnboardingState(isStartup = true)
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -581,6 +603,30 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     // ── Setup ─────────────────────────────────────────────────────────────
+
+    private fun showRecentCrashLogIfNeeded() {
+        try {
+            val dir = java.io.File(filesDir, "crashes")
+            val files = dir.listFiles { f -> f.isFile && f.name.startsWith("crash-") }
+            if (files != null && files.isNotEmpty()) {
+                val latest = files.maxByOrNull { it.lastModified() }
+                if (latest != null) {
+                    val content = latest.readText()
+                    // Only show if it happened recently (within last 5 minutes)
+                    if (System.currentTimeMillis() - latest.lastModified() < 5 * 60 * 1000) {
+                        android.app.AlertDialog.Builder(this)
+                            .setTitle("Recent Crash Log")
+                            .setMessage(content.take(2000)) // Show first 2000 chars
+                            .setPositiveButton("OK", null)
+                            .setNeutralButton("Delete") { _, _ -> latest.delete() }
+                            .show()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 
     private fun bindViews() {
         btnTranslate         = findViewById(R.id.btnTranslate)
@@ -892,6 +938,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     private fun selectTab(tab: Tab) {
+        Prefs(this).selectedTab = tab.ordinal
         if (selectedTab != tab) {
             selectedTab = tab
 
@@ -1003,13 +1050,12 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             .commitAllowingStateLoss()
     }
 
-    fun keepMainUiAfterShareScreenEnabled() {
+    fun disableShareScreenFromMainUi() {
+        pendingProjectionRequest?.let { window.decorView.removeCallbacks(it) }
+        pendingProjectionRequest = null
+        pendingProjectionAction = null
+        CaptureService.instance?.stopProjection()
         onboardingContainer.visibility = View.GONE
-        supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG)?.let { fragment ->
-            if ((fragment as? SettingsBottomSheet)?.showsDialog == true) {
-                fragment.dismissAllowingStateLoss()
-            }
-        }
         selectTab(Tab.SETTINGS)
         openSettingsInline()
     }
@@ -1352,7 +1398,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
     private fun isSingleScreen(): Boolean = Prefs.isSingleScreen(this)
 
-    private fun checkOnboardingState() {
+    private fun checkOnboardingState(isStartup: Boolean = false) {
         val prefs = Prefs(this)
         val sourceInstalled = LanguagePackStore.isInstalled(this, prefs.sourceLangId)
         val languageConfigured = sourceInstalled && prefs.hasTargetLangBeenSet
@@ -1373,12 +1419,6 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
         val a11yEnabled = PlayTranslateAccessibilityService.isEnabled
-        // Use the viewport predicate (not hasMultipleDisplays) so split-screen
-        // users don't fall into the forced non-dismissible settings sheet
-        // below. The sheet exists because in pure single-screen fullscreen
-        // mode the user has no other UI surface to manage the app from; that
-        // rationale doesn't apply in split-screen where the app half is
-        // visible alongside the game.
         val singleScreen = Prefs.isSingleScreen(this)
 
         if (!notifGranted) {
@@ -1394,13 +1434,11 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         if (prefs.isMediaProjectionMode) {
             onboardingContainer.visibility = View.GONE
             if (!isProjectionReady) {
-                val shouldHideDismiss = singleScreen
-                val isAlreadyCorrectSheet = existingSheet != null &&
-                    existingSheet.arguments?.getBoolean("hide_dismiss", false) == shouldHideDismiss
-                if (!isAlreadyCorrectSheet) {
-                    existingSheet?.dismissAllowingStateLoss()
-                    showSettingsSheet(hideDismiss = shouldHideDismiss)
+                if (selectedTab == Tab.SETTINGS && existingSheet?.showsDialog == false) return
+                if (existingSheet?.showsDialog == true) {
+                    existingSheet.dismissAllowingStateLoss()
                 }
+                selectTab(Tab.SETTINGS)
             } else if (existingSheet?.arguments?.getBoolean("hide_dismiss", false) == true) {
                 existingSheet.dismissAllowingStateLoss()
             }
@@ -1414,11 +1452,11 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                 return
             }
             onboardingContainer.visibility = View.GONE
-                val isAlreadySingleScreenSheet = existingSheet != null &&
-                existingSheet.arguments?.getBoolean("hide_dismiss", false) == true
-            if (!isAlreadySingleScreenSheet) {
-                existingSheet?.dismissAllowingStateLoss()
-                showSettingsSheet(hideDismiss = true)
+            if (existingSheet?.showsDialog == true) {
+                existingSheet.dismissAllowingStateLoss()
+            }
+            if (selectedTab != Tab.SETTINGS) {
+                selectTab(Tab.SETTINGS)
             }
             return
         }
@@ -1512,9 +1550,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             // Persist the choice immediately so a checkOnboardingState reflow
             // routes through the projection-mode branch even before the
             // permission flow finishes.
-            startShareScreenEnableFlow {
-                keepMainUiAfterShareScreenEnabled()
-            }
+            startShareScreenEnableFlow(null)
         }
         btnWelcomeContinue.setOnClickListener {
             val p = Prefs(this)
@@ -1563,7 +1599,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         // pages so users who land here without seeing the welcome screen
         // (e.g. languages already configured) can still opt into projection.
         val useShareScreenFromA11y = View.OnClickListener {
-            startShareScreenEnableFlow { keepMainUiAfterShareScreenEnabled() }
+            startShareScreenEnableFlow(null)
         }
         pageA11y.findViewById<View>(R.id.btnUseShareScreenA11y)
             .setOnClickListener(useShareScreenFromA11y)

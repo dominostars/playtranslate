@@ -250,7 +250,6 @@ class SettingsRenderer(
                             ProjectionOverlayHost.instance?.ensureFloatingIcon()
                             refreshOverlayIconSwitch()
                             refreshOnScreenControlsTint(isSingle)
-                            act.keepMainUiAfterShareScreenEnabled()
                         }
                     }
                 } else {
@@ -269,7 +268,8 @@ class SettingsRenderer(
             if (checked) {
                 OverlayHost.current?.ensureFloatingIcon()
             } else if (prefs.isMediaProjectionMode) {
-                CaptureService.instance?.stopProjection()
+                (ctx as? com.playtranslate.MainActivity)?.disableShareScreenFromMainUi()
+                    ?: CaptureService.instance?.stopProjection()
             } else {
                 OverlayHost.current?.hideFloatingIcon("settings_toggle_off")
             }
@@ -328,7 +328,6 @@ class SettingsRenderer(
                                     refreshOverlayIconSwitch()
                                     tvWorkModeValue.text = ctx.getString(R.string.settings_work_mode_share_screen)
                                     refreshOnScreenControlsTint(isSingle)
-                                    act.keepMainUiAfterShareScreenEnabled()
                                 }
                             }
                         }

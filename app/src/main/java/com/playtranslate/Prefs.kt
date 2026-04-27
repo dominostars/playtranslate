@@ -248,6 +248,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_SUPPRESS_TRANSITION, false)
         set(v) = sp.edit().putBoolean(KEY_SUPPRESS_TRANSITION, v).apply()
 
+    /** Remembers the last selected tab in MainActivity. */
+    var selectedTab: Int
+        get() = sp.getInt(KEY_SELECTED_TAB, 1) // Default to SETTINGS
+        set(v) = sp.edit().putInt(KEY_SELECTED_TAB, v).apply()
+
     /** Timestamp (ms) of the most recent GitHub release check. Debounced to 24h. */
     var lastUpdateCheckTime: Long
         get() = sp.getLong(KEY_LAST_UPDATE_CHECK, 0L)
@@ -323,6 +328,7 @@ class Prefs(context: Context) {
         private const val KEY_CAPTURE_METHOD           = "capture_method"
         private const val KEY_OVERLAY_MODE               = "overlay_mode"
         private const val KEY_SETTINGS_SCROLL_Y        = "settings_scroll_y"
+        private const val KEY_SELECTED_TAB             = "selected_tab"
         private const val KEY_SHOW_OVERLAY_ICON       = "show_overlay_icon"
         private const val KEY_OVERLAY_ICON_EDGE      = "overlay_icon_edge"
         private const val KEY_OVERLAY_ICON_FRACTION  = "overlay_icon_fraction"
