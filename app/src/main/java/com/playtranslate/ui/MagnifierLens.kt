@@ -29,6 +29,7 @@ import androidx.core.graphics.drawable.DrawableCompat
 import com.playtranslate.OverlayColors
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.R
+import com.playtranslate.blendColors
 
 /**
  * Rounded-rect magnifier overlay shown while the floating icon is dragged
@@ -282,8 +283,12 @@ class MagnifierLens(
         // Warn color stays semantic (no theme attr exposed via OverlayColors).
         private val panelWarnColor = Color.parseColor("#D4A017")
 
+        // Border uses a darkened accent (70% accent + 30% black) so it reads
+        // as a defined edge rather than a glowing outline against the lens
+        // chrome. blendColors ignores alpha, so the accent is opaque here.
+        private val borderColor = blendColors(accentColor, Color.BLACK, 0.7f)
         private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = accentColor
+            color = borderColor
             style = Paint.Style.STROKE
             strokeWidth = borderPx
         }
@@ -304,7 +309,7 @@ class MagnifierLens(
         // the zoom beneath the accent border. Skipped in DEFINITIONS mode
         // so the blur doesn't bleed under the panel's edges.
         private val insetShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(70, 0, 0, 0)
+            color = Color.argb(45, 0, 0, 0)
             style = Paint.Style.STROKE
             strokeWidth = density * 14f
             maskFilter = BlurMaskFilter(density * 8f, BlurMaskFilter.Blur.NORMAL)
@@ -410,10 +415,16 @@ class MagnifierLens(
                 setImageDrawable(drawable)
             }
             setPadding(dp(7f), dp(4f), dp(1f), dp(4f))
+            // Column width drops 2dp (31→29) and marginEnd grows 2dp (2→4)
+            // so the button slides further from the right edge without
+            // taking width from the weighted definitions scroll on its left.
             layoutParams = LinearLayout.LayoutParams(
-                dp(31f),
+                dp(29f),
                 LinearLayout.LayoutParams.MATCH_PARENT,
-            ).apply { gravity = Gravity.CENTER_VERTICAL }
+            ).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                marginEnd = dp(4f)
+            }
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setOnClickListener { onOpenTap() }
         }
