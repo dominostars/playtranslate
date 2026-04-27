@@ -28,6 +28,7 @@ import com.playtranslate.applyAccentOverlay
 import com.playtranslate.fullScreenDialogTheme
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
+import com.playtranslate.language.LanguagePackCatalogLoader
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.TatoebaClient
 import com.playtranslate.language.WordTranslator
@@ -1126,10 +1127,12 @@ class WordDetailBottomSheet : DialogFragment() {
 
     /**
      * Example block: left-rail (2dp accent @ 35% α) + a column with the
-     * source line on top and the (async) translation beneath. The italic
-     * treatment from the old design is gone — the rail alone carries
-     * the "quoted example" semantic, which keeps CJK glyphs upright and
-     * scannable.
+     * source line on top and the (async) translation beneath. Both lines
+     * are muted — the rail carries the "quoted example" semantic; muted
+     * type pushes the example back so the sense gloss stays foreground.
+     * The translation is italicized only when the target language uses a
+     * Latin script, since CJK / Cyrillic / Indic glyphs either lack
+     * italic forms or render them as visually distinct characters.
      */
     private fun buildExampleBlock(ctx: Context, text: String, initialTranslation: String): Pair<View, TextView> {
         val accentRing = withAlpha(ctx.themeColor(R.attr.ptAccent), 0.35f)
@@ -1155,14 +1158,16 @@ class WordDetailBottomSheet : DialogFragment() {
             this.text = text
             textSize = 14f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            setTextColor(ctx.themeColor(R.attr.ptText))
+            setTextColor(ctx.themeColor(R.attr.ptTextMuted))
             setLineSpacing(0f, 1.5f)
         })
+        val italic = targetSupportsItalics(ctx)
         val translationTv = TextView(ctx).apply {
             this.text = initialTranslation
             visibility = if (initialTranslation.isNotBlank()) View.VISIBLE else View.GONE
             textSize = 13f
             setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+            if (italic) setTypeface(null, Typeface.ITALIC)
             setLineSpacing(0f, 1.45f)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1172,6 +1177,18 @@ class WordDetailBottomSheet : DialogFragment() {
         inner.addView(translationTv)
         block.addView(inner)
         return block to translationTv
+    }
+
+    /** True when the target gloss language renders italics legibly — i.e.,
+     *  uses a Latin-derived script. Non-Latin scripts (CJK, Arabic, Cyrillic,
+     *  Greek, Indic, Hebrew, Thai, Georgian) either have no italic forms or
+     *  render the italic style as visually different glyphs (e.g., Russian
+     *  italic т looks like Latin m), so we leave their translations upright.
+     *  English has no target-pack catalog entry but is always Latin. */
+    private fun targetSupportsItalics(ctx: Context): Boolean {
+        val code = Prefs(ctx).targetLang
+        if (code == "en") return true
+        return LanguagePackCatalogLoader.entryForKey(ctx, "target-$code")?.script == "LATIN"
     }
 
     /**
