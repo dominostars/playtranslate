@@ -29,6 +29,7 @@ import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ui.FloatingIconMenu
 import com.playtranslate.ui.FloatingOverlayIcon
+import com.playtranslate.ui.MagnifierLens
 import com.playtranslate.ui.OcrDebugOverlayView
 import com.playtranslate.ui.RegionDragView
 import com.playtranslate.ui.TranslationOverlayView
@@ -968,9 +969,11 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
         // Drag-to-lookup: OCR + dictionary popup while dragging
         val popup = WordLookupPopup(displayCtx, wm)
+        val magnifier = MagnifierLens(displayCtx, wm)
         val controller = DragLookupController(
             displayId = display.displayId,
-            popup = popup
+            popup = popup,
+            magnifier = magnifier
         )
         // Track whether live mode / region overlay were active when drag started
         var liveWasPausedForPopup = false

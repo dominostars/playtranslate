@@ -37,7 +37,8 @@ import kotlin.math.abs
  */
 class DragLookupController(
     private val displayId: Int,
-    private val popup: WordLookupPopup
+    private val popup: WordLookupPopup,
+    private val magnifier: MagnifierLens
 ) {
     private val handler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(
@@ -58,6 +59,19 @@ class DragLookupController(
     private var currentSentence: String? = null
     private var lastSentSentence: String? = null
     private var wordLookupJob: Job? = null
+
+    /** Screenshot bitmap captured at drag start, kept alive for the magnifier
+     *  through the entire drag. Recycled on drag end (or when superseded by a
+     *  new drag). Originally [captureAndOcr] recycled it inline in a `finally`
+     *  block; the magnifier needs it to outlive OCR. */
+    private var dragBitmap: Bitmap? = null
+    /** True between [onDragStart] and [onDragEnd]. Used by [onPopupDismissed]
+     *  to know whether a mid-drag dismissal should re-show the magnifier. */
+    private var dragInProgress = false
+    /** Most recent finger position seen by [onDragMove]. The release point
+     *  is read from these in [onDragEnd] for the lift-time lookup. */
+    private var lastX = 0f
+    private var lastY = 0f
 
     // Hold-still detection with wobble tolerance
     private var anchorX = 0f
@@ -203,6 +217,12 @@ class DragLookupController(
         ocrLines = null
         lastSentSentence = null
         ocrJob?.cancel()
+        recycleDragBitmap()
+        dragInProgress = true
+        // Magnifier appears immediately with a placeholder; the bitmap lands
+        // a few hundred ms later when [captureAndOcr] settles.
+        val screen = queryScreenSize()
+        magnifier.show(lastX.toInt(), lastY.toInt(), screen.x, screen.y)
         ocrJob = scope.launch {
             try {
                 if (existingScreenshotPath != null) {
@@ -227,13 +247,11 @@ class DragLookupController(
             captureAndOcr()
             return
         }
+        // Hand off to the magnifier before kicking off OCR — same lifetime
+        // contract as [captureAndOcr]: bitmap survives until drag end.
+        attachDragBitmap(bitmap, path)
         val lines = withContext(Dispatchers.Default) {
-            try {
-                screenshotPath = path
-                ocrManager.recogniseWithPositions(bitmap, Prefs(popup.ctx).sourceLang)
-            } finally {
-                bitmap.recycle()
-            }
+            ocrManager.recogniseWithPositions(bitmap, Prefs(popup.ctx).sourceLang)
         }
         if (lines == null) {
             Log.d(TAG, "No text found in saved screenshot")
@@ -249,6 +267,16 @@ class DragLookupController(
      * the finger moves beyond [wobbleRadiusPx] from the anchor point.
      */
     fun onDragMove(rawX: Float, rawY: Float) {
+        lastX = rawX
+        lastY = rawY
+        // Reposition the lens on every move (and re-anchor the source point
+        // it magnifies). Skip while the popup is up — magnifier is hidden then,
+        // and re-shown when the popup dismisses mid-drag.
+        if (!popup.isShowing) {
+            val screen = queryScreenSize()
+            magnifier.show(rawX.toInt(), rawY.toInt(), screen.x, screen.y)
+        }
+
         val dx = rawX - anchorX
         val dy = rawY - anchorY
         val movedBeyondWobble = dx * dx + dy * dy > wobbleRadiusPx * wobbleRadiusPx
@@ -281,32 +309,95 @@ class DragLookupController(
         }
     }
 
-    /** Called on ACTION_UP. Returns true if popup is showing (icon should restore position). */
+    /** Called on ACTION_UP. Returns true if a popup is showing OR is about to
+     *  be shown by a lift-time lookup — caller uses this to decide whether the
+     *  icon should restore to its saved position (true) or snap to edge (false). */
     fun onDragEnd(): Boolean {
         cancelTimers()
-        ocrJob?.cancel()
-        return popup.isShowing
+        dragInProgress = false
+        magnifier.dismiss()
+        // Bitmap is no longer needed by the magnifier; OCR still uses it
+        // until ocrJob completes, so defer recycle until then.
+        scheduleBitmapRecycleAfterOcr()
+
+        if (popup.isShowing) return true
+        val lines = ocrLines ?: return false
+
+        // Lift-time lookup: the user may have released their finger over a
+        // word before the hold timer fired. Hit-test synchronously to decide
+        // whether a popup is plausible (so the caller can restore the icon
+        // immediately), then dispatch the dictionary lookup async.
+        val hitLine = findLineAt(lastX.toInt(), lastY.toInt(), lines) ?: return false
+        Log.d(TAG, "Lift-time lookup at (${lastX.toInt()}, ${lastY.toInt()}), line: ${hitLine.text}")
+        lookupJob?.cancel()
+        lookupJob = scope.launch {
+            try {
+                performLookup(lastX.toInt(), lastY.toInt(), lines, dismissOnMiss = false)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Lift-time lookup failed", e)
+            }
+        }
+        return true
     }
 
     fun dismiss() {
         cancelTimers()
         ocrJob?.cancel()
+        dragInProgress = false
+        magnifier.dismiss()
         popup.dismiss()
         lastWord = null
         ocrLines = null
+        recycleDragBitmap()
     }
 
     /** Called by popup's onDismiss — resets state without re-calling popup.dismiss(). */
     fun onPopupDismissed() {
         cancelTimers()
         lastWord = null
+        // Mid-drag popup dismissal (the user moved off the word) — bring the
+        // magnifier back so they keep their visual reference.
+        if (dragInProgress) {
+            val screen = queryScreenSize()
+            magnifier.show(lastX.toInt(), lastY.toInt(), screen.x, screen.y)
+        }
     }
 
     fun destroy() {
         cancelTimers()
         scope.cancel()
+        magnifier.dismiss()
         popup.dismiss()
         ocrLines = null
+        recycleDragBitmap()
+    }
+
+    private fun attachDragBitmap(bitmap: Bitmap, path: String?) {
+        recycleDragBitmap()
+        dragBitmap = bitmap
+        screenshotPath = path
+        magnifier.setBitmap(bitmap)
+    }
+
+    private fun recycleDragBitmap() {
+        magnifier.setBitmap(null)
+        val bm = dragBitmap
+        dragBitmap = null
+        bm?.takeIf { !it.isRecycled }?.recycle()
+    }
+
+    /** OCR may still be reading the bitmap when drag ends. Wait for the job
+     *  to wind down before recycling, so we don't yank the bitmap out from
+     *  under ML Kit. */
+    private fun scheduleBitmapRecycleAfterOcr() {
+        val job = ocrJob
+        if (job == null || job.isCompleted) {
+            recycleDragBitmap()
+            return
+        }
+        job.invokeOnCompletion { handler.post { recycleDragBitmap() } }
     }
 
     // ── Internals ────────────────────────────────────────────────────────
@@ -356,15 +447,14 @@ class DragLookupController(
             return
         }
 
-        // Run bitmap processing + OCR off the main thread to avoid drag stutter
+        // Hand off to the magnifier first, then run OCR. The bitmap is owned
+        // by [dragBitmap] from here on and is recycled when the drag ends —
+        // OCR using the same bitmap is safe because we're not racing a recycle.
+        val savedPath = withContext(Dispatchers.IO) { saveScreenshot(bitmap) }
+        attachDragBitmap(bitmap, savedPath)
+
         val lines = withContext(Dispatchers.Default) {
-            try {
-                // Save screenshot for potential Anki export
-                screenshotPath = saveScreenshot(bitmap)
-                ocrManager.recogniseWithPositions(bitmap, Prefs(service).sourceLang)
-            } finally {
-                bitmap.recycle()
-            }
+            ocrManager.recogniseWithPositions(bitmap, Prefs(service).sourceLang)
         }
         if (lines == null) {
             Log.d(TAG, "No text found on screen")
@@ -682,6 +772,10 @@ class DragLookupController(
 
     private fun showPopup(data: PopupData, fingerX: Int, fingerY: Int) {
         currentEntry = data.entry
+        // Popup takes over the same real estate as the magnifier — hide the
+        // lens so the two don't visually fight. If the user keeps dragging,
+        // [onPopupDismissed] brings the magnifier back.
+        magnifier.hide()
 
         val screen = queryScreenSize()
         popup.show(
