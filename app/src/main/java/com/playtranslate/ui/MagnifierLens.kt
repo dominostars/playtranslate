@@ -158,13 +158,13 @@ class MagnifierLens(
      *  the lens has no buttons on the right while zooming). The popup
      *  subtracts dp(24) for its root FrameLayout's 12dp+12dp horizontal
      *  padding before splitting; the lens has no such padding, so left-
-     *  panel width is a flat 25% of lensW.
-     *    lensW = min(screenW × 0.85, dp(360))
-     *    leftW = lensW × 0.25
+     *  panel width is a flat 29% of lensW.
+     *    lensW = min(screenW × 0.85, dp(380))
+     *    leftW = lensW × 0.29
      *  Returns (lensW, leftPanelW) — both in pixels. */
     private fun lensDimensions(screenW: Int): Pair<Int, Int> {
-        val lensW = (screenW * 0.85f).toInt().coerceAtMost(dp(360f))
-        val leftW = (lensW * 0.25f).toInt()
+        val lensW = (screenW * 0.85f).toInt().coerceAtMost(dp(380f))
+        val leftW = (lensW * 0.29f).toInt()
         return lensW to leftW
     }
 
@@ -335,6 +335,7 @@ class MagnifierLens(
             ellipsize = TextUtils.TruncateAt.END
             visibility = GONE
         }
+        private val wordHPaddingPx = dp(4f)
         private val wordView = TextView(ctx).apply {
             setTextColor(accentOnColor)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
@@ -344,6 +345,7 @@ class MagnifierLens(
             // ellipsize handles the case where even minSp doesn't fit
             // leftPanelW — without it the word would clip mid-glyph.
             ellipsize = TextUtils.TruncateAt.END
+            setPadding(wordHPaddingPx, 0, wordHPaddingPx, 0)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -499,7 +501,7 @@ class MagnifierLens(
          *  ellipsize handle the overflow. */
         private fun fitWordSize(text: String): Float {
             if (text.isEmpty()) return wordMaxSp
-            val availablePx = leftPanelW.toFloat()
+            val availablePx = (leftPanelW - 2 * wordHPaddingPx).toFloat()
             if (availablePx <= 0f) return wordMaxSp
             var lo = wordMinSp.toInt()
             var hi = wordMaxSp.toInt()
