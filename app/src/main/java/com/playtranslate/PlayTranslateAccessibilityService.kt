@@ -208,6 +208,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     /**
      * Add a window via [WindowManager.addView] AND register it for
      * clean-capture blanking. Returns true on success.
+     *
+     * Honors whatever [WindowManager.LayoutParams.alpha] is on [params].
+     * In particular, [bringFloatingIconToFront] removes and re-adds the
+     * icon with the same params object — if a clean capture has the icon
+     * blanked at alpha=0, the re-added window stays invisible until the
+     * capture's restore fires. Forcing alpha=1 here would flash the icon
+     * mid-capture and contaminate the bitmap.
      */
     fun addOverlayWindow(
         view: View,
@@ -238,7 +245,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
     /** Opaque snapshot returned by [prepareForCleanCapture]. */
     class OverlayState internal constructor(
-        internal val saved: List<Pair<OverlayHandle, Float>>
+        internal val saved: List<OverlayHandle>
     )
 
     /**
@@ -248,27 +255,35 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      * during view drawing, which can lag a frame behind). Combined with
      * the 2-vsync wait in [ScreenshotManager.requestClean], this reliably
      * composites the overlay-free frame before capture.
+     *
+     * Skips handles already at alpha=0 — they belong to a concurrent
+     * in-flight capture that hasn't restored yet. Including them would
+     * let our restore re-show overlays that another capture still needs
+     * hidden. The try/finally in [ScreenshotManager.requestClean] is what
+     * guarantees restore on cancellation/exception, so we don't need
+     * self-healing here.
      */
     fun prepareForCleanCapture(): OverlayState {
-        val saved = mutableListOf<Pair<OverlayHandle, Float>>()
+        val saved = mutableListOf<OverlayHandle>()
         for (handle in overlayWindows) {
-            val original = handle.params.alpha
-            if (original <= 0f) continue
+            if (handle.params.alpha == 0f) continue
             handle.params.alpha = 0f
             try {
                 handle.wm.updateViewLayout(handle.view, handle.params)
-                saved += handle to original
+                saved += handle
             } catch (_: Exception) {
-                handle.params.alpha = original
+                handle.params.alpha = 1f
             }
         }
         return OverlayState(saved)
     }
 
-    /** Restores alphas saved by [prepareForCleanCapture]. */
+    /** Restores blanked overlays. The "intended visible alpha" is always 1
+     *  in this app — no overlay uses a non-1 alpha intentionally — so we
+     *  can write 1 unconditionally and recover from missed prior restores. */
     fun restoreAfterCapture(state: OverlayState) {
-        for ((handle, alpha) in state.saved) {
-            handle.params.alpha = alpha
+        for (handle in state.saved) {
+            handle.params.alpha = 1f
             try { handle.wm.updateViewLayout(handle.view, handle.params) } catch (_: Exception) {}
         }
     }
