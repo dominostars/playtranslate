@@ -271,19 +271,16 @@ class MagnifierLens(
         // Overlay-context color resolution: themeColor(R.attr.pt*) is
         // unreliable from the accessibility service / floating-window
         // contexts because the Activity theme isn't applied. OverlayColors
-        // reads the user's mode + accent directly from Prefs.
+        // reads the user's mode + accent directly from Prefs so the
+        // definitions panel tracks the selected scheme.
         private val accentColor = OverlayColors.accent(ctx)
         private val accentOnColor = OverlayColors.accentOn(ctx)
-
-        // Popup-theme constants (intentionally hardcoded — these are popup
-        // chrome colors, not user-facing accent/mode-aware tokens).
-        private val popupBgColor = Color.parseColor("#242424")
-        private val popupSecondaryText = Color.parseColor("#A0A0A0")
-        private val popupPrimaryText = Color.parseColor("#EFEFEF")
-        private val popupStarColor = Color.parseColor("#606060")
-        private val popupBadgeBg = Color.parseColor("#383838")
-        private val popupDividerColor = Color.parseColor("#2E2E2E")
-        private val popupWarnColor = Color.parseColor("#D4A017")
+        private val panelBgColor = OverlayColors.card(ctx)
+        private val panelPrimaryText = OverlayColors.text(ctx)
+        private val panelSecondaryText = OverlayColors.textMuted(ctx)
+        private val panelBadgeBg = OverlayColors.surface(ctx)
+        // Warn color stays semantic (no theme attr exposed via OverlayColors).
+        private val panelWarnColor = Color.parseColor("#D4A017")
 
         private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = accentColor
@@ -392,7 +389,7 @@ class MagnifierLens(
                 .getDrawable(ctx, R.drawable.ic_open_in_new)
                 ?.mutate()
             if (drawable != null) {
-                DrawableCompat.setTint(drawable, popupSecondaryText)
+                DrawableCompat.setTint(drawable, accentColor)
                 setImageDrawable(drawable)
             }
             setPadding(dp(7f), dp(4f), dp(1f), dp(4f))
@@ -403,20 +400,12 @@ class MagnifierLens(
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setOnClickListener { onOpenTap() }
         }
-        private val openDivider = View(ctx).apply {
-            setBackgroundColor(popupDividerColor)
-            layoutParams = LinearLayout.LayoutParams(
-                dp(1f),
-                LinearLayout.LayoutParams.MATCH_PARENT,
-            ).apply { setMargins(dp(8f), 0, dp(4f), 0) }
-        }
         private val definitionsPanel = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(popupBgColor)
+            setBackgroundColor(panelBgColor)
             setPadding(dp(8f), dp(8f), 0, dp(8f))
             visibility = GONE
             addView(definitionsScroll)
-            addView(openDivider)
             addView(openButton)
             layoutParams = LayoutParams(
                 rightPanelW,
@@ -575,12 +564,12 @@ class MagnifierLens(
                 if (data.isCommon) {
                     metaRow.addView(TextView(ctx).apply {
                         text = "common"
-                        setTextColor(popupSecondaryText)
+                        setTextColor(panelSecondaryText)
                         setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
                         typeface = Typeface.DEFAULT_BOLD
                         setPadding(dp(5f), dp(1f), dp(5f), dp(1f))
                         background = GradientDrawable().apply {
-                            setColor(popupBadgeBg)
+                            setColor(panelBadgeBg)
                             cornerRadius = density * 4f
                         }
                     })
@@ -588,7 +577,7 @@ class MagnifierLens(
                 if (data.freqScore > 0) {
                     metaRow.addView(TextView(ctx).apply {
                         text = "★".repeat(data.freqScore.coerceAtMost(5))
-                        setTextColor(popupStarColor)
+                        setTextColor(panelSecondaryText)
                         setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
                         if (data.isCommon) setPadding(dp(6f), 0, 0, 0)
                     })
@@ -599,7 +588,7 @@ class MagnifierLens(
             if (label != null) {
                 definitionsContent.addView(TextView(ctx).apply {
                     text = label
-                    setTextColor(popupWarnColor)
+                    setTextColor(panelWarnColor)
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
                     typeface = Typeface.DEFAULT_BOLD
                     setPadding(0, 0, 0, dp(4f))
@@ -610,7 +599,7 @@ class MagnifierLens(
                 if (sense.pos.isNotBlank()) {
                     definitionsContent.addView(TextView(ctx).apply {
                         text = sense.pos
-                        setTextColor(popupSecondaryText)
+                        setTextColor(panelSecondaryText)
                         setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
                         typeface = Typeface.DEFAULT_BOLD
                         if (i > 0) setPadding(0, dp(6f), 0, 0)
@@ -618,7 +607,7 @@ class MagnifierLens(
                 }
                 definitionsContent.addView(TextView(ctx).apply {
                     text = "${i + 1}. ${sense.definition}"
-                    setTextColor(popupPrimaryText)
+                    setTextColor(panelPrimaryText)
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
                 })
             }
