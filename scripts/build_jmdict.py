@@ -216,7 +216,20 @@ def create_schema(conn: sqlite3.Connection) -> None:
             entry_id   INTEGER NOT NULL,
             position   INTEGER NOT NULL,
             text       TEXT    NOT NULL,
-            no_kanji   INTEGER NOT NULL DEFAULT 0
+            no_kanji   INTEGER NOT NULL DEFAULT 0,
+            -- JMdict's <re_pri> tags for THIS reading, comma-joined and
+            -- sorted (e.g. "ichi1,nf03"). Most readings carry no priority
+            -- and store ''. Distinct from entry.freq_score, which aggregates
+            -- across every k_ele + r_ele in the entry — re_pri here is the
+            -- per-reading subset only, which is the signal for ranking
+            -- multi-entry kana-reading collisions (e.g. ここ → 此処 vs 九,
+            -- where 九 carries high entry-level freq from きゅう/く but its
+            -- ここ reading is unmarked). See project_kana_lookup_ranking.md.
+            re_pri     TEXT    NOT NULL DEFAULT '',
+            -- 0-5 score derived from re_pri via the same compute_freq_score
+            -- function entry uses. Stored precomputed so the runtime can
+            -- ORDER BY r.freq_score DESC without parsing strings.
+            freq_score INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE sense (
             entry_id   INTEGER NOT NULL,
@@ -295,9 +308,18 @@ def parse_and_insert(xml_bytes: bytes, conn: sqlite3.Connection) -> None:
             reb = r_ele.findtext("reb")
             no_kanji = 1 if r_ele.find("re_nokanji") is not None else 0
             if reb:
+                # Per-reading priority — JMdict's <re_pri> tags scoped to
+                # this <r_ele>, NOT the entry-wide aggregate. Distinguishes
+                # entries where the queried reading is dominant (carries
+                # priority marks) from entries where it's a marginal
+                # historical reading. Empty string when the reading has no
+                # priority marks.
+                re_pri_tags = {p.text for p in r_ele.findall("re_pri") if p.text}
+                re_pri_str = ",".join(sorted(re_pri_tags))
+                re_pri_score = compute_freq_score(re_pri_tags)
                 cur.execute(
-                    "INSERT INTO reading VALUES (?,?,?,?)",
-                    (entry_id, pos, reb, no_kanji),
+                    "INSERT INTO reading VALUES (?,?,?,?,?,?)",
+                    (entry_id, pos, reb, no_kanji, re_pri_str, re_pri_score),
                 )
 
         # Senses — POS carries forward until explicitly changed (JMdict convention)
