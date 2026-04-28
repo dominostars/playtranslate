@@ -31,6 +31,7 @@ import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.R
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.model.TranslationResult
+import com.playtranslate.model.headwordFor
 import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -424,7 +425,7 @@ class TranslationResultFragment : Fragment() {
                 val isCommon: Boolean
                 when {
                     entry != null && defResult is DefinitionResult.Native -> {
-                        val form = entry.headwords.firstOrNull()
+                        val form = entry.headwordFor(lookupForm)
                         word = form?.written ?: form?.reading ?: entry.slug
                         popupLabel = null
                         val targetSensesSorted = defResult.targetSenses.sortedBy { it.senseOrd }
@@ -472,7 +473,7 @@ class TranslationResultFragment : Fragment() {
                         isCommon = entry.isCommon == true
                     }
                     entry != null && defResult is DefinitionResult.MachineTranslated -> {
-                        val form = entry.headwords.firstOrNull()
+                        val form = entry.headwordFor(lookupForm)
                         word = form?.written ?: form?.reading ?: entry.slug
                         popupLabel = "⚠ Machine translated"
                         val defs = defResult.translatedDefinitions
@@ -498,7 +499,7 @@ class TranslationResultFragment : Fragment() {
                         isCommon = entry.isCommon == true
                     }
                     entry != null && defResult is DefinitionResult.EnglishFallback && defResult.translatedDefinitions != null -> {
-                        val form = entry.headwords.firstOrNull()
+                        val form = entry.headwordFor(lookupForm)
                         word = form?.written ?: form?.reading ?: entry.slug
                         popupLabel = "⚠ Machine translated"
                         val defs = defResult.translatedDefinitions
@@ -512,7 +513,7 @@ class TranslationResultFragment : Fragment() {
                         isCommon = entry.isCommon == true
                     }
                     entry != null -> {
-                        val form = entry.headwords.firstOrNull()
+                        val form = entry.headwordFor(lookupForm)
                         word = form?.written ?: form?.reading ?: entry.slug
                         popupLabel = null
                         senses = flatSenses.map { sense ->
@@ -893,7 +894,19 @@ class TranslationResultFragment : Fragment() {
                                 // headwords don't lose verb/intj senses.
                                 val entry      = response.entries.first()
                                 val flatSenses = response.entries.flatMap { it.senses }
-                                val primary    = entry.headwords.firstOrNull()
+                                // Prefer the headword that matches what the
+                                // user saw — JMdict groups variant kanji
+                                // under one entry (e.g. 無下/無気), and the
+                                // primary form often differs from the surface
+                                // in the source text. Try the surface first
+                                // (handles direct variant match), then the
+                                // lookupForm (covers inflected surfaces
+                                // whose dict form matches a non-primary
+                                // headword), then fall back to the primary
+                                // as a last-resort label.
+                                val primary    = entry.headwordFor(surfaceByToken[word])
+                                    ?: entry.headwordFor(word)
+                                    ?: entry.headwords.firstOrNull()
                                 freqScore = entry.freqScore
                                 when (defResult) {
                                     is DefinitionResult.Native -> {

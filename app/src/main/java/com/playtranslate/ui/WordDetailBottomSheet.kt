@@ -39,6 +39,7 @@ import com.playtranslate.model.CharacterDetail
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.HanziDetail
 import com.playtranslate.model.KanjiDetail
+import com.playtranslate.model.headwordFor
 import com.playtranslate.model.unambiguousFallbackPos
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -214,7 +215,7 @@ class WordDetailBottomSheet : DialogFragment() {
             val translationRegistry = mutableMapOf<Pair<Int, Int>, TextView>()
             buildContent(
                 content, entries, engine, sourceLangId, defResult, initialTranslations,
-                translationRegistry, targetLangCode, enToTargetWrapper,
+                translationRegistry, targetLangCode, enToTargetWrapper, word,
             )
             scrollView?.scrollTo(0, 0)
 
@@ -401,6 +402,7 @@ class WordDetailBottomSheet : DialogFragment() {
         translationRegistry: MutableMap<Pair<Int, Int>, TextView>,
         targetLangCode: String,
         enToTargetTranslator: WordTranslator?,
+        queriedWord: String,
     ) {
         // [primary] is the first entry. Header / Anki / character-breakdown
         // sections are word-level, so they pull from primary even when the
@@ -408,7 +410,7 @@ class WordDetailBottomSheet : DialogFragment() {
         // Wiktionary-derived packs that POS-split into separate entries).
         val primary = entries.first()
         // ── Header block: headword + reading + badges ─────────────────────
-        addHeaderBlock(content, primary, sourceLangId)
+        addHeaderBlock(content, primary, sourceLangId, queriedWord)
 
         // ── Definitions group ─────────────────────────────────────────────
         // Target-driven render path: for non-English targets with a Native
@@ -621,11 +623,15 @@ class WordDetailBottomSheet : DialogFragment() {
         parent: LinearLayout,
         entry: DictionaryEntry,
         @Suppress("UNUSED_PARAMETER") sourceLangId: SourceLangId,
+        queriedWord: String,
     ) {
         val ctx = requireContext()
-        val firstHeadword = entry.headwords.firstOrNull()
-        val written = firstHeadword?.written?.takeIf { it.isNotBlank() } ?: entry.slug
-        val reading = firstHeadword?.reading?.takeIf { it.isNotBlank() && it != written }
+        // Prefer the headword that matches the user's clicked surface so we
+        // don't show a different variant kanji as the title (entry 2863328
+        // groups 無下 + 無気; tapping 無気 must show 無気, not 無下).
+        val headword = entry.headwordFor(queriedWord)
+        val written = headword?.written?.takeIf { it.isNotBlank() } ?: entry.slug
+        val reading = headword?.reading?.takeIf { it.isNotBlank() && it != written }
 
         // Replace the placeholder (the queried word) with the canonical
         // headword from the entry. The typeface was already set in

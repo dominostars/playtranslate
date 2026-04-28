@@ -110,6 +110,27 @@ data class HanziDetail(
 }
 
 /**
+ * Returns the headword whose [Headword.written] or [Headword.reading]
+ * exactly matches [query], or null when none match. Use when rendering an
+ * entry that the user reached by clicking a specific surface — JMdict
+ * frequently groups variant kanji under one entry (e.g. 無下 / 無気 share
+ * entry 2863328 because they're pronounced the same way and mean the same
+ * thing), so the entry's primary headword is often NOT the form the user
+ * actually saw.
+ *
+ * Strict (null on miss) instead of falling back to the primary headword so
+ * callers can chain alternatives — typically `headwordFor(surface)
+ * ?: headwordFor(lookupForm) ?: headwords.firstOrNull()` — and so an
+ * inflected surface that doesn't match any headword surfaces (出逢って vs
+ * stored 出逢う) correctly falls through to the next branch instead of
+ * silently latching onto the entry's primary form.
+ */
+fun DictionaryEntry.headwordFor(query: String?): Headword? {
+    if (query.isNullOrEmpty()) return null
+    return headwords.firstOrNull { it.written == query || it.reading == query }
+}
+
+/**
  * Returns a POS label suitable for blank-`pos` target rows (PanLex,
  * which doesn't carry POS metadata). When every sense across every
  * returned entry shares the same POS list — JMdict entries that are

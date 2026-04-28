@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.content.Context
 import com.playtranslate.Prefs
 import com.playtranslate.dictionary.DictionaryManager
+import com.playtranslate.model.headwordFor
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.WordTranslator
@@ -64,7 +65,17 @@ object LastSentenceCache {
                     // intj / etc. instead of dropping every non-primary
                     // sense.
                     val flatSenses = response.entries.flatMap { it.senses }
-                    val primary    = entry.headwords.firstOrNull()
+                    // Pick the headword that matches what the user actually
+                    // saw — JMdict often groups variant kanji under one
+                    // entry (無下/無気, 出会う/出逢う) and the primary form
+                    // can differ from the surface in the source text. Try
+                    // surface first (catches the variant case directly),
+                    // then lookupForm (covers inflected surfaces that
+                    // canonicalize to a non-primary headword), then the
+                    // primary as the last-resort label.
+                    val primary    = entry.headwordFor(tok.surface)
+                        ?: entry.headwordFor(tok.lookupForm)
+                        ?: entry.headwords.firstOrNull()
                     val displayWord = primary?.written ?: primary?.reading ?: tok.lookupForm
                     val reading = primary?.reading?.takeIf { it != primary.written } ?: ""
                     // Mirror the word panel's render cascade: target-driven
