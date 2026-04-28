@@ -1,6 +1,6 @@
 # PlayTranslate
 
-A real-time game translation Android app, built for both language learners and people who just want to play. Currently only supports Japanese → English, but more languages coming soon!
+A real-time game translation Android app, built for both language learners and people who just want to play. Supports 21 game languages and 59 user languages!
 
 To report issues, receive support, or make requests, please join the [Discord server](https://discord.gg/DVCj6p7MUC)
 
@@ -10,9 +10,9 @@ To report issues, receive support, or make requests, please join the [Discord se
 
 - **One-tap Translation** — Capture the game screen and translate Japanese text with one tap
 - **Auto Translation Mode** — Automatically translates as dialogue changes, no tapping required
-- **Furigana Mode** — Show hiragana readings above kanji in real time for reading practice
+- **Word lookup** — Hover the floating lens over any word for immediate dictionary definitionss
+- **Furigana/Pinyin Mode** — Show reading hints above characters in real time
 - **Hotkey hold-to-preview** — Configure a physical key to hold-to-preview translations or furigana, great for handhelds with dedicated buttons
-- **Word lookup** — Hover the floating lens over any word for immediate dictionary definitions
 - **Dual Screen & Split Screen** — Works across both screens on dual-display devices like the Ayn Thor, or in Android split-screen alongside windowed games
 - **Capture regions** — Crop to just the dialogue box, subtitles, or any custom area
 - **Anki export** — Save sentences to AnkiDroid with the original text, translation, word list, target words, and a screenshot
@@ -20,7 +20,7 @@ To report issues, receive support, or make requests, please join the [Discord se
 
 ## How to Use
 
-1. [Download the latest release by clicking here](../../releases/download/v1.2.0/PlayTranslate-1.2.0.apk)
+1. [Download the latest release by clicking here](../../releases/download/v2.0.0/PlayTranslate-2.0.0.apk)
 2. On your Android, enable **Settings → Security → Install unknown apps** for your file manager or browser
 3. Open the APK and tap Install
 4. On first launch, follow the onboarding steps to grant the necessary permissions
@@ -30,6 +30,100 @@ To report issues, receive support, or make requests, please join the [Discord se
 To report issues, receive support, or make requests, please join the [Discord server](https://discord.gg/DVCj6p7MUC)
 
 You can support PlayTranslate on Ko-fi at https://ko-fi.com/playtranslate
+
+## Supported Languages
+
+PlayTranslate translates from **21 game languages** (the text it can read off the screen) into **59 translation languages** (the language shown to you). Both tables are sorted by total worldwide speakers.
+
+### Game languages (read from the screen)
+
+| Language              | Native name      | Code     |
+|-----------------------|------------------|----------|
+| English               | English          | en       |
+| Chinese (Simplified)  | 简体中文          | zh       |
+| Spanish               | Español          | es       |
+| French                | Français         | fr       |
+| Portuguese            | Português        | pt       |
+| Indonesian            | Bahasa Indonesia | id       |
+| German                | Deutsch          | de       |
+| Japanese              | 日本語           | ja       |
+| Vietnamese            | Tiếng Việt       | vi       |
+| Turkish               | Türkçe           | tr       |
+| Korean                | 한국어           | ko       |
+| Italian               | Italiano         | it       |
+| Chinese (Traditional) | 繁體中文          | zh-Hant  |
+| Romanian              | Română           | ro       |
+| Dutch                 | Nederlands       | nl       |
+| Hungarian             | Magyar           | hu       |
+| Swedish               | Svenska          | sv       |
+| Catalan               | Català           | ca       |
+| Danish                | Dansk            | da       |
+| Finnish               | Suomi            | fi       |
+| Norwegian             | Norsk            | no       |
+
+### Translation languages (translated for you)
+
+| Language       | Native name        | Code |
+|----------------|--------------------|------|
+| English        | English            | en   |
+| Chinese        | 中文               | zh   |
+| Hindi          | हिन्दी              | hi   |
+| Spanish        | Español            | es   |
+| Arabic         | العربية             | ar   |
+| French         | Français           | fr   |
+| Bengali        | বাংলা              | bn   |
+| Portuguese     | Português          | pt   |
+| Russian        | Русский            | ru   |
+| Urdu           | اردو               | ur   |
+| Indonesian     | Bahasa Indonesia   | id   |
+| Swahili        | Kiswahili          | sw   |
+| German         | Deutsch            | de   |
+| Japanese       | 日本語             | ja   |
+| Marathi        | मराठी              | mr   |
+| Telugu         | తెలుగు              | te   |
+| Turkish        | Türkçe             | tr   |
+| Vietnamese     | Tiếng Việt         | vi   |
+| Korean         | 한국어             | ko   |
+| Tamil          | தமிழ்              | ta   |
+| Persian        | فارسی              | fa   |
+| Italian        | Italiano           | it   |
+| Thai           | ไทย                | th   |
+| Gujarati       | ગુજરાતી             | gu   |
+| Polish         | Polski             | pl   |
+| Ukrainian      | Українська         | uk   |
+| Tagalog        | Tagalog            | tl   |
+| Malay          | Bahasa Melayu      | ms   |
+| Kannada        | ಕನ್ನಡ              | kn   |
+| Dutch          | Nederlands         | nl   |
+| Romanian       | Română             | ro   |
+| Hungarian      | Magyar             | hu   |
+| Greek          | Ελληνικά           | el   |
+| Czech          | Čeština            | cs   |
+| Swedish        | Svenska            | sv   |
+| Belarusian     | Беларуская         | be   |
+| Hebrew         | עברית              | he   |
+| Bulgarian      | Български          | bg   |
+| Catalan        | Català             | ca   |
+| Slovak         | Slovenčina         | sk   |
+| Haitian Creole | Kreyòl Ayisyen     | ht   |
+| Croatian       | Hrvatski           | hr   |
+| Danish         | Dansk              | da   |
+| Finnish        | Suomi              | fi   |
+| Norwegian      | Norsk              | no   |
+| Albanian       | Shqip              | sq   |
+| Galician       | Galego             | gl   |
+| Slovenian      | Slovenščina        | sl   |
+| Lithuanian     | Lietuvių           | lt   |
+| Latvian       | Latviešu           | lv   |
+| Afrikaans      | Afrikaans          | af   |
+| Macedonian     | Македонски         | mk   |
+| Estonian       | Eesti              | et   |
+| Georgian       | ქართული            | ka   |
+| Welsh          | Cymraeg            | cy   |
+| Maltese        | Malti              | mt   |
+| Icelandic      | Íslenska           | is   |
+| Irish          | Gaeilge            | ga   |
+| Esperanto      | Esperanto          | eo   |
 
 ## Optional: DeepL API Key
 
