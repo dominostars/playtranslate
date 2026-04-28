@@ -255,7 +255,9 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:orientation="vertical"
-            android:padding="28dp"
+            android:paddingHorizontal="28dp"
+            android:paddingTop="22dp"
+            android:paddingBottom="0dp"
             android:visibility="gone">
 
             <ScrollView
@@ -326,13 +328,14 @@
             <Button
                 android:id="@+id/btnWelcomeContinue"
                 android:layout_width="match_parent"
-                android:layout_height="56dp"
-                android:layout_marginTop="20dp"
+                android:layout_height="60dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="8dp"
                 android:text="@string/onboarding_welcome_continue"
                 android:textSize="16sp"
                 android:backgroundTint="?attr/ptAccent"
                 android:textColor="?attr/ptAccentOn"
-                app:cornerRadius="8dp" />
+                app:cornerRadius="@dimen/pt_radius" />
 
         </LinearLayout>
 
