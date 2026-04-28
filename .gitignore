@@ -8,7 +8,7 @@ app/build/
 clone.py
 # Android SDK / JDK (bundled toolchain, not part of source)
 .sdk/
-
+.agent
 # Claude Code
 .claude/
 
