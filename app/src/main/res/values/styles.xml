@@ -8,7 +8,15 @@
         ThemeOverlay.PT.Accent.* overlays via theme.applyStyle().
         See ThemeUtils.applyTheme().
     -->
-    <style name="Theme.PlayTranslate" parent="Theme.Material3.DayNight.NoActionBar">
+    <!-- Parent is .Dark (not .DayNight): when the user explicitly picks
+         Dark in-app while the system is in Light mode, DayNight still resolves
+         Material color slots (colorSurface, colorOnSurface, …) against the
+         system's light values. AppBarLayout.liftOnScroll then tints the app
+         bar with white-ish colorSurface while ?attr/ptText is white (dark
+         palette), producing white-on-white. Pinning to .Dark here decouples
+         our explicit theme choice from the system uiMode. .White below stays
+         on .Light for the symmetric reason. -->
+    <style name="Theme.PlayTranslate" parent="Theme.Material3.Dark.NoActionBar">
 
         <!-- ── Dark palette ──────────────────────────────────────────────── -->
         <item name="ptBg">@color/pt_dark_bg</item>
@@ -32,9 +40,20 @@
         <item name="ptTextLink">@color/pt_accent_teal</item>
 
         <!-- ── Material component mapping ────────────────────────────────── -->
+        <!-- Mirror Theme.PlayTranslate.White's mapping so Material widgets
+             (AppBarLayout liftOnScroll, MaterialCardView elevation overlay,
+             MaterialButton etc.) all resolve against the dark pt* palette
+             instead of falling back to Material3.Dark's stock surface tones. -->
         <item name="colorPrimary">?attr/ptAccent</item>
+        <item name="colorOnPrimary">?attr/ptAccentOn</item>
+        <item name="colorPrimaryContainer">?attr/ptAccent</item>
+        <item name="colorOnPrimaryContainer">?attr/ptAccentOn</item>
         <item name="colorPrimaryDark">?attr/ptAccent</item>
         <item name="colorAccent">?attr/ptAccent</item>
+        <item name="colorSurface">?attr/ptSurface</item>
+        <item name="colorOnSurface">?attr/ptText</item>
+        <item name="colorOnSurfaceVariant">?attr/ptTextMuted</item>
+        <item name="colorOutline">?attr/ptDivider</item>
         <item name="android:windowBackground">?attr/ptBg</item>
         <item name="android:statusBarColor">?attr/ptBg</item>
         <item name="android:navigationBarColor">?attr/ptBg</item>
