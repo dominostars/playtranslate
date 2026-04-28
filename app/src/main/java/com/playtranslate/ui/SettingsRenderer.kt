@@ -412,13 +412,12 @@ class SettingsRenderer(
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
         val hasHintText = hintKind != HintTextKind.NONE
 
-        if (!hasHintText) {
-            hotkeySection.visibility = View.GONE
-            return
-        }
+        // Section is always available — the translation hotkey is useful
+        // regardless of source language (handheld users want hold-to-translate
+        // even when there's no furigana/pinyin layer to surface).
         hotkeySection.visibility = View.VISIBLE
 
-        // -- Translation hotkey (always visible when section is visible) --
+        // -- Translation hotkey (always visible) --
         setupSingleHotkeyRow(
             row = rowHotkeyTranslation,
             title = "Hotkey: hold to show Translations",
@@ -427,20 +426,25 @@ class SettingsRenderer(
             dialogTitle = "Show Translations"
         )
 
-        // -- Furigana/Pinyin hotkey --
-        val hintLabel = when (hintKind) {
-            HintTextKind.PINYIN -> "Pinyin"
-            else -> "Furigana"
+        // -- Furigana/Pinyin hotkey (only when source language has hint text) --
+        if (hasHintText) {
+            val hintLabel = when (hintKind) {
+                HintTextKind.PINYIN -> "Pinyin"
+                else -> "Furigana"
+            }
+            rowHotkeyFurigana.visibility = View.VISIBLE
+            dividerHotkeyFurigana.visibility = View.VISIBLE
+            setupSingleHotkeyRow(
+                row = rowHotkeyFurigana,
+                title = "Hotkey: hold to show $hintLabel",
+                getHotkey = { prefs.hotkeyFurigana },
+                setHotkey = { prefs.hotkeyFurigana = it },
+                dialogTitle = "Show $hintLabel"
+            )
+        } else {
+            rowHotkeyFurigana.visibility = View.GONE
+            dividerHotkeyFurigana.visibility = View.GONE
         }
-        rowHotkeyFurigana.visibility = View.VISIBLE
-        dividerHotkeyFurigana.visibility = View.VISIBLE
-        setupSingleHotkeyRow(
-            row = rowHotkeyFurigana,
-            title = "Hotkey: hold to show $hintLabel",
-            getHotkey = { prefs.hotkeyFurigana },
-            setHotkey = { prefs.hotkeyFurigana = it },
-            dialogTitle = "Show $hintLabel"
-        )
     }
 
     private fun setupSingleHotkeyRow(
@@ -1119,13 +1123,18 @@ class SettingsRenderer(
             )
         }
 
-        // Hotkey section visibility
-        hotkeySection.visibility = if (hasHintText) View.VISIBLE else View.GONE
+        // Hotkey section is always visible (translation hotkey is useful
+        // regardless of source language). Only the Furigana/Pinyin row
+        // toggles with hasHintText.
+        hotkeySection.visibility = View.VISIBLE
         if (hasHintText) {
             rowHotkeyFurigana.visibility = View.VISIBLE
             dividerHotkeyFurigana.visibility = View.VISIBLE
             rowHotkeyFurigana.findViewById<TextView>(R.id.tvRowTitle)?.text =
                 "Hotkey: hold to show $hintLabel"
+        } else {
+            rowHotkeyFurigana.visibility = View.GONE
+            dividerHotkeyFurigana.visibility = View.GONE
         }
     }
 
