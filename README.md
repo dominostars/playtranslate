@@ -25,6 +25,29 @@ To report issues, receive support, or make requests, please join the [Discord se
 3. Open the APK and tap Install
 4. On first launch, follow the onboarding steps to grant the necessary permissions
 
+## Won't install?
+
+On some Android devices, **Google Play Protect** blocks sideloaded APKs and shows a vague "App not installed" or "harmful app" warning. If that happens, temporarily disable the scanner:
+
+1. Open the **Play Store**
+2. Tap your **profile icon** (top right)
+3. Tap **Play Protect**
+4. Tap the **gear icon** (top right)
+5. Turn off **Scan apps with Play Protect**
+
+Install the APK, then re-enable Play Protect afterward to keep scanning your other apps.
+
+## Can't enable accessibility?
+
+Some Android OEMs block sideloaded apps from receiving accessibility permissions by default — the toggle in Settings is grayed out or shows a "Restricted setting" message. To unblock it:
+
+1. Open **Settings → Apps → PlayTranslate**
+2. Tap the **⋮** menu (top right)
+3. Tap **Allow restricted settings**
+4. Authenticate when prompted
+
+You can now turn on accessibility for PlayTranslate.
+
 ## Support
 
 To report issues, receive support, or make requests, please join the [Discord server](https://discord.gg/DVCj6p7MUC)
