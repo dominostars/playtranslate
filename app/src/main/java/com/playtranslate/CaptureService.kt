@@ -97,7 +97,7 @@ class CaptureService : Service() {
      *  picks up drift at each capture entry point. */
     internal val sourceLang: String
         get() = SourceLanguageProfiles[Prefs(this).sourceLangId].translationCode
-    private var savedRegion = RegionEntry("", 0f, 1f)
+    private var savedRegion = DEFAULT_REGION
     /** Tracks whether [configureSaved] has populated capture-time state
      *  (displayId, region). Keeping this distinct from manager presence
      *  means a translation-only path that constructs translators via
@@ -108,9 +108,13 @@ class CaptureService : Service() {
     private var overrideRegion: RegionEntry? = null
 
     /** Observable active region — override if set, otherwise saved. */
-    val activeRegionLiveData = MutableLiveData(RegionEntry("", 0f, 1f))
-    /** Current active region snapshot for synchronous reads. */
-    val activeRegion: RegionEntry get() = activeRegionLiveData.value!!
+    val activeRegionLiveData = MutableLiveData(DEFAULT_REGION)
+    /** Current active region snapshot for synchronous reads. The fallback
+     *  is defensive — LiveData is initialized non-null and only ever written
+     *  via [updateActiveRegion] which always supplies a non-null value, so
+     *  the null branch is unreachable today. Kept so a future LiveData
+     *  swap can't silently introduce a crash. */
+    val activeRegion: RegionEntry get() = activeRegionLiveData.value ?: DEFAULT_REGION
     /** True when a temporary override region is active. */
     val isOverride: Boolean get() = overrideRegion != null
 
@@ -231,7 +235,7 @@ class CaptureService : Service() {
      *  prefs drift, no matter which code path wrote them. */
     fun configureSaved(
         displayId: Int,
-        region: RegionEntry = RegionEntry("", 0f, 1f)
+        region: RegionEntry = DEFAULT_REGION
     ) {
         gameDisplayId    = displayId
         this.savedRegion = region
@@ -797,6 +801,11 @@ class CaptureService : Service() {
         @Volatile
         var instance: CaptureService? = null
             private set
+
+        /** Empty-id, full-screen region used as the initial saved/active value
+         *  before [configureSaved] runs and as the defensive fallback in
+         *  [activeRegion]. Centralized so the literal isn't duplicated. */
+        val DEFAULT_REGION = RegionEntry("", 0f, 1f)
     }
 
     /**

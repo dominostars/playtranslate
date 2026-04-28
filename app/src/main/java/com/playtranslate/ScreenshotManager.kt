@@ -139,7 +139,10 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
     /**
      * Save a bitmap to the screenshot cache directory as JPEG.
      * Returns the file path. Uses JPEG for speed (~10-30 ms vs PNG's
-     * 50-200 ms). Keeps up to 5 files, rotating oldest.
+     * 50-200 ms). Always overwrites a single `capture.jpg` — the cache
+     * stays bounded to one file per writer (this manager + the
+     * accessibility-service `precapture.jpg` and drag-flow `drag.jpg`
+     * paths each own their own filename).
      */
     fun saveToCache(bitmap: Bitmap): String? {
         return try {

@@ -318,6 +318,13 @@ object LanguagePackStore {
         SourceLanguageEngines.releaseForPack(id.packId)
         val dir = dirFor(ctx.applicationContext, id)
         return if (dir.exists()) dir.deleteRecursively() else false
+        // OCR recognizers cached in OcrManager are NOT released here:
+        // recognise() reads from the cache and then calls client.process()
+        // without holding a lock against close(), so closing on uninstall
+        // can race with an in-flight capture (CaptureService may still be
+        // running when settings invokes uninstall). Recognizers are freed
+        // instead from PlayTranslateApplication.onTrimMemory, which only
+        // fires when no foreground service is alive.
     }
 
     /**

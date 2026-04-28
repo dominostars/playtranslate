@@ -1635,7 +1635,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     companion object {
         private const val TAG = "PlayTranslateA11y"
 
-        /** Non-null while the service is connected (i.e. user has it enabled). */
+        /** Non-null while the service is connected (i.e. user has it enabled).
+         *  `@Volatile` because the field is written from the main thread
+         *  (`onServiceConnected` / `onUnbind`) and read from many others —
+         *  drag controllers, hotkey callbacks, ML Kit worker threads. Without
+         *  the visibility barrier a stale non-null read could survive a
+         *  service teardown. Mirrors [CaptureService.instance]'s annotation. */
+        @Volatile
         var instance: PlayTranslateAccessibilityService? = null
 
         val isEnabled: Boolean get() = instance != null
