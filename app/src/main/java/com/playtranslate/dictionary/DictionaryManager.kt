@@ -200,7 +200,14 @@ class DictionaryManager private constructor(private val context: Context) {
     }
 
     private fun isContentWord(pos: String?): Boolean = pos in setOf(
-        "名詞", "動詞", "形容詞", "形容動詞", "副詞", "感動詞"
+        "名詞", "動詞", "形容詞", "形容動詞", "副詞", "感動詞",
+        // 接続詞 (conjunction): もっとも, しかし, そして, けれども — all in JMdict
+        // and worth a tap. Without this, IPADIC's もっとも (tagged 接続詞 even
+        // for the 最も "most" sense in some sentences) drops out before lookup.
+        "接続詞",
+        // 連体詞 (prenominal adjectival): この, その, あの, どの, 大きな, 小さな,
+        // ある, 我が — common demonstratives and pre-nominals, all in JMdict.
+        "連体詞",
     )
 
     private fun isLookupWorthy(token: String): Boolean {
