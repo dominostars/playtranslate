@@ -75,6 +75,16 @@ class MagnifierLens(
 
     /** Distance in px between finger center and the near edge of the lens. */
     private val verticalMarginPx = dp(25f)
+    /** Triangular pointer drawn between the lens body and the finger when
+     *  the lens is in sticky-definitions mode. Matches WordLookupPopup's
+     *  arrow proportions so the two surfaces feel like the same family. */
+    private val arrowSizePx = dp(10f)
+    /** Total window height. The lens body always occupies [lensH]; the
+     *  remaining [arrowSizePx] is reserved for the sticky-mode arrow above
+     *  or below the body. The window height is fixed across modes — only
+     *  the arrow's visibility changes — so the window doesn't have to be
+     *  resized when transitioning into / out of sticky mode. */
+    private val totalH = lensH + arrowSizePx
     private val zoom = 2f
     /** How far the lens may slide off the top of the screen before we flip
      *  it below the finger. Tolerating some clipping avoids a jarring flip
@@ -83,6 +93,12 @@ class MagnifierLens(
 
     private var lensView: LensView? = null
     private var params: WindowManager.LayoutParams? = null
+
+    /** Most recent finger x from [show]. Used by [makeInteractive] to
+     *  align the sticky-mode arrow horizontally with the finger position
+     *  the user released at. The arrow's direction is driven by the
+     *  LensView's own flipped state, set in [show] via setLensFlipped. */
+    private var lastFingerX = 0
 
     /** Fires once per actual window teardown — tap-outside in sticky mode,
      *  new drag start, [cancelDrag], or any [dismiss] caller. The drag
@@ -134,6 +150,11 @@ class MagnifierLens(
             WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
         try { wm.updateViewLayout(view, p) } catch (_: Exception) {}
         view.attachInteractiveListeners(onDismissRequest = { dismiss() })
+        // Sticky-mode arrow points at the finger position from the most
+        // recent show() call. Clamp x so the triangle stays inside the
+        // lens horizontally (matches WordLookupPopup's arrowRelX clamp).
+        val arrowRelX = (lastFingerX - p.x).coerceIn(arrowSizePx, p.width - arrowSizePx)
+        view.setArrowVisible(true, arrowRelX)
     }
 
     /** Demote the lens window back to drag-mode flags + zoom rendering and
@@ -155,6 +176,7 @@ class MagnifierLens(
         view.setDefinitions(null, null)
         view.setLabel(null, null)
         view.setSourceBitmap(null)
+        view.setArrowVisible(false, 0)
     }
 
     /** Lens width tracks WordLookupPopup's `baseW` (no open-button column —
@@ -184,14 +206,23 @@ class MagnifierLens(
         val aboveY = fingerY - verticalMarginPx - lensH
         val flipped = aboveY < -topOverhangTolerancePx
         view.setSourcePoint(fingerX.toFloat(), fingerY.toFloat(), screenW, screenH)
+        view.setLensFlipped(flipped)
         view.visibility = View.VISIBLE
 
+        // Snapshot for sticky-mode arrow alignment in [makeInteractive].
+        lastFingerX = fingerX
+
         val x = (fingerX - lensW / 2).coerceIn(0, (screenW - lensW).coerceAtLeast(0))
-        val y = if (!flipped) {
+        // The lens body's visual top is unchanged from the pre-arrow design.
+        // When the lens is flipped (body below finger), the window itself
+        // starts arrowSizePx above the body so the arrow has room to render
+        // in the gap between the finger and the body.
+        val lensBodyY = if (!flipped) {
             aboveY
         } else {
             (fingerY + verticalMarginPx).coerceAtMost((screenH - lensH).coerceAtLeast(0))
         }
+        val y = if (!flipped) lensBodyY else lensBodyY - arrowSizePx
         if (p.x != x || p.y != y) {
             p.x = x
             p.y = y
@@ -226,10 +257,15 @@ class MagnifierLens(
             leftPanelW = leftPanelW,
             cornerR = cornerR,
             zoom = zoom,
+            arrowSizePx = arrowSizePx,
             onOpenTap = { onOpenTap?.invoke() },
         )
+        // Window is sized for the lens body PLUS the arrow strip. The arrow
+        // is invisible during zoom / drag-definitions modes and only paints
+        // when the lens transitions to sticky via [makeInteractive], so the
+        // extra height is purely transparent reserved space until then.
         val lp = WindowManager.LayoutParams(
-            lensW, lensH,
+            lensW, totalH,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
@@ -261,6 +297,7 @@ class MagnifierLens(
         private val leftPanelW: Int,
         private val cornerR: Float,
         private val zoom: Float,
+        private val arrowSizePx: Int,
         private val onOpenTap: () -> Unit,
     ) : FrameLayout(ctx) {
         private val density = ctx.resources.displayMetrics.density
@@ -270,6 +307,17 @@ class MagnifierLens(
 
         private enum class Mode { ZOOM, DEFINITIONS }
         private var mode: Mode = Mode.ZOOM
+
+        // The view is sized lensW × (lensH + arrowSizePx). The lens body
+        // occupies a [lensH]-tall band whose top y depends on whether the
+        // lens is flipped: 0 when above the finger (default), arrowSizePx
+        // when below. The arrow strip lives on the opposite side.
+        private var lensFlipped = false
+        private val bodyTopOffset: Int get() = if (lensFlipped) arrowSizePx else 0
+        // Sticky-mode arrow state. arrowOffsetX is the x of the triangle's
+        // tip / center within the view, set by the controller after release.
+        private var arrowVisible = false
+        private var arrowOffsetX = 0
 
         // Overlay-context color resolution: themeColor(R.attr.pt*) is
         // unreliable from the accessibility service / floating-window
@@ -303,6 +351,15 @@ class MagnifierLens(
             style = Paint.Style.FILL
         }
         private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+
+        // Arrow fills with the same darkened accent the border uses, so the
+        // triangle reads as a continuation of the lens chrome rather than a
+        // separate panel-colored chip hanging off the bottom.
+        private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = borderColor
+            style = Paint.Style.FILL
+        }
+        private val arrowPath = Path()
 
         // Inset drop-shadow stroke just inside the border. The stroke is
         // drawn while the round-rect clip is active (see [draw]), so its
@@ -379,10 +436,14 @@ class MagnifierLens(
             addView(readingView)
             addView(wordView)
             visibility = GONE
+            // Height is fixed at lensH (not MATCH_PARENT) because the host
+            // view is taller than the lens body — the extra arrowSizePx
+            // strip is reserved for the sticky-mode arrow. Gravity flips
+            // to BOTTOM via setLensFlipped when the lens is below finger.
             layoutParams = LayoutParams(
                 leftPanelW,
-                LayoutParams.MATCH_PARENT,
-                Gravity.START or Gravity.CENTER_VERTICAL,
+                lensH,
+                Gravity.START or Gravity.TOP,
             )
         }
 
@@ -437,10 +498,13 @@ class MagnifierLens(
             visibility = GONE
             addView(definitionsScroll)
             addView(openButton)
+            // See leftCol — fixed lensH height with TOP/BOTTOM gravity so
+            // the panel covers exactly the lens body region inside the
+            // taller host view.
             layoutParams = LayoutParams(
                 rightPanelW,
-                LayoutParams.MATCH_PARENT,
-                Gravity.END or Gravity.CENTER_VERTICAL,
+                lensH,
+                Gravity.END or Gravity.TOP,
             )
         }
 
@@ -477,8 +541,20 @@ class MagnifierLens(
             isFocusableInTouchMode = true
             addView(leftCol)
             addView(definitionsPanel)
+            rebuildClipPath()
+        }
+
+        /** Rebuilds [clipPath] to mark off the lens body's rounded-rect
+         *  region. Called from init and again whenever [lensFlipped]
+         *  changes (which moves the body's vertical band within the host
+         *  view). Drawing in [draw] / [onDraw] still happens inside this
+         *  clip so the zoom and chrome stay confined to the body region;
+         *  the arrow paints after the clip is restored. */
+        private fun rebuildClipPath() {
+            clipPath.reset()
+            val top = bodyTopOffset.toFloat()
             clipPath.addRoundRect(
-                0f, 0f, lensW.toFloat(), lensH.toFloat(),
+                0f, top, lensW.toFloat(), top + lensH.toFloat(),
                 cornerR, cornerR, Path.Direction.CW,
             )
         }
@@ -517,11 +593,30 @@ class MagnifierLens(
          *  sticky-definitions mode so a tap anywhere inside the lens
          *  fires the same action as the open button. ZOOM-mode dispatch
          *  is unchanged — the lens window has FLAG_NOT_TOUCHABLE during
-         *  drag, so events don't reach this method anyway. */
+         *  drag, so events don't reach this method anyway.
+         *
+         *  Touches whose DOWN lands in the arrow strip (transparent,
+         *  outside the rounded-rect body) skip the tap detector entirely
+         *  for the rest of that gesture — the arrow is a visual pointer,
+         *  not a tap target. Gating on DOWN (rather than per-event) keeps
+         *  the GestureDetector's state machine consistent, so a stray UP
+         *  inside the body can't fire a tap from a gesture that started
+         *  on the arrow. */
+        private var tapGestureActive = false
         override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
             val handled = super.dispatchTouchEvent(ev)
-            if (isInteractive) tapDetector.onTouchEvent(ev)
+            if (isInteractive) {
+                if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+                    tapGestureActive = isWithinBody(ev.y)
+                }
+                if (tapGestureActive) tapDetector.onTouchEvent(ev)
+            }
             return handled
+        }
+
+        private fun isWithinBody(y: Float): Boolean {
+            val top = bodyTopOffset
+            return y >= top && y < top + lensH
         }
 
         fun setSourceBitmap(bitmap: Bitmap?) {
@@ -534,6 +629,37 @@ class MagnifierLens(
             sourceY = y
             sourceScreenW = screenW
             sourceScreenH = screenH
+            invalidate()
+        }
+
+        /** Flip the lens body to the bottom of the host view (when the
+         *  finger is near the top of the screen) or back to the top. The
+         *  child panels (leftCol / definitionsPanel) get re-pinned with
+         *  TOP/BOTTOM gravity so they continue to cover the body region,
+         *  and [clipPath] follows. No-op when state is unchanged so that
+         *  the per-frame [show] caller can spam this without thrashing
+         *  layout. */
+        fun setLensFlipped(flipped: Boolean) {
+            if (lensFlipped == flipped) return
+            lensFlipped = flipped
+            val verticalGravity = if (flipped) Gravity.BOTTOM else Gravity.TOP
+            leftCol.layoutParams = LayoutParams(
+                leftPanelW, lensH, Gravity.START or verticalGravity,
+            )
+            definitionsPanel.layoutParams = LayoutParams(
+                rightPanelW, lensH, Gravity.END or verticalGravity,
+            )
+            rebuildClipPath()
+            invalidate()
+        }
+
+        /** Toggle the sticky-mode arrow on/off. [offsetX] is the x of the
+         *  arrow's tip (= triangle center) within the host view, set to
+         *  align with the finger position the user released at. */
+        fun setArrowVisible(visible: Boolean, offsetX: Int) {
+            if (arrowVisible == visible && arrowOffsetX == offsetX) return
+            arrowVisible = visible
+            arrowOffsetX = offsetX
             invalidate()
         }
 
@@ -720,6 +846,13 @@ class MagnifierLens(
             val w = lensW.toFloat()
             val h = lensH.toFloat()
 
+            // Translate so drawZoom's (0..lensW, 0..lensH) coordinates land
+            // on the lens body's actual position within the host view —
+            // the host is now lensH + arrowSizePx tall, and the body sits
+            // either at the top (default) or shifted down by arrowSizePx
+            // (flipped). The clipPath active during super.draw matches.
+            canvas.save()
+            canvas.translate(0f, bodyTopOffset.toFloat())
             drawZoom(canvas, w, h)
 
             insetShadowRect.set(
@@ -734,12 +867,18 @@ class MagnifierLens(
                 cornerR - insetShadowInset,
                 insetShadowPaint,
             )
+            canvas.restore()
         }
 
         /** Wraps the entire draw pass (background, onDraw, children) in
          *  the rounded-rect clip, then paints the crosshair (ZOOM mode
          *  only) and border on top of the restored canvas — they need to
-         *  sit visually above the zoom and the left panel labels. */
+         *  sit visually above the zoom and the left panel labels.
+         *
+         *  Sticky-mode arrow paints AFTER the clip is restored and AFTER
+         *  the border so it visually attaches to the lens body's edge.
+         *  The arrow lives in the lensW × arrowSizePx strip outside the
+         *  clipped lens body region, on the side opposite [bodyTopOffset]. */
         override fun draw(canvas: Canvas) {
             canvas.save()
             canvas.clipPath(clipPath)
@@ -748,7 +887,7 @@ class MagnifierLens(
 
             if (mode == Mode.ZOOM) {
                 val crosshairCx = lensW / 2f
-                val crosshairCy = lensH / 2f
+                val crosshairCy = bodyTopOffset + lensH / 2f
                 canvas.drawLine(
                     crosshairCx - crosshairHalfLen, crosshairCy,
                     crosshairCx + crosshairHalfLen, crosshairCy, crosshairPaint,
@@ -760,12 +899,50 @@ class MagnifierLens(
             }
 
             val inset = borderPx / 2f
-            borderRect.set(inset, inset, lensW - inset, lensH - inset)
+            val bodyTop = bodyTopOffset.toFloat()
+            borderRect.set(
+                inset, bodyTop + inset,
+                lensW - inset, bodyTop + lensH - inset,
+            )
             canvas.drawRoundRect(
                 borderRect,
                 cornerR - inset, cornerR - inset,
                 borderPaint,
             )
+
+            if (arrowVisible) drawArrow(canvas)
+        }
+
+        /** Paint the sticky-mode triangular pointer between the lens body
+         *  and the finger position the user released at. Triangle base
+         *  sits flush against the lens body edge so the shape reads as a
+         *  contiguous extension of the definitions panel; tip points
+         *  toward the finger.
+         *
+         *  When the lens is above the finger (default), the arrow is in
+         *  the bottom strip pointing down. When flipped (lens below
+         *  finger), the arrow is in the top strip pointing up. */
+        private fun drawArrow(canvas: Canvas) {
+            arrowPath.reset()
+            val cx = arrowOffsetX.toFloat()
+            val halfBase = arrowSizePx.toFloat()
+            if (lensFlipped) {
+                // Arrow strip at y in [0, arrowSizePx]; tip at y = 0.
+                val baseY = arrowSizePx.toFloat()
+                arrowPath.moveTo(cx - halfBase, baseY)
+                arrowPath.lineTo(cx + halfBase, baseY)
+                arrowPath.lineTo(cx, 0f)
+            } else {
+                // Arrow strip at y in [lensH, lensH + arrowSizePx]; tip
+                // at y = lensH + arrowSizePx.
+                val baseY = lensH.toFloat()
+                val tipY = (lensH + arrowSizePx).toFloat()
+                arrowPath.moveTo(cx - halfBase, baseY)
+                arrowPath.lineTo(cx + halfBase, baseY)
+                arrowPath.lineTo(cx, tipY)
+            }
+            arrowPath.close()
+            canvas.drawPath(arrowPath, arrowPaint)
         }
 
         /** Renders the zoom (with black underlay for off-screenshot regions)
