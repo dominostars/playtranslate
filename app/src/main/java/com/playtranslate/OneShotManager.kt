@@ -45,9 +45,9 @@ class OneShotManager(private val service: CaptureService) {
             // 3. OCR via shared pipeline
             val pipeline = service.runOcr(raw)
             if (pipeline == null) {
-                service.onHoldLoadingChanged?.invoke(false)
+                service.emitHoldLoading(false)
                 showNoTextPill()
-                service.onLiveNoText?.invoke()
+                service.emitLiveNoText()
                 return
             }
 

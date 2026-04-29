@@ -202,12 +202,12 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
             service.showLiveOverlay(placeholderBoxes, left, top, raw.width, raw.height)
 
             // Translate
-            service.onTranslationStarted?.invoke()
+            service.emitTranslationStarted()
             val perGroup = service.translateGroupsSeparately(ocrResult.groupTexts)
             val translated = perGroup.joinToString("\n\n") { it.first }
             val note = perGroup.mapNotNull { it.second }.firstOrNull()
             val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-            service.onResult?.invoke(
+            service.emitResult(
                 com.playtranslate.model.TranslationResult(
                     originalText = ocrResult.fullText, segments = ocrResult.segments,
                     translatedText = translated, timestamp = timestamp,

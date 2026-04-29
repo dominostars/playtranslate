@@ -21,7 +21,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.RegionEntry
@@ -165,11 +167,10 @@ class TranslationResultActivity :
     }
 
     override fun onDestroy() {
-        captureService?.onResult = null
-        captureService?.onError = null
-        captureService?.onStatusUpdate = null
-        captureService?.onTranslationStarted = null
-        captureService?.onLiveNoText = null
+        // Service event subscriptions are scoped to lifecycleScope, so
+        // they're cancelled automatically when the activity is destroyed.
+        // No callback nulling — the service no longer exposes mutable
+        // callback slots that one activity could clobber for another.
         if (serviceConnected) unbindService(serviceConnection)
         super.onDestroy()
     }
@@ -386,14 +387,16 @@ class TranslationResultActivity :
             region    = RegionEntry("Drawn Region", topFrac, bottomFrac, leftFrac, rightFrac)
         )
 
-        svc.onResult = { result ->
-            runOnUiThread { vm.displayResult(result, applicationContext) }
-        }
-        svc.onError = { msg ->
-            runOnUiThread { vm.showError(msg) }
-        }
-        svc.onStatusUpdate = { msg ->
-            runOnUiThread { vm.showStatus(msg) }
+        // Subscribe to the service's outbound event flows. Collectors run
+        // on lifecycleScope inside repeatOnLifecycle, so they auto-pause
+        // when this activity stops and clean up when it's destroyed —
+        // they don't share state with MainActivity's subscriptions.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch { svc.results.collect { vm.displayResult(it, applicationContext) } }
+                launch { svc.errors.collect { vm.showError(it) } }
+                launch { svc.statusUpdates.collect { vm.showStatus(it) } }
+            }
         }
 
         // If we have a pre-captured screenshot (single-screen: taken before this

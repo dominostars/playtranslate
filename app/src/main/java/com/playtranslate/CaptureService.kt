@@ -31,6 +31,12 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -132,16 +138,53 @@ class CaptureService : Service() {
         }
     }
 
-    // ── Callbacks to Activity ─────────────────────────────────────────────
+    // ── Outbound event streams ────────────────────────────────────────────
+    //
+    // Each event type is a SharedFlow (for fire-and-forget events) or
+    // StateFlow (for current-value semantics). Activities collect these
+    // independently with their own lifecycle scopes — there's no single
+    // callback slot for one consumer to overwrite another's. This replaces
+    // the earlier `var onResult: ((..)->Unit)? = null` pattern, which had
+    // a structural flaw: TranslationResultActivity nulled the slots in
+    // onDestroy, breaking MainActivity when its onResume didn't fire to
+    // re-wire (e.g. dual-screen, multi-task).
+    //
+    // Events use `extraBufferCapacity = 1` so a tryEmit during a moment
+    // when no collector is STARTED (e.g. mid-rotation) doesn't drop the
+    // event — the next collector will see it on subscribe. Replay=0
+    // because each event is a transient signal; the VM caches the
+    // resulting state separately for re-rendering after rotation.
 
-    var onResult: ((TranslationResult) -> Unit)? = null
-    var onError: ((String) -> Unit)? = null
-    var onStatusUpdate: ((String) -> Unit)? = null
-    var onTranslationStarted: (() -> Unit)? = null
+    private val _results = MutableSharedFlow<TranslationResult>(extraBufferCapacity = 1)
+    val results: SharedFlow<TranslationResult> = _results.asSharedFlow()
+
+    private val _errors = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val errors: SharedFlow<String> = _errors.asSharedFlow()
+
+    private val _statusUpdates = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val statusUpdates: SharedFlow<String> = _statusUpdates.asSharedFlow()
+
+    private val _translationStarted = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val translationStarted: SharedFlow<Unit> = _translationStarted.asSharedFlow()
+
     /** Fired during live mode when an OCR cycle finds no source-language text. */
-    var onLiveNoText: (() -> Unit)? = null
-    /** Emitted when hold-to-preview loading state changes. */
-    var onHoldLoadingChanged: ((Boolean) -> Unit)? = null
+    private val _liveNoText = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val liveNoText: SharedFlow<Unit> = _liveNoText.asSharedFlow()
+
+    /** Hold-to-preview loading state. StateFlow because consumers (the
+     *  floating icon's loading indicator) need the current value, not a
+     *  stream of transitions. */
+    private val _holdLoading = MutableStateFlow(false)
+    val holdLoading: StateFlow<Boolean> = _holdLoading.asStateFlow()
+
+    // ── Internal emit helpers (callable from sibling capture modes) ──────
+
+    internal fun emitResult(result: TranslationResult) { _results.tryEmit(result) }
+    internal fun emitError(message: String) { _errors.tryEmit(message) }
+    internal fun emitStatusUpdate(message: String) { _statusUpdates.tryEmit(message) }
+    internal fun emitTranslationStarted() { _translationStarted.tryEmit(Unit) }
+    internal fun emitLiveNoText() { _liveNoText.tryEmit(Unit) }
+    internal fun emitHoldLoading(loading: Boolean) { _holdLoading.value = loading }
 
     /** Observable degraded translation state (ML Kit fallback). */
     val degradedState = MutableLiveData(false)
@@ -202,13 +245,9 @@ class CaptureService : Service() {
         translationManager?.close()
         deeplTranslator?.close()
         lingvaTranslator?.close()
-        // Clear callbacks to release Activity references
-        onResult = null
-        onError = null
-        onStatusUpdate = null
-        onTranslationStarted = null
-        onLiveNoText = null
-        onHoldLoadingChanged = null
+        // Outbound event flows hold no Activity references; collectors
+        // attach with their own lifecycle scope and detach naturally.
+        // No callback nulling needed here anymore.
         PlayTranslateAccessibilityService.instance?.onHotkeyActivated = null
         PlayTranslateAccessibilityService.instance?.onHotkeyReleased = null
         super.onDestroy()
@@ -243,7 +282,7 @@ class CaptureService : Service() {
         hasCaptureStateConfigured = true
         updateActiveRegion()
         ensureLanguageManagersFor(snapshotTranslationTarget())
-        onStatusUpdate?.invoke(getString(R.string.status_idle))
+        _statusUpdates.tryEmit(getString(R.string.status_idle))
     }
 
     /** Immutable snapshot of the translation pair + DeepL key at the moment
@@ -346,13 +385,13 @@ class CaptureService : Service() {
 
     private suspend fun runProcessCycle(raw: Bitmap) {
         if (!isConfigured) {
-            onError?.invoke("Not configured — tap Translate to set up")
+            _errors.tryEmit("Not configured — tap Translate to set up")
             raw.recycle()
             return
         }
         var bitmap: Bitmap = raw
         try {
-            onStatusUpdate?.invoke(getString(R.string.status_capturing))
+            _statusUpdates.tryEmit(getString(R.string.status_capturing))
             val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
             val screenshotPath = mgr?.saveToCache(raw)
 
@@ -369,22 +408,22 @@ class CaptureService : Service() {
             // without the outer finally having to follow ownership transfers.
             val ocrBitmap = blackoutFloatingIcon(bitmap, left, top)
             val ocrResult = try {
-                onStatusUpdate?.invoke(getString(R.string.status_ocr))
+                _statusUpdates.tryEmit(getString(R.string.status_ocr))
                 ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
             } finally {
                 if (!ocrBitmap.isRecycled) ocrBitmap.recycle()
             }
 
             if (ocrResult == null) {
-                onStatusUpdate?.invoke(noTextMessage())
+                _statusUpdates.tryEmit(noTextMessage())
                 return
             }
 
-            onStatusUpdate?.invoke(getString(R.string.status_translating))
+            _statusUpdates.tryEmit(getString(R.string.status_translating))
             val (translated, note) = translateGroups(ocrResult.groupTexts)
 
             val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-            onResult?.invoke(
+            _results.tryEmit(
                 TranslationResult(
                     originalText   = ocrResult.fullText,
                     segments       = ocrResult.segments,
@@ -396,7 +435,7 @@ class CaptureService : Service() {
             )
         } catch (e: Exception) {
             Log.e(TAG, "Process cycle failed: ${e.message}", e)
-            onError?.invoke(e.message ?: "Unknown error")
+            _errors.tryEmit(e.message ?: "Unknown error")
         } finally {
             if (!bitmap.isRecycled) bitmap.recycle()
         }
@@ -649,7 +688,7 @@ class CaptureService : Service() {
             PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
             return
         }
-        onHoldLoadingChanged?.invoke(true)
+        _holdLoading.value = true
         val forced = if (liveActive && liveMode is FuriganaMode) {
             OverlayMode.TRANSLATION
         } else {
@@ -660,7 +699,7 @@ class CaptureService : Service() {
 
     /** End a hold-to-preview gesture (in-app translate button). */
     fun holdEnd() {
-        onHoldLoadingChanged?.invoke(false)
+        _holdLoading.value = false
         endHoldPreview()
     }
 
@@ -672,7 +711,7 @@ class CaptureService : Service() {
      * back to its normal render cycle.
      */
     fun holdCancel() {
-        onHoldLoadingChanged?.invoke(false)
+        _holdLoading.value = false
         endHoldPreview()
     }
 
@@ -739,12 +778,12 @@ class CaptureService : Service() {
             val appPanelVisible = !Prefs.isSingleScreen(this) && MainActivity.isInForeground
             if (!appPanelVisible) return null
         }
-        onTranslationStarted?.invoke()
+        _translationStarted.tryEmit(Unit)
         val perGroup = translateGroupsSeparately(ocrResult.groupTexts)
         val translated = perGroup.joinToString("\n\n") { it.first }
         val note = perGroup.mapNotNull { it.second }.firstOrNull()
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-        onResult?.invoke(com.playtranslate.model.TranslationResult(
+        _results.tryEmit(com.playtranslate.model.TranslationResult(
             originalText   = ocrResult.fullText,
             segments       = ocrResult.segments,
             translatedText = translated,
@@ -758,7 +797,7 @@ class CaptureService : Service() {
     /** Called when OCR finds no source-language text: hides overlays and notifies the UI. */
     internal fun handleNoTextDetected() {
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
-        onLiveNoText?.invoke()
+        _liveNoText.tryEmit(Unit)
     }
 
     /** Remove specific overlay boxes without rebuilding the entire view. */
@@ -830,7 +869,7 @@ class CaptureService : Service() {
         lingvaTranslator = null
         gameDisplayId = 0
         hasCaptureStateConfigured = false
-        onStatusUpdate?.invoke(getString(R.string.status_idle))
+        _statusUpdates.tryEmit(getString(R.string.status_idle))
     }
 
     /** True iff [configureSaved] has run (display + region set). Explicitly
@@ -857,7 +896,7 @@ class CaptureService : Service() {
      */
     internal suspend fun runCaptureOcrTranslate(onScreenshotTaken: (() -> Unit)? = null): PipelineResult? {
         val raw: Bitmap = captureScreen(gameDisplayId) ?: run {
-            onError?.invoke("Screenshot failed for display $gameDisplayId. Try a different display in Settings.")
+            _errors.tryEmit("Screenshot failed for display $gameDisplayId. Try a different display in Settings.")
             return null
         }
         onScreenshotTaken?.invoke()
@@ -906,25 +945,25 @@ class CaptureService : Service() {
             )
         } catch (e: Exception) {
             Log.e(TAG, "Capture cycle failed: ${e.message}", e)
-            onError?.invoke(e.message ?: "Unknown error")
+            _errors.tryEmit(e.message ?: "Unknown error")
             return null
         } finally {
             bitmap?.let { if (!it.isRecycled) it.recycle() }
         }
     }
 
-    /** One-shot capture: shows status updates and invokes [onResult]. */
+    /** One-shot capture: emits status updates and a final [results] event. */
     private suspend fun runCaptureCycle() {
         if (!isConfigured) {
-            onError?.invoke("Not configured — tap Translate to set up")
+            _errors.tryEmit("Not configured — tap Translate to set up")
             return
         }
-        onStatusUpdate?.invoke(getString(R.string.status_capturing))
+        _statusUpdates.tryEmit(getString(R.string.status_capturing))
         val pipeline = runCaptureOcrTranslate(onScreenshotTaken = { flashRegionIndicator() })
         if (pipeline != null) {
-            onResult?.invoke(pipeline.result)
+            _results.tryEmit(pipeline.result)
         } else {
-            onStatusUpdate?.invoke(noTextMessage())
+            _statusUpdates.tryEmit(noTextMessage())
         }
     }
 

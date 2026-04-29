@@ -689,7 +689,7 @@ class PinholeOverlayMode(
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
             .format(java.util.Date())
 
-        service.onResult?.invoke(TranslationResult(
+        service.emitResult(TranslationResult(
             originalText = originalText,
             segments = segments,
             translatedText = translatedText,

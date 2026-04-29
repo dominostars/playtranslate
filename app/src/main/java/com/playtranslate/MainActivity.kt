@@ -44,7 +44,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.playtranslate.BuildConfig
 import com.playtranslate.diagnostics.LogExporter
 import com.playtranslate.language.LanguagePackCatalogLoader
@@ -408,8 +410,12 @@ class MainActivity :
         isInForeground = true
         dimController?.onInteraction()
         setupDetectionLog()
-        // Re-wire service callbacks in case TranslationResultActivity overwrote them
-        if (serviceConnected) wireServiceCallbacks()
+        // Service event subscription is set up once in
+        // [serviceConnection.onServiceConnected] and held by
+        // lifecycleScope's repeatOnLifecycle — no per-resume re-wire
+        // needed. (The old re-wire was a band-aid for
+        // TranslationResultActivity nulling shared callback fields,
+        // which it no longer does.)
         // Re-wire fragment event sink after config change.
         resultFragment?.eventSink = this
         PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
@@ -957,33 +963,44 @@ class MainActivity :
         PlayTranslateAccessibilityService.instance?.floatingIcon?.degraded = degraded
     }
 
+    /** Subscribe to the service's outbound event flows. Called once per
+     *  service connection (from [serviceConnection.onServiceConnected]).
+     *  Collectors run on [lifecycleScope] inside [repeatOnLifecycle], so
+     *  they auto-pause when this activity stops and resume on STARTED —
+     *  no manual cleanup required, and no risk of another activity
+     *  clobbering our subscription (the old `var onResult = { ... }`
+     *  pattern). */
     private fun wireServiceCallbacks() {
         val svc = captureService ?: return
-        svc.onResult = { result ->
-            runOnUiThread {
-                editTranslationJob?.cancel()
-                editTranslationJob = null
-                resultVm.displayResult(result, applicationContext)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch {
+                    svc.results.collect { result ->
+                        editTranslationJob?.cancel()
+                        editTranslationJob = null
+                        resultVm.displayResult(result, applicationContext)
+                    }
+                }
+                launch { svc.errors.collect { msg -> resultVm.showError(msg) } }
+                launch { svc.statusUpdates.collect { msg -> resultVm.showStatus(msg) } }
+                launch {
+                    svc.liveNoText.collect {
+                        if (isLiveMode) resultVm.showStatus(searchingStatusText())
+                    }
+                }
+                launch {
+                    svc.holdLoading.collect { loading ->
+                        PlayTranslateAccessibilityService.instance?.floatingIcon?.showLoading = loading
+                    }
+                }
+                // svc.translationStarted has no current consumer (progress
+                // indication removed in the menu-based UI). Left
+                // unsubscribed so the SharedFlow's small buffer absorbs
+                // emits without backpressure.
             }
         }
-        svc.onError = { msg ->
-            runOnUiThread { resultVm.showError(msg) }
-        }
-        svc.onStatusUpdate = { msg ->
-            runOnUiThread { resultVm.showStatus(msg) }
-        }
-        svc.onTranslationStarted = {
-            // progress indication removed — menu-based UI
-        }
-        svc.onLiveNoText = {
-            runOnUiThread { if (isLiveMode) resultVm.showStatus(searchingStatusText()) }
-        }
-        // onLiveStopped removed — LiveData observer handles live mode changes
         svc.degradedState.observe(this) { degraded ->
             onDegradedStateChanged(degraded)
-        }
-        svc.onHoldLoadingChanged = { loading ->
-            PlayTranslateAccessibilityService.instance?.floatingIcon?.showLoading = loading
         }
         svc.liveModeState.observe(this) { isLive -> onLiveModeChanged(isLive) }
         svc.activeRegionLiveData.observe(this) { _ ->

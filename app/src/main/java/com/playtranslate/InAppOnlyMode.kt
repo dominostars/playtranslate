@@ -52,10 +52,10 @@ class InAppOnlyMode(private val service: CaptureService) : LiveMode {
                         continue
                     }
                     lastOcrText = dedupKey
-                    service.onResult?.invoke(pipeline.result)
+                    service.emitResult(pipeline.result)
                     cacheOverlayData(pipeline)
                 } else {
-                    service.onLiveNoText?.invoke()
+                    service.emitLiveNoText()
                 }
                 delay(Prefs(service).captureIntervalMs)
             }
