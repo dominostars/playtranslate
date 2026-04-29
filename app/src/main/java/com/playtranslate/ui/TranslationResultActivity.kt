@@ -150,11 +150,27 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
         val sentenceOriginal = intent.getStringExtra(EXTRA_SENTENCE_TEXT)
         val sentenceTranslation = intent.getStringExtra(EXTRA_DRAG_SENTENCE_TRANSLATION)
             ?.takeIf { it.isNotEmpty() }
-        val sentenceWordResults = if (
-            sentenceOriginal != null && LastSentenceCache.original == sentenceOriginal
-        ) {
-            LastSentenceCache.wordResults.orEmpty()
-        } else emptyMap()
+        // Word results travel as four parallel intent arrays produced by
+        // [DragLookupController.openSentenceInApp] at lens-dismiss time —
+        // intent extras are launch-scoped and cannot be overwritten by
+        // live mode resuming after the lens tears down, unlike the
+        // process-global LastSentenceCache.
+        val sentenceWordResults: Map<String, Triple<String, String, Int>> =
+            intent.getStringArrayExtra(EXTRA_DRAG_SENTENCE_WORDS)?.let { words ->
+                val readings = intent.getStringArrayExtra(EXTRA_DRAG_SENTENCE_READINGS)
+                    ?: emptyArray()
+                val meanings = intent.getStringArrayExtra(EXTRA_DRAG_SENTENCE_MEANINGS)
+                    ?: emptyArray()
+                val freqScores = intent.getIntArrayExtra(EXTRA_DRAG_SENTENCE_FREQ_SCORES)
+                    ?: IntArray(0)
+                words.mapIndexed { i, w ->
+                    w to Triple(
+                        readings.getOrElse(i) { "" },
+                        meanings.getOrElse(i) { "" },
+                        freqScores.getOrElse(i) { 0 },
+                    )
+                }.toMap()
+            } ?: emptyMap()
 
         val sentenceContainer = findViewById<View>(R.id.resultFragmentContainer)
         val wordContainer = findViewById<FrameLayout>(R.id.wordDetailContainer)
@@ -204,29 +220,37 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
         // so without this push, Anki export from the Word tab would
         // carry stale data.
         //
-        // Fires on BOTH enabled=false (inside displayResult, right after
-        // lastResult is set, BEFORE startWordLookups clears mainWordResults)
-        // and enabled=true (end of startWordLookups). The early call
-        // publishes the translation as soon as it's computed; the late
-        // call publishes the activity's final word-results map. During
-        // the gap the args' prefetch wordResults stay in play (we pass
-        // null when mainWordResults is empty so the fragment falls back
-        // to args instead of overwriting them with an empty push).
-        resultFragment?.onAnkiEnabledChanged = { _ -> pushSentenceContextToWordTab() }
+        // The callback's `enabled` doubles as a "lookups completed" signal:
+        // false = displayResult/retry just landed (lookups about to clear
+        // and re-run), true = startWordLookups has settled. We pass it
+        // through so [pushSentenceContextToWordTab] can publish an empty
+        // wordResults map authoritatively on completion (overriding the
+        // launch-time args), while still preserving the args fallback
+        // during the loading gap.
+        resultFragment?.onAnkiEnabledChanged = { enabled ->
+            pushSentenceContextToWordTab(lookupsCompleted = enabled)
+        }
     }
 
     /** Forward the sentence fragment's current translation + word results
      *  to the embedded [WordDetailBottomSheet] so its Anki export uses
      *  the activity's actual result rather than the launch-time args
-     *  snapshot. Pushes [translation] eagerly (set in displayResult);
-     *  pushes [wordResults] only when non-empty so the args' prefetched
-     *  map remains the fallback while startWordLookups is still running. */
-    private fun pushSentenceContextToWordTab() {
+     *  snapshot. Pushes [translation] eagerly (set in displayResult).
+     *  When [lookupsCompleted] is true, publishes [mainWordResults]
+     *  verbatim — including an empty map, which overrides the args'
+     *  prefetched fallback so the Anki Words field reflects the
+     *  activity's authoritative result. When false (loading), keeps
+     *  passing null on empty so args remain the fallback. */
+    private fun pushSentenceContextToWordTab(lookupsCompleted: Boolean) {
         val frag = supportFragmentManager
             .findFragmentByTag(TAG_EMBEDDED_WORD_DETAIL) as? WordDetailBottomSheet
             ?: return
         val result = resultFragment?.lastResult ?: return
-        val live = resultFragment?.mainWordResults?.takeIf { it.isNotEmpty() }?.toMap()
+        val live = if (lookupsCompleted) {
+            resultFragment?.mainWordResults?.toMap() ?: emptyMap()
+        } else {
+            resultFragment?.mainWordResults?.takeIf { it.isNotEmpty() }?.toMap()
+        }
         frag.updateSentenceContext(
             translation = result.translatedText,
             wordResults = live,
@@ -399,6 +423,27 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
         val segments = sentenceText.map { TextSegment(it.toString()) }
         val frag = resultFragment ?: return
 
+        // Drag flow already produced this translation in the lens. Skip
+        // the redundant translateOnce so the sentence tab opens straight
+        // to the cached text — avoids a "Translating..." flash and any
+        // transient ML Kit reload that re-translation could fail on.
+        val cachedTranslation = intent.getStringExtra(EXTRA_DRAG_SENTENCE_TRANSLATION)
+            ?.takeIf { it.isNotEmpty() }
+        if (cachedTranslation != null) {
+            val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            frag.displayResult(
+                TranslationResult(
+                    originalText = sentenceText,
+                    segments = segments,
+                    translatedText = cachedTranslation,
+                    timestamp = timestamp,
+                    screenshotPath = screenshotPath,
+                    note = null,
+                )
+            )
+            return
+        }
+
         // Translation-only path: translateOnce() self-heals language managers
         // internally, so we don't touch configureSaved — doing so would
         // overwrite the user's saved capture region with the full-screen
@@ -446,6 +491,16 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
         const val EXTRA_DRAG_WORD = "extra_drag_word"
         const val EXTRA_DRAG_READING = "extra_drag_reading"
         const val EXTRA_DRAG_SENTENCE_TRANSLATION = "extra_drag_sentence_translation"
+        /** Sentence's tokenized word lookups, serialized as four parallel
+         *  arrays (mirrors [WordDetailBottomSheet]'s args bundle layout).
+         *  Captured by the drag controller at lens-dismiss time so the
+         *  Word tab's Anki export carries the full sentence-word context
+         *  without depending on the process-global [LastSentenceCache],
+         *  which live mode can stomp during the dismiss → onCreate gap. */
+        const val EXTRA_DRAG_SENTENCE_WORDS = "extra_drag_sentence_words"
+        const val EXTRA_DRAG_SENTENCE_READINGS = "extra_drag_sentence_readings"
+        const val EXTRA_DRAG_SENTENCE_MEANINGS = "extra_drag_sentence_meanings"
+        const val EXTRA_DRAG_SENTENCE_FREQ_SCORES = "extra_drag_sentence_freq_scores"
 
         private const val TAG_EMBEDDED_WORD_DETAIL = "WordDetail.embedded"
     }

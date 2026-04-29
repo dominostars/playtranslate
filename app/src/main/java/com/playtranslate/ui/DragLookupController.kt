@@ -1253,9 +1253,15 @@ class DragLookupController(
         val word = lastWord
         val headword = currentEntry?.headwords?.firstOrNull()
         val reading = headword?.reading?.takeIf { it != headword.written }
-        val cachedTranslation = LastSentenceCache
-            .takeIf { it.original == sentence }
-            ?.translation
+        // Snapshot translation AND wordResults from the cache before
+        // dismissing the lens — magnifier.dismiss() resumes live mode,
+        // which can race a fresh capture cycle and stomp this cache
+        // before TranslationResultActivity's onCreate runs. By copying
+        // into intent extras here, the activity sees a launch-scoped
+        // snapshot that nothing else can overwrite.
+        val cached = LastSentenceCache.takeIf { it.original == sentence }
+        val cachedTranslation = cached?.translation
+        val cachedWordResults = cached?.wordResults?.takeIf { it.isNotEmpty() }
         // Tear down the lens (sticky drag-flow surface) before launching
         // the activity. Lens dismiss → onDismiss → onSettled, which is
         // what the service expects post-drag.
@@ -1272,6 +1278,16 @@ class DragLookupController(
             }
             cachedTranslation?.let {
                 putExtra(TranslationResultActivity.EXTRA_DRAG_SENTENCE_TRANSLATION, it)
+            }
+            cachedWordResults?.let { wr ->
+                putExtra(TranslationResultActivity.EXTRA_DRAG_SENTENCE_WORDS,
+                    wr.keys.toTypedArray())
+                putExtra(TranslationResultActivity.EXTRA_DRAG_SENTENCE_READINGS,
+                    wr.values.map { it.first }.toTypedArray())
+                putExtra(TranslationResultActivity.EXTRA_DRAG_SENTENCE_MEANINGS,
+                    wr.values.map { it.second }.toTypedArray())
+                putExtra(TranslationResultActivity.EXTRA_DRAG_SENTENCE_FREQ_SCORES,
+                    wr.values.map { it.third }.toIntArray())
             }
         }
         service.startActivity(intent)
