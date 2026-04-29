@@ -48,7 +48,13 @@ import java.util.Locale
 class TranslationResultFragment : Fragment() {
 
     /**
-     * Host interface for activities that embed this fragment.
+     * Host interface for activities that embed this fragment. Bundles
+     * service-binding queries, word-tap routing, ankiPermissionLauncher
+     * access, and user-input event handlers into a single contract.
+     * The compiler enforces implementation — there's no optional
+     * "remember to wire this" var. Pure state actions (Clear → reset
+     * to idle status) bypass this interface and call the VM directly,
+     * since they don't need host context.
      */
     interface TranslationResultHost {
         fun getCaptureService(): CaptureService?
@@ -62,6 +68,15 @@ class TranslationResultFragment : Fragment() {
         )
         fun onInteraction()
         fun getAnkiPermissionLauncher(): androidx.activity.result.ActivityResultLauncher<String>?
+
+        /** User tapped Edit on the original-text card. The host opens
+         *  its edit overlay UI. No-op for hosts without one. */
+        fun onEditOriginalRequested()
+
+        /** User scrolled the result content. The host can use this to
+         *  pause live-mode capture, etc. No-op for hosts without
+         *  live-mode behavior. */
+        fun onUserScrolled()
     }
 
     // ── Views ─────────────────────────────────────────────────────────────
@@ -112,11 +127,6 @@ class TranslationResultFragment : Fragment() {
      *  Activities mutate via VM methods; this fragment observes
      *  [vm.result] and [vm.wordLookups] to render. */
     private val vm: TranslationResultViewModel by activityViewModels()
-
-    /** Sink for user-input events the host activity needs to react to
-     *  (edit original, clear, scroll, anki). Set by the host in its
-     *  fragment-creation path. */
-    var eventSink: TranslationResultEventSink? = null
 
     private val host: TranslationResultHost?
         get() = activity as? TranslationResultHost
@@ -194,13 +204,13 @@ class TranslationResultFragment : Fragment() {
         btnEditOriginal.setOnClickListener {
             dismissFurigana()
             dismissWordPopup()
-            eventSink?.onEvent(TranslationResultEvent.EditOriginalRequested)
+            host?.onEditOriginalRequested()
         }
         resultsContent.setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
             if (scrollY != oldScrollY) {
                 dismissFurigana()
                 dismissWordPopup()
-                eventSink?.onEvent(TranslationResultEvent.UserScrolled)
+                host?.onUserScrolled()
             }
         }
         btnToggleTranslation.setOnClickListener {
@@ -220,7 +230,9 @@ class TranslationResultFragment : Fragment() {
             applyWordsVisibility()
         }
         btnResultClear.setOnClickListener {
-            eventSink?.onEvent(TranslationResultEvent.ClearRequested)
+            // Pure state action — no host context needed. Reset directly
+            // to idle status; the fragment will re-render from the VM.
+            vm.showStatus(getString(R.string.status_idle), showHint = true)
         }
         btnResultAnki.setOnClickListener {
             onAnkiClicked()

@@ -77,8 +77,7 @@ import java.util.Locale
 
 class MainActivity :
     AppCompatActivity(),
-    TranslationResultFragment.TranslationResultHost,
-    com.playtranslate.ui.TranslationResultEventSink {
+    TranslationResultFragment.TranslationResultHost {
 
     // ── Views ─────────────────────────────────────────────────────────────
 
@@ -127,23 +126,14 @@ class MainActivity :
      *  observes this VM; this activity mutates it. */
     private val resultVm: com.playtranslate.ui.TranslationResultViewModel by viewModels()
 
-    // ── TranslationResultEventSink ────────────────────────────────────────
+    // ── TranslationResultHost event handlers ──────────────────────────────
 
-    override fun onEvent(event: com.playtranslate.ui.TranslationResultEvent) {
-        when (event) {
-            is com.playtranslate.ui.TranslationResultEvent.EditOriginalRequested ->
-                showEditOverlay()
-            is com.playtranslate.ui.TranslationResultEvent.ClearRequested ->
-                resultVm.showStatus(getString(R.string.status_idle), showHint = true)
-            is com.playtranslate.ui.TranslationResultEvent.UserScrolled ->
-                if (isLiveMode && !suppressScrollPause) pauseLiveMode()
-            is com.playtranslate.ui.TranslationResultEvent.AnkiClicked,
-            is com.playtranslate.ui.TranslationResultEvent.WordTapped -> {
-                // AnkiClicked is fragment-internal (dialog work); WordTapped
-                // not used in this surface — word taps go through the host
-                // interface's onWordTapped.
-            }
-        }
+    override fun onEditOriginalRequested() {
+        showEditOverlay()
+    }
+
+    override fun onUserScrolled() {
+        if (isLiveMode && !suppressScrollPause) pauseLiveMode()
     }
 
     // ── Drag-to-select dropdown state ────────────────────────────────────
@@ -337,9 +327,9 @@ class MainActivity :
         // no target gloss pack installed, offer to download it.
         checkTargetPackMigration()
 
-        // Wire up the fragment's event sink so user-input events (edit,
-        // clear, scroll) flow back to this activity's handler.
-        resultFragment?.eventSink = this
+        // Fragment event handlers live on TranslationResultHost (which
+        // this activity already implements) — no separate sink wiring
+        // needed.
 
         // Restore previously selected tab (survives recreate for theme changes)
         val restoredTab = Tab.entries.getOrElse(
@@ -416,8 +406,6 @@ class MainActivity :
         // needed. (The old re-wire was a band-aid for
         // TranslationResultActivity nulling shared callback fields,
         // which it no longer does.)
-        // Re-wire fragment event sink after config change.
-        resultFragment?.eventSink = this
         PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
         checkOnboardingState()
         maybeCheckForUpdates()
@@ -1547,9 +1535,9 @@ class MainActivity :
     }
 
     private fun setupEditOverlay() {
-        // Scroll-pause for live mode now flows through the fragment's
-        // event sink (TranslationResultEvent.UserScrolled handled in
-        // [onEvent]) — no external scroll listener needed here.
+        // Scroll-pause for live mode flows through the fragment's host
+        // interface ([onUserScrolled]) — no external scroll listener
+        // needed here.
 
         etEditOriginal.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_GO) {

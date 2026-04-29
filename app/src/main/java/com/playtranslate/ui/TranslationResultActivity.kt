@@ -122,6 +122,16 @@ class TranslationResultActivity :
 
     override fun getAnkiPermissionLauncher() = requestAnkiPermission
 
+    override fun onEditOriginalRequested() {
+        // No-op — the standalone result screen has no edit overlay UI.
+        // (The Edit button on the original card is visible but inert
+        //  here; that's a pre-existing UX wart, not new behavior.)
+    }
+
+    override fun onUserScrolled() {
+        // No-op — no live mode in this activity.
+    }
+
     // ── SentenceContextProvider ───────────────────────────────────────────
 
     /** Embedded [WordDetailBottomSheet] reads this at Anki-button tap
@@ -129,14 +139,19 @@ class TranslationResultActivity :
      *  intent extras during the loading window so a fast Anki tap still
      *  carries the prefetched sentence-word context. */
     override fun currentSentenceContext(): SentenceContext {
-        val translation = (vm.result.value as? ResultState.Ready)?.result?.translatedText
-            ?: intentSeededTranslation
-        val wordResults = (vm.wordLookups.value as? WordLookupsState.Settled)?.rows?.toLegacyMap()
-            ?: intentSeededWordResults
+        // All three fields read VM-then-fallback so they're symmetric.
+        // Without VM-first on `original`, the field would be null for
+        // region-capture launches even though the VM has a valid result
+        // — the embedded sheet's `?: args` chain would still recover,
+        // but keeping the read patterns aligned avoids future drift.
+        val ready = vm.result.value as? ResultState.Ready
         return SentenceContext(
-            original = intent.getStringExtra(EXTRA_SENTENCE_TEXT),
-            translation = translation,
-            wordResults = wordResults,
+            original = ready?.result?.originalText
+                ?: intent.getStringExtra(EXTRA_SENTENCE_TEXT),
+            translation = ready?.result?.translatedText
+                ?: intentSeededTranslation,
+            wordResults = (vm.wordLookups.value as? WordLookupsState.Settled)?.rows?.toLegacyMap()
+                ?: intentSeededWordResults,
         )
     }
 
