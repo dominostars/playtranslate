@@ -26,7 +26,7 @@
             android:layout_marginStart="4dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/ic_arrow_back"
-            app:tint="?attr/ptAccent"
+            app:tint="?attr/ptTextMuted"
             android:contentDescription="@string/cd_back" />
 
         <TextView
