@@ -95,22 +95,10 @@ class TranslationResultFragment : Fragment() {
     private lateinit var btnResultClear: View
     private lateinit var btnResultAnki: View
 
-    /** Live view of the VM's settled word-lookup map for legacy
-     *  callers that still read this property (notably [MainActivity]).
-     *  The fragment itself reads VM state directly. Phase 2-only
-     *  compat shim — Phase 3 will migrate the remaining callers. */
-    val mainWordResults: Map<String, Triple<String, String, Int>>
-        get() = (vm.wordLookups.value as? WordLookupsState.Settled)?.rows?.toLegacyMap()
-            ?: emptyMap()
-
-    /** Live view of the VM's current Ready result for legacy callers.
-     *  Same compat shim as [mainWordResults]. */
-    val lastResult: TranslationResult?
-        get() = (vm.result.value as? ResultState.Ready)?.result
-
     /** Maps character ranges in original text to (displayWord, reading).
-     *  Recomputed in [renderWordLookupsSettled] from the VM's tokenSpans
-     *  on each Settled emission, so it tracks the displayed text. */
+     *  Recomputed in [renderWordLookups] Settled branch from the VM's
+     *  tokenSpans on each Settled emission, so it tracks the displayed
+     *  text (which has OCR newlines). */
     private var wordSpans = mutableListOf<Triple<IntRange, String, String>>()
     private var furiganaPopup: PopupWindow? = null
 
@@ -120,18 +108,15 @@ class TranslationResultFragment : Fragment() {
      *  spannable. */
     private var highlightedWordRange: IntRange? = null
 
-    /** Called when Anki button enabled state changes (e.g. after word lookups complete). */
-    var onAnkiEnabledChanged: ((Boolean) -> Unit)? = null
-
-    /** Activity-scoped state mirror. Phase 1 of the fragment-hoist
-     *  refactor: this fragment continues to own its lookup pipeline
-     *  and view bindings; the VM is a passive snapshot of settled
-     *  state so [TranslationResultActivity] can serve embedded
-     *  [WordDetailBottomSheet]'s sentence context on demand instead
-     *  of via a timed push callback.
-     *
-     *  See plan: `~/.claude/plans/ultrathink-you-proposed-a-jolly-bee.md`. */
+    /** Activity-scoped source of truth for the result + lookup state.
+     *  Activities mutate via VM methods; this fragment observes
+     *  [vm.result] and [vm.wordLookups] to render. */
     private val vm: TranslationResultViewModel by activityViewModels()
+
+    /** Sink for user-input events the host activity needs to react to
+     *  (edit original, clear, scroll, anki). Set by the host in its
+     *  fragment-creation path. */
+    var eventSink: TranslationResultEventSink? = null
 
     private val host: TranslationResultHost?
         get() = activity as? TranslationResultHost
@@ -148,15 +133,15 @@ class TranslationResultFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         bindViews(view)
         setupButtons()
-        // Observe the VM-owned lookup pipeline. The coroutine itself
-        // lives in viewModelScope so rotation doesn't cancel it; this
-        // collector simply mirrors current state into the views and
-        // re-runs after view recreation. Result rendering stays in
-        // displayResult (called by activities) for now — only the
-        // word-row pipeline is observation-driven this pass.
+        // Observe activity-scoped VM state. Both flows are activity-scoped
+        // (survive fragment view recreation), so a rotation re-renders the
+        // last state without re-running the pipeline. The collectors run
+        // only while the fragment is STARTED, so they cleanly stop when
+        // the view is destroyed and resume when recreated.
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                vm.wordLookups.collect { renderWordLookups(it) }
+                launch { vm.result.collect { renderResult(it) } }
+                launch { vm.wordLookups.collect { renderWordLookups(it) } }
             }
         }
     }
@@ -209,10 +194,14 @@ class TranslationResultFragment : Fragment() {
         btnEditOriginal.setOnClickListener {
             dismissFurigana()
             dismissWordPopup()
-            onEditOriginalListener?.invoke()
+            eventSink?.onEvent(TranslationResultEvent.EditOriginalRequested)
         }
         resultsContent.setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
-            if (scrollY != oldScrollY) { dismissFurigana(); dismissWordPopup() }
+            if (scrollY != oldScrollY) {
+                dismissFurigana()
+                dismissWordPopup()
+                eventSink?.onEvent(TranslationResultEvent.UserScrolled)
+            }
         }
         btnToggleTranslation.setOnClickListener {
             prefs.hideTranslationSection = !prefs.hideTranslationSection
@@ -231,7 +220,7 @@ class TranslationResultFragment : Fragment() {
             applyWordsVisibility()
         }
         btnResultClear.setOnClickListener {
-            showStatus(getString(R.string.status_idle))
+            eventSink?.onEvent(TranslationResultEvent.ClearRequested)
         }
         btnResultAnki.setOnClickListener {
             onAnkiClicked()
@@ -305,34 +294,77 @@ class TranslationResultFragment : Fragment() {
         highlightedWordRange?.let { setWordHighlight(it) }
     }
 
-    // ── Public API ────────────────────────────────────────────────────────
+    // ── Result render (driven by vm.result observation) ──────────────────
 
-    fun displayResult(result: TranslationResult) {
-        if (!isAdded || view == null) return
-        vm.recordResult(result)
-        tvOriginal.setSegments(result.segments)
-        tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
-        tvTranslation.text = result.translatedText
-        tvTranslationNote.text = result.note ?: ""
-        tvTranslationNote.visibility = if (result.note != null) View.VISIBLE else View.GONE
-        applyTranslationVisibility()
-        applyOriginalVisibility()
-        applyWordsVisibility()
-        labelOriginal.text    = sourceLangLocalizedDisplayName()
-        labelTranslation.text = targetLangDisplayName()
-        statusContainer.visibility = View.GONE
-        resultsContent.visibility  = View.INVISIBLE
-        resultActionButtons.visibility = View.VISIBLE
-        btnResultAnki.visibility = View.VISIBLE
-        resultsContent.scrollTo(0, 0)
-        onAnkiEnabledChanged?.invoke(false)
-        // Fit text sizes after layout so view widths are available, then reveal
-        resultsContent.post {
-            fitTextSizes()
-            resultsContent.visibility = View.VISIBLE
+    private fun renderResult(state: ResultState) {
+        if (view == null) return
+        when (state) {
+            is ResultState.Idle -> {
+                showStatusUi(getString(R.string.status_idle), showHint = true)
+            }
+            is ResultState.Status -> {
+                showStatusUi(state.message, state.showHint)
+            }
+            is ResultState.Error -> {
+                showStatusUi(getString(R.string.status_error, state.message), showHint = false)
+            }
+            is ResultState.Translating -> {
+                tvOriginal.setSegments(state.segments)
+                tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
+                labelOriginal.text = sourceLangLocalizedDisplayName()
+                labelTranslation.text = targetLangDisplayName()
+                statusContainer.visibility = View.GONE
+                resultsContent.visibility = View.VISIBLE
+                resultActionButtons.visibility = View.VISIBLE
+                resultsContent.scrollTo(0, 0)
+                tvTranslation.text = getString(R.string.status_translating)
+                tvTranslationNote.text = ""
+                tvTranslationNote.visibility = View.GONE
+                applyTranslationVisibility()
+                applyOriginalVisibility()
+                applyWordsVisibility()
+            }
+            is ResultState.Ready -> {
+                val result = state.result
+                tvOriginal.setSegments(result.segments)
+                tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
+                tvTranslation.text = result.translatedText
+                tvTranslationNote.text = result.note ?: ""
+                tvTranslationNote.visibility = if (result.note != null) View.VISIBLE else View.GONE
+                applyTranslationVisibility()
+                applyOriginalVisibility()
+                applyWordsVisibility()
+                labelOriginal.text = sourceLangLocalizedDisplayName()
+                labelTranslation.text = targetLangDisplayName()
+                statusContainer.visibility = View.GONE
+                resultsContent.visibility = View.INVISIBLE
+                resultActionButtons.visibility = View.VISIBLE
+                btnResultAnki.visibility = View.VISIBLE
+                resultsContent.scrollTo(0, 0)
+                resultsContent.post {
+                    fitTextSizes()
+                    if (view != null) resultsContent.visibility = View.VISIBLE
+                }
+            }
         }
-        vm.startWordLookups(result.originalText, requireContext().applicationContext)
     }
+
+    /** Shared status / error / idle layout — single status container,
+     *  results hidden, Anki gone. [showHint] gates the
+     *  "press X to start" hint line under the message. */
+    private fun showStatusUi(message: String, showHint: Boolean) {
+        tvStatus.text = message
+        tvStatusHint.visibility = if (showHint) View.VISIBLE else View.GONE
+        tvLiveHint.visibility = View.GONE
+        statusContainer.visibility = View.VISIBLE
+        resultsContent.visibility = View.GONE
+        btnResultAnki.visibility = View.GONE
+    }
+
+    /** True iff the activity is currently showing a translation result
+     *  (vs status/error/translating). View-state helper for the host. */
+    val isShowingResults: Boolean
+        get() = view != null && vm.result.value is ResultState.Ready
 
     private companion object {
         const val TEXT_SIZE_MAX_SP = 24f
@@ -383,12 +415,15 @@ class TranslationResultFragment : Fragment() {
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
     }
 
-    /** Called by the host activity when its Anki button is tapped. */
-    fun onAnkiClicked() {
+    /** Anki button tap handler — view-side dialog work, kept fragment-
+     *  internal. Reads sentence + word data from VM state. */
+    private fun onAnkiClicked() {
         host?.onInteraction()
-        val result = lastResult ?: return
+        val result = (vm.result.value as? ResultState.Ready)?.result ?: return
         val ctx = context ?: return
         val ankiManager = AnkiManager(ctx)
+        val wordResults = (vm.wordLookups.value as? WordLookupsState.Settled)
+            ?.rows?.toLegacyMap() ?: emptyMap()
         when {
             !ankiManager.isAnkiDroidInstalled() ->
                 showAnkiNotInstalledDialog(ctx)
@@ -403,17 +438,10 @@ class TranslationResultFragment : Fragment() {
                     .show()
             else ->
                 AnkiReviewBottomSheet.newInstance(
-                    getDisplayedOriginalText(), result.translatedText, mainWordResults,
+                    getDisplayedOriginalText(), result.translatedText, wordResults,
                     result.screenshotPath, prefs.sourceLangId
                 ).show(childFragmentManager, AnkiReviewBottomSheet.TAG)
         }
-    }
-
-    /** Called by the host when the edit button is tapped. */
-    private var onEditOriginalListener: (() -> Unit)? = null
-
-    fun setOnEditOriginalListener(listener: () -> Unit) {
-        onEditOriginalListener = listener
     }
 
     private fun onOriginalTapped(offset: Int) {
@@ -597,12 +625,15 @@ class TranslationResultFragment : Fragment() {
                     onOpenTap = {
                         dismissWordPopup()
                         host?.onInteraction()
+                        val ready = (vm.result.value as? ResultState.Ready)?.result
+                        val wr = (vm.wordLookups.value as? WordLookupsState.Settled)
+                            ?.rows?.toLegacyMap() ?: emptyMap()
                         host?.onWordTapped(
                             word, lookupReading,
-                            lastResult?.screenshotPath,
-                            lastResult?.originalText,
-                            lastResult?.translatedText,
-                            mainWordResults.toMap()
+                            ready?.screenshotPath,
+                            ready?.originalText,
+                            ready?.translatedText,
+                            wr,
                         )
                     }
                     onDismiss = { setWordHighlight(null) }
@@ -749,88 +780,13 @@ class TranslationResultFragment : Fragment() {
         furiganaPopup = null
     }
 
-    fun clearResult() {
-        showStatus(getString(R.string.status_idle))
-    }
-
-    fun showStatus(msg: String) {
-        if (!isAdded || view == null) return
-        tvStatus.text = msg
-        val isIdle = msg == getString(R.string.status_idle)
-        tvStatusHint.visibility = if (isIdle) View.VISIBLE else View.GONE
-        tvLiveHint.visibility   = View.GONE
-        statusContainer.visibility = View.VISIBLE
-        resultsContent.visibility  = View.GONE
-        btnResultAnki.visibility = View.GONE
-    }
-
-    fun showError(msg: String) {
-        showStatus(getString(R.string.status_error, msg))
-    }
-
-    /** Whether the results scroll view is currently visible. */
-    val isShowingResults: Boolean
-        get() = view != null && resultsContent.visibility == View.VISIBLE
-
-    /** Access to the scroll view for scroll-pause detection. */
-    fun getResultsScrollView(): ScrollView? = if (view != null) resultsContent else null
-
     fun setLiveHintText(text: CharSequence) {
         if (view != null) tvLiveHint.text = text
     }
 
-    fun setLiveHintVisibility(visible: Boolean) {
-        if (view != null) tvLiveHint.visibility = if (visible) View.VISIBLE else View.GONE
-    }
-
-    fun setStatusHintVisibility(visible: Boolean) {
-        if (view != null) tvStatusHint.visibility = if (visible) View.VISIBLE else View.GONE
-    }
-
-    fun getStatusText(): String = if (view != null) tvStatus.text.toString() else ""
-
     /** Returns the displayed original text (with OCR line breaks preserved). */
-    fun getDisplayedOriginalText(): String = if (view != null) tvOriginal.text?.toString() ?: "" else ""
-
-    fun isStatusVisible(): Boolean = view != null && statusContainer.visibility == View.VISIBLE
-
-    /** Update original text directly (for edit overlay commit). */
-    fun updateOriginalText(newText: String) {
-        if (view == null) return
-        tvOriginal.text = newText
-        tvTranslation.text = "…"
-        tvTranslationNote.visibility = View.GONE
-        vm.patchResult { it.copy(originalText = newText, translatedText = "") }
-        vm.startWordLookups(newText, requireContext().applicationContext)
-    }
-
-    fun updateTranslation(translated: String) {
-        if (view == null) return
-        tvTranslation.text = translated
-        vm.patchResult { it.copy(translatedText = translated) }
-    }
-
-    /** Show translating placeholder for drag-sentence flow. */
-    fun showTranslatingPlaceholder(originalText: String, segments: List<com.playtranslate.model.TextSegment>) {
-        if (!isAdded || view == null) return
-        tvOriginal.setSegments(segments)
-        tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
-        labelOriginal.text = sourceLangLocalizedDisplayName()
-        labelTranslation.text = targetLangDisplayName()
-        statusContainer.visibility = View.GONE
-        resultsContent.visibility = View.VISIBLE
-        resultActionButtons.visibility = View.VISIBLE
-        resultsContent.scrollTo(0, 0)
-        onAnkiEnabledChanged?.invoke(false)
-
-        tvTranslation.text = getString(R.string.status_translating)
-        tvTranslationNote.text = ""
-        tvTranslationNote.visibility = View.GONE
-        applyTranslationVisibility()
-        applyOriginalVisibility()
-        applyWordsVisibility()
-        vm.startWordLookups(originalText, requireContext().applicationContext)
-    }
+    fun getDisplayedOriginalText(): String =
+        if (view != null) tvOriginal.text?.toString() ?: "" else ""
 
     // ── Word lookups (rendering only — pipeline lives in VM) ─────────────
 
@@ -863,7 +819,6 @@ class TranslationResultFragment : Fragment() {
                 tvMainWordsLoading.visibility = View.GONE
                 tvNoWords.visibility = if (state.rows.isEmpty()) View.VISIBLE else View.GONE
                 btnResultAnki.visibility = View.VISIBLE
-                onAnkiEnabledChanged?.invoke(true)
             }
         }
     }
@@ -893,14 +848,16 @@ class TranslationResultFragment : Fragment() {
         }
         row.setOnClickListener {
             host?.onInteraction()
-            val resultSnapshot = lastResult
+            val ready = (vm.result.value as? ResultState.Ready)?.result
+            val wr = (vm.wordLookups.value as? WordLookupsState.Settled)
+                ?.rows?.toLegacyMap() ?: emptyMap()
             host?.onWordTapped(
                 rowState.displayWord,
                 rowState.reading.ifEmpty { null },
-                resultSnapshot?.screenshotPath,
-                resultSnapshot?.originalText,
-                resultSnapshot?.translatedText,
-                mainWordResults,
+                ready?.screenshotPath,
+                ready?.originalText,
+                ready?.translatedText,
+                wr,
             )
         }
     }

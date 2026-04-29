@@ -11,6 +11,7 @@ import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TokenSpan
 import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.language.WordTranslator
+import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.model.headwordFor
 import kotlinx.coroutines.CancellationException
@@ -26,19 +27,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * State container for the translation-result surface, scoped per
- * activity. Owns the word-lookup pipeline coroutine on
- * [viewModelScope] so rotation mid-lookup preserves progress, and
- * publishes settled state via [wordLookups] for the fragment's
- * renderer plus [TranslationResultActivity]'s [SentenceContextProvider]
- * fallback path.
+ * Source of truth for the translation-result surface, scoped per
+ * activity. Owns:
+ *   - the [result] state machine (Idle / Status / Translating /
+ *     Ready / Error), which the fragment renders via observation
+ *   - the [wordLookups] pipeline, including the lookup coroutine on
+ *     [viewModelScope] so rotation mid-lookup preserves progress
+ *   - the [liveHint] state for live-mode UI hints
  *
- * The fragment retains its display logic (view bindings, popups,
- * furigana spans, status/edit/copy plumbing) and its render of
- * [result] / [wordLookups]. Subsequent passes can move more of the
- * fragment's plumbing into events + state observation; this pass
- * targets the lookup coroutine because that's where rotation-loss
- * and view/data tangle were worst.
+ * Activities mutate state through this VM's methods; the fragment
+ * is a renderer + event emitter (no public mutator methods of its
+ * own). [TranslationResultActivity] also uses VM state to feed the
+ * embedded [WordDetailBottomSheet] via [SentenceContextProvider].
  */
 class TranslationResultViewModel : ViewModel() {
 
@@ -50,28 +50,88 @@ class TranslationResultViewModel : ViewModel() {
 
     private var lookupJob: Job? = null
 
-    /** Fragment mirrors its `displayResult` into the VM. */
-    fun recordResult(result: TranslationResult) {
+    /** Display a completed translation result. Triggers word lookups. */
+    fun displayResult(result: TranslationResult, appCtx: Context) {
         _result.value = ResultState.Ready(result)
+        startWordLookups(result.originalText, appCtx)
     }
 
-    /** Reset to initial state — used when the fragment goes back to
-     *  status / error / idle (so the embedded sheet doesn't keep
-     *  reading stale Ready/Settled values). */
-    fun recordIdle() {
-        _result.value = ResultState.Idle
-        _wordLookups.value = WordLookupsState.Idle
+    /** Show a status message. Cancels any in-flight lookup. */
+    fun showStatus(message: String, showHint: Boolean = false) {
         lookupJob?.cancel()
-        lookupJob = null
+        _wordLookups.value = WordLookupsState.Idle
+        _result.value = ResultState.Status(message, showHint)
     }
 
-    /** Patch the current Ready result's translation/originalText —
-     *  used by edit-original commit and live-mode incremental updates.
-     *  Idempotent if [result] is not Ready (no-op). */
-    fun patchResult(transform: (TranslationResult) -> TranslationResult) {
-        val current = _result.value as? ResultState.Ready ?: return
-        _result.value = ResultState.Ready(transform(current.result))
+    /** Show an error. Fragment formats with the status_error string
+     *  resource. Cancels any in-flight lookup. */
+    fun showError(message: String) {
+        lookupJob?.cancel()
+        _wordLookups.value = WordLookupsState.Idle
+        _result.value = ResultState.Error(message)
     }
+
+    /** Patch the current Status's [showHint] flag. No-op if not
+     *  currently in Status. */
+    fun setStatusHintVisibility(visible: Boolean) {
+        val cur = _result.value as? ResultState.Status ?: return
+        _result.value = cur.copy(showHint = visible)
+    }
+
+    /** Show "translating..." placeholder for drag-sentence flows.
+     *  Triggers word lookups against the original text in parallel
+     *  with the host's translation request. */
+    fun showTranslatingPlaceholder(
+        originalText: String,
+        segments: List<TextSegment>,
+        appCtx: Context,
+    ) {
+        _result.value = ResultState.Translating(originalText, segments)
+        startWordLookups(originalText, appCtx)
+    }
+
+    /** Edit-overlay commit: replace original text on the current
+     *  Ready/Translating result, reset translation, re-run lookups.
+     *  No-op for non-result states. */
+    fun updateOriginalText(newText: String, appCtx: Context) {
+        when (val cur = _result.value) {
+            is ResultState.Ready -> {
+                _result.value = ResultState.Ready(
+                    cur.result.copy(originalText = newText, translatedText = "")
+                )
+            }
+            is ResultState.Translating -> {
+                _result.value = ResultState.Translating(newText, cur.segments)
+            }
+            else -> return
+        }
+        startWordLookups(newText, appCtx)
+    }
+
+    /** Update the translation text on the current Ready result.
+     *  Promotes Translating → Ready when the translation lands; the
+     *  caller-supplied [translated] becomes the result's translation. */
+    fun updateTranslation(translated: String) {
+        when (val cur = _result.value) {
+            is ResultState.Ready -> {
+                _result.value = ResultState.Ready(cur.result.copy(translatedText = translated))
+            }
+            is ResultState.Translating -> {
+                _result.value = ResultState.Ready(
+                    TranslationResult(
+                        originalText = cur.originalText,
+                        segments = cur.segments,
+                        translatedText = translated,
+                        timestamp = "",
+                        screenshotPath = null,
+                        note = null,
+                    )
+                )
+            }
+            else -> { /* No-op for Idle/Status/Error */ }
+        }
+    }
+
 
     /**
      * Run the tokenize → dictionary-lookup pipeline for [text] on
@@ -278,8 +338,18 @@ class TranslationResultViewModel : ViewModel() {
 
 sealed class ResultState {
     object Idle : ResultState()
+    /** Waiting / informational message; [showHint] toggles the
+     *  "press X to start" hint line under the message. */
+    data class Status(val message: String, val showHint: Boolean = false) : ResultState()
+    /** Drag-sentence placeholder: original text is set, translation
+     *  is in flight ("Translating..." in the UI). */
+    data class Translating(val originalText: String, val segments: List<TextSegment>) : ResultState()
     data class Ready(val result: TranslationResult) : ResultState()
+    /** Translation/capture error; fragment formats with
+     *  [com.playtranslate.R.string.status_error]. */
+    data class Error(val message: String) : ResultState()
 }
+
 
 sealed class WordLookupsState {
     object Idle : WordLookupsState()

@@ -154,7 +154,7 @@ class TranslationResultActivity :
         if (isDragWordMode) setupDragWordTabs(savedInstanceState)
 
         val hasSentence = intent.hasExtra(EXTRA_SENTENCE_TEXT)
-        resultFragment?.showStatus(getString(
+        vm.showStatus(getString(
             if (hasSentence) R.string.status_translating else R.string.status_capturing
         ))
 
@@ -387,13 +387,13 @@ class TranslationResultActivity :
         )
 
         svc.onResult = { result ->
-            runOnUiThread { resultFragment?.displayResult(result) }
+            runOnUiThread { vm.displayResult(result, applicationContext) }
         }
         svc.onError = { msg ->
-            runOnUiThread { resultFragment?.showError(msg) }
+            runOnUiThread { vm.showError(msg) }
         }
         svc.onStatusUpdate = { msg ->
-            runOnUiThread { resultFragment?.showStatus(msg) }
+            runOnUiThread { vm.showStatus(msg) }
         }
 
         // If we have a pre-captured screenshot (single-screen: taken before this
@@ -415,7 +415,6 @@ class TranslationResultActivity :
     private fun handleSentenceMode(svc: CaptureService, sentenceText: String) {
         val screenshotPath = intent.getStringExtra(EXTRA_SCREENSHOT_PATH)
         val segments = sentenceText.map { TextSegment(it.toString()) }
-        val frag = resultFragment ?: return
 
         // Drag flow already produced this translation in the lens. Skip
         // the redundant translateOnce so the sentence tab opens straight
@@ -425,7 +424,7 @@ class TranslationResultActivity :
             ?.takeIf { it.isNotEmpty() }
         if (cachedTranslation != null) {
             val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-            frag.displayResult(
+            vm.displayResult(
                 TranslationResult(
                     originalText = sentenceText,
                     segments = segments,
@@ -433,7 +432,8 @@ class TranslationResultActivity :
                     timestamp = timestamp,
                     screenshotPath = screenshotPath,
                     note = null,
-                )
+                ),
+                applicationContext,
             )
             return
         }
@@ -444,7 +444,7 @@ class TranslationResultActivity :
         // default, which any concurrent capture (e.g. live mode still
         // running) would then pick up.
 
-        frag.showTranslatingPlaceholder(sentenceText, segments)
+        vm.showTranslatingPlaceholder(sentenceText, segments, applicationContext)
 
         lifecycleScope.launch {
             try {
@@ -458,9 +458,9 @@ class TranslationResultActivity :
                     screenshotPath = screenshotPath,
                     note = note
                 )
-                frag.displayResult(result)
+                vm.displayResult(result, applicationContext)
             } catch (e: Exception) {
-                frag.showError(e.message ?: "Translation failed")
+                vm.showError(e.message ?: "Translation failed")
             }
         }
     }

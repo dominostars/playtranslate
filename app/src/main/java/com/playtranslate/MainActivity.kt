@@ -38,6 +38,7 @@ import android.widget.PopupWindow
 import android.widget.RadioButton
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -72,7 +73,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
-class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationResultHost {
+class MainActivity :
+    AppCompatActivity(),
+    TranslationResultFragment.TranslationResultHost,
+    com.playtranslate.ui.TranslationResultEventSink {
 
     // ── Views ─────────────────────────────────────────────────────────────
 
@@ -116,6 +120,29 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
 
     private val resultFragment: TranslationResultFragment?
         get() = supportFragmentManager.findFragmentById(R.id.resultsContainer) as? TranslationResultFragment
+
+    /** Activity-scoped state for the result surface. The fragment
+     *  observes this VM; this activity mutates it. */
+    private val resultVm: com.playtranslate.ui.TranslationResultViewModel by viewModels()
+
+    // ── TranslationResultEventSink ────────────────────────────────────────
+
+    override fun onEvent(event: com.playtranslate.ui.TranslationResultEvent) {
+        when (event) {
+            is com.playtranslate.ui.TranslationResultEvent.EditOriginalRequested ->
+                showEditOverlay()
+            is com.playtranslate.ui.TranslationResultEvent.ClearRequested ->
+                resultVm.showStatus(getString(R.string.status_idle), showHint = true)
+            is com.playtranslate.ui.TranslationResultEvent.UserScrolled ->
+                if (isLiveMode && !suppressScrollPause) pauseLiveMode()
+            is com.playtranslate.ui.TranslationResultEvent.AnkiClicked,
+            is com.playtranslate.ui.TranslationResultEvent.WordTapped -> {
+                // AnkiClicked is fragment-internal (dialog work); WordTapped
+                // not used in this surface — word taps go through the host
+                // interface's onWordTapped.
+            }
+        }
+    }
 
     // ── Drag-to-select dropdown state ────────────────────────────────────
     private var inDragMode = false
@@ -308,8 +335,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         // no target gloss pack installed, offer to download it.
         checkTargetPackMigration()
 
-        // Wire up the fragment's edit-original listener for edit overlay
-        resultFragment?.setOnEditOriginalListener { showEditOverlay() }
+        // Wire up the fragment's event sink so user-input events (edit,
+        // clear, scroll) flow back to this activity's handler.
+        resultFragment?.eventSink = this
 
         // Restore previously selected tab (survives recreate for theme changes)
         val restoredTab = Tab.entries.getOrElse(
@@ -382,8 +410,8 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         setupDetectionLog()
         // Re-wire service callbacks in case TranslationResultActivity overwrote them
         if (serviceConnected) wireServiceCallbacks()
-        // Re-wire fragment listeners after config change
-        resultFragment?.setOnEditOriginalListener { showEditOverlay() }
+        // Re-wire fragment event sink after config change.
+        resultFragment?.eventSink = this
         PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
         checkOnboardingState()
         maybeCheckForUpdates()
@@ -622,11 +650,10 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             dimController = DimController(findViewById(R.id.dimOverlay))
         }
         if (isLive) {
-            resultFragment?.showStatus(searchingStatusText())
+            resultVm.showStatus(searchingStatusText())
         } else {
-            val frag = resultFragment
-            if (frag == null || !frag.isShowingResults) {
-                frag?.showStatus(getString(R.string.status_idle))
+            if (resultVm.result.value !is com.playtranslate.ui.ResultState.Ready) {
+                resultVm.showStatus(getString(R.string.status_idle), showHint = true)
             }
         }
     }
@@ -900,16 +927,13 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     private fun updateActionButtonState() {
         val ready = isCaptureReady
         btnTranslate.alpha = if (ready) 1f else 0.45f
-        val frag = resultFragment ?: return
-        if (frag.isStatusVisible()) {
-            if (!ready) {
-                frag.showStatus(getString(R.string.status_accessibility_needed))
-                frag.setStatusHintVisibility(false)
-            } else if (frag.getStatusText() == getString(R.string.status_accessibility_needed)) {
-                frag.showStatus(getString(R.string.status_idle))
-            } else if (frag.getStatusText() == getString(R.string.status_idle)) {
-                frag.setStatusHintVisibility(true)
-            }
+        val current = resultVm.result.value as? com.playtranslate.ui.ResultState.Status ?: return
+        if (!ready) {
+            resultVm.showStatus(getString(R.string.status_accessibility_needed), showHint = false)
+        } else if (current.message == getString(R.string.status_accessibility_needed)) {
+            resultVm.showStatus(getString(R.string.status_idle), showHint = true)
+        } else if (current.message == getString(R.string.status_idle)) {
+            resultVm.setStatusHintVisibility(true)
         }
     }
 
@@ -939,20 +963,20 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             runOnUiThread {
                 editTranslationJob?.cancel()
                 editTranslationJob = null
-                resultFragment?.displayResult(result)
+                resultVm.displayResult(result, applicationContext)
             }
         }
         svc.onError = { msg ->
-            runOnUiThread { resultFragment?.showError(msg) }
+            runOnUiThread { resultVm.showError(msg) }
         }
         svc.onStatusUpdate = { msg ->
-            runOnUiThread { resultFragment?.showStatus(msg) }
+            runOnUiThread { resultVm.showStatus(msg) }
         }
         svc.onTranslationStarted = {
             // progress indication removed — menu-based UI
         }
         svc.onLiveNoText = {
-            runOnUiThread { if (isLiveMode) resultFragment?.showStatus(searchingStatusText()) }
+            runOnUiThread { if (isLiveMode) resultVm.showStatus(searchingStatusText()) }
         }
         // onLiveStopped removed — LiveData observer handles live mode changes
         svc.degradedState.observe(this) { degraded ->
@@ -981,8 +1005,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         val segments = lineText.map { TextSegment(it.toString()) }
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(java.util.Date())
 
-        val frag = resultFragment ?: return
-        frag.showTranslatingPlaceholder(lineText, segments)
+        resultVm.showTranslatingPlaceholder(lineText, segments, applicationContext)
 
         val svc = captureService
         if (svc != null) {
@@ -1000,13 +1023,13 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                         screenshotPath = screenshotPath,
                         note = note
                     )
-                    frag.displayResult(result)
+                    resultVm.displayResult(result, applicationContext)
                 } catch (e: Exception) {
-                    frag.updateTranslation("")
+                    resultVm.updateTranslation("")
                 }
             }
         } else {
-            frag.updateTranslation("")
+            resultVm.updateTranslation("")
         }
     }
 
@@ -1455,8 +1478,11 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
             .replaceFirstChar { it.uppercase(Locale.getDefault()) }
 
     private fun showEditOverlay() {
-        val currentText = resultFragment?.getDisplayedOriginalText()?.takeIf { it.isNotBlank() }
-            ?: resultFragment?.lastResult?.originalText ?: return
+        val displayed = resultFragment?.getDisplayedOriginalText()?.takeIf { it.isNotBlank() }
+        val currentText = displayed
+            ?: (resultVm.result.value as? com.playtranslate.ui.ResultState.Ready)
+                ?.result?.originalText
+            ?: return
         etEditOriginal.setText(currentText)
         etEditOriginal.setSelection(currentText.length)
         editOverlay.visibility = View.VISIBLE
@@ -1473,8 +1499,7 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
         val newText = etEditOriginal.text?.toString()?.trim() ?: return
         if (newText.isBlank()) return
 
-        val frag = resultFragment ?: return
-        frag.updateOriginalText(newText)
+        resultVm.updateOriginalText(newText, applicationContext)
 
         editTranslationJob?.cancel()
         editTranslationJob = lifecycleScope.launch {
@@ -1485,13 +1510,13 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
                 // parallel translator state that could go stale on pref change.
                 val svc = captureService
                 if (svc == null) {
-                    frag.updateTranslation("—")
+                    resultVm.updateTranslation("—")
                     return@launch
                 }
                 val (translated, _) = svc.translateOnce(newText)
-                frag.updateTranslation(translated)
+                resultVm.updateTranslation(translated)
             } catch (_: Exception) {
-                frag.updateTranslation("—")
+                resultVm.updateTranslation("—")
             }
         }
     }
@@ -1505,10 +1530,9 @@ class MainActivity : AppCompatActivity(), TranslationResultFragment.TranslationR
     }
 
     private fun setupEditOverlay() {
-        // Pause live mode when the user scrolls the results (shows intent to read)
-        resultFragment?.getResultsScrollView()?.setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
-            if (scrollY != oldScrollY && isLiveMode && !suppressScrollPause) pauseLiveMode()
-        }
+        // Scroll-pause for live mode now flows through the fragment's
+        // event sink (TranslationResultEvent.UserScrolled handled in
+        // [onEvent]) — no external scroll listener needed here.
 
         etEditOriginal.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_GO) {
