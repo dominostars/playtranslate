@@ -159,14 +159,16 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
         val sentenceContainer = findViewById<View>(R.id.resultFragmentContainer)
         val wordContainer = findViewById<FrameLayout>(R.id.wordDetailContainer)
 
-        // Pill toggle in the toolbar's center slot. Keeps "Sentence"
-        // selected by default — the user just landed here from a sentence
-        // intent and that's the reading they expect to see first.
+        // Pill toggle in the toolbar's center slot. Defaults to "Word" —
+        // the user tapped a specific word in the lens to get here, so the
+        // word definition is the reading they expect to see first.
+        sentenceContainer.visibility = View.GONE
+        wordContainer.visibility = View.VISIBLE
         val toggleContainer = findViewById<FrameLayout>(R.id.segmentedTabContainer)
         buildToolbarPillToggle(
             container = toggleContainer,
             options = listOf("Sentence" to Tab.SENTENCE, word to Tab.WORD),
-            initial = Tab.SENTENCE,
+            initial = Tab.WORD,
             onSelect = { tab ->
                 val showSentence = tab == Tab.SENTENCE
                 sentenceContainer.visibility = if (showSentence) View.VISIBLE else View.GONE
