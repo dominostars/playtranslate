@@ -93,6 +93,10 @@ object LanguagePackStore {
             db.rawQuery("SELECT text FROM headword LIMIT 1", null).use { }
             db.rawQuery("SELECT misc FROM sense LIMIT 1", null).use { }
             db.rawQuery("SELECT literal FROM kanjidic LIMIT 1", null).use { }
+            // kanji_meaning was split out from kanjidic so non-English
+            // KANJIDIC2 glosses can be served natively. Packs without this
+            // table are pre-multilingual and must be re-downloaded.
+            db.rawQuery("SELECT literal, lang, meanings FROM kanji_meaning LIMIT 1", null).use { }
         }
         true
     } catch (_: Exception) {
@@ -104,12 +108,22 @@ object LanguagePackStore {
     fun targetDirFor(ctx: Context, targetLang: String): File =
         File(rootDir(ctx), "target-$targetLang")
 
-    fun targetGlossDbFor(ctx: Context, targetLang: String): File =
-        File(targetDirFor(ctx, targetLang), "glosses.sqlite")
+    fun targetIndexFstFor(ctx: Context, targetLang: String): File =
+        File(targetDirFor(ctx, targetLang), "index.fst")
 
-    /** English target needs no pack — definitions are already in every source pack. */
-    fun isTargetInstalled(ctx: Context, targetLang: String): Boolean =
-        targetLang == "en" || targetGlossDbFor(ctx, targetLang).exists()
+    /** English target needs no pack — definitions are already in every source pack.
+     *  All three FST payload files must be present; a partial directory left
+     *  by an interrupted install or a manual file delete would otherwise look
+     *  installed to the picker / installer while [FstTargetGlossDatabase.open]
+     *  refuses to load it, soft-locking the user on English fallback with no
+     *  reinstall affordance. */
+    fun isTargetInstalled(ctx: Context, targetLang: String): Boolean {
+        if (targetLang == "en") return true
+        val dir = targetDirFor(ctx, targetLang)
+        return File(dir, "index.fst").exists() &&
+            File(dir, "data.bin").exists() &&
+            File(dir, "strings.bin").exists()
+    }
 
     /**
      * Writes the manifest for a bundled pack if it isn't already present.
@@ -304,6 +318,13 @@ object LanguagePackStore {
         SourceLanguageEngines.releaseForPack(id.packId)
         val dir = dirFor(ctx.applicationContext, id)
         return if (dir.exists()) dir.deleteRecursively() else false
+        // OCR recognizers cached in OcrManager are NOT released here:
+        // recognise() reads from the cache and then calls client.process()
+        // without holding a lock against close(), so closing on uninstall
+        // can race with an in-flight capture (CaptureService may still be
+        // running when settings invokes uninstall). Recognizers are freed
+        // instead from PlayTranslateApplication.onTrimMemory, which only
+        // fires when no foreground service is alive.
     }
 
     /**
@@ -311,7 +332,7 @@ object LanguagePackStore {
      * pack was present and is now gone; no-op (returns false) otherwise.
      * English is never "installed" so calling with "en" is a no-op.
      *
-     * Also evicts the cached [TargetGlossDatabase] handle so future lookups
+     * Also evicts the cached [FstTargetGlossDatabase] handle so future lookups
      * reopen from disk — otherwise warm callers would keep querying a handle
      * pointing at a now-deleted file. The ML Kit translation model is a
      * separate on-device asset owned by Google Play Services and is not

@@ -33,14 +33,16 @@ import com.playtranslate.language.PreloadResult
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.blendColors
 import com.playtranslate.compositeOver
-import com.playtranslate.selectedActivityTheme
+import com.playtranslate.applyTheme
 import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.Collator
 import java.util.Locale
 
 class LanguageSetupActivity : AppCompatActivity() {
@@ -61,9 +63,9 @@ class LanguageSetupActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Must run before super.onCreate so the first inflation resolves
-        // ?attr/pt* against the user's selected palette instead of the
-        // manifest's Theme.PlayTranslate default.
-        setTheme(selectedActivityTheme(this))
+        // ?attr/pt* against the user's selected palette + accent instead of
+        // the manifest's Theme.PlayTranslate default.
+        applyTheme(this)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_language_setup)
 
@@ -130,16 +132,26 @@ class LanguageSetupActivity : AppCompatActivity() {
         val view = LayoutInflater.from(this).inflate(R.layout.page_language_list, contentFrame, false)
         val root = view.findViewById<LinearLayout>(R.id.languageListRoot)
 
-        val allIds = SourceLangId.entries.toList()
-        val currentId = Prefs(this).sourceLangId
+        // Sort by the system-locale display name so the order matches what
+        // the user actually reads (and is meaningful in their locale's
+        // collation rules — Collator handles accented chars / non-Latin scripts).
+        val collator = Collator.getInstance(Locale.getDefault())
+        val allIds = SourceLangId.entries
+            .sortedWith(compareBy(collator) { it.displayName() })
+        // Treat the stored id as "no selection" when its pack isn't installed:
+        // Prefs defaults to JA even on a fresh onboarding where the user hasn't
+        // chosen anything yet, so without this check JA would render with a
+        // checkmark before any download.
+        val storedId = Prefs(this).sourceLangId
+        val currentId = storedId.takeIf { LanguagePackStore.isInstalled(this, it) }
 
         fun toRow(id: SourceLangId): LangRow {
             val installed = LanguagePackStore.isInstalled(this, id)
-            val isSelected = id == currentId
+            val isSelected = currentId != null && id == currentId
             // Deleting any variant that shares the selected pack (ZH ↔ ZH_HANT)
             // would pull files out from under the current engine, so treat the
             // sibling as non-deletable too — its trash just stays hidden.
-            val sharesPackWithSelection = id.packId == currentId.packId
+            val sharesPackWithSelection = currentId != null && id.packId == currentId.packId
             return LangRow(
                 title = id.displayName(),
                 isSelected = isSelected,
@@ -234,9 +246,10 @@ class LanguageSetupActivity : AppCompatActivity() {
         val view = LayoutInflater.from(this).inflate(R.layout.page_language_list, contentFrame, false)
         val root = view.findViewById<LinearLayout>(R.id.languageListRoot)
 
+        val collator = Collator.getInstance(Locale.getDefault())
         val allLangs = TranslateLanguage.getAllLanguages()
             .map { code -> code to targetDisplayName(code) }
-            .sortedBy { it.second }
+            .sortedWith(compareBy(collator) { it.second })
 
         val currentTarget = Prefs(this).targetLang
 
@@ -272,11 +285,20 @@ class LanguageSetupActivity : AppCompatActivity() {
     private fun onTargetSelected(code: String) {
         val sourceId = selectedSource ?: Prefs(this).sourceLangId
         val sourceLangCode = SourceLanguageProfiles[sourceId].translationCode
+        // Capture the previous target before installAndLoad runs so we can
+        // evict its cached FST after the new one is in place. Eviction is
+        // gated on installation success — we never drop the previous pack
+        // until the new one is fully downloaded and loaded, so a failed
+        // switch keeps the prior selection working.
+        val previousTarget = Prefs(this).targetLang
         targetInstaller.installAndLoad(
             sourceLangCode = sourceLangCode,
             targetCode = code,
             onSuccess = {
                 Prefs(this@LanguageSetupActivity).targetLang = code
+                if (previousTarget.isNotBlank() && previousTarget != code) {
+                    TargetGlossDatabaseProvider.release(previousTarget)
+                }
                 selectionDelegate?.onTargetSelectionDone(code)
                 finish()
             },
@@ -578,10 +600,12 @@ class LanguageSetupActivity : AppCompatActivity() {
         Locale(code).getDisplayLanguage(Locale.getDefault())
             .replaceFirstChar { it.uppercase(Locale.getDefault()) }
 
-    /** Display name for target languages — shows the native language name. */
+    /** Display name for target languages, rendered in the system locale to
+     *  match the source picker (e.g. on an English device, Japanese shows as
+     *  "Japanese", not "日本語"). */
     private fun targetDisplayName(code: String): String {
-        val locale = Locale(code)
-        return locale.getDisplayLanguage(locale)
+        val locale = Locale.getDefault()
+        return Locale(code).getDisplayLanguage(locale)
             .replaceFirstChar { it.uppercase(locale) }
     }
 

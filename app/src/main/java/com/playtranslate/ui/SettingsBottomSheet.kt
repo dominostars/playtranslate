@@ -19,6 +19,7 @@ import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.R
+import com.playtranslate.applyAccentOverlay
 import com.playtranslate.fullScreenDialogTheme
 import com.playtranslate.themeColor
 import kotlinx.coroutines.launch
@@ -58,6 +59,12 @@ class SettingsBottomSheet : DialogFragment() {
     // ── Lifecycle ────────────────────────────────────────────────────────
 
     override fun getTheme(): Int = fullScreenDialogTheme(requireContext())
+
+    override fun onCreateDialog(savedInstanceState: Bundle?): android.app.Dialog {
+        val dialog = super.onCreateDialog(savedInstanceState)
+        applyAccentOverlay(dialog.context.theme, requireContext())
+        return dialog
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -123,13 +130,15 @@ class SettingsBottomSheet : DialogFragment() {
         val isDialog = showsDialog
         val prefs = Prefs(requireContext())
 
-        // Toolbar (dialog mode only)
+        // Toolbar (dialog mode only). Dialog mode is only entered from the
+        // single-screen onboarding/main path (MainActivity.checkOnboardingState),
+        // so the toolbar appears only in single-screen mode and the title is
+        // the app name. Dual-screen flows use inline mode where the toolbar
+        // stays GONE per its XML default.
         if (isDialog) {
             view.findViewById<View>(R.id.settingsToolbar).visibility = View.VISIBLE
-            if (!Prefs.hasMultipleDisplays(requireContext())) {
-                view.findViewById<android.widget.TextView>(R.id.tvSettingsTitle)
-                    .text = getString(R.string.app_name)
-            }
+            view.findViewById<android.widget.TextView>(R.id.tvSettingsTitle)
+                .text = getString(R.string.app_name)
             val closeBtn = view.findViewById<View>(R.id.btnCloseSettings)
             if (hideDismiss) {
                 closeBtn.visibility = View.GONE

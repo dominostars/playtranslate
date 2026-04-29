@@ -1,76 +1,120 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
+<!-- FrameLayout root so the headword can live in an overlay layer above
+     the toolbar and the scroll view. WordDetailBottomSheet drives its
+     translationY + scale from scroll position so it shrinks down into
+     the toolbar's empty left slot as the user scrolls. -->
+<FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
     android:background="?attr/ptBg">
 
-    <!-- Top bar -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="?attr/ptBg"
-        android:paddingStart="16dp"
-        android:paddingEnd="4dp">
+        android:layout_height="match_parent"
+        android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/tvDetailHeadword"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
+        <!-- Toolbar: the close button only — the headword overlay below
+             paints itself into the empty left slot once it's pinned. -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="?attr/ptBg"
+            android:paddingStart="16dp"
+            android:paddingEnd="4dp">
+
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1" />
+
+            <ImageButton
+                android:id="@+id/btnBackDetail"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_close"
+                app:tint="?attr/ptText"
+                android:contentDescription="Close" />
+
+        </LinearLayout>
+
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/detailScrollView"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
             android:layout_weight="1"
-            android:textSize="22sp"
-            android:textStyle="bold"
-            android:textColor="?attr/ptText" />
+            android:fillViewport="true">
 
-        <ImageButton
-            android:id="@+id/btnBackDetail"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_close"
-            app:tint="?attr/ptTextMuted"
-            android:contentDescription="Close" />
+            <!-- The Kotlin code sets paddingTop dynamically to the
+                 measured height of the overlay headword + a small gap,
+                 so the reading/badges/definitions row sits flush below
+                 it regardless of how tall the headword wraps to. -->
+            <LinearLayout
+                android:id="@+id/detailContent"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="@dimen/pt_section_h_padding"
+                android:paddingBottom="20dp" />
 
-    </LinearLayout>
-
-    <androidx.core.widget.NestedScrollView
-        android:id="@+id/detailScrollView"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:fillViewport="true">
+        </androidx.core.widget.NestedScrollView>
 
         <LinearLayout
-            android:id="@+id/detailContent"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingHorizontal="@dimen/pt_section_h_padding"
-            android:paddingTop="4dp"
-            android:paddingBottom="20dp" />
+            android:background="?attr/ptBg">
 
-    </androidx.core.widget.NestedScrollView>
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="?attr/ptDivider" />
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="?attr/ptDivider" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnWordAddToAnki"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="12dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="10dp"
+                android:minHeight="56dp"
+                android:text="@string/btn_add_to_anki"
+                android:textSize="15sp"
+                android:textAllCaps="false"
+                android:fontFamily="sans-serif-medium"
+                android:backgroundTint="?attr/ptAccent"
+                android:textColor="?attr/ptAccentOn"
+                android:visibility="gone"
+                app:icon="@drawable/ic_card_stack"
+                app:iconTint="?attr/ptAccentOn"
+                app:iconGravity="textStart"
+                app:iconPadding="6dp"
+                app:cornerRadius="@dimen/pt_radius" />
 
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnWordAddToAnki"
-        android:layout_width="match_parent"
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Headword overlay. Lives ABOVE the toolbar in z-order so the
+         in-place scale-down can render inside the toolbar slot. The
+         label starts aligned to the top of the page (occupying the
+         toolbar's left slot at full size) and shrinks in place as the
+         user scrolls — no translation. -->
+    <TextView
+        android:id="@+id/tvDetailHeadword"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="12dp"
-        android:layout_marginVertical="6dp"
-        android:minHeight="60dp"
-        android:text="@string/btn_add_to_anki"
-        android:backgroundTint="?attr/ptAccent"
-        android:textColor="?attr/ptAccentOn"
-        android:visibility="gone"
-        app:cornerRadius="@dimen/pt_radius" />
+        android:layout_gravity="top|start"
+        android:layout_marginStart="18dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginEnd="60dp"
+        android:textSize="38sp"
+        android:textStyle="bold"
+        android:textColor="?attr/ptText"
+        android:letterSpacing="-0.02" />
 
-</LinearLayout>
+</FrameLayout>

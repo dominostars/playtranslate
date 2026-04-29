@@ -44,6 +44,23 @@ class OcrManager private constructor() {
         }
     }
 
+    /**
+     * Drop every cached recognizer and close its underlying ML Kit client.
+     *
+     * Wired only into [com.playtranslate.PlayTranslateApplication.onTrimMemory]
+     * at [android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE] — the
+     * one signal that guarantees no foreground service (and therefore no
+     * in-flight OCR) is running. Calling this while [recognise] is mid-call
+     * would close the client out from under the ML Kit worker, so do NOT
+     * hook this into pack-uninstall or any other UI-driven path.
+     */
+    fun releaseAll() {
+        val snapshot = recognizers.keys.toList()
+        for (backend in snapshot) {
+            recognizers.remove(backend)?.close()
+        }
+    }
+
 
     /** A bounding box with optional confidence for debug overlay. */
     data class DebugBox(

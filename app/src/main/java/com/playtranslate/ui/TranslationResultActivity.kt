@@ -208,14 +208,7 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
     }
 
     private fun applyTheme() {
-        val idx = getSharedPreferences("playtranslate_prefs", MODE_PRIVATE)
-            .getInt("theme_index", 0)
-        setTheme(when (idx) {
-            1    -> R.style.Theme_PlayTranslate_White
-            2    -> R.style.Theme_PlayTranslate_Rainbow
-            3    -> R.style.Theme_PlayTranslate_Purple
-            else -> R.style.Theme_PlayTranslate
-        })
+        com.playtranslate.applyTheme(this)
     }
 
     companion object {

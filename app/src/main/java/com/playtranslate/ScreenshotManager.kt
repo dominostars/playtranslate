@@ -11,6 +11,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.util.concurrent.Executors
@@ -32,6 +34,12 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : S
 
     /** Single-thread executor for HardwareBuffer → software Bitmap copies. */
     private val bitmapExecutor = Executors.newSingleThreadExecutor()
+
+    /** Serializes clean captures so prepare/restore lifecycles don't overlap.
+     *  Without this, A's restore can fire (success or cancel) while B's
+     *  takeScreenshot is in flight, contaminating B's "clean" bitmap with
+     *  the overlays A had blanked. */
+    private val cleanCaptureMutex = Mutex()
 
     // ── Rate limit tracking ──────────────────────────────────────────────
 
@@ -62,31 +70,50 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : S
      * compositor to flush the overlay-free frame, captures, and restores
      * overlays. The caller owns the returned [Bitmap] and must recycle it.
      */
-    override suspend fun requestClean(displayId: Int): Bitmap? {
+    override suspend fun requestClean(displayId: Int): Bitmap? = cleanCaptureMutex.withLock {
         awaitScreenshotInterval()
 
         val hideStart = System.currentTimeMillis()
         val state = a11y.prepareForCleanCapture()
-        // Wait 2 vsync frames for the compositor to flush the overlay-free frame.
-        waitVsync(2)
-
-        var bitmap = doTakeScreenshot(displayId) {
-            a11y.restoreAfterCapture(state)
-            android.util.Log.d("DetectionLog", "OVERLAY HIDDEN for ${System.currentTimeMillis() - hideStart}ms (requestClean)")
-        }
-
-        // Retry once on failure (e.g. transient OS error)
-        if (bitmap == null) {
-            DetectionLog.log("Clean capture failed, retrying...")
-            awaitScreenshotInterval()
-            val retryState = a11y.prepareForCleanCapture()
+        try {
+            // Wait 2 vsync frames for the compositor to flush the overlay-free frame.
             waitVsync(2)
-            bitmap = doTakeScreenshot(displayId) {
-                a11y.restoreAfterCapture(retryState)
+
+            var bitmap = doTakeScreenshot(displayId) {
+                // Fast-path restore: triggered as soon as the screenshot
+                // buffer is captured, so overlays come back during the
+                // bitmap copy. The finally below is the safety net.
+                a11y.restoreAfterCapture(state)
+                android.util.Log.d("DetectionLog", "OVERLAY HIDDEN for ${System.currentTimeMillis() - hideStart}ms (requestClean)")
             }
-            if (bitmap == null) DetectionLog.log("Clean capture retry also failed")
+
+            if (bitmap == null) {
+                DetectionLog.log("Clean capture failed, retrying...")
+                awaitScreenshotInterval()
+                val retryState = a11y.prepareForCleanCapture()
+                val retry = try {
+                    waitVsync(2)
+                    doTakeScreenshot(displayId) {
+                        a11y.restoreAfterCapture(retryState)
+                    }
+                } finally {
+                    a11y.restoreAfterCapture(retryState)
+                }
+                bitmap = retry
+                if (retry == null) DetectionLog.log("Clean capture retry also failed")
+            }
+            bitmap
+        } finally {
+            // Belt-and-suspenders: the takeScreenshot callback can fail to
+            // fire (coroutine cancellation discards the OS-side request, OS
+            // hang past timeout, etc.) which would otherwise leave overlays
+            // permanently blanked. Always restore before returning.
+            // restoreAfterCapture is idempotent (always writes alpha=1) so
+            // a double-restore on the success path is harmless. The mutex
+            // around this whole block guarantees no other capture sees the
+            // intermediate alpha=0 state.
+            a11y.restoreAfterCapture(state)
         }
-        return bitmap
     }
 
     /**
@@ -112,7 +139,10 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : S
     /**
      * Save a bitmap to the screenshot cache directory as JPEG.
      * Returns the file path. Uses JPEG for speed (~10-30 ms vs PNG's
-     * 50-200 ms). Keeps up to 5 files, rotating oldest.
+     * 50-200 ms). Always overwrites a single `capture.jpg` — the cache
+     * stays bounded to one file per writer (this manager + the
+     * accessibility-service `precapture.jpg` and drag-flow `drag.jpg`
+     * paths each own their own filename).
      */
     override fun saveToCache(bitmap: Bitmap): String? {
         return try {
@@ -158,11 +188,19 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : S
                     cleanRequested = false
                     DetectionLog.log("Loop: taking clean screenshot...")
                     val hideStart = System.currentTimeMillis()
-                    val state = a11y.prepareForCleanCapture()
-                    waitVsync(2)
-                    val bitmap = doTakeScreenshot(displayId) {
-                        a11y.restoreAfterCapture(state)
-                        android.util.Log.d("DetectionLog", "OVERLAY HIDDEN for ${System.currentTimeMillis() - hideStart}ms (loop)")
+                    val bitmap = cleanCaptureMutex.withLock {
+                        val state = a11y.prepareForCleanCapture()
+                        try {
+                            waitVsync(2)
+                            doTakeScreenshot(displayId) {
+                                a11y.restoreAfterCapture(state)
+                                android.util.Log.d("DetectionLog", "OVERLAY HIDDEN for ${System.currentTimeMillis() - hideStart}ms (loop)")
+                            }
+                        } finally {
+                            // See comment in requestClean — guarantees restore
+                            // even if the screenshot callback never fires.
+                            a11y.restoreAfterCapture(state)
+                        }
                     }
                     if (bitmap != null) {
                         DetectionLog.log("Loop: clean frame captured (${bitmap.width}x${bitmap.height})")

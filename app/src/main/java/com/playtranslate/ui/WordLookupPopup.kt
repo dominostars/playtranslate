@@ -22,6 +22,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.graphics.drawable.DrawableCompat
+import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.R
 
 /**
@@ -64,6 +65,10 @@ class WordLookupPopup(
     private val bgColor = Color.parseColor("#242424")
     private val ankiColumnW = dp(44)
 
+    /** Returns true if a popup is attached after this call (newly added or
+     *  already showing the same word). Returns false if [WindowManager.addView]
+     *  failed — callers in the drag-flow propagate this so a failed show
+     *  doesn't get treated as a successful lookup. */
     fun show(
         word: String,
         reading: String?,
@@ -74,9 +79,9 @@ class WordLookupPopup(
         screenW: Int, screenH: Int,
         anchorHeight: Int = 0,
         label: String? = null
-    ) {
+    ): Boolean {
         // Skip full redraw if same word is already showing
-        if (word == currentWord && popupView != null) return
+        if (word == currentWord && popupView != null) return true
 
         suppressDismissCallback = true
         dismiss()
@@ -196,15 +201,29 @@ class WordLookupPopup(
             this.y = y
         }
 
-        wm.addView(container, popupParams)
+        if (useActivityWindow) {
+            try { wm.addView(container, popupParams) } catch (_: Exception) { return false }
+        } else {
+            // Accessibility-overlay flavor: register so it gets blanked
+            // alongside the icon/magnifier during clean screenshots.
+            if (!PlayTranslateAccessibilityService.addOverlay(container, wm, popupParams)) return false
+        }
         // Request window focus so onGenericMotionListener receives joystick
         // events (the previous architecture got focus via the backdrop).
         container.requestFocus()
         popupView = container
+        return true
     }
 
     fun dismiss() {
-        try { popupView?.let { wm.removeView(it) } } catch (_: Exception) {}
+        val view = popupView
+        if (view != null) {
+            if (useActivityWindow) {
+                try { wm.removeView(view) } catch (_: Exception) {}
+            } else {
+                PlayTranslateAccessibilityService.removeOverlay(view, wm)
+            }
+        }
         popupView = null
         currentWord = null
         if (!suppressDismissCallback) onDismiss?.invoke()
@@ -366,7 +385,7 @@ class WordLookupPopup(
                 }
             })
 
-            val iconRes = if (showAnkiButton) R.drawable.ic_anki_cards else R.drawable.ic_open_in_new
+            val iconRes = if (showAnkiButton) R.drawable.ic_card_stack else R.drawable.ic_open_in_new
             val onTap = if (showAnkiButton) onAnkiTap else onOpenTap
             val icon = ImageView(ctx).apply {
                 val drawable = AppCompatResources.getDrawable(ctx, iconRes)?.mutate()

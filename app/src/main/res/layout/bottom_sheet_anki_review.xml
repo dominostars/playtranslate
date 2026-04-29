@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Sentence-only Anki review sheet. Hosts SentenceAnkiContentFragment
+     which renders the Original / Translation / Words / Screenshot
+     groups. The toolbar shows "Add to <Deck>" since this sheet has no
+     mode switch (no word side). -->
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="?attr/ptSurface">
+    android:background="?attr/ptBg">
 
-    <!-- Toolbar: back button + deck selector -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="56dp"
@@ -15,35 +19,27 @@
         android:paddingStart="4dp"
         android:paddingEnd="16dp">
 
-        <Button
+        <ImageButton
             android:id="@+id/btnBackReview"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="64dp"
-            android:layout_height="match_parent"
-            android:text="‹"
-            android:textColor="?attr/ptAccent"
-            android:textSize="40sp"
-            android:minWidth="0dp"
-            android:minHeight="0dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:padding="0dp" />
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="4dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_arrow_back"
+            app:tint="?attr/ptAccent"
+            android:contentDescription="@string/cd_back" />
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/section_anki_deck"
-            android:textColor="?attr/ptTextMuted"
-            android:textSize="11sp"
-            android:textAllCaps="true"
-            android:letterSpacing="0.08"
-            android:layout_marginEnd="8dp" />
-
-        <Spinner
-            android:id="@+id/spinnerReviewDeck"
+            android:id="@+id/tvAnkiSheetTitle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1" />
+            android:layout_weight="1"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="?attr/ptText"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:text="@string/anki_sheet_title_new_card" />
 
     </LinearLayout>
 
@@ -52,34 +48,110 @@
         android:layout_height="1dp"
         android:background="?attr/ptDivider" />
 
-    <!-- Scrollable content — hosts SentenceAnkiContentFragment -->
-    <ScrollView
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:fillViewport="true">
 
-        <FrameLayout
-            android:id="@+id/sentenceContentContainer"
+        <!-- Stable scroll column with two named slots: a deck-row host
+             that the Kotlin populates programmatically and a fragment
+             host that the FragmentManager attaches the
+             SentenceAnkiContentFragment into. Both use fixed XML ids so
+             child-fragment restoration after rotation/process death
+             lands in the same containers we created originally. -->
+        <LinearLayout
+            android:id="@+id/sentenceAnkiScrollColumn"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="16dp" />
+            android:orientation="vertical"
+            android:paddingHorizontal="@dimen/pt_section_h_padding"
+            android:paddingBottom="20dp">
 
-    </ScrollView>
+            <LinearLayout
+                android:id="@+id/sentenceAnkiDeckHost"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="?attr/ptDivider" />
+            <FrameLayout
+                android:id="@+id/sentenceAnkiFragmentHost"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
 
-    <!-- Sticky Send button -->
-    <Button
-        android:id="@+id/btnSendToAnki"
+        </LinearLayout>
+
+    </androidx.core.widget.NestedScrollView>
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="12dp"
-        android:text="@string/btn_add_to_anki"
-        android:backgroundTint="?attr/ptAccent"
-        android:textColor="?attr/ptAccentOn" />
+        android:orientation="vertical"
+        android:background="?attr/ptBg">
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/ptDivider" />
+
+        <FrameLayout
+            android:id="@+id/btnSendToAnki"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="12dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp"
+            android:minHeight="60dp"
+            android:background="@drawable/bg_anki_save_button"
+            android:clickable="true"
+            android:focusable="true">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:duplicateParentState="true">
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:src="@drawable/ic_save"
+                    app:tint="?attr/ptAccentOn"
+                    android:layout_marginEnd="12dp"
+                    android:duplicateParentState="true"
+                    android:importantForAccessibility="no" />
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:duplicateParentState="true">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/anki_save_button_label"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:fontFamily="sans-serif-medium"
+                        android:textColor="?attr/ptAccentOn"
+                        android:duplicateParentState="true" />
+
+                    <TextView
+                        android:id="@+id/tvAnkiSendSubtitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="13sp"
+                        android:textColor="?attr/ptAccentOn"
+                        android:duplicateParentState="true" />
+
+                </LinearLayout>
+            </LinearLayout>
+
+        </FrameLayout>
+
+    </LinearLayout>
 
 </LinearLayout>

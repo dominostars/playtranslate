@@ -64,10 +64,17 @@ data class Example(
  * (on/kun readings, JLPT, school grade, stroke count), while ZH reuses the
  * single-character CC-CEDICT entries already in its pack (pinyin, meanings,
  * frequency).
+ *
+ * [meaningsLang] is the BCP-47 code of the language [meanings] are currently
+ * expressed in. For Japanese this can be one of the languages KANJIDIC2 ships
+ * natively (en/fr/es/pt); for Chinese it's always "en" (CC-CEDICT source).
+ * Callers compare against the user's target language to decide whether the
+ * UI needs to run the meanings through machine translation.
  */
 sealed interface CharacterDetail {
     val literal: Char
     val meanings: List<String>
+    val meaningsLang: String
 }
 
 /**
@@ -78,6 +85,7 @@ sealed interface CharacterDetail {
 data class KanjiDetail(
     override val literal: Char,
     override val meanings: List<String>,
+    override val meaningsLang: String,
     val onReadings: List<String>,
     val kunReadings: List<String>,
     val jlpt: Int,
@@ -88,7 +96,8 @@ data class KanjiDetail(
 /**
  * Per-hanzi detail reconstituted from the Chinese pack's single-character
  * CC-CEDICT entries. Pinyin is tone-marked; [freqScore] matches the 0-5 star
- * scale used by [DictionaryEntry.freqScore].
+ * scale used by [DictionaryEntry.freqScore]. CC-CEDICT is Chinese↔English so
+ * [meaningsLang] is always "en" — non-English UIs rely on MT fallback.
  */
 data class HanziDetail(
     override val literal: Char,
@@ -96,4 +105,48 @@ data class HanziDetail(
     val pinyin: String?,
     val isCommon: Boolean,
     val freqScore: Int
-) : CharacterDetail
+) : CharacterDetail {
+    override val meaningsLang: String get() = "en"
+}
+
+/**
+ * Returns the headword whose [Headword.written] or [Headword.reading]
+ * exactly matches [query], or null when none match. Use when rendering an
+ * entry that the user reached by clicking a specific surface — JMdict
+ * frequently groups variant kanji under one entry (e.g. 無下 / 無気 share
+ * entry 2863328 because they're pronounced the same way and mean the same
+ * thing), so the entry's primary headword is often NOT the form the user
+ * actually saw.
+ *
+ * Strict (null on miss) instead of falling back to the primary headword so
+ * callers can chain alternatives — typically `headwordFor(surface)
+ * ?: headwordFor(lookupForm) ?: headwords.firstOrNull()` — and so an
+ * inflected surface that doesn't match any headword surfaces (出逢って vs
+ * stored 出逢う) correctly falls through to the next branch instead of
+ * silently latching onto the entry's primary form.
+ */
+fun DictionaryEntry.headwordFor(query: String?): Headword? {
+    if (query.isNullOrEmpty()) return null
+    return headwords.firstOrNull { it.written == query || it.reading == query }
+}
+
+/**
+ * Returns a POS label suitable for blank-`pos` target rows (PanLex,
+ * which doesn't carry POS metadata). When every sense across every
+ * returned entry shares the same POS list — JMdict entries that are
+ * uniformly verb/noun, Wiktionary single-POS entries — that shared list
+ * is used. When senses disagree (Wiktionary multi-POS lookups like
+ * "surprise" → noun/verb/intj, OR a JMdict entry that mixes noun and
+ * verb senses under one headword), there's no way to align blank-pos
+ * target senses to a specific source sense, so we return an empty list
+ * and let the renderer suppress the label rather than mislabel rows as
+ * the first sense's POS.
+ */
+fun unambiguousFallbackPos(entries: List<DictionaryEntry>): List<String> {
+    val perSense = entries
+        .flatMap { it.senses }
+        .map { s -> s.partsOfSpeech.filter { it.isNotBlank() } }
+        .filter { it.isNotEmpty() }
+        .distinct()
+    return if (perSense.size == 1) perSense.first() else emptyList()
+}

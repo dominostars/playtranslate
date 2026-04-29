@@ -71,8 +71,8 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? =
         dict.lookup(word, reading)
 
-    override suspend fun lookupCharacter(literal: Char): CharacterDetail? =
-        dict.lookupKanji(literal)
+    override suspend fun lookupCharacter(literal: Char, targetLang: String): CharacterDetail? =
+        dict.lookupKanji(literal, targetLang)
 
     override fun annotateForHintText(text: String): List<HintTextAnnotation> =
         dict.tokenizeForFurigana(text).map {

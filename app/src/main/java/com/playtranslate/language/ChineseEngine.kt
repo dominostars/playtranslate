@@ -83,6 +83,17 @@ class ChineseEngine(
         if (dict.preload() == null) {
             return PreloadResult.PackCorrupt("ZH dict.sqlite failed to open")
         }
+        // HanLP's portable mini CoreDictionary is missing many CC-CEDICT
+        // compounds (赋能, 用户体验, etc.) so it splits them into single
+        // characters even on whitespace-clean input. Lookups against
+        // dict.sqlite never fire for those splits because tokenize stops
+        // at the broken boundary. Inject every CC-CEDICT headword into
+        // HanLP's runtime BinTrie via CustomDictionary.add — ViterbiSegment
+        // checks both the static .bin DAT (HanLP's curated entries) and
+        // the runtime BinTrie, so this augments without displacing.
+        // Single-char entries are skipped so we don't disrupt HanLP's
+        // tuned single-hanzi frequencies.
+        dict.injectCustomDictEntriesOnce()
         return PreloadResult.Success
     }
 
@@ -101,7 +112,7 @@ class ChineseEngine(
      * maintaining a separate per-character table. The highest-frequency entry
      * wins when a character has multiple senses under different readings.
      */
-    override suspend fun lookupCharacter(literal: Char): CharacterDetail? {
+    override suspend fun lookupCharacter(literal: Char, targetLang: String): CharacterDetail? {
         val response = dict.lookup(literal.toString(), profile.preferTraditional) ?: return null
         val entry = response.entries.firstOrNull() ?: return null
         val meanings = entry.senses.flatMap { it.targetDefinitions }

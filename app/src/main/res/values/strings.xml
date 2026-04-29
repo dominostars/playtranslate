@@ -64,9 +64,20 @@
     <!-- Word detail -->
     <string name="word_detail_not_found">No dictionary entry found for \"%1$s\"</string>
     <string name="word_detail_more_examples">More examples</string>
-    <string name="word_detail_more_examples_loading">Loading…</string>
-    <string name="word_detail_more_examples_error">Couldn\'t load more examples — check your connection.</string>
+    <string name="word_detail_more_examples_loading">Loading examples…</string>
+    <string name="word_detail_more_examples_error">Couldn\'t load examples.</string>
     <string name="word_detail_tatoeba_attribution">Sentences from Tatoeba · CC BY 2.0 FR</string>
+    <string name="word_detail_common">Common</string>
+    <string name="word_detail_senses_count">%d senses</string>
+    <string name="word_detail_chars_count">%d characters</string>
+    <string name="word_detail_char_count_one">1 character</string>
+    <string name="word_detail_group_definitions">Definitions</string>
+    <string name="word_detail_group_kanji">Kanji</string>
+    <string name="word_detail_group_hanzi">Hanzi</string>
+    <string name="word_detail_group_tatoeba">Tatoeba</string>
+    <string name="word_detail_mt_banner">Machine translated</string>
+    <string name="word_detail_mt_banner_named">Machine translated: %1$s</string>
+    <string name="word_detail_char_meanings_mt">Machine translated · %1$s</string>
 
     <!-- Banner / language pair -->
 
@@ -142,4 +153,41 @@
     <string name="label_screenshot">Screenshot</string>
     <string name="anki_mode_sentence">Sentence</string>
     <string name="anki_mode_word">Word</string>
+
+    <!-- Anki review redesign -->
+    <string name="anki_sheet_title_default">Add to Anki</string>
+    <string name="anki_sheet_add_to_deck">Add to %1$s</string>
+    <string name="anki_sheet_title_new_card">New Anki card</string>
+    <string name="anki_deck_row_label">Deck</string>
+    <string name="anki_deck_row_empty">Pick a deck</string>
+    <string name="anki_deck_label_format">Deck: %1$s</string>
+    <string name="anki_save_button_label">Save Anki Card</string>
+    <string name="anki_group_deck">Anki Deck</string>
+    <string name="anki_group_original">Original</string>
+    <string name="anki_group_translation">Translation</string>
+    <string name="anki_group_words">Words on card</string>
+    <string name="anki_group_words_count">Words on card · %d</string>
+    <string name="anki_group_definitions">Definitions</string>
+    <string name="anki_group_screenshot">Screenshot</string>
+    <string name="anki_words_helper">These words will be included in the Anki card. Tap a word to highlight them in the card. Tap × to remove it from the card.</string>
+    <string name="anki_word_remove_content_description">Remove from card</string>
+    <string name="anki_screenshot_remove_content_description">Remove screenshot</string>
+    <string name="anki_pick_deck_title">Pick a deck</string>
+    <string name="cd_back">Back</string>
+
+    <!-- Appearance — theme mode + accent picker -->
+    <string name="pt_theme_mode_system">System</string>
+    <string name="pt_theme_mode_dark">Dark</string>
+    <string name="pt_theme_mode_light">Light</string>
+    <string name="pt_accent_label">Accent</string>
+    <string name="pt_accent_coral">Coral</string>
+    <string name="pt_accent_amber">Amber</string>
+    <string name="pt_accent_lime">Lime</string>
+    <string name="pt_accent_mint">Mint</string>
+    <string name="pt_accent_teal">Teal</string>
+    <string name="pt_accent_sky">Sky</string>
+    <string name="pt_accent_steel">Steel</string>
+    <string name="pt_accent_violet">Violet</string>
+    <string name="pt_accent_orchid">Orchid</string>
+    <string name="pt_accent_rose">Rose</string>
 </resources>

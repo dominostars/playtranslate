@@ -15,6 +15,7 @@ import android.view.VelocityTracker
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
+import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.R
 import kotlin.math.abs
 
@@ -131,13 +132,17 @@ class FloatingOverlayIcon(context: Context) : View(context) {
             gravity = android.view.Gravity.TOP or android.view.Gravity.LEFT
         }
 
-        try { wm.addView(spinner, lp) } catch (_: Exception) { return }
+        if (!PlayTranslateAccessibilityService.addOverlay(spinner, wm, lp)) return
         spinnerView = spinner
         spinnerWm = wm
     }
 
     private fun hideSpinnerWindow() {
-        try { spinnerView?.let { spinnerWm?.removeView(it) } } catch (_: Exception) {}
+        val view = spinnerView
+        val w = spinnerWm
+        if (view != null && w != null) {
+            PlayTranslateAccessibilityService.removeOverlay(view, w)
+        }
         spinnerView = null
         spinnerWm = null
     }
@@ -163,6 +168,11 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     var onDragMove: ((Float, Float) -> Unit)? = null
     /** Called on ACTION_UP after a drag. Return true if popup is active (icon returns to saved pos). */
     var onDragEnd: (() -> Boolean)? = null
+    /** Called on ACTION_CANCEL while a drag was active — system cancellation
+     *  (focus loss, parent intercept, etc.). Drag teardown for the gesture
+     *  goes through here instead of [onDragEnd] so no lift-time lookup runs
+     *  and the controller can fire its settle callback for state restore. */
+    var onDragCancel: (() -> Unit)? = null
     /** Called when the user holds the icon without moving (long press). */
     var onHoldStart: (() -> Unit)? = null
     /** Called when the user lifts after a hold (without having dragged). */
@@ -203,7 +213,12 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     /** Saved position before drag started (for restoring when popup is shown). */
     private var savedParamX = 0
     private var savedParamY = 0
-    /** True while in drag mode (ring appearance). */
+    /** True while a drag gesture is active. Set as soon as the user crosses
+     *  the tap threshold so other code (popup dismissal, region-indicator
+     *  restore) can tell "the user is dragging" before the screenshot lands.
+     *  Also gates the ring + mag-glass appearance — the screenshot pipeline
+     *  blanks the icon's window during capture, so we can flip the visuals
+     *  immediately without contaminating the captured pixels. */
     var inDragMode = false
         private set
     /** Whether onDragStart has already been called for this gesture. */
@@ -250,7 +265,10 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         }
 
         if (inDragMode) {
-            // Ring only (transparent inside so text is visible for screenshot)
+            // Ring only (transparent inside so text is visible for screenshot).
+            // The screenshot path blanks the icon's window via window-level
+            // alpha during the actual capture, so the ring won't appear in
+            // the captured pixels even though we paint it immediately.
             canvas.drawCircle(center, center, r - ringPaint.strokeWidth / 2, ringPaint)
             // Small magnifying glass icon in center
             drawMagnifyingGlass(canvas, center, center, r * 0.4f)
@@ -390,10 +408,8 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                         downParamY = p.y
                         try { wm?.updateViewLayout(this, p) } catch (_: Exception) {}
 
-                        // Switch to ring appearance, then notify controller to screenshot
                         enterDragMode()
                         dragStartFired = true
-                        // Post so the WM redraws the ring before screenshot is taken
                         post { onDragStart?.invoke() }
                     }
                     onDragMove?.invoke(event.rawX, event.rawY)
@@ -408,13 +424,28 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                 velocityTracker?.recycle()
                 velocityTracker = null
 
+                // Capture before exitDragMode clears it. dragStartFired is the
+                // canonical "this gesture became a drag" signal — totalMovement
+                // can't be trusted here because the drag-start logic rebases
+                // downRawX/Y to the finger position when crossing the tap
+                // threshold, so a user who barely moves past the threshold and
+                // then releases ends up with totalMovement below it again.
+                // Without this capture, the ACTION_UP would take the onTap
+                // branch and skip onDragEnd, leaving the magnifier on screen.
+                val wasDragStarted = dragStartFired
                 exitDragMode()
                 removeCallbacks(holdRunnable)
 
                 // Check both the flag AND elapsed time — the holdRunnable may
                 // not have executed yet if the main thread was busy.
                 val heldLongEnough = event.eventTime - event.downTime >= holdDelayMs
-                if (holdFired || (heldLongEnough && totalMovement < tapThresholdPx)) {
+                if (wasDragStarted) {
+                    if (onDragEnd?.invoke() == true) {
+                        restorePosition()
+                    } else {
+                        snapToEdge(lastXVel, lastYVel)
+                    }
+                } else if (holdFired || (heldLongEnough && totalMovement < tapThresholdPx)) {
                     holdFired = false
                     val p = params
                     if (p != null) {
@@ -425,10 +456,6 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                     onHoldEnd?.invoke()
                 } else if (totalMovement < tapThresholdPx) {
                     onTap?.invoke()
-                } else if (onDragEnd?.invoke() == true) {
-                    restorePosition()
-                } else {
-                    snapToEdge(lastXVel, lastYVel)
                 }
                 return true
             }
@@ -437,8 +464,19 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                 velocityTracker = null
                 removeCallbacks(holdRunnable)
                 if (holdFired) { holdFired = false; onHoldEnd?.invoke() }
+                val wasInDrag = inDragMode
                 exitDragMode()
-                snapToEdge(0f, 0f)
+                if (wasInDrag) {
+                    // System-driven cancellation (focus loss, parent intercept).
+                    // Revert to the icon's pre-gesture position rather than
+                    // snapping to an edge — the user didn't pick a new spot,
+                    // so an interrupted drag shouldn't reposition their icon
+                    // as a side effect.
+                    restorePosition()
+                    onDragCancel?.invoke()
+                } else {
+                    snapToEdge(0f, 0f)
+                }
                 return true
             }
         }

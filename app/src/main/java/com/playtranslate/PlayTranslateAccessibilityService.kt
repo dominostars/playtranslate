@@ -29,6 +29,7 @@ import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ui.FloatingIconMenu
 import com.playtranslate.ui.FloatingOverlayIcon
+import com.playtranslate.ui.MagnifierLens
 import com.playtranslate.ui.OcrDebugOverlayView
 import com.playtranslate.ui.RegionDragView
 import com.playtranslate.ui.TranslationOverlayView
@@ -55,13 +56,13 @@ import kotlinx.coroutines.launch
  * Settings → Accessibility → Installed apps → PlayTranslate → Enable
  * The app detects the enabled state via [isEnabled].
  */
-class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
+class PlayTranslateAccessibilityService : AccessibilityService() {
 
     private var dragView: RegionDragView? = null
     private var dragWm: WindowManager? = null
     /** True when the region drag editor overlay is showing. */
     val isRegionEditorActive: Boolean get() = dragView != null
-    override var floatingIcon: FloatingOverlayIcon? = null
+    internal var floatingIcon: FloatingOverlayIcon? = null
         set(value) {
             field = value
             CaptureService.instance?.updateForegroundState()
@@ -182,30 +183,108 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
         hideRegionIndicator(force = true)
     }
 
-    // ── Overlay state for ScreenshotManager ──────────────────────────────
+    // ── Overlay window registry ──────────────────────────────────────────
+    //
+    // Every accessibility-overlay window the service owns goes through
+    // [addOverlayWindow] / [removeOverlayWindow]. [prepareForCleanCapture]
+    // walks the registry and blanks each window via window-level alpha so
+    // none of them appear in the captured frame. This replaces a previous
+    // patchwork of per-overlay flags + View.alpha tweaks that left newly
+    // added windows (e.g. the magnifier) silently in the screenshot.
+
+    /** Registered overlay window. Stored handle keeps the wm + params so
+     *  blanking can flip [WindowManager.LayoutParams.alpha] and call
+     *  [WindowManager.updateViewLayout] without each call site managing
+     *  its own state. */
+    data class OverlayHandle(
+        val view: View,
+        val wm: WindowManager,
+        val params: WindowManager.LayoutParams,
+    )
+
+    /** Main-thread only — every WindowManager mutation happens on Main. */
+    private val overlayWindows = mutableListOf<OverlayHandle>()
 
     /**
-     * Hides overlays so they don't appear in a clean screenshot.
-     * Returns the previous state so [restoreAfterCapture] can restore it.
+     * Add a window via [WindowManager.addView] AND register it for
+     * clean-capture blanking. Returns true on success.
+     *
+     * Honors whatever [WindowManager.LayoutParams.alpha] is on [params].
+     * In particular, [bringFloatingIconToFront] removes and re-adds the
+     * icon with the same params object — if a clean capture has the icon
+     * blanked at alpha=0, the re-added window stays invisible until the
+     * capture's restore fires. Forcing alpha=1 here would flash the icon
+     * mid-capture and contaminate the bitmap.
      */
-    override fun prepareForCleanCapture(): OverlayState {
-        val state = OverlayState(
-            hadTranslation = translationOverlayView != null,
-            hadDebug = debugOverlayView != null,
-            hadRegionIndicator = regionIndicatorView != null
-        )
-        if (state.hadRegionIndicator) regionIndicatorView?.visibility = View.INVISIBLE
-        if (state.hadDebug) debugOverlayView?.visibility = View.INVISIBLE
-        if (state.hadTranslation) translationOverlayView?.visibility = View.INVISIBLE
-        return state
+    fun addOverlayWindow(
+        view: View,
+        wm: WindowManager,
+        params: WindowManager.LayoutParams,
+    ): Boolean {
+        return try {
+            wm.addView(view, params)
+            overlayWindows += OverlayHandle(view, wm, params)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "addOverlayWindow failed: ${e.message}")
+            false
+        }
     }
 
-    /** Restores overlays that were hidden by [prepareForCleanCapture]. */
-    override fun restoreAfterCapture(state: OverlayState) {
-        if (state.hadDebug) debugOverlayView?.visibility = View.VISIBLE
-        if (state.hadTranslation) translationOverlayView?.visibility = View.VISIBLE
-        if (state.hadRegionIndicator && floatingIcon?.inDragMode != true) {
-            regionIndicatorView?.visibility = View.VISIBLE
+    /** Unregister and call [WindowManager.removeView]. Returns true if the
+     *  view was registered (and thus removed). Returns false if the view was
+     *  never registered — the static [removeOverlay] uses this to fall back
+     *  to a direct removeView for windows that were added before the service
+     *  connected. */
+    fun removeOverlayWindow(view: View): Boolean {
+        val handle = overlayWindows.firstOrNull { it.view === view } ?: return false
+        overlayWindows -= handle
+        try { handle.wm.removeView(view) } catch (_: Exception) {}
+        return true
+    }
+
+    /** Opaque snapshot returned by [prepareForCleanCapture]. */
+    class OverlayState internal constructor(
+        internal val saved: List<OverlayHandle>
+    )
+
+    /**
+     * Hide every registered overlay so it doesn't appear in a screenshot.
+     * Uses [WindowManager.LayoutParams.alpha] (window-level, applied by
+     * SurfaceFlinger during composition) rather than [View.alpha] (applied
+     * during view drawing, which can lag a frame behind). Combined with
+     * the 2-vsync wait in [ScreenshotManager.requestClean], this reliably
+     * composites the overlay-free frame before capture.
+     *
+     * Skips handles already at alpha=0 — they belong to a concurrent
+     * in-flight capture that hasn't restored yet. Including them would
+     * let our restore re-show overlays that another capture still needs
+     * hidden. The try/finally in [ScreenshotManager.requestClean] is what
+     * guarantees restore on cancellation/exception, so we don't need
+     * self-healing here.
+     */
+    fun prepareForCleanCapture(): OverlayState {
+        val saved = mutableListOf<OverlayHandle>()
+        for (handle in overlayWindows) {
+            if (handle.params.alpha == 0f) continue
+            handle.params.alpha = 0f
+            try {
+                handle.wm.updateViewLayout(handle.view, handle.params)
+                saved += handle
+            } catch (_: Exception) {
+                handle.params.alpha = 1f
+            }
+        }
+        return OverlayState(saved)
+    }
+
+    /** Restores blanked overlays. The "intended visible alpha" is always 1
+     *  in this app — no overlay uses a non-1 alpha intentionally — so we
+     *  can write 1 unconditionally and recover from missed prior restores. */
+    fun restoreAfterCapture(state: OverlayState) {
+        for (handle in state.saved) {
+            handle.params.alpha = 1f
+            try { handle.wm.updateViewLayout(handle.view, handle.params) } catch (_: Exception) {}
         }
     }
 
@@ -217,10 +296,10 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
      * with a fade-out. Call [hideRegionIndicator] to force-remove instantly
      * (e.g. before taking another screenshot).
      */
-    override fun showRegionIndicator(
+    fun showRegionIndicator(
         display: Display,
         region: RegionEntry,
-        persistent: Boolean,
+        persistent: Boolean = false
     ) {
         hideRegionIndicator(force = true)
 
@@ -331,8 +410,12 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
-        )
-        wm.addView(view, params)
+        ).apply {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+        addOverlayWindow(view, wm, params)
         regionIndicatorView = view
         regionIndicatorWm = wm
         regionIndicatorPersistent = persistent
@@ -353,14 +436,14 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
      * Hides the region indicator. If [force] is false, persistent indicators
      * (from the region picker) are left alone — only flash indicators are cleared.
      */
-    override fun hideRegionIndicator(force: Boolean) {
+    fun hideRegionIndicator(force: Boolean = false) {
         if (!force && regionIndicatorPersistent) return
         regionIndicatorHandler.removeCallbacksAndMessages(null)
         val view = regionIndicatorView
         if (view != null) {
             view.animate().cancel()
             view.visibility = View.INVISIBLE
-            try { regionIndicatorWm?.removeView(view) } catch (_: Exception) {}
+            removeOverlayWindow(view)
         }
         regionIndicatorView = null
         regionIndicatorWm = null
@@ -435,7 +518,7 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
             y = (40 * dp).toInt()
         }
 
-        wm.addView(view, params)
+        addOverlayWindow(view, wm, params)
         pillView = view
         pillWm = wm
 
@@ -454,7 +537,7 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
         val view = pillView
         if (view != null) {
             view.animate().cancel()
-            try { pillWm?.removeView(view) } catch (_: Exception) {}
+            removeOverlayWindow(view)
         }
         pillView = null
         pillWm = null
@@ -484,13 +567,13 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
         }
-        wm.addView(view, params)
+        addOverlayWindow(view, wm, params)
         dragWm = wm
         dragView = view
     }
 
     fun hideRegionDragOverlay() {
-        try { dragView?.let { dragWm?.removeView(it) } } catch (_: Exception) {}
+        dragView?.let { removeOverlayWindow(it) }
         dragView = null
         dragWm = null
     }
@@ -584,26 +667,30 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
-        )
-        wm.addView(view, params)
+        ).apply {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+        addOverlayWindow(view, wm, params)
         debugOverlayWm = wm
         debugOverlayView = view
     }
 
     fun hideDebugOverlay() {
-        try { debugOverlayView?.let { debugOverlayWm?.removeView(it) } } catch (_: Exception) {}
+        debugOverlayView?.let { removeOverlayWindow(it) }
         debugOverlayView = null
         debugOverlayWm = null
     }
 
     // ── Live translation overlay ─────────────────────────────────────────
 
-    override fun showTranslationOverlay(
+    fun showTranslationOverlay(
         display: Display,
         boxes: List<TranslationOverlayView.TextBox>,
         cropLeft: Int, cropTop: Int,
         screenshotW: Int, screenshotH: Int,
-        pinholeMode: Boolean,
+        pinholeMode: Boolean = false
     ) {
         // Overlay is appearing — dismiss loading spinner
         floatingIcon?.showLoading = false
@@ -635,13 +722,12 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
-        ).apply { 
-            windowAnimations = 0
+        ).apply {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
-        }
-        wm.addView(view, params)
+        }.apply { windowAnimations = 0 }
+        addOverlayWindow(view, wm, params)
         translationOverlayWm = wm
         translationOverlayView = view
         translationOverlayDisplayId = display.displayId
@@ -657,29 +743,28 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
-        ).apply { 
-            windowAnimations = 0
+        ).apply {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
-        }
-        wm.addView(dirtyView, dirtyParams)
+        }.apply { windowAnimations = 0 }
+        addOverlayWindow(dirtyView, wm, dirtyParams)
         dirtyOverlayWm = wm
         dirtyOverlayView = dirtyView
     }
 
-    override fun hideTranslationOverlay() {
-        try { translationOverlayView?.let { translationOverlayWm?.removeView(it) } } catch (_: Exception) {}
+    fun hideTranslationOverlay() {
+        translationOverlayView?.let { removeOverlayWindow(it) }
         translationOverlayView = null
         translationOverlayWm = null
         translationOverlayDisplayId = -1
-        try { dirtyOverlayView?.let { dirtyOverlayWm?.removeView(it) } } catch (_: Exception) {}
+        dirtyOverlayView?.let { removeOverlayWindow(it) }
         dirtyOverlayView = null
         dirtyOverlayWm = null
     }
 
     /** Remove specific overlay boxes without rebuilding the entire view. */
-    override fun removeOverlayBoxes(toRemove: List<TranslationOverlayView.TextBox>) {
+    fun removeOverlayBoxes(toRemove: List<TranslationOverlayView.TextBox>) {
         translationOverlayView?.removeBoxesByContent(toRemove)
     }
 
@@ -762,13 +847,13 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
                 WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         )
-        wm.addView(view, params)
+        addOverlayWindow(view, wm, params)
         touchSentinelView = view
         touchSentinelWm = wm
     }
 
     private fun removeTouchSentinel() {
-        try { touchSentinelView?.let { touchSentinelWm?.removeView(it) } } catch (_: Exception) {}
+        touchSentinelView?.let { removeOverlayWindow(it) }
         touchSentinelView = null
         touchSentinelWm = null
     }
@@ -934,7 +1019,7 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
      *
      * Shows, hides, or relocates the icon based on current state.
      */
-    override fun ensureFloatingIcon() {
+    fun ensureFloatingIcon() {
         val prefs = Prefs(this)
         if (!prefs.showOverlayIcon) {
             hideFloatingIcon("pref_disabled")
@@ -980,9 +1065,11 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
 
         // Drag-to-lookup: OCR + dictionary popup while dragging
         val popup = WordLookupPopup(displayCtx, wm)
+        val magnifier = MagnifierLens(displayCtx, wm)
         val controller = DragLookupController(
             displayId = display.displayId,
-            popup = popup
+            popup = popup,
+            magnifier = magnifier
         )
         // Track whether live mode / region overlay were active when drag started
         var liveWasPausedForPopup = false
@@ -1007,20 +1094,13 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
             }
         }
 
-        popup.onDismiss = {
-            controller.onPopupDismissed()
-            // Resume only if drag is finished (not mid-drag word change).
-            // If the user is still dragging, resumption waits for onDragEnd.
-            if (!icon.inDragMode) {
-                restoreRegionOverlay()
-                resumeLiveMode()
-            }
-        }
-        // Called before transitioning to Anki review — prevents popup.onDismiss
-        // from resuming live mode (the Anki view should handle that instead).
-        controller.onTransitioningToAnki = {
-            liveWasPausedForPopup = false
-            overlayHiddenForDrag = false
+        // The controller fires onSettled from every "drag flow done, no popup
+        // pending" path: drag end with no OCR / no hit / async lookup miss,
+        // popup dismissed post-drag, and gesture cancel. The restore lambdas
+        // are idempotent (gated on overlayHiddenForDrag / liveWasPausedForPopup).
+        controller.onSettled = {
+            restoreRegionOverlay()
+            resumeLiveMode()
         }
         icon.onDragStart = {
             // Hide region preview so the user can see game text while dragging
@@ -1043,53 +1123,42 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
             controller.onDragStart()
         }
         icon.onDragMove = { rawX, rawY -> controller.onDragMove(rawX, rawY) }
-        icon.onDragEnd = {
-            val popupShowing = controller.onDragEnd()
-            // If no popup visible on lift, restore immediately
-            if (!popupShowing) {
-                restoreRegionOverlay()
-                resumeLiveMode()
-            }
-            popupShowing
-        }
+        icon.onDragEnd = { controller.onDragEnd() }
+        icon.onDragCancel = { controller.cancelDrag() }
         icon.onHoldCancel = { CaptureService.instance?.holdCancel() }
         icon.onHoldStart  = { CaptureService.instance?.holdStart() }
         icon.onHoldEnd    = { CaptureService.instance?.holdEnd() }
         icon.onAnyTouch   = { DimController.notifyInteraction() }
         dragLookupController = controller
 
-        try {
-            wm.addView(icon, params)
+        if (addOverlayWindow(icon, wm, params)) {
             // Set position after addView so the icon can query its own window bounds
             icon.setPosition(prefs.overlayIconEdge, prefs.overlayIconFraction)
-            wm.updateViewLayout(icon, params)
+            try { wm.updateViewLayout(icon, params) } catch (_: Exception) {}
             floatingIconWm = wm
             floatingIcon = icon
             floatingIconDisplayId = display.displayId
-        } catch (e: Exception) {
-            Log.e(TAG, "showFloatingIcon: addView failed", e)
         }
     }
 
     /** Remove and re-add the floating icon so it draws above newly added overlays. */
-    override fun bringFloatingIconToFront() {
+    private fun bringFloatingIconToFront() {
         val icon = floatingIcon ?: return
         val wm = floatingIconWm ?: return
+        val params = icon.params ?: return
         // Never re-add the icon while it's being dragged — removing it
         // mid-drag breaks the touch event sequence and freezes the icon.
         if (icon.inDragMode) return
-        try {
-            wm.removeView(icon)
-            wm.addView(icon, icon.params)
-        } catch (_: Exception) {}
+        removeOverlayWindow(icon)
+        addOverlayWindow(icon, wm, params)
     }
 
-    override fun hideFloatingIcon(reason: String) {
+    fun hideFloatingIcon(reason: String = "unspecified") {
         Log.i(TAG, "hideFloatingIcon: $reason")
         dragLookupController?.destroy()
         dragLookupController = null
         floatingIcon?.destroy()
-        try { floatingIcon?.let { floatingIconWm?.removeView(it) } } catch (_: Exception) {}
+        floatingIcon?.let { removeOverlayWindow(it) }
         floatingIcon = null
         floatingIconWm = null
         floatingIconDisplayId = -1
@@ -1101,13 +1170,9 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
         dismissFloatingMenu()
         val wm = createDisplayContext(display).getSystemService(WindowManager::class.java) ?: return
         val screenSize = getDisplaySize(display)
-        val themeRes = when (Prefs(this).themeIndex) {
-            1    -> R.style.Theme_PlayTranslate_White
-            2    -> R.style.Theme_PlayTranslate_Rainbow
-            3    -> R.style.Theme_PlayTranslate_Purple
-            else -> R.style.Theme_PlayTranslate
-        }
+        val themeRes = baseActivityTheme(this)
         val themedCtx = android.view.ContextThemeWrapper(createDisplayContext(display), themeRes)
+        applyAccentOverlay(themedCtx.theme, this)
         val menu = FloatingIconMenu(themedCtx)
         menu.isSingleScreen = Prefs.isSingleScreen(this)
 
@@ -1181,7 +1246,12 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
                 hideTranslationOverlay()
                 CaptureService.instance?.refreshLiveOverlay()
             } else {
-                CaptureService.instance?.translateOnceOnScreen()
+                val effectivelySingleScreen = Prefs.isSingleScreen(this) || !MainActivity.isInForeground
+                if (effectivelySingleScreen) {
+                    handleRegionSelection(display.displayId, region)
+                } else {
+                    sendMainActivityIntent(MainActivity.ACTION_REGION_CAPTURE)
+                }
             }
         }
         menu.onClearRegion = {
@@ -1219,7 +1289,7 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
             PixelFormat.TRANSLUCENT
         )
 
-        wm.addView(menu, params)
+        addOverlayWindow(menu, wm, params)
         floatingMenuWm = wm
         floatingMenu = menu
 
@@ -1232,7 +1302,7 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
 
     private fun dismissFloatingMenu() {
         val wasShowing = floatingMenu != null
-        try { floatingMenu?.let { floatingMenuWm?.removeView(it) } } catch (_: Exception) {}
+        floatingMenu?.let { removeOverlayWindow(it) }
         floatingMenu = null
         floatingMenuWm = null
         if (wasShowing) {
@@ -1390,7 +1460,7 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
                 if (CaptureService.instance?.isLive == true) {
                     CaptureService.instance?.refreshLiveOverlay()
                 } else {
-                    CaptureService.instance?.translateOnceOnScreen()
+                    handleRegionSelection(display.displayId, drawnRegion)
                 }
             }
         }
@@ -1403,14 +1473,19 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }.apply {
             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
             y = (32 * dp).toInt()
         }
 
-        wm.addView(bar, barParams)
+        addOverlayWindow(bar, wm, barParams)
         regionEditorBarWm = wm
         regionEditorBar = bar
 
@@ -1440,23 +1515,28 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }.apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             y = (16 * dp).toInt()
         }
-        wm.addView(label, labelParams)
+        addOverlayWindow(label, wm, labelParams)
         regionEditorLabelWm = wm
         regionEditorLabel = label
     }
 
     private fun hideRegionEditor() {
         hideRegionDragOverlay()
-        try { regionEditorBar?.let { regionEditorBarWm?.removeView(it) } } catch (_: Exception) {}
+        regionEditorBar?.let { removeOverlayWindow(it) }
         regionEditorBar = null
         regionEditorBarWm = null
-        try { regionEditorLabel?.let { regionEditorLabelWm?.removeView(it) } } catch (_: Exception) {}
+        regionEditorLabel?.let { removeOverlayWindow(it) }
         regionEditorLabel = null
         regionEditorLabelWm = null
         CaptureService.instance?.holdActive = false
@@ -1467,7 +1547,7 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
      * if the icon is not showing. Used by CaptureService to black out the icon
      * area before OCR so it doesn't interfere with text recognition.
      */
-    override fun getFloatingIconRect(): android.graphics.Rect? {
+    fun getFloatingIconRect(): android.graphics.Rect? {
         val icon = floatingIcon ?: return null
         val p = icon.params ?: return null
         return android.graphics.Rect(p.x, p.y, p.x + icon.viewSizePx, p.y + icon.viewSizePx)
@@ -1590,9 +1670,41 @@ class PlayTranslateAccessibilityService : AccessibilityService(), OverlayHost {
     companion object {
         private const val TAG = "PlayTranslateA11y"
 
-        /** Non-null while the service is connected (i.e. user has it enabled). */
+        /** Non-null while the service is connected (i.e. user has it enabled).
+         *  `@Volatile` because the field is written from the main thread
+         *  (`onServiceConnected` / `onUnbind`) and read from many others —
+         *  drag controllers, hotkey callbacks, ML Kit worker threads. Without
+         *  the visibility barrier a stale non-null read could survive a
+         *  service teardown. Mirrors [CaptureService.instance]'s annotation. */
+        @Volatile
         var instance: PlayTranslateAccessibilityService? = null
 
         val isEnabled: Boolean get() = instance != null
+
+        /**
+         * Static convenience for overlay owners that don't have a service
+         * reference handy (MagnifierLens, WordLookupPopup, etc.). When the
+         * service isn't connected the window is added without registration —
+         * it just won't participate in clean-capture blanking.
+         */
+        fun addOverlay(
+            view: View,
+            wm: WindowManager,
+            params: WindowManager.LayoutParams,
+        ): Boolean {
+            instance?.let { return it.addOverlayWindow(view, wm, params) }
+            return try { wm.addView(view, params); true } catch (_: Exception) { false }
+        }
+
+        fun removeOverlay(view: View, wm: WindowManager) {
+            // If the service is connected and the view is in the registry,
+            // removeOverlayWindow handles both unregister + removeView. If
+            // the view was added via the no-service fallback path of
+            // [addOverlay] (service connected later), it's not in the
+            // registry — fall through to a direct removeView so the window
+            // doesn't leak.
+            if (instance?.removeOverlayWindow(view) == true) return
+            try { wm.removeView(view) } catch (_: Exception) {}
+        }
     }
 }

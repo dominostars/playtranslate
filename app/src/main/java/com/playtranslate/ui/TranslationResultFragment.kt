@@ -31,6 +31,7 @@ import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.R
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.model.TranslationResult
+import com.playtranslate.model.headwordFor
 import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -101,6 +102,12 @@ class TranslationResultFragment : Fragment() {
     /** Maps character ranges in original text to (displayWord, reading). */
     private var wordSpans = mutableListOf<Triple<IntRange, String, String>>()
     private var furiganaPopup: PopupWindow? = null
+
+    /** Char range currently highlighted with the accent background while a
+     *  word-lookup popup is active. Tracked separately from the span object
+     *  so [applyFurigana] can re-attach the highlight after rebuilding the
+     *  spannable. */
+    private var highlightedWordRange: IntRange? = null
 
     /** Called when Anki button enabled state changes (e.g. after word lookups complete). */
     var onAnkiEnabledChanged: ((Boolean) -> Unit)? = null
@@ -261,6 +268,10 @@ class TranslationResultFragment : Fragment() {
         } else {
             tvOriginal.text = plainText
         }
+        // The text reference just got swapped, so any active accent
+        // highlight span was dropped on the floor — re-attach it from the
+        // tracked range so toggling furigana mid-popup doesn't lose it.
+        highlightedWordRange?.let { setWordHighlight(it) }
     }
 
     // ── Public API ────────────────────────────────────────────────────────
@@ -399,7 +410,12 @@ class TranslationResultFragment : Fragment() {
                     resolver.lookup(lookupForm, reading.ifEmpty { null })
                 }
                 val response = defResult?.response
-                val entry = response?.entries?.firstOrNull()
+                // See DragLookupController for the multi-entry rationale —
+                // Wiktionary packs split POS into separate entries, JMdict
+                // doesn't, [flatSenses] merges them safely for both.
+                val entries = response?.entries.orEmpty()
+                val entry = entries.firstOrNull()
+                val flatSenses = entries.flatMap { it.senses }
 
                 // Build popup data based on DefinitionResult tier.
                 val word: String
@@ -409,36 +425,60 @@ class TranslationResultFragment : Fragment() {
                 val isCommon: Boolean
                 when {
                     entry != null && defResult is DefinitionResult.Native -> {
-                        val form = entry.headwords.firstOrNull()
+                        val form = entry.headwordFor(lookupForm)
                         word = form?.written ?: form?.reading ?: entry.slug
                         popupLabel = null
-                        val targetByOrd = defResult.targetSenses.associateBy { it.senseOrd }
-                        val mtDefs = defResult.translatedDefinitions
-                        senses = entry.senses.mapIndexed { i, sense ->
-                            val target = targetByOrd[i]
-                            if (target != null) {
+                        val targetSensesSorted = defResult.targetSenses.sortedBy { it.senseOrd }
+                        val isTargetDriven = prefs.targetLang != "en" && targetSensesSorted.isNotEmpty()
+                        senses = if (isTargetDriven) {
+                            // Blank-pos target rows (PanLex) inherit the
+                            // source-entry POS only when entries agree;
+                            // multi-POS source yields an empty fallback so
+                            // we don't mislabel verb/intj cells as NOUN.
+                            val fallbackPos = com.playtranslate.model
+                                .unambiguousFallbackPos(entries)
+                                .joinToString(", ")
+                            targetSensesSorted.map { target ->
+                                val pos = target.pos.filter { it.isNotBlank() }
+                                    .takeIf { it.isNotEmpty() }
+                                    ?.joinToString(", ")
+                                    ?: fallbackPos
                                 WordLookupPopup.SenseDisplay(
-                                    pos = target.pos.joinToString(", "),
-                                    definition = target.glosses.joinToString("; ")
+                                    pos = pos,
+                                    definition = target.glosses.joinToString("; "),
                                 )
-                            } else {
-                                val mt = mtDefs?.getOrNull(i)?.takeIf { it.isNotBlank() }
-                                WordLookupPopup.SenseDisplay(
-                                    pos = sense.partsOfSpeech.joinToString(", "),
-                                    definition = mt ?: sense.targetDefinitions.joinToString("; ")
-                                )
+                            }
+                        } else {
+                            // Reached only when target == "en" (Native is not
+                            // returned for English targets) or for the empty-
+                            // target-senses defensive case. Both render straight
+                            // off the flat sense list across every entry.
+                            val targetByOrd = targetSensesSorted.associateBy { it.senseOrd }
+                            flatSenses.mapIndexed { i, sense ->
+                                val target = targetByOrd[i]
+                                if (target != null) {
+                                    WordLookupPopup.SenseDisplay(
+                                        pos = target.pos.joinToString(", "),
+                                        definition = target.glosses.joinToString("; "),
+                                    )
+                                } else {
+                                    WordLookupPopup.SenseDisplay(
+                                        pos = sense.partsOfSpeech.joinToString(", "),
+                                        definition = sense.targetDefinitions.joinToString("; "),
+                                    )
+                                }
                             }
                         }
                         freqScore = entry.freqScore
                         isCommon = entry.isCommon == true
                     }
                     entry != null && defResult is DefinitionResult.MachineTranslated -> {
-                        val form = entry.headwords.firstOrNull()
+                        val form = entry.headwordFor(lookupForm)
                         word = form?.written ?: form?.reading ?: entry.slug
                         popupLabel = "⚠ Machine translated"
                         val defs = defResult.translatedDefinitions
                         senses = if (defs != null) {
-                            entry.senses.mapIndexed { i, sense ->
+                            flatSenses.mapIndexed { i, sense ->
                                 WordLookupPopup.SenseDisplay(
                                     pos = sense.partsOfSpeech.joinToString(", "),
                                     definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
@@ -447,7 +487,7 @@ class TranslationResultFragment : Fragment() {
                         } else {
                             buildList {
                                 add(WordLookupPopup.SenseDisplay(pos = "", definition = defResult.translatedHeadword))
-                                entry.senses.forEach { sense ->
+                                flatSenses.forEach { sense ->
                                     add(WordLookupPopup.SenseDisplay(
                                         pos = sense.partsOfSpeech.joinToString(", "),
                                         definition = sense.targetDefinitions.joinToString("; ")
@@ -459,11 +499,11 @@ class TranslationResultFragment : Fragment() {
                         isCommon = entry.isCommon == true
                     }
                     entry != null && defResult is DefinitionResult.EnglishFallback && defResult.translatedDefinitions != null -> {
-                        val form = entry.headwords.firstOrNull()
+                        val form = entry.headwordFor(lookupForm)
                         word = form?.written ?: form?.reading ?: entry.slug
                         popupLabel = "⚠ Machine translated"
                         val defs = defResult.translatedDefinitions
-                        senses = entry.senses.mapIndexed { i, sense ->
+                        senses = flatSenses.mapIndexed { i, sense ->
                             WordLookupPopup.SenseDisplay(
                                 pos = sense.partsOfSpeech.joinToString(", "),
                                 definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
@@ -473,10 +513,10 @@ class TranslationResultFragment : Fragment() {
                         isCommon = entry.isCommon == true
                     }
                     entry != null -> {
-                        val form = entry.headwords.firstOrNull()
+                        val form = entry.headwordFor(lookupForm)
                         word = form?.written ?: form?.reading ?: entry.slug
                         popupLabel = null
-                        senses = entry.senses.map { sense ->
+                        senses = flatSenses.map { sense ->
                             WordLookupPopup.SenseDisplay(
                                 pos = sense.partsOfSpeech.joinToString(", "),
                                 definition = sense.targetDefinitions.joinToString("; ")
@@ -534,7 +574,9 @@ class TranslationResultFragment : Fragment() {
                             mainWordResults.toMap()
                         )
                     }
+                    onDismiss = { setWordHighlight(null) }
                 }
+                setWordHighlight(span.first)
                 wordPopup?.show(word, lookupReading, senses, freqScore,
                     isCommon, screenX, screenY, dm.widthPixels, dm.heightPixels,
                     anchorHeight = lineH, label = popupLabel)
@@ -547,6 +589,49 @@ class TranslationResultFragment : Fragment() {
     private fun dismissWordPopup() {
         wordPopup?.dismiss()
         wordPopup = null
+    }
+
+    /**
+     * Highlight the character [range] inside [tvOriginal] with the accent
+     * background, or clear any active highlight when [range] is null.
+     * Promotes the text to a [android.text.SpannableString] on first use so
+     * the BackgroundColorSpan has somewhere to land — [ClickableTextView]'s
+     * default text is a plain String.
+     */
+    private fun setWordHighlight(range: IntRange?) {
+        if (view == null) return
+        val ctx = context ?: return
+        val current = tvOriginal.text ?: return
+        // Rebuild a fresh Spannable from current so any FuriganaSpans
+        // already on the text are preserved (SpannableString's copy
+        // constructor brings spans across), and so we can strip prior
+        // BackgroundColorSpans cleanly before adding the new one. Mutating
+        // the existing text in place is unreliable: TextView's setText
+        // routes Spannables through Spannable.Factory, which wraps them in
+        // a new instance, so the reference we held would be orphaned and
+        // subsequent setSpan calls wouldn't show up on screen.
+        val rebuilt = android.text.SpannableString(current)
+        rebuilt.getSpans(0, rebuilt.length, android.text.style.BackgroundColorSpan::class.java)
+            .forEach { rebuilt.removeSpan(it) }
+        highlightedWordRange = range
+        if (range != null) {
+            val safeEnd = (range.last + 1).coerceAtMost(rebuilt.length)
+            val safeStart = range.first.coerceAtLeast(0).coerceAtMost(safeEnd)
+            if (safeStart < safeEnd) {
+                val accentBg = withAlpha(ctx.themeColor(R.attr.ptAccent), 0.30f)
+                rebuilt.setSpan(
+                    android.text.style.BackgroundColorSpan(accentBg),
+                    safeStart, safeEnd,
+                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+            }
+        }
+        tvOriginal.text = rebuilt
+    }
+
+    private fun withAlpha(color: Int, alpha: Float): Int {
+        val a = (alpha.coerceIn(0f, 1f) * 255).toInt()
+        return Color.argb(a, Color.red(color), Color.green(color), Color.blue(color))
     }
 
     private fun showFurigana(range: IntRange, reading: String) {
@@ -774,7 +859,7 @@ class TranslationResultFragment : Fragment() {
             val rows = tokens.map { word ->
                 val row = inflater.inflate(R.layout.item_word_lookup, mainWordsContainer, false)
                 row.findViewById<TextView>(R.id.tvItemWord).text = word
-                row.findViewById<TextView>(R.id.tvItemMeaning).text = "…"
+                row.findViewById<TextView>(R.id.tvItemMeaning).text = "Loading..."
                 if (mainWordsContainer.childCount > 0) {
                     mainWordsContainer.addView(inflateWordDivider())
                 }
@@ -802,23 +887,49 @@ class TranslationResultFragment : Fragment() {
                             }
                             val response = defResult?.response
                             if (response != null && response.entries.isNotEmpty()) {
-                                val entry   = response.entries.first()
-                                val primary = entry.headwords.firstOrNull()
+                                // Wiktionary packs split each POS into a
+                                // separate entry; flat sense list across
+                                // every returned entry mirrors the popup
+                                // and bottom-sheet renderers so multi-POS
+                                // headwords don't lose verb/intj senses.
+                                val entry      = response.entries.first()
+                                val flatSenses = response.entries.flatMap { it.senses }
+                                // Prefer the headword that matches what the
+                                // user saw — JMdict groups variant kanji
+                                // under one entry (e.g. 無下/無気), and the
+                                // primary form often differs from the surface
+                                // in the source text. Try the surface first
+                                // (handles direct variant match), then the
+                                // lookupForm (covers inflected surfaces
+                                // whose dict form matches a non-primary
+                                // headword), then fall back to the primary
+                                // as a last-resort label.
+                                val primary    = entry.headwordFor(surfaceByToken[word])
+                                    ?: entry.headwordFor(word)
+                                    ?: entry.headwords.firstOrNull()
                                 freqScore = entry.freqScore
                                 when (defResult) {
                                     is DefinitionResult.Native -> {
                                         displayWord = primary?.written ?: primary?.reading ?: word
                                         tvWord.text = displayWord
                                         reading = primary?.reading?.takeIf { it != primary.written } ?: ""
-                                        val targetByOrd = defResult.targetSenses.associateBy { it.senseOrd }
-                                        val mtDefs = defResult.translatedDefinitions
-                                        meaning = entry.senses.mapIndexed { i, sense ->
-                                            val target = targetByOrd[i]
-                                            val glosses = target?.glosses?.joinToString("; ")
-                                                ?: mtDefs?.getOrNull(i)?.takeIf { it.isNotBlank() }
-                                                ?: sense.targetDefinitions.joinToString("; ")
-                                            if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
-                                        }.joinToString("\n")
+                                        val targetSensesSorted = defResult.targetSenses.sortedBy { it.senseOrd }
+                                        val isTargetDriven = wordsPrefs.targetLang != "en" && targetSensesSorted.isNotEmpty()
+                                        meaning = if (isTargetDriven) {
+                                            targetSensesSorted.mapIndexed { i, target ->
+                                                val glosses = target.glosses.joinToString("; ")
+                                                if (targetSensesSorted.size > 1) "${i + 1}. $glosses" else glosses
+                                            }.joinToString("\n")
+                                        } else {
+                                            // English-target or defensive empty-targetSenses path.
+                                            val targetByOrd = targetSensesSorted.associateBy { it.senseOrd }
+                                            flatSenses.mapIndexed { i, sense ->
+                                                val target = targetByOrd[i]
+                                                val glosses = target?.glosses?.joinToString("; ")
+                                                    ?: sense.targetDefinitions.joinToString("; ")
+                                                if (flatSenses.size > 1) "${i + 1}. $glosses" else glosses
+                                            }.joinToString("\n")
+                                        }
                                     }
                                     is DefinitionResult.MachineTranslated -> {
                                         displayWord = primary?.written ?: primary?.reading ?: word
@@ -826,15 +937,15 @@ class TranslationResultFragment : Fragment() {
                                         reading = primary?.reading?.takeIf { it != primary.written } ?: ""
                                         val defs = defResult.translatedDefinitions
                                         meaning = if (defs != null) {
-                                            entry.senses.mapIndexed { i, sense ->
+                                            flatSenses.mapIndexed { i, sense ->
                                                 val glosses = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
-                                                if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
+                                                if (flatSenses.size > 1) "${i + 1}. $glosses" else glosses
                                             }.joinToString("\n")
                                         } else {
                                             val translatedLine = defResult.translatedHeadword
-                                            val englishLines = entry.senses.mapIndexed { i, sense ->
+                                            val englishLines = flatSenses.mapIndexed { i, sense ->
                                                 val glosses = sense.targetDefinitions.joinToString("; ")
-                                                if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
+                                                if (flatSenses.size > 1) "${i + 1}. $glosses" else glosses
                                             }.joinToString("\n")
                                             "$translatedLine\n$englishLines"
                                         }
@@ -844,10 +955,10 @@ class TranslationResultFragment : Fragment() {
                                         tvWord.text = displayWord
                                         reading = primary?.reading?.takeIf { it != primary.written } ?: ""
                                         val defs = defResult.translatedDefinitions
-                                        meaning = entry.senses.mapIndexed { i, sense ->
+                                        meaning = flatSenses.mapIndexed { i, sense ->
                                             val glosses = defs?.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
                                                 ?: sense.targetDefinitions.joinToString("; ")
-                                            if (entry.senses.size > 1) "${i + 1}. $glosses" else glosses
+                                            if (flatSenses.size > 1) "${i + 1}. $glosses" else glosses
                                         }.joinToString("\n")
                                     }
                                 }

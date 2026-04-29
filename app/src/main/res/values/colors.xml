@@ -35,17 +35,38 @@
     <color name="pt_light_translation">#FF9E5A00</color>
 
     <!-- ══════════════════════════════════════════════════════════ -->
-    <!-- Accents — per-theme                                       -->
+    <!-- Accent palette — 10 swatches, applied via theme overlay   -->
+    <!-- Tints are 12% alpha (1F) of the same RGB.                 -->
     <!-- ══════════════════════════════════════════════════════════ -->
+    <color name="pt_accent_coral">#FFF08A6D</color>
+    <color name="pt_accent_coral_tint">#1FF08A6D</color>
+
+    <color name="pt_accent_amber">#FFE4B24A</color>
+    <color name="pt_accent_amber_tint">#1FE4B24A</color>
+
+    <color name="pt_accent_lime">#FFAACF5B</color>
+    <color name="pt_accent_lime_tint">#1FAACF5B</color>
+
+    <color name="pt_accent_mint">#FF67D39A</color>
+    <color name="pt_accent_mint_tint">#1F67D39A</color>
+
     <color name="pt_accent_teal">#FF4DD0C2</color>
-    <color name="pt_accent_teal_tint_dark">#244DD0C2</color>
-    <color name="pt_accent_teal_tint_light">#1A4DD0C2</color>
+    <color name="pt_accent_teal_tint">#1F4DD0C2</color>
 
-    <color name="pt_accent_purple">#FFB794F4</color>
-    <color name="pt_accent_purple_tint">#24B794F4</color>
+    <color name="pt_accent_sky">#FF6BB6E8</color>
+    <color name="pt_accent_sky_tint">#1F6BB6E8</color>
 
-    <color name="pt_accent_coral">#FFE67A6F</color>
-    <color name="pt_accent_coral_tint">#1AE67A6F</color>
+    <color name="pt_accent_steel">#FF8AA4B6</color>
+    <color name="pt_accent_steel_tint">#1F8AA4B6</color>
+
+    <color name="pt_accent_violet">#FFA496EC</color>
+    <color name="pt_accent_violet_tint">#1FA496EC</color>
+
+    <color name="pt_accent_orchid">#FFD184D8</color>
+    <color name="pt_accent_orchid_tint">#1FD184D8</color>
+
+    <color name="pt_accent_rose">#FFEC7A9E</color>
+    <color name="pt_accent_rose_tint">#1FEC7A9E</color>
 
     <!-- Named colors referenced by vector drawables (tinted at runtime) -->
     <color name="text_secondary">@color/pt_dark_text_muted</color>

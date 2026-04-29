@@ -20,19 +20,19 @@ fun interface WordTranslator {
 sealed interface DefinitionResult {
     val response: DictionaryResponse
 
-    /** Target-language definition from the downloaded pack. */
+    /**
+     * Target-language definition from the downloaded pack. The renderer
+     * iterates [targetSenses] directly (target-driven mode) — JMdict's
+     * non-English sense blocks don't reliably align with English sense
+     * ordinals, so by-ordinal merging with the source entry is gone.
+     * Source-language meanings are not surfaced when this variant is
+     * returned; English is hidden when the user picked a non-English
+     * target. See WordDetailBottomSheet.setupPanel for the render path.
+     */
     data class Native(
         override val response: DictionaryResponse,
         val targetSenses: List<TargetSense>,
         val source: String,
-        /**
-         * Per-sense ML-translated definitions used as the fallback when a
-         * source sense has no match in [targetSenses] (target pack covers
-         * the entry but not every ordinal). Index-parallel to
-         * `response.entries[0].senses`. Null when no EN→target translator
-         * was available.
-         */
-        val translatedDefinitions: List<String>? = null,
     ) : DefinitionResult
 
     /** ML Kit translated the headword. Definitions may also be translated. */
@@ -95,16 +95,14 @@ class DefinitionResolver(
                 val senses = targetGlossDb.lookup(sourceLang, hw, reading)
                 Log.d(TAG, "  Tier 1: lookup($sourceLang, $hw, $reading) -> ${senses?.size ?: "null"}")
                 if (senses != null) {
-                    // Compute MT fallbacks only when the target pack
-                    // covers fewer sense ordinals than the source entry
-                    // has — otherwise we'd pay ML Kit cost for senses the
-                    // native target already overrides.
-                    val coveredOrds = senses.map { it.senseOrd }.toSet()
-                    val hasUncovered = entry?.senses?.indices?.any { it !in coveredOrds } == true
-                    val translatedDefs = if (hasUncovered && entry != null)
-                        translateDefinitions(entry) else null
-                    Log.d(TAG, "  -> Native (${senses.first().source}, ${senses.size} senses, fallback=${translatedDefs?.size})")
-                    return DefinitionResult.Native(response, senses, senses.first().source, translatedDefs)
+                    // Native pack hit → renderer iterates target senses
+                    // directly (target-driven mode). No per-sense MT
+                    // fallback computed; we save N ML Kit calls per word
+                    // tap and don't pretend non-English senses align with
+                    // English ordinals (they don't — see the long
+                    // discussion when this path was added).
+                    Log.d(TAG, "  -> Native target-driven (${senses.first().source}, ${senses.size} target senses, sourceLang=$sourceLang, targetLang=$targetLang)")
+                    return DefinitionResult.Native(response, senses, senses.first().source)
                 }
             }
             Log.d(TAG, "  Tier 1: no match in target DB")
@@ -120,7 +118,7 @@ class DefinitionResolver(
                 val translated = mlKitTranslator.translate(headword)
                 Log.d(TAG, "  Tier 2: translate($headword) -> $translated")
                 if (translated.isNotBlank() && !translated.equals(headword, ignoreCase = true)) {
-                    val translatedDefs = entry?.let { translateDefinitions(it) }
+                    val translatedDefs = translateDefinitions(response)
                     Log.d(TAG, "  -> MachineTranslated (translatedDefs=${translatedDefs?.size})")
                     return DefinitionResult.MachineTranslated(response, translated, translatedDefs)
                 }
@@ -135,18 +133,20 @@ class DefinitionResolver(
         }
 
         // Tier 3: English fallback (with translated definitions when possible)
-        val translatedDefs = entry?.let { translateDefinitions(it) }
+        val translatedDefs = translateDefinitions(response)
         Log.d(TAG, "  -> EnglishFallback (translatedDefs=${translatedDefs?.size})")
         return DefinitionResult.EnglishFallback(response, translatedDefs)
     }
 
     /**
      * Translates each example's source text into the target language,
-     * parallel to `response.entries[0].senses[i].examples`. Deliberately
-     * SEPARATE from [lookup] because word-panel / drag-to-lookup flows
-     * resolve dozens of tokens per sentence and never surface examples —
-     * callers that need translated examples (the word-detail sheet) call
-     * this explicitly after [lookup] resolves.
+     * parallel to the flat sense list `response.entries.flatMap { it.senses }`
+     * — same flattening WordDetailBottomSheet uses to render senses across
+     * the (often multiple) entries Wiktionary-derived packs return for one
+     * surface. Deliberately SEPARATE from [lookup] because word-panel /
+     * drag-to-lookup flows resolve dozens of tokens per sentence and
+     * never surface examples — callers that need translated examples
+     * (the word-detail sheet) call this explicitly after [lookup] resolves.
      *
      * Returns null when translation would be a no-op (targetLang == "en"
      * — the UI falls back to `Example.translation` which is already
@@ -158,12 +158,12 @@ class DefinitionResolver(
     suspend fun translateExamples(response: DictionaryResponse): List<List<String>>? {
         if (targetLang == "en") return null
         val translator = mlKitTranslator ?: return null
-        val firstEntry = response.entries.firstOrNull() ?: return null
-        val anyExamples = firstEntry.senses.any { it.examples.isNotEmpty() }
-        if (!anyExamples) return null
+        val flatSenses = response.entries.flatMap { it.senses }
+        if (flatSenses.isEmpty()) return null
+        if (flatSenses.none { it.examples.isNotEmpty() }) return null
 
         return coroutineScope {
-            firstEntry.senses.map { sense ->
+            flatSenses.map { sense ->
                 sense.examples.map { ex ->
                     async {
                         if (ex.text.isBlank()) return@async ""
@@ -182,12 +182,17 @@ class DefinitionResolver(
     }
 
     /**
-     * Translates each sense's English definitions to the target language.
-     * Returns null if no EN→target translator is available.
+     * Translates each sense's English definitions to the target language,
+     * parallel to `response.entries.flatMap { it.senses }` — same flat
+     * ordering WordDetailBottomSheet uses to render senses across the
+     * (often multiple) entries Wiktionary-derived packs return for one
+     * surface. Returns null if no EN→target translator is available.
      */
-    private suspend fun translateDefinitions(entry: DictionaryEntry): List<String>? {
+    private suspend fun translateDefinitions(response: DictionaryResponse): List<String>? {
         if (enToTargetTranslator == null || targetLang == "en") return null
-        return entry.senses.map { sense ->
+        val flatSenses = response.entries.flatMap { it.senses }
+        if (flatSenses.isEmpty()) return null
+        return flatSenses.map { sense ->
             val english = sense.targetDefinitions.joinToString("; ")
             if (english.isBlank()) ""
             else try {

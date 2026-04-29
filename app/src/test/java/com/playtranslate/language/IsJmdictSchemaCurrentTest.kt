@@ -47,6 +47,7 @@ class IsJmdictSchemaCurrentTest {
         db.execSQL("CREATE TABLE headword (entry_id INTEGER, position INTEGER, text TEXT)")
         db.execSQL("CREATE TABLE sense (id INTEGER, misc TEXT)")
         db.execSQL("CREATE TABLE kanjidic (literal TEXT)")
+        db.execSQL("CREATE TABLE kanji_meaning (literal TEXT, lang TEXT, meanings TEXT)")
     }
 
     @Test fun `returns true when all validated columns and tables are present`() {
@@ -60,6 +61,7 @@ class IsJmdictSchemaCurrentTest {
             d.execSQL("CREATE TABLE headword (entry_id INTEGER, position INTEGER, text TEXT)")
             d.execSQL("CREATE TABLE sense (id INTEGER, misc TEXT)")
             d.execSQL("CREATE TABLE kanjidic (literal TEXT)")
+            d.execSQL("CREATE TABLE kanji_meaning (literal TEXT, lang TEXT, meanings TEXT)")
         }
         assertFalse(LanguagePackStore.isJmdictSchemaCurrent(db))
     }
@@ -75,6 +77,7 @@ class IsJmdictSchemaCurrentTest {
             d.execSQL("CREATE TABLE kanji (entry_id INTEGER, position INTEGER, text TEXT)")
             d.execSQL("CREATE TABLE sense (id INTEGER, misc TEXT)")
             d.execSQL("CREATE TABLE kanjidic (literal TEXT)")
+            d.execSQL("CREATE TABLE kanji_meaning (literal TEXT, lang TEXT, meanings TEXT)")
         }
         assertFalse(LanguagePackStore.isJmdictSchemaCurrent(db))
     }
@@ -85,6 +88,7 @@ class IsJmdictSchemaCurrentTest {
             d.execSQL("CREATE TABLE headword (entry_id INTEGER, position INTEGER, text TEXT)")
             d.execSQL("CREATE TABLE sense (id INTEGER)")
             d.execSQL("CREATE TABLE kanjidic (literal TEXT)")
+            d.execSQL("CREATE TABLE kanji_meaning (literal TEXT, lang TEXT, meanings TEXT)")
         }
         assertFalse(LanguagePackStore.isJmdictSchemaCurrent(db))
     }
@@ -94,6 +98,21 @@ class IsJmdictSchemaCurrentTest {
             d.execSQL("CREATE TABLE entry (id INTEGER, freq_score INTEGER)")
             d.execSQL("CREATE TABLE headword (entry_id INTEGER, position INTEGER, text TEXT)")
             d.execSQL("CREATE TABLE sense (id INTEGER, misc TEXT)")
+            d.execSQL("CREATE TABLE kanji_meaning (literal TEXT, lang TEXT, meanings TEXT)")
+        }
+        assertFalse(LanguagePackStore.isJmdictSchemaCurrent(db))
+    }
+
+    @Test fun `returns false when kanji_meaning table is missing (pre-multilingual DB)`() {
+        // Pre-multilingual JMdict packs stored English meanings inline in
+        // kanjidic.meanings. Those packs must be rejected so isInstalled
+        // deletes them and the user redownloads a pack that carries the
+        // native non-English KANJIDIC2 glosses in kanji_meaning.
+        val db = createDb("legacy-inline-meanings.sqlite") { d ->
+            d.execSQL("CREATE TABLE entry (id INTEGER, freq_score INTEGER)")
+            d.execSQL("CREATE TABLE headword (entry_id INTEGER, position INTEGER, text TEXT)")
+            d.execSQL("CREATE TABLE sense (id INTEGER, misc TEXT)")
+            d.execSQL("CREATE TABLE kanjidic (literal TEXT, meanings TEXT)")
         }
         assertFalse(LanguagePackStore.isJmdictSchemaCurrent(db))
     }

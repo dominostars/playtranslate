@@ -14,6 +14,7 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -114,7 +115,8 @@ class SettingsRenderer(
     private val rowAnkiDeck: View = root.findViewById(R.id.rowAnkiDeck)
     private val tvAnkiSectionTitle: TextView = root.findViewById(R.id.tvAnkiSectionTitle)
 
-    private val llThemePicker: LinearLayout = root.findViewById(R.id.llThemePicker)
+    private val llThemeModePicker: LinearLayout = root.findViewById(R.id.llThemeModePicker)
+    private val llAccentPicker: WrappingLinearLayout = root.findViewById(R.id.llAccentPicker)
     private val rowDiscord: View = root.findViewById(R.id.rowDiscord)
     private val rowDonate: View = root.findViewById(R.id.rowDonate)
     private val settingsScrollView: androidx.core.widget.NestedScrollView = root.findViewById(R.id.settingsScrollView)
@@ -503,13 +505,12 @@ class SettingsRenderer(
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
         val hasHintText = hintKind != HintTextKind.NONE
 
-        if (!hasHintText) {
-            hotkeySection.visibility = View.GONE
-            return
-        }
+        // Section is always available — the translation hotkey is useful
+        // regardless of source language (handheld users want hold-to-translate
+        // even when there's no furigana/pinyin layer to surface).
         hotkeySection.visibility = View.VISIBLE
 
-        // -- Translation hotkey (always visible when section is visible) --
+        // -- Translation hotkey (always visible) --
         setupSingleHotkeyRow(
             row = rowHotkeyTranslation,
             title = "Hotkey: hold to show Translations",
@@ -518,20 +519,25 @@ class SettingsRenderer(
             dialogTitle = "Show Translations"
         )
 
-        // -- Furigana/Pinyin hotkey --
-        val hintLabel = when (hintKind) {
-            HintTextKind.PINYIN -> "Pinyin"
-            else -> "Furigana"
+        // -- Furigana/Pinyin hotkey (only when source language has hint text) --
+        if (hasHintText) {
+            val hintLabel = when (hintKind) {
+                HintTextKind.PINYIN -> "Pinyin"
+                else -> "Furigana"
+            }
+            rowHotkeyFurigana.visibility = View.VISIBLE
+            dividerHotkeyFurigana.visibility = View.VISIBLE
+            setupSingleHotkeyRow(
+                row = rowHotkeyFurigana,
+                title = "Hotkey: hold to show $hintLabel",
+                getHotkey = { prefs.hotkeyFurigana },
+                setHotkey = { prefs.hotkeyFurigana = it },
+                dialogTitle = "Show $hintLabel"
+            )
+        } else {
+            rowHotkeyFurigana.visibility = View.GONE
+            dividerHotkeyFurigana.visibility = View.GONE
         }
-        rowHotkeyFurigana.visibility = View.VISIBLE
-        dividerHotkeyFurigana.visibility = View.VISIBLE
-        setupSingleHotkeyRow(
-            row = rowHotkeyFurigana,
-            title = "Hotkey: hold to show $hintLabel",
-            getHotkey = { prefs.hotkeyFurigana },
-            setHotkey = { prefs.hotkeyFurigana = it },
-            dialogTitle = "Show $hintLabel"
-        )
     }
 
     private fun setupSingleHotkeyRow(
@@ -602,57 +608,90 @@ class SettingsRenderer(
 
     fun buildDisplayRows(prefs: Prefs) {
         llDisplayOptions.removeAllViews()
-        displayList.forEachIndexed { idx, display ->
-            llDisplayOptions.addView(buildDisplayRow(idx, display, prefs))
-        }
         if (displayList.isEmpty()) {
             llDisplayOptions.addView(TextView(ctx).apply {
                 text = ctx.getString(R.string.settings_no_displays_found)
                 setTextColor(ctx.themeColor(R.attr.ptTextHint))
                 textSize = 13f
-                setPadding(0, 8, 0, 8)
+                val pad = (16 * ctx.resources.displayMetrics.density).toInt()
+                setPadding(pad, pad, pad, pad)
             })
+            return
+        }
+        displayList.forEachIndexed { idx, display ->
+            if (idx > 0) {
+                llDisplayOptions.addView(
+                    LayoutInflater.from(ctx)
+                        .inflate(R.layout.settings_row_divider, llDisplayOptions, false)
+                )
+            }
+            val isFirst = idx == 0
+            val isLast = idx == displayList.size - 1
+            llDisplayOptions.addView(buildDisplayRow(idx, display, prefs, isFirst, isLast))
         }
     }
 
     private fun buildDisplayRow(
         idx: Int,
         display: android.view.Display,
-        prefs: Prefs
+        prefs: Prefs,
+        isFirst: Boolean,
+        isLast: Boolean,
     ): View {
         val dp = ctx.resources.displayMetrics.density
         val isSelected = idx == selectedDisplayIdx
-        val thumbW = (80 * dp).toInt()
-        val thumbH = (50 * dp).toInt()
+        // 10dp buffer on top, bottom, and left of the thumbnail; right side
+        // gets the standard row padding so the checkmark sits in the usual
+        // place. Row height = thumbH + 10×2 = 66dp, matching the toggle and
+        // support-link rows.
+        val rowHPad = ctx.resources.getDimensionPixelSize(R.dimen.pt_row_h_padding)
+        val bufferPx = (10 * dp).toInt()
+        val halfV = bufferPx
+        val halfH = bufferPx
+        val thumbH = (46 * dp).toInt()
+        val thumbW = (thumbH * 1.6f).toInt()
 
-        val outlineColor = ctx.themeColor(
-            if (isSelected) R.attr.ptAccent else R.attr.ptTextHint
-        )
+        val accent = ctx.themeColor(R.attr.ptAccent)
+        val cardColor = ctx.themeColor(R.attr.ptCard)
+        // Selected row fill: ptCard composited with 10% of the active accent.
+        val accent10 = androidx.core.graphics.ColorUtils.setAlphaComponent(accent, 26)
+        val selectedBg = compositeOver(accent10, cardColor)
+        val cardRadius = ctx.resources.getDimension(R.dimen.pt_radius)
+
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding((12 * dp).toInt(), (8 * dp).toInt(), (12 * dp).toInt(), (8 * dp).toInt())
-            val accent = ctx.themeColor(R.attr.ptAccent)
-            val rowBg = if (isSelected) Color.argb(
-                15,
-                Color.red(accent),
-                Color.green(accent),
-                Color.blue(accent)
-            ) else ctx.themeColor(R.attr.ptSurface)
-            background = GradientDrawable().apply {
-                setColor(rowBg)
-                setStroke((1 * dp).toInt(), outlineColor)
-                cornerRadius = 8 * dp
-            }
+            setPadding(halfH, halfV, rowHPad, halfV)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).also { it.bottomMargin = (4 * dp).toInt() }
+            )
+            isClickable = true
+            isFocusable = true
+            if (isSelected) {
+                // Highlight extends edge-to-edge so it visually IS the cell.
+                // Round only the corners that touch the card's outer rounding
+                // (first row → top corners, last row → bottom corners, middle
+                // rows → no rounding) so the fill follows the card cleanly.
+                val tl = if (isFirst) cardRadius else 0f
+                val tr = if (isFirst) cardRadius else 0f
+                val br = if (isLast)  cardRadius else 0f
+                val bl = if (isLast)  cardRadius else 0f
+                background = GradientDrawable().apply {
+                    setColor(selectedBg)
+                    cornerRadii = floatArrayOf(tl, tl, tr, tr, br, br, bl, bl)
+                }
+            }
+            // Ripple in the foreground overlays the selected fill.
+            foreground = android.util.TypedValue().let { tv ->
+                ctx.theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
+                ContextCompat.getDrawable(ctx, tv.resourceId)
+            }
         }
 
         val iv = ImageView(ctx).apply {
             layoutParams = LinearLayout.LayoutParams(thumbW, thumbH).also {
-                it.marginEnd = (10 * dp).toInt()
+                it.marginEnd = (12 * dp).toInt()
             }
             scaleType = ImageView.ScaleType.FIT_CENTER
             setBackgroundColor(ctx.themeColor(R.attr.ptDivider))
@@ -662,26 +701,37 @@ class SettingsRenderer(
 
         val tv = TextView(ctx).apply {
             text = "Display ${display.displayId}  —  ${display.name}"
-            textSize = 15f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            setTextColor(
-                ctx.themeColor(if (isSelected) R.attr.ptAccent else R.attr.ptTextHint)
+            setTextColor(ctx.themeColor(if (isSelected) R.attr.ptText else R.attr.ptTextMuted))
+            setTextAppearance(R.style.Text_PT_RowTitle)
+            layoutParams = LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
             )
-            layoutParams =
-                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
         row.addView(iv)
         row.addView(tv)
+        if (isSelected) {
+            val checkSize = (20 * dp).toInt()
+            row.addView(ImageView(ctx).apply {
+                layoutParams = LinearLayout.LayoutParams(checkSize, checkSize).also {
+                    it.marginStart = (8 * dp).toInt()
+                }
+                setImageResource(R.drawable.ic_check)
+                imageTintList = android.content.res.ColorStateList.valueOf(accent)
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            })
+        }
         row.setOnClickListener {
-            selectedDisplayIdx = idx
-            val newDisplayId =
-                displayList.getOrNull(idx)?.displayId ?: prefs.captureDisplayId
-            if (newDisplayId != prefs.captureDisplayId) {
-                prefs.captureDisplayId = newDisplayId
-                callbacks.onDisplayChanged()
+            if (idx != selectedDisplayIdx) {
+                selectedDisplayIdx = idx
+                val newDisplayId =
+                    displayList.getOrNull(idx)?.displayId ?: prefs.captureDisplayId
+                if (newDisplayId != prefs.captureDisplayId) {
+                    prefs.captureDisplayId = newDisplayId
+                    callbacks.onDisplayChanged()
+                }
+                buildDisplayRows(prefs)
             }
-            buildDisplayRows(prefs)
         }
         return row
     }
@@ -795,38 +845,33 @@ class SettingsRenderer(
     // ── Appearance ───────────────────────────────────────────────────────
 
     private fun setupAppearanceSection() {
-        buildThemePicker(llThemePicker, prefs)
+        buildThemeModePicker(llThemeModePicker)
+        buildAccentPicker(llAccentPicker)
     }
 
-    private data class ThemeOption(
-        val label: String,
-        val index: Int,
-        val bgColor: Int,
-        val textColor: Int,
-        val accentColor: Int
-    )
-
-    private fun buildThemePicker(container: LinearLayout, prefs: Prefs) {
-        val c = { id: Int -> ContextCompat.getColor(ctx, id) }
-        val themes = listOf(
-            ThemeOption("Black",   0, c(R.color.pt_dark_bg),  c(R.color.pt_dark_text),  c(R.color.pt_accent_teal)),
-            ThemeOption("White",   1, c(R.color.pt_light_bg), c(R.color.pt_light_text), c(R.color.pt_accent_teal)),
-            ThemeOption("Rainbow", 2, c(R.color.pt_light_bg), c(R.color.pt_light_text), c(R.color.pt_accent_coral)),
-            ThemeOption("Purple",  3, c(R.color.pt_dark_bg),  c(R.color.pt_dark_text),  c(R.color.pt_accent_purple)),
-        )
-
+    private fun buildThemeModePicker(container: LinearLayout) {
+        container.removeAllViews()
         val dp = ctx.resources.displayMetrics.density
         val tileRadius = 12 * dp
         val swatchRadius = 8 * dp
         val accentColor = ctx.themeColor(R.attr.ptAccent)
         val outlineColor = ctx.themeColor(R.attr.ptOutline)
+        val current = prefs.themeMode
 
-        container.removeAllViews()
+        val darkBg   = ContextCompat.getColor(ctx, R.color.pt_dark_bg)
+        val darkText = ContextCompat.getColor(ctx, R.color.pt_dark_text)
+        val lightBg   = ContextCompat.getColor(ctx, R.color.pt_light_bg)
+        val lightText = ContextCompat.getColor(ctx, R.color.pt_light_text)
 
-        themes.forEachIndexed { idx, theme ->
-            val isSelected = prefs.themeIndex == theme.index
+        data class ModeOption(val mode: ThemeMode, val label: String)
+        val modes = listOf(
+            ModeOption(ThemeMode.SYSTEM, ctx.getString(R.string.pt_theme_mode_system)),
+            ModeOption(ThemeMode.DARK,   ctx.getString(R.string.pt_theme_mode_dark)),
+            ModeOption(ThemeMode.LIGHT,  ctx.getString(R.string.pt_theme_mode_light)),
+        )
 
-            // Tile root: border frame with inner padding
+        modes.forEachIndexed { idx, opt ->
+            val selected = opt.mode == current
             val tile = FrameLayout(ctx).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
@@ -837,19 +882,24 @@ class SettingsRenderer(
                     cornerRadius = tileRadius
                     setColor(Color.TRANSPARENT)
                     setStroke((2 * dp).toInt(),
-                        if (isSelected) accentColor else outlineColor)
+                        if (selected) accentColor else outlineColor)
                 }
                 setPadding((4 * dp).toInt(), (4 * dp).toInt(), (4 * dp).toInt(), (4 * dp).toInt())
                 isClickable = true
                 isFocusable = true
-                // Ripple foreground
                 foreground = android.util.TypedValue().let { tv ->
                     ctx.theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
                     ContextCompat.getDrawable(ctx, tv.resourceId)
                 }
+                setOnClickListener {
+                    if (prefs.themeMode != opt.mode) {
+                        val scrollY = callbacks.getScrollY()
+                        prefs.themeMode = opt.mode
+                        callbacks.onThemeChanged(scrollY)
+                    }
+                }
             }
 
-            // Inner column: swatch + label
             val inner = LinearLayout(ctx).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = FrameLayout.LayoutParams(
@@ -858,80 +908,67 @@ class SettingsRenderer(
                 )
             }
 
-            // Swatch: preview surface with 3 faux text bars
             val swatchH = (52 * dp).toInt()
             val swatch = LinearLayout(ctx).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, swatchH
                 )
-                background = GradientDrawable().apply {
-                    setColor(theme.bgColor)
-                    cornerRadius = swatchRadius
+                background = when (opt.mode) {
+                    ThemeMode.DARK -> GradientDrawable().apply {
+                        setColor(darkBg); cornerRadius = swatchRadius
+                    }
+                    ThemeMode.LIGHT -> GradientDrawable().apply {
+                        setColor(lightBg); cornerRadius = swatchRadius
+                    }
+                    ThemeMode.SYSTEM -> DiagonalSplitDrawable(
+                        topLeftColor = darkBg,
+                        bottomRightColor = lightBg,
+                        cornerRadius = swatchRadius,
+                    )
                 }
                 setPadding((8 * dp).toInt(), (8 * dp).toInt(), (8 * dp).toInt(), (8 * dp).toInt())
             }
 
-            // Add the 3 bars after layout so we can use measured width for percentages
-            swatch.post {
-                swatch.removeAllViews()
-                val availW = swatch.width - swatch.paddingLeft - swatch.paddingRight
-                if (availW <= 0) return@post
+            // Faux text bars for solid Light/Dark previews. System tile is
+            // intentionally bare so the diagonal split reads cleanly.
+            if (opt.mode != ThemeMode.SYSTEM) {
+                val barColor = if (opt.mode == ThemeMode.DARK) darkText else lightText
+                swatch.post {
+                    swatch.removeAllViews()
+                    val availW = swatch.width - swatch.paddingLeft - swatch.paddingRight
+                    if (availW <= 0) return@post
 
-                fun makeBar(widthFraction: Float, height: Int, alpha: Float): View {
-                    return View(ctx).apply {
-                        layoutParams = LinearLayout.LayoutParams(
-                            (availW * widthFraction).toInt(), (height * dp).toInt()
-                        )
-                        background = GradientDrawable().apply {
-                            setColor(theme.textColor)
-                            cornerRadius = 2 * dp
-                            this.alpha = (alpha * 255).toInt()
+                    fun makeBar(widthFraction: Float, height: Int, alphaFrac: Float): View {
+                        return View(ctx).apply {
+                            layoutParams = LinearLayout.LayoutParams(
+                                (availW * widthFraction).toInt(), (height * dp).toInt()
+                            )
+                            background = GradientDrawable().apply {
+                                setColor(barColor)
+                                cornerRadius = 2 * dp
+                                this.alpha = (alphaFrac * 255).toInt()
+                            }
                         }
                     }
-                }
-
-                swatch.addView(makeBar(0.40f, 4, 0.8f))
-                swatch.addView(makeBar(0.70f, 3, 0.4f).also {
-                    (it.layoutParams as LinearLayout.LayoutParams).topMargin = (4 * dp).toInt()
-                })
-                swatch.addView(makeBar(0.55f, 3, 0.4f).also {
-                    (it.layoutParams as LinearLayout.LayoutParams).topMargin = (4 * dp).toInt()
-                })
-            }
-
-            // Wrap swatch in a FrameLayout so the accent dot can overlay
-            val swatchFrame = FrameLayout(ctx).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-            }
-            swatchFrame.addView(swatch)
-
-            // Accent dot: 8dp filled circle in the top-right corner of the swatch
-            val dotSize = (8 * dp).toInt()
-            val dotMargin = (4 * dp).toInt()
-            val accentDot = View(ctx).apply {
-                layoutParams = FrameLayout.LayoutParams(dotSize, dotSize).also { lp ->
-                    lp.gravity = Gravity.TOP or Gravity.END
-                    lp.topMargin = dotMargin
-                    lp.marginEnd = dotMargin
-                }
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(theme.accentColor)
+                    swatch.addView(makeBar(0.40f, 4, 0.8f))
+                    swatch.addView(makeBar(0.70f, 3, 0.4f).also {
+                        (it.layoutParams as LinearLayout.LayoutParams).topMargin = (4 * dp).toInt()
+                    })
+                    swatch.addView(makeBar(0.55f, 3, 0.4f).also {
+                        (it.layoutParams as LinearLayout.LayoutParams).topMargin = (4 * dp).toInt()
+                    })
                 }
             }
-            swatchFrame.addView(accentDot)
 
-            inner.addView(swatchFrame)
+            inner.addView(swatch)
 
-            // Label below swatch
             val label = TextView(ctx).apply {
-                text = theme.label
+                text = opt.label
                 textSize = 12f
-                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+                typeface = android.graphics.Typeface.create(
+                    "sans-serif-medium", android.graphics.Typeface.NORMAL
+                )
                 gravity = Gravity.CENTER
                 setTextColor(ctx.themeColor(R.attr.ptText))
                 setPadding(0, (6 * dp).toInt(), 0, (2 * dp).toInt())
@@ -939,16 +976,61 @@ class SettingsRenderer(
             inner.addView(label)
 
             tile.addView(inner)
+            container.addView(tile)
+        }
+    }
 
-            tile.setOnClickListener {
-                if (prefs.themeIndex != theme.index) {
-                    val scrollY = callbacks.getScrollY()
-                    prefs.themeIndex = theme.index
-                    callbacks.onThemeChanged(scrollY)
-                }
+    private fun buildAccentPicker(container: WrappingLinearLayout) {
+        container.removeAllViews()
+        val dp = ctx.resources.displayMetrics.density
+        val swatchSize = (48 * dp).toInt()
+        val ringStroke = (2 * dp).toInt()
+        val innerInset = (8 * dp).toInt()
+        container.horizontalSpacingPx = (8 * dp).toInt()
+        container.verticalSpacingPx = (12 * dp).toInt()
+
+        val current = prefs.accent
+
+        AccentColor.values().forEach { accent ->
+            val color = ContextCompat.getColor(ctx, accent.color)
+            val selected = accent == current
+
+            val ringDrawable = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.TRANSPARENT)
+                if (selected) setStroke(ringStroke, color)
+            }
+            val innerDrawable = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(color)
+            }
+            val layered = android.graphics.drawable.LayerDrawable(
+                arrayOf(ringDrawable, innerDrawable)
+            ).apply {
+                setLayerInset(1, innerInset, innerInset, innerInset, innerInset)
             }
 
-            container.addView(tile)
+            val swatch = FrameLayout(ctx).apply {
+                layoutParams = ViewGroup.LayoutParams(swatchSize, swatchSize)
+                background = layered
+                isClickable = true
+                isFocusable = true
+                contentDescription = ctx.getString(accent.displayName)
+                foreground = android.util.TypedValue().let { tv ->
+                    ctx.theme.resolveAttribute(
+                        android.R.attr.selectableItemBackgroundBorderless, tv, true
+                    )
+                    ContextCompat.getDrawable(ctx, tv.resourceId)
+                }
+                setOnClickListener {
+                    if (prefs.accent != accent) {
+                        val scrollY = callbacks.getScrollY()
+                        prefs.accentName = accent.name
+                        callbacks.onThemeChanged(scrollY)
+                    }
+                }
+            }
+            container.addView(swatch)
         }
     }
 
@@ -1148,13 +1230,18 @@ class SettingsRenderer(
             )
         }
 
-        // Hotkey section visibility
-        hotkeySection.visibility = if (hasHintText) View.VISIBLE else View.GONE
+        // Hotkey section is always visible (translation hotkey is useful
+        // regardless of source language). Only the Furigana/Pinyin row
+        // toggles with hasHintText.
+        hotkeySection.visibility = View.VISIBLE
         if (hasHintText) {
             rowHotkeyFurigana.visibility = View.VISIBLE
             dividerHotkeyFurigana.visibility = View.VISIBLE
             rowHotkeyFurigana.findViewById<TextView>(R.id.tvRowTitle)?.text =
                 "Hotkey: hold to show $hintLabel"
+        } else {
+            rowHotkeyFurigana.visibility = View.GONE
+            dividerHotkeyFurigana.visibility = View.GONE
         }
     }
 
