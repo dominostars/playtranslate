@@ -67,6 +67,10 @@ class WordDetailBottomSheet : DialogFragment() {
         private const val ARG_SENTENCE_READINGS     = "sentence_readings"
         private const val ARG_SENTENCE_MEANINGS     = "sentence_meanings"
         private const val ARG_SENTENCE_FREQ_SCORES  = "sentence_freq_scores"
+        /** When true, this fragment is being embedded inside a host activity
+         *  (drag-flow Sentence/Word tab in TranslationResultActivity) and
+         *  should hide its own toolbar — the host already provides one. */
+        private const val ARG_EMBEDDED        = "embedded"
 
         fun newInstance(
             word: String,
@@ -74,7 +78,8 @@ class WordDetailBottomSheet : DialogFragment() {
             screenshotPath: String? = null,
             sentenceOriginal: String? = null,
             sentenceTranslation: String? = null,
-            sentenceWordResults: Map<String, Triple<String, String, Int>>? = null
+            sentenceWordResults: Map<String, Triple<String, String, Int>>? = null,
+            embedded: Boolean = false,
         ) = WordDetailBottomSheet().apply {
                 arguments = Bundle().apply {
                     putString(ARG_WORD, word)
@@ -90,6 +95,7 @@ class WordDetailBottomSheet : DialogFragment() {
                             putIntArray(ARG_SENTENCE_FREQ_SCORES, sentenceWordResults.values.map { it.third }.toIntArray())
                         }
                     }
+                    if (embedded) putBoolean(ARG_EMBEDDED, true)
                 }
             }
     }
@@ -123,9 +129,22 @@ class WordDetailBottomSheet : DialogFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        view.findViewById<View>(R.id.btnBackDetail).setOnClickListener { dismiss() }
+        // Embedded mode (Sentence/Word tab in TranslationResultActivity)
+        // hides the internal toolbar — the host activity already shows
+        // a back button + segmented pill. Standalone (dialog) mode keeps
+        // its own toolbar with the close button.
+        val embedded = arguments?.getBoolean(ARG_EMBEDDED, false) == true
+        val toolbar = view.findViewById<View>(R.id.wordDetailToolbar)
+        if (embedded) {
+            toolbar.visibility = View.GONE
+        } else {
+            view.findViewById<View>(R.id.btnBackDetail).setOnClickListener { dismiss() }
+        }
 
-        val word           = arguments?.getString(ARG_WORD) ?: run { dismiss(); return }
+        val word           = arguments?.getString(ARG_WORD) ?: run {
+            if (!embedded) dismiss()
+            return
+        }
         val readingHint    = arguments?.getString(ARG_READING)
         val screenshotPath = arguments?.getString(ARG_SCREENSHOT_PATH)
 
@@ -133,6 +152,11 @@ class WordDetailBottomSheet : DialogFragment() {
         val scrollView  = view.findViewById<NestedScrollView>(R.id.detailScrollView)
         val btnAddAnki  = view.findViewById<Button>(R.id.btnWordAddToAnki)
         val tvHeadword  = view.findViewById<TextView>(R.id.tvDetailHeadword)
+        // The detailContent paddingTop math below reserves the toolbar's
+        // 56dp slot so the headword overlay can shrink into it on scroll.
+        // When embedded, that slot doesn't exist — track 0dp instead so
+        // the first row sits the expected 8dp under the headword.
+        val toolbarSlotPx = if (embedded) 0 else dp(56)
 
         val prefs = Prefs(requireContext().applicationContext)
         val sourceLangId = prefs.sourceLangId
@@ -163,7 +187,7 @@ class WordDetailBottomSheet : DialogFragment() {
         // multiple lines. setText triggers requestLayout which fires
         // this listener, so the padding tracks text changes.
         tvHeadword.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            val target = (tvHeadword.bottom - dp(56)) + dp(8)
+            val target = (tvHeadword.bottom - toolbarSlotPx) + dp(8)
             if (content.paddingTop != target && target > 0) {
                 content.setPadding(
                     content.paddingStart,

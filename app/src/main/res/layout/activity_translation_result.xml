@@ -7,10 +7,14 @@
     android:orientation="vertical"
     android:background="?attr/ptBg">
 
-    <!-- Back button bar -->
+    <!-- Top bar: back button on the left, optional pill toggle in the
+         middle (drag-flow word context). The fragment carries its own
+         bottom-bar Anki button, so we don't need a duplicate here.
+         48dp gives the 32dp pill room to breathe; the 44dp back button
+         stays vertically centered. -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="44dp"
+        android:layout_height="48dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:paddingHorizontal="4dp">
@@ -24,28 +28,36 @@
             android:src="@drawable/ic_close"
             app:tint="?attr/ptTextMuted" />
 
-        <View
+        <FrameLayout
+            android:id="@+id/segmentedTabContainer"
             android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:paddingHorizontal="12dp" />
 
-        <ImageButton
-            android:id="@+id/btnMainAddToAnki"
+        <View
             android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Add to Anki"
-            android:src="@drawable/ic_anki"
-            app:tint="?attr/ptTextMuted"
-            android:enabled="false" />
+            android:layout_height="44dp" />
 
     </LinearLayout>
 
-    <androidx.fragment.app.FragmentContainerView
-        android:id="@+id/resultFragmentContainer"
-        android:name="com.playtranslate.ui.TranslationResultFragment"
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_weight="1">
+
+        <androidx.fragment.app.FragmentContainerView
+            android:id="@+id/resultFragmentContainer"
+            android:name="com.playtranslate.ui.TranslationResultFragment"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <FrameLayout
+            android:id="@+id/wordDetailContainer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone" />
+
+    </FrameLayout>
 
 </LinearLayout>
