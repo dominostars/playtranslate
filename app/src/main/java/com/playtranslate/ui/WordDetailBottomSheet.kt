@@ -378,20 +378,30 @@ class WordDetailBottomSheet : DialogFragment() {
 
         val args = arguments
         val sentenceOriginal = args?.getString(ARG_SENTENCE_ORIGINAL)
-        val sentenceTranslation = args?.getString(ARG_SENTENCE_TRANSLATION)
+        // Embedded mode (drag-flow Sentence/Word tab) snapshots sentence
+        // context at fragment-creation time, BEFORE the host activity has
+        // finished translating — so the args bundle's sentenceTranslation
+        // is "" and its wordResults are the prefetch-time map. The host
+        // activity calls [updateSentenceContext] when its translation
+        // lands; prefer those values when set, fall back to args for the
+        // non-embedded callers (sentence-list word taps, where args were
+        // already accurate at click time).
+        val sentenceTranslation = pushedSentenceTranslation
+            ?: args?.getString(ARG_SENTENCE_TRANSLATION)
         val sentenceWordResults: Map<String, Triple<String, String, Int>>? =
-            args?.getStringArray(ARG_SENTENCE_WORDS)?.let { words ->
-                val readings = args.getStringArray(ARG_SENTENCE_READINGS) ?: emptyArray()
-                val meanings = args.getStringArray(ARG_SENTENCE_MEANINGS) ?: emptyArray()
-                val freqScores = args.getIntArray(ARG_SENTENCE_FREQ_SCORES) ?: IntArray(0)
-                words.mapIndexed { i, w ->
-                    w to Triple(
-                        readings.getOrElse(i) { "" },
-                        meanings.getOrElse(i) { "" },
-                        freqScores.getOrElse(i) { 0 }
-                    )
-                }.toMap()
-            }
+            pushedSentenceWordResults
+                ?: args?.getStringArray(ARG_SENTENCE_WORDS)?.let { words ->
+                    val readings = args.getStringArray(ARG_SENTENCE_READINGS) ?: emptyArray()
+                    val meanings = args.getStringArray(ARG_SENTENCE_MEANINGS) ?: emptyArray()
+                    val freqScores = args.getIntArray(ARG_SENTENCE_FREQ_SCORES) ?: IntArray(0)
+                    words.mapIndexed { i, w ->
+                        w to Triple(
+                            readings.getOrElse(i) { "" },
+                            meanings.getOrElse(i) { "" },
+                            freqScores.getOrElse(i) { 0 }
+                        )
+                    }.toMap()
+                }
 
         val sourceLangId = com.playtranslate.Prefs(requireContext().applicationContext).sourceLangId
         WordAnkiReviewSheet.newInstance(
@@ -415,6 +425,29 @@ class WordDetailBottomSheet : DialogFragment() {
      *  scroll listener drives its translationY + scale so it shrinks
      *  down into the toolbar's empty left slot as the user scrolls. */
     private var bigHeadwordView: TextView? = null
+
+    /** Sentence context pushed by the host activity after its translation
+     *  lands — see [updateSentenceContext]. When non-null these win over
+     *  the args bundle in [openWordAnkiReview]. Embedded mode snapshots
+     *  args at activity launch (BEFORE translation completes); the host
+     *  refreshes via this setter so Anki export carries the activity's
+     *  actual translation, not a stale snapshot or the process-global
+     *  cache (which can be cross-contaminated by other writers). */
+    private var pushedSentenceTranslation: String? = null
+    private var pushedSentenceWordResults: Map<String, Triple<String, String, Int>>? = null
+
+    /** Called by the host activity when its sentence translation + word
+     *  lookups complete, so Anki export from the Word tab uses the
+     *  activity's freshest result instead of the launch-time args.
+     *  No-op for non-embedded callers — they never invoke this and args
+     *  remain the source of truth. */
+    fun updateSentenceContext(
+        translation: String?,
+        wordResults: Map<String, Triple<String, String, Int>>?,
+    ) {
+        pushedSentenceTranslation = translation
+        pushedSentenceWordResults = wordResults
+    }
 
     private suspend fun buildContent(
         content: LinearLayout,
