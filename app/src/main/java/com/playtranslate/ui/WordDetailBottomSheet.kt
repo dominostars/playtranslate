@@ -180,28 +180,47 @@ class WordDetailBottomSheet : DialogFragment() {
         tvHeadword.pivotX = 0f
         tvHeadword.pivotY = 0f
 
-        // Reserve detailContent paddingTop equal to the overlay's
-        // measured height + 8dp gap, so the reading/badges/definitions
-        // sit just below the headword regardless of whether it wraps to
-        // multiple lines. setText triggers requestLayout which fires
-        // this listener, so the padding tracks text changes.
-        tvHeadword.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            val target = (tvHeadword.bottom - toolbarSlotPx) + dp(8)
-            if (content.paddingTop != target && target > 0) {
-                content.setPadding(
-                    content.paddingStart,
-                    target,
-                    content.paddingEnd,
-                    content.paddingBottom,
-                )
+        if (embedded) {
+            // Host activity already provides the toolbar (back + segmented
+            // pill), so we don't want the shrink-to-toolbar effect. Move
+            // the headword out of the FrameLayout overlay and into the
+            // scroll content so it scrolls naturally with the page.
+            // 4dp start margin matches the overlay's 18dp inset minus
+            // the content's 14dp horizontal padding.
+            (tvHeadword.parent as? ViewGroup)?.removeView(tvHeadword)
+            tvHeadword.layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                marginStart = dp(4)
+                topMargin = dp(12)
+                bottomMargin = dp(8)
             }
-        }
+            content.addView(tvHeadword, 0)
+        } else {
+            // Reserve detailContent paddingTop equal to the overlay's
+            // measured height + 8dp gap, so the reading/badges/definitions
+            // sit just below the headword regardless of whether it wraps to
+            // multiple lines. setText triggers requestLayout which fires
+            // this listener, so the padding tracks text changes.
+            tvHeadword.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                val target = (tvHeadword.bottom - toolbarSlotPx) + dp(8)
+                if (content.paddingTop != target && target > 0) {
+                    content.setPadding(
+                        content.paddingStart,
+                        target,
+                        content.paddingEnd,
+                        content.paddingBottom,
+                    )
+                }
+            }
 
-        scrollView.setOnScrollChangeListener(
-            androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
-                updateHeadwordCollapse(scrollY)
-            }
-        )
+            scrollView.setOnScrollChangeListener(
+                androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
+                    updateHeadwordCollapse(scrollY)
+                }
+            )
+        }
 
         viewLifecycleOwner.lifecycleScope.launch {
             val appCtx = requireContext().applicationContext
