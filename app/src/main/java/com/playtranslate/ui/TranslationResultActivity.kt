@@ -194,6 +194,41 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
                 )
                 .commit()
         }
+
+        // Push the activity's freshest sentence translation + word results
+        // into the embedded fragment whenever [TranslationResultFragment]
+        // updates its Anki-ready state. The args bundle was captured at
+        // activity launch (translation="", word results from prefetch),
+        // so without this push, Anki export from the Word tab would
+        // carry stale data.
+        //
+        // Fires on BOTH enabled=false (inside displayResult, right after
+        // lastResult is set, BEFORE startWordLookups clears mainWordResults)
+        // and enabled=true (end of startWordLookups). The early call
+        // publishes the translation as soon as it's computed; the late
+        // call publishes the activity's final word-results map. During
+        // the gap the args' prefetch wordResults stay in play (we pass
+        // null when mainWordResults is empty so the fragment falls back
+        // to args instead of overwriting them with an empty push).
+        resultFragment?.onAnkiEnabledChanged = { _ -> pushSentenceContextToWordTab() }
+    }
+
+    /** Forward the sentence fragment's current translation + word results
+     *  to the embedded [WordDetailBottomSheet] so its Anki export uses
+     *  the activity's actual result rather than the launch-time args
+     *  snapshot. Pushes [translation] eagerly (set in displayResult);
+     *  pushes [wordResults] only when non-empty so the args' prefetched
+     *  map remains the fallback while startWordLookups is still running. */
+    private fun pushSentenceContextToWordTab() {
+        val frag = supportFragmentManager
+            .findFragmentByTag(TAG_EMBEDDED_WORD_DETAIL) as? WordDetailBottomSheet
+            ?: return
+        val result = resultFragment?.lastResult ?: return
+        val live = resultFragment?.mainWordResults?.takeIf { it.isNotEmpty() }?.toMap()
+        frag.updateSentenceContext(
+            translation = result.translatedText,
+            wordResults = live,
+        )
     }
 
     /** Two-segment pill toggle modeled on SettingsRenderer.buildPillToggle:
