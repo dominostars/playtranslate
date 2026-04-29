@@ -133,22 +133,11 @@ class DragLookupController(
         // "Lens-Replaces-Popup"). The popup constructor parameter stays
         // for non-drag consumers (TranslationResultFragment) and as a
         // context fallback below; drag-flow callbacks live on the lens.
-        magnifier.onOpenTap = {
-            // "Open in detail view" — context picks the destination:
-            //   - Dual-screen + MainActivity foregrounded → open the word
-            //     detail sheet inside MainActivity (user is already looking
-            //     at the app; don't launch a new activity).
-            //   - Otherwise (single-screen or app backgrounded) → launch
-            //     TranslationResultActivity with the sentence, which is
-            //     the only way to surface the details when the app isn't
-            //     visible.
-            val service = PlayTranslateAccessibilityService.instance ?: popup.ctx
-            if (!Prefs.isSingleScreen(service) && MainActivity.isInForeground) {
-                openWordDetailInApp()
-            } else {
-                openSentenceInApp()
-            }
-        }
+        // "Open in detail view" always goes to TranslationResultActivity
+        // — sentence + segmented Sentence/Word toggle — regardless of
+        // single- or dual-screen mode, so the user lands on a consistent
+        // surface with the switch available.
+        magnifier.onOpenTap = { openSentenceInApp() }
         // Lens dismissal post-drag fires [onSettled] so the service can
         // restore region indicator + live mode. If a new drag starts and
         // tears down a sticky lens, dragInProgress is true at that moment
@@ -1131,7 +1120,6 @@ class DragLookupController(
 
     /** Convert the controller's popup-shaped data into the lens's data
      *  class. The lens doesn't carry `entry` or `machineTranslated`; the
-     *  former is controller-side state for openWordDetailInApp, the
      *  latter becomes the [machineTranslatedLabel]. The reading is run
      *  through the same [readingAddsInfo] gate the cache uses so the
      *  lens shows or hides furigana consistently across drag (cache-fed)
@@ -1257,6 +1245,17 @@ class DragLookupController(
     private fun openSentenceInApp() {
         val sentence = currentSentence ?: return
         val service = PlayTranslateAccessibilityService.instance ?: return
+        // Capture word context BEFORE magnifier.dismiss() — the lens's
+        // onDismiss handler nulls lastWord and currentEntry, so any read
+        // after dismiss returns null and the intent loses EXTRA_DRAG_WORD,
+        // which is what the activity uses to decide whether to show the
+        // Sentence/Word pill toggle.
+        val word = lastWord
+        val headword = currentEntry?.headwords?.firstOrNull()
+        val reading = headword?.reading?.takeIf { it != headword.written }
+        val cachedTranslation = LastSentenceCache
+            .takeIf { it.original == sentence }
+            ?.translation
         // Tear down the lens (sticky drag-flow surface) before launching
         // the activity. Lens dismiss → onDismiss → onSettled, which is
         // what the service expects post-drag.
@@ -1265,41 +1264,14 @@ class DragLookupController(
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
             putExtra(TranslationResultActivity.EXTRA_SENTENCE_TEXT, sentence)
             putExtra(TranslationResultActivity.EXTRA_SCREENSHOT_PATH, screenshotPath)
-        }
-        service.startActivity(intent)
-    }
-
-    /**
-     * Foreground the main app and open the word detail sheet over it.
-     * Used when the user is already looking at MainActivity on a
-     * dual-screen setup — launching TranslationResultActivity there would
-     * shove a fresh full-screen activity on top of the app they just
-     * paused to inspect a word.
-     *
-     * Needs the controller's currently-displayed word ([lastWord]).
-     * Reading and sentence context are best-effort — the detail sheet
-     * handles each being null cleanly.
-     */
-    private fun openWordDetailInApp() {
-        val word = lastWord ?: return
-        val service = PlayTranslateAccessibilityService.instance ?: return
-        val reading = currentEntry?.headwords?.firstOrNull()
-            ?.reading?.takeIf { it != currentEntry?.headwords?.firstOrNull()?.written }
-        magnifier.dismiss()
-        val intent = Intent(service, MainActivity::class.java).apply {
-            action = MainActivity.ACTION_DRAG_WORD
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra(MainActivity.EXTRA_DRAG_WORD, word)
+            // Word context — when present, the activity surfaces the
+            // Sentence/Word pill toggle in the toolbar.
+            word?.let { putExtra(TranslationResultActivity.EXTRA_DRAG_WORD, it) }
             if (!reading.isNullOrEmpty()) {
-                putExtra(MainActivity.EXTRA_DRAG_READING, reading)
+                putExtra(TranslationResultActivity.EXTRA_DRAG_READING, reading)
             }
-            screenshotPath?.let { putExtra(MainActivity.EXTRA_DRAG_SCREENSHOT_PATH, it) }
-            currentSentence?.let { sent ->
-                putExtra(MainActivity.EXTRA_DRAG_SENTENCE_ORIGINAL, sent)
-                val cache = LastSentenceCache
-                if (cache.original == sent && cache.translation != null) {
-                    putExtra(MainActivity.EXTRA_DRAG_SENTENCE_TRANSLATION, cache.translation)
-                }
+            cachedTranslation?.let {
+                putExtra(TranslationResultActivity.EXTRA_DRAG_SENTENCE_TRANSLATION, it)
             }
         }
         service.startActivity(intent)

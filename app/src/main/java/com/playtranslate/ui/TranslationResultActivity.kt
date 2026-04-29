@@ -4,23 +4,30 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.graphics.Typeface
 import android.graphics.BitmapFactory
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.IBinder
+import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.widget.FrameLayout
+import android.widget.ImageButton
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.RegionEntry
 import com.playtranslate.R
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
+import com.playtranslate.themeColor
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -30,6 +37,11 @@ import java.util.Locale
  * Standalone activity that hosts [TranslationResultFragment] for showing
  * translation results when the main activity is not in the foreground
  * (single-screen mode or app backgrounded on dual-screen).
+ *
+ * When launched with [EXTRA_DRAG_WORD] (single-screen drag-flow lens
+ * "Open" tap), the toolbar swaps the top Anki button for a Sentence/Word
+ * pill toggle and a second container hosts an embedded [WordDetailBottomSheet]
+ * for the looked-up word.
  */
 class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment.TranslationResultHost {
 
@@ -56,6 +68,12 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
             captureService = null
         }
     }
+
+    /** True when this activity was launched from the drag-flow lens "Open"
+     *  tap with a specific word context — drives the Sentence/Word pill
+     *  toggle in the toolbar. */
+    private val isDragWordMode: Boolean
+        get() = intent.hasExtra(EXTRA_DRAG_WORD)
 
     // ── TranslationResultHost ─────────────────────────────────────────────
 
@@ -96,15 +114,9 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
         // for the full rationale — prevents OCR feedback loop in multi-window).
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
-        findViewById<android.widget.ImageButton>(R.id.btnBack).setOnClickListener { finish() }
+        findViewById<ImageButton>(R.id.btnBack).setOnClickListener { finish() }
 
-        val btnAnki = findViewById<android.widget.ImageButton>(R.id.btnMainAddToAnki)
-        btnAnki.visibility = View.GONE  // hidden until results are shown
-        btnAnki.setOnClickListener { resultFragment?.onAnkiClicked() }
-        resultFragment?.onAnkiEnabledChanged = { enabled ->
-            btnAnki.isEnabled = enabled
-            btnAnki.visibility = if (enabled) View.VISIBLE else View.GONE
-        }
+        if (isDragWordMode) setupDragWordTabs(savedInstanceState)
 
         val hasSentence = intent.hasExtra(EXTRA_SENTENCE_TEXT)
         resultFragment?.showStatus(getString(
@@ -125,6 +137,176 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
         captureService?.onLiveNoText = null
         if (serviceConnected) unbindService(serviceConnection)
         super.onDestroy()
+    }
+
+    /** Drag-flow Sentence/Word tab UI: shows a centered pill toggle in
+     *  the toolbar, mounts the embedded word detail fragment, and wires
+     *  segment selection to container visibility. Called from [onCreate]
+     *  only when [isDragWordMode] is true. */
+    private fun setupDragWordTabs(savedInstanceState: Bundle?) {
+        val word = intent.getStringExtra(EXTRA_DRAG_WORD) ?: return
+        val reading = intent.getStringExtra(EXTRA_DRAG_READING)
+        val screenshotPath = intent.getStringExtra(EXTRA_SCREENSHOT_PATH)
+        val sentenceOriginal = intent.getStringExtra(EXTRA_SENTENCE_TEXT)
+        val sentenceTranslation = intent.getStringExtra(EXTRA_DRAG_SENTENCE_TRANSLATION)
+            ?.takeIf { it.isNotEmpty() }
+        val sentenceWordResults = if (
+            sentenceOriginal != null && LastSentenceCache.original == sentenceOriginal
+        ) {
+            LastSentenceCache.wordResults.orEmpty()
+        } else emptyMap()
+
+        val sentenceContainer = findViewById<View>(R.id.resultFragmentContainer)
+        val wordContainer = findViewById<FrameLayout>(R.id.wordDetailContainer)
+
+        // Pill toggle in the toolbar's center slot. Keeps "Sentence"
+        // selected by default — the user just landed here from a sentence
+        // intent and that's the reading they expect to see first.
+        val toggleContainer = findViewById<FrameLayout>(R.id.segmentedTabContainer)
+        buildToolbarPillToggle(
+            container = toggleContainer,
+            options = listOf("Sentence" to Tab.SENTENCE, word to Tab.WORD),
+            initial = Tab.SENTENCE,
+            onSelect = { tab ->
+                val showSentence = tab == Tab.SENTENCE
+                sentenceContainer.visibility = if (showSentence) View.VISIBLE else View.GONE
+                wordContainer.visibility = if (showSentence) View.GONE else View.VISIBLE
+            },
+        )
+
+        // Mount the embedded word detail fragment once. On config change,
+        // FragmentManager restores it automatically — guard the add() so
+        // we don't double-add.
+        if (savedInstanceState == null) {
+            supportFragmentManager.beginTransaction()
+                .add(
+                    R.id.wordDetailContainer,
+                    WordDetailBottomSheet.newInstance(
+                        word = word,
+                        reading = reading,
+                        screenshotPath = screenshotPath,
+                        sentenceOriginal = sentenceOriginal,
+                        sentenceTranslation = sentenceTranslation,
+                        sentenceWordResults = sentenceWordResults,
+                        embedded = true,
+                    ),
+                    TAG_EMBEDDED_WORD_DETAIL,
+                )
+                .commit()
+        }
+    }
+
+    /** Two-segment pill toggle modeled on SettingsRenderer.buildPillToggle:
+     *  recessed [ptSurface] track, sliding [ptAccent] indicator, text
+     *  labels on top with active label in [ptSurface] color + bold. The
+     *  right segment (the word) ellipsizes if it overflows the slot. */
+    private fun <T> buildToolbarPillToggle(
+        container: FrameLayout,
+        options: List<Pair<String, T>>,
+        initial: T,
+        onSelect: (T) -> Unit,
+    ) {
+        container.removeAllViews()
+        val density = resources.displayMetrics.density
+        val trackRadius = 10 * density
+        val pillRadius = 8 * density
+        val trackPad = (3 * density).toInt()
+        val pillH = (32 * density).toInt()
+
+        val surfaceColor = themeColor(R.attr.ptSurface)
+        val accentColor = themeColor(R.attr.ptAccent)
+        val mutedColor = themeColor(R.attr.ptTextMuted)
+
+        val initialIdx = options.indexOfFirst { it.second == initial }.coerceAtLeast(0)
+
+        val track = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER,
+            )
+            background = GradientDrawable().apply {
+                setColor(surfaceColor)
+                cornerRadius = trackRadius
+            }
+            setPadding(trackPad, trackPad, trackPad, trackPad)
+        }
+
+        val pillRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+            )
+        }
+
+        val indicator = View(this).apply {
+            background = GradientDrawable().apply {
+                setColor(accentColor)
+                cornerRadius = pillRadius
+            }
+            elevation = 2 * density
+        }
+        track.addView(indicator)
+        pillRow.elevation = 3 * density
+        track.addView(pillRow)
+
+        val pills = mutableListOf<TextView>()
+        var currentIdx = initialIdx
+
+        options.forEachIndexed { idx, (label, _) ->
+            val isActive = idx == initialIdx
+            val pill = TextView(this).apply {
+                text = label
+                textSize = 13f
+                typeface = Typeface.create(
+                    "sans-serif-medium",
+                    if (isActive) Typeface.BOLD else Typeface.NORMAL,
+                )
+                gravity = Gravity.CENTER
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setTextColor(if (isActive) surfaceColor else mutedColor)
+                layoutParams = LinearLayout.LayoutParams(0, pillH, 1f)
+                setPadding((14 * density).toInt(), 0, (14 * density).toInt(), 0)
+                isClickable = true
+                isFocusable = true
+            }
+            pills.add(pill)
+            pillRow.addView(pill)
+        }
+
+        container.addView(track)
+
+        pillRow.post {
+            if (pills.isEmpty()) return@post
+            val pillW = pills[0].width
+            indicator.layoutParams = FrameLayout.LayoutParams(pillW, pillH)
+            indicator.translationX = (pillW * initialIdx).toFloat()
+            indicator.requestLayout()
+        }
+
+        pills.forEachIndexed { idx, pill ->
+            pill.setOnClickListener {
+                if (idx == currentIdx) return@setOnClickListener
+                currentIdx = idx
+                val pillW = pills[0].width
+                indicator.animate()
+                    .translationX((pillW * idx).toFloat())
+                    .setDuration(200)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator())
+                    .start()
+                pills.forEachIndexed { i, p ->
+                    val active = i == idx
+                    p.setTextColor(if (active) surfaceColor else mutedColor)
+                    p.typeface = Typeface.create(
+                        "sans-serif-medium",
+                        if (active) Typeface.BOLD else Typeface.NORMAL,
+                    )
+                }
+                onSelect(options[idx].second)
+            }
+        }
     }
 
     private fun onServiceReady() {
@@ -211,6 +393,8 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
         com.playtranslate.applyTheme(this)
     }
 
+    private enum class Tab { SENTENCE, WORD }
+
     companion object {
         const val EXTRA_TOP_FRAC = "extra_top_frac"
         const val EXTRA_BOTTOM_FRAC = "extra_bottom_frac"
@@ -218,5 +402,14 @@ class TranslationResultActivity : AppCompatActivity(), TranslationResultFragment
         const val EXTRA_RIGHT_FRAC = "extra_right_frac"
         const val EXTRA_SCREENSHOT_PATH = "extra_screenshot_path"
         const val EXTRA_SENTENCE_TEXT = "extra_sentence_text"
+        /** Drag-flow lens "Open" tap: the looked-up word from the magnifier
+         *  becomes the right segment label of the Sentence/Word pill toggle
+         *  in the toolbar. When absent, the activity stays in plain
+         *  region-capture mode (no pill, top Anki button stays). */
+        const val EXTRA_DRAG_WORD = "extra_drag_word"
+        const val EXTRA_DRAG_READING = "extra_drag_reading"
+        const val EXTRA_DRAG_SENTENCE_TRANSLATION = "extra_drag_sentence_translation"
+
+        private const val TAG_EMBEDDED_WORD_DETAIL = "WordDetail.embedded"
     }
 }

@@ -18,6 +18,7 @@
         <!-- Toolbar: the close button only — the headword overlay below
              paints itself into the empty left slot once it's pinned. -->
         <LinearLayout
+            android:id="@+id/wordDetailToolbar"
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:orientation="horizontal"
