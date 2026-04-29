@@ -17,7 +17,10 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
@@ -34,9 +37,7 @@ import com.playtranslate.model.TranslationResult
 import com.playtranslate.model.headwordFor
 import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
@@ -94,12 +95,22 @@ class TranslationResultFragment : Fragment() {
     private lateinit var btnResultClear: View
     private lateinit var btnResultAnki: View
 
-    private var wordLookupJob: Job? = null
-    val mainWordResults = mutableMapOf<String, Triple<String, String, Int>>()
-    var lastResult: TranslationResult? = null
-        private set
+    /** Live view of the VM's settled word-lookup map for legacy
+     *  callers that still read this property (notably [MainActivity]).
+     *  The fragment itself reads VM state directly. Phase 2-only
+     *  compat shim — Phase 3 will migrate the remaining callers. */
+    val mainWordResults: Map<String, Triple<String, String, Int>>
+        get() = (vm.wordLookups.value as? WordLookupsState.Settled)?.rows?.toLegacyMap()
+            ?: emptyMap()
 
-    /** Maps character ranges in original text to (displayWord, reading). */
+    /** Live view of the VM's current Ready result for legacy callers.
+     *  Same compat shim as [mainWordResults]. */
+    val lastResult: TranslationResult?
+        get() = (vm.result.value as? ResultState.Ready)?.result
+
+    /** Maps character ranges in original text to (displayWord, reading).
+     *  Recomputed in [renderWordLookupsSettled] from the VM's tokenSpans
+     *  on each Settled emission, so it tracks the displayed text. */
     private var wordSpans = mutableListOf<Triple<IntRange, String, String>>()
     private var furiganaPopup: PopupWindow? = null
 
@@ -111,6 +122,16 @@ class TranslationResultFragment : Fragment() {
 
     /** Called when Anki button enabled state changes (e.g. after word lookups complete). */
     var onAnkiEnabledChanged: ((Boolean) -> Unit)? = null
+
+    /** Activity-scoped state mirror. Phase 1 of the fragment-hoist
+     *  refactor: this fragment continues to own its lookup pipeline
+     *  and view bindings; the VM is a passive snapshot of settled
+     *  state so [TranslationResultActivity] can serve embedded
+     *  [WordDetailBottomSheet]'s sentence context on demand instead
+     *  of via a timed push callback.
+     *
+     *  See plan: `~/.claude/plans/ultrathink-you-proposed-a-jolly-bee.md`. */
+    private val vm: TranslationResultViewModel by activityViewModels()
 
     private val host: TranslationResultHost?
         get() = activity as? TranslationResultHost
@@ -127,12 +148,22 @@ class TranslationResultFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         bindViews(view)
         setupButtons()
+        // Observe the VM-owned lookup pipeline. The coroutine itself
+        // lives in viewModelScope so rotation doesn't cancel it; this
+        // collector simply mirrors current state into the views and
+        // re-runs after view recreation. Result rendering stays in
+        // displayResult (called by activities) for now — only the
+        // word-row pipeline is observation-driven this pass.
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                vm.wordLookups.collect { renderWordLookups(it) }
+            }
+        }
     }
 
     override fun onDestroyView() {
         dismissFurigana()
         dismissWordPopup()
-        wordLookupJob?.cancel()
         super.onDestroyView()
     }
 
@@ -278,7 +309,7 @@ class TranslationResultFragment : Fragment() {
 
     fun displayResult(result: TranslationResult) {
         if (!isAdded || view == null) return
-        lastResult = result
+        vm.recordResult(result)
         tvOriginal.setSegments(result.segments)
         tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
         tvTranslation.text = result.translatedText
@@ -300,7 +331,7 @@ class TranslationResultFragment : Fragment() {
             fitTextSizes()
             resultsContent.visibility = View.VISIBLE
         }
-        startWordLookups(result.originalText)
+        vm.startWordLookups(result.originalText, requireContext().applicationContext)
     }
 
     private companion object {
@@ -769,14 +800,14 @@ class TranslationResultFragment : Fragment() {
         tvOriginal.text = newText
         tvTranslation.text = "…"
         tvTranslationNote.visibility = View.GONE
-        lastResult = lastResult?.copy(originalText = newText, translatedText = "")
-        startWordLookups(newText)
+        vm.patchResult { it.copy(originalText = newText, translatedText = "") }
+        vm.startWordLookups(newText, requireContext().applicationContext)
     }
 
     fun updateTranslation(translated: String) {
         if (view == null) return
         tvTranslation.text = translated
-        lastResult = lastResult?.copy(translatedText = translated)
+        vm.patchResult { it.copy(translatedText = translated) }
     }
 
     /** Show translating placeholder for drag-sentence flow. */
@@ -798,263 +829,106 @@ class TranslationResultFragment : Fragment() {
         applyTranslationVisibility()
         applyOriginalVisibility()
         applyWordsVisibility()
-        startWordLookups(originalText)
+        vm.startWordLookups(originalText, requireContext().applicationContext)
     }
 
-    // ── Word lookups ──────────────────────────────────────────────────────
+    // ── Word lookups (rendering only — pipeline lives in VM) ─────────────
 
-    fun startWordLookups(text: String) {
-        wordLookupJob?.cancel()
-        mainWordsContainer.removeAllViews()
-        mainWordResults.clear()
-        wordSpans.clear()
-        dismissFurigana()
-        dismissWordPopup()
-        tvMainWordsLoading.visibility = View.VISIBLE
-        tvMainWordsLoading.text = getString(R.string.words_loading)
-        tvNoWords.visibility = View.GONE
-
-        wordLookupJob = viewLifecycleOwner.lifecycleScope.launch {
-            val ctx = context ?: return@launch
-            val appCtx = ctx.applicationContext
-            val wordsPrefs = Prefs(appCtx)
-            val engine = SourceLanguageEngines.get(appCtx, wordsPrefs.sourceLangId)
-            val wordsTargetGlossDb = TargetGlossDatabaseProvider.get(appCtx, wordsPrefs.targetLang)
-            val wordsMlKit = TranslationManagerProvider.get(engine.profile.translationCode, wordsPrefs.targetLang)
-            val wordsEnToTarget = TranslationManagerProvider.getEnToTarget(wordsPrefs.targetLang)
-            val wordsResolver = DefinitionResolver(engine, wordsTargetGlossDb,
-                wordsMlKit?.let { WordTranslator(it::translate) }, wordsPrefs.targetLang,
-                wordsEnToTarget?.let { WordTranslator(it::translate) })
-            val allTokens = withContext(Dispatchers.IO) {
-                engine.tokenize(text)
-            }
-
-            // Build surface → character range mapping for furigana taps.
-            // Use the displayed text (with OCR newlines) so offsets match tap positions.
-            val displayedText = tvOriginal.text?.toString() ?: text
-            val pendingSpans = mutableListOf<Triple<IntRange, String, String>>() // range, surface, lookupForm
-            var searchFrom = 0
-            for (tok in allTokens) {
-                val idx = displayedText.indexOf(tok.surface, searchFrom)
-                if (idx >= 0) {
-                    pendingSpans.add(Triple(idx until idx + tok.surface.length, tok.surface, tok.lookupForm))
-                    searchFrom = idx + tok.surface.length
-                }
-            }
-
-            val seen = mutableSetOf<String>()
-            val uniqueTokens = allTokens.filter { seen.add(it.lookupForm) }
-            val tokens = uniqueTokens.map { it.lookupForm }
-
-            if (tokens.isEmpty()) {
+    /** Observation-driven render of [vm.wordLookups]. The pipeline
+     *  itself runs on [viewModelScope] inside the VM so rotation
+     *  mid-lookup preserves progress; this method just mirrors the
+     *  current state into the views. */
+    private fun renderWordLookups(state: WordLookupsState) {
+        if (view == null) return
+        when (state) {
+            is WordLookupsState.Idle -> {
                 tvMainWordsLoading.visibility = View.GONE
-                tvNoWords.visibility = View.VISIBLE
+                tvNoWords.visibility = View.GONE
+                mainWordsContainer.removeAllViews()
+                wordSpans.clear()
+            }
+            is WordLookupsState.Loading -> {
+                dismissFurigana()
+                dismissWordPopup()
+                mainWordsContainer.removeAllViews()
+                wordSpans.clear()
+                tvMainWordsLoading.visibility = View.VISIBLE
+                tvMainWordsLoading.text = getString(R.string.words_loading)
+                tvNoWords.visibility = View.GONE
+            }
+            is WordLookupsState.Settled -> {
+                renderWordRows(state.rows)
+                recomputeWordSpans(state.tokenSpans, state.lookupToReading)
+                applyFurigana()
+                tvMainWordsLoading.visibility = View.GONE
+                tvNoWords.visibility = if (state.rows.isEmpty()) View.VISIBLE else View.GONE
+                btnResultAnki.visibility = View.VISIBLE
                 onAnkiEnabledChanged?.invoke(true)
-                return@launch
             }
+        }
+    }
 
-            val inflater = LayoutInflater.from(context)
-            val surfaceByToken = uniqueTokens.associate { it.lookupForm to it.surface }
-            val readingByToken = uniqueTokens.associate { it.lookupForm to it.reading }
-            val rows = tokens.map { word ->
-                val row = inflater.inflate(R.layout.item_word_lookup, mainWordsContainer, false)
-                row.findViewById<TextView>(R.id.tvItemWord).text = word
-                row.findViewById<TextView>(R.id.tvItemMeaning).text = "Loading..."
-                if (mainWordsContainer.childCount > 0) {
-                    mainWordsContainer.addView(inflateWordDivider())
-                }
-                mainWordsContainer.addView(row)
-                Pair(word, row)
-            }
+    private fun renderWordRows(rows: List<RowState>) {
+        mainWordsContainer.removeAllViews()
+        if (rows.isEmpty()) return
+        val inflater = LayoutInflater.from(requireContext())
+        rows.forEachIndexed { idx, rowState ->
+            if (idx > 0) mainWordsContainer.addView(inflateWordDivider())
+            val row = inflater.inflate(R.layout.item_word_lookup, mainWordsContainer, false)
+            bindWordRow(row, rowState)
+            mainWordsContainer.addView(row)
+        }
+    }
 
-            val resultsArr = arrayOfNulls<Pair<String, Triple<String, String, Int>>>(rows.size)
-            val surfaceArr = arrayOfNulls<Pair<String, String>>(rows.size)
+    private fun bindWordRow(row: View, rowState: RowState) {
+        row.findViewById<TextView>(R.id.tvItemWord).text = rowState.displayWord
+        row.findViewById<TextView>(R.id.tvItemReading).text = rowState.reading
+        row.findViewById<TextView>(R.id.tvItemMeaning).text = rowState.meaning
+        val tvFreq = row.findViewById<TextView>(R.id.tvItemFreq)
+        if (rowState.freqScore > 0) {
+            tvFreq.text = "★".repeat(rowState.freqScore)
+            tvFreq.visibility = View.VISIBLE
+        } else {
+            tvFreq.visibility = View.GONE
+        }
+        row.setOnClickListener {
+            host?.onInteraction()
+            val resultSnapshot = lastResult
+            host?.onWordTapped(
+                rowState.displayWord,
+                rowState.reading.ifEmpty { null },
+                resultSnapshot?.screenshotPath,
+                resultSnapshot?.originalText,
+                resultSnapshot?.translatedText,
+                mainWordResults,
+            )
+        }
+    }
 
-            supervisorScope {
-                rows.forEachIndexed { idx, (word, row) ->
-                    launch {
-                        val tvWord    = row.findViewById<TextView>(R.id.tvItemWord)
-                        val tvReading = row.findViewById<TextView>(R.id.tvItemReading)
-                        val tvFreq    = row.findViewById<TextView>(R.id.tvItemFreq)
-                        val tvMeaning = row.findViewById<TextView>(R.id.tvItemMeaning)
-                        var reading = ""
-                        var meaning = ""
-                        var displayWord = word
-                        var freqScore = 0
-                        try {
-                            val defResult = withContext(Dispatchers.IO) {
-                                wordsResolver.lookup(word, readingByToken[word])
-                            }
-                            val response = defResult?.response
-                            if (response != null && response.entries.isNotEmpty()) {
-                                // Wiktionary packs split each POS into a
-                                // separate entry; flat sense list across
-                                // every returned entry mirrors the popup
-                                // and bottom-sheet renderers so multi-POS
-                                // headwords don't lose verb/intj senses.
-                                val entry      = response.entries.first()
-                                val flatSenses = response.entries.flatMap { it.senses }
-                                // Prefer the headword that matches what the
-                                // user saw — JMdict groups variant kanji
-                                // under one entry (e.g. 無下/無気), and the
-                                // primary form often differs from the surface
-                                // in the source text. Try the surface first
-                                // (handles direct variant match), then the
-                                // lookupForm (covers inflected surfaces
-                                // whose dict form matches a non-primary
-                                // headword), then fall back to the primary
-                                // as a last-resort label.
-                                val primary    = entry.headwordFor(surfaceByToken[word])
-                                    ?: entry.headwordFor(word)
-                                    ?: entry.headwords.firstOrNull()
-                                freqScore = entry.freqScore
-                                when (defResult) {
-                                    is DefinitionResult.Native -> {
-                                        displayWord = primary?.written ?: primary?.reading ?: word
-                                        tvWord.text = displayWord
-                                        reading = primary?.reading?.takeIf { it != primary.written } ?: ""
-                                        val targetSensesSorted = defResult.targetSenses.sortedBy { it.senseOrd }
-                                        val isTargetDriven = wordsPrefs.targetLang != "en" && targetSensesSorted.isNotEmpty()
-                                        meaning = if (isTargetDriven) {
-                                            targetSensesSorted.mapIndexed { i, target ->
-                                                val glosses = target.glosses.joinToString("; ")
-                                                if (targetSensesSorted.size > 1) "${i + 1}. $glosses" else glosses
-                                            }.joinToString("\n")
-                                        } else {
-                                            // English-target or defensive empty-targetSenses path.
-                                            val targetByOrd = targetSensesSorted.associateBy { it.senseOrd }
-                                            flatSenses.mapIndexed { i, sense ->
-                                                val target = targetByOrd[i]
-                                                val glosses = target?.glosses?.joinToString("; ")
-                                                    ?: sense.targetDefinitions.joinToString("; ")
-                                                if (flatSenses.size > 1) "${i + 1}. $glosses" else glosses
-                                            }.joinToString("\n")
-                                        }
-                                    }
-                                    is DefinitionResult.MachineTranslated -> {
-                                        displayWord = primary?.written ?: primary?.reading ?: word
-                                        tvWord.text = displayWord
-                                        reading = primary?.reading?.takeIf { it != primary.written } ?: ""
-                                        val defs = defResult.translatedDefinitions
-                                        meaning = if (defs != null) {
-                                            flatSenses.mapIndexed { i, sense ->
-                                                val glosses = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
-                                                if (flatSenses.size > 1) "${i + 1}. $glosses" else glosses
-                                            }.joinToString("\n")
-                                        } else {
-                                            val translatedLine = defResult.translatedHeadword
-                                            val englishLines = flatSenses.mapIndexed { i, sense ->
-                                                val glosses = sense.targetDefinitions.joinToString("; ")
-                                                if (flatSenses.size > 1) "${i + 1}. $glosses" else glosses
-                                            }.joinToString("\n")
-                                            "$translatedLine\n$englishLines"
-                                        }
-                                    }
-                                    is DefinitionResult.EnglishFallback -> {
-                                        displayWord = primary?.written ?: primary?.reading ?: word
-                                        tvWord.text = displayWord
-                                        reading = primary?.reading?.takeIf { it != primary.written } ?: ""
-                                        val defs = defResult.translatedDefinitions
-                                        meaning = flatSenses.mapIndexed { i, sense ->
-                                            val glosses = defs?.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
-                                                ?: sense.targetDefinitions.joinToString("; ")
-                                            if (flatSenses.size > 1) "${i + 1}. $glosses" else glosses
-                                        }.joinToString("\n")
-                                    }
-                                }
-                            }
-                        } catch (_: Exception) {}
-                        if (meaning.isNotEmpty()) {
-                            tvReading.text = reading
-                            tvMeaning.text = meaning
-                            if (freqScore > 0) {
-                                tvFreq.text = "★".repeat(freqScore)
-                                tvFreq.visibility = View.VISIBLE
-                            }
-                            val lookupWord = displayWord
-                            val lookupReading = readingByToken[word]
-                            row.setOnClickListener {
-                                host?.onInteraction()
-                                host?.onWordTapped(
-                                    lookupWord,
-                                    lookupReading,
-                                    lastResult?.screenshotPath,
-                                    lastResult?.originalText,
-                                    lastResult?.translatedText,
-                                    mainWordResults.toMap()
-                                )
-                            }
-                            resultsArr[idx] = Pair(displayWord, Triple(reading, meaning, freqScore))
-                            val surface = surfaceByToken[word]
-                            if (surface != null && surface != displayWord) {
-                                surfaceArr[idx] = Pair(displayWord, surface)
-                            }
-                        } else {
-                            // Remove the row plus its adjacent divider so the
-                            // invariant "every row at index > 0 is preceded by
-                            // a divider" holds after filtering.
-                            val childIdx = mainWordsContainer.indexOfChild(row)
-                            if (childIdx != -1) {
-                                if (childIdx == 0) {
-                                    mainWordsContainer.removeViewAt(0)
-                                    val next = mainWordsContainer.getChildAt(0)
-                                    if (next?.tag == WORD_DIVIDER_TAG) {
-                                        mainWordsContainer.removeViewAt(0)
-                                    }
-                                } else {
-                                    mainWordsContainer.removeViewAt(childIdx - 1) // divider
-                                    mainWordsContainer.removeViewAt(childIdx - 1) // row (shifted)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            resultsArr.filterNotNull().forEach { (dw, rmt) ->
-                mainWordResults[dw] = rmt
-            }
-            val surfaces = surfaceArr.filterNotNull().toMap()
-
-            // Build furigana spans: map lookupForm → reading from completed lookups.
-            // tokens[idx] is the lookupForm; resultsArr[idx] has (displayWord, (reading, ...)).
-            val lookupToReading = mutableMapOf<String, String>()
-            tokens.forEachIndexed { idx, lookupForm ->
-                val result = resultsArr[idx] ?: return@forEachIndexed
-                val reading = result.second.first
-                if (reading.isNotEmpty()) {
-                    lookupToReading[lookupForm] = reading
-                    // Also map the surface form so conjugated forms resolve
-                    val surface = surfaceByToken[lookupForm]
-                    if (surface != null && surface != lookupForm) {
-                        lookupToReading[surface] = reading
-                    }
-                }
-            }
-            wordSpans.clear()
-            for ((range, surface, lookupForm) in pendingSpans) {
-                // Fall back to readingByToken (the tokenizer's direct Kuromoji
-                // reading) when the JMdict lookup didn't produce one — this is
-                // what lets proper nouns and other out-of-dictionary tokens
-                // still carry a reading into the tap-popup fallback below.
-                val reading = lookupToReading[lookupForm]
-                    ?: lookupToReading[surface]
-                    ?: readingByToken[lookupForm]
-                    ?: ""
-                wordSpans.add(Triple(range, lookupForm, reading))
-            }
-
-            applyFurigana()
-
-            tvMainWordsLoading.visibility = View.GONE
-            tvNoWords.visibility = if (mainWordResults.isEmpty()) View.VISIBLE else View.GONE
-            btnResultAnki.visibility = View.VISIBLE
-            onAnkiEnabledChanged?.invoke(true)
-
-            LastSentenceCache.original = lastResult?.originalText
-            LastSentenceCache.translation = lastResult?.translatedText
-            LastSentenceCache.wordResults = mainWordResults.toMap()
-            LastSentenceCache.surfaceForms = surfaces
+    /** Derive view-side word spans from the VM's per-occurrence
+     *  tokenSpans plus the displayed text (which may have OCR
+     *  newlines inserted that aren't in [TranslationResult.originalText]).
+     *  The JMdict-resolved reading wins, then surface-keyed reading,
+     *  then the tokenizer's own reading (Kuromoji) as a last fallback
+     *  so out-of-dictionary tokens still carry a reading into the
+     *  word-tap popup. */
+    private fun recomputeWordSpans(
+        tokenSpans: List<com.playtranslate.language.TokenSpan>,
+        lookupToReading: Map<String, String>,
+    ) {
+        wordSpans.clear()
+        val displayedText = tvOriginal.text?.toString() ?: return
+        var searchFrom = 0
+        for (tok in tokenSpans) {
+            val idx = displayedText.indexOf(tok.surface, searchFrom)
+            if (idx < 0) continue
+            val range = idx until (idx + tok.surface.length)
+            val reading = lookupToReading[tok.lookupForm]
+                ?: lookupToReading[tok.surface]
+                ?: tok.reading
+                ?: ""
+            wordSpans.add(Triple(range, tok.lookupForm, reading))
+            searchFrom = idx + tok.surface.length
         }
     }
 
