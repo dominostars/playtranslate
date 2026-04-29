@@ -10,7 +10,6 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -150,7 +149,7 @@ class WordDetailBottomSheet : DialogFragment() {
 
         val content     = view.findViewById<LinearLayout>(R.id.detailContent)
         val scrollView  = view.findViewById<NestedScrollView>(R.id.detailScrollView)
-        val btnAddAnki  = view.findViewById<Button>(R.id.btnWordAddToAnki)
+        val btnAddAnki  = view.findViewById<View>(R.id.btnWordAddToAnki)
         val tvHeadword  = view.findViewById<TextView>(R.id.tvDetailHeadword)
         // The detailContent paddingTop math below reserves the toolbar's
         // 56dp slot so the headword overlay can shrink into it on scroll.

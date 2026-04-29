@@ -53,50 +53,56 @@
             <!-- The Kotlin code sets paddingTop dynamically to the
                  measured height of the overlay headword + a small gap,
                  so the reading/badges/definitions row sits flush below
-                 it regardless of how tall the headword wraps to. -->
+                 it regardless of how tall the headword wraps to.
+                 paddingBottom matches the sentence view so the floating
+                 Anki pill doesn't cover the last row when scrolled. -->
             <LinearLayout
                 android:id="@+id/detailContent"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:paddingHorizontal="@dimen/pt_section_h_padding"
-                android:paddingBottom="20dp" />
+                android:paddingBottom="64dp" />
 
         </androidx.core.widget.NestedScrollView>
 
-        <LinearLayout
-            android:layout_width="match_parent"
+    </LinearLayout>
+
+    <!-- Floating Anki pill button — matches the sentence-screen design
+         (bottom|end pill, alpha 0.85, 6dp elevation). -->
+    <LinearLayout
+        android:id="@+id/btnWordAddToAnki"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="16dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/bg_anki_pill"
+        android:paddingStart="12dp"
+        android:paddingEnd="16dp"
+        android:elevation="6dp"
+        android:alpha="0.85"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@drawable/ic_card_stack"
+            app:tint="?attr/ptAccentOn"
+            android:scaleType="centerInside" />
+
+        <TextView
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="?attr/ptBg">
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?attr/ptDivider" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnWordAddToAnki"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginHorizontal="12dp"
-                android:layout_marginTop="10dp"
-                android:layout_marginBottom="10dp"
-                android:minHeight="56dp"
-                android:text="@string/btn_add_to_anki"
-                android:textSize="15sp"
-                android:textAllCaps="false"
-                android:fontFamily="sans-serif-medium"
-                android:backgroundTint="?attr/ptAccent"
-                android:textColor="?attr/ptAccentOn"
-                android:visibility="gone"
-                app:icon="@drawable/ic_card_stack"
-                app:iconTint="?attr/ptAccentOn"
-                app:iconGravity="textStart"
-                app:iconPadding="6dp"
-                app:cornerRadius="@dimen/pt_radius" />
-
-        </LinearLayout>
+            android:text="Anki"
+            android:textColor="?attr/ptAccentOn"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:layout_marginStart="2dp" />
 
     </LinearLayout>
 
