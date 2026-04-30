@@ -140,39 +140,39 @@ class CaptureService : Service() {
 
     // ── Outbound event streams ────────────────────────────────────────────
     //
-    // Each channel uses StateFlow (for state the UI must eventually
-    // observe) or SharedFlow (for transient signals that are fine to
-    // drop while no consumer is STARTED). Activities collect these
-    // independently with their own lifecycle scopes — there's no
-    // single callback slot for one consumer to overwrite another's.
-    // This replaces the earlier `var onResult: ((..)->Unit)? = null`
-    // pattern.
+    // One-shot captures use [CaptureSession] returned from
+    // [captureOnce] / [processScreenshot]. Everything else (live mode,
+    // hold-to-preview, service-level "Idle" on config change) flows
+    // through [panelState]. The activity observes both — the one-shot
+    // session takes precedence while one is active because its
+    // emissions land in the same VM after [panelState]'s sticky replay
+    // has been deduped by the VM.
 
-    /** Live-mode result stream. StateFlow so MainActivity can
-     *  re-attach after STOP→START and observe the latest live result.
+    /** Background panel state — the latest state any non-one-shot
+     *  producer (live mode, hold-to-preview) has emitted. Sticky
+     *  (StateFlow) so a STOP→START reattach delivers the current
+     *  value to a re-subscribed observer; the VM identity-dedupes
+     *  service-emitted results separately from locally-emitted ones,
+     *  so the replay can't displace a drag-sentence local result
+     *  the VM is now showing.
      *
-     *  Only written by live-mode emit paths ([emitResult] and
-     *  [translateAndSendToPanel]). One-shot captures ([captureOnce],
-     *  [processScreenshot]) flow through their returned [CaptureSession]
-     *  and never write here — that's how a fresh per-capture activity
-     *  avoids replaying a prior session's output. The reset in those
-     *  one-shot entry points clears any stale live-mode value so a
-     *  STOP→START during the one-shot doesn't re-display it. */
-    private val _results = MutableStateFlow<TranslationResult?>(null)
-    val results: StateFlow<TranslationResult?> = _results.asStateFlow()
+     *  [PanelState.Idle] is the initial / cleared state; consumers
+     *  treat it as "no signal" rather than "show Idle UI" so a
+     *  sticky Idle replay doesn't reset the VM on every reattach.
+     *  Transient "Idle" UI signals (config change, region swap)
+     *  go through [statusUpdates] instead. */
+    private val _panelState = MutableStateFlow<PanelState>(PanelState.Idle)
+    val panelState: StateFlow<PanelState> = _panelState.asStateFlow()
 
-    private val _errors = MutableSharedFlow<String>(extraBufferCapacity = 1)
-    val errors: SharedFlow<String> = _errors.asSharedFlow()
-
+    /** Transient service-level status signals — used by [configureSaved]
+     *  and [resetConfiguration] to ask the activity to flip its panel
+     *  to "Idle" when a region/config change invalidates the current
+     *  display. SharedFlow with replay = 0 so the signal fires once;
+     *  late subscribers don't see it (which is intentional — a stale
+     *  "Idle" shouldn't override a later valid result on STOP→START
+     *  reattach). */
     private val _statusUpdates = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val statusUpdates: SharedFlow<String> = _statusUpdates.asSharedFlow()
-
-    private val _translationStarted = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    val translationStarted: SharedFlow<Unit> = _translationStarted.asSharedFlow()
-
-    /** Fired during live mode when an OCR cycle finds no source-language text. */
-    private val _liveNoText = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    val liveNoText: SharedFlow<Unit> = _liveNoText.asSharedFlow()
 
     /** Hold-to-preview loading state. StateFlow because consumers (the
      *  floating icon's loading indicator) need the current value, not a
@@ -182,11 +182,16 @@ class CaptureService : Service() {
 
     // ── Internal emit helpers (callable from sibling capture modes) ──────
 
-    internal fun emitResult(result: TranslationResult) { _results.value = result }
-    internal fun emitError(message: String) { _errors.tryEmit(message) }
+    internal fun emitResult(result: TranslationResult) {
+        _panelState.value = PanelState.Result(result)
+    }
+    internal fun emitError(message: String) {
+        _panelState.value = PanelState.Error(message)
+    }
+    internal fun emitLiveNoText() {
+        _panelState.value = PanelState.Searching
+    }
     internal fun emitStatusUpdate(message: String) { _statusUpdates.tryEmit(message) }
-    internal fun emitTranslationStarted() { _translationStarted.tryEmit(Unit) }
-    internal fun emitLiveNoText() { _liveNoText.tryEmit(Unit) }
     internal fun emitHoldLoading(loading: Boolean) { _holdLoading.value = loading }
 
     /** Observable degraded translation state (ML Kit fallback). */
@@ -373,11 +378,8 @@ class CaptureService : Service() {
 
     /** Start a one-shot capture cycle. Caller observes the returned
      *  [CaptureSession]'s [CaptureSession.state] for progress/result.
-     *  Cancels any prior one-shot session. Also clears [_results] so
-     *  a stale live-mode value can't be replayed onto a STOP→START
-     *  observer during this session. */
+     *  Cancels any prior one-shot session. */
     fun captureOnce(): CaptureSession {
-        _results.value = null
         oneShotCaptureJob?.cancel()
         val state = MutableStateFlow<CaptureState>(
             CaptureState.InProgress(getString(R.string.status_capturing))
@@ -393,7 +395,6 @@ class CaptureService : Service() {
      * (e.g. single-screen region capture from the floating menu).
      */
     fun processScreenshot(raw: Bitmap): CaptureSession {
-        _results.value = null
         oneShotCaptureJob?.cancel()
         val state = MutableStateFlow<CaptureState>(
             CaptureState.InProgress(getString(R.string.status_capturing))
@@ -508,6 +509,10 @@ class CaptureService : Service() {
     fun startLive() {
         liveMode?.stop()
         oneShotCaptureJob?.cancel()
+        // Reset the panel to Searching so the activity sees an
+        // immediate transition into live mode (rather than a stale
+        // result lingering until the first cycle lands).
+        _panelState.value = PanelState.Searching
 
         val prefs = Prefs(this)
         // Migrate legacy ordinal-based auto_translation_mode here too so
@@ -641,6 +646,9 @@ class CaptureService : Service() {
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
         setDegraded(false)
+        // Don't reset _panelState here — let the last live result
+        // linger so a STOP→START reattach still shows it. The VM's
+        // identity dedup keeps the replay from re-running lookups.
     }
 
     // ── Unified loop handlers ─────────────────────────────────────────────
@@ -801,18 +809,19 @@ class CaptureService : Service() {
             val appPanelVisible = !Prefs.isSingleScreen(this) && MainActivity.isInForeground
             if (!appPanelVisible) return null
         }
-        _translationStarted.tryEmit(Unit)
         val perGroup = translateGroupsSeparately(ocrResult.groupTexts)
         val translated = perGroup.joinToString("\n\n") { it.first }
         val note = perGroup.mapNotNull { it.second }.firstOrNull()
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-        _results.value = com.playtranslate.model.TranslationResult(
-            originalText   = ocrResult.fullText,
-            segments       = ocrResult.segments,
-            translatedText = translated,
-            timestamp      = timestamp,
-            screenshotPath = screenshotPath,
-            note           = note
+        emitResult(
+            com.playtranslate.model.TranslationResult(
+                originalText   = ocrResult.fullText,
+                segments       = ocrResult.segments,
+                translatedText = translated,
+                timestamp      = timestamp,
+                screenshotPath = screenshotPath,
+                note           = note
+            )
         )
         return perGroup
     }
@@ -820,7 +829,7 @@ class CaptureService : Service() {
     /** Called when OCR finds no source-language text: hides overlays and notifies the UI. */
     internal fun handleNoTextDetected() {
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
-        _liveNoText.tryEmit(Unit)
+        emitLiveNoText()
     }
 
     /** Remove specific overlay boxes without rebuilding the entire view. */

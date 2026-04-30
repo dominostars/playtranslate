@@ -202,7 +202,6 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
             service.showLiveOverlay(placeholderBoxes, left, top, raw.width, raw.height)
 
             // Translate
-            service.emitTranslationStarted()
             val perGroup = service.translateGroupsSeparately(ocrResult.groupTexts)
             val translated = perGroup.joinToString("\n\n") { it.first }
             val note = perGroup.mapNotNull { it.second }.firstOrNull()
