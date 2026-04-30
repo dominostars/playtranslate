@@ -47,6 +47,14 @@ sealed class CaptureState {
      *  service not configured, etc.). [message] is shown formatted
      *  as an error. */
     data class Failed(val message: String) : CaptureState()
+
+    /** Job was externally cancelled (e.g. by [CaptureService.startLive]
+     *  or by a subsequent one-shot replacing this session) before
+     *  reaching a natural terminal state. Activities treat this as
+     *  silent — no VM update, just clear the session reference — so
+     *  cancellation never surfaces as a flashed error or a stuck
+     *  "Capturing" status on lifecycle reattach. */
+    object Cancelled : CaptureState()
 }
 
 /**

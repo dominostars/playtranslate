@@ -1001,6 +1001,14 @@ class MainActivity :
                                     resultVm.showError(state.message)
                                     _currentCaptureSession.value = null
                                 }
+                                CaptureState.Cancelled -> {
+                                    // Silent — cancellation was external (live mode
+                                    // start, region change, replacing one-shot).
+                                    // Don't touch the VM; just clear the session
+                                    // so a STOP→START reattach can't re-deliver
+                                    // this dead session's last InProgress.
+                                    _currentCaptureSession.value = null
+                                }
                             }
                         }
                 }

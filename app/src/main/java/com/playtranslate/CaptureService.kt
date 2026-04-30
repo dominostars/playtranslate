@@ -22,6 +22,7 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.playtranslate.model.TranslationResult
 import com.google.mlkit.nl.translate.TranslateLanguage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -29,6 +30,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -384,6 +386,7 @@ class CaptureService : Service() {
             CaptureState.InProgress(getString(R.string.status_capturing))
         )
         val job = serviceScope.launch { runCaptureCycle(state) }
+        attachCancellationTerminal(job, state)
         oneShotCaptureJob = job
         return CaptureSession(state.asStateFlow(), job)
     }
@@ -399,8 +402,33 @@ class CaptureService : Service() {
             CaptureState.InProgress(getString(R.string.status_capturing))
         )
         val job = serviceScope.launch { runProcessCycle(raw, state) }
+        attachCancellationTerminal(job, state)
         oneShotCaptureJob = job
         return CaptureSession(state.asStateFlow(), job)
+    }
+
+    /** Wires [job]'s completion to write [CaptureState.Cancelled] to
+     *  [state] when the job is cancelled before reaching a natural
+     *  terminal state. Covers the two cancellation paths the per-session
+     *  model otherwise mishandles: cancellation that fires before the
+     *  coroutine dispatches (state stuck at InProgress), and
+     *  cancellation that fires inside the pipeline body (would
+     *  otherwise be swallowed by [runCaptureOcrTranslate]'s broad
+     *  catch and surfaced as [CaptureState.Failed]).
+     *
+     *  No-op if the job completed normally (cause is null) or if the
+     *  state has already reached a non-InProgress terminal value —
+     *  defensive against a hypothetical race between cancellation and
+     *  the pipeline writing its own terminal state. */
+    private fun attachCancellationTerminal(
+        job: Job,
+        state: MutableStateFlow<CaptureState>,
+    ) {
+        job.invokeOnCompletion { cause ->
+            if (cause is CancellationException && state.value is CaptureState.InProgress) {
+                state.value = CaptureState.Cancelled
+            }
+        }
     }
 
     /** One-shot capture from a pre-captured bitmap: walks [state]
@@ -456,6 +484,9 @@ class CaptureService : Service() {
                     note           = note
                 )
             )
+        } catch (e: CancellationException) {
+            // Let cancellation propagate; invokeOnCompletion writes Cancelled.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Process cycle failed: ${e.message}", e)
             state.value = CaptureState.Failed(e.message ?: "Unknown error")
@@ -987,6 +1018,12 @@ class CaptureService : Service() {
                     ocrResult = ocrResult
                 )
             )
+        } catch (e: CancellationException) {
+            // Don't swallow cancellation — let it propagate so the
+            // launched coroutine completes with cancellation, and the
+            // session's invokeOnCompletion writes CaptureState.Cancelled
+            // instead of surfacing it as a user-visible Failed.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Capture cycle failed: ${e.message}", e)
             return PipelineOutcome.Failed(e.message ?: "Unknown error")
@@ -1045,9 +1082,17 @@ class CaptureService : Service() {
             .filter { (_, key) -> key !in translationCache }
 
         val freshByKey: Map<TranslationCache.Key, Pair<String, String?>> = if (uncached.isNotEmpty()) {
-            val results = uncached.map { (_, key) ->
-                serviceScope.async { translate(key.text, target) }
-            }.awaitAll()
+            // Fan out under coroutineScope so the per-group translations
+            // are children of the calling capture job. When that job is
+            // cancelled (live-mode start, replacement one-shot, etc.) the
+            // children cancel with it instead of continuing on
+            // serviceScope and writing to translationCache / degradedState
+            // after the session has already been marked Cancelled.
+            val results = coroutineScope {
+                uncached.map { (_, key) ->
+                    async { translate(key.text, target) }
+                }.awaitAll()
+            }
 
             uncached.zip(results).forEach { (indexedKey, result) ->
                 if (result.second == null) {
@@ -1105,6 +1150,11 @@ class CaptureService : Service() {
         if (deepl != null) {
             try {
                 return Pair(deepl.translate(text), null).also { setDegraded(false) }
+            } catch (e: CancellationException) {
+                // Don't fall back through Lingva/ML Kit just because the
+                // caller cancelled — propagate so the capture job's
+                // cancellation reaches its terminal Cancelled state.
+                throw e
             } catch (e: DeepLQuotaExceededException) {
                 Log.w(TAG, "DeepL quota exceeded, trying Lingva")
             } catch (e: DeepLAuthException) {
@@ -1118,6 +1168,8 @@ class CaptureService : Service() {
         if (lingva != null) {
             try {
                 return Pair(lingva.translate(text), null).also { setDegraded(false) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Lingva failed (${e.message}), falling back to ML Kit")
             }

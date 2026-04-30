@@ -434,6 +434,13 @@ class TranslationResultActivity :
                         is CaptureState.Done -> vm.displayResult(state.result, applicationContext)
                         is CaptureState.NoText -> vm.showStatus(state.message)
                         is CaptureState.Failed -> vm.showError(state.message)
+                        // External cancellation supersedes this view —
+                        // the user started live mode, replaced the
+                        // capture, or the service is tearing down. There
+                        // is no useful terminal UI to show, so close
+                        // rather than leaving the panel stuck on
+                        // "Translating…" indefinitely.
+                        CaptureState.Cancelled -> finish()
                     }
                 }
             }
