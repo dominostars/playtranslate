@@ -407,19 +407,66 @@ class CaptureService : Service() {
         return CaptureSession(state.asStateFlow(), job)
     }
 
-    /** Wires [job]'s completion to write [CaptureState.Cancelled] to
-     *  [state] when the job is cancelled before reaching a natural
-     *  terminal state. Covers the two cancellation paths the per-session
-     *  model otherwise mishandles: cancellation that fires before the
-     *  coroutine dispatches (state stuck at InProgress), and
-     *  cancellation that fires inside the pipeline body (would
-     *  otherwise be swallowed by [runCaptureOcrTranslate]'s broad
-     *  catch and surfaced as [CaptureState.Failed]).
-     *
-     *  No-op if the job completed normally (cause is null) or if the
-     *  state has already reached a non-InProgress terminal value —
-     *  defensive against a hypothetical race between cancellation and
-     *  the pipeline writing its own terminal state. */
+    // ── Cancellation correctness for one-shot sessions ────────────────────
+    //
+    // Cancellation must always end up at [CaptureState.Cancelled] — never
+    // at [CaptureState.Failed] (would surface a cryptic error flash) and
+    // never stuck at [CaptureState.InProgress] (would replay stale
+    // "Capturing" status on STOP→START). Four complementary safeguards
+    // achieve this; they each handle a different scenario, and removing
+    // any one of them silently re-introduces a class of regression.
+    //
+    //   A. Pipeline-level CancellationException re-throw
+    //      ([runCaptureOcrTranslate], [runProcessCycle]).
+    //      Their broad `catch (Exception)` blocks would otherwise swallow
+    //      cancellation and convert it to [PipelineOutcome.Failed] /
+    //      [CaptureState.Failed] with a runtime message like
+    //      "StandaloneCoroutine was cancelled". A leading
+    //      `catch (CancellationException) { throw e }` lets cancellation
+    //      reach the launched coroutine's completion.
+    //
+    //   B. Translator-fallback CancellationException re-throw
+    //      ([translate]'s DeepL and Lingva blocks).
+    //      Without these, a cancelled capture would waterfall through
+    //      Lingva → ML Kit doing wasted fallback work that the cancelled
+    //      caller can never deliver.
+    //
+    //   C. Structured fan-out via coroutineScope
+    //      ([translateGroupsSeparately]).
+    //      Per-group async translations are children of a coroutineScope
+    //      inside the calling capture job, NOT of the long-lived
+    //      serviceScope. Cancelling the capture job cancels the children
+    //      structurally so they don't keep mutating translationCache /
+    //      degradedState after the session has been marked terminal.
+    //
+    //   D. invokeOnCompletion safety net
+    //      ([attachCancellationTerminal] below).
+    //      For the cancel-before-dispatch case (job cancelled while the
+    //      launched coroutine is still queued), no exception is ever
+    //      thrown and the pipeline body never runs — so layers A–C have
+    //      nothing to do. The Job.invokeOnCompletion hook still fires
+    //      and writes [CaptureState.Cancelled] explicitly.
+    //
+    // Activity collectors complete the picture by treating Cancelled as
+    // silent — MainActivity clears its session reference, TranslationResultActivity
+    // calls finish(). The combined effect: every one-shot session
+    // transitions to exactly one of Done / NoText / Failed / Cancelled
+    // before its observer detaches, with no flashes or stuck states.
+    //
+    // If you add a new `catch (Exception)` block anywhere on the capture
+    // hot path, prefix it with `catch (CancellationException) { throw e }`
+    // — the test `TranslationResultViewModelDedupTest` doesn't exercise
+    // this path (the full pipeline is too Android-heavy for unit tests),
+    // so a regression here won't fail any current automated check.
+
+    /** Layer D from "Cancellation correctness" above: write
+     *  [CaptureState.Cancelled] when [job] completes with a
+     *  CancellationException and [state] is still InProgress. The
+     *  InProgress check is defensive against a hypothetical race
+     *  between cancellation and the pipeline's own terminal write —
+     *  in practice the pipeline writes terminal states only after
+     *  awaiting through suspension points where cancellation would
+     *  have already propagated. */
     private fun attachCancellationTerminal(
         job: Job,
         state: MutableStateFlow<CaptureState>,

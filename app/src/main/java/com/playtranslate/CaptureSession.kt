@@ -4,14 +4,58 @@ import com.playtranslate.model.TranslationResult
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  RESULT-SURFACE CHANNELS — orientation
+//
+//  CaptureService surfaces translation activity to the UI through two
+//  deliberately distinct channels that exist for different reasons:
+//
+//  1. CaptureSession (defined in this file).
+//     A bounded, per-cycle session for a single user-initiated one-shot
+//     capture. captureOnce() / processScreenshot() return a fresh
+//     CaptureSession whose StateFlow walks through InProgress messages
+//     and lands on exactly one terminal state (Done / NoText / Failed /
+//     Cancelled). The session is born with the launched coroutine and
+//     dies with it — no service-global cache for late subscribers, so a
+//     freshly-launched per-capture TranslationResultActivity literally
+//     cannot observe the previous capture's output.
+//
+//  2. PanelState (also in this file), exposed via
+//     CaptureService.panelState: StateFlow<PanelState>.
+//     A continuous, sticky stream for background result producers (live
+//     mode, hold-to-preview, FuriganaMode) feeding MainActivity's panel.
+//     Each emission overwrites the last; STOP→START reattach delivers
+//     the current value to the new subscriber so the user sees the
+//     latest live result on resume. The VM's identity dedup
+//     (lastSeenServiceResult) prevents that replay from displacing a
+//     local update like a drag-sentence result.
+//
+//  Why two channels rather than one. CaptureSession's lifecycle is
+//  terminal (a one-shot ends and is gone), and the TranslationResultActivity
+//  observer is per-launch, so per-session ownership is the natural shape.
+//  PanelState's lifecycle is open-ended (live mode runs until the user
+//  stops it, hold-to-preview lingers until something replaces it), and
+//  MainActivity's observer is long-lived, so a sticky StateFlow with
+//  VM-side identity dedup is the natural shape there.
+//
+//  This split traces to the *current* product UX (foreground per-capture
+//  surface vs. background passive panel). If the UX ever unifies — e.g.
+//  a persistent panel that owns one-shot results too — these channels
+//  would collapse. Worth knowing before extending either.
+//
+//  Cancellation correctness for one-shot sessions is a four-layer
+//  defense; see CaptureService.attachCancellationTerminal for the full
+//  architecture.
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * A single one-shot capture pipeline (capture/process screenshot →
  * OCR → translate). Returned by [CaptureService.captureOnce] and
  * [CaptureService.processScreenshot]. The caller owns this session
  * for as long as it cares about the outcome; the StateFlow walks
  * through [CaptureState.InProgress] entries and lands on a terminal
- * [CaptureState.Done], [CaptureState.NoText], or
- * [CaptureState.Failed].
+ * [CaptureState.Done], [CaptureState.NoText], [CaptureState.Failed],
+ * or [CaptureState.Cancelled].
  *
  * Sessions exist instead of a service-global "latest result"
  * StateFlow so a fresh consumer (e.g. a per-capture

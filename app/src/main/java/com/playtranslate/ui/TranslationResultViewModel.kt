@@ -50,28 +50,68 @@ class TranslationResultViewModel : ViewModel() {
 
     private var lookupJob: Job? = null
 
-    /** Last result instance we've already consumed via [displayResult]
-     *  (any source — service or local). Used to dedup repeated calls
-     *  with the same instance: a rotation mid-Ready re-runs displayResult
-     *  with the same TranslationResult, and we don't want to restart
-     *  word lookups. Identity (`===`) is correct because each emission
-     *  constructs a fresh TranslationResult and we hold that exact
-     *  reference. */
+    // ── Dedup architecture (read this before changing displayResult) ────
+    //
+    // Two layers cooperate to prevent redundant work and UI flicker
+    // when the same result is emitted multiple times (sticky StateFlow
+    // replay on lifecycle reattach, etc.):
+    //
+    //   Layer 1 — VM identity dedup (`===`).
+    //     [displayResult] / [displayServiceResult] early-return when
+    //     handed the same TranslationResult INSTANCE they last
+    //     consumed. Skips the lookup pipeline restart. Identity, not
+    //     equality, is intentional: a fresh capture of the same source
+    //     text under a different backend or dictionary should still
+    //     re-trigger lookups. The contract is "fresh capture =
+    //     new instance"; CaptureService honours this by constructing
+    //     a new TranslationResult per cycle.
+    //
+    //   Layer 2 — StateFlow equality conflation.
+    //     [_result] is a MutableStateFlow, which by contract drops
+    //     value assignments equal (`==`) to the current value. With
+    //     ResultState.Ready and TranslationResult both being data
+    //     classes, a content-equal emission produces no observable
+    //     change to the StateFlow's value. This catches what Layer 1
+    //     misses (e.g. a `.copy()` round-trip with identical content)
+    //     and prevents UI flicker — the lookup may re-run on a Layer 1
+    //     miss, but the fragment doesn't re-render.
+    //
+    // Two trackers, not one. Service-emitted and locally-emitted
+    // results have separate dedup state because they participate in
+    // different replay scenarios:
+    //
+    //   - lastSeenResult tracks *anything* shown. Catches any duplicate
+    //     `displayResult` call (e.g. rotation mid-Ready).
+    //
+    //   - lastSeenServiceResult tracks only what the SERVICE emitted
+    //     (via [displayServiceResult]). A local update — drag-sentence
+    //     calling [displayResult] directly — must NOT advance this
+    //     tracker, or the next STOP→START reattach to the service's
+    //     panel StateFlow would re-deliver the prior service result
+    //     and clobber the local one. This split is the architectural
+    //     fix for the drag-sentence-after-live-mode bug; the test
+    //     `local displayResult does not poison service-replay dedup`
+    //     pins it.
+    //
+    // See CaptureSession.kt for the surrounding "two channels" model
+    // and CaptureService.attachCancellationTerminal for the cancellation
+    // story.
+
+    /** See "Dedup architecture" above. Last result instance that was
+     *  passed to [displayResult] from any source. */
     private var lastSeenResult: TranslationResult? = null
 
-    /** Last result the SERVICE has emitted to [displayServiceResult].
-     *  Tracked separately from [lastSeenResult] so a local update
-     *  (e.g. drag-sentence's [displayResult] call) doesn't make the
-     *  next service replay look "new". A STOP→START reattach to the
-     *  service's panel StateFlow re-delivers its current value; if
-     *  it equals what we've already consumed *as a service emission*,
-     *  we treat it as already-seen even though the VM has since moved
-     *  on to a local result. */
+    /** See "Dedup architecture" above. Last result the service emitted
+     *  via [displayServiceResult]. Advanced ONLY from that entry point;
+     *  a [displayResult] call from local code (drag-sentence, edit
+     *  overlay) must not touch this. */
     private var lastSeenServiceResult: TranslationResult? = null
 
-    /** Display a completed translation result from any source.
-     *  No-op if [result] is the same instance already shown. New
-     *  results (different instances) always process. */
+    /** Display a completed translation result from any source. Used
+     *  by both the service collector (via [displayServiceResult]) and
+     *  by local code paths that build a result on the activity's own.
+     *  No-op if [result] is the same instance already shown — see
+     *  "Dedup architecture" above. */
     fun displayResult(result: TranslationResult, appCtx: Context) {
         if (result === lastSeenResult) return
         lastSeenResult = result
@@ -79,13 +119,12 @@ class TranslationResultViewModel : ViewModel() {
         startWordLookups(result.originalText, appCtx)
     }
 
-    /** Display a result from the service's panel state. Updates
-     *  [lastSeenServiceResult] for the StateFlow-replay dedup, then
-     *  delegates to [displayResult] (which itself may dedup if the
-     *  same instance has already been processed). No-op if this
-     *  service-emitted instance has been seen before — that happens
-     *  on STOP→START reattach, when the panel StateFlow replays its
-     *  current value to a re-subscribed observer. */
+    /** Display a result that came from the service's panel state.
+     *  Distinct from [displayResult] because it advances
+     *  [lastSeenServiceResult] separately from [lastSeenResult] —
+     *  this is what keeps a STOP→START reattach to the panel
+     *  StateFlow from replaying a stale service result on top of
+     *  a local update. See "Dedup architecture" above. */
     fun displayServiceResult(result: TranslationResult, appCtx: Context) {
         if (result === lastSeenServiceResult) return
         lastSeenServiceResult = result

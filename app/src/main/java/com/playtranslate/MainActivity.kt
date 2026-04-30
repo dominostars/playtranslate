@@ -969,7 +969,22 @@ class MainActivity :
      *  they auto-pause when this activity stops and resume on STARTED —
      *  no manual cleanup required, and no risk of another activity
      *  clobbering our subscription (the old `var onResult = { ... }`
-     *  pattern). */
+     *  pattern).
+     *
+     *  Two collectors write to the same [resultVm] from different
+     *  channels; they coexist because the channels represent different
+     *  things (see CaptureSession.kt's "result-surface channels"):
+     *   - [_currentCaptureSession] follows whatever one-shot capture
+     *     this activity initiated (started via [startOneShotCapture]),
+     *     unfolding through the session's own state machine and clearing
+     *     itself on terminal so reattach can't replay.
+     *   - [svc.panelState] is the sticky background stream (live mode,
+     *     hold-to-preview); the VM's [TranslationResultViewModel.displayServiceResult]
+     *     identity-dedupes the StateFlow's replay so it can't displace
+     *     a local result the VM is now showing.
+     *  When a one-shot is in flight there is no live mode running (each
+     *  callsite that triggers a one-shot pauses live mode first), so
+     *  the two collectors don't fight for the VM in practice. */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private fun wireServiceCallbacks() {
         val svc = captureService ?: return
