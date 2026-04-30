@@ -148,20 +148,16 @@ class CaptureService : Service() {
     // This replaces the earlier `var onResult: ((..)->Unit)? = null`
     // pattern.
 
-    /** Latest capture result. StateFlow so a result that lands while
-     *  the activity is STOPPED is delivered when it returns to STARTED
-     *  (`replay = 0` SharedFlow would drop it — the buffer feeds slow
-     *  active subscribers, not late ones).
+    /** Live-mode result stream. StateFlow so MainActivity can
+     *  re-attach after STOP→START and observe the latest live result.
      *
-     *  Invariant: null while a one-shot capture is in flight (or has
-     *  never run); non-null only when a capture has finished and a
-     *  newer one has not yet started. [captureOnce] and [processScreenshot]
-     *  reset this synchronously before launching their cycle so a fresh
-     *  per-capture subscriber (e.g. a new TranslationResultActivity with
-     *  a new VM) can't replay the prior capture's result before this
-     *  capture's status emissions land. The VM also dedupes via object
-     *  identity so a rotation-mid-Ready re-collect doesn't re-trigger
-     *  lookups for state already shown. */
+     *  Only written by live-mode emit paths ([emitResult] and
+     *  [translateAndSendToPanel]). One-shot captures ([captureOnce],
+     *  [processScreenshot]) flow through their returned [CaptureSession]
+     *  and never write here — that's how a fresh per-capture activity
+     *  avoids replaying a prior session's output. The reset in those
+     *  one-shot entry points clears any stale live-mode value so a
+     *  STOP→START during the one-shot doesn't re-display it. */
     private val _results = MutableStateFlow<TranslationResult?>(null)
     val results: StateFlow<TranslationResult?> = _results.asStateFlow()
 
@@ -375,10 +371,20 @@ class CaptureService : Service() {
         }
     }
 
-    fun captureOnce() {
+    /** Start a one-shot capture cycle. Caller observes the returned
+     *  [CaptureSession]'s [CaptureSession.state] for progress/result.
+     *  Cancels any prior one-shot session. Also clears [_results] so
+     *  a stale live-mode value can't be replayed onto a STOP→START
+     *  observer during this session. */
+    fun captureOnce(): CaptureSession {
         _results.value = null
         oneShotCaptureJob?.cancel()
-        oneShotCaptureJob = serviceScope.launch { runCaptureCycle() }
+        val state = MutableStateFlow<CaptureState>(
+            CaptureState.InProgress(getString(R.string.status_capturing))
+        )
+        val job = serviceScope.launch { runCaptureCycle(state) }
+        oneShotCaptureJob = job
+        return CaptureSession(state.asStateFlow(), job)
     }
 
     /**
@@ -386,21 +392,29 @@ class CaptureService : Service() {
      * Used when the screenshot must be taken before an activity appears on screen
      * (e.g. single-screen region capture from the floating menu).
      */
-    fun processScreenshot(raw: Bitmap) {
+    fun processScreenshot(raw: Bitmap): CaptureSession {
         _results.value = null
         oneShotCaptureJob?.cancel()
-        oneShotCaptureJob = serviceScope.launch { runProcessCycle(raw) }
+        val state = MutableStateFlow<CaptureState>(
+            CaptureState.InProgress(getString(R.string.status_capturing))
+        )
+        val job = serviceScope.launch { runProcessCycle(raw, state) }
+        oneShotCaptureJob = job
+        return CaptureSession(state.asStateFlow(), job)
     }
 
-    private suspend fun runProcessCycle(raw: Bitmap) {
+    /** One-shot capture from a pre-captured bitmap: walks [state]
+     *  through Capturing → OCR → Translating → final Done/NoText/Failed.
+     *  Owned by the [CaptureSession] returned from [processScreenshot]. */
+    private suspend fun runProcessCycle(raw: Bitmap, state: MutableStateFlow<CaptureState>) {
         if (!isConfigured) {
-            _errors.tryEmit("Not configured — tap Translate to set up")
+            state.value = CaptureState.Failed("Not configured — tap Translate to set up")
             raw.recycle()
             return
         }
         var bitmap: Bitmap = raw
         try {
-            _statusUpdates.tryEmit(getString(R.string.status_capturing))
+            state.value = CaptureState.InProgress(getString(R.string.status_capturing))
             val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
             val screenshotPath = mgr?.saveToCache(raw)
 
@@ -417,32 +431,34 @@ class CaptureService : Service() {
             // without the outer finally having to follow ownership transfers.
             val ocrBitmap = blackoutFloatingIcon(bitmap, left, top)
             val ocrResult = try {
-                _statusUpdates.tryEmit(getString(R.string.status_ocr))
+                state.value = CaptureState.InProgress(getString(R.string.status_ocr))
                 ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
             } finally {
                 if (!ocrBitmap.isRecycled) ocrBitmap.recycle()
             }
 
             if (ocrResult == null) {
-                _statusUpdates.tryEmit(noTextMessage())
+                state.value = CaptureState.NoText(noTextMessage())
                 return
             }
 
-            _statusUpdates.tryEmit(getString(R.string.status_translating))
+            state.value = CaptureState.InProgress(getString(R.string.status_translating))
             val (translated, note) = translateGroups(ocrResult.groupTexts)
 
             val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-            _results.value = TranslationResult(
-                originalText   = ocrResult.fullText,
-                segments       = ocrResult.segments,
-                translatedText = translated,
-                timestamp      = timestamp,
-                screenshotPath = screenshotPath,
-                note           = note
+            state.value = CaptureState.Done(
+                TranslationResult(
+                    originalText   = ocrResult.fullText,
+                    segments       = ocrResult.segments,
+                    translatedText = translated,
+                    timestamp      = timestamp,
+                    screenshotPath = screenshotPath,
+                    note           = note
+                )
             )
         } catch (e: Exception) {
             Log.e(TAG, "Process cycle failed: ${e.message}", e)
-            _errors.tryEmit(e.message ?: "Unknown error")
+            state.value = CaptureState.Failed(e.message ?: "Unknown error")
         } finally {
             if (!bitmap.isRecycled) bitmap.recycle()
         }
@@ -897,15 +913,26 @@ class CaptureService : Service() {
         val ocrResult: OcrManager.OcrResult? = null
     )
 
+    /** Outcome of [runCaptureOcrTranslate]. Callers translate to their
+     *  own surface (one-shot writes a [CaptureState] on the session;
+     *  live mode emits to its own flows). The pipeline doesn't
+     *  side-effect any service-global flow on its own anymore. */
+    internal sealed class PipelineOutcome {
+        data class Success(val pipeline: PipelineResult) : PipelineOutcome()
+        object NoText : PipelineOutcome()
+        data class Failed(val message: String) : PipelineOutcome()
+    }
+
     /**
      * Core capture → crop → OCR → translate pipeline shared by one-shot
-     * and all live modes. Returns a [PipelineResult] or null if no text.
+     * and all live modes. Returns a [PipelineOutcome]; callers decide
+     * how to surface success/no-text/failure on their own channel.
      */
-    internal suspend fun runCaptureOcrTranslate(onScreenshotTaken: (() -> Unit)? = null): PipelineResult? {
-        val raw: Bitmap = captureScreen(gameDisplayId) ?: run {
-            _errors.tryEmit("Screenshot failed for display $gameDisplayId. Try a different display in Settings.")
-            return null
-        }
+    internal suspend fun runCaptureOcrTranslate(onScreenshotTaken: (() -> Unit)? = null): PipelineOutcome {
+        val raw: Bitmap = captureScreen(gameDisplayId)
+            ?: return PipelineOutcome.Failed(
+                "Screenshot failed for display $gameDisplayId. Try a different display in Settings."
+            )
         onScreenshotTaken?.invoke()
         var bitmap: Bitmap? = raw
         try {
@@ -928,49 +955,51 @@ class CaptureService : Service() {
                 if (!ocrBitmap.isRecycled) ocrBitmap.recycle()
             }
 
-            if (ocrResult == null) return null
+            if (ocrResult == null) return PipelineOutcome.NoText
 
             val perGroup = translateGroupsSeparately(ocrResult.groupTexts)
             val translated = perGroup.joinToString("\n\n") { it.first }
             val note = perGroup.mapNotNull { it.second }.firstOrNull()
             val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
 
-            return PipelineResult(
-                result = TranslationResult(
-                    originalText   = ocrResult.fullText,
-                    segments       = ocrResult.segments,
-                    translatedText = translated,
-                    timestamp      = timestamp,
-                    screenshotPath = screenshotPath,
-                    note           = note
-                ),
-                groupBounds = ocrResult.groupBounds,
-                groupTranslations = perGroup.map { it.first },
-                cropLeft = left, cropTop = top,
-                screenshotW = raw.width, screenshotH = raw.height,
-                ocrResult = ocrResult
+            return PipelineOutcome.Success(
+                PipelineResult(
+                    result = TranslationResult(
+                        originalText   = ocrResult.fullText,
+                        segments       = ocrResult.segments,
+                        translatedText = translated,
+                        timestamp      = timestamp,
+                        screenshotPath = screenshotPath,
+                        note           = note
+                    ),
+                    groupBounds = ocrResult.groupBounds,
+                    groupTranslations = perGroup.map { it.first },
+                    cropLeft = left, cropTop = top,
+                    screenshotW = raw.width, screenshotH = raw.height,
+                    ocrResult = ocrResult
+                )
             )
         } catch (e: Exception) {
             Log.e(TAG, "Capture cycle failed: ${e.message}", e)
-            _errors.tryEmit(e.message ?: "Unknown error")
-            return null
+            return PipelineOutcome.Failed(e.message ?: "Unknown error")
         } finally {
             bitmap?.let { if (!it.isRecycled) it.recycle() }
         }
     }
 
-    /** One-shot capture: emits status updates and a final [results] event. */
-    private suspend fun runCaptureCycle() {
+    /** One-shot capture: walks [state] through Capturing → final
+     *  Done/NoText/Failed. Activities own the [state] flow via the
+     *  [CaptureSession] returned from [captureOnce]. */
+    private suspend fun runCaptureCycle(state: MutableStateFlow<CaptureState>) {
         if (!isConfigured) {
-            _errors.tryEmit("Not configured — tap Translate to set up")
+            state.value = CaptureState.Failed("Not configured — tap Translate to set up")
             return
         }
-        _statusUpdates.tryEmit(getString(R.string.status_capturing))
-        val pipeline = runCaptureOcrTranslate(onScreenshotTaken = { flashRegionIndicator() })
-        if (pipeline != null) {
-            _results.value = pipeline.result
-        } else {
-            _statusUpdates.tryEmit(noTextMessage())
+        state.value = CaptureState.InProgress(getString(R.string.status_capturing))
+        when (val outcome = runCaptureOcrTranslate(onScreenshotTaken = { flashRegionIndicator() })) {
+            is PipelineOutcome.Success -> state.value = CaptureState.Done(outcome.pipeline.result)
+            PipelineOutcome.NoText -> state.value = CaptureState.NoText(noTextMessage())
+            is PipelineOutcome.Failed -> state.value = CaptureState.Failed(outcome.message)
         }
     }
 
