@@ -42,20 +42,29 @@ class InAppOnlyMode(private val service: CaptureService) : LiveMode {
                     continue
                 }
 
-                val pipeline = service.runCaptureOcrTranslate()
-                if (pipeline != null) {
-                    val dedupKey = pipeline.result.originalText
-                        .filter { c -> OcrManager.isSourceLangChar(c, service.sourceLang) }
-                    if (lastOcrText != null &&
-                        !OverlayToolkit.isSignificantChange(lastOcrText!!, dedupKey)) {
-                        delay(Prefs(service).captureIntervalMs)
-                        continue
+                when (val outcome = service.runCaptureOcrTranslate()) {
+                    is CaptureService.PipelineOutcome.Success -> {
+                        val pipeline = outcome.pipeline
+                        val dedupKey = pipeline.result.originalText
+                            .filter { c -> OcrManager.isSourceLangChar(c, service.sourceLang) }
+                        if (lastOcrText != null &&
+                            !OverlayToolkit.isSignificantChange(lastOcrText!!, dedupKey)) {
+                            delay(Prefs(service).captureIntervalMs)
+                            continue
+                        }
+                        lastOcrText = dedupKey
+                        service.emitResult(pipeline.result)
+                        cacheOverlayData(pipeline)
                     }
-                    lastOcrText = dedupKey
-                    service.emitResult(pipeline.result)
-                    cacheOverlayData(pipeline)
-                } else {
-                    service.emitLiveNoText()
+                    CaptureService.PipelineOutcome.NoText -> service.emitLiveNoText()
+                    is CaptureService.PipelineOutcome.Failed -> {
+                        // Failed in live mode: surface the error like before
+                        // (runCaptureOcrTranslate used to emit to _errors itself)
+                        // and treat the cycle as a no-text outcome so the loop
+                        // continues without a stale result hanging on screen.
+                        service.emitError(outcome.message)
+                        service.emitLiveNoText()
+                    }
                 }
                 delay(Prefs(service).captureIntervalMs)
             }

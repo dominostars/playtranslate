@@ -47,6 +47,9 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.filterNotNull
 import com.playtranslate.BuildConfig
 import com.playtranslate.diagnostics.LogExporter
@@ -117,6 +120,15 @@ class MainActivity :
 
     private var editTranslationJob: Job? = null
     private var wasKeyboardVisible = false
+
+    /** Tracks the latest one-shot capture session this activity
+     *  initiated. The wireServiceCallbacks collector follows whichever
+     *  session is current via flatMapLatest, drives [resultVm] from
+     *  its state, and clears this back to null once the session reaches
+     *  a terminal state — that way a later local update (drag-sentence)
+     *  doesn't get clobbered by a STOP→START re-collect replaying the
+     *  session's terminal value. */
+    private val _currentCaptureSession = MutableStateFlow<CaptureSession?>(null)
 
     // ── Fragment ───────────────────────────────────────────────────────────
 
@@ -562,7 +574,7 @@ class MainActivity :
             onTranslateOnce = { region ->
                 selectTab(Tab.TRANSLATE)
                 captureService?.configureOverride(region)
-                withAccessibility { captureService?.captureOnce() }
+                withAccessibility { startOneShotCapture() }
             }
             onClose = { hideRegionPicker() }
         }
@@ -666,7 +678,7 @@ class MainActivity :
             if (isLiveMode) {
                 captureService?.refreshLiveOverlay()
             } else {
-                withAccessibility { captureService?.captureOnce() }
+                withAccessibility { startOneShotCapture() }
             }
         }
         btnTranslate.setOnLongClickListener {
@@ -959,15 +971,45 @@ class MainActivity :
      *  no manual cleanup required, and no risk of another activity
      *  clobbering our subscription (the old `var onResult = { ... }`
      *  pattern). */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private fun wireServiceCallbacks() {
         val svc = captureService ?: return
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
-                    // filterNotNull: results is a StateFlow<TranslationResult?>
-                    // with initial null. Skipping null preserves "no result yet"
-                    // semantics. The VM dedupes equal results so a rotation/
-                    // reattach replaying the latest doesn't re-trigger lookups.
+                    // One-shot capture sessions started by this activity.
+                    // flatMapLatest follows whichever session is current;
+                    // when a session reaches terminal we null out the flow so
+                    // a later STOP→START re-collect doesn't replay the
+                    // terminal state on top of newer VM state (e.g. a
+                    // drag-sentence local result).
+                    _currentCaptureSession.flatMapLatest { it?.state ?: emptyFlow() }
+                        .collect { state ->
+                            when (state) {
+                                is CaptureState.InProgress ->
+                                    resultVm.showStatus(state.message)
+                                is CaptureState.Done -> {
+                                    editTranslationJob?.cancel()
+                                    editTranslationJob = null
+                                    resultVm.displayResult(state.result, applicationContext)
+                                    _currentCaptureSession.value = null
+                                }
+                                is CaptureState.NoText -> {
+                                    resultVm.showStatus(state.message)
+                                    _currentCaptureSession.value = null
+                                }
+                                is CaptureState.Failed -> {
+                                    resultVm.showError(state.message)
+                                    _currentCaptureSession.value = null
+                                }
+                            }
+                        }
+                }
+                launch {
+                    // Live-mode results flow through svc.results (one-shot
+                    // captures use sessions and never write here). The VM
+                    // identity-dedupes so a STOP→START reattach to a still-
+                    // valid live result doesn't re-trigger lookups.
                     svc.results.filterNotNull().collect { result ->
                         editTranslationJob?.cancel()
                         editTranslationJob = null
@@ -1075,7 +1117,14 @@ class MainActivity :
     private fun handleRegionCapture() {
         if (isLiveMode) pauseLiveMode()
         selectTab(Tab.TRANSLATE)
-        captureService?.captureOnce()
+        startOneShotCapture()
+    }
+
+    /** Initiate a one-shot capture and route its session to the
+     *  collector in [wireServiceCallbacks]. No-op if the service isn't
+     *  bound yet. */
+    private fun startOneShotCapture() {
+        _currentCaptureSession.value = captureService?.captureOnce()
     }
 
     // ── Accessibility service flow ─────────────────────────────────────────
@@ -1728,7 +1777,7 @@ class MainActivity :
             configureService()
             if (!isLiveMode) {
                 selectTab(Tab.TRANSLATE)
-                withAccessibility { captureService?.captureOnce() }
+                withAccessibility { startOneShotCapture() }
             }
         } else if (hadOverride) {
             configureService()
@@ -1759,12 +1808,12 @@ class MainActivity :
                 prefs.selectedRegionId = newEntry.id
                 configureService()
                 refreshRegionPicker()
-                withAccessibility { captureService?.captureOnce() }
+                withAccessibility { startOneShotCapture() }
             }
             sheet.onDismissed = { refreshRegionPicker() }
             sheet.onTranslateOnce = { region ->
                 captureService?.configureOverride(region)
-                withAccessibility { captureService?.captureOnce() }
+                withAccessibility { startOneShotCapture() }
             }
         }.show(supportFragmentManager, AddCustomRegionSheet.TAG)
     }

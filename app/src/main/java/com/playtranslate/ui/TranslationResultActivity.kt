@@ -24,8 +24,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import kotlinx.coroutines.flow.filterNotNull
 import com.playtranslate.CaptureService
+import com.playtranslate.CaptureSession
+import com.playtranslate.CaptureState
 import com.playtranslate.Prefs
 import com.playtranslate.RegionEntry
 import com.playtranslate.R
@@ -403,34 +404,40 @@ class TranslationResultActivity :
             region    = RegionEntry("Drawn Region", topFrac, bottomFrac, leftFrac, rightFrac)
         )
 
-        // Subscribe to the service's outbound event flows. Collectors run
-        // on lifecycleScope inside repeatOnLifecycle, so they auto-pause
-        // when this activity stops and clean up when it's destroyed —
-        // they don't share state with MainActivity's subscriptions.
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                launch {
-                    svc.results.filterNotNull().collect { vm.displayResult(it, applicationContext) }
-                }
-                launch { svc.errors.collect { vm.showError(it) } }
-                launch { svc.statusUpdates.collect { vm.showStatus(it) } }
-            }
+        // Start the one-shot capture and observe its session state.
+        // Each session has its own StateFlow scoped to this cycle, so a
+        // prior capture's output can never leak in here. Pre-captured
+        // screenshot path (single-screen: shot taken before this
+        // activity appeared so it shows the game) processes directly;
+        // dual-screen path captures fresh.
+        val screenshotPath = intent.getStringExtra(EXTRA_SCREENSHOT_PATH)
+        val session = if (screenshotPath != null) {
+            val bitmap = BitmapFactory.decodeFile(screenshotPath)
+            if (bitmap != null) svc.processScreenshot(bitmap) else svc.captureOnce()
+        } else {
+            svc.captureOnce()
         }
 
-        // If we have a pre-captured screenshot (single-screen: taken before this
-        // activity appeared so it shows the game, not this activity), process it
-        // directly instead of capturing a new one.
-        val screenshotPath = intent.getStringExtra(EXTRA_SCREENSHOT_PATH)
-        if (screenshotPath != null) {
-            val bitmap = BitmapFactory.decodeFile(screenshotPath)
-            if (bitmap != null) {
-                svc.processScreenshot(bitmap)
-                return
+        observeSession(session)
+    }
+
+    /** Drive the VM from a [CaptureSession]'s state flow on lifecycleScope.
+     *  The session outlives STOP→START so the observer reattaches to
+     *  whatever terminal state has been reached (no replay of any other
+     *  capture's output). */
+    private fun observeSession(session: CaptureSession) {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                session.state.collect { state ->
+                    when (state) {
+                        is CaptureState.InProgress -> vm.showStatus(state.message)
+                        is CaptureState.Done -> vm.displayResult(state.result, applicationContext)
+                        is CaptureState.NoText -> vm.showStatus(state.message)
+                        is CaptureState.Failed -> vm.showError(state.message)
+                    }
+                }
             }
         }
-        // Fallback: capture fresh (works on dual-screen where this activity
-        // doesn't cover the game display)
-        svc.captureOnce()
     }
 
     private fun handleSentenceMode(svc: CaptureService, sentenceText: String) {
