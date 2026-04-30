@@ -50,27 +50,46 @@ class TranslationResultViewModel : ViewModel() {
 
     private var lookupJob: Job? = null
 
-    /** Last result instance we've already consumed from the service.
-     *  Used to dedup [CaptureService.results]'s sticky replay against
-     *  state transitions: after a user Clear (which moves VM to Status
-     *  but doesn't tell the service to clear its cached result), a
-     *  rotation or background→foreground re-collect would otherwise
-     *  resurrect the cleared result. By remembering the instance we
-     *  consumed regardless of current VM state, we treat the replay
-     *  as already-seen and no-op. Identity (`===`) is correct because
-     *  the service constructs a fresh TranslationResult per capture
-     *  and StateFlow holds that exact reference. */
+    /** Last result instance we've already consumed via [displayResult]
+     *  (any source — service or local). Used to dedup repeated calls
+     *  with the same instance: a rotation mid-Ready re-runs displayResult
+     *  with the same TranslationResult, and we don't want to restart
+     *  word lookups. Identity (`===`) is correct because each emission
+     *  constructs a fresh TranslationResult and we hold that exact
+     *  reference. */
     private var lastSeenResult: TranslationResult? = null
 
-    /** Display a completed translation result. Triggers word lookups.
-     *  No-op if [result] is the same instance we've already consumed
-     *  (from a sticky replay). New captures construct new instances,
-     *  so genuine new results always process. */
+    /** Last result the SERVICE has emitted to [displayServiceResult].
+     *  Tracked separately from [lastSeenResult] so a local update
+     *  (e.g. drag-sentence's [displayResult] call) doesn't make the
+     *  next service replay look "new". A STOP→START reattach to the
+     *  service's panel StateFlow re-delivers its current value; if
+     *  it equals what we've already consumed *as a service emission*,
+     *  we treat it as already-seen even though the VM has since moved
+     *  on to a local result. */
+    private var lastSeenServiceResult: TranslationResult? = null
+
+    /** Display a completed translation result from any source.
+     *  No-op if [result] is the same instance already shown. New
+     *  results (different instances) always process. */
     fun displayResult(result: TranslationResult, appCtx: Context) {
         if (result === lastSeenResult) return
         lastSeenResult = result
         _result.value = ResultState.Ready(result)
         startWordLookups(result.originalText, appCtx)
+    }
+
+    /** Display a result from the service's panel state. Updates
+     *  [lastSeenServiceResult] for the StateFlow-replay dedup, then
+     *  delegates to [displayResult] (which itself may dedup if the
+     *  same instance has already been processed). No-op if this
+     *  service-emitted instance has been seen before — that happens
+     *  on STOP→START reattach, when the panel StateFlow replays its
+     *  current value to a re-subscribed observer. */
+    fun displayServiceResult(result: TranslationResult, appCtx: Context) {
+        if (result === lastSeenServiceResult) return
+        lastSeenServiceResult = result
+        displayResult(result, appCtx)
     }
 
     /** Show a status message. Cancels any in-flight lookup. */

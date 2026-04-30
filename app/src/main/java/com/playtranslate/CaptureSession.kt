@@ -48,3 +48,35 @@ sealed class CaptureState {
      *  as an error. */
     data class Failed(val message: String) : CaptureState()
 }
+
+/**
+ * Background result-stream state — covers live mode, hold-to-preview,
+ * and service-level "Idle" signals. The service exposes a single
+ * `panelState: StateFlow<PanelState>`; producers update it; the
+ * activity observes it once. STOP→START reattach replays the
+ * StateFlow's current value, but the VM dedupes service-emitted
+ * results separately from local updates (drag-sentence) so the
+ * replay can't displace whatever the VM is now showing.
+ *
+ * Distinct from the per-cycle [CaptureSession] used for a single
+ * user-initiated one-shot capture: a [CaptureSession]'s state has
+ * terminal entries (Done/NoText/Failed) and dies with the cycle,
+ * while the panel state is continuous and lives for the service's
+ * lifetime.
+ */
+sealed class PanelState {
+    /** No background activity has produced anything, or the panel
+     *  was just invalidated (e.g. region change). */
+    object Idle : PanelState()
+
+    /** Live mode (or hold-to-preview) is running but the most recent
+     *  cycle found no source-language text. */
+    object Searching : PanelState()
+
+    /** Most recent successful background result. */
+    data class Result(val result: TranslationResult) : PanelState()
+
+    /** Most recent background cycle failed. Live mode keeps running
+     *  — the next cycle may produce [Result] or [Searching]. */
+    data class Error(val message: String) : PanelState()
+}

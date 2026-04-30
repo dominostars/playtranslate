@@ -50,7 +50,6 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.filterNotNull
 import com.playtranslate.BuildConfig
 import com.playtranslate.diagnostics.LogExporter
 import com.playtranslate.language.LanguagePackCatalogLoader
@@ -1006,32 +1005,42 @@ class MainActivity :
                         }
                 }
                 launch {
-                    // Live-mode results flow through svc.results (one-shot
-                    // captures use sessions and never write here). The VM
-                    // identity-dedupes so a STOP→START reattach to a still-
-                    // valid live result doesn't re-trigger lookups.
-                    svc.results.filterNotNull().collect { result ->
-                        editTranslationJob?.cancel()
-                        editTranslationJob = null
-                        resultVm.displayResult(result, applicationContext)
+                    // Background panel state (live mode, hold-to-preview).
+                    // The VM identity-dedupes service-emitted results
+                    // separately from local updates (drag-sentence), so
+                    // this StateFlow's sticky replay on STOP→START
+                    // reattach can't displace whatever the VM is now
+                    // showing. PanelState.Idle is the initial / cleared
+                    // value and is intentionally a no-op — transient
+                    // "Idle" UI signals from config changes flow through
+                    // svc.statusUpdates instead.
+                    svc.panelState.collect { state ->
+                        when (state) {
+                            PanelState.Idle -> { /* no-op — see KDoc on _panelState */ }
+                            PanelState.Searching ->
+                                if (isLiveMode) resultVm.showStatus(searchingStatusText())
+                            is PanelState.Result -> {
+                                editTranslationJob?.cancel()
+                                editTranslationJob = null
+                                resultVm.displayServiceResult(state.result, applicationContext)
+                            }
+                            is PanelState.Error ->
+                                resultVm.showError(state.message)
+                        }
                     }
                 }
-                launch { svc.errors.collect { msg -> resultVm.showError(msg) } }
-                launch { svc.statusUpdates.collect { msg -> resultVm.showStatus(msg) } }
                 launch {
-                    svc.liveNoText.collect {
-                        if (isLiveMode) resultVm.showStatus(searchingStatusText())
-                    }
+                    // Transient service signals (currently just "Idle"
+                    // from configureSaved / resetConfiguration). Replay = 0
+                    // SharedFlow so a STOP→START reattach doesn't re-fire
+                    // a stale Idle on top of a now-valid panel result.
+                    svc.statusUpdates.collect { msg -> resultVm.showStatus(msg) }
                 }
                 launch {
                     svc.holdLoading.collect { loading ->
                         PlayTranslateAccessibilityService.instance?.floatingIcon?.showLoading = loading
                     }
                 }
-                // svc.translationStarted has no current consumer (progress
-                // indication removed in the menu-based UI). Left
-                // unsubscribed so the SharedFlow's small buffer absorbs
-                // emits without backpressure.
             }
         }
         svc.degradedState.observe(this) { degraded ->
