@@ -148,12 +148,20 @@ class CaptureService : Service() {
     // This replaces the earlier `var onResult: ((..)->Unit)? = null`
     // pattern.
 
-    /** Latest capture result. StateFlow because a result emitted while
-     *  the activity is backgrounded must be deliverable when the
-     *  activity returns to STARTED — `replay = 0` SharedFlow would
-     *  drop it (the buffer feeds slow active subscribers, not late
-     *  ones). The VM dedupes via equality so reconnection after
-     *  rotation doesn't re-trigger lookups for state already shown. */
+    /** Latest capture result. StateFlow so a result that lands while
+     *  the activity is STOPPED is delivered when it returns to STARTED
+     *  (`replay = 0` SharedFlow would drop it — the buffer feeds slow
+     *  active subscribers, not late ones).
+     *
+     *  Invariant: null while a one-shot capture is in flight (or has
+     *  never run); non-null only when a capture has finished and a
+     *  newer one has not yet started. [captureOnce] and [processScreenshot]
+     *  reset this synchronously before launching their cycle so a fresh
+     *  per-capture subscriber (e.g. a new TranslationResultActivity with
+     *  a new VM) can't replay the prior capture's result before this
+     *  capture's status emissions land. The VM also dedupes via object
+     *  identity so a rotation-mid-Ready re-collect doesn't re-trigger
+     *  lookups for state already shown. */
     private val _results = MutableStateFlow<TranslationResult?>(null)
     val results: StateFlow<TranslationResult?> = _results.asStateFlow()
 
@@ -368,6 +376,7 @@ class CaptureService : Service() {
     }
 
     fun captureOnce() {
+        _results.value = null
         oneShotCaptureJob?.cancel()
         oneShotCaptureJob = serviceScope.launch { runCaptureCycle() }
     }
@@ -378,6 +387,7 @@ class CaptureService : Service() {
      * (e.g. single-screen region capture from the floating menu).
      */
     fun processScreenshot(raw: Bitmap) {
+        _results.value = null
         oneShotCaptureJob?.cancel()
         oneShotCaptureJob = serviceScope.launch { runProcessCycle(raw) }
     }
