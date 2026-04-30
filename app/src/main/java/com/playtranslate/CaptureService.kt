@@ -191,7 +191,6 @@ class CaptureService : Service() {
     internal fun emitLiveNoText() {
         _panelState.value = PanelState.Searching
     }
-    internal fun emitStatusUpdate(message: String) { _statusUpdates.tryEmit(message) }
     internal fun emitHoldLoading(loading: Boolean) { _holdLoading.value = loading }
 
     /** Observable degraded translation state (ML Kit fallback). */
