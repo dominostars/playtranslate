@@ -47,6 +47,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.filterNotNull
 import com.playtranslate.BuildConfig
 import com.playtranslate.diagnostics.LogExporter
 import com.playtranslate.language.LanguagePackCatalogLoader
@@ -963,7 +964,11 @@ class MainActivity :
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
-                    svc.results.collect { result ->
+                    // filterNotNull: results is a StateFlow<TranslationResult?>
+                    // with initial null. Skipping null preserves "no result yet"
+                    // semantics. The VM dedupes equal results so a rotation/
+                    // reattach replaying the latest doesn't re-trigger lookups.
+                    svc.results.filterNotNull().collect { result ->
                         editTranslationJob?.cancel()
                         editTranslationJob = null
                         resultVm.displayResult(result, applicationContext)

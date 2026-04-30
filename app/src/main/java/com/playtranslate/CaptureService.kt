@@ -140,23 +140,22 @@ class CaptureService : Service() {
 
     // ── Outbound event streams ────────────────────────────────────────────
     //
-    // Each event type is a SharedFlow (for fire-and-forget events) or
-    // StateFlow (for current-value semantics). Activities collect these
-    // independently with their own lifecycle scopes — there's no single
-    // callback slot for one consumer to overwrite another's. This replaces
-    // the earlier `var onResult: ((..)->Unit)? = null` pattern, which had
-    // a structural flaw: TranslationResultActivity nulled the slots in
-    // onDestroy, breaking MainActivity when its onResume didn't fire to
-    // re-wire (e.g. dual-screen, multi-task).
-    //
-    // Events use `extraBufferCapacity = 1` so a tryEmit during a moment
-    // when no collector is STARTED (e.g. mid-rotation) doesn't drop the
-    // event — the next collector will see it on subscribe. Replay=0
-    // because each event is a transient signal; the VM caches the
-    // resulting state separately for re-rendering after rotation.
+    // Each channel uses StateFlow (for state the UI must eventually
+    // observe) or SharedFlow (for transient signals that are fine to
+    // drop while no consumer is STARTED). Activities collect these
+    // independently with their own lifecycle scopes — there's no
+    // single callback slot for one consumer to overwrite another's.
+    // This replaces the earlier `var onResult: ((..)->Unit)? = null`
+    // pattern.
 
-    private val _results = MutableSharedFlow<TranslationResult>(extraBufferCapacity = 1)
-    val results: SharedFlow<TranslationResult> = _results.asSharedFlow()
+    /** Latest capture result. StateFlow because a result emitted while
+     *  the activity is backgrounded must be deliverable when the
+     *  activity returns to STARTED — `replay = 0` SharedFlow would
+     *  drop it (the buffer feeds slow active subscribers, not late
+     *  ones). The VM dedupes via equality so reconnection after
+     *  rotation doesn't re-trigger lookups for state already shown. */
+    private val _results = MutableStateFlow<TranslationResult?>(null)
+    val results: StateFlow<TranslationResult?> = _results.asStateFlow()
 
     private val _errors = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val errors: SharedFlow<String> = _errors.asSharedFlow()
@@ -179,7 +178,7 @@ class CaptureService : Service() {
 
     // ── Internal emit helpers (callable from sibling capture modes) ──────
 
-    internal fun emitResult(result: TranslationResult) { _results.tryEmit(result) }
+    internal fun emitResult(result: TranslationResult) { _results.value = result }
     internal fun emitError(message: String) { _errors.tryEmit(message) }
     internal fun emitStatusUpdate(message: String) { _statusUpdates.tryEmit(message) }
     internal fun emitTranslationStarted() { _translationStarted.tryEmit(Unit) }
@@ -423,15 +422,13 @@ class CaptureService : Service() {
             val (translated, note) = translateGroups(ocrResult.groupTexts)
 
             val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-            _results.tryEmit(
-                TranslationResult(
-                    originalText   = ocrResult.fullText,
-                    segments       = ocrResult.segments,
-                    translatedText = translated,
-                    timestamp      = timestamp,
-                    screenshotPath = screenshotPath,
-                    note           = note
-                )
+            _results.value = TranslationResult(
+                originalText   = ocrResult.fullText,
+                segments       = ocrResult.segments,
+                translatedText = translated,
+                timestamp      = timestamp,
+                screenshotPath = screenshotPath,
+                note           = note
             )
         } catch (e: Exception) {
             Log.e(TAG, "Process cycle failed: ${e.message}", e)
@@ -783,14 +780,14 @@ class CaptureService : Service() {
         val translated = perGroup.joinToString("\n\n") { it.first }
         val note = perGroup.mapNotNull { it.second }.firstOrNull()
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-        _results.tryEmit(com.playtranslate.model.TranslationResult(
+        _results.value = com.playtranslate.model.TranslationResult(
             originalText   = ocrResult.fullText,
             segments       = ocrResult.segments,
             translatedText = translated,
             timestamp      = timestamp,
             screenshotPath = screenshotPath,
             note           = note
-        ))
+        )
         return perGroup
     }
 
@@ -961,7 +958,7 @@ class CaptureService : Service() {
         _statusUpdates.tryEmit(getString(R.string.status_capturing))
         val pipeline = runCaptureOcrTranslate(onScreenshotTaken = { flashRegionIndicator() })
         if (pipeline != null) {
-            _results.tryEmit(pipeline.result)
+            _results.value = pipeline.result
         } else {
             _statusUpdates.tryEmit(noTextMessage())
         }
