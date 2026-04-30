@@ -24,6 +24,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.filterNotNull
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.RegionEntry
@@ -408,7 +409,9 @@ class TranslationResultActivity :
         // they don't share state with MainActivity's subscriptions.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                launch { svc.results.collect { vm.displayResult(it, applicationContext) } }
+                launch {
+                    svc.results.filterNotNull().collect { vm.displayResult(it, applicationContext) }
+                }
                 launch { svc.errors.collect { vm.showError(it) } }
                 launch { svc.statusUpdates.collect { vm.showStatus(it) } }
             }

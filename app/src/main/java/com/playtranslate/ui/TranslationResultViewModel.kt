@@ -50,8 +50,15 @@ class TranslationResultViewModel : ViewModel() {
 
     private var lookupJob: Job? = null
 
-    /** Display a completed translation result. Triggers word lookups. */
+    /** Display a completed translation result. Triggers word lookups.
+     *  Idempotent: if the VM is already showing this exact result, skip
+     *  the state update + lookup restart. This matters because
+     *  [CaptureService.results] is a StateFlow that replays its current
+     *  value to new collectors after rotation / reattach — without
+     *  dedup, every rotation would re-trigger the lookup pipeline. */
     fun displayResult(result: TranslationResult, appCtx: Context) {
+        val current = (_result.value as? ResultState.Ready)?.result
+        if (current == result) return
         _result.value = ResultState.Ready(result)
         startWordLookups(result.originalText, appCtx)
     }
@@ -92,16 +99,27 @@ class TranslationResultViewModel : ViewModel() {
 
     /** Edit-overlay commit: replace original text on the current
      *  Ready/Translating result, reset translation, re-run lookups.
-     *  No-op for non-result states. */
+     *  No-op for non-result states.
+     *
+     *  Regenerates [segments] from [newText] (one TextSegment per
+     *  character) so the fragment's [tvOriginal.setSegments] renders
+     *  the edited string. Without this, the OCR-derived segments from
+     *  before the edit stay on screen even though originalText,
+     *  translation, and lookups all shift to the new value. */
     fun updateOriginalText(newText: String, appCtx: Context) {
+        val newSegments = newText.map { TextSegment(it.toString()) }
         when (val cur = _result.value) {
             is ResultState.Ready -> {
                 _result.value = ResultState.Ready(
-                    cur.result.copy(originalText = newText, translatedText = "")
+                    cur.result.copy(
+                        originalText = newText,
+                        translatedText = "",
+                        segments = newSegments,
+                    )
                 )
             }
             is ResultState.Translating -> {
-                _result.value = ResultState.Translating(newText, cur.segments)
+                _result.value = ResultState.Translating(newText, newSegments)
             }
             else -> return
         }
