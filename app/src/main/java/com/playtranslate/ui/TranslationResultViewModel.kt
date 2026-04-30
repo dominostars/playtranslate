@@ -50,15 +50,25 @@ class TranslationResultViewModel : ViewModel() {
 
     private var lookupJob: Job? = null
 
+    /** Last result instance we've already consumed from the service.
+     *  Used to dedup [CaptureService.results]'s sticky replay against
+     *  state transitions: after a user Clear (which moves VM to Status
+     *  but doesn't tell the service to clear its cached result), a
+     *  rotation or background→foreground re-collect would otherwise
+     *  resurrect the cleared result. By remembering the instance we
+     *  consumed regardless of current VM state, we treat the replay
+     *  as already-seen and no-op. Identity (`===`) is correct because
+     *  the service constructs a fresh TranslationResult per capture
+     *  and StateFlow holds that exact reference. */
+    private var lastSeenResult: TranslationResult? = null
+
     /** Display a completed translation result. Triggers word lookups.
-     *  Idempotent: if the VM is already showing this exact result, skip
-     *  the state update + lookup restart. This matters because
-     *  [CaptureService.results] is a StateFlow that replays its current
-     *  value to new collectors after rotation / reattach — without
-     *  dedup, every rotation would re-trigger the lookup pipeline. */
+     *  No-op if [result] is the same instance we've already consumed
+     *  (from a sticky replay). New captures construct new instances,
+     *  so genuine new results always process. */
     fun displayResult(result: TranslationResult, appCtx: Context) {
-        val current = (_result.value as? ResultState.Ready)?.result
-        if (current == result) return
+        if (result === lastSeenResult) return
+        lastSeenResult = result
         _result.value = ResultState.Ready(result)
         startWordLookups(result.originalText, appCtx)
     }
