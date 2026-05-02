@@ -530,7 +530,28 @@ class Prefs(context: Context) {
          */
         fun hasMultipleDisplays(context: Context): Boolean {
             val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-            return dm.displays.size > 1
+            // Filter out private virtual displays — AccessibilityService's
+            // takeScreenshot rejects them (ERROR_TAKE_SCREENSHOT_INVALID_DISPLAY)
+            // so they aren't real translation targets and shouldn't tip the
+            // single-vs-multi heuristic.
+            return dm.displays.count {
+                it.flags and android.view.Display.FLAG_PRIVATE == 0
+            } > 1
+        }
+
+        /**
+         * True when InAppOnly mode is the right route for the current
+         * device + selection state: user has explicitly opted into hiding
+         * overlays, has a separate viewport for the app, AND has only one
+         * display selected for capture. With multi-select the user has
+         * implicitly chosen per-display overlays so [hideGameOverlays] no
+         * longer makes sense — see [SettingsRenderer]'s inline disclosure.
+         */
+        fun shouldUseInAppOnlyMode(context: Context): Boolean {
+            val prefs = Prefs(context)
+            return prefs.hideGameOverlays
+                && !isSingleScreen(context)
+                && prefs.captureDisplayIds.size <= 1
         }
 
         /**

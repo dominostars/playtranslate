@@ -352,6 +352,19 @@ class SettingsRenderer(
             rowHideOverlays.visibility = View.VISIBLE
             rowHideOverlays.findViewById<TextView>(R.id.tvRowTitle).text =
                 "Hide overlays during auto mode"
+            // Multi-display selection silently routes around this toggle —
+            // the user has explicitly opted into per-display overlays, so
+            // we render on every selected display regardless of this
+            // setting. Disclose that on the row itself.
+            val subtitleHide = rowHideOverlays.findViewById<TextView>(R.id.tvRowSubtitle)
+            if (prefs.captureDisplayIds.size > 1) {
+                subtitleHide.text =
+                    "Ignored when more than one display is selected — overlays render on each."
+                subtitleHide.visibility = View.VISIBLE
+                subtitleHide.setTextColor(ctx.themeColor(R.attr.ptTextHint))
+            } else {
+                subtitleHide.visibility = View.GONE
+            }
             switchHideOverlays.isChecked = prefs.hideGameOverlays
             switchHideOverlays.setOnCheckedChangeListener { _, checked ->
                 prefs.hideGameOverlays = checked
@@ -537,12 +550,11 @@ class SettingsRenderer(
             }
             val isFirst = idx == 0
             val isLast = idx == displayList.size - 1
-            llDisplayOptions.addView(buildDisplayRow(idx, display, prefs, isFirst, isLast))
+            llDisplayOptions.addView(buildDisplayRow(display, prefs, isFirst, isLast))
         }
     }
 
     private fun buildDisplayRow(
-        idx: Int,
         display: android.view.Display,
         prefs: Prefs,
         isFirst: Boolean,
