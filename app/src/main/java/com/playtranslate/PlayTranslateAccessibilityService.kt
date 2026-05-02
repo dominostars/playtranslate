@@ -227,6 +227,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val view: View,
         val wm: WindowManager,
         val params: WindowManager.LayoutParams,
+        val displayId: Int,
     )
 
     /** Main-thread only — every WindowManager mutation happens on Main. */
@@ -247,10 +248,11 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         view: View,
         wm: WindowManager,
         params: WindowManager.LayoutParams,
+        displayId: Int,
     ): Boolean {
         return try {
             wm.addView(view, params)
-            overlayWindows += OverlayHandle(view, wm, params)
+            overlayWindows += OverlayHandle(view, wm, params, displayId)
             true
         } catch (e: Exception) {
             Log.w(TAG, "addOverlayWindow failed: ${e.message}")
@@ -276,7 +278,11 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     )
 
     /**
-     * Hide every registered overlay so it doesn't appear in a screenshot.
+     * Hide every registered overlay on [displayId] so it doesn't appear
+     * in a screenshot of that display. Overlays on other displays are left
+     * alone — blanking them would flicker every cycle when N displays are
+     * being captured in turn.
+     *
      * Uses [WindowManager.LayoutParams.alpha] (window-level, applied by
      * SurfaceFlinger during composition) rather than [View.alpha] (applied
      * during view drawing, which can lag a frame behind). Combined with
@@ -290,9 +296,10 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      * guarantees restore on cancellation/exception, so we don't need
      * self-healing here.
      */
-    fun prepareForCleanCapture(): OverlayState {
+    fun prepareForCleanCapture(displayId: Int): OverlayState {
         val saved = mutableListOf<OverlayHandle>()
         for (handle in overlayWindows) {
+            if (handle.displayId != displayId) continue
             if (handle.params.alpha == 0f) continue
             handle.params.alpha = 0f
             try {
@@ -454,7 +461,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
-        addOverlayWindow(view, wm, params)
+        addOverlayWindow(view, wm, params, display.displayId)
         regionIndicatorView = view
         regionIndicatorWm = wm
         regionIndicatorPersistent = persistent
@@ -571,7 +578,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             y = (40 * dp).toInt()
         }
 
-        addOverlayWindow(view, wm, params)
+        addOverlayWindow(view, wm, params, display.displayId)
         pillView = view
         pillWm = wm
 
@@ -615,7 +622,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
-        addOverlayWindow(view, wm, params)
+        addOverlayWindow(view, wm, params, display.displayId)
         dragWm = wm
         dragView = view
     }
@@ -715,7 +722,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
-        addOverlayWindow(view, wm, params)
+        addOverlayWindow(view, wm, params, display.displayId)
         debugOverlayWm = wm
         debugOverlayView = view
     }
@@ -765,7 +772,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply { windowAnimations = 0 }
-        addOverlayWindow(view, wm, params)
+        addOverlayWindow(view, wm, params, display.displayId)
         translationOverlayWm = wm
         translationOverlayView = view
         translationOverlayDisplayId = display.displayId
@@ -781,7 +788,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply { windowAnimations = 0 }
-        addOverlayWindow(dirtyView, wm, dirtyParams)
+        addOverlayWindow(dirtyView, wm, dirtyParams, display.displayId)
         dirtyOverlayWm = wm
         dirtyOverlayView = dirtyView
     }
@@ -880,7 +887,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         )
-        addOverlayWindow(view, wm, params)
+        addOverlayWindow(view, wm, params, displayId)
         touchSentinelView = view
         touchSentinelWm = wm
     }
@@ -1169,7 +1176,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         icon.onAnyTouch   = { DimController.notifyInteraction() }
         dragLookupController = controller
 
-        if (addOverlayWindow(icon, wm, params)) {
+        if (addOverlayWindow(icon, wm, params, display.displayId)) {
             // Set position after addView so the icon can query its own window bounds
             icon.setPosition(prefs.overlayIconEdge, prefs.overlayIconFraction)
             try { wm.updateViewLayout(icon, params) } catch (_: Exception) {}
@@ -1188,7 +1195,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         // mid-drag breaks the touch event sequence and freezes the icon.
         if (icon.inDragMode) return
         removeOverlayWindow(icon)
-        addOverlayWindow(icon, wm, params)
+        addOverlayWindow(icon, wm, params, floatingIconDisplayId)
     }
 
     fun hideFloatingIcon(reason: String = "unspecified") {
@@ -1349,7 +1356,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             PixelFormat.TRANSLUCENT
         )
 
-        addOverlayWindow(menu, wm, params)
+        addOverlayWindow(menu, wm, params, display.displayId)
         floatingMenuWm = wm
         floatingMenu = menu
 
@@ -1540,7 +1547,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             y = (32 * dp).toInt()
         }
 
-        addOverlayWindow(bar, wm, barParams)
+        addOverlayWindow(bar, wm, barParams, display.displayId)
         regionEditorBarWm = wm
         regionEditorBar = bar
 
@@ -1576,7 +1583,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             y = (16 * dp).toInt()
         }
-        addOverlayWindow(label, wm, labelParams)
+        addOverlayWindow(label, wm, labelParams, display.displayId)
         regionEditorLabelWm = wm
         regionEditorLabel = label
     }
@@ -1736,13 +1743,21 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
          * reference handy (MagnifierLens, WordLookupPopup, etc.). When the
          * service isn't connected the window is added without registration —
          * it just won't participate in clean-capture blanking.
+         *
+         * [displayId] is the display the window will appear on, so
+         * clean-capture blanking can scope to that display only. Callers that
+         * don't pass it default to [Display.DEFAULT_DISPLAY] — fine for
+         * single-display devices, but a misroute on multi-display setups will
+         * cause the window to flash during captures of the default display
+         * and not blank during captures of its actual host. Pass the right id.
          */
         fun addOverlay(
             view: View,
             wm: WindowManager,
             params: WindowManager.LayoutParams,
+            displayId: Int = Display.DEFAULT_DISPLAY,
         ): Boolean {
-            instance?.let { return it.addOverlayWindow(view, wm, params) }
+            instance?.let { return it.addOverlayWindow(view, wm, params, displayId) }
             return try { wm.addView(view, params); true } catch (_: Exception) { false }
         }
 
