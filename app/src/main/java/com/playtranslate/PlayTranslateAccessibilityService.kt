@@ -71,7 +71,15 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     private var floatingIconWm: WindowManager? = null
     private var floatingIconDisplayId: Int = -1
     var dragLookupController: DragLookupController? = null
-        private set
+
+    /** Wired by [installFloatingIconForDisplay]'s closure to clear the
+     *  drag-flow's "live was paused for popup" obligation. Invoked via
+     *  [cancelLivePauseObligation] from the drag-open path so the chained
+     *  [resumeLiveMode] in the magnifier-dismiss callback becomes a no-op
+     *  in single-screen — the user re-enables live mode manually after
+     *  closing the detail view. Cleared on icon hide so a stale lambda
+     *  can't fire against a torn-down closure. */
+    private var clearLivePauseFlag: (() -> Unit)? = null
     private var floatingMenu: FloatingIconMenu? = null
     private var floatingMenuWm: WindowManager? = null
     private var debugOverlayView: OcrDebugOverlayView? = null
@@ -1049,6 +1057,11 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         // Track whether live mode / region overlay were active when drag started
         var liveWasPausedForPopup = false
         var overlayHiddenForDrag = false
+        // Wire the service-level cancel hook to this closure's flag.
+        // openSentenceInApp calls cancelLivePauseObligation() to make the
+        // chained resumeLiveMode in onSettled a no-op when the user is
+        // launching a covering detail view (single-screen).
+        clearLivePauseFlag = { liveWasPausedForPopup = false }
 
         fun restoreRegionOverlay() {
             if (overlayHiddenForDrag) {
@@ -1130,6 +1143,10 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
     fun hideFloatingIcon(reason: String = "unspecified") {
         Log.i(TAG, "hideFloatingIcon: $reason")
+        // Drop the cancel hook — its lambda points at the soon-to-die
+        // closure's pause flag. A new floating icon installation will
+        // wire a fresh one.
+        clearLivePauseFlag = null
         dragLookupController?.destroy()
         dragLookupController = null
         floatingIcon?.destroy()
@@ -1137,6 +1154,24 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         floatingIcon = null
         floatingIconWm = null
         floatingIconDisplayId = -1
+    }
+
+    /** Called by [com.playtranslate.ui.DragLookupController.openSentenceInApp]
+     *  before dismissing the magnifier so the dismiss-chain's resumeLiveMode
+     *  is a no-op when the detail view will cover the live-mode surface.
+     *  The "covering" predicate matches the service's own
+     *  [effectivelySingleScreen]-style routing used elsewhere — single-screen
+     *  OR dual-screen with MainActivity backgrounded both result in TRA
+     *  taking over the user's view. Dual-screen with the in-app panel
+     *  visible leaves auto-resume in place since TRA lands on the panel
+     *  side and live captures continue on the game side. The user re-enables
+     *  live mode manually via the floating-icon menu after closing the
+     *  detail view. */
+    fun cancelLivePauseObligation() {
+        val effectivelySingleScreen = Prefs.isSingleScreen(this) || !MainActivity.isInForeground
+        if (effectivelySingleScreen) {
+            clearLivePauseFlag?.invoke()
+        }
     }
 
     // ── Floating icon menu ────────────────────────────────────────────────

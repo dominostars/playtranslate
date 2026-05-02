@@ -1262,6 +1262,14 @@ class DragLookupController(
         val cached = LastSentenceCache.takeIf { it.original == sentence }
         val cachedTranslation = cached?.translation
         val cachedWordResults = cached?.wordResults?.takeIf { it.isNotEmpty() }
+        // Tell the service to clear the drag-flow's pause obligation if
+        // the detail view will cover the live-mode surface. The service
+        // decides based on the same "effectively single-screen" predicate
+        // it uses elsewhere — keeping the policy in one place so this
+        // path can't drift from the routing logic in resumeLiveMode and
+        // friends. Dual-screen with the in-app panel visible leaves
+        // auto-resume intact since TRA lands separately from live mode.
+        service.cancelLivePauseObligation()
         // Tear down the lens (sticky drag-flow surface) before launching
         // the activity. Lens dismiss → onDismiss → onSettled, which is
         // what the service expects post-drag.
