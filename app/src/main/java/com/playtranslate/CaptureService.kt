@@ -242,13 +242,14 @@ class CaptureService : Service() {
         mainHandler.post { syncIconState() }
     }
 
-    /** Push current service state to the floating icon. Called automatically
-     *  by [liveActive] setter, [setDegraded], and when a new icon is created
-     *  (via [PlayTranslateAccessibilityService.floatingIcon] setter). */
+    /** Push current service state to every floating icon. Called automatically
+     *  by [liveActive] setter, [setDegraded], and when icons are installed
+     *  or torn down (from PlayTranslateAccessibilityService.installFloatingIconForDisplay
+     *  / hideFloatingIconForDisplay). */
     fun syncIconState() {
-        val icon = PlayTranslateAccessibilityService.instance?.floatingIcon ?: return
-        icon.liveMode = isLive
-        icon.degraded = translationDegraded
+        val a11y = PlayTranslateAccessibilityService.instance ?: return
+        a11y.setIconsLiveMode(isLive)
+        a11y.setIconsDegraded(translationDegraded)
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -852,8 +853,15 @@ class CaptureService : Service() {
         }
     }
 
-    /** Begin a hold-to-preview gesture (in-app translate button). */
-    fun holdStart() {
+    /**
+     * Begin a hold-to-preview gesture. [displayId] identifies the display
+     * the gesture targets — the floating icon's onHoldStart passes its own
+     * display; the in-app translate button (no specific display) passes
+     * [primaryGameDisplayId]. P5 wires this further into one-shot routing;
+     * P2's body still treats hold as global pause.
+     */
+    fun holdStart(displayId: Int = primaryGameDisplayId()) {
+        lastInteractedDisplayId = displayId
         // Pinhole / translation-overlay live modes: "peek" through the
         // overlay at the game underneath, without running a one-shot.
         // PinholeOverlayMode's cycle polls [holdActive] and pauses itself.
@@ -933,7 +941,7 @@ class CaptureService : Service() {
         return OverlayToolkit.runOcrPipeline(
             raw, activeRegion, sourceLang, ocrManager,
             getStatusBarHeightForDisplay(gameDisplayId),
-            PlayTranslateAccessibilityService.instance?.getFloatingIconRect(),
+            PlayTranslateAccessibilityService.instance?.getFloatingIconRect(gameDisplayId),
             Prefs(this).compactOverlayIcon
         )
     }
@@ -1034,7 +1042,7 @@ class CaptureService : Service() {
     /** Convenience: blackout floating icon using current service state. Delegates to OverlayToolkit. */
     private fun blackoutFloatingIcon(bitmap: Bitmap, cropLeft: Int = 0, cropTop: Int = 0): Bitmap =
         OverlayToolkit.blackoutFloatingIcon(bitmap, cropLeft, cropTop,
-            PlayTranslateAccessibilityService.instance?.getFloatingIconRect(),
+            PlayTranslateAccessibilityService.instance?.getFloatingIconRect(gameDisplayId),
             Prefs(this).compactOverlayIcon)
 
     fun resetConfiguration() {
@@ -1351,10 +1359,11 @@ class CaptureService : Service() {
      *
      * Triggered automatically by:
      *  - [liveActive] property setter (in this class)
-     *  - [PlayTranslateAccessibilityService.floatingIcon] property setter
+     *  - PlayTranslateAccessibilityService.installFloatingIconForDisplay /
+     *    hideFloatingIconForDisplay (every per-display add/remove)
      */
     fun updateForegroundState() {
-        val iconShowing = PlayTranslateAccessibilityService.instance?.floatingIcon != null
+        val iconShowing = PlayTranslateAccessibilityService.instance?.hasAnyFloatingIcon == true
 
         // Stop live mode if the user can no longer see or manage it.
         if (liveActive) {

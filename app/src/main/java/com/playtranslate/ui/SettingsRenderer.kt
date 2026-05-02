@@ -228,7 +228,7 @@ class SettingsRenderer(
                 return@setOnCheckedChangeListener
             }
             prefs.showOverlayIcon = checked
-            PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
+            PlayTranslateAccessibilityService.instance?.reconcileFloatingIcons()
             refreshOnScreenControlsTint(isSingle)
         }
         rowOverlayIcon.setOnClickListener { switchOverlayIcon.toggle() }
@@ -241,7 +241,7 @@ class SettingsRenderer(
             prefs.compactOverlayIcon = checked
             val a11y = PlayTranslateAccessibilityService.instance
             a11y?.hideFloatingIcon("settings_compact_recreate")
-            a11y?.ensureFloatingIcon()
+            a11y?.reconcileFloatingIcons()
         }
         rowCompactIcon.setOnClickListener { switchCompactIcon.toggle() }
 

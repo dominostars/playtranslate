@@ -168,13 +168,13 @@ class MainActivity :
         override fun onDisplayAdded(displayId: Int) { runOnUiThread {
             if (!isFinishing) {
                 checkOnboardingState()
-                PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
+                PlayTranslateAccessibilityService.instance?.reconcileFloatingIcons()
             }
         } }
         override fun onDisplayRemoved(displayId: Int) { runOnUiThread {
             if (!isFinishing) {
                 checkOnboardingState()
-                PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
+                PlayTranslateAccessibilityService.instance?.reconcileFloatingIcons()
             }
         } }
         override fun onDisplayChanged(displayId: Int) {}
@@ -418,7 +418,7 @@ class MainActivity :
         // needed. (The old re-wire was a band-aid for
         // TranslationResultActivity nulling shared callback fields,
         // which it no longer does.)
-        PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
+        PlayTranslateAccessibilityService.instance?.reconcileFloatingIcons()
         checkOnboardingState()
         maybeCheckForUpdates()
         if (onboardingContainer.visibility == View.VISIBLE) return
@@ -631,8 +631,9 @@ class MainActivity :
     }
 
     private fun doStartLive() {
-        val hadPopup = PlayTranslateAccessibilityService.instance?.dragLookupController?.isPopupShowing == true
-        PlayTranslateAccessibilityService.instance?.dragLookupController?.dismiss()
+        val a11y = PlayTranslateAccessibilityService.instance
+        val hadPopup = a11y?.isAnyDragLookupPopupShowing == true
+        a11y?.dismissAllDragLookupPopups()
         ensureConfigured()
         if (hadPopup) {
             window.decorView.postDelayed({ captureService?.startLive() }, 100)
@@ -866,7 +867,7 @@ class MainActivity :
                 // configureService() writes display/region; language managers
                 // self-heal via ensureLanguageManagersFor.
                 configureService()
-                PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
+                PlayTranslateAccessibilityService.instance?.reconcileFloatingIcons()
                 if (wasLive) {
                     captureService?.stopLive()
                     withAccessibility { doStartLive() }
@@ -903,7 +904,7 @@ class MainActivity :
                 // configureService() writes display/region; language managers
                 // self-heal via ensureLanguageManagersFor.
                 configureService()
-                PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
+                PlayTranslateAccessibilityService.instance?.reconcileFloatingIcons()
                 if (wasLive) {
                     captureService?.stopLive()
                     withAccessibility { doStartLive() }
@@ -960,7 +961,7 @@ class MainActivity :
      * LiveData.observe.
      */
     private fun onDegradedStateChanged(degraded: Boolean) {
-        PlayTranslateAccessibilityService.instance?.floatingIcon?.degraded = degraded
+        PlayTranslateAccessibilityService.instance?.setIconsDegraded(degraded)
     }
 
     /** Subscribe to the service's outbound event flows. Called once per
@@ -1061,7 +1062,7 @@ class MainActivity :
                 }
                 launch {
                     svc.holdLoading.collect { loading ->
-                        PlayTranslateAccessibilityService.instance?.floatingIcon?.showLoading = loading
+                        PlayTranslateAccessibilityService.instance?.setIconsLoading(loading)
                     }
                 }
             }
@@ -1202,7 +1203,7 @@ class MainActivity :
         // side effect of configureSaved → ensureLanguageManagersFor.
         configureService()
         updateRegionButton()
-        PlayTranslateAccessibilityService.instance?.ensureFloatingIcon()
+        PlayTranslateAccessibilityService.instance?.reconcileFloatingIcons()
         if (LanguagePackStore.isInstalled(applicationContext, prefs.sourceLangId)) {
             lifecycleScope.launch(Dispatchers.IO) {
                 preloadEngineAndRecover(prefs.sourceLangId)

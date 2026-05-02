@@ -62,24 +62,91 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     private var dragWm: WindowManager? = null
     /** True when the region drag editor overlay is showing. */
     val isRegionEditorActive: Boolean get() = dragView != null
-    internal var floatingIcon: FloatingOverlayIcon? = null
-        set(value) {
-            field = value
-            CaptureService.instance?.updateForegroundState()
-            CaptureService.instance?.syncIconState()
-        }
-    private var floatingIconWm: WindowManager? = null
-    private var floatingIconDisplayId: Int = -1
-    var dragLookupController: DragLookupController? = null
+    /**
+     * Per-display floating icons. P2 introduced this map; the legacy
+     * single-icon [floatingIcon] field is now a deprecated getter that
+     * resolves to the primary icon (last-interacted display, falling back
+     * to insertion-ordered first).
+     *
+     * The old `floatingIcon` setter used to fan out to
+     * [CaptureService.updateForegroundState] + [CaptureService.syncIconState];
+     * those calls now live inside [installFloatingIconForDisplay] and
+     * [hideFloatingIconForDisplay] so per-display add/remove still triggers
+     * them.
+     */
+    internal val floatingIcons: MutableMap<Int, FloatingOverlayIcon> = mutableMapOf()
+    private val floatingIconWms: MutableMap<Int, WindowManager> = mutableMapOf()
+    private val floatingDragControllers: MutableMap<Int, DragLookupController> = mutableMapOf()
 
-    /** Wired by [installFloatingIconForDisplay]'s closure to clear the
-     *  drag-flow's "live was paused for popup" obligation. Invoked via
-     *  [cancelLivePauseObligation] from the drag-open path so the chained
-     *  [resumeLiveMode] in the magnifier-dismiss callback becomes a no-op
-     *  in single-screen — the user re-enables live mode manually after
-     *  closing the detail view. Cleared on icon hide so a stale lambda
-     *  can't fire against a torn-down closure. */
-    private var clearLivePauseFlag: (() -> Unit)? = null
+    /**
+     * Per-display: wired by [installFloatingIconForDisplay]'s closure to
+     * clear the drag-flow's "live was paused for popup" obligation.
+     * Invoked via [cancelLivePauseObligation] so the chained [resumeLiveMode]
+     * in the magnifier-dismiss callback becomes a no-op in single-screen —
+     * the user re-enables live mode manually after closing the detail view.
+     * Each entry is cleared on its display's icon hide so a stale lambda
+     * can't fire against a torn-down closure.
+     */
+    private val clearLivePauseFlags: MutableMap<Int, () -> Unit> = mutableMapOf()
+
+    /**
+     * Backwards-compat single-icon accessor — returns the icon for the
+     * primary display id (last-interacted, falling back to first selected).
+     * Most call sites should be migrated to iterate [floatingIcons] or call
+     * the appropriate helper ([setIconsLoading], [setIconsDegraded], etc.).
+     */
+    @Deprecated(
+        "Multi-display: prefer floatingIcons map or a per-display helper. Will be removed by end of P5.",
+    )
+    internal val floatingIcon: FloatingOverlayIcon?
+        get() {
+            val primary = CaptureService.instance?.primaryGameDisplayId()
+            return primary?.let { floatingIcons[it] } ?: floatingIcons.values.firstOrNull()
+        }
+
+    /** Backwards-compat: drag controller for the primary display. */
+    @Deprecated(
+        "Multi-display: prefer floatingDragControllers map or [dismissAllDragLookupPopups]. Will be removed by end of P5.",
+    )
+    val dragLookupController: DragLookupController?
+        get() {
+            val primary = CaptureService.instance?.primaryGameDisplayId()
+            return primary?.let { floatingDragControllers[it] }
+                ?: floatingDragControllers.values.firstOrNull()
+        }
+
+    /** True iff at least one floating icon is currently registered. */
+    val hasAnyFloatingIcon: Boolean get() = floatingIcons.isNotEmpty()
+
+    /** Set [FloatingOverlayIcon.showLoading] across every registered icon.
+     *  P2 propagates this globally; P5's one-shot fan-out scopes it to the
+     *  display whose icon initiated the hold. */
+    fun setIconsLoading(loading: Boolean) {
+        floatingIcons.values.forEach { it.showLoading = loading }
+    }
+
+    /** Set [FloatingOverlayIcon.degraded] across every registered icon. */
+    fun setIconsDegraded(degraded: Boolean) {
+        floatingIcons.values.forEach { it.degraded = degraded }
+    }
+
+    /** Set [FloatingOverlayIcon.liveMode] across every registered icon. */
+    fun setIconsLiveMode(liveMode: Boolean) {
+        floatingIcons.values.forEach { it.liveMode = liveMode }
+    }
+
+    /** Returns true when any floating icon is mid-drag. */
+    fun anyIconInDragMode(): Boolean = floatingIcons.values.any { it.inDragMode }
+
+    /** Dismiss the drag-lookup popup on every display (only one is realistically
+     *  active since the user has one pointer). */
+    fun dismissAllDragLookupPopups() {
+        floatingDragControllers.values.forEach { it.dismiss() }
+    }
+
+    /** True if any drag-lookup popup is showing across all displays. */
+    val isAnyDragLookupPopupShowing: Boolean
+        get() = floatingDragControllers.values.any { it.isPopupShowing }
     private var floatingMenu: FloatingIconMenu? = null
     private var floatingMenuWm: WindowManager? = null
     private var debugOverlayView: OcrDebugOverlayView? = null
@@ -111,17 +178,17 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     var screenshotManager: ScreenshotManager? = null
         private set
 
-    /** Repositions the floating icon when display properties change (e.g. rotation). */
+    /** Repositions floating icons when display properties change (e.g. rotation). */
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) {}
         override fun onDisplayRemoved(displayId: Int) {}
         override fun onDisplayChanged(displayId: Int) {
-            if (displayId != floatingIconDisplayId) return
-            val icon = floatingIcon ?: return
+            val icon = floatingIcons[displayId] ?: return
             val p = icon.params ?: return
             val prefs = Prefs(this@PlayTranslateAccessibilityService)
-            icon.setPosition(prefs.overlayIconEdge, prefs.overlayIconFraction)
-            try { floatingIconWm?.updateViewLayout(icon, p) } catch (_: Exception) {}
+            val pos = prefs.iconPositionForDisplay(displayId)
+            icon.setPosition(pos.edge, pos.fraction)
+            try { floatingIconWms[displayId]?.updateViewLayout(icon, p) } catch (_: Exception) {}
         }
     }
 
@@ -145,7 +212,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         registerReceiver(screenReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
         (getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
             .registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
-        ensureFloatingIcon()
+        reconcileFloatingIcons()
         registerHotkeyCallbacks()
     }
 
@@ -184,7 +251,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      * between regions in the picker doesn't tear down the surface and flash.
      */
     fun showRegionOverlay(display: Display, region: RegionEntry) {
-        if (floatingIcon?.inDragMode == true) return
+        if (anyIconInDragMode()) return
 
         val canUpdateInPlace = !region.isFullScreen &&
             regionIndicatorPersistent &&
@@ -196,8 +263,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         }
 
         showRegionIndicator(display, region, persistent = true)
-        // Re-add the floating icon so it draws above the full-screen dim overlay
-        bringFloatingIconToFront()
+        // Re-add this display's floating icon so it draws above the full-
+        // screen dim overlay just placed on this display.
+        bringFloatingIconsToFront(display.displayId)
     }
 
     /** Updates the existing persistent indicator's region in place. No-op if
@@ -238,7 +306,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      * clean-capture blanking. Returns true on success.
      *
      * Honors whatever [WindowManager.LayoutParams.alpha] is on [params].
-     * In particular, [bringFloatingIconToFront] removes and re-adds the
+     * In particular, [bringFloatingIconsToFront] removes and re-adds the
      * icon with the same params object — if a clean capture has the icon
      * blanked at alpha=0, the re-added window stays invisible until the
      * capture's restore fires. Forcing alpha=1 here would flash the icon
@@ -742,8 +810,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         screenshotW: Int, screenshotH: Int,
         pinholeMode: Boolean = false
     ) {
-        // Overlay is appearing — dismiss loading spinner
-        floatingIcon?.showLoading = false
+        // Overlay is appearing — dismiss loading spinner across all icons.
+        setIconsLoading(false)
 
         // Reuse existing view only if it's on the same display AND was
         // constructed with the same pinhole mode; otherwise recreate so the
@@ -918,7 +986,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      * screen, but hotkeys obviously must still work then.
      */
     fun isUserReachable(): Boolean =
-        floatingIcon != null || MainActivity.isInForeground
+        hasAnyFloatingIcon || MainActivity.isInForeground
 
     // ── Hotkey combo detection ──────────────────────────────────────────
 
@@ -1035,8 +1103,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                     lastKeyEventTime = System.currentTimeMillis()
                     buttonHeld = true
                     heldKeyCodes.add(event.keyCode)
-                    if (dragLookupController?.isPopupShowing == true) {
-                        dragLookupController?.dismiss()
+                    if (isAnyDragLookupPopupShowing) {
+                        dismissAllDragLookupPopups()
                     }
                     onGameInput?.invoke()
                     checkHotkeyCombos()
@@ -1059,20 +1127,62 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      *
      * Shows, hides, or relocates the icon based on current state.
      */
-    fun ensureFloatingIcon() {
+    /**
+     * Reconcile the floating icons against [Prefs.captureDisplayIds]:
+     *  - tear down icons whose display is no longer selected or has been
+     *    disconnected
+     *  - install icons for newly-selected, currently-connected displays
+     *
+     * Replaces P1's [ensureFloatingIcon] (which only knew about a single
+     * primary display). Called on service connect, settings change, and
+     * display hot-plug.
+     */
+    fun reconcileFloatingIcons() {
         val prefs = Prefs(this)
         if (!prefs.showOverlayIcon) {
             hideFloatingIcon("pref_disabled")
             return
         }
-        val display = findIconDisplay(prefs) ?: return
-        if (floatingIcon != null && floatingIconDisplayId == display.displayId) return
-        Log.d(TAG, "ensureFloatingIcon: showing on display ${display.displayId} (current=$floatingIconDisplayId, captureId=${prefs.captureDisplayId})")
-        showFloatingIcon(display, prefs)
+        val dm = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        val target = prefs.captureDisplayIds
+
+        // Snapshot before mutating — tear down icons no longer needed.
+        val staleIds = floatingIcons.keys.filter { id ->
+            id !in target || dm.getDisplay(id) == null
+        }
+        for (id in staleIds) hideFloatingIconForDisplay(id, "reconcile_remove")
+
+        // If the user has nothing selected (e.g. transient migration state)
+        // fall back to the legacy single-display heuristic so the app always
+        // has at least one icon while it's "configured."
+        if (target.isEmpty()) {
+            val display = findIconDisplay(prefs) ?: return
+            if (display.displayId !in floatingIcons) {
+                installFloatingIconForDisplay(display, prefs)
+            }
+            return
+        }
+
+        for (id in target) {
+            if (id in floatingIcons) continue
+            val display = dm.getDisplay(id) ?: continue
+            installFloatingIconForDisplay(display, prefs)
+        }
     }
 
-    private fun showFloatingIcon(display: Display, prefs: Prefs) {
-        hideFloatingIcon("recreating")
+    /** Backwards-compat alias. */
+    @Deprecated(
+        "Use reconcileFloatingIcons() — single-display semantics are gone.",
+        ReplaceWith("reconcileFloatingIcons()")
+    )
+    fun ensureFloatingIcon() = reconcileFloatingIcons()
+
+    private fun installFloatingIconForDisplay(display: Display, prefs: Prefs) {
+        val displayId = display.displayId
+        // Idempotent: if an icon was already there for this display, tear it
+        // down first so the closures and registry stay coherent.
+        hideFloatingIconForDisplay(displayId, "recreating")
+
         val displayCtx = createDisplayContext(display)
         val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
 
@@ -1095,30 +1205,31 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
         icon.params = params
 
+        // Drag-end persists the icon's snap position to this display's slot.
         icon.onPositionChanged = { edge, fraction ->
-            prefs.overlayIconEdge = edge
-            prefs.overlayIconFraction = fraction
+            prefs.setIconPositionForDisplay(displayId, IconPosition(edge, fraction))
         }
         icon.onTap = {
             showFloatingMenu(display, icon)
         }
 
-        // Drag-to-lookup: OCR + dictionary popup while dragging
+        // Drag-to-lookup: independent controller per display so the popup +
+        // magnifier render against the correct display context.
         val popup = WordLookupPopup(displayCtx, wm)
         val magnifier = MagnifierLens(displayCtx, wm)
         val controller = DragLookupController(
-            displayId = display.displayId,
+            displayId = displayId,
             popup = popup,
             magnifier = magnifier
         )
         // Track whether live mode / region overlay were active when drag started
         var liveWasPausedForPopup = false
         var overlayHiddenForDrag = false
-        // Wire the service-level cancel hook to this closure's flag.
-        // openSentenceInApp calls cancelLivePauseObligation() to make the
-        // chained resumeLiveMode in onSettled a no-op when the user is
-        // launching a covering detail view (single-screen).
-        clearLivePauseFlag = { liveWasPausedForPopup = false }
+        // Wire the service-level cancel hook to this closure's flag, keyed
+        // on this display. openSentenceInApp calls cancelLivePauseObligation()
+        // to make the chained resumeLiveMode in onSettled a no-op when the
+        // user is launching a covering detail view (single-screen).
+        clearLivePauseFlags[displayId] = { liveWasPausedForPopup = false }
 
         fun restoreRegionOverlay() {
             if (overlayHiddenForDrag) {
@@ -1171,46 +1282,85 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         icon.onDragEnd = { controller.onDragEnd() }
         icon.onDragCancel = { controller.cancelDrag() }
         icon.onHoldCancel = { CaptureService.instance?.holdCancel() }
-        icon.onHoldStart  = { CaptureService.instance?.holdStart() }
+        // Pass the displayId through so P5 can route the one-shot to the
+        // tapped icon's display. P2's holdStart still treats this as global
+        // pause; the parameter just gets recorded.
+        icon.onHoldStart  = { CaptureService.instance?.holdStart(displayId) }
         icon.onHoldEnd    = { CaptureService.instance?.holdEnd() }
-        icon.onAnyTouch   = { DimController.notifyInteraction() }
-        dragLookupController = controller
+        icon.onAnyTouch   = {
+            // Track which display the user is interacting with so hotkey
+            // one-shots route to the right place when more than one display
+            // is selected (P5 wires this further into OneShotManager).
+            CaptureService.instance?.lastInteractedDisplayId = displayId
+            DimController.notifyInteraction()
+        }
+        floatingDragControllers[displayId] = controller
 
-        if (addOverlayWindow(icon, wm, params, display.displayId)) {
-            // Set position after addView so the icon can query its own window bounds
-            icon.setPosition(prefs.overlayIconEdge, prefs.overlayIconFraction)
+        if (addOverlayWindow(icon, wm, params, displayId)) {
+            // Set position after addView from this display's saved slot.
+            val pos = prefs.iconPositionForDisplay(displayId)
+            icon.setPosition(pos.edge, pos.fraction)
             try { wm.updateViewLayout(icon, params) } catch (_: Exception) {}
-            floatingIconWm = wm
-            floatingIcon = icon
-            floatingIconDisplayId = display.displayId
+            floatingIconWms[displayId] = wm
+            floatingIcons[displayId] = icon
+        } else {
+            // Window install failed — drop the controller we registered to
+            // keep the maps consistent.
+            floatingDragControllers.remove(displayId)?.destroy()
+            clearLivePauseFlags.remove(displayId)
+        }
+
+        // The old floatingIcon setter used to fire these on every install/
+        // teardown; we keep that contract by triggering them explicitly.
+        CaptureService.instance?.updateForegroundState()
+        CaptureService.instance?.syncIconState()
+    }
+
+    /**
+     * Remove and re-add floating icons so they draw above newly added
+     * overlays. Pass [displayId] = null (default) to bring every icon
+     * forward; pass an id to bring just one. Icons in drag mode are skipped
+     * — re-adding mid-drag breaks the touch event sequence.
+     */
+    fun bringFloatingIconsToFront(displayId: Int? = null) {
+        val targets: List<Map.Entry<Int, FloatingOverlayIcon>> = if (displayId != null) {
+            listOfNotNull(floatingIcons.entries.firstOrNull { it.key == displayId })
+        } else {
+            floatingIcons.entries.toList()
+        }
+        for ((id, icon) in targets) {
+            if (icon.inDragMode) continue
+            val wm = floatingIconWms[id] ?: continue
+            val params = icon.params ?: continue
+            removeOverlayWindow(icon)
+            addOverlayWindow(icon, wm, params, id)
         }
     }
 
-    /** Remove and re-add the floating icon so it draws above newly added overlays. */
-    private fun bringFloatingIconToFront() {
-        val icon = floatingIcon ?: return
-        val wm = floatingIconWm ?: return
-        val params = icon.params ?: return
-        // Never re-add the icon while it's being dragged — removing it
-        // mid-drag breaks the touch event sequence and freezes the icon.
-        if (icon.inDragMode) return
+    /** Tear down a single display's floating icon and its drag-lookup
+     *  controller. Idempotent — no-op when no icon is registered for
+     *  [displayId]. */
+    private fun hideFloatingIconForDisplay(displayId: Int, reason: String) {
+        val icon = floatingIcons.remove(displayId) ?: return
+        Log.i(TAG, "hideFloatingIcon[$displayId]: $reason")
+        floatingIconWms.remove(displayId)
+        floatingDragControllers.remove(displayId)?.destroy()
+        clearLivePauseFlags.remove(displayId)
+        icon.destroy()
         removeOverlayWindow(icon)
-        addOverlayWindow(icon, wm, params, floatingIconDisplayId)
+
+        CaptureService.instance?.updateForegroundState()
+        CaptureService.instance?.syncIconState()
     }
 
+    /** Tear down every floating icon. Used by callers that want to remove
+     *  the icons entirely (task removed, user disabled the icon pref). */
     fun hideFloatingIcon(reason: String = "unspecified") {
-        Log.i(TAG, "hideFloatingIcon: $reason")
-        // Drop the cancel hook — its lambda points at the soon-to-die
-        // closure's pause flag. A new floating icon installation will
-        // wire a fresh one.
-        clearLivePauseFlag = null
-        dragLookupController?.destroy()
-        dragLookupController = null
-        floatingIcon?.destroy()
-        floatingIcon?.let { removeOverlayWindow(it) }
-        floatingIcon = null
-        floatingIconWm = null
-        floatingIconDisplayId = -1
+        if (floatingIcons.isEmpty()) return
+        Log.i(TAG, "hideFloatingIcon (all): $reason")
+        // Snapshot to a list since hideFloatingIconForDisplay mutates the map.
+        val ids = floatingIcons.keys.toList()
+        for (id in ids) hideFloatingIconForDisplay(id, reason)
     }
 
     /** Called by [com.playtranslate.ui.DragLookupController.openSentenceInApp]
@@ -1223,11 +1373,15 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      *  visible leaves auto-resume in place since TRA lands on the panel
      *  side and live captures continue on the game side. The user re-enables
      *  live mode manually via the floating-icon menu after closing the
-     *  detail view. */
+     *  detail view.
+     *
+     *  Iterates all per-display flags — only one is realistically active at
+     *  any time (one pointer means one drag), but invoking all is harmless
+     *  and avoids a stale-id race. */
     fun cancelLivePauseObligation() {
         val effectivelySingleScreen = Prefs.isSingleScreen(this) || !MainActivity.isInForeground
         if (effectivelySingleScreen) {
-            clearLivePauseFlag?.invoke()
+            clearLivePauseFlags.values.forEach { it.invoke() }
         }
     }
 
@@ -1393,7 +1547,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 builder.addButton("Minimize Icon", OverlayColors.accent(this)) {
                     prefs.compactOverlayIcon = true
                     hideFloatingIcon("confirm_minimize_single")
-                    ensureFloatingIcon()
+                    reconcileFloatingIcons()
                 }
             }
             builder.addButton("Turn Off", OverlayColors.divider(this), OverlayColors.danger(this)) {
@@ -1408,7 +1562,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                     .addButton("Minimize Icon", OverlayColors.accent(this)) {
                         prefs.compactOverlayIcon = true
                         hideFloatingIcon("confirm_minimize_multi")
-                        ensureFloatingIcon()
+                        reconcileFloatingIcons()
                     }
             } else {
                 builder.setMessage("\u201CHide for Now\u201D brings it back next time you open $appName. \u201CTurn Off\u201D disables it until re-enabled in settings.")
@@ -1600,12 +1754,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Returns the floating icon's bounding rect in screen coordinates, or null
-     * if the icon is not showing. Used by CaptureService to black out the icon
-     * area before OCR so it doesn't interfere with text recognition.
+     * Returns the floating icon's bounding rect in screen coordinates for
+     * [displayId], or null if no icon is showing on that display. Used by
+     * CaptureService to black out the icon area before OCR so it doesn't
+     * interfere with text recognition.
      */
-    fun getFloatingIconRect(): android.graphics.Rect? {
-        val icon = floatingIcon ?: return null
+    fun getFloatingIconRect(displayId: Int): android.graphics.Rect? {
+        val icon = floatingIcons[displayId] ?: return null
         val p = icon.params ?: return null
         return android.graphics.Rect(p.x, p.y, p.x + icon.viewSizePx, p.y + icon.viewSizePx)
     }
@@ -1620,8 +1775,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         if (start) {
             // Live state is set by CaptureService.startLive() via LiveData
             // Dismiss any definition popup when entering live mode.
-            val hadPopup = dragLookupController?.isPopupShowing == true
-            dragLookupController?.dismiss()
+            val hadPopup = isAnyDragLookupPopupShowing
+            dismissAllDragLookupPopups()
             if (!svc.isConfigured) {
                 val prefs = Prefs(this)
                 val entry = prefs.getSelectedRegion()
