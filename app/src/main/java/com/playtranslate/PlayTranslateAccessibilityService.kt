@@ -342,10 +342,10 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 maskFilter = android.graphics.BlurMaskFilter(14f * dp, android.graphics.BlurMaskFilter.Blur.NORMAL)
             }
             private val regionShadowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                color = android.graphics.Color.argb(70, 0, 0, 0)
+                color = android.graphics.Color.argb(110, 0, 0, 0)
                 style = android.graphics.Paint.Style.STROKE
-                strokeWidth = 10f * dp
-                maskFilter = android.graphics.BlurMaskFilter(10f * dp, android.graphics.BlurMaskFilter.Blur.NORMAL)
+                strokeWidth = 13f * dp
+                maskFilter = android.graphics.BlurMaskFilter(13f * dp, android.graphics.BlurMaskFilter.Blur.NORMAL)
             }
             private val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                 color = bgColor
@@ -356,7 +356,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             private val labelBgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                 color = accentColor
                 style = android.graphics.Paint.Style.FILL
-                setShadowLayer(6f * dp, 0f, 2f * dp, android.graphics.Color.argb(90, 0, 0, 0))
+                setShadowLayer(7.8f * dp, 0f, 2.6f * dp, android.graphics.Color.argb(140, 0, 0, 0))
             }
             private val labelPadH = 10f * dp
             private val labelPadV = 4f * dp
