@@ -74,7 +74,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
         awaitScreenshotInterval()
 
         val hideStart = System.currentTimeMillis()
-        val state = a11y.prepareForCleanCapture()
+        val state = a11y.prepareForCleanCapture(displayId)
         try {
             // Wait 2 vsync frames for the compositor to flush the overlay-free frame.
             waitVsync(2)
@@ -90,7 +90,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
             if (bitmap == null) {
                 DetectionLog.log("Clean capture failed, retrying...")
                 awaitScreenshotInterval()
-                val retryState = a11y.prepareForCleanCapture()
+                val retryState = a11y.prepareForCleanCapture(displayId)
                 val retry = try {
                     waitVsync(2)
                     doTakeScreenshot(displayId) {
@@ -189,7 +189,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
                     DetectionLog.log("Loop: taking clean screenshot...")
                     val hideStart = System.currentTimeMillis()
                     val bitmap = cleanCaptureMutex.withLock {
-                        val state = a11y.prepareForCleanCapture()
+                        val state = a11y.prepareForCleanCapture(displayId)
                         try {
                             waitVsync(2)
                             doTakeScreenshot(displayId) {
