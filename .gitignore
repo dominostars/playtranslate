@@ -15,6 +15,7 @@ app/build/
 # Local scratch / test data (not committed)
 local/
 scripts/thor-wifi-connect.sh
+docs/
 
 # Python cache from scripts/
 __pycache__/
