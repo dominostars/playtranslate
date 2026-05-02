@@ -22,24 +22,37 @@ private const val TAG = "ScreenshotManager"
 
 /**
  * Centralized manager for all `takeScreenshot` calls. Serializes access
- * to the Android rate-limited API (~1 s cooldown), manages overlay
- * hide/show for clean captures, and provides JPEG file saving.
+ * to the Android rate-limited API (platform constant 333 ms; we enforce
+ * 500 ms conservatively via [MIN_SCREENSHOT_INTERVAL_MS]). Manages overlay
+ * hide/show for clean captures and provides JPEG file saving.
  *
  * All callers go through [requestClean] or [requestRaw] instead of
  * calling `takeScreenshot` directly. The manager tracks the exact time
  * of each call and `delay()`s the precise remaining cooldown, eliminating
  * guessing, retries, and wasted attempts.
+ *
+ * Multi-display: the rate limit is enforced GLOBALLY per service (AOSP's
+ * AbstractAccessibilityServiceConnection tracks the last-screenshot
+ * timestamp in a single field, not per-display). [captureMutex] reflects
+ * that constraint — every code path that calls
+ * `takeScreenshot` (clean and raw) acquires it. With N selected displays
+ * each running its own [Loop], the loops contend on the mutex naturally;
+ * effective per-display fps = 1 / (N × interval). [Loop] hoists the
+ * formerly-singleton loop state per displayId so each loop has its own
+ * `cleanRequested` flag and the "next clean frame is mine" contract holds.
  */
 class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
 
     /** Single-thread executor for HardwareBuffer → software Bitmap copies. */
     private val bitmapExecutor = Executors.newSingleThreadExecutor()
 
-    /** Serializes clean captures so prepare/restore lifecycles don't overlap.
-     *  Without this, A's restore can fire (success or cancel) while B's
-     *  takeScreenshot is in flight, contaminating B's "clean" bitmap with
-     *  the overlays A had blanked. */
-    private val cleanCaptureMutex = Mutex()
+    /** Serializes every `takeScreenshot` call (clean AND raw paths) so
+     *  prepare/restore lifecycles don't overlap and no two raw captures
+     *  race past [awaitScreenshotInterval] simultaneously and lose to
+     *  AOSP's global timestamp (errorCode 3 / INTERVAL_TIME_SHORT).
+     *  Held by [requestClean], [requestRaw], and the loop's per-frame
+     *  clean and raw branches. */
+    private val captureMutex = Mutex()
 
     // ── Rate limit tracking ──────────────────────────────────────────────
 
@@ -70,7 +83,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
      * compositor to flush the overlay-free frame, captures, and restores
      * overlays. The caller owns the returned [Bitmap] and must recycle it.
      */
-    suspend fun requestClean(displayId: Int): Bitmap? = cleanCaptureMutex.withLock {
+    suspend fun requestClean(displayId: Int): Bitmap? = captureMutex.withLock {
         awaitScreenshotInterval()
 
         val hideStart = System.currentTimeMillis()
@@ -129,11 +142,11 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
      * capture with the restored UI visible, contaminating the bitmap. Callers
      * that need retry must re-prepare UI state and call again.
      */
-    suspend fun requestRaw(displayId: Int, onCaptured: (() -> Unit)? = null): Bitmap? {
+    suspend fun requestRaw(displayId: Int, onCaptured: (() -> Unit)? = null): Bitmap? = captureMutex.withLock {
         awaitScreenshotInterval()
         val bitmap = doTakeScreenshot(displayId, onCaptured)
         if (bitmap == null) DetectionLog.log("Raw capture failed")
-        return bitmap
+        bitmap
     }
 
     /**
@@ -159,16 +172,27 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
 
     // ── Continuous poll loop (live mode) ─────────────────────────────────
 
-    private var loopJob: Job? = null
-    @Volatile private var cleanRequested = false
+    /**
+     * Per-display loop state. One instance per running [startLoop] target;
+     * each loop owns its own [cleanRequested] flag so callers' "the next
+     * frame is mine" contract still holds when N loops are running. The
+     * shared [captureMutex] serializes their `takeScreenshot` calls at the
+     * platform rate limit.
+     */
+    private class Loop(
+        val displayId: Int,
+        var job: Job? = null,
+        @Volatile var cleanRequested: Boolean = false,
+    )
+
+    private val loops: MutableMap<Int, Loop> = mutableMapOf()
 
     /**
-     * Start a continuous screenshot loop. Each frame is delivered to
-     * [onCleanFrame] or [onRawFrame] depending on whether a clean capture
-     * was requested. Only one `takeScreenshot` call is in flight at a time.
-     *
-     * Call [requestCleanCapture] to flag the next frame as clean (overlays
-     * hidden before capture, restored after).
+     * Start a continuous screenshot loop for [displayId]. Each frame is
+     * delivered to [onCleanFrame] or [onRawFrame] depending on whether a
+     * clean capture was requested for THIS display via [requestCleanCapture].
+     * Multiple loops on different displays can coexist; the global
+     * [captureMutex] enforces serialization at the platform rate limit.
      */
     fun startLoop(
         displayId: Int,
@@ -176,25 +200,32 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
         onCleanFrame: (Bitmap) -> Unit,
         onRawFrame: (Bitmap) -> Unit
     ) {
-        stopLoop()
-        loopJob = scope.launch {
+        stopLoop(displayId)
+        val loop = Loop(displayId = displayId)
+        loops[displayId] = loop
+        loop.job = scope.launch {
             while (isActive) {
-                // Use user's poll interval (floored at API rate limit)
+                // Outer pacing: user's poll interval (floored at the platform
+                // rate limit). Inside the mutex below we re-check the interval
+                // — that gates the actual capture and applies even when the
+                // outer pacing already passed (e.g. another loop just took a
+                // frame and bumped lastCaptureTimeMs).
                 val elapsed = System.currentTimeMillis() - lastCaptureTimeMs
                 val waitMs = pollIntervalMs() - elapsed
                 if (waitMs > 0) delay(waitMs)
-                val isClean = cleanRequested
+                val isClean = loop.cleanRequested
                 if (isClean) {
-                    cleanRequested = false
-                    DetectionLog.log("Loop: taking clean screenshot...")
+                    loop.cleanRequested = false
+                    DetectionLog.log("Loop[$displayId]: taking clean screenshot...")
                     val hideStart = System.currentTimeMillis()
-                    val bitmap = cleanCaptureMutex.withLock {
+                    val bitmap = captureMutex.withLock {
+                        awaitScreenshotInterval()
                         val state = a11y.prepareForCleanCapture(displayId)
                         try {
                             waitVsync(2)
                             doTakeScreenshot(displayId) {
                                 a11y.restoreAfterCapture(state)
-                                android.util.Log.d("DetectionLog", "OVERLAY HIDDEN for ${System.currentTimeMillis() - hideStart}ms (loop)")
+                                android.util.Log.d("DetectionLog", "OVERLAY HIDDEN for ${System.currentTimeMillis() - hideStart}ms (loop[$displayId])")
                             }
                         } finally {
                             // See comment in requestClean — guarantees restore
@@ -203,13 +234,16 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
                         }
                     }
                     if (bitmap != null) {
-                        DetectionLog.log("Loop: clean frame captured (${bitmap.width}x${bitmap.height})")
+                        DetectionLog.log("Loop[$displayId]: clean frame captured (${bitmap.width}x${bitmap.height})")
                         onCleanFrame(bitmap)
                     } else {
-                        DetectionLog.log("Loop: clean capture failed")
+                        DetectionLog.log("Loop[$displayId]: clean capture failed")
                     }
                 } else {
-                    val bitmap = doTakeScreenshot(displayId)
+                    val bitmap = captureMutex.withLock {
+                        awaitScreenshotInterval()
+                        doTakeScreenshot(displayId)
+                    }
                     if (bitmap != null) {
                         onRawFrame(bitmap)
                     }
@@ -219,21 +253,37 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
         }
     }
 
-    /** Flag the next loop iteration to take a clean capture (overlays hidden). */
-    fun requestCleanCapture() {
-        cleanRequested = true
+    /** Flag the next loop iteration on [displayId] to take a clean capture. */
+    fun requestCleanCapture(displayId: Int) {
+        loops[displayId]?.cleanRequested = true
     }
 
-    fun stopLoop() {
-        loopJob?.cancel()
-        loopJob = null
-        // Don't reset cleanRequested — it may have been set for the next startLoop
+    /** Flag the next loop iteration on every running display to take a
+     *  clean capture. Used by callers that don't track per-display loops. */
+    fun requestCleanCaptureAll() {
+        loops.values.forEach { it.cleanRequested = true }
     }
 
-    val isLoopRunning: Boolean get() = loopJob?.isActive == true
+    /** Stop the loop for [displayId]. No-op if no loop is running there. */
+    fun stopLoop(displayId: Int) {
+        loops.remove(displayId)?.job?.cancel()
+    }
+
+    /** Stop every running loop. */
+    fun stopAllLoops() {
+        loops.values.forEach { it.job?.cancel() }
+        loops.clear()
+    }
+
+    /** True iff a loop is running for [displayId]. */
+    fun isLoopRunning(displayId: Int): Boolean =
+        loops[displayId]?.job?.isActive == true
+
+    /** True iff any loop is running across all displays. */
+    val hasAnyLoop: Boolean get() = loops.values.any { it.job?.isActive == true }
 
     fun destroy() {
-        stopLoop()
+        stopAllLoops()
         bitmapExecutor.shutdown()
     }
 

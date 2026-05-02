@@ -941,12 +941,25 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
     // ── Input monitoring for live mode ──────────────────────────────────
 
-    private var onGameInput: (() -> Unit)? = null
+    /**
+     * Per-display input callbacks. With multiple selected displays each
+     * running its own LiveMode, input on any source needs to fan out to
+     * every registered listener. P5 will scope per-display touch sentinels
+     * so input on display B actually reaches B's listener instead of
+     * relying on display A's sentinel firing for everyone.
+     */
+    private val onGameInputs: MutableMap<Int, () -> Unit> = mutableMapOf()
     private var lastKeyEventTime = 0L
     private var buttonHeld = false
     private var touchActive = false
     private val TOUCH_HOLD_TIMEOUT_MS = 2000L
     private val touchTimeoutRunnable = Runnable { touchActive = false }
+
+    /** Fan an input event out to every registered listener. */
+    private fun fireOnGameInput() {
+        if (onGameInputs.isEmpty()) return
+        onGameInputs.values.forEach { it.invoke() }
+    }
 
     /**
      * True while any input source is actively being used (button held,
@@ -958,23 +971,33 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
     /**
      * Start monitoring gamepad buttons and screen touches on [displayId].
-     * If [joystick] is true, also adds a joystick sentinel that polls for
-     * analog stick / d-pad movement (uses focus cycling — slight risk of
-     * eating key events). On API 34+ with MediaProjection this is disabled
-     * since timer-based polling handles everything without focus tricks.
-     *
-     * [callback] fires on the main thread for every detected input.
+     * The [callback] fires on the main thread for every detected input;
+     * multiple displays can have callbacks registered concurrently and all
+     * will fire on each input event (see [fireOnGameInput]).
      */
     fun startInputMonitoring(displayId: Int, callback: () -> Unit) {
-        onGameInput = callback
+        onGameInputs[displayId] = callback
         lastKeyEventTime = 0L
         buttonHeld = false
         touchActive = false
         addTouchSentinel(displayId)
     }
 
+    /** Stop monitoring input for a single display. Touch sentinel teardown
+     *  happens when the last listener goes away. */
+    fun stopInputMonitoring(displayId: Int) {
+        onGameInputs.remove(displayId)
+        if (onGameInputs.isEmpty()) {
+            buttonHeld = false
+            touchActive = false
+            debugHandler.removeCallbacks(touchTimeoutRunnable)
+            removeTouchSentinel()
+        }
+    }
+
+    /** Stop input monitoring across every display (e.g. on stopLive). */
     fun stopInputMonitoring() {
-        onGameInput = null
+        onGameInputs.clear()
         buttonHeld = false
         touchActive = false
         debugHandler.removeCallbacks(touchTimeoutRunnable)
@@ -1003,7 +1026,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                     touchActive = true
                     debugHandler.removeCallbacks(touchTimeoutRunnable)
                     debugHandler.postDelayed(touchTimeoutRunnable, TOUCH_HOLD_TIMEOUT_MS)
-                    onGameInput?.invoke()
+                    fireOnGameInput()
                 }
                 false
             }
@@ -1167,14 +1190,14 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                     if (isAnyDragLookupPopupShowing) {
                         dismissAllDragLookupPopups()
                     }
-                    onGameInput?.invoke()
+                    fireOnGameInput()
                     checkHotkeyCombos()
                 }
                 KeyEvent.ACTION_UP -> {
                     buttonHeld = false
                     heldKeyCodes.remove(event.keyCode)
                     lastKeyEventTime = System.currentTimeMillis()
-                    onGameInput?.invoke()
+                    fireOnGameInput()
                     checkHotkeyCombos()
                 }
             }
