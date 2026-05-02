@@ -40,6 +40,9 @@ data class RegionEntry(
     val isFullScreen: Boolean get() = top <= 0f && bottom >= 1f && left <= 0f && right >= 1f
 }
 
+/** Floating-icon snap position for a single display. */
+data class IconPosition(val edge: Int, val fraction: Float)
+
 /**
  * Simple wrapper around [SharedPreferences] for persisting user settings.
  */
@@ -81,13 +84,143 @@ class Prefs(context: Context) {
             return resolved ?: SourceLangId.JA
         }
 
+    /**
+     * Set of displays the user has selected to translate. Replaces the legacy
+     * single-display [captureDisplayId]. Insertion order is preserved
+     * (LinkedHashSet) so "primary" disambiguators (hotkey routing fallback,
+     * the shim that returns the first id) are deterministic.
+     *
+     * The setter mirrors the first id back to [KEY_DISPLAY_ID] so any
+     * un-migrated single-display reader stays in sync until the compat shim
+     * is removed at the end of P5.
+     */
+    var captureDisplayIds: Set<Int>
+        get() {
+            val csv = sp.getString(KEY_DISPLAY_IDS, null)
+            if (csv.isNullOrEmpty()) {
+                @Suppress("DEPRECATION")
+                return linkedSetOf(captureDisplayId)
+            }
+            return csv.split(",").mapNotNull { it.toIntOrNull() }
+                .toCollection(LinkedHashSet())
+        }
+        set(v) {
+            val edit = sp.edit().putString(KEY_DISPLAY_IDS, v.joinToString(","))
+            v.firstOrNull()?.let { edit.putInt(KEY_DISPLAY_ID, it) }
+            edit.apply()
+        }
+
+    /**
+     * Legacy single-display alias. Reads [KEY_DISPLAY_ID]; setter writes
+     * both the legacy key and [KEY_DISPLAY_IDS] (`setOf(v)`) so the new
+     * source of truth stays consistent with un-migrated callers.
+     *
+     * TODO(multi-display, P5): every call site should be migrated to
+     * [captureDisplayIds] or a per-display accessor; remove this property
+     * and [KEY_DISPLAY_ID] when the sweep is done. Known call sites are
+     * tracked in plans/parsed-munching-umbrella.md.
+     */
+    @Deprecated(
+        "Multi-display: use captureDisplayIds. This single-display alias is scaffolding for the migration and will be removed by end of P5.",
+        ReplaceWith("captureDisplayIds")
+    )
     var captureDisplayId: Int
         get() = sp.getInt(KEY_DISPLAY_ID, 0)
-        set(v) = sp.edit().putInt(KEY_DISPLAY_ID, v).apply()
+        set(v) = sp.edit()
+            .putInt(KEY_DISPLAY_ID, v)
+            .putString(KEY_DISPLAY_IDS, v.toString())
+            .apply()
 
     var selectedRegionId: String
         get() = sp.getString(KEY_SELECTED_REGION_ID, "") ?: ""
         set(v) = sp.edit().putString(KEY_SELECTED_REGION_ID, v).apply()
+
+    /**
+     * Per-display selected region id. Falls back to the legacy global
+     * [selectedRegionId] for displays that don't have their own entry yet —
+     * gives a sane initial region the first time the user toggles a new
+     * display on. The region LIST itself ([getRegionList]) stays shared
+     * across displays — region fractions are display-portable.
+     */
+    fun selectedRegionIdForDisplay(displayId: Int): String {
+        val map = readSelectedRegionMap()
+        return map[displayId] ?: selectedRegionId
+    }
+
+    fun setSelectedRegionIdForDisplay(displayId: Int, id: String) {
+        val map = readSelectedRegionMap().toMutableMap()
+        map[displayId] = id
+        writeSelectedRegionMap(map)
+    }
+
+    private fun readSelectedRegionMap(): Map<Int, String> {
+        val json = sp.getString(KEY_SELECTED_REGION_BY_DISPLAY, null) ?: return emptyMap()
+        return try {
+            val obj = JSONObject(json)
+            buildMap {
+                obj.keys().forEach { key ->
+                    val id = key.toIntOrNull() ?: return@forEach
+                    put(id, obj.getString(key))
+                }
+            }
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    private fun writeSelectedRegionMap(map: Map<Int, String>) {
+        val obj = JSONObject()
+        for ((id, regionId) in map) obj.put(id.toString(), regionId)
+        sp.edit().putString(KEY_SELECTED_REGION_BY_DISPLAY, obj.toString()).apply()
+    }
+
+    /**
+     * Per-display floating-icon snap position. Falls back to the legacy
+     * global [overlayIconEdge]/[overlayIconFraction] for displays that
+     * don't have their own entry yet.
+     */
+    fun iconPositionForDisplay(displayId: Int): IconPosition {
+        val map = readIconPositionMap()
+        return map[displayId] ?: IconPosition(overlayIconEdge, overlayIconFraction)
+    }
+
+    fun setIconPositionForDisplay(displayId: Int, position: IconPosition) {
+        val map = readIconPositionMap().toMutableMap()
+        map[displayId] = position
+        writeIconPositionMap(map)
+    }
+
+    private fun readIconPositionMap(): Map<Int, IconPosition> {
+        val json = sp.getString(KEY_ICON_POSITION_BY_DISPLAY, null) ?: return emptyMap()
+        return try {
+            val obj = JSONObject(json)
+            buildMap {
+                obj.keys().forEach { key ->
+                    val id = key.toIntOrNull() ?: return@forEach
+                    val entry = obj.getJSONObject(key)
+                    put(
+                        id, IconPosition(
+                            edge = entry.getInt("edge"),
+                            fraction = entry.getDouble("fraction").toFloat(),
+                        )
+                    )
+                }
+            }
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    private fun writeIconPositionMap(map: Map<Int, IconPosition>) {
+        val obj = JSONObject()
+        for ((id, pos) in map) {
+            obj.put(id.toString(), JSONObject().apply {
+                put("edge", pos.edge)
+                put("fraction", pos.fraction.toDouble())
+            })
+        }
+        sp.edit().putString(KEY_ICON_POSITION_BY_DISPLAY, obj.toString()).apply()
+    }
 
     /** Returns the saved selected region, or the first entry (full screen) as fallback. */
     fun getSelectedRegion(): RegionEntry {
@@ -195,6 +328,45 @@ class Prefs(context: Context) {
                 .putString(KEY_ACCENT_NAME, accent.name)
                 .remove(KEY_LEGACY_THEME_INDEX)
                 .apply()
+        }
+
+        // Multi-display migration: seed the new per-display schemas from the
+        // legacy single-display state. The legacy display id is the key under
+        // which we file the legacy icon position and selected region — using
+        // 0 would lose the user's setup on devices where the active display
+        // isn't DEFAULT_DISPLAY (e.g. a foldable user who picked the outer
+        // panel). Each block is guarded by absence-of-new so re-running is a
+        // no-op and a manual user choice on the new schema is never clobbered.
+        val legacyDisplayId = sp.getInt(KEY_DISPLAY_ID, 0)
+
+        if (sp.contains(KEY_DISPLAY_ID) && !sp.contains(KEY_DISPLAY_IDS)) {
+            sp.edit()
+                .putString(KEY_DISPLAY_IDS, legacyDisplayId.toString())
+                .apply()
+            // Don't remove KEY_DISPLAY_ID — the deprecated [captureDisplayId]
+            // shim still reads it during the P1→P5 migration window.
+        }
+
+        if (sp.contains(KEY_OVERLAY_ICON_EDGE) && !sp.contains(KEY_ICON_POSITION_BY_DISPLAY)) {
+            val legacyEdge = sp.getInt(KEY_OVERLAY_ICON_EDGE, 1)
+            val legacyFraction = sp.getFloat(KEY_OVERLAY_ICON_FRACTION, 0.5f)
+            val obj = JSONObject().apply {
+                put(legacyDisplayId.toString(), JSONObject().apply {
+                    put("edge", legacyEdge)
+                    put("fraction", legacyFraction.toDouble())
+                })
+            }
+            sp.edit().putString(KEY_ICON_POSITION_BY_DISPLAY, obj.toString()).apply()
+        }
+
+        if (sp.contains(KEY_SELECTED_REGION_ID) && !sp.contains(KEY_SELECTED_REGION_BY_DISPLAY)) {
+            val legacyRegionId = sp.getString(KEY_SELECTED_REGION_ID, "") ?: ""
+            if (legacyRegionId.isNotEmpty()) {
+                val obj = JSONObject().apply {
+                    put(legacyDisplayId.toString(), legacyRegionId)
+                }
+                sp.edit().putString(KEY_SELECTED_REGION_BY_DISPLAY, obj.toString()).apply()
+            }
         }
     }
 
@@ -333,7 +505,10 @@ class Prefs(context: Context) {
         private const val KEY_SOURCE_LANG    = "source_lang"
         private const val KEY_TARGET_LANG    = "target_lang"
         private const val KEY_DISPLAY_ID     = "capture_display_id"
+        private const val KEY_DISPLAY_IDS    = "capture_display_ids"
         private const val KEY_SELECTED_REGION_ID = "selected_region_id"
+        private const val KEY_SELECTED_REGION_BY_DISPLAY = "selected_region_by_display"
+        private const val KEY_ICON_POSITION_BY_DISPLAY   = "icon_position_by_display"
         private const val KEY_ANKI_DECK_ID   = "anki_deck_id"
         private const val KEY_ANKI_DECK_NAME = "anki_deck_name"
         private const val KEY_REGION_LIST    = "region_list"

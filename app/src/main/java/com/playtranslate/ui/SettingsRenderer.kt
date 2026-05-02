@@ -116,7 +116,6 @@ class SettingsRenderer(
 
     private var deckEntries: List<Map.Entry<Long, String>> = emptyList()
     var displayList: List<android.view.Display> = emptyList()
-    var selectedDisplayIdx: Int = 0
     val displayThumbnails = HashMap<Int, Bitmap?>()
 
     // ── Public entry point ───────────────────────────────────────────────
@@ -503,9 +502,13 @@ class SettingsRenderer(
     private fun setupCaptureDisplaySection() {
         val dm = ctx.getSystemService(Context.DISPLAY_SERVICE)
             as android.hardware.display.DisplayManager
-        displayList = dm.displays.toList()
-        selectedDisplayIdx = displayList.indexOfFirst { it.displayId == prefs.captureDisplayId }
-            .takeIf { it >= 0 } ?: 0
+        // Filter to capturable displays. AccessibilityService.takeScreenshot
+        // rejects private virtual displays with ERROR_TAKE_SCREENSHOT_INVALID_DISPLAY,
+        // so showing them in the picker would let the user toggle on a display
+        // that always errors.
+        displayList = dm.displays.filter {
+            it.flags and android.view.Display.FLAG_PRIVATE == 0
+        }
 
         captureDisplaySection.visibility =
             if (displayList.size <= 1) View.GONE else View.VISIBLE
@@ -546,7 +549,8 @@ class SettingsRenderer(
         isLast: Boolean,
     ): View {
         val dp = ctx.resources.displayMetrics.density
-        val isSelected = idx == selectedDisplayIdx
+        val selectedIds = prefs.captureDisplayIds
+        val isSelected = display.displayId in selectedIds
         // 10dp buffer on top, bottom, and left of the thumbnail; right side
         // gets the standard row padding so the checkmark sits in the usual
         // place. Row height = thumbH + 10×2 = 66dp, matching the toggle and
@@ -629,16 +633,20 @@ class SettingsRenderer(
             })
         }
         row.setOnClickListener {
-            if (idx != selectedDisplayIdx) {
-                selectedDisplayIdx = idx
-                val newDisplayId =
-                    displayList.getOrNull(idx)?.displayId ?: prefs.captureDisplayId
-                if (newDisplayId != prefs.captureDisplayId) {
-                    prefs.captureDisplayId = newDisplayId
-                    callbacks.onDisplayChanged()
-                }
-                buildDisplayRows(prefs)
+            val current = prefs.captureDisplayIds
+            val targetId = display.displayId
+            val next = if (targetId in current) {
+                // Refuse to toggle off the last selected display — leaving the
+                // set empty would leave the app with nothing to capture.
+                if (current.size <= 1) return@setOnClickListener
+                current - targetId
+            } else {
+                // Preserve insertion order so primary disambiguators are stable.
+                current.toMutableSet().also { it += targetId }
             }
+            prefs.captureDisplayIds = next
+            callbacks.onDisplayChanged()
+            buildDisplayRows(prefs)
         }
         return row
     }

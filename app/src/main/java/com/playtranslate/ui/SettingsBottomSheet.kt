@@ -224,12 +224,15 @@ class SettingsBottomSheet : DialogFragment() {
 
     private fun setupDisplays(view: View, r: SettingsRenderer, prefs: Prefs) {
         val displayManager = requireContext().getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-        val displays = displayManager.displays.toList()
+        // Filter to capturable displays for the same reason as
+        // SettingsRenderer.setupCaptureDisplaySection — private virtual
+        // displays can't be captured by the accessibility API.
+        val displays = displayManager.displays.filter {
+            it.flags and android.view.Display.FLAG_PRIVATE == 0
+        }
         lastDisplayCount = displays.size
 
         r.displayList = displays
-        r.selectedDisplayIdx = displays.indexOfFirst { it.displayId == prefs.captureDisplayId }
-            .takeIf { it >= 0 } ?: 0
 
         // Register display listener for hot-plug
         displayListener?.let { displayManager.unregisterDisplayListener(it) }

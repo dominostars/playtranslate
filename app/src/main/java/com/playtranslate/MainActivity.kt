@@ -1184,7 +1184,8 @@ class MainActivity :
     private fun configureService() {
         val svc = captureService ?: return
         val entry = prefs.getSelectedRegion()
-        svc.configureSaved(displayId = prefs.captureDisplayId, region = entry)
+        val ids = prefs.captureDisplayIds
+        svc.configureSaved(displayIds = ids, region = entry)
     }
 
     private fun onSourceLanguageChanged() {

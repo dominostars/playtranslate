@@ -98,7 +98,39 @@ class CaptureService : Service() {
     private var deeplTranslator: DeepLTranslator?  = null       // optional, key required
     private var lingvaTranslator: LingvaTranslator? = null      // always present after configure()
 
+    /**
+     * The set of displays the user has selected to translate. P1 introduces
+     * this as the source of truth; downstream phases (P4) wire per-display
+     * loops and modes off of it. The legacy single-display [gameDisplayId]
+     * stays valid as the "primary" id during the migration window.
+     */
+    internal var gameDisplayIds: Set<Int> = emptySet()
+
+    /** Legacy single-display alias — first id of [gameDisplayIds]. Held in
+     *  sync by [configureSaved] so un-migrated callers still work. Will be
+     *  removed in P5 alongside [Prefs.captureDisplayId]. */
     internal var gameDisplayId: Int = 0
+
+    /**
+     * The last display whose floating icon (or touch sentinel, after P5)
+     * received user input. Used by [primaryGameDisplayId] to pick the
+     * "intent" display for hotkey one-shots when more than one display is
+     * selected. Null until the user touches anything.
+     */
+    internal var lastInteractedDisplayId: Int? = null
+
+    /**
+     * Best-effort "primary" display for actions that need a single target
+     * (volume-button hotkey one-shot, fallbacks during one-display call
+     * sites). Prefers the last-interacted display so the user's recent
+     * intent wins; falls back to the first id in [gameDisplayIds] (insertion
+     * order is stable thanks to LinkedHashSet); finally [Display.DEFAULT_DISPLAY]
+     * if the set is empty.
+     */
+    fun primaryGameDisplayId(): Int =
+        lastInteractedDisplayId
+            ?: gameDisplayIds.firstOrNull()
+            ?: android.view.Display.DEFAULT_DISPLAY
     /** Always returns the current source-language translation code from Prefs.
      *  Single source of truth for the language pair — callers don't need to
      *  notify the service when prefs change; [ensureLanguageManagersFor]
@@ -285,7 +317,26 @@ class CaptureService : Service() {
         displayId: Int,
         region: RegionEntry = DEFAULT_REGION
     ) {
-        gameDisplayId    = displayId
+        configureSaved(
+            displayIds = Prefs(this).captureDisplayIds.ifEmpty { setOf(displayId) },
+            primaryDisplayId = displayId,
+            region = region,
+        )
+    }
+
+    /**
+     * Multi-display variant. [primaryDisplayId] sets the legacy
+     * [gameDisplayId] alias (first by default). All other state is the same
+     * as the single-display path; downstream phases (P4) plumb the full set
+     * into the screenshot loops and live-mode instances.
+     */
+    fun configureSaved(
+        displayIds: Set<Int>,
+        primaryDisplayId: Int = displayIds.firstOrNull() ?: 0,
+        region: RegionEntry = DEFAULT_REGION,
+    ) {
+        gameDisplayIds   = displayIds
+        gameDisplayId    = primaryDisplayId
         this.savedRegion = region
         this.overrideRegion = null
         hasCaptureStateConfigured = true
@@ -571,14 +622,29 @@ class CaptureService : Service() {
         override fun onDisplayAdded(displayId: Int) {}
         override fun onDisplayChanged(displayId: Int) {}
         override fun onDisplayRemoved(displayId: Int) {
-            if (liveActive && displayId == gameDisplayId) {
-                Log.w(TAG, "Capture display $displayId disconnected, stopping live mode")
+            if (!liveActive) return
+            if (displayId !in gameDisplayIds) return
+            // Drop the disconnected display from the active set. Only stop
+            // live mode entirely when the set goes empty — otherwise other
+            // selected displays should keep running. The full per-display
+            // mode/loop teardown lands in P4; for now we just prune state
+            // and stop everything if the primary went away.
+            val pruned = gameDisplayIds - displayId
+            gameDisplayIds = pruned
+            if (pruned.isEmpty()) {
+                Log.w(TAG, "All capture displays disconnected, stopping live mode")
                 Toast.makeText(
                     this@CaptureService,
                     "Capture display disconnected. Live mode stopped.",
                     Toast.LENGTH_LONG
                 ).show()
                 stopLive()
+            } else if (displayId == gameDisplayId) {
+                // Primary went away but other displays remain — refresh
+                // the primary alias so single-display call sites latch onto
+                // a still-valid id. Full multi-display continuity is P4.
+                Log.w(TAG, "Primary capture display $displayId disconnected; switching primary to ${pruned.first()}")
+                gameDisplayId = pruned.first()
             }
         }
     }
@@ -977,6 +1043,7 @@ class CaptureService : Service() {
         deeplTranslator  = null
         lingvaTranslator = null
         gameDisplayId = 0
+        gameDisplayIds = emptySet()
         hasCaptureStateConfigured = false
         _statusUpdates.tryEmit(getString(R.string.status_idle))
     }
