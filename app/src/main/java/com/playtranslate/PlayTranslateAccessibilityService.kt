@@ -99,6 +99,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     private var regionIndicatorView: View? = null
     private var regionIndicatorWm: WindowManager? = null
     private var regionIndicatorPersistent = false
+    private var regionIndicatorDisplayId: Int = -1
+    private var regionIndicatorUpdater: ((RegionEntry) -> Unit)? = null
     private val regionIndicatorHandler = Handler(Looper.getMainLooper())
     private val debugOcrManager get() = OcrManager.instance
     private val debugHandler = Handler(Looper.getMainLooper())
@@ -175,16 +177,33 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         return super.onUnbind(intent)
     }
 
-    /** Shows a persistent region indicator on the game display (reuses the indicator view). */
+    /**
+     * Shows a persistent region indicator on the game display. When an
+     * indicator is already up for the same display, the existing window is
+     * reused and just redrawn — see [updateRegionOverlay] — so flipping
+     * between regions in the picker doesn't tear down the surface and flash.
+     */
     fun showRegionOverlay(display: Display, region: RegionEntry) {
         if (floatingIcon?.inDragMode == true) return
+
+        val canUpdateInPlace = !region.isFullScreen &&
+            regionIndicatorPersistent &&
+            regionIndicatorDisplayId == display.displayId &&
+            regionIndicatorUpdater != null
+        if (canUpdateInPlace) {
+            updateRegionOverlay(region)
+            return
+        }
+
         showRegionIndicator(display, region, persistent = true)
         // Re-add the floating icon so it draws above the full-screen dim overlay
         bringFloatingIconToFront()
     }
 
+    /** Updates the existing persistent indicator's region in place. No-op if
+     *  no persistent indicator is currently shown. */
     fun updateRegionOverlay(region: RegionEntry) {
-        // No incremental update — the indicator is recreated on next showRegionOverlay call
+        regionIndicatorUpdater?.invoke(region)
     }
 
     fun hideRegionOverlay() {
@@ -323,6 +342,11 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val bgColor = OverlayColors.bg(this)
 
         val view = object : View(ctx) {
+            // Mutable so the persistent indicator can swap regions in place without
+            // tearing down the overlay window (which causes a 1-2 frame flash).
+            var liveRegion: RegionEntry = region
+            var liveLabel: String = displayLabel
+
             private val dimPaint = android.graphics.Paint().apply {
                 color = android.graphics.Color.argb(200, 0, 0, 0)
                 style = android.graphics.Paint.Style.FILL
@@ -371,10 +395,10 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             override fun onDraw(canvas: android.graphics.Canvas) {
                 val w = width.toFloat()
                 val h = height.toFloat()
-                val l = w * region.left
-                val t = h * region.top
-                val r = w * region.right
-                val b = h * region.bottom
+                val l = w * liveRegion.left
+                val t = h * liveRegion.top
+                val r = w * liveRegion.right
+                val b = h * liveRegion.bottom
 
                 // Persistent indicator (region picker): darken outside the region.
                 // Flash indicator: leave background untouched.
@@ -400,7 +424,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
                 // Label with accent background, centered above (or below) the region
                 val cx = (l + r) / 2f
-                val textW = textPaint.measureText(displayLabel)
+                val textW = textPaint.measureText(liveLabel)
                 val textH = textPaint.descent() - textPaint.ascent()
                 val pillW = textW + labelPadH * 2
                 val pillH = textH + labelPadV * 2
@@ -417,7 +441,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
                 // Label text
                 val textY = labelTop + labelPadV - textPaint.ascent()
-                canvas.drawText(displayLabel, cx, textY, textPaint)
+                canvas.drawText(liveLabel, cx, textY, textPaint)
             }
         }
 
@@ -434,6 +458,18 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         regionIndicatorView = view
         regionIndicatorWm = wm
         regionIndicatorPersistent = persistent
+        regionIndicatorDisplayId = display.displayId
+        regionIndicatorUpdater = if (persistent) {
+            { newRegion ->
+                if (newRegion.isFullScreen) {
+                    hideRegionIndicator(force = true)
+                } else {
+                    view.liveRegion = newRegion
+                    view.liveLabel = newRegion.label
+                    view.invalidate()
+                }
+            }
+        } else null
 
         if (!persistent) {
             // Brief flash, then quick fade out
@@ -463,6 +499,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         regionIndicatorView = null
         regionIndicatorWm = null
         regionIndicatorPersistent = false
+        regionIndicatorDisplayId = -1
+        regionIndicatorUpdater = null
     }
 
     // ── No-text pill toast ────────────────────────────────────────────────
