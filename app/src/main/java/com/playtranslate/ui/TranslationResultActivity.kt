@@ -400,7 +400,7 @@ class TranslationResultActivity :
         val rightFrac  = intent.getFloatExtra(EXTRA_RIGHT_FRAC, 1f)
 
         svc.configureSaved(
-            displayId = prefs.captureDisplayId,
+            displayIds = prefs.captureDisplayIds,
             region    = RegionEntry("Drawn Region", topFrac, bottomFrac, leftFrac, rightFrac)
         )
 

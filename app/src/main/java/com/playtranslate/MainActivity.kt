@@ -561,7 +561,12 @@ class MainActivity :
 
     private fun openRegionPickerInline() {
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-        val gameDisplay = displayManager.getDisplay(prefs.captureDisplayId)
+        // The picker targets the primary display until per-display region UX
+        // lands. The legacy single-display id is preserved across migration
+        // as the first entry of captureDisplayIds.
+        val primaryId = prefs.captureDisplayIds.firstOrNull()
+            ?: android.view.Display.DEFAULT_DISPLAY
+        val gameDisplay = displayManager.getDisplay(primaryId)
         if (gameDisplay == null) { selectTab(Tab.TRANSLATE); return }
 
         val sheet = RegionPickerSheet().apply {
@@ -1174,7 +1179,10 @@ class MainActivity :
     private fun ensureConfigured() {
         val svc = captureService ?: return
         if (!svc.isConfigured) {
-            prefs.captureDisplayId = findGameDisplayId()
+            // First-launch auto-detect: seed the selection set with the
+            // detected game display. Multi-select takes over from here via
+            // the settings UI.
+            prefs.captureDisplayIds = setOf(findGameDisplayId())
             configureService()
         }
     }
@@ -1532,7 +1540,7 @@ class MainActivity :
         return displayManager.displays
             .firstOrNull { it.displayId != myDisplayId }
             ?.displayId
-            ?: prefs.captureDisplayId
+            ?: (prefs.captureDisplayIds.firstOrNull() ?: android.view.Display.DEFAULT_DISPLAY)
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
@@ -1709,7 +1717,9 @@ class MainActivity :
         if (regions.isEmpty()) return
 
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-        val gameDisplay = displayManager.getDisplay(prefs.captureDisplayId)
+        val primaryId = prefs.captureDisplayIds.firstOrNull()
+            ?: android.view.Display.DEFAULT_DISPLAY
+        val gameDisplay = displayManager.getDisplay(primaryId)
 
         val currentId = prefs.selectedRegionId
         val currentIndex = regions.indexOfFirst { it.id == currentId }.coerceAtLeast(0)
@@ -1821,7 +1831,9 @@ class MainActivity :
     private fun openAddCustomRegionFromDropdown() {
         PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-        val gameDisplay = displayManager.getDisplay(prefs.captureDisplayId)
+        val primaryId = prefs.captureDisplayIds.firstOrNull()
+            ?: android.view.Display.DEFAULT_DISPLAY
+        val gameDisplay = displayManager.getDisplay(primaryId)
         val current = CaptureService.instance?.activeRegion
         AddCustomRegionSheet().also { sheet ->
             sheet.gameDisplay = gameDisplay

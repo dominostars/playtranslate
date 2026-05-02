@@ -85,51 +85,29 @@ class Prefs(context: Context) {
         }
 
     /**
-     * Set of displays the user has selected to translate. Replaces the legacy
-     * single-display [captureDisplayId]. Insertion order is preserved
-     * (LinkedHashSet) so "primary" disambiguators (hotkey routing fallback,
-     * the shim that returns the first id) are deterministic.
+     * Set of displays the user has selected to translate. Insertion order
+     * is preserved (LinkedHashSet) so "primary" disambiguators (hotkey
+     * routing fallback, single-display call sites' `firstOrNull()`) are
+     * deterministic.
      *
-     * The setter mirrors the first id back to [KEY_DISPLAY_ID] so any
-     * un-migrated single-display reader stays in sync until the compat shim
-     * is removed at the end of P5.
+     * Pre-multi-display installs stored a single Int under [KEY_DISPLAY_ID].
+     * The migration in [migrateLegacyPrefs] converts that to the new
+     * [KEY_DISPLAY_IDS] CSV; the getter falls back to reading the legacy key
+     * directly so a fresh-install / pre-migration read still returns
+     * something sensible.
      */
     var captureDisplayIds: Set<Int>
         get() {
             val csv = sp.getString(KEY_DISPLAY_IDS, null)
             if (csv.isNullOrEmpty()) {
-                @Suppress("DEPRECATION")
-                return linkedSetOf(captureDisplayId)
+                return linkedSetOf(sp.getInt(KEY_DISPLAY_ID, 0))
             }
             return csv.split(",").mapNotNull { it.toIntOrNull() }
                 .toCollection(LinkedHashSet())
         }
         set(v) {
-            val edit = sp.edit().putString(KEY_DISPLAY_IDS, v.joinToString(","))
-            v.firstOrNull()?.let { edit.putInt(KEY_DISPLAY_ID, it) }
-            edit.apply()
+            sp.edit().putString(KEY_DISPLAY_IDS, v.joinToString(",")).apply()
         }
-
-    /**
-     * Legacy single-display alias. Reads [KEY_DISPLAY_ID]; setter writes
-     * both the legacy key and [KEY_DISPLAY_IDS] (`setOf(v)`) so the new
-     * source of truth stays consistent with un-migrated callers.
-     *
-     * TODO(multi-display, P5): every call site should be migrated to
-     * [captureDisplayIds] or a per-display accessor; remove this property
-     * and [KEY_DISPLAY_ID] when the sweep is done. Known call sites are
-     * tracked in plans/parsed-munching-umbrella.md.
-     */
-    @Deprecated(
-        "Multi-display: use captureDisplayIds. This single-display alias is scaffolding for the migration and will be removed by end of P5.",
-        ReplaceWith("captureDisplayIds")
-    )
-    var captureDisplayId: Int
-        get() = sp.getInt(KEY_DISPLAY_ID, 0)
-        set(v) = sp.edit()
-            .putInt(KEY_DISPLAY_ID, v)
-            .putString(KEY_DISPLAY_IDS, v.toString())
-            .apply()
 
     var selectedRegionId: String
         get() = sp.getString(KEY_SELECTED_REGION_ID, "") ?: ""
@@ -343,8 +321,9 @@ class Prefs(context: Context) {
             sp.edit()
                 .putString(KEY_DISPLAY_IDS, legacyDisplayId.toString())
                 .apply()
-            // Don't remove KEY_DISPLAY_ID — the deprecated [captureDisplayId]
-            // shim still reads it during the P1→P5 migration window.
+            // KEY_DISPLAY_ID stays in SharedPreferences as harmless bytes —
+            // [captureDisplayIds] only consults it as a fresh-install
+            // fallback before the new key has been written.
         }
 
         if (sp.contains(KEY_OVERLAY_ICON_EDGE) && !sp.contains(KEY_ICON_POSITION_BY_DISPLAY)) {
