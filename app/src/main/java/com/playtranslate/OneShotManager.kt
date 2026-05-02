@@ -14,29 +14,40 @@ class OneShotManager(private val service: CaptureService) {
 
     private var currentJob: Job? = null
     private var forcedMode: OverlayMode? = null
+    /** The display the current cycle is targeting. Defaults to the
+     *  primary game display; the icon long-press path passes the icon's
+     *  own displayId so taps on icon B translate display B, not the
+     *  primary. */
+    private var targetDisplayId: Int = android.view.Display.DEFAULT_DISPLAY
 
-    /** Start a one-shot capture cycle. Cancels any previous in-flight cycle. */
-    fun runHoldOverlay(forceMode: OverlayMode? = null) {
+    /** Start a one-shot capture cycle on [displayId]. Cancels any previous
+     *  in-flight cycle. */
+    fun runHoldOverlay(
+        forceMode: OverlayMode? = null,
+        displayId: Int = service.primaryGameDisplayId(),
+    ) {
         forcedMode = forceMode
+        targetDisplayId = displayId
         currentJob?.cancel()
         currentJob = service.serviceScope.launch {
             runCycle()
         }
     }
 
-    /** Cancel the current cycle and hide overlays. */
+    /** Cancel the current cycle and hide the overlay it targeted. */
     fun cancel() {
         currentJob?.cancel()
         currentJob = null
-        PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+        PlayTranslateAccessibilityService.instance?.hideTranslationOverlayForDisplay(targetDisplayId)
     }
 
 
     private suspend fun runCycle() {
         if (!service.isConfigured) return
+        val displayId = targetDisplayId
 
         // 1. Capture clean screenshot
-        val raw: Bitmap = service.captureScreen(service.gameDisplayId) ?: return
+        val raw: Bitmap = service.captureScreen(displayId) ?: return
 
         try {
             // 2. Flash region indicator
@@ -46,7 +57,7 @@ class OneShotManager(private val service: CaptureService) {
             val pipeline = service.runOcr(raw)
             if (pipeline == null) {
                 service.emitHoldLoading(false)
-                showNoTextPill()
+                showNoTextPill(displayId)
                 service.emitLiveNoText()
                 return
             }
@@ -61,12 +72,12 @@ class OneShotManager(private val service: CaptureService) {
             val processor = createProcessor()
             val boxes = processor.buildBoxes(ocrResult, raw, cropLeft, cropTop, screenshotW, screenshotH) {
                 // Callback for intermediate display (shimmer placeholders)
-                service.showLiveOverlay(it, cropLeft, cropTop, screenshotW, screenshotH, force = true)
+                service.showLiveOverlay(it, cropLeft, cropTop, screenshotW, screenshotH, force = true, displayId = displayId)
             }
 
             // 6. Show final overlay
             if (boxes.isNotEmpty()) {
-                service.showLiveOverlay(boxes, cropLeft, cropTop, screenshotW, screenshotH, force = true)
+                service.showLiveOverlay(boxes, cropLeft, cropTop, screenshotW, screenshotH, force = true, displayId = displayId)
             }
 
             // 7. Send translation to in-app panel (if visible)
@@ -89,10 +100,10 @@ class OneShotManager(private val service: CaptureService) {
         }
     }
 
-    private fun showNoTextPill() {
+    private fun showNoTextPill(displayId: Int) {
         val a11y = PlayTranslateAccessibilityService.instance
         val dm = service.getSystemService(android.hardware.display.DisplayManager::class.java)
-        val display = dm?.getDisplay(service.gameDisplayId)
+        val display = dm?.getDisplay(displayId)
         if (a11y != null && display != null) {
             a11y.showNoTextPill(display, service.noTextMessage())
         }

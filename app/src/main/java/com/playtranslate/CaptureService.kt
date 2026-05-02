@@ -106,9 +106,10 @@ class CaptureService : Service() {
      */
     internal var gameDisplayIds: Set<Int> = emptySet()
 
-    /** Legacy single-display alias — first id of [gameDisplayIds]. Held in
-     *  sync by [configureSaved] so un-migrated callers still work. Will be
-     *  removed in P5 alongside [Prefs.captureDisplayId]. */
+    /** Convenience single-display alias — first id of [gameDisplayIds].
+     *  Held in sync by [configureSaved]. Used by call sites that genuinely
+     *  need a single id (region indicator placement, OCR pipeline crop)
+     *  rather than a set. */
     internal var gameDisplayId: Int = 0
 
     /**
@@ -613,24 +614,13 @@ class CaptureService : Service() {
     val isLive: Boolean get() = liveActive
 
     /**
-     * Per-display live-mode instances. P4 introduces this map; the
-     * deprecated [liveMode] alias resolves to the primary display's mode
-     * for legacy single-display callers.
-     *
-     * All entries share the same [Prefs.overlayMode] — multi-display
-     * doesn't expose per-display mode selection in the UI (per-display
-     * instances are an implementation detail for state isolation).
+     * Per-display live-mode instances. All entries share the same
+     * [Prefs.overlayMode] — multi-display doesn't expose per-display mode
+     * selection in the UI (per-display instances are an implementation
+     * detail for state isolation, since each display owns its own
+     * cachedBoxes / cleanRef state).
      */
     internal val liveModes: MutableMap<Int, LiveMode> = mutableMapOf()
-
-    /** Backwards-compat single-mode alias — resolves to the primary
-     *  display's mode (last-interacted, falling back to first selected).
-     *  Used by call sites that only check mode identity (e.g. holdBehavior). */
-    @Deprecated(
-        "Multi-display: prefer liveModes map. Removed by end of P5.",
-    )
-    internal val liveMode: LiveMode?
-        get() = liveModes[primaryGameDisplayId()] ?: liveModes.values.firstOrNull()
 
     private val oneShotManager = OneShotManager(this)
     private var oneShotCaptureJob: Job? = null
@@ -773,12 +763,15 @@ class CaptureService : Service() {
 
     val holdBehavior: HoldBehavior
         get() {
+            // All per-display modes share the same prefs.overlayMode, so any
+            // single mode's class is representative of the active flavor.
+            val isFurigana = liveModes.values.any { it is FuriganaMode }
             // Visible translation overlay → hold peeks through it
-            if (liveActive && liveMode !is FuriganaMode && !isInAppOnly) {
+            if (liveActive && !isFurigana && !isInAppOnly) {
                 return HoldBehavior.HIDE_TRANSLATIONS
             }
             // Visible furigana overlay → hold forces a translation one-shot
-            if (liveActive && liveMode is FuriganaMode) {
+            if (liveActive && isFurigana) {
                 return HoldBehavior.SHOW_TRANSLATIONS_OVER_FURIGANA
             }
             // Not live, or InAppOnly live → hold runs a one-shot in the
@@ -872,18 +865,19 @@ class CaptureService : Service() {
      * placeholders during the one-shot, and also prevents the live loop's
      * hide/restore cycle from racing with the one-shot's own clean capture.
      */
-    private fun beginHoldPreview(mode: OverlayMode?) {
+    private fun beginHoldPreview(mode: OverlayMode?, displayId: Int) {
         holdActive = true
         if (liveActive) {
             // Hold pause is global — stop every per-display loop and hide
-            // every translation overlay. The one-shot will paint the result
-            // on the primary display (or the icon-tapped display in P5).
+            // every translation overlay. The one-shot itself will then paint
+            // its result on [displayId] (the icon-tapped display, or the
+            // primary if invoked from a non-icon path).
             PlayTranslateAccessibilityService.instance
                 ?.screenshotManager?.stopAllLoops()
             PlayTranslateAccessibilityService.instance
                 ?.hideTranslationOverlay()
         }
-        oneShotManager.runHoldOverlay(forceMode = mode)
+        oneShotManager.runHoldOverlay(forceMode = mode, displayId = displayId)
     }
 
     /**
@@ -913,18 +907,20 @@ class CaptureService : Service() {
         // Pinhole / translation-overlay live modes: "peek" through the
         // overlay at the game underneath, without running a one-shot.
         // PinholeOverlayMode's cycle polls [holdActive] and pauses itself.
-        if (liveActive && liveMode !is FuriganaMode && !isInAppOnly) {
+        @Suppress("DEPRECATION")
+        val isFurigana = liveModes.values.any { it is FuriganaMode }
+        if (liveActive && !isFurigana && !isInAppOnly) {
             holdActive = true
             PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
             return
         }
         _holdLoading.value = true
-        val forced = if (liveActive && liveMode is FuriganaMode) {
+        val forced = if (liveActive && isFurigana) {
             OverlayMode.TRANSLATION
         } else {
             null
         }
-        beginHoldPreview(forced)
+        beginHoldPreview(forced, displayId)
     }
 
     /** End a hold-to-preview gesture (in-app translate button). */
@@ -955,7 +951,11 @@ class CaptureService : Service() {
         Log.d("HotkeyDbg", "hotkeyHoldStart: mode=$mode isConfigured=$isConfigured liveActive=$liveActive")
         if (hotkeyActive) return
         hotkeyActive = true
-        beginHoldPreview(mode)
+        // Hotkey path uses primaryGameDisplayId() — last-interacted display,
+        // falling back to the first selected. Touch sentinels (P5) keep the
+        // last-interacted signal fresh as the user moves focus between
+        // displays' floating icons.
+        beginHoldPreview(mode, primaryGameDisplayId())
     }
 
     /** End a hotkey hold-to-preview. */

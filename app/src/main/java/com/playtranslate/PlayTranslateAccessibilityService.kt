@@ -63,14 +63,10 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     /** True when the region drag editor overlay is showing. */
     val isRegionEditorActive: Boolean get() = dragView != null
     /**
-     * Per-display floating icons. P2 introduced this map; the legacy
-     * single-icon [floatingIcon] field is now a deprecated getter that
-     * resolves to the primary icon (last-interacted display, falling back
-     * to insertion-ordered first).
-     *
-     * The old `floatingIcon` setter used to fan out to
-     * [CaptureService.updateForegroundState] + [CaptureService.syncIconState];
-     * those calls now live inside [installFloatingIconForDisplay] and
+     * Per-display floating icons. The pre-multi-display single-icon setter
+     * used to fan out to [CaptureService.updateForegroundState] +
+     * [CaptureService.syncIconState] on every install/teardown; those calls
+     * now live inside [installFloatingIconForDisplay] and
      * [hideFloatingIconForDisplay] so per-display add/remove still triggers
      * them.
      */
@@ -88,32 +84,6 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      * can't fire against a torn-down closure.
      */
     private val clearLivePauseFlags: MutableMap<Int, () -> Unit> = mutableMapOf()
-
-    /**
-     * Backwards-compat single-icon accessor — returns the icon for the
-     * primary display id (last-interacted, falling back to first selected).
-     * Most call sites should be migrated to iterate [floatingIcons] or call
-     * the appropriate helper ([setIconsLoading], [setIconsDegraded], etc.).
-     */
-    @Deprecated(
-        "Multi-display: prefer floatingIcons map or a per-display helper. Will be removed by end of P5.",
-    )
-    internal val floatingIcon: FloatingOverlayIcon?
-        get() {
-            val primary = CaptureService.instance?.primaryGameDisplayId()
-            return primary?.let { floatingIcons[it] } ?: floatingIcons.values.firstOrNull()
-        }
-
-    /** Backwards-compat: drag controller for the primary display. */
-    @Deprecated(
-        "Multi-display: prefer floatingDragControllers map or [dismissAllDragLookupPopups]. Will be removed by end of P5.",
-    )
-    val dragLookupController: DragLookupController?
-        get() {
-            val primary = CaptureService.instance?.primaryGameDisplayId()
-            return primary?.let { floatingDragControllers[it] }
-                ?: floatingDragControllers.values.firstOrNull()
-        }
 
     /** True iff at least one floating icon is currently registered. */
     val hasAnyFloatingIcon: Boolean get() = floatingIcons.isNotEmpty()
@@ -155,36 +125,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      * Per-display live translation overlays. The dirty overlay is its
      * persistent companion (always present, paints empty when not dirty);
      * the two are co-created in [showTranslationOverlay] and co-torn-down
-     * in [hideTranslationOverlayForDisplay], so the maps must stay in lock-
-     * step. Deprecated single accessors below resolve to the primary
-     * display's entries.
+     * in [hideTranslationOverlayForDisplay], so the maps must stay in
+     * lock-step.
      */
     private val translationOverlays: MutableMap<Int, TranslationOverlayView> = mutableMapOf()
     private val translationOverlayWms: MutableMap<Int, WindowManager> = mutableMapOf()
     private val dirtyOverlays: MutableMap<Int, TranslationOverlayView> = mutableMapOf()
     private val dirtyOverlayWms: MutableMap<Int, WindowManager> = mutableMapOf()
-
-    /** Backwards-compat single-overlay accessor — primary display's view. */
-    @Deprecated(
-        "Multi-display: prefer translationOverlayForDisplay(displayId). Removed by end of P5.",
-    )
-    internal val translationOverlayView: TranslationOverlayView?
-        get() {
-            val primary = CaptureService.instance?.primaryGameDisplayId()
-            return primary?.let { translationOverlays[it] }
-                ?: translationOverlays.values.firstOrNull()
-        }
-
-    /** Backwards-compat single-dirty-overlay accessor — primary display's view. */
-    @Deprecated(
-        "Multi-display: prefer dirtyOverlayForDisplay(displayId). Removed by end of P5.",
-    )
-    internal val dirtyOverlayView: TranslationOverlayView?
-        get() {
-            val primary = CaptureService.instance?.primaryGameDisplayId()
-            return primary?.let { dirtyOverlays[it] }
-                ?: dirtyOverlays.values.firstOrNull()
-        }
 
     /** Live translation overlay for [displayId], or null. */
     fun translationOverlayForDisplay(displayId: Int): TranslationOverlayView? =
@@ -196,8 +143,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
     /** True iff any display has a live translation overlay registered. */
     val hasAnyTranslationOverlay: Boolean get() = translationOverlays.isNotEmpty()
-    private var touchSentinelView: View? = null
-    private var touchSentinelWm: WindowManager? = null
+    /** Per-display touch sentinels. With multiple selected displays each
+     *  hosting a floating icon, each display needs its own sentinel — the
+     *  pre-P5 single-instance setup left only the first display's touches
+     *  detectable, so a touch on display B never reached
+     *  [lastInteractedDisplayId] tracking and B's hotkey routing was broken. */
+    private val touchSentinels: MutableMap<Int, View> = mutableMapOf()
+    private val touchSentinelWms: MutableMap<Int, WindowManager> = mutableMapOf()
     private var regionEditorBar: View? = null
     private var regionEditorBarWm: WindowManager? = null
     private var regionEditorLabel: View? = null
@@ -773,7 +725,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     private fun runDebugCapture() {
         if (!debugRunning) return
         val prefs = Prefs(this)
-        val displayId = prefs.captureDisplayId
+        val displayId = prefs.captureDisplayIds.firstOrNull()
+            ?: android.view.Display.DEFAULT_DISPLAY
         val dm = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val display = dm.getDisplay(displayId) ?: run { scheduleDebugCapture(); return }
 
@@ -983,15 +936,16 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         addTouchSentinel(displayId)
     }
 
-    /** Stop monitoring input for a single display. Touch sentinel teardown
-     *  happens when the last listener goes away. */
+    /** Stop monitoring input for a single display. Tears down THIS display's
+     *  touch sentinel; global state (buttonHeld, touchActive) only resets
+     *  when the last listener goes away. */
     fun stopInputMonitoring(displayId: Int) {
         onGameInputs.remove(displayId)
+        removeTouchSentinelForDisplay(displayId)
         if (onGameInputs.isEmpty()) {
             buttonHeld = false
             touchActive = false
             debugHandler.removeCallbacks(touchTimeoutRunnable)
-            removeTouchSentinel()
         }
     }
 
@@ -1013,7 +967,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      */
     @android.annotation.SuppressLint("ClickableViewAccessibility")
     private fun addTouchSentinel(displayId: Int) {
-        if (touchSentinelView != null) return
+        if (displayId in touchSentinels) return
         val dm = getSystemService(DisplayManager::class.java)
         val display = dm.getDisplay(displayId) ?: return
         val ctx = createDisplayContext(display)
@@ -1024,6 +978,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                     // Mark touch as active. We can't detect touch-up from
                     // the sentinel, so use a timeout to assume lift.
                     touchActive = true
+                    // Track which display the user just touched so hotkey
+                    // routing lands on the right place (P5).
+                    CaptureService.instance?.lastInteractedDisplayId = displayId
                     debugHandler.removeCallbacks(touchTimeoutRunnable)
                     debugHandler.postDelayed(touchTimeoutRunnable, TOUCH_HOLD_TIMEOUT_MS)
                     fireOnGameInput()
@@ -1039,15 +996,24 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         )
-        addOverlayWindow(view, wm, params, displayId)
-        touchSentinelView = view
-        touchSentinelWm = wm
+        if (addOverlayWindow(view, wm, params, displayId)) {
+            touchSentinels[displayId] = view
+            touchSentinelWms[displayId] = wm
+        }
     }
 
+    /** Remove a single display's touch sentinel. */
+    private fun removeTouchSentinelForDisplay(displayId: Int) {
+        val view = touchSentinels.remove(displayId) ?: return
+        touchSentinelWms.remove(displayId)
+        removeOverlayWindow(view)
+    }
+
+    /** Remove every touch sentinel. */
     private fun removeTouchSentinel() {
-        touchSentinelView?.let { removeOverlayWindow(it) }
-        touchSentinelView = null
-        touchSentinelWm = null
+        if (touchSentinels.isEmpty()) return
+        val ids = touchSentinels.keys.toList()
+        for (id in ids) removeTouchSentinelForDisplay(id)
     }
 
 
@@ -1566,7 +1532,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             val svc = CaptureService.instance
             if (svc != null && svc.isConfigured) {
                 val entry = Prefs.DEFAULT_REGION_LIST[0]
-                svc.configureSaved(displayId = prefs.captureDisplayId, region = entry)
+                svc.configureSaved(displayIds = prefs.captureDisplayIds, region = entry)
             }
             if (MainActivity.isInForeground) {
                 sendMainActivityIntent(MainActivity.ACTION_REFRESH_REGION_LABEL)
@@ -1865,7 +1831,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 val prefs = Prefs(this)
                 val entry = prefs.getSelectedRegion()
                 svc.configureSaved(
-                    displayId = prefs.captureDisplayId,
+                    displayIds = prefs.captureDisplayIds,
                     region    = entry
                 )
             }
@@ -1945,12 +1911,16 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         }
     }
 
-    /** Returns the capture display (game screen), or the only display on single-screen. */
+    /** Returns the capture display (game screen), or the only display on single-screen.
+     *  Used by [reconcileFloatingIcons] as a fallback when [Prefs.captureDisplayIds]
+     *  is unexpectedly empty. */
     private fun findIconDisplay(prefs: Prefs): Display? {
         val dm = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val displays = dm.displays
         if (displays.size <= 1) return displays.firstOrNull()
-        return dm.getDisplay(prefs.captureDisplayId) ?: displays.firstOrNull()
+        val primaryId = prefs.captureDisplayIds.firstOrNull()
+            ?: Display.DEFAULT_DISPLAY
+        return dm.getDisplay(primaryId) ?: displays.firstOrNull()
     }
 
     @Suppress("DEPRECATION")
