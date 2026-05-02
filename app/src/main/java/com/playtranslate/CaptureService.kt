@@ -625,12 +625,34 @@ class CaptureService : Service() {
     private val oneShotManager = OneShotManager(this)
     private var oneShotCaptureJob: Job? = null
 
-    /** Listens for the configured capture display vanishing mid-session
-     *  (external monitor unplugged, virtual display destroyed). Stops live
-     *  mode rather than letting the cycle spin on a dead display ID. */
+    /**
+     * Listens for capture displays going away (external monitor unplugged,
+     * virtual display destroyed) or transitioning to STATE_OFF (foldable
+     * folded with the inactive panel selected). Per-display modes pause +
+     * resume rather than tearing down all of live mode unless the entire
+     * selection has gone offline.
+     */
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) {}
-        override fun onDisplayChanged(displayId: Int) {}
+        override fun onDisplayChanged(displayId: Int) {
+            if (!liveActive) return
+            if (displayId !in gameDisplayIds) return
+            // InAppOnly is single-display by design — let it continue
+            // polling regardless of display state changes (the user will
+            // see the spinner / no-text outcome until the display returns).
+            if (liveModes.values.any { it is InAppOnlyMode }) return
+            val display = getSystemService(DisplayManager::class.java)
+                ?.getDisplay(displayId) ?: return
+            val isOn = display.state == android.view.Display.STATE_ON
+            val hasMode = displayId in liveModes
+            if (!isOn && hasMode) {
+                Log.i(TAG, "Display $displayId STATE_${display.state}, pausing its live mode")
+                liveModes.remove(displayId)?.stop()
+            } else if (isOn && !hasMode) {
+                Log.i(TAG, "Display $displayId back to STATE_ON, resuming its live mode")
+                installLiveModeForDisplay(displayId, Prefs(this@CaptureService))
+            }
+        }
         override fun onDisplayRemoved(displayId: Int) {
             if (!liveActive) return
             if (displayId !in gameDisplayIds) return
@@ -675,12 +697,10 @@ class CaptureService : Service() {
 
         val activeIds = gameDisplayIds.ifEmpty { setOf(gameDisplayId) }
         // InAppOnlyMode is by definition a single-display path (the user has
-        // a separate viewport for translations). When multiple displays are
-        // selected, the user has explicitly opted into per-display overlays;
-        // P6 will surface that override in settings UI.
-        val useInAppOnly = prefs.hideGameOverlays
-            && !Prefs.isSingleScreen(this)
-            && activeIds.size == 1
+        // a separate viewport for translations). With multi-select, the user
+        // has explicitly opted into per-display overlays; SettingsRenderer
+        // surfaces that override on the hideGameOverlays row.
+        val useInAppOnly = Prefs.shouldUseInAppOnlyMode(this)
         val newModes: Map<Int, LiveMode> = if (useInAppOnly) {
             // InAppOnlyMode doesn't use PlayTranslateAccessibilityService directly
             // (no overlay windows, no input monitoring, no screenshotManager fetch)
@@ -735,6 +755,24 @@ class CaptureService : Service() {
         if (liveModes.isEmpty()) return
         liveModes.values.toList().forEach { it.stop() }
         liveModes.clear()
+    }
+
+    /**
+     * Construct + start a per-display live-mode instance for [displayId] and
+     * register it in [liveModes]. Used by the display listener's STATE_ON
+     * resume path; idempotent (no-op if already running for that display).
+     * InAppOnlyMode is excluded — it's single-display by design and is
+     * built only by [startLive].
+     */
+    private fun installLiveModeForDisplay(displayId: Int, prefs: Prefs) {
+        if (displayId in liveModes) return
+        val a11y = PlayTranslateAccessibilityService.instance ?: return
+        val mode: LiveMode = when (prefs.overlayMode) {
+            OverlayMode.FURIGANA -> FuriganaMode(this, a11y, displayId)
+            else -> PinholeOverlayMode(this, a11y, displayId)
+        }
+        liveModes[displayId] = mode
+        mode.start()
     }
 
     /** True when any active live mode is In-App Only. By design all modes

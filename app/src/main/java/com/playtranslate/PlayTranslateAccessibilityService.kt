@@ -1494,10 +1494,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 }
             } else {
                 // Starting
-                val prefs = Prefs(this)
-                val willBeInAppOnly = prefs.hideGameOverlays && !Prefs.isSingleScreen(this)
-                if (willBeInAppOnly) {
-                    // Dual screen + hide overlays: bring app to foreground for In-App Only
+                if (Prefs.shouldUseInAppOnlyMode(this)) {
+                    // Dual screen + hide overlays + single display selected:
+                    // bring app to foreground for In-App Only.
                     sendMainActivityIntent(MainActivity.ACTION_START_LIVE)
                 } else {
                     val effectivelySingleScreen = Prefs.isSingleScreen(this) || !MainActivity.isInForeground

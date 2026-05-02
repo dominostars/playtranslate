@@ -599,7 +599,7 @@ class MainActivity :
     private fun updateRegionButton() {
         val region = captureService?.activeRegion ?: prefs.getSelectedRegion()
         val label = region.label.ifEmpty { "Full screen" }
-        val isInAppOnly = prefs.hideGameOverlays && !isSingleScreen()
+        val isInAppOnly = Prefs.shouldUseInAppOnlyMode(this)
         val overlayLive = isLiveMode && !isInAppOnly
         val prefix = if (overlayLive) "Reload " else "Translate "
         tvTranslateTitle.text = SpannableStringBuilder(prefix + label).apply {
@@ -627,9 +627,9 @@ class MainActivity :
     }
 
     private fun startLiveMode() {
-        val willBeInAppOnly = prefs.hideGameOverlays && !isSingleScreen()
-        if (willBeInAppOnly) {
-            // Dual screen + hide overlays: switch to translate tab so results are visible
+        if (Prefs.shouldUseInAppOnlyMode(this)) {
+            // Dual screen + hide overlays + single display selected: switch
+            // to the translate tab so InAppOnly results are visible.
             selectTab(Tab.TRANSLATE)
         }
         doStartLive()
