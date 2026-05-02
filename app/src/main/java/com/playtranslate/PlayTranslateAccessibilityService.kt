@@ -151,12 +151,51 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     private var floatingMenuWm: WindowManager? = null
     private var debugOverlayView: OcrDebugOverlayView? = null
     private var debugOverlayWm: WindowManager? = null
-    internal var translationOverlayView: TranslationOverlayView? = null
-    private var translationOverlayWm: WindowManager? = null
-    private var translationOverlayDisplayId: Int = -1
+    /**
+     * Per-display live translation overlays. The dirty overlay is its
+     * persistent companion (always present, paints empty when not dirty);
+     * the two are co-created in [showTranslationOverlay] and co-torn-down
+     * in [hideTranslationOverlayForDisplay], so the maps must stay in lock-
+     * step. Deprecated single accessors below resolve to the primary
+     * display's entries.
+     */
+    private val translationOverlays: MutableMap<Int, TranslationOverlayView> = mutableMapOf()
+    private val translationOverlayWms: MutableMap<Int, WindowManager> = mutableMapOf()
+    private val dirtyOverlays: MutableMap<Int, TranslationOverlayView> = mutableMapOf()
+    private val dirtyOverlayWms: MutableMap<Int, WindowManager> = mutableMapOf()
 
-    internal var dirtyOverlayView: TranslationOverlayView? = null
-    private var dirtyOverlayWm: WindowManager? = null
+    /** Backwards-compat single-overlay accessor — primary display's view. */
+    @Deprecated(
+        "Multi-display: prefer translationOverlayForDisplay(displayId). Removed by end of P5.",
+    )
+    internal val translationOverlayView: TranslationOverlayView?
+        get() {
+            val primary = CaptureService.instance?.primaryGameDisplayId()
+            return primary?.let { translationOverlays[it] }
+                ?: translationOverlays.values.firstOrNull()
+        }
+
+    /** Backwards-compat single-dirty-overlay accessor — primary display's view. */
+    @Deprecated(
+        "Multi-display: prefer dirtyOverlayForDisplay(displayId). Removed by end of P5.",
+    )
+    internal val dirtyOverlayView: TranslationOverlayView?
+        get() {
+            val primary = CaptureService.instance?.primaryGameDisplayId()
+            return primary?.let { dirtyOverlays[it] }
+                ?: dirtyOverlays.values.firstOrNull()
+        }
+
+    /** Live translation overlay for [displayId], or null. */
+    fun translationOverlayForDisplay(displayId: Int): TranslationOverlayView? =
+        translationOverlays[displayId]
+
+    /** Persistent dirty overlay for [displayId], or null. */
+    fun dirtyOverlayForDisplay(displayId: Int): TranslationOverlayView? =
+        dirtyOverlays[displayId]
+
+    /** True iff any display has a live translation overlay registered. */
+    val hasAnyTranslationOverlay: Boolean get() = translationOverlays.isNotEmpty()
     private var touchSentinelView: View? = null
     private var touchSentinelWm: WindowManager? = null
     private var regionEditorBar: View? = null
@@ -813,18 +852,19 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         // Overlay is appearing — dismiss loading spinner across all icons.
         setIconsLoading(false)
 
+        val displayId = display.displayId
         // Reuse existing view only if it's on the same display AND was
         // constructed with the same pinhole mode; otherwise recreate so the
         // view's pinhole-related bakes (child bg opacity, dispatchDraw mask
         // punching) match what the caller expects.
-        val existing = translationOverlayView
-        if (existing != null
-            && translationOverlayDisplayId == display.displayId
-            && existing.pinholeMode == pinholeMode) {
+        val existing = translationOverlays[displayId]
+        if (existing != null && existing.pinholeMode == pinholeMode) {
             existing.setBoxes(boxes, cropLeft, cropTop, screenshotW, screenshotH)
             return
         }
-        hideTranslationOverlay()
+        // Pinhole flavor mismatch (or no overlay yet) — tear down just this
+        // display's pair and rebuild. Other displays' overlays are untouched.
+        hideTranslationOverlayForDisplay(displayId)
         val displayCtx = createDisplayContext(display)
         val themedCtx = android.view.ContextThemeWrapper(displayCtx, android.R.style.Theme_DeviceDefault)
         val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
@@ -840,10 +880,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply { windowAnimations = 0 }
-        addOverlayWindow(view, wm, params, display.displayId)
-        translationOverlayWm = wm
-        translationOverlayView = view
-        translationOverlayDisplayId = display.displayId
+        addOverlayWindow(view, wm, params, displayId)
+        translationOverlayWms[displayId] = wm
+        translationOverlays[displayId] = view
 
         // Create persistent dirty overlay window (always present, empty when not dirty)
         val dirtyView = TranslationOverlayView(themedCtx, pinholeMode = true)
@@ -856,24 +895,46 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply { windowAnimations = 0 }
-        addOverlayWindow(dirtyView, wm, dirtyParams, display.displayId)
-        dirtyOverlayWm = wm
-        dirtyOverlayView = dirtyView
+        addOverlayWindow(dirtyView, wm, dirtyParams, displayId)
+        dirtyOverlayWms[displayId] = wm
+        dirtyOverlays[displayId] = dirtyView
     }
 
+    /**
+     * Tear down a single display's translation + dirty overlay pair.
+     * Idempotent — no-op when nothing is registered for [displayId].
+     */
+    fun hideTranslationOverlayForDisplay(displayId: Int) {
+        translationOverlays.remove(displayId)?.let { removeOverlayWindow(it) }
+        translationOverlayWms.remove(displayId)
+        dirtyOverlays.remove(displayId)?.let { removeOverlayWindow(it) }
+        dirtyOverlayWms.remove(displayId)
+    }
+
+    /**
+     * Tear down translation overlays across every display. Most existing
+     * callers want this "global hide" semantic (pause / state recovery /
+     * stop-live). P4's per-display modes will migrate to per-display
+     * hides where they should only clear their own overlay.
+     */
     fun hideTranslationOverlay() {
-        translationOverlayView?.let { removeOverlayWindow(it) }
-        translationOverlayView = null
-        translationOverlayWm = null
-        translationOverlayDisplayId = -1
-        dirtyOverlayView?.let { removeOverlayWindow(it) }
-        dirtyOverlayView = null
-        dirtyOverlayWm = null
+        if (translationOverlays.isEmpty() && dirtyOverlays.isEmpty()) return
+        val ids = (translationOverlays.keys + dirtyOverlays.keys).toSet().toList()
+        for (id in ids) hideTranslationOverlayForDisplay(id)
     }
 
-    /** Remove specific overlay boxes without rebuilding the entire view. */
-    fun removeOverlayBoxes(toRemove: List<TranslationOverlayView.TextBox>) {
-        translationOverlayView?.removeBoxesByContent(toRemove)
+    /**
+     * Remove specific overlay boxes from [displayId]'s overlay without
+     * rebuilding the entire view. Defaults to the primary display so
+     * existing single-display callers (e.g. FuriganaMode) keep working;
+     * P4's per-display modes will pass their own [displayId].
+     */
+    fun removeOverlayBoxes(
+        toRemove: List<TranslationOverlayView.TextBox>,
+        displayId: Int = CaptureService.instance?.primaryGameDisplayId()
+            ?: android.view.Display.DEFAULT_DISPLAY,
+    ) {
+        translationOverlays[displayId]?.removeBoxesByContent(toRemove)
     }
 
     // ── Floating overlay icon ─────────────────────────────────────────────
