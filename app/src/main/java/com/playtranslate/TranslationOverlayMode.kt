@@ -29,7 +29,10 @@ private const val TAG = "TranslationOverlayMode"
  * Owns ALL its mutable state — detection references, cached boxes, dedup key,
  * pixel buffers. When stopped, scope is cancelled and all state is released.
  */
-class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
+class TranslationOverlayMode(
+    private val service: CaptureService,
+    private val displayId: Int,
+) : LiveMode {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var cleanProcessingJob: Job? = null
@@ -78,16 +81,16 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
 
     override fun start() {
         PlayTranslateAccessibilityService.instance
-            ?.startInputMonitoring(service.gameDisplayId) { onUserInteraction() }
+            ?.startInputMonitoring(displayId) { onUserInteraction() }
 
         val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
         if (mgr == null) {
             DetectionLog.log("ERROR: screenshotManager is null, can't start loop")
             return
         }
-        DetectionLog.log("Starting loop on display ${service.gameDisplayId}")
-        mgr.requestCleanCapture()
-        mgr.startLoop(service.gameDisplayId, service.serviceScope,
+        DetectionLog.log("Starting loop on display ${displayId}")
+        mgr.requestCleanCapture(displayId)
+        mgr.startLoop(displayId, service.serviceScope,
             onCleanFrame = ::handleCleanFrame,
             onRawFrame = ::handleRawFrame
         )
@@ -98,9 +101,9 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
         interactionDebounceJob?.cancel()
         recheckJob?.cancel()
         scope.cancel()
-        PlayTranslateAccessibilityService.instance?.screenshotManager?.stopLoop()
-        PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
-        PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+        PlayTranslateAccessibilityService.instance?.screenshotManager?.stopLoop(displayId)
+        PlayTranslateAccessibilityService.instance?.stopInputMonitoring(displayId)
+        PlayTranslateAccessibilityService.instance?.hideTranslationOverlayForDisplay(displayId)
         service.setDegraded(false)
     }
 
@@ -111,7 +114,7 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
         clearDetectionState()
         cleanProcessingJob?.cancel()
         interactionDebounceJob?.cancel()
-        PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
+        PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture(displayId)
     }
 
     override fun getCachedState(): CachedOverlayState? {
@@ -170,7 +173,7 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
                 val boxes = cachedOverlayBoxes
                 if (boxes != null) {
                     DetectionLog.log("processClean: dedup match, re-showing cached")
-                    service.showLiveOverlay(boxes, cropLeft, cropTop, screenshotW, screenshotH)
+                    service.showLiveOverlay(boxes, cropLeft, cropTop, screenshotW, screenshotH, displayId = displayId)
                     setupDetection(raw, boxes.map { b ->
                         Rect(
                             b.bounds.left + cropLeft, b.bounds.top + cropTop,
@@ -199,7 +202,7 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
                 val orient = ocrResult.groupOrientations.getOrElse(idx) { com.playtranslate.language.TextOrientation.HORIZONTAL }
                 TranslationOverlayView.TextBox("", bounds, bgColor, textColor, lineCount, orientation = orient)
             }
-            service.showLiveOverlay(placeholderBoxes, left, top, raw.width, raw.height)
+            service.showLiveOverlay(placeholderBoxes, left, top, raw.width, raw.height, displayId = displayId)
 
             // Translate
             val perGroup = service.translateGroupsSeparately(ocrResult.groupTexts)
@@ -224,7 +227,7 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
                 this@TranslationOverlayMode.cropTop = top
                 this@TranslationOverlayMode.screenshotW = raw.width
                 this@TranslationOverlayMode.screenshotH = raw.height
-                service.showLiveOverlay(translationBoxes, left, top, raw.width, raw.height)
+                service.showLiveOverlay(translationBoxes, left, top, raw.width, raw.height, displayId = displayId)
                 val fullDisplayBoxes = translationBoxes.map { b ->
                     Rect(b.bounds.left + left, b.bounds.top + top,
                         b.bounds.right + left, b.bounds.bottom + top)
@@ -311,7 +314,7 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
                 stabilizationFrameCount = 0
                 lastOcrText = null
                 cachedOverlayBoxes = null
-                PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+                PlayTranslateAccessibilityService.instance?.hideTranslationOverlayForDisplay(displayId)
                 return
             }
 
@@ -336,9 +339,9 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
                     lastOcrText = null
 
                     if (remainingBoxes.isNotEmpty()) {
-                        service.showLiveOverlay(remainingBoxes, cropLeft, cropTop, screenshotW, screenshotH)
+                        service.showLiveOverlay(remainingBoxes, cropLeft, cropTop, screenshotW, screenshotH, displayId = displayId)
                     } else {
-                        PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+                        PlayTranslateAccessibilityService.instance?.hideTranslationOverlayForDisplay(displayId)
                     }
 
                     forceCheckC = true
@@ -481,7 +484,7 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
         cachedOverlayBoxes = null
         lastOcrText = null
         clearDetectionState()
-        PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+        PlayTranslateAccessibilityService.instance?.hideTranslationOverlayForDisplay(displayId)
 
         interactionDebounceJob?.cancel()
         interactionDebounceJob = scope.launch {
@@ -490,7 +493,7 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
             while (PlayTranslateAccessibilityService.instance?.isInputActive == true) {
                 kotlinx.coroutines.delay(settleMs)
             }
-            PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
+            PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture(displayId)
         }
     }
 
@@ -637,11 +640,11 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
                 lastOcrText = null
                 clearDetectionState()
                 if (remaining.isNotEmpty()) {
-                    service.showLiveOverlay(remaining, cropLeft, cropTop, screenshotW, screenshotH)
+                    service.showLiveOverlay(remaining, cropLeft, cropTop, screenshotW, screenshotH, displayId = displayId)
                 } else {
-                    PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+                    PlayTranslateAccessibilityService.instance?.hideTranslationOverlayForDisplay(displayId)
                 }
-                PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture()
+                PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture(displayId)
                 return true
             }
 
@@ -674,7 +677,7 @@ class TranslationOverlayMode(private val service: CaptureService) : LiveMode {
                 val merged = overlays + newOverlayBoxes
                 cachedOverlayBoxes = merged
                 lastOcrText = (prevText ?: "") + newDedupKey
-                service.showLiveOverlay(merged, cropLeft, cropTop, screenshotW, screenshotH)
+                service.showLiveOverlay(merged, cropLeft, cropTop, screenshotW, screenshotH, displayId = displayId)
                 forceCheckC = true
                 detectionRefOverlay = null
                 detectionOverlayActive = null

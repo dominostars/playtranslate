@@ -167,7 +167,7 @@ class CaptureService : Service() {
         oneShotCaptureJob?.cancel()
         oneShotManager.cancel()
         if (liveActive) {
-            liveMode?.stop()
+            stopAllLiveModes()
             startLive()
         }
     }
@@ -612,7 +612,26 @@ class CaptureService : Service() {
 
     val isLive: Boolean get() = liveActive
 
-    internal var liveMode: LiveMode? = null
+    /**
+     * Per-display live-mode instances. P4 introduces this map; the
+     * deprecated [liveMode] alias resolves to the primary display's mode
+     * for legacy single-display callers.
+     *
+     * All entries share the same [Prefs.overlayMode] — multi-display
+     * doesn't expose per-display mode selection in the UI (per-display
+     * instances are an implementation detail for state isolation).
+     */
+    internal val liveModes: MutableMap<Int, LiveMode> = mutableMapOf()
+
+    /** Backwards-compat single-mode alias — resolves to the primary
+     *  display's mode (last-interacted, falling back to first selected).
+     *  Used by call sites that only check mode identity (e.g. holdBehavior). */
+    @Deprecated(
+        "Multi-display: prefer liveModes map. Removed by end of P5.",
+    )
+    internal val liveMode: LiveMode?
+        get() = liveModes[primaryGameDisplayId()] ?: liveModes.values.firstOrNull()
+
     private val oneShotManager = OneShotManager(this)
     private var oneShotCaptureJob: Job? = null
 
@@ -625,13 +644,11 @@ class CaptureService : Service() {
         override fun onDisplayRemoved(displayId: Int) {
             if (!liveActive) return
             if (displayId !in gameDisplayIds) return
-            // Drop the disconnected display from the active set. Only stop
-            // live mode entirely when the set goes empty — otherwise other
-            // selected displays should keep running. The full per-display
-            // mode/loop teardown lands in P4; for now we just prune state
-            // and stop everything if the primary went away.
+            // Tear down the disconnected display's mode + drop it from the
+            // active set. Other selected displays keep running.
             val pruned = gameDisplayIds - displayId
             gameDisplayIds = pruned
+            liveModes.remove(displayId)?.stop()
             if (pruned.isEmpty()) {
                 Log.w(TAG, "All capture displays disconnected, stopping live mode")
                 Toast.makeText(
@@ -643,7 +660,7 @@ class CaptureService : Service() {
             } else if (displayId == gameDisplayId) {
                 // Primary went away but other displays remain — refresh
                 // the primary alias so single-display call sites latch onto
-                // a still-valid id. Full multi-display continuity is P4.
+                // a still-valid id.
                 Log.w(TAG, "Primary capture display $displayId disconnected; switching primary to ${pruned.first()}")
                 gameDisplayId = pruned.first()
             }
@@ -651,7 +668,7 @@ class CaptureService : Service() {
     }
 
     fun startLive() {
-        liveMode?.stop()
+        stopAllLiveModes()
         oneShotCaptureJob?.cancel()
         // Reset the panel to Searching so the activity sees an
         // immediate transition into live mode (rather than a stale
@@ -665,15 +682,20 @@ class CaptureService : Service() {
         // mode class. The MainActivity.onCreate call is the primary path;
         // this is defensive.
         prefs.migrateLegacyPrefs()
-        val useInAppOnly = prefs.hideGameOverlays && !Prefs.isSingleScreen(this)
-        val newMode: LiveMode = if (useInAppOnly) {
+
+        val activeIds = gameDisplayIds.ifEmpty { setOf(gameDisplayId) }
+        // InAppOnlyMode is by definition a single-display path (the user has
+        // a separate viewport for translations). When multiple displays are
+        // selected, the user has explicitly opted into per-display overlays;
+        // P6 will surface that override in settings UI.
+        val useInAppOnly = prefs.hideGameOverlays
+            && !Prefs.isSingleScreen(this)
+            && activeIds.size == 1
+        val newModes: Map<Int, LiveMode> = if (useInAppOnly) {
             // InAppOnlyMode doesn't use PlayTranslateAccessibilityService directly
             // (no overlay windows, no input monitoring, no screenshotManager fetch)
-            // so it keeps the single-argument constructor. PinholeOverlayMode and
-            // FuriganaMode take an explicit a11y reference; if accessibility isn't
-            // connected, bail out of live mode rather than constructing a mode
-            // that can't function.
-            InAppOnlyMode(this)
+            // so it keeps the single-argument constructor.
+            mapOf(activeIds.first() to InAppOnlyMode(this))
         } else {
             val a11y = PlayTranslateAccessibilityService.instance
             if (a11y == null) {
@@ -682,22 +704,26 @@ class CaptureService : Service() {
                     "startLive: accessibility service not connected; cannot start " +
                         "${prefs.overlayMode}. Live mode aborted."
                 )
-                liveMode = null
                 liveActive = false
                 return
             }
-            when (prefs.overlayMode) {
-                OverlayMode.FURIGANA -> FuriganaMode(this, a11y)
-                else -> PinholeOverlayMode(this, a11y)
+            // Build one mode instance per selected display, all using the
+            // same overlay-mode preference. Each instance is fully isolated
+            // (own cachedBoxes / cleanRef state).
+            activeIds.associateWith { id ->
+                when (prefs.overlayMode) {
+                    OverlayMode.FURIGANA -> FuriganaMode(this, a11y, id)
+                    else -> PinholeOverlayMode(this, a11y, id)
+                }
             }
         }
-        // Assign liveMode BEFORE flipping liveActive so LiveData observers
+        // Populate liveModes BEFORE flipping liveActive so LiveData observers
         // (e.g. MainActivity.updateRegionButton) see the new mode identity
         // synchronously — setter on liveActive dispatches to observers before
         // this function returns.
-        liveMode = newMode
+        liveModes.putAll(newModes)
         liveActive = true
-        newMode.start()
+        newModes.values.forEach { it.start() }
         // Flash the region indicator immediately — synchronous wm.addView so
         // the indicator is on screen within ~1 frame. Previously each mode's
         // first capture cycle fired this flag, but the screenshot loop's
@@ -713,9 +739,20 @@ class CaptureService : Service() {
         dm?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
     }
 
-    /** True when the active live mode is In-App Only. */
+    /** Stop every live-mode instance and clear the map. Each mode's stop()
+     *  tears down its own loop, input monitoring, and overlay. */
+    private fun stopAllLiveModes() {
+        if (liveModes.isEmpty()) return
+        liveModes.values.toList().forEach { it.stop() }
+        liveModes.clear()
+    }
+
+    /** True when any active live mode is In-App Only. By design all modes
+     *  share the same prefs.overlayMode + useInAppOnly gating, so this is
+     *  effectively "are we in InAppOnly mode" — but checking via [Any] avoids
+     *  silent assumptions if that invariant ever shifts. */
     val isInAppOnly: Boolean
-        get() = liveActive && liveMode is InAppOnlyMode
+        get() = liveActive && liveModes.values.any { it is InAppOnlyMode }
 
     /**
      * Describes what a hold gesture will do in the current state. Mirrors the
@@ -768,25 +805,30 @@ class CaptureService : Service() {
     fun onMultiWindowChanged() {
         if (!liveActive) return
         val prefs = Prefs(this)
+        // Per P4 + P6, useInAppOnly only kicks in for single-display setups.
+        val activeIds = gameDisplayIds.ifEmpty { setOf(gameDisplayId) }
         val shouldBeInAppOnly =
-            prefs.hideGameOverlays && !Prefs.isSingleScreen(this)
-        val isCurrentlyInAppOnly = liveMode is InAppOnlyMode
+            prefs.hideGameOverlays && !Prefs.isSingleScreen(this) && activeIds.size == 1
+        val isCurrentlyInAppOnly = liveModes.values.any { it is InAppOnlyMode }
         if (shouldBeInAppOnly != isCurrentlyInAppOnly) {
             Log.d(TAG, "onMultiWindowChanged: mode class swap (inAppOnly $isCurrentlyInAppOnly -> $shouldBeInAppOnly)")
             stopLive()
             startLive()
         } else {
-            Log.d(TAG, "onMultiWindowChanged: refreshing ${liveMode?.javaClass?.simpleName}")
-            liveMode?.refresh()
+            Log.d(TAG, "onMultiWindowChanged: refreshing ${liveModes.size} mode(s)")
+            liveModes.values.forEach { it.refresh() }
         }
     }
 
     fun stopLive() {
         getSystemService(DisplayManager::class.java)?.unregisterDisplayListener(displayListener)
-        liveMode?.stop()
-        liveMode = null
+        stopAllLiveModes()
         liveActive = false
-        PlayTranslateAccessibilityService.instance?.screenshotManager?.stopLoop()
+        // Each mode's own stop() already tore down its loop / input / overlay
+        // for its own displayId. The fan-out calls below are belt-and-
+        // suspenders to clean up anything that didn't pair with a mode (e.g.
+        // a misbehaving mode that left state on hide).
+        PlayTranslateAccessibilityService.instance?.screenshotManager?.stopAllLoops()
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
         setDegraded(false)
@@ -797,11 +839,13 @@ class CaptureService : Service() {
 
     // ── Unified loop handlers ─────────────────────────────────────────────
 
-    /** Trigger a fresh capture cycle in live mode (e.g. after hold-release). */
+    /** Trigger a fresh capture cycle in every active live mode (e.g. after
+     *  hold-release). With per-display modes, all of them refresh together
+     *  since hold pause is global. */
     fun refreshLiveOverlay() {
         if (!liveActive) return
-        Log.d(TAG, "REFRESH: refreshLiveOverlay called")
-        liveMode?.refresh()
+        Log.d(TAG, "REFRESH: refreshLiveOverlay called for ${liveModes.size} mode(s)")
+        liveModes.values.forEach { it.refresh() }
     }
 
     /** One-shot: capture, OCR, translate, show overlay (not live mode). */
@@ -831,8 +875,11 @@ class CaptureService : Service() {
     private fun beginHoldPreview(mode: OverlayMode?) {
         holdActive = true
         if (liveActive) {
+            // Hold pause is global — stop every per-display loop and hide
+            // every translation overlay. The one-shot will paint the result
+            // on the primary display (or the icon-tapped display in P5).
             PlayTranslateAccessibilityService.instance
-                ?.screenshotManager?.stopLoop()
+                ?.screenshotManager?.stopAllLoops()
             PlayTranslateAccessibilityService.instance
                 ?.hideTranslationOverlay()
         }
@@ -849,7 +896,8 @@ class CaptureService : Service() {
         oneShotManager.cancel()
         holdActive = false
         if (liveActive) {
-            liveMode?.refresh()
+            // Refresh every per-display mode — hold paused them all globally.
+            liveModes.values.forEach { it.refresh() }
         }
     }
 
@@ -983,25 +1031,35 @@ class CaptureService : Service() {
         emitLiveNoText()
     }
 
-    /** Remove specific overlay boxes without rebuilding the entire view. */
-    internal fun removeOverlayBoxes(toRemove: List<TranslationOverlayView.TextBox>) {
-        PlayTranslateAccessibilityService.instance?.removeOverlayBoxes(toRemove)
+    /** Remove specific overlay boxes without rebuilding the entire view.
+     *  [displayId] defaults to [primaryGameDisplayId] for legacy callers. */
+    internal fun removeOverlayBoxes(
+        toRemove: List<TranslationOverlayView.TextBox>,
+        displayId: Int = primaryGameDisplayId(),
+    ) {
+        PlayTranslateAccessibilityService.instance?.removeOverlayBoxes(toRemove, displayId)
     }
 
+    /**
+     * Show a live translation overlay on [displayId] (defaults to
+     * [primaryGameDisplayId] for legacy single-display callers; per-display
+     * modes pass their own displayId).
+     */
     internal fun showLiveOverlay(
         boxes: List<TranslationOverlayView.TextBox>,
         cropLeft: Int, cropTop: Int,
         screenshotW: Int, screenshotH: Int,
         force: Boolean = false,
-        pinholeMode: Boolean = false
+        pinholeMode: Boolean = false,
+        displayId: Int = primaryGameDisplayId(),
     ) {
         if (!force && holdActive) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: holdActive=true"); return }
         val a11y = PlayTranslateAccessibilityService.instance
         if (a11y == null) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: a11y=null"); return }
         val dm = getSystemService(DisplayManager::class.java)
-        val display = dm.getDisplay(gameDisplayId)
-        if (display == null) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: display=null for id=$gameDisplayId"); return }
-        Log.d("FuriganaDbg", "showLiveOverlay: ${boxes.size} boxes, crop=($cropLeft,$cropTop), screen=${screenshotW}x$screenshotH")
+        val display = dm.getDisplay(displayId)
+        if (display == null) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: display=null for id=$displayId"); return }
+        Log.d("FuriganaDbg", "showLiveOverlay: ${boxes.size} boxes, crop=($cropLeft,$cropTop), screen=${screenshotW}x$screenshotH on display $displayId")
         a11y.showTranslationOverlay(display, boxes, cropLeft, cropTop, screenshotW, screenshotH, pinholeMode)
     }
 

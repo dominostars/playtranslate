@@ -47,6 +47,7 @@ import kotlin.coroutines.resume
 class PinholeOverlayMode(
     private val service: CaptureService,
     private val a11y: PlayTranslateAccessibilityService,
+    private val displayId: Int,
 ) : LiveMode {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -65,7 +66,7 @@ class PinholeOverlayMode(
 
     override fun start() {
         currentJob?.cancel()
-        a11y.startInputMonitoring(service.gameDisplayId) { onButtonDown() }
+        a11y.startInputMonitoring(displayId) { onButtonDown() }
         scheduleNextCycle()
     }
 
@@ -93,8 +94,8 @@ class PinholeOverlayMode(
         scope.cancel()
         resetState()
 
-        a11y.stopInputMonitoring()
-        a11y.hideTranslationOverlay()
+        a11y.stopInputMonitoring(displayId)
+        a11y.hideTranslationOverlayForDisplay(displayId)
     }
 
     override fun refresh() {
@@ -108,7 +109,7 @@ class PinholeOverlayMode(
     }
 
     private fun onButtonDown() {
-        a11y.hideTranslationOverlay()
+        a11y.hideTranslationOverlayForDisplay(displayId)
         resetState()
         scheduleNextCycle(Prefs(service).captureIntervalMs)
     }
@@ -131,14 +132,14 @@ class PinholeOverlayMode(
      *  skip correctly. */
     private fun hasOverlays(): Boolean =
         cachedBoxes != null &&
-        a11y.translationOverlayView != null
+        a11y.translationOverlayForDisplay(displayId) != null
 
     /** Run one capture-detect-translate cycle. Returns the delay (ms) before the next cycle. */
     private suspend fun runCycle(): Long {
         val prefs = Prefs(service)
         if (service.holdActive) return 100L
         val mgr = a11y.screenshotManager ?: return prefs.captureIntervalMs
-        val dirtyView = a11y.dirtyOverlayView
+        val dirtyView = a11y.dirtyOverlayForDisplay(displayId)
         val hasDirty = cachedBoxes?.any { it.dirty } == true
 
         // 1. Hide dirty overlay window before capture (hardware layer alpha + frame commit sync)
@@ -152,7 +153,7 @@ class PinholeOverlayMode(
         }
 
         // 2. Capture — restore dirty window in callback (before bitmap copy)
-        val raw = mgr.requestRaw(service.gameDisplayId) {
+        val raw = mgr.requestRaw(displayId) {
             if (hasDirty) dirtyView?.alpha = 1f
         }
 
@@ -180,7 +181,7 @@ class PinholeOverlayMode(
                 cleanRefBitmap = null
                 overlayBitmap?.recycle()
                 overlayBitmap = null
-                a11y.hideTranslationOverlay()
+                a11y.hideTranslationOverlayForDisplay(displayId)
                 return prefs.captureIntervalMs
             }
 
@@ -190,7 +191,7 @@ class PinholeOverlayMode(
             // reference short-circuit and bitmapRects share instances with
             // rects. See FrameCoordinates KDoc for details on the coordinate
             // spaces and why non-identity is fail-closed below.
-            val overlayView = a11y.translationOverlayView
+            val overlayView = a11y.translationOverlayForDisplay(displayId)
             val rects = overlayView?.getChildScreenRects() ?: emptyList()
             val coords = FrameCoordinates(
                 bitmapWidth = raw.width,
@@ -290,7 +291,7 @@ class PinholeOverlayMode(
                     cleanRefBitmap = null
                     overlayBitmap?.recycle()
                     overlayBitmap = null
-                    a11y.hideTranslationOverlay()
+                    a11y.hideTranslationOverlayForDisplay(displayId)
                     return prefs.captureIntervalMs
                 }
             }
@@ -361,10 +362,10 @@ class PinholeOverlayMode(
                 if (cleanBoxes.isNotEmpty()) {
                     showOverlayAndCapture(a11y, cleanBoxes, cropLeft, cropTop, screenshotW, screenshotH)
                 } else if (dirtyBoxes.isEmpty()) {
-                    a11y.hideTranslationOverlay()
+                    a11y.hideTranslationOverlayForDisplay(displayId)
                 } else {
                     // Only dirty boxes remain — clear clean window content
-                    a11y.translationOverlayView?.setBoxes(
+                    a11y.translationOverlayForDisplay(displayId)?.setBoxes(
                         emptyList(), cropLeft, cropTop, screenshotW, screenshotH
                     )
                 }
@@ -438,10 +439,10 @@ class PinholeOverlayMode(
         a11y: PlayTranslateAccessibilityService, boxes: List<TranslationOverlayView.TextBox>,
         left: Int, top: Int, sw: Int, sh: Int
     ) {
-        service.showLiveOverlay(boxes, left, top, sw, sh, pinholeMode = true)
+        service.showLiveOverlay(boxes, left, top, sw, sh, pinholeMode = true, displayId = displayId)
         waitVsync(2)
         overlayBitmap?.recycle()
-        overlayBitmap = a11y.translationOverlayView?.renderToOffscreen()
+        overlayBitmap = a11y.translationOverlayForDisplay(displayId)?.renderToOffscreen()
     }
 
     // ── Detection Helpers ───────────────────────────────────────────────

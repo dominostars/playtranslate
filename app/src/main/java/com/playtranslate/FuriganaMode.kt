@@ -45,6 +45,7 @@ private const val STALE_REF_REFRESH_FRAMES = 20
 class FuriganaMode(
     private val service: CaptureService,
     private val a11y: PlayTranslateAccessibilityService,
+    private val displayId: Int,
 ) : LiveMode {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -91,8 +92,8 @@ class FuriganaMode(
             DetectionLog.log("ERROR: screenshotManager is null, can't start furigana loop")
             return
         }
-        a11y.startInputMonitoring(service.gameDisplayId) { onButtonDown() }
-        DetectionLog.log("Starting furigana loop on display ${service.gameDisplayId}")
+        a11y.startInputMonitoring(displayId) { onButtonDown() }
+        DetectionLog.log("Starting furigana loop on display $displayId")
         startLoop(mgr)
     }
 
@@ -102,9 +103,9 @@ class FuriganaMode(
         restartJob?.cancel()
         clearState()
         scope.cancel()
-        a11y.stopInputMonitoring()
-        a11y.screenshotManager?.stopLoop()
-        a11y.hideTranslationOverlay()
+        a11y.stopInputMonitoring(displayId)
+        a11y.screenshotManager?.stopLoop(displayId)
+        a11y.hideTranslationOverlayForDisplay(displayId)
     }
 
     override fun refresh() {
@@ -113,8 +114,8 @@ class FuriganaMode(
         restartJob?.cancel()
         clearState()
         val mgr = a11y.screenshotManager ?: return
-        if (mgr.isLoopRunning) {
-            mgr.requestCleanCapture()
+        if (mgr.isLoopRunning(displayId)) {
+            mgr.requestCleanCapture(displayId)
         } else {
             // Loop was stopped (e.g. via hotkeyHoldStart). Restart it; startLoop
             // itself calls requestCleanCapture so the next frame comes in clean.
@@ -123,8 +124,8 @@ class FuriganaMode(
     }
 
     private fun startLoop(mgr: ScreenshotManager) {
-        mgr.requestCleanCapture()
-        mgr.startLoop(service.gameDisplayId, service.serviceScope,
+        mgr.requestCleanCapture(displayId)
+        mgr.startLoop(displayId, service.serviceScope,
             onCleanFrame = ::handleCleanFrame,
             onRawFrame = ::handleRawFrame
         )
@@ -134,8 +135,8 @@ class FuriganaMode(
         val mgr = a11y.screenshotManager ?: return
         cleanProcessingJob?.cancel()
         rawOcrJob?.cancel()
-        mgr.stopLoop()
-        a11y.hideTranslationOverlay()
+        mgr.stopLoop(displayId)
+        a11y.hideTranslationOverlayForDisplay(displayId)
         clearState()
         restartJob?.cancel()
         restartJob = scope.launch {
@@ -167,7 +168,7 @@ class FuriganaMode(
                 processCleanFrame(raw)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 if (service.liveActive) {
-                    a11y.screenshotManager?.requestCleanCapture()
+                    a11y.screenshotManager?.requestCleanCapture(displayId)
                 }
                 throw e
             }
@@ -193,7 +194,7 @@ class FuriganaMode(
             if (lastOcrText != null && !OverlayToolkit.isSignificantChange(lastOcrText!!, dedupKey)) {
                 val boxes = cachedFuriganaBoxes
                 if (boxes != null) {
-                    service.showLiveOverlay(boxes, cropLeft, cropTop, screenshotW, screenshotH)
+                    service.showLiveOverlay(boxes, cropLeft, cropTop, screenshotW, screenshotH, displayId = displayId)
                     if (cleanRefBitmap == null) {
                         cleanRefBitmap = raw.copy(raw.config, true)
                     }
@@ -214,7 +215,7 @@ class FuriganaMode(
             this@FuriganaMode.screenshotH = raw.height
 
             if (furigana.isNotEmpty()) {
-                service.showLiveOverlay(furigana, left, top, raw.width, raw.height)
+                service.showLiveOverlay(furigana, left, top, raw.width, raw.height, displayId = displayId)
             }
 
             // Save clean reference for patching raw frames (mutable for updateCleanRef)
@@ -247,7 +248,7 @@ class FuriganaMode(
 
         val ref = cleanRefBitmap
         val boxes = cachedFuriganaBoxes
-        val overlayView = a11y.translationOverlayView
+        val overlayView = a11y.translationOverlayForDisplay(displayId)
         val screenRects = overlayView?.getChildScreenRects() ?: emptyList()
 
         if (ref == null || boxes.isNullOrEmpty()) {
@@ -267,8 +268,8 @@ class FuriganaMode(
                 // Too long without a rendered overlay — force recovery
                 emptyRectsStallCount = 0
                 clearState()
-                a11y.hideTranslationOverlay()
-                a11y.screenshotManager?.requestCleanCapture()
+                a11y.hideTranslationOverlayForDisplay(displayId)
+                a11y.screenshotManager?.requestCleanCapture(displayId)
             }
             return
         }
@@ -280,8 +281,8 @@ class FuriganaMode(
         // fresh clean capture to rebuild from scratch.
         if (bitmap.width != ref.width || bitmap.height != ref.height) {
             clearState()
-            a11y.hideTranslationOverlay()
-            a11y.screenshotManager?.requestCleanCapture()
+            a11y.hideTranslationOverlayForDisplay(displayId)
+            a11y.screenshotManager?.requestCleanCapture(displayId)
             bitmap.recycle()
             return
         }
@@ -362,7 +363,7 @@ class FuriganaMode(
                             }
                         }
                         val removedBoxes = removed.flatMap { it.boxes }
-                        service.removeOverlayBoxes(removedBoxes)
+                        service.removeOverlayBoxes(removedBoxes, displayId)
 
                         furiganaGroups = surviving
                         cachedFuriganaBoxes = surviving.flatMap { it.boxes }.ifEmpty { null }
@@ -376,10 +377,10 @@ class FuriganaMode(
                         lastOcrText = null
 
                         if (cachedFuriganaBoxes == null) {
-                            a11y.hideTranslationOverlay()
+                            a11y.hideTranslationOverlayForDisplay(displayId)
                         }
 
-                        a11y.screenshotManager?.requestCleanCapture()
+                        a11y.screenshotManager?.requestCleanCapture(displayId)
                     } else {
                         // No change detected. Periodically force a clean capture to refresh
                         // the ref — stale ref content in overlay regions can mask real scene
@@ -391,7 +392,7 @@ class FuriganaMode(
                             // Force rebuild path in processCleanFrame. Don't clear cleanRefBitmap
                             // here — see race comment above.
                             lastOcrText = null
-                            a11y.screenshotManager?.requestCleanCapture()
+                            a11y.screenshotManager?.requestCleanCapture(displayId)
                         }
                     }
                 } else {
