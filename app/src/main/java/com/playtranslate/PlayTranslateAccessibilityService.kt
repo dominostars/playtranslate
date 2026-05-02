@@ -341,6 +341,12 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 strokeWidth = 12f * dp
                 maskFilter = android.graphics.BlurMaskFilter(14f * dp, android.graphics.BlurMaskFilter.Blur.NORMAL)
             }
+            private val regionShadowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.argb(70, 0, 0, 0)
+                style = android.graphics.Paint.Style.STROKE
+                strokeWidth = 10f * dp
+                maskFilter = android.graphics.BlurMaskFilter(10f * dp, android.graphics.BlurMaskFilter.Blur.NORMAL)
+            }
             private val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                 color = bgColor
                 textSize = 12f * dp
@@ -350,6 +356,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             private val labelBgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                 color = accentColor
                 style = android.graphics.Paint.Style.FILL
+                setShadowLayer(6f * dp, 0f, 2f * dp, android.graphics.Color.argb(90, 0, 0, 0))
             }
             private val labelPadH = 10f * dp
             private val labelPadV = 4f * dp
@@ -369,15 +376,20 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 val r = w * region.right
                 val b = h * region.bottom
 
-                // Darkened area outside the capture region
-                if (t > 0f) canvas.drawRect(0f, 0f, w, t, dimPaint)
-                if (b < h) canvas.drawRect(0f, b, w, h, dimPaint)
-                if (l > 0f) canvas.drawRect(0f, t, l, b, dimPaint)
-                if (r < w) canvas.drawRect(r, t, w, b, dimPaint)
+                // Persistent indicator (region picker): darken outside the region.
+                // Flash indicator: leave background untouched.
+                if (persistent) {
+                    if (t > 0f) canvas.drawRect(0f, 0f, w, t, dimPaint)
+                    if (b < h) canvas.drawRect(0f, b, w, h, dimPaint)
+                    if (l > 0f) canvas.drawRect(0f, t, l, b, dimPaint)
+                    if (r < w) canvas.drawRect(r, t, w, b, dimPaint)
+                }
 
-                // Soft accent glow — clipped to outside the region only
+                // Outside-only shadow + accent glow
                 canvas.save()
                 canvas.clipRect(l, t, r, b, android.graphics.Region.Op.DIFFERENCE)
+                val shadowOffset = regionShadowPaint.strokeWidth / 2f
+                canvas.drawRect(l - shadowOffset, t - shadowOffset, r + shadowOffset, b + shadowOffset, regionShadowPaint)
                 val glowOffset = glowPaint.strokeWidth / 2f
                 canvas.drawRect(l - glowOffset, t - glowOffset, r + glowOffset, b + glowOffset, glowPaint)
                 canvas.restore()
