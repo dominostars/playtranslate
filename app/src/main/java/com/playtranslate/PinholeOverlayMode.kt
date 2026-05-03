@@ -263,7 +263,7 @@ class PinholeOverlayMode(
 
             // No text on screen and no overlays → nothing to do
             if (pipeline == null && !hasOverlays()) {
-                service.handleNoTextDetected()
+                service.handleNoTextDetected(displayId)
                 return prefs.captureIntervalMs
             }
 
@@ -361,10 +361,24 @@ class PinholeOverlayMode(
                 anyRemoved = allRemovals.isNotEmpty()
                 if (cleanBoxes.isNotEmpty()) {
                     showOverlayAndCapture(a11y, cleanBoxes, cropLeft, cropTop, screenshotW, screenshotH)
-                } else if (dirtyBoxes.isEmpty()) {
-                    a11y.hideTranslationOverlayForDisplay(displayId)
                 } else {
-                    // Only dirty boxes remain — clear clean window content
+                    // No clean boxes left for this cycle — clear the clean
+                    // window's content but DO NOT tear the window down. On
+                    // stable content the same cycle's far-groups path (a few
+                    // lines below) immediately repopulates with the matched-
+                    // and-replaced boxes; tearing the window down via
+                    // hideTranslationOverlayForDisplay forces a wm.removeView
+                    // / wm.addView round-trip whose composition latency is
+                    // exactly the "off" period users see in the show-hide
+                    // loop. The setBoxes(empty) → setBoxes(merged) hop is
+                    // synchronous on the same view, so the compositor never
+                    // observes the empty state when far groups follow in the
+                    // same cycle. If far groups don't follow (genuine
+                    // no-text outcome), the empty render is the desired
+                    // outcome anyway.
+                    //
+                    // Dirty boxes (when present) live on the dirtyView — we
+                    // never need to set them back into the clean view here.
                     a11y.translationOverlayForDisplay(displayId)?.setBoxes(
                         emptyList(), cropLeft, cropTop, screenshotW, screenshotH
                     )
@@ -413,7 +427,7 @@ class PinholeOverlayMode(
             //     groups OR removals so removal-only cycles don't go stale.
             if (farOcrGroups.isNotEmpty() || allRemovals.isNotEmpty()) {
                 if (cachedBoxes.isNullOrEmpty()) {
-                    service.handleNoTextDetected()
+                    service.handleNoTextDetected(displayId)
                 } else {
                     mgr.saveToCache(raw)
                     sendFullStateToPanel(mgr.lastCleanPath)
