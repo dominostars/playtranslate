@@ -101,31 +101,37 @@ class CaptureService : Service() {
     /**
      * The set of displays the user has selected to translate. P1 introduces
      * this as the source of truth; downstream phases (P4) wire per-display
-     * loops and modes off of it. The legacy single-display [gameDisplayId]
-     * stays valid as the "primary" id during the migration window.
+     * loops and modes off of it. Per-display state in CaptureService
+     * (region, status bar, OCR pipeline) all key off the displayId the
+     * caller passes — there is no implicit "primary" inside the capture
+     * pipeline. The in-app UI's notion of "current display" is tracked
+     * separately via [primaryGameDisplayId] / [lastInteractedDisplayId].
      */
     internal var gameDisplayIds: Set<Int> = emptySet()
 
-    /** Convenience single-display alias — first id of [gameDisplayIds].
-     *  Held in sync by [configureSaved]. Used by call sites that genuinely
-     *  need a single id (region indicator placement, OCR pipeline crop)
-     *  rather than a set. */
-    internal var gameDisplayId: Int = 0
-
     /**
-     * The last display whose floating icon (or touch sentinel, after P5)
-     * received user input. Used by [primaryGameDisplayId] to pick the
-     * "intent" display for hotkey one-shots when more than one display is
-     * selected. Null until the user touches anything.
+     * The last display whose floating icon (or touch sentinel) received
+     * user input. Used by [primaryGameDisplayId] to pick the "intent"
+     * display for hotkey one-shots and the in-app panel UI when more
+     * than one display is selected. Null until the user touches anything.
+     *
+     * Setter refreshes [activeRegionLiveData] so the in-app region label
+     * tracks whatever display the user is currently focused on.
      */
     internal var lastInteractedDisplayId: Int? = null
+        set(value) {
+            if (field == value) return
+            field = value
+            recalcActiveRegionLiveData()
+        }
 
     /**
      * Best-effort "primary" display for actions that need a single target
-     * (volume-button hotkey one-shot, fallbacks during one-display call
-     * sites). Prefers the last-interacted display so the user's recent
-     * intent wins; falls back to the first id in [gameDisplayIds] (insertion
-     * order is stable thanks to LinkedHashSet); finally [Display.DEFAULT_DISPLAY]
+     * (volume-button hotkey one-shot, in-app result panel, and the
+     * region label / Translate button text in the in-app UI). Prefers
+     * the last-interacted display so the user's recent intent wins;
+     * falls back to the first id in [gameDisplayIds] (insertion order
+     * is stable thanks to LinkedHashSet); finally [Display.DEFAULT_DISPLAY]
      * if the set is empty.
      */
     fun primaryGameDisplayId(): Int =
@@ -138,38 +144,66 @@ class CaptureService : Service() {
      *  picks up drift at each capture entry point. */
     internal val sourceLang: String
         get() = SourceLanguageProfiles[Prefs(this).sourceLangId].translationCode
-    private var savedRegion = DEFAULT_REGION
     /** Tracks whether [configureSaved] has populated capture-time state
-     *  (displayId, region). Keeping this distinct from manager presence
-     *  means a translation-only path that constructs translators via
+     *  (displayIds). Keeping this distinct from manager presence means
+     *  a translation-only path that constructs translators via
      *  [ensureLanguageManagersFor] doesn't cause [isConfigured]
-     *  to report ready-for-capture when display/region haven't actually
+     *  to report ready-for-capture when displays haven't actually
      *  been set. */
     private var hasCaptureStateConfigured: Boolean = false
-    private var overrideRegion: RegionEntry? = null
 
-    /** Observable active region — override if set, otherwise saved. */
+    /**
+     * Per-display capture-region overrides. A floating-icon menu region
+     * pick or a one-shot drag-defined region writes to this map keyed by
+     * the display the gesture targeted. [activeRegionForDisplay] consults
+     * this map first, then falls back to the persisted per-display
+     * selection (and ultimately to a full-screen region).
+     */
+    private val overrideRegions: MutableMap<Int, RegionEntry> = mutableMapOf()
+
+    /** True when [displayId] currently has an override region applied. */
+    fun isOverrideForDisplay(displayId: Int): Boolean = displayId in overrideRegions
+
+    /**
+     * Resolve the active region for [displayId]: override map first, then
+     * persisted per-display selection from Prefs ([Prefs.selectedRegionIdForDisplay]),
+     * finally a full-screen fallback. Modes call this every cycle so a mid-
+     * session region change picks up without a configureSaved round-trip.
+     */
+    fun activeRegionForDisplay(displayId: Int): RegionEntry {
+        overrideRegions[displayId]?.let { return it }
+        val prefs = Prefs(this)
+        val regionId = prefs.selectedRegionIdForDisplay(displayId)
+        if (regionId.isNotEmpty()) {
+            prefs.getRegionList().firstOrNull { it.id == regionId }?.let { return it }
+        }
+        return DEFAULT_REGION
+    }
+
+    /**
+     * Observable region for the in-app panel UI (button label, etc.).
+     * Tracks the *primary* display's active region — the user expects the
+     * UI to describe whatever display they last interacted with.
+     * Updated by [recalcActiveRegionLiveData] from setters that change the
+     * primary id or the primary's region.
+     */
     val activeRegionLiveData = MutableLiveData(DEFAULT_REGION)
-    /** Current active region snapshot for synchronous reads. The fallback
-     *  is defensive — LiveData is initialized non-null and only ever written
-     *  via [updateActiveRegion] which always supplies a non-null value, so
-     *  the null branch is unreachable today. Kept so a future LiveData
-     *  swap can't silently introduce a crash. */
-    val activeRegion: RegionEntry get() = activeRegionLiveData.value ?: DEFAULT_REGION
-    /** True when a temporary override region is active. */
-    val isOverride: Boolean get() = overrideRegion != null
 
-    private fun updateActiveRegion() {
-        val newRegion = overrideRegion ?: savedRegion
-        activeRegionLiveData.value = newRegion
+    /**
+     * Backwards-compat accessor for legacy single-display callers in the
+     * in-app UI. Returns the primary display's active region — the same
+     * value the LiveData tracks. Per-display logic in modes / one-shot
+     * should call [activeRegionForDisplay] directly with their own id.
+     */
+    val activeRegion: RegionEntry get() = activeRegionForDisplay(primaryGameDisplayId())
 
-        PlayTranslateAccessibilityService.instance?.hideRegionIndicator()
-        PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
-        oneShotCaptureJob?.cancel()
-        oneShotManager.cancel()
-        if (liveActive) {
-            stopAllLiveModes()
-            startLive()
+    /** Re-evaluate the primary's active region and emit it on the LiveData
+     *  if it changed. Cheap to call; safe to invoke from any setter that
+     *  could affect what the primary's region resolves to. */
+    private fun recalcActiveRegionLiveData() {
+        val current = activeRegionForDisplay(primaryGameDisplayId())
+        if (activeRegionLiveData.value != current) {
+            activeRegionLiveData.value = current
         }
     }
 
@@ -298,53 +332,79 @@ class CaptureService : Service() {
 
     // ── Public API ────────────────────────────────────────────────────────
 
-    /** Apply a temporary override region. Does not change display/language/engines. */
-    fun configureOverride(region: RegionEntry) {
-        overrideRegion = region
-        updateActiveRegion()
+    /** Apply a temporary override region to [displayId]. Does not change
+     *  language/engines. Persisted region selection on Prefs is unchanged —
+     *  this is a transient runtime override (e.g. a one-shot drag-defined
+     *  region) that masks the persisted choice until [clearOverride]
+     *  (or a fresh [configureSaved]) clears it. */
+    fun configureOverride(displayId: Int, region: RegionEntry) {
+        overrideRegions[displayId] = region
+        afterRegionChange(displayId)
     }
 
-    /** Clear any temporary override, reverting to the saved region. */
-    fun clearOverride() {
-        overrideRegion = null
-        updateActiveRegion()
+    /** Clear the override for [displayId], reverting to its persisted
+     *  region selection. */
+    fun clearOverride(displayId: Int) {
+        if (overrideRegions.remove(displayId) == null) return
+        afterRegionChange(displayId)
     }
 
-    /** Configure the saved region and translation engines. Clears any override. */
-    /** Sets non-language-pair state (display, region) and ensures language
-     *  managers are fresh. The translation pair is snapshotted from Prefs
-     *  inside [ensureLanguageManagersFor] so the service self-heals whenever
-     *  prefs drift, no matter which code path wrote them. */
-    fun configureSaved(
-        displayId: Int,
-        region: RegionEntry = DEFAULT_REGION
-    ) {
-        configureSaved(
-            displayIds = Prefs(this).captureDisplayIds.ifEmpty { setOf(displayId) },
-            primaryDisplayId = displayId,
-            region = region,
-        )
+    /** Clear every per-display region override. Used by [configureSaved]
+     *  to reset the runtime to a clean "use the persisted selection"
+     *  state across all displays. */
+    private fun clearAllOverrides() {
+        if (overrideRegions.isEmpty()) return
+        overrideRegions.clear()
+        afterRegionChange(displayId = primaryGameDisplayId())
     }
 
-    /**
-     * Multi-display variant. [primaryDisplayId] sets the legacy
-     * [gameDisplayId] alias (first by default). All other state is the same
-     * as the single-display path; downstream phases (P4) plumb the full set
-     * into the screenshot loops and live-mode instances.
-     */
+    /** Side effects shared by every region-changing entry point: hide
+     *  any region indicator + active translation overlay so they don't
+     *  show stale state, cancel in-flight one-shots, restart live mode
+     *  if it was running (so the new region takes effect on the next
+     *  cycle). [displayId] identifies the changed display for the
+     *  region-indicator hide path. */
+    private fun afterRegionChange(displayId: Int) {
+        recalcActiveRegionLiveData()
+        PlayTranslateAccessibilityService.instance?.hideRegionIndicator()
+        PlayTranslateAccessibilityService.instance?.hideTranslationOverlayForDisplay(displayId)
+        oneShotCaptureJob?.cancel()
+        oneShotManager.cancel()
+        if (liveActive) {
+            stopAllLiveModes()
+            startLive()
+        }
+    }
+
+    /** Configure capture-time state (the set of displays). Region for each
+     *  display is resolved per-call from [Prefs.selectedRegionIdForDisplay]
+     *  — there is no longer a "the saved region" on the service. Any
+     *  outstanding per-display overrides are cleared (a fresh configure
+     *  treats the persisted Prefs as the source of truth). */
     fun configureSaved(
         displayIds: Set<Int>,
         primaryDisplayId: Int = displayIds.firstOrNull() ?: 0,
-        region: RegionEntry = DEFAULT_REGION,
     ) {
         gameDisplayIds   = displayIds
-        gameDisplayId    = primaryDisplayId
-        this.savedRegion = region
-        this.overrideRegion = null
+        // Track the user's intent for the primary so the in-app UI focuses
+        // on it. Keeps lastInteractedDisplayId fresh for the new selection.
+        if (primaryDisplayId in displayIds) {
+            lastInteractedDisplayId = primaryDisplayId
+        }
+        overrideRegions.clear()
         hasCaptureStateConfigured = true
-        updateActiveRegion()
+        recalcActiveRegionLiveData()
         ensureLanguageManagersFor(snapshotTranslationTarget())
         _statusUpdates.tryEmit(getString(R.string.status_idle))
+    }
+
+    /** Single-display convenience for un-migrated callers. Resolves to
+     *  the multi-display path with the supplied id treated as primary. */
+    fun configureSaved(displayId: Int) {
+        configureSaved(
+            displayIds = Prefs(this).captureDisplayIds.ifEmpty { setOf(displayId) },
+            primaryDisplayId = displayId,
+        )
     }
 
     /** Immutable snapshot of the translation pair + DeepL key at the moment
@@ -430,15 +490,15 @@ class CaptureService : Service() {
         }
     }
 
-    /** Start a one-shot capture cycle. Caller observes the returned
-     *  [CaptureSession]'s [CaptureSession.state] for progress/result.
-     *  Cancels any prior one-shot session. */
-    fun captureOnce(): CaptureSession {
+    /** Start a one-shot capture cycle on [displayId]. Caller observes the
+     *  returned [CaptureSession]'s [CaptureSession.state] for
+     *  progress/result. Cancels any prior one-shot session. */
+    fun captureOnce(displayId: Int = primaryGameDisplayId()): CaptureSession {
         oneShotCaptureJob?.cancel()
         val state = MutableStateFlow<CaptureState>(
             CaptureState.InProgress(getString(R.string.status_capturing))
         )
-        val job = serviceScope.launch { runCaptureCycle(state) }
+        val job = serviceScope.launch { runCaptureCycle(displayId, state) }
         attachCancellationTerminal(job, state)
         oneShotCaptureJob = job
         return CaptureSession(state.asStateFlow(), job)
@@ -449,12 +509,12 @@ class CaptureService : Service() {
      * Used when the screenshot must be taken before an activity appears on screen
      * (e.g. single-screen region capture from the floating menu).
      */
-    fun processScreenshot(raw: Bitmap): CaptureSession {
+    fun processScreenshot(raw: Bitmap, displayId: Int = primaryGameDisplayId()): CaptureSession {
         oneShotCaptureJob?.cancel()
         val state = MutableStateFlow<CaptureState>(
             CaptureState.InProgress(getString(R.string.status_capturing))
         )
-        val job = serviceScope.launch { runProcessCycle(raw, state) }
+        val job = serviceScope.launch { runProcessCycle(raw, displayId, state) }
         attachCancellationTerminal(job, state)
         oneShotCaptureJob = job
         return CaptureSession(state.asStateFlow(), job)
@@ -534,7 +594,11 @@ class CaptureService : Service() {
     /** One-shot capture from a pre-captured bitmap: walks [state]
      *  through Capturing → OCR → Translating → final Done/NoText/Failed.
      *  Owned by the [CaptureSession] returned from [processScreenshot]. */
-    private suspend fun runProcessCycle(raw: Bitmap, state: MutableStateFlow<CaptureState>) {
+    private suspend fun runProcessCycle(
+        raw: Bitmap,
+        displayId: Int,
+        state: MutableStateFlow<CaptureState>,
+    ) {
         if (!isConfigured) {
             state.value = CaptureState.Failed("Not configured — tap Translate to set up")
             raw.recycle()
@@ -546,18 +610,19 @@ class CaptureService : Service() {
             val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
             val screenshotPath = mgr?.saveToCache(raw)
 
-            val statusBarHeight = getStatusBarHeightForDisplay(gameDisplayId)
-            val top    = maxOf((raw.height * activeRegion.top).toInt(), statusBarHeight)
-            val left   = (raw.width  * activeRegion.left).toInt()
-            val bottom = (raw.height * activeRegion.bottom).toInt()
-            val right  = (raw.width  * activeRegion.right).toInt()
+            val region = activeRegionForDisplay(displayId)
+            val statusBarHeight = getStatusBarHeightForDisplay(displayId)
+            val top    = maxOf((raw.height * region.top).toInt(), statusBarHeight)
+            val left   = (raw.width  * region.left).toInt()
+            val bottom = (raw.height * region.bottom).toInt()
+            val right  = (raw.width  * region.right).toInt()
             bitmap = cropBitmap(raw, top, bottom, left, right)
 
             // blackoutFloatingIcon may recycle its input (immutable path),
             // so `bitmap` may be stale after this call. A nested try/finally
             // on ocrBitmap keeps its cleanup local and survives OCR exceptions
             // without the outer finally having to follow ownership transfers.
-            val ocrBitmap = blackoutFloatingIcon(bitmap, left, top)
+            val ocrBitmap = blackoutFloatingIcon(bitmap, displayId, left, top)
             val ocrResult = try {
                 state.value = CaptureState.InProgress(getString(R.string.status_ocr))
                 ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
@@ -566,7 +631,7 @@ class CaptureService : Service() {
             }
 
             if (ocrResult == null) {
-                state.value = CaptureState.NoText(noTextMessage())
+                state.value = CaptureState.NoText(noTextMessage(displayId))
                 return
             }
 
@@ -657,12 +722,12 @@ class CaptureService : Service() {
                     Toast.LENGTH_LONG
                 ).show()
                 stopLive()
-            } else if (displayId == gameDisplayId) {
-                // Primary went away but other displays remain — refresh
-                // the primary alias so single-display call sites latch onto
-                // a still-valid id.
+            } else if (displayId == lastInteractedDisplayId) {
+                // The display the user was focused on went away — pick
+                // a still-connected one as the new primary so the in-app
+                // panel UI and hotkey routing keep working.
                 Log.w(TAG, "Primary capture display $displayId disconnected; switching primary to ${pruned.first()}")
-                gameDisplayId = pruned.first()
+                lastInteractedDisplayId = pruned.first()
             }
         }
     }
@@ -683,7 +748,7 @@ class CaptureService : Service() {
         // this is defensive.
         prefs.migrateLegacyPrefs()
 
-        val activeIds = gameDisplayIds.ifEmpty { setOf(gameDisplayId) }
+        val activeIds = gameDisplayIds.ifEmpty { setOf(primaryGameDisplayId()) }
         // InAppOnlyMode is by definition a single-display path (the user has
         // a separate viewport for translations). With multi-select, the user
         // has explicitly opted into per-display overlays; SettingsRenderer
@@ -693,7 +758,7 @@ class CaptureService : Service() {
             // InAppOnlyMode doesn't use PlayTranslateAccessibilityService directly
             // (no overlay windows, no input monitoring, no screenshotManager fetch)
             // so it keeps the single-argument constructor.
-            mapOf(activeIds.first() to InAppOnlyMode(this))
+            mapOf(activeIds.first() to InAppOnlyMode(this, activeIds.first()))
         } else {
             val a11y = PlayTranslateAccessibilityService.instance
             if (a11y == null) {
@@ -726,12 +791,13 @@ class CaptureService : Service() {
         liveModes.putAll(newModes)
         liveActive = true
         newModes.values.forEach { it.start() }
-        // Flash the region indicator immediately — synchronous wm.addView so
-        // the indicator is on screen within ~1 frame. Previously each mode's
-        // first capture cycle fired this flag, but the screenshot loop's
-        // rate-limit carry-over from the prior cycle delayed the flash by
-        // ~600ms on region change during live mode.
-        flashRegionIndicator()
+        // Flash the region indicator immediately on every selected display
+        // — synchronous wm.addView so each indicator is on screen within
+        // ~1 frame. Previously each mode's first capture cycle fired this
+        // flag, but the screenshot loop's rate-limit carry-over from the
+        // prior cycle delayed the flash by ~600ms on region change during
+        // live mode.
+        for (id in newModes.keys) flashRegionIndicator(id)
 
         // Register after start() so stopLive's unregister is a matching pair.
         // Unregister first defensively in case startLive was called while
@@ -899,7 +965,7 @@ class CaptureService : Service() {
         if (!liveActive) return
         val prefs = Prefs(this)
         // Per P4 + P6, useInAppOnly only kicks in for single-display setups.
-        val activeIds = gameDisplayIds.ifEmpty { setOf(gameDisplayId) }
+        val activeIds = gameDisplayIds.ifEmpty { setOf(primaryGameDisplayId()) }
         val shouldBeInAppOnly =
             prefs.hideGameOverlays && !Prefs.isSingleScreen(this) && activeIds.size == 1
         val isCurrentlyInAppOnly = liveModes.values.any { it is InAppOnlyMode }
@@ -1072,25 +1138,34 @@ class CaptureService : Service() {
      * Called after a screenshot is captured so the indicator doesn't
      * appear in the screenshot.
      */
-    internal fun noTextMessage(): String {
+    /** "No source-language text on $displayId in $region" message. */
+    internal fun noTextMessage(displayId: Int): String {
         val langName = java.util.Locale(sourceLang).getDisplayLanguage(java.util.Locale.ENGLISH)
             .replaceFirstChar { it.uppercase(java.util.Locale.ENGLISH) }
-        return getString(R.string.status_no_text, langName, activeRegion.label)
+        return getString(R.string.status_no_text, langName, activeRegionForDisplay(displayId).label)
     }
 
-    internal fun flashRegionIndicator() {
+    /** Flash the region indicator on [displayId] using that display's
+     *  active region. Called by per-display modes after their own captures. */
+    internal fun flashRegionIndicator(displayId: Int) {
         val a11y = PlayTranslateAccessibilityService.instance ?: return
         val dm = getSystemService(DisplayManager::class.java)
-        val display = dm.getDisplay(gameDisplayId) ?: return
-        a11y.showRegionIndicator(display, activeRegion)
+        val display = dm.getDisplay(displayId) ?: return
+        a11y.showRegionIndicator(display, activeRegionForDisplay(displayId))
     }
 
-    /** Run the shared OCR pipeline on a clean frame. Caller still owns raw bitmap. */
-    internal suspend fun runOcr(raw: Bitmap): OverlayToolkit.OcrPipelineResult? {
+    /** Run the shared OCR pipeline on a frame captured from [displayId].
+     *  Every per-display parameter (active region, status bar height, icon
+     *  rect to black out) is resolved for [displayId] — the pipeline has no
+     *  notion of a "primary" display. Caller still owns [raw]. */
+    internal suspend fun runOcr(raw: Bitmap, displayId: Int): OverlayToolkit.OcrPipelineResult? {
         return OverlayToolkit.runOcrPipeline(
-            raw, activeRegion, sourceLang, ocrManager,
-            getStatusBarHeightForDisplay(gameDisplayId),
-            PlayTranslateAccessibilityService.instance?.getFloatingIconRect(gameDisplayId),
+            raw,
+            activeRegionForDisplay(displayId),
+            sourceLang,
+            ocrManager,
+            getStatusBarHeightForDisplay(displayId),
+            PlayTranslateAccessibilityService.instance?.getFloatingIconRect(displayId),
             Prefs(this).compactOverlayIcon
         )
     }
@@ -1126,9 +1201,14 @@ class CaptureService : Service() {
         return perGroup
     }
 
-    /** Called when OCR finds no source-language text: hides overlays and notifies the UI. */
-    internal fun handleNoTextDetected() {
-        PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+    /** Called by a per-display LiveMode when its OCR pass finds no source-
+     *  language text on [displayId]: clears that display's overlay pair
+     *  and notifies the in-app panel. The panel emit is intentionally
+     *  global — there's a single panel and a single result/no-text state
+     *  for it. The overlay teardown is per-display so a no-text outcome
+     *  on display B doesn't take display A's still-valid overlay with it. */
+    internal fun handleNoTextDetected(displayId: Int) {
+        PlayTranslateAccessibilityService.instance?.hideTranslationOverlayForDisplay(displayId)
         emitLiveNoText()
     }
 
@@ -1198,10 +1278,20 @@ class CaptureService : Service() {
      * @param cropLeft Left offset of the crop in full-screen coordinates.
      * @param cropTop  Top offset of the crop in full-screen coordinates.
      */
-    /** Convenience: blackout floating icon using current service state. Delegates to OverlayToolkit. */
-    private fun blackoutFloatingIcon(bitmap: Bitmap, cropLeft: Int = 0, cropTop: Int = 0): Bitmap =
+    /** Black out [displayId]'s floating icon area in [bitmap] so OCR doesn't
+     *  pick up the icon glyph as text. The icon rect is resolved per-display
+     *  — passing the wrong displayId here is what was producing garbled OCR
+     *  on multi-display before this refactor (the secondary's icon stayed
+     *  visible to OCR; the primary's icon coords got applied to the wrong
+     *  bitmap). */
+    private fun blackoutFloatingIcon(
+        bitmap: Bitmap,
+        displayId: Int,
+        cropLeft: Int = 0,
+        cropTop: Int = 0,
+    ): Bitmap =
         OverlayToolkit.blackoutFloatingIcon(bitmap, cropLeft, cropTop,
-            PlayTranslateAccessibilityService.instance?.getFloatingIconRect(gameDisplayId),
+            PlayTranslateAccessibilityService.instance?.getFloatingIconRect(displayId),
             Prefs(this).compactOverlayIcon)
 
     fun resetConfiguration() {
@@ -1209,8 +1299,8 @@ class CaptureService : Service() {
         translationManager = null
         deeplTranslator  = null
         lingvaTranslator = null
-        gameDisplayId = 0
         gameDisplayIds = emptySet()
+        overrideRegions.clear()
         hasCaptureStateConfigured = false
         _statusUpdates.tryEmit(getString(R.string.status_idle))
     }
@@ -1248,10 +1338,13 @@ class CaptureService : Service() {
      * and all live modes. Returns a [PipelineOutcome]; callers decide
      * how to surface success/no-text/failure on their own channel.
      */
-    internal suspend fun runCaptureOcrTranslate(onScreenshotTaken: (() -> Unit)? = null): PipelineOutcome {
-        val raw: Bitmap = captureScreen(gameDisplayId)
+    internal suspend fun runCaptureOcrTranslate(
+        displayId: Int,
+        onScreenshotTaken: (() -> Unit)? = null,
+    ): PipelineOutcome {
+        val raw: Bitmap = captureScreen(displayId)
             ?: return PipelineOutcome.Failed(
-                "Screenshot failed for display $gameDisplayId. Try a different display in Settings."
+                "Screenshot failed for display $displayId. Try a different display in Settings."
             )
         onScreenshotTaken?.invoke()
         var bitmap: Bitmap? = raw
@@ -1259,16 +1352,17 @@ class CaptureService : Service() {
             val screenshotPath = PlayTranslateAccessibilityService.instance
                 ?.screenshotManager?.saveToCache(raw)
 
-            val statusBarHeight = getStatusBarHeightForDisplay(gameDisplayId)
-            val top    = maxOf((raw.height * activeRegion.top).toInt(), statusBarHeight)
-            val left   = (raw.width  * activeRegion.left).toInt()
-            val bottom = (raw.height * activeRegion.bottom).toInt()
-            val right  = (raw.width  * activeRegion.right).toInt()
+            val region = activeRegionForDisplay(displayId)
+            val statusBarHeight = getStatusBarHeightForDisplay(displayId)
+            val top    = maxOf((raw.height * region.top).toInt(), statusBarHeight)
+            val left   = (raw.width  * region.left).toInt()
+            val bottom = (raw.height * region.bottom).toInt()
+            val right  = (raw.width  * region.right).toInt()
             bitmap = cropBitmap(raw, top, bottom, left, right)
 
             // See runProcessCycle for the ownership rationale behind the
             // nested try/finally.
-            val ocrBitmap = blackoutFloatingIcon(bitmap, left, top)
+            val ocrBitmap = blackoutFloatingIcon(bitmap, displayId, left, top)
             val ocrResult = try {
                 ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
             } finally {
@@ -1316,16 +1410,20 @@ class CaptureService : Service() {
     /** One-shot capture: walks [state] through Capturing → final
      *  Done/NoText/Failed. Activities own the [state] flow via the
      *  [CaptureSession] returned from [captureOnce]. */
-    private suspend fun runCaptureCycle(state: MutableStateFlow<CaptureState>) {
+    private suspend fun runCaptureCycle(displayId: Int, state: MutableStateFlow<CaptureState>) {
         if (!isConfigured) {
             state.value = CaptureState.Failed("Not configured — tap Translate to set up")
             return
         }
         state.value = CaptureState.InProgress(getString(R.string.status_capturing))
-        when (val outcome = runCaptureOcrTranslate(onScreenshotTaken = { flashRegionIndicator() })) {
-            is PipelineOutcome.Success -> state.value = CaptureState.Done(outcome.pipeline.result)
-            PipelineOutcome.NoText -> state.value = CaptureState.NoText(noTextMessage())
-            is PipelineOutcome.Failed -> state.value = CaptureState.Failed(outcome.message)
+        val outcome = runCaptureOcrTranslate(
+            displayId = displayId,
+            onScreenshotTaken = { flashRegionIndicator(displayId) },
+        )
+        state.value = when (outcome) {
+            is PipelineOutcome.Success -> CaptureState.Done(outcome.pipeline.result)
+            PipelineOutcome.NoText -> CaptureState.NoText(noTextMessage(displayId))
+            is PipelineOutcome.Failed -> CaptureState.Failed(outcome.message)
         }
     }
 

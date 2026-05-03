@@ -399,9 +399,15 @@ class TranslationResultActivity :
         val leftFrac   = intent.getFloatExtra(EXTRA_LEFT_FRAC, 0f)
         val rightFrac  = intent.getFloatExtra(EXTRA_RIGHT_FRAC, 1f)
 
-        svc.configureSaved(
-            displayIds = prefs.captureDisplayIds,
-            region    = RegionEntry("Drawn Region", topFrac, bottomFrac, leftFrac, rightFrac)
+        // Apply the drawn region as a runtime override on the primary
+        // display so this one-shot uses the user's chosen frame, then
+        // re-configure with the persisted display selection. configureSaved
+        // no longer takes a region — region is per-display from Prefs +
+        // overrides.
+        svc.configureSaved(displayIds = prefs.captureDisplayIds)
+        svc.configureOverride(
+            svc.primaryGameDisplayId(),
+            RegionEntry("Drawn Region", topFrac, bottomFrac, leftFrac, rightFrac),
         )
 
         // Start the one-shot capture and observe its session state.

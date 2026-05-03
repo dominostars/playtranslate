@@ -51,10 +51,10 @@ class OneShotManager(private val service: CaptureService) {
 
         try {
             // 2. Flash region indicator
-            service.flashRegionIndicator()
+            service.flashRegionIndicator(displayId)
 
             // 3. OCR via shared pipeline
-            val pipeline = service.runOcr(raw)
+            val pipeline = service.runOcr(raw, displayId)
             if (pipeline == null) {
                 service.emitHoldLoading(false)
                 showNoTextPill(displayId)
@@ -105,7 +105,7 @@ class OneShotManager(private val service: CaptureService) {
         val dm = service.getSystemService(android.hardware.display.DisplayManager::class.java)
         val display = dm?.getDisplay(displayId)
         if (a11y != null && display != null) {
-            a11y.showNoTextPill(display, service.noTextMessage())
+            a11y.showNoTextPill(display, service.noTextMessage(displayId))
         }
     }
 }

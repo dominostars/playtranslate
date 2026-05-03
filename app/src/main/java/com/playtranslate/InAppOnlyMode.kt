@@ -17,7 +17,10 @@ import kotlinx.coroutines.launch
  * Owns ALL its mutable state. No detection loop — text change is detected
  * via dedup comparison on each poll cycle.
  */
-class InAppOnlyMode(private val service: CaptureService) : LiveMode {
+class InAppOnlyMode(
+    private val service: CaptureService,
+    private val displayId: Int,
+) : LiveMode {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var pollingJob: Job? = null
@@ -42,7 +45,7 @@ class InAppOnlyMode(private val service: CaptureService) : LiveMode {
                     continue
                 }
 
-                when (val outcome = service.runCaptureOcrTranslate()) {
+                when (val outcome = service.runCaptureOcrTranslate(displayId)) {
                     is CaptureService.PipelineOutcome.Success -> {
                         val pipeline = outcome.pipeline
                         val dedupKey = pipeline.result.originalText

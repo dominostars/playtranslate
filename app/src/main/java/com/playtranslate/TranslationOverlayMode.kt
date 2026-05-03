@@ -151,17 +151,17 @@ class TranslationOverlayMode(
 
             if (showRegionFlash) {
                 showRegionFlash = false
-                service.flashRegionIndicator()
+                service.flashRegionIndicator(displayId)
             }
 
             // Shared OCR pipeline: crop → blackout icon → OCR → filter source chars
-            val pipeline = service.runOcr(raw)
+            val pipeline = service.runOcr(raw, displayId)
 
             if (pipeline == null) {
                 DetectionLog.log("processClean: OCR returned null/empty")
                 lastOcrText = null
                 cachedOverlayBoxes = null
-                service.handleNoTextDetected()
+                service.handleNoTextDetected(displayId)
                 setupDetection(raw, emptyList(), emptyList())
                 return
             }
@@ -408,10 +408,11 @@ class TranslationOverlayMode(
         fullDisplayBoxes: List<Rect>,
         textBoxes: List<TranslationOverlayView.TextBox>
     ) {
-        val regionTop = (cleanRef.height * service.activeRegion.top).toInt()
-        val regionBottom = (cleanRef.height * service.activeRegion.bottom).toInt()
-        val regionLeft = (cleanRef.width * service.activeRegion.left).toInt()
-        val regionRight = (cleanRef.width * service.activeRegion.right).toInt()
+        val region = service.activeRegionForDisplay(displayId)
+        val regionTop = (cleanRef.height * region.top).toInt()
+        val regionBottom = (cleanRef.height * region.bottom).toInt()
+        val regionLeft = (cleanRef.width * region.left).toInt()
+        val regionRight = (cleanRef.width * region.right).toInt()
 
         val nonOvrPos = mutableListOf<Pair<Int, Int>>()
         val ovrSamples = mutableListOf<OverlaySampleData>()
@@ -608,7 +609,7 @@ class TranslationOverlayMode(
             }
 
             // OCR the filled bitmap using shared pipeline (crop → blackout → OCR)
-            val pipeline = service.runOcr(bitmap)
+            val pipeline = service.runOcr(bitmap, displayId)
             if (pipeline == null) return false
 
             val (ocrResult, newDedupKey, left, top, _, _) = pipeline
