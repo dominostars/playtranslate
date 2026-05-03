@@ -635,23 +635,11 @@ class CaptureService : Service() {
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) {}
         override fun onDisplayChanged(displayId: Int) {
-            if (!liveActive) return
             if (displayId !in gameDisplayIds) return
-            // InAppOnly is single-display by design — let it continue
-            // polling regardless of display state changes (the user will
-            // see the spinner / no-text outcome until the display returns).
-            if (liveModes.values.any { it is InAppOnlyMode }) return
-            val display = getSystemService(DisplayManager::class.java)
-                ?.getDisplay(displayId) ?: return
-            val isOn = display.state == android.view.Display.STATE_ON
-            val hasMode = displayId in liveModes
-            if (!isOn && hasMode) {
-                Log.i(TAG, "Display $displayId STATE_${display.state}, pausing its live mode")
-                liveModes.remove(displayId)?.stop()
-            } else if (isOn && !hasMode) {
-                Log.i(TAG, "Display $displayId back to STATE_ON, resuming its live mode")
-                installLiveModeForDisplay(displayId, Prefs(this@CaptureService))
-            }
+            val st = getSystemService(DisplayManager::class.java)
+                ?.getDisplay(displayId)?.state
+            Log.d(TAG, "displayListener.onDisplayChanged($displayId) state=$st")
+            reconcileLiveModes("displayChanged($displayId state=$st)")
         }
         override fun onDisplayRemoved(displayId: Int) {
             if (!liveActive) return
@@ -719,8 +707,12 @@ class CaptureService : Service() {
             }
             // Build one mode instance per selected display, all using the
             // same overlay-mode preference. Each instance is fully isolated
-            // (own cachedBoxes / cleanRef state).
-            activeIds.associateWith { id ->
+            // (own cachedBoxes / cleanRef state). Skip displays the
+            // reconciler would immediately pause — STATE_OFF or hosting
+            // PlayTranslate's own foregrounded UI under multi-select.
+            val keep = activeIds.filterNot { shouldSkipDisplay(it) }
+            Log.d(TAG, "startLive: activeIds=$activeIds keep=$keep prefs.overlayMode=${prefs.overlayMode}")
+            keep.associateWith { id ->
                 when (prefs.overlayMode) {
                     OverlayMode.FURIGANA -> FuriganaMode(this, a11y, id)
                     else -> PinholeOverlayMode(this, a11y, id)
@@ -759,20 +751,90 @@ class CaptureService : Service() {
 
     /**
      * Construct + start a per-display live-mode instance for [displayId] and
-     * register it in [liveModes]. Used by the display listener's STATE_ON
-     * resume path; idempotent (no-op if already running for that display).
+     * register it in [liveModes]. Used by [reconcileLiveModes]'s resume
+     * path; idempotent (no-op if already running for that display).
      * InAppOnlyMode is excluded — it's single-display by design and is
      * built only by [startLive].
      */
     private fun installLiveModeForDisplay(displayId: Int, prefs: Prefs) {
         if (displayId in liveModes) return
         val a11y = PlayTranslateAccessibilityService.instance ?: return
+        Log.d(TAG, "installLiveModeForDisplay($displayId) mode=${prefs.overlayMode}")
         val mode: LiveMode = when (prefs.overlayMode) {
             OverlayMode.FURIGANA -> FuriganaMode(this, a11y, displayId)
             else -> PinholeOverlayMode(this, a11y, displayId)
         }
         liveModes[displayId] = mode
         mode.start()
+    }
+
+    /**
+     * Skip OCR / capture on [displayId] when the display is powered down
+     * or PlayTranslate's own MainActivity is foregrounded on it AND we
+     * have other displays selected. Single-display setups always keep
+     * capturing — the existing single-screen routing handles the
+     * "app on game display" case via [Prefs.shouldUseInAppOnlyMode].
+     *
+     * State check uses [Display.STATE_ON] equality. Other states pause
+     * to be safe; the foldable use case (STATE_OFF) and the doze states
+     * are all "not actively rendered to user".
+     */
+    private fun shouldSkipDisplay(displayId: Int): Boolean {
+        val display = getSystemService(DisplayManager::class.java)
+            ?.getDisplay(displayId)
+        if (display == null) {
+            Log.d(TAG, "shouldSkipDisplay($displayId): null display → skip")
+            return true
+        }
+        if (display.state != android.view.Display.STATE_ON) {
+            Log.d(TAG, "shouldSkipDisplay($displayId): state=${display.state} (STATE_ON=${android.view.Display.STATE_ON}) → skip")
+            return true
+        }
+        if (gameDisplayIds.size > 1
+            && MainActivity.isInForeground
+            && MainActivity.foregroundDisplayId == displayId) {
+            Log.d(TAG, "shouldSkipDisplay($displayId): app foregrounded on it (size=${gameDisplayIds.size}) → skip")
+            return true
+        }
+        return false
+    }
+
+    /**
+     * Bring [liveModes] in line with [shouldSkipDisplay] across the
+     * selection. Called from the display listener (display state change),
+     * [MainActivity.isInForeground] / [MainActivity.foregroundDisplayId]
+     * setters (foreground change), and any other point that changes the
+     * skip predicate. InAppOnlyMode (single-display by design) is left
+     * alone — its resume path is a full [startLive] / [stopLive] cycle.
+     *
+     * [reason] threads the call site for diagnostic logs.
+     */
+    fun reconcileLiveModes(reason: String = "?") {
+        if (!liveActive) {
+            Log.v(TAG, "reconcileLiveModes($reason): !liveActive, no-op")
+            return
+        }
+        if (liveModes.values.any { it is InAppOnlyMode }) {
+            Log.v(TAG, "reconcileLiveModes($reason): InAppOnly active, no-op")
+            return
+        }
+        Log.d(TAG, "reconcileLiveModes($reason): gameDisplayIds=$gameDisplayIds liveModes=${liveModes.keys}")
+        val prefs = Prefs(this)
+        for (id in gameDisplayIds) {
+            val skip = shouldSkipDisplay(id)
+            val hasMode = id in liveModes
+            when {
+                skip && hasMode -> {
+                    Log.i(TAG, "reconcileLiveModes($reason): pause display $id")
+                    liveModes.remove(id)?.stop()
+                }
+                !skip && !hasMode -> {
+                    Log.i(TAG, "reconcileLiveModes($reason): resume display $id")
+                    installLiveModeForDisplay(id, prefs)
+                }
+                else -> Log.v(TAG, "reconcileLiveModes($reason): display $id no-op (skip=$skip, hasMode=$hasMode)")
+            }
+        }
     }
 
     /** True when any active live mode is In-App Only. By design all modes
@@ -852,6 +914,7 @@ class CaptureService : Service() {
     }
 
     fun stopLive() {
+        Log.i(TAG, "stopLive() called (liveActive=$liveActive, modes=${liveModes.keys})", Throwable("stopLive caller"))
         getSystemService(DisplayManager::class.java)?.unregisterDisplayListener(displayListener)
         stopAllLiveModes()
         liveActive = false
@@ -1470,7 +1533,9 @@ class CaptureService : Service() {
                 // Overlay modes: stop if no control surface at all (no icon, no app)
                 !iconShowing && !MainActivity.isInForeground
             }
+            Log.v(TAG, "updateForegroundState: liveActive=true iconShowing=$iconShowing isInForeground=${MainActivity.isInForeground} isInAppOnly=$isInAppOnly shouldStop=$shouldStop")
             if (shouldStop) {
+                Log.w(TAG, "updateForegroundState: stopping live (no visible surface)")
                 stopLive()
                 // stopLive() sets liveActive = false, which re-enters this method
                 return
