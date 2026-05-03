@@ -109,6 +109,22 @@ class Prefs(context: Context) {
             sp.edit().putString(KEY_DISPLAY_IDS, v.joinToString(",")).apply()
         }
 
+    /** True iff the user (or the legacy-key migration in [migrateLegacyPrefs])
+     *  has explicitly written the multi-display selection key. The
+     *  [captureDisplayIds] getter always returns a non-empty set thanks to
+     *  legacy-key fallback + DEFAULT_DISPLAY default, so the public Set value
+     *  can't distinguish "user picked display 0" from "no selection ever made."
+     *  This key-presence check is the clean signal for the auto-detect gate
+     *  in `MainActivity.ensureConfigured`: only seed an auto-detected display
+     *  when there's no persisted selection to clobber.
+     *
+     *  Pre-multi-display upgrade users get this set to true by
+     *  [migrateLegacyPrefs], which writes [KEY_DISPLAY_IDS] from the legacy
+     *  [KEY_DISPLAY_ID] before any code path can hit the auto-detect branch
+     *  (migration runs at the top of `MainActivity.onCreate`). */
+    val hasDisplaySelection: Boolean
+        get() = sp.contains(KEY_DISPLAY_IDS)
+
     var selectedRegionId: String
         get() = sp.getString(KEY_SELECTED_REGION_ID, "") ?: ""
         set(v) = sp.edit().putString(KEY_SELECTED_REGION_ID, v).apply()

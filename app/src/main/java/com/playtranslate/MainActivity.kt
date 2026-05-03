@@ -1185,9 +1185,17 @@ class MainActivity :
         val svc = captureService ?: return
         if (!svc.isConfigured) {
             // First-launch auto-detect: seed the selection set with the
-            // detected game display. Multi-select takes over from here via
-            // the settings UI.
-            prefs.captureDisplayIds = setOf(findGameDisplayId())
+            // detected game display. The hasDisplaySelection guard is
+            // load-bearing — `isConfigured` is per-process state (false on
+            // every cold-start), so without it this branch would clobber
+            // the user's persisted multi-display selection on every restart.
+            // The legacy single-display path is safe because
+            // [Prefs.migrateLegacyPrefs] (called from onCreate) writes
+            // KEY_DISPLAY_IDS from the legacy KEY_DISPLAY_ID before this
+            // gate ever runs.
+            if (!prefs.hasDisplaySelection) {
+                prefs.captureDisplayIds = setOf(findGameDisplayId())
+            }
             configureService()
         }
     }
