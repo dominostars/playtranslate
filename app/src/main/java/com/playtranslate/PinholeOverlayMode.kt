@@ -361,21 +361,13 @@ class PinholeOverlayMode(
                 anyRemoved = allRemovals.isNotEmpty()
                 if (cleanBoxes.isNotEmpty()) {
                     showOverlayAndCapture(a11y, cleanBoxes, cropLeft, cropTop, screenshotW, screenshotH)
-                } else {
-                    // No clean boxes left for this cycle — clear the clean
-                    // window's content but DO NOT tear the window down. On
-                    // stable content the same cycle's far-groups path (a few
-                    // lines below) immediately repopulates with the matched-
-                    // and-replaced boxes; tearing the window down via
-                    // hideTranslationOverlayForDisplay forces a wm.removeView
-                    // / wm.addView round-trip whose composition latency is
-                    // exactly the "off" period users see in the show-hide
-                    // loop. The setBoxes(empty) → setBoxes(merged) hop is
-                    // synchronous on the same view, so the compositor never
-                    // observes the empty state when far groups follow in the
-                    // same cycle. If far groups don't follow (genuine
-                    // no-text outcome), the empty render is the desired
-                    // outcome anyway.
+                } else if (farOcrGroups.isEmpty()) {
+                    // No clean boxes AND no replacement coming — clear the
+                    // clean window so stale boxes don't linger. setBoxes
+                    // (not hideTranslationOverlayForDisplay) keeps the
+                    // overlay window alive: tearing it down forces a
+                    // wm.removeView / wm.addView round-trip whose composition
+                    // latency the user sees as a visible "off" period.
                     //
                     // Dirty boxes (when present) live on the dirtyView — we
                     // never need to set them back into the clean view here.
@@ -383,6 +375,17 @@ class PinholeOverlayMode(
                         emptyList(), cropLeft, cropTop, screenshotW, screenshotH
                     )
                 }
+                // else: farOcrGroups is non-empty — the path below will call
+                // setBoxes(merged) which is the actual swap. Calling
+                // setBoxes(emptyList()) here too would force an extra
+                // rebuildChildren back-to-back; on stable content where
+                // classifyOcrResults treats every match as
+                // "contentMatchRemoval + queued placeholder", that means
+                // every cycle does two redundant rebuilds. Fuzzy-match
+                // dedup in TranslationOverlayView.setBoxes makes the
+                // single setBoxes(merged) call below a no-op when the
+                // placeholders match the existing children — zero rebuilds
+                // for genuinely-unchanged content.
             }
 
             // 11. Set cleanRef if missing (first capture, or cleared by mid-cycle refresh)
@@ -454,9 +457,25 @@ class PinholeOverlayMode(
         left: Int, top: Int, sw: Int, sh: Int
     ) {
         service.showLiveOverlay(boxes, left, top, sw, sh, pinholeMode = true, displayId = displayId)
-        waitVsync(2)
+        // Wait for children to be laid out before snapshotting. addOverlayWindow
+        // is async; onSizeChanged posts rebuildChildren; rebuildChildren adds
+        // children that themselves need a layout pass. Until that completes,
+        // renderToOffscreen returns an empty/stale bitmap and pinhole detection
+        // over-flags REMOVE for every box on the next cycle. Poll up to ~133ms
+        // and fall through if it never settles.
+        val view = a11y.translationOverlayForDisplay(displayId)
+        if (view != null) {
+            var waited = 0
+            while (waited < 8 && !view.areChildrenLaidOut()) {
+                waitVsync(1)
+                waited++
+            }
+            if (waited >= 8) Log.w("PinholeOverlayMode", "renderToOffscreen: layout never settled after 8 vsyncs on display $displayId")
+        } else {
+            waitVsync(2)
+        }
         overlayBitmap?.recycle()
-        overlayBitmap = a11y.translationOverlayForDisplay(displayId)?.renderToOffscreen()
+        overlayBitmap = view?.renderToOffscreen()
     }
 
     // ── Detection Helpers ───────────────────────────────────────────────

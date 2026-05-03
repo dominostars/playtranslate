@@ -479,6 +479,26 @@ class TranslationOverlayView(
     }
 
     /**
+     * True iff this view AND every child currently has measured dimensions
+     * and no layout pass is pending. Callers (PinholeOverlayMode) poll this
+     * to defer [renderToOffscreen] until the freshly-rebuilt children have
+     * actually been laid out — without this gate, pinhole detection captures
+     * an empty/stale overlay bitmap on the cycle right after a teardown,
+     * then over-flags every box for REMOVE on the following cycle.
+     */
+    fun areChildrenLaidOut(): Boolean {
+        if (width <= 0 || height <= 0) return false
+        if (isLayoutRequested) return false
+        if (childCount == 0) return boxes.isEmpty()
+        for (i in 0 until childCount) {
+            val c = getChildAt(i)
+            if (c.width <= 0 || c.height <= 0) return false
+            if (c.isLayoutRequested) return false
+        }
+        return true
+    }
+
+    /**
      * Render the overlay to an offscreen bitmap WITHOUT pinholes.
      * Returns the exact pixel-for-pixel content of the overlay (bg + text +
      * outlines), at the view's current dimensions. Used for pinhole change
