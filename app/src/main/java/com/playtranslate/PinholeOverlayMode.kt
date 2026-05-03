@@ -50,6 +50,8 @@ class PinholeOverlayMode(
     private val displayId: Int,
 ) : LiveMode {
 
+    override val flavor: OverlayFlavor = OverlayFlavor.TRANSLATION
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var currentJob: Job? = null
 

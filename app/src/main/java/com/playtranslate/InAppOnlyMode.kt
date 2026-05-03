@@ -22,6 +22,8 @@ class InAppOnlyMode(
     private val displayId: Int,
 ) : LiveMode {
 
+    override val flavor: OverlayFlavor = OverlayFlavor.IN_APP_ONLY
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var pollingJob: Job? = null
 

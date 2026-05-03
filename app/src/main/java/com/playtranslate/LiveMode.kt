@@ -15,12 +15,31 @@ data class CachedOverlayState(
 )
 
 /**
+ * Stable identity for "what kind of live mode is this." Replaces ad-hoc
+ * `is FuriganaMode` / `is InAppOnlyMode` checks scattered through
+ * CaptureService — the mutator that owns liveModes uses this to decide
+ * whether a per-display mode instance still matches the user's current
+ * Prefs (a mismatch triggers stop+restart for that display).
+ *
+ * Kept separate from [OverlayMode] (the user-facing pref enum) because
+ * IN_APP_ONLY isn't a user-selectable overlay: it's derived from
+ * `Prefs.shouldUseInAppOnlyMode` and only applies when the user has a
+ * single display selected.
+ */
+enum class OverlayFlavor { TRANSLATION, FURIGANA, IN_APP_ONLY }
+
+/**
  * Interface for live capture modes. Each mode owns its detection loop,
  * caching strategy, and all mutable state. CaptureService dispatches
  * to the active mode and handles service-level concerns (lifecycle,
  * hold gestures, one-shot capture).
  */
 interface LiveMode {
+    /** What kind of live mode this is. Used by CaptureService's mutator
+     *  to detect when an existing instance no longer matches the user's
+     *  current Prefs (and thus needs a stop+restart, not just a refresh). */
+    val flavor: OverlayFlavor
+
     /** Start the mode's capture/detection loop. */
     fun start()
 

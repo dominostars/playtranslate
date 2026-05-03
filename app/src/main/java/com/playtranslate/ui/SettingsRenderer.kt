@@ -330,6 +330,10 @@ class SettingsRenderer(
                 onSelect = { mode ->
                     prefs.overlayMode = mode
                     if (CaptureService.instance?.isLive == true) {
+                        // TODO(P1): swap for instant rebuild via CaptureService
+                        //   internals — setLiveDisplays() now picks up flavor
+                        //   mismatch as a stop+restart, so the user wouldn't
+                        //   need to re-tap. Behavior-preserving for now.
                         CaptureService.instance?.stopLive()
                     }
                     callbacks.onOverlayModeChanged()
@@ -369,6 +373,10 @@ class SettingsRenderer(
             switchHideOverlays.setOnCheckedChangeListener { _, checked ->
                 prefs.hideGameOverlays = checked
                 if (CaptureService.instance?.isLive == true) {
+                    // TODO(P1): swap for instant rebuild via CaptureService
+                    //   internals — flavor mismatch detection in
+                    //   setLiveDisplays() handles InAppOnly↔overlay swap
+                    //   without requiring a user re-tap.
                     CaptureService.instance?.stopLive()
                 }
             }
@@ -1136,6 +1144,8 @@ class SettingsRenderer(
                 onSelect = { mode ->
                     prefs.overlayMode = mode
                     if (CaptureService.instance?.isLive == true) {
+                        // TODO(P1): swap for instant rebuild — see twin TODO
+                        //   on the earlier overlayMode pill toggle.
                         CaptureService.instance?.stopLive()
                     }
                     callbacks.onOverlayModeChanged()

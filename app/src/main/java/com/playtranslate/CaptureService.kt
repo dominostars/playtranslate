@@ -9,6 +9,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.TextPaint
 import android.app.NotificationManager
+import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import android.app.PendingIntent
 import android.app.Service
@@ -19,6 +20,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import android.widget.Toast
+import androidx.annotation.MainThread
 import androidx.core.app.NotificationCompat
 import com.playtranslate.model.TranslationResult
 import com.google.mlkit.nl.translate.TranslateLanguage
@@ -278,9 +280,10 @@ class CaptureService : Service() {
     }
 
     /** Push current service state to every floating icon. Called automatically
-     *  by [liveActive] setter, [setDegraded], and when icons are installed
-     *  or torn down (from PlayTranslateAccessibilityService.installFloatingIconForDisplay
-     *  / hideFloatingIconForDisplay). */
+     *  by [setLiveDisplays] (on the empty↔non-empty transition), [setDegraded],
+     *  and when icons are installed or torn down (from
+     *  PlayTranslateAccessibilityService.installFloatingIconForDisplay /
+     *  hideFloatingIconForDisplay). */
     fun syncIconState() {
         val a11y = PlayTranslateAccessibilityService.instance ?: return
         a11y.setIconsLiveMode(isLive)
@@ -370,9 +373,17 @@ class CaptureService : Service() {
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlayForDisplay(displayId)
         oneShotCaptureJob?.cancel()
         oneShotManager.cancel()
-        if (liveActive) {
-            stopAllLiveModes()
-            startLive()
+        if (isLive) {
+            // Region change — modes pick up the new region on their next OCR
+            // cycle via [activeRegionForDisplay]. refresh() clears their cached
+            // state (cachedBoxes, cleanRef, dedup) so the next cycle reads the
+            // new region instead of replaying stale dedup/cache values. Cleaner
+            // than a full stop+startLive — no overlay tear-down/re-creation
+            // flicker. (Old behavior: stopAllLiveModes() + startLive()
+            // rebuilt every mode; setLiveDisplays would no-op on a same-target
+            // same-flavor call, so we refresh the existing modes directly.)
+            liveModes.values.forEach { it.refresh() }
+            flashRegionIndicator(displayId)
         }
     }
 
@@ -666,17 +677,21 @@ class CaptureService : Service() {
     // input. On input → hide overlay + start debounce timer. When the
     // timer expires (no further input) → capture again.
 
-    /** Observable live mode state. Observe this to react to live mode changes. */
-    val liveModeState = MutableLiveData(false)
-    internal var liveActive: Boolean
-        get() = liveModeState.value == true
-        set(v) {
-            liveModeState.value = v
-            updateForegroundState()
-            syncIconState()
-        }
+    /** Backing field for [liveModeState]. Written ONLY by [setLiveDisplays]
+     *  on the empty↔non-empty boolean transition. */
+    private val _liveModeState = MutableLiveData(false)
 
-    val isLive: Boolean get() = liveActive
+    /** Observable live mode state. Observers receive boolean transitions.
+     *  Read-only externally; the only writer is [setLiveDisplays]. */
+    val liveModeState: LiveData<Boolean> get() = _liveModeState
+
+    /** True iff any per-display [LiveMode] is currently running.
+     *  Ground truth derived from [liveModes]; [liveModeState] mirrors
+     *  it for observers. Reading this between [setLiveDisplays]'s map
+     *  mutation and its LiveData write is consistent because both
+     *  happen on the main thread inside the mutator with no
+     *  intervening yield points. */
+    val isLive: Boolean get() = liveModes.isNotEmpty()
 
     /**
      * Per-display live-mode instances. All entries share the same
@@ -684,8 +699,14 @@ class CaptureService : Service() {
      * selection in the UI (per-display instances are an implementation
      * detail for state isolation, since each display owns its own
      * cachedBoxes / cleanRef state).
+     *
+     * **Mutated EXCLUSIVELY by [setLiveDisplays].** Direct writes from
+     * anywhere else risk breaking the `liveModes ↔ screenshotManager.loops
+     * ↔ onGameInputs ↔ touchSentinels` invariant that previously had to be
+     * maintained by convention across multiple call sites; the visibility
+     * narrowing here is what enforces "one mutator" at compile time.
      */
-    internal val liveModes: MutableMap<Int, LiveMode> = mutableMapOf()
+    private val liveModes: MutableMap<Int, LiveMode> = mutableMapOf()
 
     private val oneShotManager = OneShotManager(this)
     private var oneShotCaptureJob: Job? = null
@@ -707,33 +728,38 @@ class CaptureService : Service() {
             reconcileLiveModes("displayChanged($displayId state=$st)")
         }
         override fun onDisplayRemoved(displayId: Int) {
-            if (!liveActive) return
+            if (!isLive) return
             if (displayId !in gameDisplayIds) return
-            // Tear down the disconnected display's mode + drop it from the
-            // active set. Other selected displays keep running.
+            // Drop the disconnected display from the active set first so the
+            // setLiveDisplays() / stopLive() that follow see the pruned state.
             val pruned = gameDisplayIds - displayId
             gameDisplayIds = pruned
-            liveModes.remove(displayId)?.stop()
             if (pruned.isEmpty()) {
                 Log.w(TAG, "All capture displays disconnected, stopping live mode")
+                // stopLive() routes through setLiveDisplays(emptySet()) and
+                // runs the full teardown (setDegraded, belt-and-suspenders
+                // cleanup). Toast fires AFTER the teardown so the user-visible
+                // message lines up with the actual stopped state.
+                stopLive()
                 Toast.makeText(
                     this@CaptureService,
                     "Capture display disconnected. Live mode stopped.",
                     Toast.LENGTH_LONG
                 ).show()
-                stopLive()
-            } else if (displayId == lastInteractedDisplayId) {
+                return
+            }
+            if (displayId == lastInteractedDisplayId) {
                 // The display the user was focused on went away — pick
                 // a still-connected one as the new primary so the in-app
                 // panel UI and hotkey routing keep working.
                 Log.w(TAG, "Primary capture display $displayId disconnected; switching primary to ${pruned.first()}")
                 lastInteractedDisplayId = pruned.first()
             }
+            setLiveDisplays(pruned.filterNot { shouldSkipDisplay(it) }.toSet())
         }
     }
 
     fun startLive() {
-        stopAllLiveModes()
         oneShotCaptureJob?.cancel()
         // Reset the panel to Searching so the activity sees an
         // immediate transition into live mode (rather than a stale
@@ -748,90 +774,161 @@ class CaptureService : Service() {
         // this is defensive.
         prefs.migrateLegacyPrefs()
 
+        // Compute target = user-selected displays minus those we should
+        // skip right now (STATE_OFF, or hosting PlayTranslate's own UI
+        // under multi-select). InAppOnly's "force {first}" rule is
+        // applied inside [setLiveDisplays] so callers don't need to know.
         val activeIds = gameDisplayIds.ifEmpty { setOf(primaryGameDisplayId()) }
-        // InAppOnlyMode is by definition a single-display path (the user has
-        // a separate viewport for translations). With multi-select, the user
-        // has explicitly opted into per-display overlays; SettingsRenderer
-        // surfaces that override on the hideGameOverlays row.
-        val useInAppOnly = Prefs.shouldUseInAppOnlyMode(this)
-        val newModes: Map<Int, LiveMode> = if (useInAppOnly) {
-            // InAppOnlyMode doesn't use PlayTranslateAccessibilityService directly
-            // (no overlay windows, no input monitoring, no screenshotManager fetch)
-            // so it keeps the single-argument constructor.
-            mapOf(activeIds.first() to InAppOnlyMode(this, activeIds.first()))
-        } else {
-            val a11y = PlayTranslateAccessibilityService.instance
-            if (a11y == null) {
-                Log.w(
-                    TAG,
-                    "startLive: accessibility service not connected; cannot start " +
-                        "${prefs.overlayMode}. Live mode aborted."
-                )
-                liveActive = false
-                return
-            }
-            // Build one mode instance per selected display, all using the
-            // same overlay-mode preference. Each instance is fully isolated
-            // (own cachedBoxes / cleanRef state). Skip displays the
-            // reconciler would immediately pause — STATE_OFF or hosting
-            // PlayTranslate's own foregrounded UI under multi-select.
-            val keep = activeIds.filterNot { shouldSkipDisplay(it) }
-            Log.d(TAG, "startLive: activeIds=$activeIds keep=$keep prefs.overlayMode=${prefs.overlayMode}")
-            keep.associateWith { id ->
-                when (prefs.overlayMode) {
-                    OverlayMode.FURIGANA -> FuriganaMode(this, a11y, id)
-                    else -> PinholeOverlayMode(this, a11y, id)
-                }
-            }
-        }
-        // Populate liveModes BEFORE flipping liveActive so LiveData observers
-        // (e.g. MainActivity.updateRegionButton) see the new mode identity
-        // synchronously — setter on liveActive dispatches to observers before
-        // this function returns.
-        liveModes.putAll(newModes)
-        liveActive = true
-        newModes.values.forEach { it.start() }
-        // Flash the region indicator immediately on every selected display
-        // — synchronous wm.addView so each indicator is on screen within
-        // ~1 frame. Previously each mode's first capture cycle fired this
-        // flag, but the screenshot loop's rate-limit carry-over from the
-        // prior cycle delayed the flash by ~600ms on region change during
-        // live mode.
-        for (id in newModes.keys) flashRegionIndicator(id)
-
-        // Register after start() so stopLive's unregister is a matching pair.
-        // Unregister first defensively in case startLive was called while
-        // already live (idempotent double-register would double-fire callbacks).
-        val dm = getSystemService(DisplayManager::class.java)
-        dm?.unregisterDisplayListener(displayListener)
-        dm?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
-    }
-
-    /** Stop every live-mode instance and clear the map. Each mode's stop()
-     *  tears down its own loop, input monitoring, and overlay. */
-    private fun stopAllLiveModes() {
-        if (liveModes.isEmpty()) return
-        liveModes.values.toList().forEach { it.stop() }
-        liveModes.clear()
+        val target = activeIds.filterNot { shouldSkipDisplay(it) }.toSet()
+        Log.d(TAG, "startLive: activeIds=$activeIds target=$target prefs.overlayMode=${prefs.overlayMode}")
+        setLiveDisplays(target)
     }
 
     /**
-     * Construct + start a per-display live-mode instance for [displayId] and
-     * register it in [liveModes]. Used by [reconcileLiveModes]'s resume
-     * path; idempotent (no-op if already running for that display).
-     * InAppOnlyMode is excluded — it's single-display by design and is
-     * built only by [startLive].
+     * What [OverlayFlavor] a fresh live-mode instance should use right now,
+     * given current Prefs. Single source of truth for the mode-class gating
+     * that used to live inline in [startLive] and the (now-removed)
+     * `installLiveModeForDisplay` helper.
+     *
+     * Intentionally does not take a [displayId] — flavor is uniform across
+     * the active display set. The "should this display run InAppOnly?"
+     * question is handled by [Prefs.shouldUseInAppOnlyMode], which
+     * already gates on `captureDisplayIds.size <= 1`. Callers that need
+     * the per-display target collapsing (force `{primary}` for InAppOnly)
+     * do so when computing the target set passed to the mutator.
      */
-    private fun installLiveModeForDisplay(displayId: Int, prefs: Prefs) {
-        if (displayId in liveModes) return
-        val a11y = PlayTranslateAccessibilityService.instance ?: return
-        Log.d(TAG, "installLiveModeForDisplay($displayId) mode=${prefs.overlayMode}")
-        val mode: LiveMode = when (prefs.overlayMode) {
-            OverlayMode.FURIGANA -> FuriganaMode(this, a11y, displayId)
-            else -> PinholeOverlayMode(this, a11y, displayId)
+    private fun desiredFlavor(prefs: Prefs = Prefs(this)): OverlayFlavor {
+        if (Prefs.shouldUseInAppOnlyMode(this)) return OverlayFlavor.IN_APP_ONLY
+        return when (prefs.overlayMode) {
+            OverlayMode.FURIGANA -> OverlayFlavor.FURIGANA
+            OverlayMode.TRANSLATION -> OverlayFlavor.TRANSLATION
         }
-        liveModes[displayId] = mode
-        mode.start()
+    }
+
+    /**
+     * The single mutator for [liveModes] and its derived state. Every
+     * structural change to "what's running" — start, stop, reconcile,
+     * multi-window swap, region change, hot-plug — flows through here.
+     *
+     * Diff semantics:
+     *  - id in current but not in target → stop and remove.
+     *  - id in both, but the running instance's flavor doesn't match
+     *    [desiredFlavor] → stop, recreate (rebuild).
+     *  - id in target but not in current → construct, add.
+     *
+     * IN_APP_ONLY is single-display by design — when it's the desired
+     * flavor and [target] is non-empty, [target] is collapsed to its
+     * first id. Callers don't need to know.
+     *
+     * Step ordering at the LiveData transition is deliberate (matches the
+     * pre-refactor contract at the original startLive lines 787-793):
+     *  1. stop removed/rebuilt modes (each owns its own loop+input+
+     *     sentinel teardown via its [LiveMode.stop]),
+     *  2. populate [liveModes] with new instances (DO NOT start yet),
+     *  3. fire [liveModeState] / [updateForegroundState] / [syncIconState]
+     *     IF the boolean transitioned, so observers reading
+     *     `holdBehavior` / `isInAppOnly` see the consistent populated map
+     *     and the right flavor mix synchronously,
+     *  4. start the new modes,
+     *  5. flash the region indicator on each newly-installed display.
+     *
+     * The display listener is registered on empty→non-empty and
+     * unregistered on non-empty→empty (it's only useful while live).
+     *
+     * Returns true if any structural change happened (add/stop/rebuild).
+     * [onMultiWindowChanged] uses the return to decide whether to fall
+     * through to a refresh-only pass for clean-ref invalidation.
+     */
+    @MainThread
+    private fun setLiveDisplays(target: Set<Int>): Boolean {
+        check(Looper.myLooper() == Looper.getMainLooper()) {
+            "setLiveDisplays must run on the main thread " +
+                "(got ${Thread.currentThread().name})"
+        }
+        val prefs = Prefs(this)
+        val flavor = desiredFlavor(prefs)
+
+        // IN_APP_ONLY is a single-display path by design. Collapse the
+        // target so callers don't have to know about the rule.
+        val actualTarget = if (flavor == OverlayFlavor.IN_APP_ONLY && target.isNotEmpty()) {
+            setOf(target.first())
+        } else target
+
+        // Snapshot — diff sets are computed against an immutable copy so
+        // subsequent mutation of [liveModes] can't perturb them.
+        val snapshot: Map<Int, LiveMode> = liveModes.toMap()
+        val toStop = snapshot.keys - actualTarget
+        val toRebuild = (snapshot.keys intersect actualTarget)
+            .filter { snapshot.getValue(it).flavor != flavor }
+            .toSet()
+        val toAdd = actualTarget - snapshot.keys
+
+        val structuralChange = toStop.isNotEmpty() || toRebuild.isNotEmpty() || toAdd.isNotEmpty()
+        if (!structuralChange) return false
+
+        // Construct new instances first so that an a11y-missing failure
+        // aborts before we tear down the existing modes (overlay flavors
+        // need PlayTranslateAccessibilityService.instance; InAppOnly does
+        // not). Matches the original startLive guard at lines 763-772.
+        val a11y = PlayTranslateAccessibilityService.instance
+        val needsA11y = flavor != OverlayFlavor.IN_APP_ONLY &&
+            (toRebuild.isNotEmpty() || toAdd.isNotEmpty())
+        if (needsA11y && a11y == null) {
+            Log.w(TAG, "setLiveDisplays: accessibility service not connected; cannot start $flavor. Aborting.")
+            return false
+        }
+
+        val newInstances: Map<Int, LiveMode> = (toAdd + toRebuild).associateWith { id ->
+            when (flavor) {
+                OverlayFlavor.IN_APP_ONLY -> InAppOnlyMode(this, id)
+                OverlayFlavor.FURIGANA -> FuriganaMode(this, a11y!!, id)
+                OverlayFlavor.TRANSLATION -> PinholeOverlayMode(this, a11y!!, id)
+            }
+        }
+
+        // 1. Stop removed AND rebuilt modes.
+        for (id in toStop + toRebuild) {
+            liveModes.remove(id)?.stop()
+        }
+
+        // 2. Populate map with new instances BEFORE the LiveData write.
+        for ((id, mode) in newInstances) {
+            liveModes[id] = mode
+        }
+
+        // 3. LiveData / foreground / icon state — only when the boolean flips.
+        val wasLive = _liveModeState.value == true
+        val willBeLive = liveModes.isNotEmpty()
+        if (wasLive != willBeLive) {
+            _liveModeState.value = willBeLive
+            updateForegroundState()
+            syncIconState()
+            // Display listener tracks the empty↔non-empty transition only.
+            val dm = getSystemService(DisplayManager::class.java)
+            if (willBeLive) {
+                // Defensive double-unregister: harmless if not registered.
+                dm?.unregisterDisplayListener(displayListener)
+                dm?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
+            } else {
+                dm?.unregisterDisplayListener(displayListener)
+            }
+        }
+
+        // 4. Start newly-installed modes AFTER state observers see the populated map.
+        //    Re-entry guard: updateForegroundState (called above) can call
+        //    stopLive() if there's no visible surface, which routes through
+        //    setLiveDisplays(emptySet()) and clears liveModes. In that case our
+        //    newInstances are no longer in the map; don't start them — that
+        //    would leak an untracked, running LiveMode. Identity check is fine
+        //    because LiveMode subclasses don't override equals.
+        for ((id, mode) in newInstances) {
+            if (liveModes[id] === mode) {
+                mode.start()
+                flashRegionIndicator(id)
+            }
+        }
+
+        return true
     }
 
     /**
@@ -876,31 +973,17 @@ class CaptureService : Service() {
      * [reason] threads the call site for diagnostic logs.
      */
     fun reconcileLiveModes(reason: String = "?") {
-        if (!liveActive) {
-            Log.v(TAG, "reconcileLiveModes($reason): !liveActive, no-op")
+        if (!isLive) {
+            Log.v(TAG, "reconcileLiveModes($reason): !isLive, no-op")
             return
         }
-        if (liveModes.values.any { it is InAppOnlyMode }) {
+        if (liveModes.values.any { it.flavor == OverlayFlavor.IN_APP_ONLY }) {
             Log.v(TAG, "reconcileLiveModes($reason): InAppOnly active, no-op")
             return
         }
-        Log.d(TAG, "reconcileLiveModes($reason): gameDisplayIds=$gameDisplayIds liveModes=${liveModes.keys}")
-        val prefs = Prefs(this)
-        for (id in gameDisplayIds) {
-            val skip = shouldSkipDisplay(id)
-            val hasMode = id in liveModes
-            when {
-                skip && hasMode -> {
-                    Log.i(TAG, "reconcileLiveModes($reason): pause display $id")
-                    liveModes.remove(id)?.stop()
-                }
-                !skip && !hasMode -> {
-                    Log.i(TAG, "reconcileLiveModes($reason): resume display $id")
-                    installLiveModeForDisplay(id, prefs)
-                }
-                else -> Log.v(TAG, "reconcileLiveModes($reason): display $id no-op (skip=$skip, hasMode=$hasMode)")
-            }
-        }
+        val target = gameDisplayIds.filterNot { shouldSkipDisplay(it) }.toSet()
+        Log.d(TAG, "reconcileLiveModes($reason): gameDisplayIds=$gameDisplayIds liveModes=${liveModes.keys} → target=$target")
+        setLiveDisplays(target)
     }
 
     /** True when any active live mode is In-App Only. By design all modes
@@ -908,7 +991,7 @@ class CaptureService : Service() {
      *  effectively "are we in InAppOnly mode" — but checking via [Any] avoids
      *  silent assumptions if that invariant ever shifts. */
     val isInAppOnly: Boolean
-        get() = liveActive && liveModes.values.any { it is InAppOnlyMode }
+        get() = isLive && liveModes.values.any { it.flavor == OverlayFlavor.IN_APP_ONLY }
 
     /**
      * Describes what a hold gesture will do in the current state. Mirrors the
@@ -930,14 +1013,14 @@ class CaptureService : Service() {
     val holdBehavior: HoldBehavior
         get() {
             // All per-display modes share the same prefs.overlayMode, so any
-            // single mode's class is representative of the active flavor.
-            val isFurigana = liveModes.values.any { it is FuriganaMode }
+            // single mode's flavor is representative of the active mix.
+            val isFurigana = liveModes.values.any { it.flavor == OverlayFlavor.FURIGANA }
             // Visible translation overlay → hold peeks through it
-            if (liveActive && !isFurigana && !isInAppOnly) {
+            if (isLive && !isFurigana && !isInAppOnly) {
                 return HoldBehavior.HIDE_TRANSLATIONS
             }
             // Visible furigana overlay → hold forces a translation one-shot
-            if (liveActive && isFurigana) {
+            if (isLive && isFurigana) {
                 return HoldBehavior.SHOW_TRANSLATIONS_OVER_FURIGANA
             }
             // Not live, or InAppOnly live → hold runs a one-shot in the
@@ -952,46 +1035,57 @@ class CaptureService : Service() {
      * Called from MainActivity.onMultiWindowModeChanged after the multi-window
      * companion var has been updated. The viewport-level predicate
      * [Prefs.isSingleScreen] re-evaluates on every call, so UI routing fixes
-     * itself automatically — but the live-mode class selection at [startLive]
-     * is sticky, computed once at live-start time. A running Pinhole/Furigana
-     * session entering split-screen with `hideGameOverlays` enabled wants
+     * itself automatically — but the live-mode class selection is sticky,
+     * computed once at live-start time. A running Pinhole/Furigana session
+     * entering split-screen with `hideGameOverlays` enabled wants
      * InAppOnlyMode instead; a running InAppOnlyMode exiting to fullscreen
-     * wants an overlay mode. This entry point performs that mode-class swap
-     * when needed, and otherwise refreshes the current mode to clear the
-     * now-stale clean-reference bitmap (which would otherwise flicker
-     * through scene-change recovery on its own).
+     * wants an overlay mode.
+     *
+     * [setLiveDisplays] handles the mode-class swap automatically via its
+     * flavor-mismatch detector (running flavor != [desiredFlavor] → rebuild).
+     * If no structural change happens (no add/remove/rebuild), fall through
+     * to a refresh() pass to clear each mode's clean-reference bitmap, which
+     * would otherwise flicker through scene-change recovery on its own as
+     * the viewport contents change underneath the running cycle.
+     *
+     * Note: the InAppOnly trigger uses [Prefs.shouldUseInAppOnlyMode], which
+     * gates on `captureDisplayIds.size <= 1`. The pre-refactor implementation
+     * gated on `gameDisplayIds.size == 1` instead, which differed from the
+     * canonical pref check after a hot-plug (gameDisplayIds is mutated by
+     * the display listener; captureDisplayIds is the persisted user
+     * selection). The new behavior aligns with [MainActivity]'s UI predicate
+     * so runtime and UI never disagree about whether InAppOnly should be
+     * in play.
      */
     fun onMultiWindowChanged() {
-        if (!liveActive) return
-        val prefs = Prefs(this)
-        // Per P4 + P6, useInAppOnly only kicks in for single-display setups.
+        if (!isLive) return
         val activeIds = gameDisplayIds.ifEmpty { setOf(primaryGameDisplayId()) }
-        val shouldBeInAppOnly =
-            prefs.hideGameOverlays && !Prefs.isSingleScreen(this) && activeIds.size == 1
-        val isCurrentlyInAppOnly = liveModes.values.any { it is InAppOnlyMode }
-        if (shouldBeInAppOnly != isCurrentlyInAppOnly) {
-            Log.d(TAG, "onMultiWindowChanged: mode class swap (inAppOnly $isCurrentlyInAppOnly -> $shouldBeInAppOnly)")
-            stopLive()
-            startLive()
-        } else {
-            Log.d(TAG, "onMultiWindowChanged: refreshing ${liveModes.size} mode(s)")
+        val target = activeIds.filterNot { shouldSkipDisplay(it) }.toSet()
+        val structuralChanged = setLiveDisplays(target)
+        if (!structuralChanged) {
+            Log.d(TAG, "onMultiWindowChanged: no structural change, refreshing ${liveModes.size} mode(s)")
             liveModes.values.forEach { it.refresh() }
+        } else {
+            Log.d(TAG, "onMultiWindowChanged: structural change applied (target=$target)")
         }
     }
 
     fun stopLive() {
-        Log.i(TAG, "stopLive() called (liveActive=$liveActive, modes=${liveModes.keys})", Throwable("stopLive caller"))
-        getSystemService(DisplayManager::class.java)?.unregisterDisplayListener(displayListener)
-        stopAllLiveModes()
-        liveActive = false
-        // Each mode's own stop() already tore down its loop / input / overlay
-        // for its own displayId. The fan-out calls below are belt-and-
-        // suspenders to clean up anything that didn't pair with a mode (e.g.
-        // a misbehaving mode that left state on hide).
+        Log.i(TAG, "stopLive() called (isLive=$isLive, modes=${liveModes.keys})", Throwable("stopLive caller"))
+        // setLiveDisplays(emptySet()) handles: stop every running mode (each
+        // tears down its own loop+input+sentinel+overlay), unregister the
+        // display listener on the non-empty→empty transition, fire LiveData
+        // false, run updateForegroundState/syncIconState.
+        setLiveDisplays(emptySet())
+        setDegraded(false)
+        // Belt-and-suspenders fan-out — each LiveMode.stop() should already
+        // have torn down its own loop / input / overlay, but historically these
+        // calls have caught misbehaving modes that left state behind.
+        // TODO(P1): with setLiveDisplays(emptySet()) guaranteeing per-mode
+        //   teardown via the canonical mutator, this fan-out should be removable.
         PlayTranslateAccessibilityService.instance?.screenshotManager?.stopAllLoops()
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
         PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
-        setDegraded(false)
         // Don't reset _panelState here — let the last live result
         // linger so a STOP→START reattach still shows it. The VM's
         // identity dedup keeps the replay from re-running lookups.
@@ -1003,7 +1097,7 @@ class CaptureService : Service() {
      *  hold-release). With per-display modes, all of them refresh together
      *  since hold pause is global. */
     fun refreshLiveOverlay() {
-        if (!liveActive) return
+        if (!isLive) return
         Log.d(TAG, "REFRESH: refreshLiveOverlay called for ${liveModes.size} mode(s)")
         liveModes.values.forEach { it.refresh() }
     }
@@ -1034,7 +1128,7 @@ class CaptureService : Service() {
      */
     private fun beginHoldPreview(mode: OverlayMode?, displayId: Int) {
         holdActive = true
-        if (liveActive) {
+        if (isLive) {
             // Hold pause is global — stop every per-display loop and hide
             // every translation overlay. The one-shot itself will then paint
             // its result on [displayId] (the icon-tapped display, or the
@@ -1056,7 +1150,7 @@ class CaptureService : Service() {
     private fun endHoldPreview() {
         oneShotManager.cancel()
         holdActive = false
-        if (liveActive) {
+        if (isLive) {
             // Refresh every per-display mode — hold paused them all globally.
             liveModes.values.forEach { it.refresh() }
         }
@@ -1074,15 +1168,14 @@ class CaptureService : Service() {
         // Pinhole / translation-overlay live modes: "peek" through the
         // overlay at the game underneath, without running a one-shot.
         // PinholeOverlayMode's cycle polls [holdActive] and pauses itself.
-        @Suppress("DEPRECATION")
-        val isFurigana = liveModes.values.any { it is FuriganaMode }
-        if (liveActive && !isFurigana && !isInAppOnly) {
+        val isFurigana = liveModes.values.any { it.flavor == OverlayFlavor.FURIGANA }
+        if (isLive && !isFurigana && !isInAppOnly) {
             holdActive = true
             PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
             return
         }
         _holdLoading.value = true
-        val forced = if (liveActive && isFurigana) {
+        val forced = if (isLive && isFurigana) {
             OverlayMode.TRANSLATION
         } else {
             null
@@ -1114,8 +1207,8 @@ class CaptureService : Service() {
 
     /** Begin a hotkey hold-to-preview with a forced overlay mode. */
     fun hotkeyHoldStart(mode: OverlayMode) {
-        DetectionLog.log("Hotkey START: $mode (live=$liveActive)")
-        Log.d("HotkeyDbg", "hotkeyHoldStart: mode=$mode isConfigured=$isConfigured liveActive=$liveActive")
+        DetectionLog.log("Hotkey START: $mode (live=$isLive)")
+        Log.d("HotkeyDbg", "hotkeyHoldStart: mode=$mode isConfigured=$isConfigured isLive=$isLive")
         if (hotkeyActive) return
         hotkeyActive = true
         // Hotkey path uses primaryGameDisplayId() — last-interacted display,
@@ -1129,7 +1222,7 @@ class CaptureService : Service() {
     fun hotkeyHoldEnd() {
         if (!hotkeyActive) return
         hotkeyActive = false
-        DetectionLog.log("Hotkey END (live=$liveActive)")
+        DetectionLog.log("Hotkey END (live=$isLive)")
         endHoldPreview()
     }
 
@@ -1615,7 +1708,7 @@ class CaptureService : Service() {
      * live mode should keep running based on current game-screen presence.
      *
      * Triggered automatically by:
-     *  - [liveActive] property setter (in this class)
+     *  - [setLiveDisplays] when the empty↔non-empty boolean transitions
      *  - PlayTranslateAccessibilityService.installFloatingIconForDisplay /
      *    hideFloatingIconForDisplay (every per-display add/remove)
      */
@@ -1623,7 +1716,7 @@ class CaptureService : Service() {
         val iconShowing = PlayTranslateAccessibilityService.instance?.hasAnyFloatingIcon == true
 
         // Stop live mode if the user can no longer see or manage it.
-        if (liveActive) {
+        if (isLive) {
             val shouldStop = if (isInAppOnly) {
                 // In-App Only: results only visible while app is in foreground
                 !MainActivity.isInForeground
@@ -1631,16 +1724,19 @@ class CaptureService : Service() {
                 // Overlay modes: stop if no control surface at all (no icon, no app)
                 !iconShowing && !MainActivity.isInForeground
             }
-            Log.v(TAG, "updateForegroundState: liveActive=true iconShowing=$iconShowing isInForeground=${MainActivity.isInForeground} isInAppOnly=$isInAppOnly shouldStop=$shouldStop")
+            Log.v(TAG, "updateForegroundState: isLive=true iconShowing=$iconShowing isInForeground=${MainActivity.isInForeground} isInAppOnly=$isInAppOnly shouldStop=$shouldStop")
             if (shouldStop) {
                 Log.w(TAG, "updateForegroundState: stopping live (no visible surface)")
                 stopLive()
-                // stopLive() sets liveActive = false, which re-enters this method
+                // stopLive() routes through setLiveDisplays(emptySet()), which
+                // flips the LiveData and re-enters this method via syncIconState
+                // / updateForegroundState — at which point isLive is false and
+                // we fall through to the stopForeground branch below.
                 return
             }
         }
 
-        if (iconShowing || liveActive) {
+        if (iconShowing || isLive) {
             startForeground(NOTIF_ID, buildNotification())
         } else {
             stopForeground(STOP_FOREGROUND_REMOVE)

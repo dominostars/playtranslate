@@ -48,6 +48,8 @@ class FuriganaMode(
     private val displayId: Int,
 ) : LiveMode {
 
+    override val flavor: OverlayFlavor = OverlayFlavor.FURIGANA
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var cleanProcessingJob: Job? = null
     private var rawOcrJob: Job? = null
@@ -167,7 +169,7 @@ class FuriganaMode(
             try {
                 processCleanFrame(raw)
             } catch (e: kotlinx.coroutines.CancellationException) {
-                if (service.liveActive) {
+                if (service.isLive) {
                     a11y.screenshotManager?.requestCleanCapture(displayId)
                 }
                 throw e

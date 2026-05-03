@@ -34,6 +34,8 @@ class TranslationOverlayMode(
     private val displayId: Int,
 ) : LiveMode {
 
+    override val flavor: OverlayFlavor = OverlayFlavor.TRANSLATION
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var cleanProcessingJob: Job? = null
     private var interactionDebounceJob: Job? = null
@@ -479,7 +481,7 @@ class TranslationOverlayMode(
     // ── Input monitoring ──────────────────────────────────────────────────
 
     private fun onUserInteraction() {
-        if (!service.liveActive) return
+        if (!service.isLive) return
         DetectionLog.log("USER INTERACTION — cancelling processing")
         cleanProcessingJob?.cancel()
         cachedOverlayBoxes = null
