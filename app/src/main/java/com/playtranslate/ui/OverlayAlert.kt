@@ -46,11 +46,15 @@ class OverlayAlert private constructor(
         private val buttons = mutableListOf<ButtonConfig>()
         private var showIcon = true
 
-        constructor(context: Context, wm: WindowManager) : this(context) {
+        constructor(context: Context, wm: WindowManager, displayId: Int) : this(context) {
             this.wm = wm
+            this.displayId = displayId
         }
 
         private var wm: WindowManager? = null
+        /** Set by the (context, wm, displayId) constructor for the
+         *  accessibility-overlay path. Unused on the activity path. */
+        private var displayId: Int = android.view.Display.DEFAULT_DISPLAY
 
         fun setTitle(title: String) = apply { this.title = title }
         fun setMessage(message: String) = apply { this.message = message }
@@ -77,7 +81,8 @@ class OverlayAlert private constructor(
         fun show(): OverlayAlert {
             val alert = OverlayAlert(context, title, message, buttons, showIcon)
             alert.showAsAccessibilityOverlay(
-                wm ?: error("OverlayAlert.Builder.show() requires a WindowManager")
+                wm ?: error("OverlayAlert.Builder.show() requires a WindowManager"),
+                displayId,
             )
             return alert
         }
@@ -236,7 +241,7 @@ class OverlayAlert private constructor(
         return scrimView
     }
 
-    private fun showAsAccessibilityOverlay(wm: WindowManager) {
+    private fun showAsAccessibilityOverlay(wm: WindowManager, displayId: Int) {
         val scrimView = buildScrim()
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -245,7 +250,7 @@ class OverlayAlert private constructor(
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
-        if (!PlayTranslateAccessibilityService.addOverlay(scrimView, wm, params)) return
+        if (!PlayTranslateAccessibilityService.addOverlay(scrimView, wm, params, displayId)) return
         scrim = scrimView
         dismissAction = { PlayTranslateAccessibilityService.removeOverlay(scrimView, wm) }
     }

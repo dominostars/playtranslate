@@ -132,7 +132,7 @@ class FloatingOverlayIcon(context: Context) : View(context) {
             gravity = android.view.Gravity.TOP or android.view.Gravity.LEFT
         }
 
-        if (!PlayTranslateAccessibilityService.addOverlay(spinner, wm, lp)) return
+        if (!PlayTranslateAccessibilityService.addOverlay(spinner, wm, lp, displayId)) return
         spinnerView = spinner
         spinnerWm = wm
     }
@@ -183,6 +183,11 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     var onAnyTouch: (() -> Unit)? = null
 
     var wm: WindowManager? = null
+
+    /** The display this icon (and any sub-windows like the loading spinner)
+     *  lives on. Set by the install site so per-display clean-capture
+     *  blanking scopes correctly. */
+    var displayId: Int = android.view.Display.DEFAULT_DISPLAY
     var params: WindowManager.LayoutParams? = null
 
     /** Context tied to this overlay's display + window type, so that

@@ -1238,6 +1238,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
         val icon = FloatingOverlayIcon(displayCtx).apply {
             this.wm = wm
+            this.displayId = displayId
             compactMode = prefs.compactOverlayIcon
         }
 
@@ -1265,8 +1266,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
         // Drag-to-lookup: independent controller per display so the popup +
         // magnifier render against the correct display context.
-        val popup = WordLookupPopup(displayCtx, wm)
-        val magnifier = MagnifierLens(displayCtx, wm)
+        val popup = WordLookupPopup(displayCtx, wm, displayId)
+        val magnifier = MagnifierLens(displayCtx, wm, displayId)
         val controller = DragLookupController(
             displayId = displayId,
             popup = popup,
@@ -1591,7 +1592,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val prefs = Prefs(this)
         val alreadyCompact = prefs.compactOverlayIcon
 
-        val builder = OverlayAlert.Builder(displayCtx, overlayWm)
+        val builder = OverlayAlert.Builder(displayCtx, overlayWm, display.displayId)
 
         if (!Prefs.hasMultipleDisplays(this)) {
             builder.setTitle("Disable $appName?")
@@ -1954,18 +1955,17 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
          * service isn't connected the window is added without registration —
          * it just won't participate in clean-capture blanking.
          *
-         * [displayId] is the display the window will appear on, so
-         * clean-capture blanking can scope to that display only. Callers that
-         * don't pass it default to [Display.DEFAULT_DISPLAY] — fine for
-         * single-display devices, but a misroute on multi-display setups will
-         * cause the window to flash during captures of the default display
-         * and not blank during captures of its actual host. Pass the right id.
+         * [displayId] must be the display the window will appear on so
+         * [prepareForCleanCapture] can scope its blanking. There is no
+         * default — silently falling back to [Display.DEFAULT_DISPLAY] for
+         * a window actually shown on a secondary display would leak the
+         * window into clean screenshots of that display.
          */
         fun addOverlay(
             view: View,
             wm: WindowManager,
             params: WindowManager.LayoutParams,
-            displayId: Int = Display.DEFAULT_DISPLAY,
+            displayId: Int,
         ): Boolean {
             instance?.let { return it.addOverlayWindow(view, wm, params, displayId) }
             return try { wm.addView(view, params); true } catch (_: Exception) { false }

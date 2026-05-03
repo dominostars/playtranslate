@@ -32,7 +32,11 @@ import com.playtranslate.R
  */
 class WordLookupPopup(
     val ctx: Context,
-    private val wm: WindowManager
+    private val wm: WindowManager,
+    /** Display id this popup is shown on. Used so the popup gets blanked
+     *  during clean captures of that display. Set to [Display.DEFAULT_DISPLAY]
+     *  for activity-window callers (the registry doesn't track those). */
+    private val displayId: Int = android.view.Display.DEFAULT_DISPLAY,
 ) {
     private var popupView: View? = null
     var onDismiss: (() -> Unit)? = null
@@ -206,7 +210,7 @@ class WordLookupPopup(
         } else {
             // Accessibility-overlay flavor: register so it gets blanked
             // alongside the icon/magnifier during clean screenshots.
-            if (!PlayTranslateAccessibilityService.addOverlay(container, wm, popupParams)) return false
+            if (!PlayTranslateAccessibilityService.addOverlay(container, wm, popupParams, displayId)) return false
         }
         // Request window focus so onGenericMotionListener receives joystick
         // events (the previous architecture got focus via the backdrop).
