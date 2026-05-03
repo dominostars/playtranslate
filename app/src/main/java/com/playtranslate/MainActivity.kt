@@ -409,6 +409,10 @@ class MainActivity :
 
     override fun onResume() {
         super.onResume()
+        // Order matters: write the display id BEFORE flipping isInForeground
+        // so reconcileLiveModes (triggered by both setters) observes a
+        // consistent (foregroundDisplayId, isInForeground) tuple.
+        foregroundDisplayId = display?.displayId
         isInForeground = true
         dimController?.onInteraction()
         setupDetectionLog()
@@ -436,6 +440,7 @@ class MainActivity :
     override fun onStop() {
         super.onStop()
         isInForeground = false
+        foregroundDisplayId = null
     }
 
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
@@ -1970,8 +1975,30 @@ class MainActivity :
         @Volatile
         var isInForeground = false
             set(value) {
+                if (field == value) return
                 field = value
+                android.util.Log.d("CaptureService", "MainActivity.isInForeground = $value")
                 CaptureService.instance?.updateForegroundState()
+                CaptureService.instance?.reconcileLiveModes("isInForeground=$value")
+            }
+
+        /**
+         * Display id MainActivity is currently rendering on, or null when
+         * MainActivity isn't in the foreground. Used by
+         * [CaptureService.reconcileLiveModes] to skip OCR on the display
+         * the user is looking at PlayTranslate on (under multi-display
+         * selection — capturing a screen full of app UI translates nothing
+         * useful and burns a slot in the global capture mutex). Single-
+         * display setups continue to capture as before; the existing
+         * single-screen routing handles app-on-game-display already.
+         */
+        @Volatile
+        var foregroundDisplayId: Int? = null
+            set(value) {
+                if (field == value) return
+                field = value
+                android.util.Log.d("CaptureService", "MainActivity.foregroundDisplayId = $value")
+                CaptureService.instance?.reconcileLiveModes("foregroundDisplayId=$value")
             }
 
         /**
