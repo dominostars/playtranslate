@@ -190,7 +190,7 @@ class TranslationOverlayMode(
             DetectionLog.log("processClean: new text, ${ocrResult.groupTexts.size} groups, translating...")
 
             val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
-            val screenshotPath = mgr?.saveToCache(raw)
+            val screenshotPath = mgr?.saveToCache(raw, displayId)
 
             val liveGroupBounds = ocrResult.groupBounds
             val liveGroupLineCounts = ocrResult.groupLineCounts

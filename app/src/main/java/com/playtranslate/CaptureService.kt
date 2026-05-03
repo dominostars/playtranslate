@@ -619,7 +619,7 @@ class CaptureService : Service() {
         try {
             state.value = CaptureState.InProgress(getString(R.string.status_capturing))
             val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
-            val screenshotPath = mgr?.saveToCache(raw)
+            val screenshotPath = mgr?.saveToCache(raw, displayId)
 
             val region = activeRegionForDisplay(displayId)
             val statusBarHeight = getStatusBarHeightForDisplay(displayId)
@@ -1107,10 +1107,6 @@ class CaptureService : Service() {
     /** True while a hold gesture or modal UI is active — suppresses overlay display in live mode. */
     var holdActive = false
 
-    /** Path to the last clean screenshot. Delegates to [ScreenshotManager]. */
-    val lastCleanScreenshotPath: String?
-        get() = PlayTranslateAccessibilityService.instance?.screenshotManager?.lastCleanPath
-
     /**
      * Common hold-to-preview begin sequence used by both the in-app button
      * and the gamepad hotkey. Gates live display via [holdActive], stops the
@@ -1443,7 +1439,7 @@ class CaptureService : Service() {
         var bitmap: Bitmap? = raw
         try {
             val screenshotPath = PlayTranslateAccessibilityService.instance
-                ?.screenshotManager?.saveToCache(raw)
+                ?.screenshotManager?.saveToCache(raw, displayId)
 
             val region = activeRegionForDisplay(displayId)
             val statusBarHeight = getStatusBarHeightForDisplay(displayId)

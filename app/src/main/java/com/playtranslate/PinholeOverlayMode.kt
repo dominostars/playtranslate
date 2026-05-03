@@ -434,8 +434,7 @@ class PinholeOverlayMode(
                 if (cachedBoxes.isNullOrEmpty()) {
                     service.handleNoTextDetected(displayId)
                 } else {
-                    mgr.saveToCache(raw)
-                    sendFullStateToPanel(mgr.lastCleanPath)
+                    sendFullStateToPanel(mgr.saveToCache(raw, displayId))
                 }
             }
 

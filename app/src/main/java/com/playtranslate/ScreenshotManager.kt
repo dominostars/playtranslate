@@ -68,12 +68,6 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
         return maxOf(userMs, MIN_SCREENSHOT_INTERVAL_MS)
     }
 
-    // ── File cache ───────────────────────────────────────────────────────
-
-    /** Path to the most recently saved clean screenshot (JPEG). */
-    var lastCleanPath: String? = null
-        private set
-
     // ── Public API ───────────────────────────────────────────────────────
 
     /**
@@ -150,19 +144,26 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
     }
 
     /**
-     * Save a bitmap to the screenshot cache directory as JPEG.
-     * Returns the file path. Uses JPEG for speed (~10-30 ms vs PNG's
-     * 50-200 ms). Always overwrites a single `capture.jpg` — the cache
-     * stays bounded to one file per writer (this manager + the
-     * accessibility-service `precapture.jpg` and drag-flow `drag.jpg`
-     * paths each own their own filename).
+     * Save a bitmap to the screenshot cache directory as JPEG, keyed on
+     * [displayId]. Returns the file path. Uses JPEG for speed (~10-30 ms vs
+     * PNG's 50-200 ms).
+     *
+     * The cache stays bounded to one file per (display × writer): this
+     * manager writes `capture-d{displayId}.jpg` per display, and the
+     * accessibility-service `precapture.jpg` / drag-flow `drag.jpg` paths
+     * each own their own filenames. Per-display files prevent a concurrent
+     * capture on display B from clobbering display A's screenshot before
+     * the user opens its detail view or saves to Anki.
+     *
+     * Callers MUST use the returned path; there's no global "last clean
+     * path" accessor anymore — it would inherently lose the per-display
+     * binding the moment a second display fires a capture.
      */
-    fun saveToCache(bitmap: Bitmap): String? {
+    fun saveToCache(bitmap: Bitmap, displayId: Int): String? {
         return try {
             val dir = File(a11y.cacheDir, "screenshots").apply { mkdirs() }
-            val file = File(dir, "capture.jpg")
+            val file = File(dir, "capture-d$displayId.jpg")
             file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-            lastCleanPath = file.absolutePath
             file.absolutePath
         } catch (e: Exception) {
             Log.e(TAG, "saveToCache failed: ${e.message}")
