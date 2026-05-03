@@ -55,6 +55,9 @@ import com.playtranslate.blendColors
 class MagnifierLens(
     private val ctx: Context,
     private val wm: WindowManager,
+    /** Display id this lens lives on; used so it gets blanked during clean
+     *  captures of the right display rather than leaking into the screenshot. */
+    private val displayId: Int,
 ) {
     /** Definitions payload for the right panel. Mirrors the fields the popup
      *  shows in its middle column. `senses` is reused from `WordLookupPopup`
@@ -277,7 +280,7 @@ class MagnifierLens(
             x = 0
             y = 0
         }
-        if (!PlayTranslateAccessibilityService.addOverlay(view, wm, lp)) return
+        if (!PlayTranslateAccessibilityService.addOverlay(view, wm, lp, displayId)) return
         lensView = view
         params = lp
     }
