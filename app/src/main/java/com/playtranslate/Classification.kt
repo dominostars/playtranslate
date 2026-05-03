@@ -141,11 +141,47 @@ fun classifyOcrResults(
             }
         }
 
-        // 3. Far: brand-new text with no nearby overlay.
+        // 3. Far: brand-new text with no nearby existing overlay.
+        //    But: if this group would naturally OCR-group with an
+        //    already-queued far entry, coalesce into it instead of queueing
+        //    a separate placeholder. This handles typewriter-style updates
+        //    where OCR splits "Begin typewriter text end typewriter text"
+        //    into two groups: the first content-matches the cached box and
+        //    queues a same-position far placeholder; the second has no
+        //    near-existing neighbor (the cached box was just removed via
+        //    contentMatchRemovals and is skipped above), so it'd otherwise
+        //    render as a separate fragment. Coalescing yields one merged
+        //    placeholder spanning both, matching what a single un-split
+        //    OCR group would have produced.
+        //
+        //    The proximity test reuses the same wouldGroup heuristic OCR
+        //    uses for its own intra-frame grouping, applied to bitmap-space
+        //    rects. Distant text (separate paragraphs / unrelated regions)
+        //    fails wouldGroup and stays as separate far entries.
         if (!nearExisting) {
             val lc = ocrResult.groupLineCounts.getOrElse(ocrIdx) { 1 }
             val orient = ocrResult.groupOrientations.getOrElse(ocrIdx) { TextOrientation.HORIZONTAL }
-            farOcrGroups.add(FarGroup(ocrText, ocrBound, lc, orient))
+            val coalesceIdx = farOcrGroups.indexOfFirst { existing ->
+                val existingBitmapRect = coords.ocrToBitmap(existing.bounds)
+                OcrManager.wouldGroup(existingBitmapRect, ocrFullRect, existing.orientation)
+            }
+            if (coalesceIdx >= 0) {
+                val existing = farOcrGroups[coalesceIdx]
+                val separator = if (existing.orientation == TextOrientation.VERTICAL) "\n" else " "
+                farOcrGroups[coalesceIdx] = FarGroup(
+                    text = existing.text + separator + ocrText,
+                    bounds = Rect(
+                        minOf(existing.bounds.left, ocrBound.left),
+                        minOf(existing.bounds.top, ocrBound.top),
+                        maxOf(existing.bounds.right, ocrBound.right),
+                        maxOf(existing.bounds.bottom, ocrBound.bottom),
+                    ),
+                    lineCount = existing.lineCount + lc,
+                    orientation = existing.orientation,
+                )
+            } else {
+                farOcrGroups.add(FarGroup(ocrText, ocrBound, lc, orient))
+            }
         }
     }
 
