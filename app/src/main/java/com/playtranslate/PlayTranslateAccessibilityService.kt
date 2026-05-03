@@ -149,7 +149,6 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      *  detectable, so a touch on display B never reached
      *  [lastInteractedDisplayId] tracking and B's hotkey routing was broken. */
     private val touchSentinels: MutableMap<Int, View> = mutableMapOf()
-    private val touchSentinelWms: MutableMap<Int, WindowManager> = mutableMapOf()
     private var regionEditorBar: View? = null
     private var regionEditorBarWm: WindowManager? = null
     private var regionEditorLabel: View? = null
@@ -998,14 +997,12 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         )
         if (addOverlayWindow(view, wm, params, displayId)) {
             touchSentinels[displayId] = view
-            touchSentinelWms[displayId] = wm
         }
     }
 
     /** Remove a single display's touch sentinel. */
     private fun removeTouchSentinelForDisplay(displayId: Int) {
         val view = touchSentinels.remove(displayId) ?: return
-        touchSentinelWms.remove(displayId)
         removeOverlayWindow(view)
     }
 
