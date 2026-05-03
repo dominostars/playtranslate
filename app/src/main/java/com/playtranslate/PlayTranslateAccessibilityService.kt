@@ -122,27 +122,30 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     private var debugOverlayView: OcrDebugOverlayView? = null
     private var debugOverlayWm: WindowManager? = null
     /**
-     * Per-display live translation overlays. The dirty overlay is its
-     * persistent companion (always present, paints empty when not dirty);
-     * the two are co-created in [showTranslationOverlay] and co-torn-down
-     * in [hideTranslationOverlayForDisplay], so the maps must stay in
-     * lock-step.
+     * Per-display live translation overlay pair. The dirty overlay is the
+     * main overlay's persistent companion (always present, paints empty when
+     * not dirty); they're co-created in [showTranslationOverlay] and
+     * co-torn-down in [hideTranslationOverlayForDisplay]. Bundling enforces
+     * the "exist together or not at all" invariant — previously maintained
+     * by convention across four parallel maps.
      */
-    private val translationOverlays: MutableMap<Int, TranslationOverlayView> = mutableMapOf()
-    private val translationOverlayWms: MutableMap<Int, WindowManager> = mutableMapOf()
-    private val dirtyOverlays: MutableMap<Int, TranslationOverlayView> = mutableMapOf()
-    private val dirtyOverlayWms: MutableMap<Int, WindowManager> = mutableMapOf()
+    private data class TranslationOverlayHandle(
+        val main: TranslationOverlayView,
+        val dirty: TranslationOverlayView,
+    )
+
+    private val translationOverlayHandles: MutableMap<Int, TranslationOverlayHandle> = mutableMapOf()
 
     /** Live translation overlay for [displayId], or null. */
     fun translationOverlayForDisplay(displayId: Int): TranslationOverlayView? =
-        translationOverlays[displayId]
+        translationOverlayHandles[displayId]?.main
 
     /** Persistent dirty overlay for [displayId], or null. */
     fun dirtyOverlayForDisplay(displayId: Int): TranslationOverlayView? =
-        dirtyOverlays[displayId]
+        translationOverlayHandles[displayId]?.dirty
 
     /** True iff any display has a live translation overlay registered. */
-    val hasAnyTranslationOverlay: Boolean get() = translationOverlays.isNotEmpty()
+    val hasAnyTranslationOverlay: Boolean get() = translationOverlayHandles.isNotEmpty()
     /** Per-display touch sentinels. With multiple selected displays each
      *  hosting a floating icon, each display needs its own sentinel — the
      *  pre-P5 single-instance setup left only the first display's touches
@@ -809,7 +812,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         // constructed with the same pinhole mode; otherwise recreate so the
         // view's pinhole-related bakes (child bg opacity, dispatchDraw mask
         // punching) match what the caller expects.
-        val existing = translationOverlays[displayId]
+        val existing = translationOverlayHandles[displayId]?.main
         if (existing != null && existing.pinholeMode == pinholeMode) {
             existing.setBoxes(boxes, cropLeft, cropTop, screenshotW, screenshotH)
             return
@@ -833,10 +836,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             PixelFormat.TRANSLUCENT
         ).apply { windowAnimations = 0 }
         addOverlayWindow(view, wm, params, displayId)
-        translationOverlayWms[displayId] = wm
-        translationOverlays[displayId] = view
 
-        // Create persistent dirty overlay window (always present, empty when not dirty)
+        // Create persistent dirty overlay window (always present, empty when not dirty).
+        // Shares the same wm instance as the main overlay.
         val dirtyView = TranslationOverlayView(themedCtx, pinholeMode = true)
         val dirtyParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -848,8 +850,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             PixelFormat.TRANSLUCENT
         ).apply { windowAnimations = 0 }
         addOverlayWindow(dirtyView, wm, dirtyParams, displayId)
-        dirtyOverlayWms[displayId] = wm
-        dirtyOverlays[displayId] = dirtyView
+
+        translationOverlayHandles[displayId] = TranslationOverlayHandle(view, dirtyView)
     }
 
     /**
@@ -857,10 +859,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      * Idempotent — no-op when nothing is registered for [displayId].
      */
     fun hideTranslationOverlayForDisplay(displayId: Int) {
-        translationOverlays.remove(displayId)?.let { removeOverlayWindow(it) }
-        translationOverlayWms.remove(displayId)
-        dirtyOverlays.remove(displayId)?.let { removeOverlayWindow(it) }
-        dirtyOverlayWms.remove(displayId)
+        val handle = translationOverlayHandles.remove(displayId) ?: return
+        removeOverlayWindow(handle.main)
+        removeOverlayWindow(handle.dirty)
     }
 
     /**
@@ -870,8 +871,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      * hides where they should only clear their own overlay.
      */
     fun hideTranslationOverlay() {
-        if (translationOverlays.isEmpty() && dirtyOverlays.isEmpty()) return
-        val ids = (translationOverlays.keys + dirtyOverlays.keys).toSet().toList()
+        if (translationOverlayHandles.isEmpty()) return
+        val ids = translationOverlayHandles.keys.toList()
         for (id in ids) hideTranslationOverlayForDisplay(id)
     }
 
@@ -886,7 +887,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         displayId: Int = CaptureService.instance?.primaryGameDisplayId()
             ?: android.view.Display.DEFAULT_DISPLAY,
     ) {
-        translationOverlays[displayId]?.removeBoxesByContent(toRemove)
+        translationOverlayHandles[displayId]?.main?.removeBoxesByContent(toRemove)
     }
 
     // ── Floating overlay icon ─────────────────────────────────────────────
