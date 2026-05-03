@@ -900,11 +900,15 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     // ── Input monitoring for live mode ──────────────────────────────────
 
     /**
-     * Per-display input callbacks. With multiple selected displays each
-     * running its own LiveMode, input on any source needs to fan out to
-     * every registered listener. P5 will scope per-display touch sentinels
-     * so input on display B actually reaches B's listener instead of
-     * relying on display A's sentinel firing for everyone.
+     * Per-display input callbacks. Each LiveMode registers a callback for its
+     * own displayId; the dispatch is per-source:
+     *  - Touch (sentinel) is display-bound — only the touched display's
+     *    callback fires (see [fireOnGameInputForDisplay]).
+     *  - Gamepad / D-pad is NOT display-bound — controller focus is
+     *    independent of touch focus, so a button press on a controller paired
+     *    to display A must reach A's callback even if the user just touched
+     *    display B for an unrelated reason. Fan-out is correct here (see
+     *    [fireOnGameInput]).
      */
     private val onGameInputs: MutableMap<Int, () -> Unit> = mutableMapOf()
     private var lastKeyEventTime = 0L
@@ -913,10 +917,19 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     private val TOUCH_HOLD_TIMEOUT_MS = 2000L
     private val touchTimeoutRunnable = Runnable { touchActive = false }
 
-    /** Fan an input event out to every registered listener. */
+    /** Fan an input event out to every registered listener. Used by the
+     *  gamepad/D-pad path in [onKeyEvent], where the input source isn't
+     *  bound to a specific display. */
     private fun fireOnGameInput() {
         if (onGameInputs.isEmpty()) return
         onGameInputs.values.forEach { it.invoke() }
+    }
+
+    /** Dispatch an input event to a single display's listener. Used by the
+     *  touch sentinel path, where the touched display is unambiguous and
+     *  invalidating other displays' overlays would cause spurious flicker. */
+    private fun fireOnGameInputForDisplay(displayId: Int) {
+        onGameInputs[displayId]?.invoke()
     }
 
     /**
@@ -988,7 +1001,11 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                     CaptureService.instance?.lastInteractedDisplayId = displayId
                     debugHandler.removeCallbacks(touchTimeoutRunnable)
                     debugHandler.postDelayed(touchTimeoutRunnable, TOUCH_HOLD_TIMEOUT_MS)
-                    fireOnGameInput()
+                    // Display-bound dispatch — only the touched display's
+                    // overlay should be invalidated. Other displays' overlays
+                    // stay put; their own scene-change detection covers any
+                    // independent updates.
+                    fireOnGameInputForDisplay(displayId)
                 }
                 false
             }
