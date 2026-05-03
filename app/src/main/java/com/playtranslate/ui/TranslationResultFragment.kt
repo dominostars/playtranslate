@@ -42,6 +42,22 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /**
+ * Reset [ScrollView] scroll to (0, 0) without firing the registered
+ * scroll listener — i.e. without making a programmatic reset look like
+ * user intent. Detach → scrollTo (synchronous, fires onScrollChanged
+ * inline on the main thread, sees no listener) → reattach.
+ *
+ * Only safe with the synchronous [ScrollView.scrollTo]; do not use with
+ * [ScrollView.smoothScrollTo] which dispatches asynchronously and would
+ * fire onScrollChanged after the reattach.
+ */
+private fun ScrollView.scrollToTopSilently(listener: View.OnScrollChangeListener) {
+    setOnScrollChangeListener(null)
+    scrollTo(0, 0)
+    setOnScrollChangeListener(listener)
+}
+
+/**
  * Shared fragment that displays translation results: original text, translation,
  * word lookups, copy/Anki buttons. Used by both MainActivity and TranslationResultActivity.
  */
@@ -122,6 +138,19 @@ class TranslationResultFragment : Fragment() {
      *  so [applyFurigana] can re-attach the highlight after rebuilding the
      *  spannable. */
     private var highlightedWordRange: IntRange? = null
+
+    /** Reified scroll listener so [scrollToTopSilently] can detach + reattach
+     *  it around programmatic scrolls — otherwise the framework's
+     *  onScrollChanged callback for our own [resultsContent.scrollTo] would
+     *  be misread as user intent and pause live mode the instant a fresh
+     *  result lands. */
+    private val scrollListener = View.OnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
+        if (scrollY != oldScrollY) {
+            dismissFurigana()
+            dismissWordPopup()
+            host?.onUserScrolled()
+        }
+    }
 
     /** Activity-scoped source of truth for the result + lookup state.
      *  Activities mutate via VM methods; this fragment observes
@@ -206,13 +235,7 @@ class TranslationResultFragment : Fragment() {
             dismissWordPopup()
             host?.onEditOriginalRequested()
         }
-        resultsContent.setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
-            if (scrollY != oldScrollY) {
-                dismissFurigana()
-                dismissWordPopup()
-                host?.onUserScrolled()
-            }
-        }
+        resultsContent.setOnScrollChangeListener(scrollListener)
         btnToggleTranslation.setOnClickListener {
             prefs.hideTranslationSection = !prefs.hideTranslationSection
             applyTranslationVisibility()
@@ -328,7 +351,7 @@ class TranslationResultFragment : Fragment() {
                 statusContainer.visibility = View.GONE
                 resultsContent.visibility = View.VISIBLE
                 resultActionButtons.visibility = View.VISIBLE
-                resultsContent.scrollTo(0, 0)
+                resultsContent.scrollToTopSilently(scrollListener)
                 tvTranslation.text = getString(R.string.status_translating)
                 tvTranslationNote.text = ""
                 tvTranslationNote.visibility = View.GONE
@@ -352,7 +375,7 @@ class TranslationResultFragment : Fragment() {
                 resultsContent.visibility = View.INVISIBLE
                 resultActionButtons.visibility = View.VISIBLE
                 btnResultAnki.visibility = View.VISIBLE
-                resultsContent.scrollTo(0, 0)
+                resultsContent.scrollToTopSilently(scrollListener)
                 resultsContent.post {
                     fitTextSizes()
                     if (view != null) resultsContent.visibility = View.VISIBLE
