@@ -376,7 +376,7 @@ class MainActivity :
             ACTION_STOP_LIVE -> if (isLiveMode) stopLiveMode()
             ACTION_ADD_CUSTOM_REGION -> openAddCustomRegionFromDropdown()
             ACTION_REFRESH_REGION_LABEL -> {
-                captureService?.clearOverride()
+                captureService?.let { svc -> svc.clearOverride(svc.primaryGameDisplayId()) }
                 refreshRegionPicker()
             }
             ACTION_OPEN_SETTINGS -> {
@@ -582,7 +582,7 @@ class MainActivity :
             }
             onTranslateOnce = { region ->
                 selectTab(Tab.TRANSLATE)
-                captureService?.configureOverride(region)
+                captureService?.let { svc -> svc.configureOverride(svc.primaryGameDisplayId(), region) }
                 withAccessibility { startOneShotCapture() }
             }
             onClose = { hideRegionPicker() }
@@ -1083,7 +1083,7 @@ class MainActivity :
         svc.liveModeState.observe(this) { isLive -> onLiveModeChanged(isLive) }
         svc.activeRegionLiveData.observe(this) { _ ->
             updateRegionButton()
-            if (svc.isOverride) hideRegionPicker()
+            if (svc.isOverrideForDisplay(svc.primaryGameDisplayId())) hideRegionPicker()
         }
 
         ensureConfigured()
@@ -1197,9 +1197,10 @@ class MainActivity :
      *  so we no longer pass sourceLang / targetLang here. */
     private fun configureService() {
         val svc = captureService ?: return
-        val entry = prefs.getSelectedRegion()
-        val ids = prefs.captureDisplayIds
-        svc.configureSaved(displayIds = ids, region = entry)
+        // Per-display region resolution lives in CaptureService now —
+        // configureSaved no longer takes a region. Each display's region
+        // is read from Prefs.selectedRegionIdForDisplay on demand.
+        svc.configureSaved(displayIds = prefs.captureDisplayIds)
     }
 
     private fun onSourceLanguageChanged() {
@@ -1820,7 +1821,7 @@ class MainActivity :
             return
         }
         val changedSavedRegion = dropdownHighlightedRow != dropdownRegionOrder.lastIndex
-        val hadOverride = captureService?.isOverride == true
+        val hadOverride = captureService?.let { it.isOverrideForDisplay(it.primaryGameDisplayId()) } == true
         if (changedSavedRegion) {
             prefs.selectedRegionId = dropdownRegions[selectedRegionIdx].id
             configureService()
@@ -1843,7 +1844,7 @@ class MainActivity :
         AddCustomRegionSheet().also { sheet ->
             sheet.gameDisplay = gameDisplay
             if (current != null && !current.isFullScreen) {
-                if (captureService?.isOverride == true) {
+                if (captureService?.let { it.isOverrideForDisplay(it.primaryGameDisplayId()) } == true) {
                     sheet.initRegion(current)
                 } else {
                     val regions = prefs.getRegionList()
@@ -1863,7 +1864,7 @@ class MainActivity :
             }
             sheet.onDismissed = { refreshRegionPicker() }
             sheet.onTranslateOnce = { region ->
-                captureService?.configureOverride(region)
+                captureService?.let { svc -> svc.configureOverride(svc.primaryGameDisplayId(), region) }
                 withAccessibility { startOneShotCapture() }
             }
         }.show(supportFragmentManager, AddCustomRegionSheet.TAG)

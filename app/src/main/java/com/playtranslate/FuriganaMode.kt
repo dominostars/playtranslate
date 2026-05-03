@@ -180,11 +180,11 @@ class FuriganaMode(
 
         try {
             // Shared OCR pipeline: crop → blackout icon → OCR → filter source chars
-            val pipeline = service.runOcr(raw)
+            val pipeline = service.runOcr(raw, displayId)
 
             if (pipeline == null) {
                 cachedFuriganaBoxes = null
-                service.handleNoTextDetected()
+                service.handleNoTextDetected(displayId)
                 return
             }
 
@@ -340,7 +340,7 @@ class FuriganaMode(
         // OCR the patched frame asynchronously
         rawOcrJob = scope.launch {
             try {
-                val pipeline = service.runOcr(patched)
+                val pipeline = service.runOcr(patched, displayId)
                 if (pipeline != null) {
                     val prevText = lastOcrText
                     val prevKanji = if (prevText != null) kanjiOnly(prevText) else ""
@@ -397,7 +397,7 @@ class FuriganaMode(
                     }
                 } else {
                     clearState()
-                    service.handleNoTextDetected()
+                    service.handleNoTextDetected(displayId)
                 }
             } finally {
                 if (!patched.isRecycled) patched.recycle()

@@ -247,7 +247,7 @@ class PinholeOverlayMode(
             // 6. OCR — try/finally ensures the copy is recycled even if runOcr
             //          throws (e.g. CancellationException from resetState).
             val pipeline = try {
-                service.runOcr(ocrImage)
+                service.runOcr(ocrImage, displayId)
             } finally {
                 if (ocrImage !== raw && !ocrImage.isRecycled) ocrImage.recycle()
             }

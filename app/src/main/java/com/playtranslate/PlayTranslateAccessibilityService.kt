@@ -1508,10 +1508,12 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 }
             }
         }
-        menu.activeRegion = CaptureService.instance?.activeRegion
+        // The floating menu is anchored to a specific display; show that
+        // display's region in the picker and route override writes to it.
+        menu.activeRegion = CaptureService.instance?.activeRegionForDisplay(display.displayId)
         menu.onRegionSelected = { region ->
             dismissFloatingMenu()
-            CaptureService.instance?.configureOverride(region)
+            CaptureService.instance?.configureOverride(display.displayId, region)
             if (CaptureService.instance?.isLive == true) {
                 hideTranslationOverlay()
                 CaptureService.instance?.refreshLiveOverlay()
@@ -1525,13 +1527,15 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             }
         }
         menu.onClearRegion = {
-            // Reset to full screen
+            // Reset this display's selected region to full screen.
             val prefs = Prefs(this)
-            prefs.selectedRegionId = Prefs.DEFAULT_REGION_LIST[0].id
+            prefs.setSelectedRegionIdForDisplay(display.displayId, Prefs.DEFAULT_REGION_LIST[0].id)
             val svc = CaptureService.instance
             if (svc != null && svc.isConfigured) {
-                val entry = Prefs.DEFAULT_REGION_LIST[0]
-                svc.configureSaved(displayIds = prefs.captureDisplayIds, region = entry)
+                // Drop any runtime override too — clearOverride re-resolves
+                // the region from Prefs (now full screen) and refreshes
+                // live mode for this display.
+                svc.clearOverride(display.displayId)
             }
             if (MainActivity.isInForeground) {
                 sendMainActivityIntent(MainActivity.ACTION_REFRESH_REGION_LABEL)
@@ -1644,8 +1648,10 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         hideTranslationOverlay()
         hideRegionOverlay()
 
-        // Pre-populate with current active region (or default if full-screen)
-        val currentRegion = CaptureService.instance?.activeRegion
+        // Pre-populate with this display's current active region (or
+        // default if full-screen). The region editor is anchored to the
+        // display [showRegionEditor] was opened on.
+        val currentRegion = CaptureService.instance?.activeRegionForDisplay(display.displayId)
         val initRegion = if (currentRegion == null || currentRegion.isFullScreen)
             RegionEntry("", 0.25f, 0.75f, 0.25f, 0.75f) else currentRegion
 
@@ -1726,7 +1732,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 val dv = dragView ?: return@setOnClickListener
                 val drawnRegion = RegionEntry("Drawn Region", dv.topFraction, dv.bottomFraction, dv.leftFraction, dv.rightFraction)
                 hideRegionEditor()
-                CaptureService.instance?.configureOverride(drawnRegion)
+                CaptureService.instance?.configureOverride(display.displayId, drawnRegion)
                 if (CaptureService.instance?.isLive == true) {
                     CaptureService.instance?.refreshLiveOverlay()
                 } else {
@@ -1828,11 +1834,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             dismissAllDragLookupPopups()
             if (!svc.isConfigured) {
                 val prefs = Prefs(this)
-                val entry = prefs.getSelectedRegion()
-                svc.configureSaved(
-                    displayIds = prefs.captureDisplayIds,
-                    region    = entry
-                )
+                svc.configureSaved(displayIds = prefs.captureDisplayIds)
             }
             // Delay start if a popup was just dismissed so the compositor
             // has time to remove it before the first screenshot.
