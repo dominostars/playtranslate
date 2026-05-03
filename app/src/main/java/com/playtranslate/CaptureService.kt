@@ -719,7 +719,23 @@ class CaptureService : Service() {
      * selection has gone offline.
      */
     private val displayListener = object : DisplayManager.DisplayListener {
-        override fun onDisplayAdded(displayId: Int) {}
+        override fun onDisplayAdded(displayId: Int) {
+            // Restore a previously-pruned display from the user's persisted
+            // selection. onDisplayRemoved subtracts the unplugged id from
+            // [gameDisplayIds]; without this, a re-plugged display stayed
+            // permanently excluded from reconciliation until something else
+            // forced configureSaved to run again. Gated on isLive so a
+            // force-stop (all displays disconnected → stopLive) doesn't
+            // auto-restart on reconnect — that path still requires an
+            // explicit user start.
+            if (!isLive) return
+            val persisted = Prefs(this@CaptureService).captureDisplayIds
+            if (displayId !in persisted) return
+            if (displayId !in gameDisplayIds) {
+                gameDisplayIds = gameDisplayIds + displayId
+            }
+            reconcileLiveModes("displayAdded($displayId)")
+        }
         override fun onDisplayChanged(displayId: Int) {
             if (displayId !in gameDisplayIds) return
             val st = getSystemService(DisplayManager::class.java)
