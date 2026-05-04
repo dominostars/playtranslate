@@ -9,6 +9,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.RadioButton
 import android.widget.TextView
@@ -17,6 +18,7 @@ import androidx.fragment.app.DialogFragment
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.playtranslate.MainActivity
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.Prefs
 import com.playtranslate.RegionEntry
@@ -30,20 +32,37 @@ class RegionPickerSheet : DialogFragment() {
     var onSaved: (() -> Unit)? = null
     var onTranslateOnce: ((RegionEntry) -> Unit)? = null
     var onClose: (() -> Unit)? = null
-    var gameDisplay: Display? = null
 
     private lateinit var prefs: Prefs
     private var workingList: MutableList<RegionEntry> = mutableListOf()
     private var selectedId: String = ""
     private var isEditMode = false
 
+    /** Displays the user has selected for capture (insertion-order from
+     *  [Prefs.captureDisplayIds]), filtered to ids the system can still
+     *  resolve. Drives the segmented control's contents. */
+    private var selectedDisplayIds: List<Int> = emptyList()
+    /** The display the segmented control currently has selected. All region
+     *  reads/writes during this picker session key off this id. */
+    private var activeDisplayId: Int = Display.DEFAULT_DISPLAY
+
     private lateinit var recyclerView: RecyclerView
     private lateinit var btnEdit: Button
     private lateinit var tvTitle: TextView
+    private lateinit var displaySegmentedControl: FrameLayout
     private lateinit var adapter: RegionAdapter
     private var displayListener: android.hardware.display.DisplayManager.DisplayListener? = null
     private var lastDisplayRotation: Int = -1
     private var itemTouchHelper: ItemTouchHelper? = null
+
+    /** Resolved on demand from [activeDisplayId]; null if the display has
+     *  been hot-unplugged between the segment switch and the lookup. */
+    private val gameDisplay: Display?
+        get() = displayManager()?.getDisplay(activeDisplayId)
+
+    private fun displayManager(): android.hardware.display.DisplayManager? =
+        context?.getSystemService(android.content.Context.DISPLAY_SERVICE)
+            as? android.hardware.display.DisplayManager
 
     override fun getTheme(): Int = fullScreenDialogTheme(requireContext())
 
@@ -70,11 +89,32 @@ class RegionPickerSheet : DialogFragment() {
 
         prefs = Prefs(requireContext())
         workingList = prefs.getRegionList().toMutableList()
-        selectedId = prefs.selectedRegionId.ifEmpty { workingList.firstOrNull()?.id ?: "" }
+
+        // Resolve the user's selected-for-capture displays (Settings → display
+        // picker writes [Prefs.captureDisplayIds]). Filter out stale ids the
+        // system can no longer resolve so a hot-unplugged-but-persisted entry
+        // doesn't leave the segmented control with a dead segment.
+        val dm = displayManager()
+        selectedDisplayIds = prefs.captureDisplayIds
+            .filter { dm?.getDisplay(it) != null }
+            .ifEmpty { listOf(Display.DEFAULT_DISPLAY) }
+
+        // Default to the first selected display PlayTranslate is NOT
+        // foregrounded on — the user is configuring the screen they're
+        // looking at game content on, not the one currently holding the app.
+        // MainActivity.foregroundDisplayId is set in onResume before
+        // openRegionPickerInline runs, so reading it here is safe.
+        activeDisplayId = selectedDisplayIds.firstOrNull { it != MainActivity.foregroundDisplayId }
+            ?: selectedDisplayIds.first()
+
+        selectedId = prefs.selectedRegionIdForDisplay(activeDisplayId)
+            .ifEmpty { workingList.firstOrNull()?.id ?: "" }
 
         recyclerView = view.findViewById(R.id.regionRecyclerView)
         btnEdit      = view.findViewById(R.id.btnEditRegion)
         tvTitle      = view.findViewById(R.id.tvRegionPickerTitle)
+        displaySegmentedControl = view.findViewById(R.id.displaySegmentedControl)
+        setupDisplaySegmentedControl()
 
         val noPreviewNotice = view.findViewById<View>(R.id.noPreviewNotice)
         if (PlayTranslateAccessibilityService.isEnabled) {
@@ -130,29 +170,23 @@ class RegionPickerSheet : DialogFragment() {
 
         // Track display changes (rotation, dimensions) to update preview thumbnails
         lastDisplayRotation = gameDisplay?.rotation ?: -1
-        val dm = requireContext().getSystemService(android.content.Context.DISPLAY_SERVICE)
-            as android.hardware.display.DisplayManager
+        val systemDm = displayManager() ?: return
         displayListener = object : android.hardware.display.DisplayManager.DisplayListener {
             override fun onDisplayAdded(displayId: Int) {}
             override fun onDisplayRemoved(displayId: Int) {
-                val gd = gameDisplay ?: return
-                if (displayId == gd.displayId && isAdded) {
-                    PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
-                    if (showsDialog) dismissAllowingStateLoss()
-                    else onClose?.invoke()
-                }
+                if (!isAdded || displayId !in selectedDisplayIds) return
+                onSelectedDisplayUnplugged(displayId)
             }
             override fun onDisplayChanged(displayId: Int) {
-                val gd = gameDisplay ?: return
-                if (displayId != gd.displayId) return
-                val newRotation = gd.rotation
+                if (displayId != activeDisplayId) return
+                val newRotation = gameDisplay?.rotation ?: return
                 if (newRotation != lastDisplayRotation) {
                     lastDisplayRotation = newRotation
                     adapter.submitList()
                 }
             }
         }
-        dm.registerDisplayListener(displayListener, null)
+        systemDm.registerDisplayListener(displayListener, null)
 
         // React to live mode changes while the sheet is visible
         com.playtranslate.CaptureService.instance?.liveModeState?.observe(viewLifecycleOwner) { live ->
@@ -193,6 +227,7 @@ class RegionPickerSheet : DialogFragment() {
         isEditMode = true
         btnEdit.text = getString(R.string.label_done)
         tvTitle.text = "Editing Regions"
+        applyTitleVisibility()
         adapter.submitList()
         itemTouchHelper?.attachToRecyclerView(recyclerView)
     }
@@ -202,9 +237,113 @@ class RegionPickerSheet : DialogFragment() {
         isEditMode = false
         btnEdit.text = getString(R.string.label_edit)
         tvTitle.text = getString(R.string.label_select_region)
+        applyTitleVisibility()
         itemTouchHelper?.attachToRecyclerView(null)
         adapter.submitList()
         showSelectedOverlay()
+    }
+
+    // ── Display segmented control ─────────────────────────────────────────
+
+    /** Build per-display pill segments when the user has more than one
+     *  display selected for capture, and toggle which of the title TextView
+     *  vs. the pill toggle is visible. Re-callable so display-removal can
+     *  rebuild against the new set. Uses the shared [buildPillToggle]
+     *  helper for the same sliding-pill look as the Settings overlay-mode
+     *  toggle. */
+    private fun setupDisplaySegmentedControl() {
+        if (selectedDisplayIds.size <= 1) {
+            displaySegmentedControl.removeAllViews()
+            applyTitleVisibility()
+            return
+        }
+        buildPillToggle(
+            container = displaySegmentedControl,
+            options = selectedDisplayIds.map { id -> displayLabelFor(id) to id },
+            selected = activeDisplayId,
+            onSelect = { newId -> onActiveDisplayChanged(newId) },
+        )
+        applyTitleVisibility()
+    }
+
+    /** Apply the right title-area visibility for the current edit mode +
+     *  display-count state. Multi-display non-edit shows the segmented
+     *  control; everything else shows the TextView. */
+    private fun applyTitleVisibility() {
+        val multiDisplay = selectedDisplayIds.size > 1
+        if (multiDisplay && !isEditMode) {
+            tvTitle.visibility = View.GONE
+            displaySegmentedControl.visibility = View.VISIBLE
+        } else {
+            tvTitle.visibility = View.VISIBLE
+            displaySegmentedControl.visibility = View.GONE
+        }
+    }
+
+    /** Switch the picker to a different selected display: reload that
+     *  display's stored region selection, refresh thumbnails (display
+     *  rotation/aspect can differ), and re-target the live preview rect. */
+    private fun onActiveDisplayChanged(newId: Int) {
+        if (newId == activeDisplayId) return
+        // Drop the preview on the old display before drawing on the new
+        // one so the picker's accessibility-overlay rect doesn't linger.
+        PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+        activeDisplayId = newId
+        selectedId = prefs.selectedRegionIdForDisplay(activeDisplayId)
+            .ifEmpty { workingList.firstOrNull()?.id ?: "" }
+        lastDisplayRotation = gameDisplay?.rotation ?: -1
+        adapter.submitList()
+        showSelectedOverlay()
+    }
+
+    /** A display the user had selected for capture went away. Drop it from
+     *  our local segment list. If it was the active one, fall through to a
+     *  surviving id; if no displays remain, dismiss the picker. */
+    private fun onSelectedDisplayUnplugged(removedId: Int) {
+        val remaining = selectedDisplayIds.filterNot { it == removedId }
+        if (remaining.isEmpty()) {
+            PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+            if (showsDialog) dismissAllowingStateLoss()
+            else onClose?.invoke()
+            return
+        }
+        selectedDisplayIds = remaining
+        if (removedId == activeDisplayId) {
+            val nextId = remaining.first()
+            // Reset state and rebuild the segmented control around the new
+            // active id; setupDisplaySegmentedControl() will check the
+            // matching segment and applyTitleVisibility() handles the
+            // single-display fallback (no segmented control at all).
+            activeDisplayId = nextId
+            selectedId = prefs.selectedRegionIdForDisplay(activeDisplayId)
+                .ifEmpty { workingList.firstOrNull()?.id ?: "" }
+            lastDisplayRotation = gameDisplay?.rotation ?: -1
+            setupDisplaySegmentedControl()
+            adapter.submitList()
+            showSelectedOverlay()
+        } else {
+            // Active display unchanged — just rebuild the segmented control
+            // so the unplugged segment disappears.
+            setupDisplaySegmentedControl()
+        }
+    }
+
+    /** User-facing label for a segmented-control button. Prefers the
+     *  system-provided [Display.getName] (e.g. "Built-in Screen", "USB-C");
+     *  falls back to "Display N" when the name is missing or duplicated
+     *  across displays in this set. The pill TextView handles width-based
+     *  ellipsization at render time, so we don't pre-truncate here — that
+     *  would clip names like "Built-in Screen" even when the pill has room
+     *  for the full string. */
+    private fun displayLabelFor(displayId: Int): String {
+        val display = displayManager()?.getDisplay(displayId)
+        val rawName = display?.name?.trim().orEmpty()
+        val nameIsDuplicated = rawName.isNotEmpty() && selectedDisplayIds.count { other ->
+            other != displayId &&
+                displayManager()?.getDisplay(other)?.name?.trim() == rawName
+        } > 0
+        if (rawName.isEmpty() || nameIsDuplicated) return "Display $displayId"
+        return rawName
     }
 
     // ── Drag-to-reorder ──────────────────────────────────────────────────
@@ -278,7 +417,8 @@ class RegionPickerSheet : DialogFragment() {
             sheet.onDismissed = {
                 if (isAdded && !isDetached) {
                     workingList = prefs.getRegionList().toMutableList()
-                    selectedId = prefs.selectedRegionId.ifEmpty { workingList.firstOrNull()?.id ?: "" }
+                    selectedId = prefs.selectedRegionIdForDisplay(activeDisplayId)
+                        .ifEmpty { workingList.firstOrNull()?.id ?: "" }
                     adapter.submitList()
                     showSelectedOverlay()
                 }
@@ -292,7 +432,7 @@ class RegionPickerSheet : DialogFragment() {
         AddCustomRegionSheet().also { sheet ->
             sheet.gameDisplay = gameDisplay
             sheet.onRegionAdded = { newEntry ->
-                prefs.selectedRegionId = newEntry.id
+                prefs.setSelectedRegionIdForDisplay(activeDisplayId, newEntry.id)
                 PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
                 onSaved?.invoke()
                 if (showsDialog) dismissAllowingStateLoss()
@@ -300,7 +440,8 @@ class RegionPickerSheet : DialogFragment() {
             sheet.onDismissed = {
                 if (isAdded && !isDetached) {
                     workingList = prefs.getRegionList().toMutableList()
-                    selectedId = prefs.selectedRegionId.ifEmpty { workingList.firstOrNull()?.id ?: "" }
+                    selectedId = prefs.selectedRegionIdForDisplay(activeDisplayId)
+                        .ifEmpty { workingList.firstOrNull()?.id ?: "" }
                     adapter.submitList()
                     showSelectedOverlay()
                 }
@@ -317,7 +458,8 @@ class RegionPickerSheet : DialogFragment() {
     fun refreshFromPrefs() {
         if (!isAdded || isDetached) return
         workingList = prefs.getRegionList().toMutableList()
-        selectedId = prefs.selectedRegionId.ifEmpty { workingList.firstOrNull()?.id ?: "" }
+        selectedId = prefs.selectedRegionIdForDisplay(activeDisplayId)
+            .ifEmpty { workingList.firstOrNull()?.id ?: "" }
         adapter.submitList()
         showSelectedOverlay()
     }
@@ -453,7 +595,7 @@ class RegionPickerSheet : DialogFragment() {
                     if (pos == RecyclerView.NO_POSITION) return@setOnClickListener
                     val e = workingList.getOrElse(pos) { return@setOnClickListener }
                     selectedId = e.id
-                    prefs.selectedRegionId = e.id
+                    prefs.setSelectedRegionIdForDisplay(activeDisplayId, e.id)
                     if (!isLive) {
                         gameDisplay?.let { d -> PlayTranslateAccessibilityService.instance?.showRegionOverlay(d, e) }
                     }
