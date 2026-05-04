@@ -125,20 +125,16 @@ class Prefs(context: Context) {
     val hasDisplaySelection: Boolean
         get() = sp.contains(KEY_DISPLAY_IDS)
 
-    var selectedRegionId: String
-        get() = sp.getString(KEY_SELECTED_REGION_ID, "") ?: ""
-        set(v) = sp.edit().putString(KEY_SELECTED_REGION_ID, v).apply()
-
     /**
-     * Per-display selected region id. Falls back to the legacy global
-     * [selectedRegionId] for displays that don't have their own entry yet —
-     * gives a sane initial region the first time the user toggles a new
-     * display on. The region LIST itself ([getRegionList]) stays shared
-     * across displays — region fractions are display-portable.
+     * Per-display selected region id, or empty string if [displayId] has no
+     * entry yet — callers treat empty as "use the full-screen default" (see
+     * [CaptureService.activeRegionForDisplay] and [primaryDisplayRegion]).
+     * The region LIST itself ([getRegionList]) stays shared across displays —
+     * region fractions are display-portable.
      */
     fun selectedRegionIdForDisplay(displayId: Int): String {
         val map = readSelectedRegionMap()
-        return map[displayId] ?: selectedRegionId
+        return map[displayId] ?: ""
     }
 
     fun setSelectedRegionIdForDisplay(displayId: Int, id: String) {
@@ -216,10 +212,19 @@ class Prefs(context: Context) {
         sp.edit().putString(KEY_ICON_POSITION_BY_DISPLAY, obj.toString()).apply()
     }
 
-    /** Returns the saved selected region, or the first entry (full screen) as fallback. */
-    fun getSelectedRegion(): RegionEntry {
+    /**
+     * Persistent counterpart to [CaptureService.activeRegion]: resolves the
+     * region for the first id in [captureDisplayIds] from the per-display
+     * selection map, falling back to the first list entry (full screen).
+     * Use as the in-app UI fallback when [CaptureService] isn't bound yet
+     * (e.g., the initial render before onServiceConnected) — once the
+     * service is up, prefer its `activeRegion` so `lastInteractedDisplayId`
+     * can steer the answer.
+     */
+    fun primaryDisplayRegion(): RegionEntry {
         val list = getRegionList()
-        val id = selectedRegionId
+        val primaryId = captureDisplayIds.firstOrNull() ?: android.view.Display.DEFAULT_DISPLAY
+        val id = selectedRegionIdForDisplay(primaryId)
         return if (id.isNotEmpty()) list.find { it.id == id } ?: list.first() else list.first()
     }
 
@@ -354,14 +359,18 @@ class Prefs(context: Context) {
             sp.edit().putString(KEY_ICON_POSITION_BY_DISPLAY, obj.toString()).apply()
         }
 
-        if (sp.contains(KEY_SELECTED_REGION_ID) && !sp.contains(KEY_SELECTED_REGION_BY_DISPLAY)) {
-            val legacyRegionId = sp.getString(KEY_SELECTED_REGION_ID, "") ?: ""
-            if (legacyRegionId.isNotEmpty()) {
-                val obj = JSONObject().apply {
-                    put(legacyDisplayId.toString(), legacyRegionId)
+        if (sp.contains(KEY_SELECTED_REGION_ID)) {
+            if (!sp.contains(KEY_SELECTED_REGION_BY_DISPLAY)) {
+                val legacyRegionId = sp.getString(KEY_SELECTED_REGION_ID, "") ?: ""
+                if (legacyRegionId.isNotEmpty()) {
+                    val obj = JSONObject().apply {
+                        put(legacyDisplayId.toString(), legacyRegionId)
+                    }
+                    sp.edit().putString(KEY_SELECTED_REGION_BY_DISPLAY, obj.toString()).apply()
                 }
-                sp.edit().putString(KEY_SELECTED_REGION_BY_DISPLAY, obj.toString()).apply()
             }
+            // Nothing reads KEY_SELECTED_REGION_ID after this point — drop it.
+            sp.edit().remove(KEY_SELECTED_REGION_ID).apply()
         }
     }
 
