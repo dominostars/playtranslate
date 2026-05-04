@@ -271,10 +271,6 @@ class MainActivity :
     // ── Lifecycle ─────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Migration must run before applyTheme so first launch after the
-        // 4-themes → mode+accent rollout already shows the user's intended
-        // palette (otherwise they'd see Default until next recreate).
-        prefs.migrateLegacyPrefs()
         applyTheme()
         super.onCreate(savedInstanceState)
         maybePromptForCrashShare()

@@ -51,6 +51,15 @@ class Prefs(context: Context) {
     private val sp: SharedPreferences =
         context.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
 
+    init {
+        // Upgrade-time migration runs on every Prefs construction so any
+        // read (including from PlayTranslateAccessibilityService.onServiceConnected,
+        // which can fire before MainActivity ever runs) sees post-migration
+        // values. Idempotent and cheap (sp.contains() lookups) once migration
+        // has actually executed on a device.
+        migrateLegacyPrefs()
+    }
+
     var sourceLang: String
         get() = sp.getString(KEY_SOURCE_LANG, TranslateLanguage.JAPANESE) ?: TranslateLanguage.JAPANESE
         set(v) = sp.edit().putString(KEY_SOURCE_LANG, v).apply()
@@ -121,7 +130,7 @@ class Prefs(context: Context) {
      *  Pre-multi-display upgrade users get this set to true by
      *  [migrateLegacyPrefs], which writes [KEY_DISPLAY_IDS] from the legacy
      *  [KEY_DISPLAY_ID] before any code path can hit the auto-detect branch
-     *  (migration runs at the top of `MainActivity.onCreate`). */
+     *  (migration runs from the [Prefs] init block on every construction). */
     val hasDisplaySelection: Boolean
         get() = sp.contains(KEY_DISPLAY_IDS)
 
@@ -283,8 +292,8 @@ class Prefs(context: Context) {
      * (used on the shipped `main` branch, where 0 = OVERLAYS and
      * 1 = IN_APP_ONLY). If an upgrading user had IN_APP_ONLY selected, flip
      * the new [hideGameOverlays] toggle on. The legacy key is then removed
-     * so this only runs once. Idempotent and safe to call from multiple
-     * entry points (MainActivity.onCreate and CaptureService.startLive).
+     * so this only runs once. Invoked from the [Prefs] init block on every
+     * construction; idempotent and cheap once the legacy keys are gone.
      *
      * The new overlay-mode pref is a separate key ([KEY_OVERLAY_MODE],
      * string-backed by [OverlayMode.name]) that defaults to TRANSLATION for
