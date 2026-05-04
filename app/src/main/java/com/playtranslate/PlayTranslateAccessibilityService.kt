@@ -1899,6 +1899,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                     putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_BOTTOM_FRAC, region.bottom)
                     putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_LEFT_FRAC, region.left)
                     putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_RIGHT_FRAC, region.right)
+                    putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_TARGET_DISPLAY_ID, displayId)
                 }
                 if (bitmap != null) {
                     val path = savePreCapturedScreenshot(bitmap)

@@ -404,9 +404,15 @@ class CaptureService : Service() {
         }
         overrideRegions.clear()
         hasCaptureStateConfigured = true
-        recalcActiveRegionLiveData()
         ensureLanguageManagersFor(snapshotTranslationTarget())
         _statusUpdates.tryEmit(getString(R.string.status_idle))
+        // Treat saved-region reconfig as a region change for the running
+        // pipeline: refreshes live modes' cached boxes/cleanRef/dedup so
+        // the next cycle reads the new region instead of replaying stale
+        // state, cancels in-flight one-shots tied to the prior region, and
+        // clears the focused-display overlay. Symmetric with
+        // configureOverride / clearOverride, both of which already do this.
+        afterRegionChange(primaryDisplayId)
     }
 
     /** Single-display convenience for un-migrated callers. Resolves to

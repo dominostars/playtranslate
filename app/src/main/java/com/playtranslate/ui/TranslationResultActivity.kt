@@ -399,14 +399,26 @@ class TranslationResultActivity :
         val leftFrac   = intent.getFloatExtra(EXTRA_LEFT_FRAC, 0f)
         val rightFrac  = intent.getFloatExtra(EXTRA_RIGHT_FRAC, 1f)
 
-        // Apply the drawn region as a runtime override on the primary
+        // Route everything (override target, screenshot OCR, status-bar /
+        // icon-blackout sizing) to the display the drag originated on.
+        // Falling back to primaryGameDisplayId() would land on the first
+        // selected display, which on multi-display setups is not the
+        // display the pre-captured bitmap actually came from.
+        val targetDisplayId = intent.getIntExtra(EXTRA_TARGET_DISPLAY_ID, -1)
+            .takeIf { it != -1 } ?: svc.primaryGameDisplayId()
+
+        // Apply the drawn region as a runtime override on the originating
         // display so this one-shot uses the user's chosen frame, then
         // re-configure with the persisted display selection. configureSaved
         // no longer takes a region — region is per-display from Prefs +
-        // overrides.
-        svc.configureSaved(displayIds = prefs.captureDisplayIds)
+        // overrides. Pass the originating display as primaryDisplayId so
+        // lastInteractedDisplayId tracks the user's actual drag target.
+        svc.configureSaved(
+            displayIds = prefs.captureDisplayIds,
+            primaryDisplayId = targetDisplayId,
+        )
         svc.configureOverride(
-            svc.primaryGameDisplayId(),
+            targetDisplayId,
             RegionEntry("Drawn Region", topFrac, bottomFrac, leftFrac, rightFrac),
         )
 
@@ -419,9 +431,10 @@ class TranslationResultActivity :
         val screenshotPath = intent.getStringExtra(EXTRA_SCREENSHOT_PATH)
         val session = if (screenshotPath != null) {
             val bitmap = BitmapFactory.decodeFile(screenshotPath)
-            if (bitmap != null) svc.processScreenshot(bitmap) else svc.captureOnce()
+            if (bitmap != null) svc.processScreenshot(bitmap, targetDisplayId)
+            else svc.captureOnce(targetDisplayId)
         } else {
-            svc.captureOnce()
+            svc.captureOnce(targetDisplayId)
         }
 
         observeSession(session)
@@ -519,6 +532,11 @@ class TranslationResultActivity :
         const val EXTRA_RIGHT_FRAC = "extra_right_frac"
         const val EXTRA_SCREENSHOT_PATH = "extra_screenshot_path"
         const val EXTRA_SENTENCE_TEXT = "extra_sentence_text"
+        /** Display the drag originated on. Routes the override + screenshot
+         *  processing back to the same display the icon (and pre-captured
+         *  bitmap) live on, instead of the multi-display "primary" which
+         *  could be a different screen. */
+        const val EXTRA_TARGET_DISPLAY_ID = "extra_target_display_id"
         /** Drag-flow lens "Open" tap: the looked-up word from the magnifier
          *  becomes the right segment label of the Sentence/Word pill toggle
          *  in the toolbar. When absent, the activity stays in plain
