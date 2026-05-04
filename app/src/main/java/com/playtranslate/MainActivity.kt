@@ -387,7 +387,12 @@ class MainActivity :
                 else openAddCustomRegionFromDropdown()
             }
             ACTION_REFRESH_REGION_LABEL -> {
-                captureService?.let { svc -> svc.clearOverride(svc.primaryGameDisplayId()) }
+                // Pure UI refresh — the sole sender (floating-icon
+                // onClearRegion in the accessibility service) has already
+                // cleared the right display's override before firing this
+                // intent. A clearOverride(primary) here would silently
+                // drop an unrelated override on a different display when
+                // the icon's display isn't the service primary.
                 refreshRegionPicker()
             }
             ACTION_OPEN_SETTINGS -> {

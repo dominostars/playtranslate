@@ -402,6 +402,15 @@ class CaptureService : Service() {
         displayIds: Set<Int>,
         primaryDisplayId: Int = displayIds.firstOrNull() ?: 0,
     ) {
+        // Hide overlays for displays leaving the selection — the wasLive
+        // path tears them down via setLiveDisplays(emptySet)→mode.stop, but
+        // the not-live path has no other cleanup, so a residual override
+        // overlay on a now-deselected display would otherwise stay
+        // painted on a screen the app no longer captures.
+        val removedIds = gameDisplayIds - displayIds
+        val a11y = PlayTranslateAccessibilityService.instance
+        for (id in removedIds) a11y?.hideTranslationOverlayForDisplay(id)
+
         gameDisplayIds   = displayIds
         // Track the user's intent for the primary so the in-app UI focuses
         // on it. Keeps lastInteractedDisplayId fresh for the new selection.
@@ -421,6 +430,8 @@ class CaptureService : Service() {
         // this. Pass the full display set because configureSaved is the
         // fan-out path — every selected display's region selection in
         // Prefs may have been rewritten by the caller before this call.
+        // Region indicator should only flash on still-selected displays,
+        // so removed ids stay out of the changed set.
         afterRegionChange(displayIds)
     }
 
