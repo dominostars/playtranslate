@@ -342,14 +342,14 @@ class CaptureService : Service() {
      *  (or a fresh [configureSaved]) clears it. */
     fun configureOverride(displayId: Int, region: RegionEntry) {
         overrideRegions[displayId] = region
-        afterRegionChange(displayId)
+        afterRegionChange(setOf(displayId))
     }
 
     /** Clear the override for [displayId], reverting to its persisted
      *  region selection. */
     fun clearOverride(displayId: Int) {
         if (overrideRegions.remove(displayId) == null) return
-        afterRegionChange(displayId)
+        afterRegionChange(setOf(displayId))
     }
 
     /** Clear every per-display region override. Used by [configureSaved]
@@ -357,33 +357,39 @@ class CaptureService : Service() {
      *  state across all displays. */
     private fun clearAllOverrides() {
         if (overrideRegions.isEmpty()) return
+        val cleared = overrideRegions.keys.toSet()
         overrideRegions.clear()
-        afterRegionChange(displayId = primaryGameDisplayId())
+        afterRegionChange(cleared)
     }
 
     /** Side effects shared by every region-changing entry point: hide
      *  any region indicator + active translation overlay so they don't
-     *  show stale state, cancel in-flight one-shots, restart live mode
+     *  show stale state, cancel in-flight one-shots, refresh live mode
      *  if it was running (so the new region takes effect on the next
-     *  cycle). [displayId] identifies the changed display for the
-     *  region-indicator hide path. */
-    private fun afterRegionChange(displayId: Int) {
+     *  cycle). [changedDisplayIds] identifies the displays whose regions
+     *  changed — only those displays get their overlay hidden, their
+     *  live mode refreshed, and their region indicator flashed. Other
+     *  displays' caches are still valid and shouldn't be invalidated
+     *  (avoids a wasteful re-OCR cycle and a brief stale-box flash, and
+     *  prevents PinholeOverlayMode from grabbing its own still-visible
+     *  overlay pixels in the next raw capture because hide and refresh
+     *  scopes are now aligned). */
+    private fun afterRegionChange(changedDisplayIds: Set<Int>) {
         recalcActiveRegionLiveData()
-        PlayTranslateAccessibilityService.instance?.hideRegionIndicator()
-        PlayTranslateAccessibilityService.instance?.hideTranslationOverlayForDisplay(displayId)
+        val a11y = PlayTranslateAccessibilityService.instance
+        a11y?.hideRegionIndicator()
+        for (id in changedDisplayIds) a11y?.hideTranslationOverlayForDisplay(id)
         oneShotCaptureJob?.cancel()
         oneShotManager.cancel()
         if (isLive) {
-            // Region change — modes pick up the new region on their next OCR
-            // cycle via [activeRegionForDisplay]. refresh() clears their cached
-            // state (cachedBoxes, cleanRef, dedup) so the next cycle reads the
-            // new region instead of replaying stale dedup/cache values. Cleaner
-            // than a full stop+startLive — no overlay tear-down/re-creation
-            // flicker. (Old behavior: stopAllLiveModes() + startLive()
-            // rebuilt every mode; setLiveDisplays would no-op on a same-target
-            // same-flavor call, so we refresh the existing modes directly.)
-            liveModes.values.forEach { it.refresh() }
-            flashRegionIndicator(displayId)
+            // Region change — only the changed displays' modes need to
+            // pick up the new region on their next OCR cycle via
+            // [activeRegionForDisplay]. refresh() clears their cached
+            // state (cachedBoxes, cleanRef, dedup) so the next cycle
+            // reads the new region instead of replaying stale dedup/cache
+            // values.
+            for (id in changedDisplayIds) liveModes[id]?.refresh()
+            for (id in changedDisplayIds) flashRegionIndicator(id)
         }
     }
 
@@ -409,10 +415,13 @@ class CaptureService : Service() {
         // Treat saved-region reconfig as a region change for the running
         // pipeline: refreshes live modes' cached boxes/cleanRef/dedup so
         // the next cycle reads the new region instead of replaying stale
-        // state, cancels in-flight one-shots tied to the prior region, and
-        // clears the focused-display overlay. Symmetric with
-        // configureOverride / clearOverride, both of which already do this.
-        afterRegionChange(primaryDisplayId)
+        // state, cancels in-flight one-shots tied to the prior region,
+        // and clears each display's overlay. Symmetric with
+        // configureOverride / clearOverride, both of which already do
+        // this. Pass the full display set because configureSaved is the
+        // fan-out path — every selected display's region selection in
+        // Prefs may have been rewritten by the caller before this call.
+        afterRegionChange(displayIds)
     }
 
     /** Single-display convenience for un-migrated callers. Resolves to

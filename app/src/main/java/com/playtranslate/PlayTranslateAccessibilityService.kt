@@ -1931,6 +1931,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 putExtra(MainActivity.EXTRA_BOTTOM_FRAC, region.bottom)
                 putExtra(MainActivity.EXTRA_LEFT_FRAC, region.left)
                 putExtra(MainActivity.EXTRA_RIGHT_FRAC, region.right)
+                putExtra(MainActivity.EXTRA_TARGET_DISPLAY_ID, displayId)
             }
             startActivity(intent)
         }
