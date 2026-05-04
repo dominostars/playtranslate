@@ -600,7 +600,7 @@ class MainActivity :
     }
 
     private fun updateRegionButton() {
-        val region = captureService?.activeRegion ?: prefs.getSelectedRegion()
+        val region = captureService?.activeRegion ?: prefs.primaryDisplayRegion()
         val label = region.label.ifEmpty { "Full screen" }
         val isInAppOnly = Prefs.shouldUseInAppOnlyMode(this)
         val overlayLive = isLiveMode && !isInAppOnly
@@ -1580,7 +1580,7 @@ class MainActivity :
     /** Returns the "Searching for X in the Y area" message for live mode. */
     private fun searchingStatusText(): String {
         val lang = langDisplayName(selectedSourceLang())
-        val entry = prefs.getSelectedRegion()
+        val entry = prefs.primaryDisplayRegion()
         val serviceLabel = captureService?.activeRegion?.label?.takeIf { it.isNotEmpty() }
         val label = serviceLabel ?: entry.label
         return "Searching for $lang in the \"$label\" area"
