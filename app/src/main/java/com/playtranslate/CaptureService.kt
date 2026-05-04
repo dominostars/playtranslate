@@ -783,12 +783,6 @@ class CaptureService : Service() {
         _panelState.value = PanelState.Searching
 
         val prefs = Prefs(this)
-        // Migrate legacy ordinal-based auto_translation_mode here too so
-        // users upgrading from an old build who start live from the floating
-        // icon/hotkey before ever opening MainActivity still get the correct
-        // mode class. The MainActivity.onCreate call is the primary path;
-        // this is defensive.
-        prefs.migrateLegacyPrefs()
 
         // Compute target = user-selected displays minus those we should
         // skip right now (STATE_OFF, or hosting PlayTranslate's own UI
