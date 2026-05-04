@@ -119,14 +119,13 @@ class FuriganaMode(
         if (mgr.isLoopRunning(displayId)) {
             mgr.requestCleanCapture(displayId)
         } else {
-            // Loop was stopped (e.g. via hotkeyHoldStart). Restart it; startLoop
-            // itself calls requestCleanCapture so the next frame comes in clean.
+            // Loop was stopped (e.g. via hotkeyHoldStart). Restart it;
+            // startLoop's first frame is clean by construction.
             startLoop(mgr)
         }
     }
 
     private fun startLoop(mgr: ScreenshotManager) {
-        mgr.requestCleanCapture(displayId)
         mgr.startLoop(displayId, service.serviceScope,
             onCleanFrame = ::handleCleanFrame,
             onRawFrame = ::handleRawFrame

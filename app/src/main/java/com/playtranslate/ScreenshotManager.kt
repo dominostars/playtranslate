@@ -202,7 +202,13 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) {
         onRawFrame: (Bitmap) -> Unit
     ) {
         stopLoop(displayId)
-        val loop = Loop(displayId = displayId)
+        // First frame is always clean — every caller wants a clean
+        // baseline before [onRawFrame] starts producing diffs against
+        // [cleanRef]. Bake it into the loop's initial state instead of
+        // making callers chain requestCleanCapture(displayId) before
+        // every startLoop, which silently no-ops because the loop entry
+        // doesn't exist yet at that point.
+        val loop = Loop(displayId = displayId, cleanRequested = true)
         loops[displayId] = loop
         loop.job = scope.launch {
             while (isActive) {

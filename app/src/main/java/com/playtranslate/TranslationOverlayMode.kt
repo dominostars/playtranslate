@@ -91,7 +91,6 @@ class TranslationOverlayMode(
             return
         }
         DetectionLog.log("Starting loop on display ${displayId}")
-        mgr.requestCleanCapture(displayId)
         mgr.startLoop(displayId, service.serviceScope,
             onCleanFrame = ::handleCleanFrame,
             onRawFrame = ::handleRawFrame
