@@ -159,7 +159,13 @@ class MainActivity :
 
     // Region-specific dropdown state
     private var dropdownRegionOrder = listOf<Int>()
-    private var dropdownGameDisplay: Display? = null
+    /** Displays the dropdown's region selection writes to and previews on.
+     *  Computed as captureDisplayIds minus the activity's foreground display
+     *  so the user is configuring the screen they're looking at game content
+     *  on, not the one currently holding the picker — see
+     *  [dropdownTargetDisplayIds]. The first id is also used as the
+     *  preview-overlay target since the region indicator is single-display. */
+    private var dropdownTargetIds: List<Int> = emptyList()
     private var dropdownRegions = listOf<RegionEntry>()
 
     // ── Display listener (detects screen connect/disconnect) ─────────────
@@ -1718,16 +1724,35 @@ class MainActivity :
 
     // ── Region quick-dropdown ──────────────────────────────────────────────
 
+    /** All capture displays the dropdown should write to: the user's
+     *  selected-for-capture set minus whichever display the activity is
+     *  currently foregrounded on (the user is looking at game content on
+     *  the OTHER displays). Falls back to the full capture set when the
+     *  filter would empty (single-display setups, or activity foregrounded
+     *  outside the capture set), so the dropdown always has somewhere to
+     *  apply the region. Order matches captureDisplayIds insertion order
+     *  — the first entry is treated as the "primary" preview target since
+     *  the region indicator is single-display. */
+    private fun dropdownTargetDisplayIds(): List<Int> {
+        val all = prefs.captureDisplayIds.toList()
+        val filtered = all.filter { it != MainActivity.foregroundDisplayId }
+        return filtered.ifEmpty { all }
+    }
+
     private fun showRegionDropdown(anchor: View) {
         val regions = prefs.getRegionList()
         if (regions.isEmpty()) return
 
+        val targetIds = dropdownTargetDisplayIds()
+        if (targetIds.isEmpty()) return
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-        val primaryId = prefs.captureDisplayIds.firstOrNull()
-            ?: android.view.Display.DEFAULT_DISPLAY
-        val gameDisplay = displayManager.getDisplay(primaryId)
+        val previewDisplay = displayManager.getDisplay(targetIds.first())
 
-        val currentId = prefs.selectedRegionId
+        // "Current" for the row ordering is the first target display's
+        // persisted selection, which is also what the preview overlay
+        // reflects — so the bottom (highlighted-on-open) row matches the
+        // overlay the user sees the moment the dropdown appears.
+        val currentId = prefs.selectedRegionIdForDisplay(targetIds.first())
         val currentIndex = regions.indexOfFirst { it.id == currentId }.coerceAtLeast(0)
         val order = mutableListOf<Int>()
         order.add(-1)
@@ -1735,7 +1760,7 @@ class MainActivity :
         order.add(currentIndex)
         dropdownRegionOrder = order
         dropdownHighlightedRow = order.lastIndex
-        dropdownGameDisplay = gameDisplay
+        dropdownTargetIds = targetIds
         dropdownRegions = regions
 
         val dp = resources.displayMetrics.density
@@ -1757,10 +1782,8 @@ class MainActivity :
         dropdownRows = rows
         dropdownHighlightListener = { rowIdx ->
             val regionIdx = dropdownRegionOrder[rowIdx]
-            if (regionIdx >= 0) {
-                dropdownGameDisplay?.let { d ->
-                    PlayTranslateAccessibilityService.instance?.showRegionOverlay(d, dropdownRegions[regionIdx])
-                }
+            if (regionIdx >= 0 && previewDisplay != null) {
+                PlayTranslateAccessibilityService.instance?.showRegionOverlay(previewDisplay, dropdownRegions[regionIdx])
             }
         }
         dropdownCommitAction = { commitRegionDropdownSelection() }
@@ -1780,9 +1803,9 @@ class MainActivity :
         popup.showAtLocation(anchor, Gravity.NO_GRAVITY, popupMarginH, popupTop)
         dropdownPopup = popup
 
-        if (gameDisplay != null) {
+        if (previewDisplay != null) {
             val entry = regions[currentIndex]
-            PlayTranslateAccessibilityService.instance?.showRegionOverlay(gameDisplay, entry)
+            PlayTranslateAccessibilityService.instance?.showRegionOverlay(previewDisplay, entry)
         }
     }
 
@@ -1803,6 +1826,7 @@ class MainActivity :
 
     private fun commitRegionDropdownSelection() {
         val selectedRegionIdx = dropdownRegionOrder[dropdownHighlightedRow]
+        val targetIds = dropdownTargetIds
         dismissDropdown()
         inDragMode = false
         if (selectedRegionIdx == -1) {
@@ -1821,9 +1845,19 @@ class MainActivity :
             return
         }
         val changedSavedRegion = dropdownHighlightedRow != dropdownRegionOrder.lastIndex
-        val hadOverride = captureService?.let { it.isOverrideForDisplay(it.primaryGameDisplayId()) } == true
+        val hadOverride = captureService?.let { svc ->
+            targetIds.any { svc.isOverrideForDisplay(it) }
+        } == true
         if (changedSavedRegion) {
-            prefs.selectedRegionId = dropdownRegions[selectedRegionIdx].id
+            val regionId = dropdownRegions[selectedRegionIdx].id
+            // Fan out to every target display — the dropdown's intent is
+            // "set this region for the screens I'm looking at game content
+            // on", so a 2-display setup with the activity on display 0
+            // writes display 1 only, while a 3-display setup writes both
+            // game displays at once.
+            for (id in targetIds) {
+                prefs.setSelectedRegionIdForDisplay(id, regionId)
+            }
             configureService()
             if (!isLiveMode) {
                 selectTab(Tab.TRANSLATE)
@@ -1836,10 +1870,13 @@ class MainActivity :
 
     private fun openAddCustomRegionFromDropdown() {
         PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+        val targetIds = dropdownTargetDisplayIds()
+        if (targetIds.isEmpty()) return
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-        val primaryId = prefs.captureDisplayIds.firstOrNull()
-            ?: android.view.Display.DEFAULT_DISPLAY
-        val gameDisplay = displayManager.getDisplay(primaryId)
+        // The drag overlay is single-display; render it on the first target
+        // (typically the only non-foregrounded capture display). Saved
+        // selections fan out to every target below.
+        val gameDisplay = displayManager.getDisplay(targetIds.first())
         val current = CaptureService.instance?.activeRegion
         AddCustomRegionSheet().also { sheet ->
             sheet.gameDisplay = gameDisplay
@@ -1851,19 +1888,23 @@ class MainActivity :
                     val editIdx = regions.indexOfFirst { it.id == current.id }.coerceAtLeast(0)
                     sheet.initRegion(current, editIdx)
                     sheet.onRegionEdited = { edited ->
-                        prefs.selectedRegionId = edited.id
+                        for (id in targetIds) prefs.setSelectedRegionIdForDisplay(id, edited.id)
                         configureService()
                     }
                 }
             }
             sheet.onRegionAdded = { newEntry ->
-                prefs.selectedRegionId = newEntry.id
+                for (id in targetIds) prefs.setSelectedRegionIdForDisplay(id, newEntry.id)
                 configureService()
                 refreshRegionPicker()
                 withAccessibility { startOneShotCapture() }
             }
             sheet.onDismissed = { refreshRegionPicker() }
             sheet.onTranslateOnce = { region ->
+                // One-shot capture is single-display by nature (the in-app
+                // result panel shows one result), so the override stays on
+                // the primary even though the saved-region path above fans
+                // out to every target.
                 captureService?.let { svc -> svc.configureOverride(svc.primaryGameDisplayId(), region) }
                 withAccessibility { startOneShotCapture() }
             }
