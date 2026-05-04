@@ -1234,10 +1234,14 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         }
         for (id in staleIds) hideFloatingIconForDisplay(id, "reconcile_remove")
 
-        // If the user has nothing selected (e.g. transient migration state)
-        // fall back to the legacy single-display heuristic so the app always
-        // has at least one icon while it's "configured."
-        if (target.isEmpty()) {
+        // If the user has nothing selected (e.g. transient migration
+        // state) OR every selected display is unreachable (the only
+        // selected external display was just unplugged), fall back to the
+        // legacy single-display heuristic so the app always has at least
+        // one icon while it's "configured." Without the second clause the
+        // user would lose every floating control after a hot-unplug of
+        // their only selected display until they manually repaired prefs.
+        if (target.none { dm.getDisplay(it) != null }) {
             val display = findIconDisplay(prefs) ?: return
             if (display.displayId !in iconHandles) {
                 installFloatingIconForDisplay(display, prefs)
