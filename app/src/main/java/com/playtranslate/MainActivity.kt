@@ -411,10 +411,14 @@ class MainActivity :
 
     override fun onResume() {
         super.onResume()
-        // Order matters: write the display id BEFORE flipping isInForeground
-        // so reconcileLiveModes (triggered by both setters) observes a
-        // consistent (foregroundDisplayId, isInForeground) tuple.
-        foregroundDisplayId = display?.displayId
+        // Pre-populate the resumed-activity registry before flipping
+        // isInForeground. The flag's setter calls reconcileLiveModes, and
+        // the Application-level onActivityResumed callback that drives
+        // [PlayTranslateApplication.foregroundDisplayId] doesn't run until
+        // after this onResume body returns — without this manual write,
+        // reconcile would see a null display id and let live mode capture
+        // the app's own display for one cycle.
+        PlayTranslateApplication.markResumed(this)
         isInForeground = true
         dimController?.onInteraction()
         setupDetectionLog()
@@ -442,7 +446,6 @@ class MainActivity :
     override fun onStop() {
         super.onStop()
         isInForeground = false
-        foregroundDisplayId = null
     }
 
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
@@ -451,6 +454,17 @@ class MainActivity :
         // Let a running live session adapt if the viewport predicate flipped.
         // No-op if live mode isn't active.
         CaptureService.instance?.onMultiWindowChanged()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Display swap may have happened without onPause/onResume because
+        // our manifest swallows screenLayout|smallestScreenSize via
+        // configChanges. The live foregroundDisplayId getter returns the
+        // new id correctly, but reconcileLiveModes doesn't refire on its
+        // own — drive it from this hook so live mode stops capturing the
+        // display the activity just landed on.
+        CaptureService.instance?.reconcileLiveModes("configChanged")
     }
 
     override fun onDestroy() {
@@ -696,9 +710,9 @@ class MainActivity :
             tvTranslateTitle.setTextColor(themeColor(R.attr.ptAccentOn))
             tvTranslateSubtitle.setTextColor(themeColor(R.attr.ptAccentOn))
             if (isLiveMode) {
-                captureService?.holdStart()
+                captureService?.holdStartFanout()
             } else {
-                withAccessibility { captureService?.holdStart() }
+                withAccessibility { captureService?.holdStartFanout() }
             }
             true
         }
@@ -2021,23 +2035,23 @@ class MainActivity :
             }
 
         /**
-         * Display id MainActivity is currently rendering on, or null when
-         * MainActivity isn't in the foreground. Used by
-         * [CaptureService.reconcileLiveModes] to skip OCR on the display
-         * the user is looking at PlayTranslate on (under multi-display
-         * selection — capturing a screen full of app UI translates nothing
-         * useful and burns a slot in the global capture mutex). Single-
-         * display setups continue to capture as before; the existing
-         * single-screen routing handles app-on-game-display already.
+         * Display id whichever PlayTranslate activity is currently resumed
+         * is rendering on, or null when none of our activities is resumed.
+         * Live-read via [PlayTranslateApplication.foregroundDisplayId] — no
+         * cached value, so an in-place display swap (Android moving the
+         * activity between displays without firing onPause/onResume because
+         * configChanges swallows screenLayout) is reflected immediately
+         * instead of returning a stale id until the next lifecycle event.
+         *
+         * Used by [CaptureService.reconcileLiveModes] to skip OCR on the
+         * display the user is looking at PlayTranslate on (capturing a
+         * screen full of app UI translates nothing useful and burns a slot
+         * in the global capture mutex). Single-display setups continue to
+         * capture as before; the existing single-screen routing handles
+         * app-on-game-display already.
          */
-        @Volatile
-        var foregroundDisplayId: Int? = null
-            set(value) {
-                if (field == value) return
-                field = value
-                android.util.Log.d("CaptureService", "MainActivity.foregroundDisplayId = $value")
-                CaptureService.instance?.reconcileLiveModes("foregroundDisplayId=$value")
-            }
+        val foregroundDisplayId: Int?
+            get() = PlayTranslateApplication.foregroundDisplayId()
 
         /**
          * True when MainActivity is currently in Android multi-window /

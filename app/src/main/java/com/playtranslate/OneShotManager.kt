@@ -9,56 +9,119 @@ import kotlinx.coroutines.launch
  * Manages one-shot hold-to-preview captures. Stateless — every hold is a fresh
  * capture with no dedup or caching. Delegates box building to [OneShotProcessor]
  * implementations (furigana vs translation) via factory.
+ *
+ * Supports multi-display fan-out: hotkey + in-app translate-button hold target
+ * every selected non-foreground display in parallel, while the floating-icon
+ * hold targets exactly its own icon's display. Each [runHoldOverlay] call
+ * defines a new generation; per-cycle parameters are captured by value into a
+ * [Cycle] so concurrent in-flight cycles never read fields a later generation
+ * has rewritten. Every side-effecting publish point (overlay paint, no-text
+ * pill, panel emit) gen-checks before acting, so a zombie cycle that suspended
+ * past cancellation can't mutate UI tied to a newer hold. Coroutine
+ * cancellation propagated by [supersede]/[cancel] is the secondary defense
+ * for in-flight suspends past the last gen-check.
  */
 class OneShotManager(private val service: CaptureService) {
 
-    private var currentJob: Job? = null
-    private var forcedMode: OverlayMode? = null
-    /** The display the current cycle is targeting. Defaults to the
-     *  primary game display; the icon long-press path passes the icon's
-     *  own displayId so taps on icon B translate display B, not the
-     *  primary. */
-    private var targetDisplayId: Int = android.view.Display.DEFAULT_DISPLAY
+    /** Immutable per-cycle state. Captured at [runHoldOverlay] time and
+     *  threaded through [runCycle] so each cycle observes its own
+     *  parameters even when a later [runHoldOverlay] has incremented
+     *  [currentGeneration] and overwritten the next cycle's params. */
+    private data class Cycle(
+        val forceMode: OverlayMode?,
+        val panelDisplayId: Int,
+        val generation: Long,
+    )
 
-    /** Start a one-shot capture cycle on [displayId]. Cancels any previous
-     *  in-flight cycle. */
+    private val activeJobs: MutableMap<Int, Job> = mutableMapOf()
+    /** Monotonic generation counter. Incremented by [runHoldOverlay] (new
+     *  gesture) and [cancel] (gesture ended). Cycles compare their
+     *  captured value against this on every publish point — mismatch
+     *  means superseded and the cycle exits without emitting. Safe as a
+     *  plain Long because the manager is only invoked from
+     *  [CaptureService.serviceScope], which runs on Dispatchers.Main. */
+    private var currentGeneration: Long = 0
+
+    /** Single-display variant retained for the floating-icon path, where
+     *  hold should only run on the icon's display. */
     fun runHoldOverlay(
         forceMode: OverlayMode? = null,
         displayId: Int = service.primaryGameDisplayId(),
     ) {
-        forcedMode = forceMode
-        targetDisplayId = displayId
-        currentJob?.cancel()
-        currentJob = service.serviceScope.launch {
-            runCycle()
+        runHoldOverlay(forceMode, setOf(displayId), displayId)
+    }
+
+    /** Multi-display variant. Cancels any prior cycles, then launches one
+     *  cycle per id in [displayIds]. [panelDisplayId] picks which cycle is
+     *  responsible for the in-app panel update. */
+    fun runHoldOverlay(
+        forceMode: OverlayMode?,
+        displayIds: Set<Int>,
+        panelDisplayId: Int,
+    ) {
+        currentGeneration += 1
+        val cycle = Cycle(
+            forceMode = forceMode,
+            panelDisplayId = panelDisplayId,
+            generation = currentGeneration,
+        )
+        supersede(displayIds)
+        for (id in displayIds) {
+            activeJobs[id] = service.serviceScope.launch { runCycle(id, cycle) }
         }
     }
 
-    /** Cancel the current cycle and hide the overlay it targeted. */
+    /** End the gesture entirely (user lifted finger). Cancels every
+     *  in-flight cycle and hides every overlay it might still be painting.
+     *  Bumps generation so any zombie cycle that resumes past this call
+     *  exits at its next gen-check rather than emitting stale state. */
     fun cancel() {
-        currentJob?.cancel()
-        currentJob = null
-        PlayTranslateAccessibilityService.instance?.hideTranslationOverlayForDisplay(targetDisplayId)
+        currentGeneration += 1
+        val targets = activeJobs.keys.toList()
+        activeJobs.values.forEach { it.cancel() }
+        activeJobs.clear()
+        val a11y = PlayTranslateAccessibilityService.instance ?: return
+        for (id in targets) a11y.hideTranslationOverlayForDisplay(id)
+    }
+
+    /** Replace the running set in preparation for a NEW cycle group.
+     *  Cancels every prior cycle, but only hides overlays for displays
+     *  the new generation isn't going to repaint — preserves continuity
+     *  on overlapping displays so the new cycle's paint can land without
+     *  a hide-flicker in between. Generation has already been bumped by
+     *  [runHoldOverlay] so any zombie cycle here is already gen-stale. */
+    private fun supersede(newTargets: Set<Int>) {
+        val toHide = activeJobs.keys - newTargets
+        activeJobs.values.forEach { it.cancel() }
+        activeJobs.clear()
+        val a11y = PlayTranslateAccessibilityService.instance ?: return
+        for (id in toHide) a11y.hideTranslationOverlayForDisplay(id)
     }
 
 
-    private suspend fun runCycle() {
+    private suspend fun runCycle(displayId: Int, cycle: Cycle) {
         if (!service.isConfigured) return
-        val displayId = targetDisplayId
+        if (cycle.generation != currentGeneration) return
 
         // 1. Capture clean screenshot
         val raw: Bitmap = service.captureScreen(displayId) ?: return
 
         try {
+            if (cycle.generation != currentGeneration) return
+
             // 2. Flash region indicator
             service.flashRegionIndicator(displayId)
 
             // 3. OCR via shared pipeline
             val pipeline = service.runOcr(raw, displayId)
+            if (cycle.generation != currentGeneration) return
+
             if (pipeline == null) {
-                service.emitHoldLoading(false)
+                if (displayId == cycle.panelDisplayId) {
+                    service.emitHoldLoading(false)
+                    service.emitLiveNoText()
+                }
                 showNoTextPill(displayId)
-                service.emitLiveNoText()
                 return
             }
 
@@ -70,26 +133,37 @@ class OneShotManager(private val service: CaptureService) {
                 ?.screenshotManager?.saveToCache(raw, displayId)
 
             // 5. Build boxes via processor (factory decides furigana vs translation)
-            val processor = createProcessor()
-            val boxes = processor.buildBoxes(ocrResult, raw, cropLeft, cropTop, screenshotW, screenshotH) {
-                // Callback for intermediate display (shimmer placeholders)
-                service.showLiveOverlay(it, cropLeft, cropTop, screenshotW, screenshotH, force = true, displayId = displayId)
+            val processor = createProcessor(cycle.forceMode)
+            val boxes = processor.buildBoxes(ocrResult, raw, cropLeft, cropTop, screenshotW, screenshotH) { intermediate ->
+                // Shimmer placeholder callback. Gen-check so a superseded
+                // cycle can't paint over the new generation's overlay.
+                if (cycle.generation == currentGeneration) {
+                    service.showLiveOverlay(intermediate, cropLeft, cropTop, screenshotW, screenshotH, force = true, displayId = displayId)
+                }
             }
+
+            if (cycle.generation != currentGeneration) return
 
             // 6. Show final overlay
             if (boxes.isNotEmpty()) {
                 service.showLiveOverlay(boxes, cropLeft, cropTop, screenshotW, screenshotH, force = true, displayId = displayId)
             }
 
-            // 7. Send translation to in-app panel (if visible)
-            service.translateAndSendToPanel(ocrResult, screenshotPath)
+            // 7. Send translation to in-app panel — only the panel-target
+            //    cycle is allowed to push, so concurrent fan-out cycles
+            //    don't race the single global panel state. Coroutine
+            //    cancellation propagated by [supersede]/[cancel] handles
+            //    the in-flight case past this checkpoint.
+            if (displayId == cycle.panelDisplayId) {
+                service.translateAndSendToPanel(ocrResult, screenshotPath)
+            }
         } finally {
             if (!raw.isRecycled) raw.recycle()
         }
     }
 
-    private fun createProcessor(): OneShotProcessor {
-        val mode = forcedMode ?: Prefs(service).overlayMode
+    private fun createProcessor(forceMode: OverlayMode?): OneShotProcessor {
+        val mode = forceMode ?: Prefs(service).overlayMode
         return when (mode) {
             OverlayMode.FURIGANA -> {
                 val engine = SourceLanguageEngines.get(service, Prefs(service).sourceLangId)

@@ -970,8 +970,13 @@ class CaptureService : Service() {
             return true
         }
         if (gameDisplayIds.size > 1
-            && MainActivity.isInForeground
             && MainActivity.foregroundDisplayId == displayId) {
+            // foregroundDisplayId is null whenever none of our activities
+            // is resumed, so the AND with a non-null displayId already
+            // gates this branch on "some PlayTranslate activity is on top
+            // of this display". Includes TranslationResultActivity /
+            // LanguageSetupActivity / etc., not just MainActivity — any
+            // of our UI on a capture display means OCR there is wasted.
             Log.d(TAG, "shouldSkipDisplay($displayId): app foregrounded on it (size=${gameDisplayIds.size}) → skip")
             return true
         }
@@ -1139,18 +1144,73 @@ class CaptureService : Service() {
      * hide/restore cycle from racing with the one-shot's own clean capture.
      */
     private fun beginHoldPreview(mode: OverlayMode?, displayId: Int) {
+        beginHoldPreview(mode, setOf(displayId), displayId)
+    }
+
+    /** Multi-display variant — used by the in-app translate button hold and
+     *  the hotkey hold, both of which target every selected non-foreground
+     *  display. The floating-icon path still uses the single-display
+     *  overload so its hold stays scoped to the icon's own display. */
+    private fun beginHoldPreview(
+        mode: OverlayMode?,
+        displayIds: Set<Int>,
+        panelDisplayId: Int,
+    ) {
         holdActive = true
         if (isLive) {
             // Hold pause is global — stop every per-display loop and hide
-            // every translation overlay. The one-shot itself will then paint
-            // its result on [displayId] (the icon-tapped display, or the
-            // primary if invoked from a non-icon path).
+            // every translation overlay. Each fan-out cycle then paints its
+            // own result on its own display.
             PlayTranslateAccessibilityService.instance
                 ?.screenshotManager?.stopAllLoops()
             PlayTranslateAccessibilityService.instance
                 ?.hideTranslationOverlay()
         }
-        oneShotManager.runHoldOverlay(forceMode = mode, displayId = displayId)
+        oneShotManager.runHoldOverlay(
+            forceMode = mode,
+            displayIds = displayIds,
+            panelDisplayId = panelDisplayId,
+        )
+    }
+
+    /** Selected capture displays minus the ones we shouldn't capture
+     *  right now. Used by the global one-shot triggers (hotkey, in-app
+     *  translate button) so a hold runs on every screen the user is
+     *  actually looking at game content on. Reuses [shouldSkipDisplay]
+     *  so STATE_OFF (folded panel etc.) and the app-foregrounded
+     *  display are both filtered out — same predicate live mode uses
+     *  for reconciliation, kept identical so a one-shot can never
+     *  target a display live mode wouldn't.
+     *
+     *  Returns empty when multi-display + every selected display is
+     *  skip-eligible (e.g. PlayTranslate foregrounded on display A
+     *  while display B is folded). Callers no-op rather than
+     *  fall-through to capturing the foreground display, which would
+     *  OCR the app's own UI and publish a garbage panel result.
+     *
+     *  Single-display always returns the only display — the skip
+     *  predicate's foreground branch is gated on `size > 1`, so the
+     *  only way the filter can empty here is STATE_OFF, in which case
+     *  captureScreen will return null and the cycle exits cleanly.
+     *  Returning the display rather than empty preserves "the gesture
+     *  always tries to do something on a single-display setup."
+     *  Iteration order follows [gameDisplayIds] insertion order. */
+    internal fun oneShotFanoutDisplayIds(): Set<Int> {
+        val all = gameDisplayIds.ifEmpty { setOf(primaryGameDisplayId()) }
+        val filtered = all.filter { !shouldSkipDisplay(it) }
+        if (filtered.isNotEmpty()) return filtered.toSet()
+        if (all.size == 1) return all
+        return emptySet()
+    }
+
+    /** Picks the display that drives the in-app result panel during a
+     *  fan-out one-shot. Prefers [primaryGameDisplayId] when it's in the
+     *  fan-out target set (preserves the user's most recent intent), else
+     *  the first target. */
+    internal fun oneShotPanelDisplayId(targets: Set<Int>): Int {
+        val primary = primaryGameDisplayId()
+        return if (primary in targets) primary
+        else targets.firstOrNull() ?: primary
     }
 
     /**
@@ -1169,13 +1229,12 @@ class CaptureService : Service() {
     }
 
     /**
-     * Begin a hold-to-preview gesture. [displayId] identifies the display
-     * the gesture targets — the floating icon's onHoldStart passes its own
-     * display; the in-app translate button (no specific display) passes
-     * [primaryGameDisplayId]. P5 wires this further into one-shot routing;
-     * P2's body still treats hold as global pause.
+     * Single-display hold gesture for the floating icon — the icon's
+     * onHoldStart passes its own [displayId] so the one-shot only runs on
+     * that screen, even on multi-display setups where global triggers
+     * (hotkey, in-app button) would fan out.
      */
-    fun holdStart(displayId: Int = primaryGameDisplayId()) {
+    fun holdStart(displayId: Int) {
         lastInteractedDisplayId = displayId
         // Pinhole / translation-overlay live modes: "peek" through the
         // overlay at the game underneath, without running a one-shot.
@@ -1193,6 +1252,38 @@ class CaptureService : Service() {
             null
         }
         beginHoldPreview(forced, displayId)
+    }
+
+    /**
+     * Multi-display hold gesture used by the in-app translate button. Fans
+     * the one-shot out to every selected display except whichever one the
+     * activity is currently foregrounded on (the user is looking at game
+     * content on the OTHER screens). The panel-bound result comes from the
+     * primary non-foreground display so concurrent cycles don't race the
+     * panel.
+     */
+    fun holdStartFanout() {
+        val isFurigana = liveModes.values.any { it.flavor == OverlayFlavor.FURIGANA }
+        if (isLive && !isFurigana && !isInAppOnly) {
+            // Live translation overlay peek — hide so user can see game
+            // underneath. Pure UI gesture, doesn't depend on fanout
+            // targets (fires even when multi-display + everything
+            // skip-eligible would otherwise no-op the capture path).
+            holdActive = true
+            PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+            return
+        }
+        val targets = oneShotFanoutDisplayIds()
+        if (targets.isEmpty()) return
+        val panelTarget = oneShotPanelDisplayId(targets)
+        lastInteractedDisplayId = panelTarget
+        _holdLoading.value = true
+        val forced = if (isLive && isFurigana) {
+            OverlayMode.TRANSLATION
+        } else {
+            null
+        }
+        beginHoldPreview(forced, targets, panelTarget)
     }
 
     /** End a hold-to-preview gesture (in-app translate button). */
@@ -1217,17 +1308,23 @@ class CaptureService : Service() {
 
     private var hotkeyActive = false
 
-    /** Begin a hotkey hold-to-preview with a forced overlay mode. */
+    /** Begin a hotkey hold-to-preview with a forced overlay mode. Like the
+     *  in-app translate button, the hotkey is a "global" trigger — it fans
+     *  the one-shot out to every selected non-foreground display. The
+     *  panel-bound result comes from the primary so concurrent cycles
+     *  don't race the panel. */
     fun hotkeyHoldStart(mode: OverlayMode) {
         DetectionLog.log("Hotkey START: $mode (live=$isLive)")
         Log.d("HotkeyDbg", "hotkeyHoldStart: mode=$mode isConfigured=$isConfigured isLive=$isLive")
         if (hotkeyActive) return
         hotkeyActive = true
-        // Hotkey path uses primaryGameDisplayId() — last-interacted display,
-        // falling back to the first selected. Touch sentinels (P5) keep the
-        // last-interacted signal fresh as the user moves focus between
-        // displays' floating icons.
-        beginHoldPreview(mode, primaryGameDisplayId())
+        val targets = oneShotFanoutDisplayIds()
+        // No fan-out target (multi-display + every selected display is
+        // skip-eligible). hotkeyActive is still set so the matching
+        // hotkeyHoldEnd unwinds cleanly via its own gate.
+        if (targets.isEmpty()) return
+        val panelTarget = oneShotPanelDisplayId(targets)
+        beginHoldPreview(mode, targets, panelTarget)
     }
 
     /** End a hotkey hold-to-preview. */
