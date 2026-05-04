@@ -40,8 +40,16 @@ data class RegionEntry(
     val isFullScreen: Boolean get() = top <= 0f && bottom >= 1f && left <= 0f && right >= 1f
 }
 
-/** Floating-icon snap position for a single display. */
-data class IconPosition(val edge: Int, val fraction: Float)
+/** Floating-icon snap position for a single display. [edge] encoding:
+ *  0=LEFT, 1=RIGHT, 2=TOP, 3=BOTTOM. */
+data class IconPosition(val edge: Int, val fraction: Float) {
+    companion object {
+        /** Default icon placement: right edge, vertically centered. Used by
+         *  [Prefs.iconPositionForDisplay] for displays the user hasn't
+         *  positioned an icon on yet. */
+        val DEFAULT = IconPosition(edge = 1, fraction = 0.5f)
+    }
+}
 
 /**
  * Simple wrapper around [SharedPreferences] for persisting user settings.
@@ -174,13 +182,13 @@ class Prefs(context: Context) {
     }
 
     /**
-     * Per-display floating-icon snap position. Falls back to the legacy
-     * global [overlayIconEdge]/[overlayIconFraction] for displays that
-     * don't have their own entry yet.
+     * Per-display floating-icon snap position, or [IconPosition.DEFAULT]
+     * (right edge, vertically centered) for displays that don't have their
+     * own entry yet.
      */
     fun iconPositionForDisplay(displayId: Int): IconPosition {
         val map = readIconPositionMap()
-        return map[displayId] ?: IconPosition(overlayIconEdge, overlayIconFraction)
+        return map[displayId] ?: IconPosition.DEFAULT
     }
 
     fun setIconPositionForDisplay(displayId: Int, position: IconPosition) {
@@ -356,16 +364,23 @@ class Prefs(context: Context) {
             // fallback before the new key has been written.
         }
 
-        if (sp.contains(KEY_OVERLAY_ICON_EDGE) && !sp.contains(KEY_ICON_POSITION_BY_DISPLAY)) {
-            val legacyEdge = sp.getInt(KEY_OVERLAY_ICON_EDGE, 1)
-            val legacyFraction = sp.getFloat(KEY_OVERLAY_ICON_FRACTION, 0.5f)
-            val obj = JSONObject().apply {
-                put(legacyDisplayId.toString(), JSONObject().apply {
-                    put("edge", legacyEdge)
-                    put("fraction", legacyFraction.toDouble())
-                })
+        if (sp.contains(KEY_OVERLAY_ICON_EDGE) || sp.contains(KEY_OVERLAY_ICON_FRACTION)) {
+            if (!sp.contains(KEY_ICON_POSITION_BY_DISPLAY)) {
+                val legacyEdge = sp.getInt(KEY_OVERLAY_ICON_EDGE, 1)
+                val legacyFraction = sp.getFloat(KEY_OVERLAY_ICON_FRACTION, 0.5f)
+                val obj = JSONObject().apply {
+                    put(legacyDisplayId.toString(), JSONObject().apply {
+                        put("edge", legacyEdge)
+                        put("fraction", legacyFraction.toDouble())
+                    })
+                }
+                sp.edit().putString(KEY_ICON_POSITION_BY_DISPLAY, obj.toString()).apply()
             }
-            sp.edit().putString(KEY_ICON_POSITION_BY_DISPLAY, obj.toString()).apply()
+            // Nothing reads the legacy icon-position keys after this point — drop them.
+            sp.edit()
+                .remove(KEY_OVERLAY_ICON_EDGE)
+                .remove(KEY_OVERLAY_ICON_FRACTION)
+                .apply()
         }
 
         if (sp.contains(KEY_SELECTED_REGION_ID)) {
@@ -410,16 +425,6 @@ class Prefs(context: Context) {
     var showOverlayIcon: Boolean
         get() = sp.getBoolean(KEY_SHOW_OVERLAY_ICON, true)
         set(v) = sp.edit().putBoolean(KEY_SHOW_OVERLAY_ICON, v).apply()
-
-    /** Edge the overlay icon is snapped to: 0=LEFT, 1=RIGHT, 2=TOP, 3=BOTTOM. */
-    var overlayIconEdge: Int
-        get() = sp.getInt(KEY_OVERLAY_ICON_EDGE, 1).let { if (it in 0..3) it else 1 }
-        set(v) = sp.edit().putInt(KEY_OVERLAY_ICON_EDGE, v).apply()
-
-    /** Fraction (0..1) along the snapped edge. 0.5 = middle. */
-    var overlayIconFraction: Float
-        get() = sp.getFloat(KEY_OVERLAY_ICON_FRACTION, 0.5f).coerceIn(0f, 1f)
-        set(v) = sp.edit().putFloat(KEY_OVERLAY_ICON_FRACTION, v).apply()
 
     /** Compact mode: shows 1/3 of circle with arrow instead of full icon. */
     var compactOverlayIcon: Boolean
