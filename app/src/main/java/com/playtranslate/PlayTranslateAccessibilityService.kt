@@ -1558,7 +1558,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 if (effectivelySingleScreen) {
                     handleRegionSelection(display.displayId, region)
                 } else {
-                    sendMainActivityIntent(MainActivity.ACTION_REGION_CAPTURE)
+                    sendMainActivityIntent(MainActivity.ACTION_REGION_CAPTURE, display.displayId)
                 }
             }
         }
@@ -1583,7 +1583,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             if (effectivelySingleScreen) {
                 showRegionEditor(display)
             } else {
-                sendMainActivityIntent(MainActivity.ACTION_ADD_CUSTOM_REGION)
+                sendMainActivityIntent(MainActivity.ACTION_ADD_CUSTOM_REGION, display.displayId)
             }
         }
         menu.onSettings = {
@@ -1884,10 +1884,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun sendMainActivityIntent(action: String) {
+    private fun sendMainActivityIntent(action: String, targetDisplayId: Int? = null) {
         val intent = Intent(this, MainActivity::class.java).apply {
             this.action = action
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            if (targetDisplayId != null) {
+                putExtra(MainActivity.EXTRA_TARGET_DISPLAY_ID, targetDisplayId)
+            }
         }
         startActivity(intent)
     }

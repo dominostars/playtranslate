@@ -367,7 +367,7 @@ class MainActivity :
         when (intent?.action) {
             ACTION_DRAG_SENTENCE -> handleDragSentence(intent)
             ACTION_DRAG_WORD -> handleDragWord(intent)
-            ACTION_REGION_CAPTURE -> handleRegionCapture()
+            ACTION_REGION_CAPTURE -> handleRegionCapture(intent)
             ACTION_START_LIVE -> if (!isLiveMode) {
                 // Post so onResume sets isInForeground before startLive triggers
                 // updateForegroundState — otherwise In-App Only mode immediately stops.
@@ -376,7 +376,16 @@ class MainActivity :
                 }
             }
             ACTION_STOP_LIVE -> if (isLiveMode) stopLiveMode()
-            ACTION_ADD_CUSTOM_REGION -> openAddCustomRegionFromDropdown()
+            ACTION_ADD_CUSTOM_REGION -> {
+                // Floating-icon route carries the originating display so the
+                // editor scopes to that screen. Bare action (no extra) is the
+                // dropdown route, which fans out to all non-foreground capture
+                // displays.
+                val iconId = intent.getIntExtra(EXTRA_TARGET_DISPLAY_ID, -1)
+                    .takeIf { it != -1 }
+                if (iconId != null) openAddCustomRegionFromDropdown(listOf(iconId))
+                else openAddCustomRegionFromDropdown()
+            }
             ACTION_REFRESH_REGION_LABEL -> {
                 captureService?.let { svc -> svc.clearOverride(svc.primaryGameDisplayId()) }
                 refreshRegionPicker()
@@ -1170,10 +1179,17 @@ class MainActivity :
 
     // ── Region capture from floating icon ─────────────────────────────────
 
-    private fun handleRegionCapture() {
+    private fun handleRegionCapture(intent: Intent) {
         if (isLiveMode) pauseLiveMode()
         selectTab(Tab.TRANSLATE)
-        startOneShotCapture()
+        // The floating-icon path applies the override on the icon's
+        // display before sending the intent (see PlayTranslateAccessibilityService
+        // menu.onRegionSelected), so the capture must target the same
+        // display rather than primaryGameDisplayId, which can sit on the
+        // foregrounded display.
+        val displayId = intent.getIntExtra(EXTRA_TARGET_DISPLAY_ID, -1)
+            .takeIf { it != -1 }
+        startOneShotCapture(displayId)
     }
 
     /** Initiate a one-shot capture and route its session to the
@@ -1888,9 +1904,19 @@ class MainActivity :
         }
     }
 
-    private fun openAddCustomRegionFromDropdown() {
+    /** [targetIds] is the set of displays the new/edited region applies
+     *  to. Default is [dropdownTargetDisplayIds] (fan-out across all
+     *  non-foreground capture displays — the dropdown's "set this region
+     *  for the screens I'm gaming on" semantic). The floating-icon route
+     *  passes a single-element list so the saved region scopes to the
+     *  display the user tapped on, matching the icon's per-display
+     *  intent. The first id in [targetIds] is also used as the editor
+     *  render target and as the inner Translate Once override / capture
+     *  display. */
+    private fun openAddCustomRegionFromDropdown(
+        targetIds: List<Int> = dropdownTargetDisplayIds(),
+    ) {
         PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
-        val targetIds = dropdownTargetDisplayIds()
         if (targetIds.isEmpty()) return
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         // The drag overlay is single-display; render it on the first target
@@ -1924,7 +1950,13 @@ class MainActivity :
                 for (id in targetIds) prefs.setSelectedRegionIdForDisplay(id, newEntry.id)
                 configureService()
                 refreshRegionPicker()
-                withAccessibility { startOneShotCapture() }
+                // Translate-on-save against the editor's target display.
+                // configureService can rewrite primaryGameDisplayId to the
+                // first selected display, so a default startOneShotCapture()
+                // could capture the wrong screen on the floating-icon
+                // route (where targetDisplayId is the tapped display, not
+                // necessarily the service primary).
+                withAccessibility { startOneShotCapture(targetDisplayId) }
             }
             sheet.onDismissed = { refreshRegionPicker() }
             sheet.onTranslateOnce = { region ->
@@ -2041,6 +2073,12 @@ class MainActivity :
         const val ACTION_ADD_CUSTOM_REGION = "com.playtranslate.ACTION_ADD_CUSTOM_REGION"
         const val ACTION_REFRESH_REGION_LABEL = "com.playtranslate.ACTION_REFRESH_REGION_LABEL"
         const val ACTION_OPEN_SETTINGS = "com.playtranslate.ACTION_OPEN_SETTINGS"
+        /** Display the floating-icon route originated on. Threaded through
+         *  ACTION_REGION_CAPTURE and ACTION_ADD_CUSTOM_REGION so the
+         *  one-shot capture and the custom-region editor target the
+         *  display the user actually tapped, instead of falling through
+         *  to primaryGameDisplayId / dropdownTargetDisplayIds.first. */
+        const val EXTRA_TARGET_DISPLAY_ID = "extra_target_display_id"
 
         @Volatile
         var isInForeground = false
