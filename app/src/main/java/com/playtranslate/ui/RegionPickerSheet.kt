@@ -30,7 +30,12 @@ import com.playtranslate.themeColor
 class RegionPickerSheet : DialogFragment() {
 
     var onSaved: (() -> Unit)? = null
-    var onTranslateOnce: ((RegionEntry) -> Unit)? = null
+    /** Region the user wants to one-shot, plus the display segment the
+     *  picker is currently targeting. The display id needs to thread up
+     *  to MainActivity so the override + capture both land on the
+     *  segment the user was looking at — not [CaptureService.primaryGameDisplayId],
+     *  which can be a different display in multi-display selections. */
+    var onTranslateOnce: ((RegionEntry, Int) -> Unit)? = null
     var onClose: (() -> Unit)? = null
 
     private lateinit var prefs: Prefs
@@ -412,7 +417,7 @@ class RegionPickerSheet : DialogFragment() {
             sheet.onTranslateOnce = { region ->
                 PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
                 if (showsDialog) dismissAllowingStateLoss()
-                onTranslateOnce?.invoke(region)
+                onTranslateOnce?.invoke(region, activeDisplayId)
             }
             sheet.onDismissed = {
                 if (isAdded && !isDetached) {
@@ -449,7 +454,7 @@ class RegionPickerSheet : DialogFragment() {
             sheet.onTranslateOnce = { region ->
                 PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
                 if (showsDialog) dismissAllowingStateLoss()
-                onTranslateOnce?.invoke(region)
+                onTranslateOnce?.invoke(region, activeDisplayId)
             }
         }.show(childFragmentManager, AddCustomRegionSheet.TAG)
     }

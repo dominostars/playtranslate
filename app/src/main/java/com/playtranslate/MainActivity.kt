@@ -588,10 +588,15 @@ class MainActivity :
             onSaved = {
                 configureService()
             }
-            onTranslateOnce = { region ->
+            onTranslateOnce = { region, displayId ->
                 selectTab(Tab.TRANSLATE)
-                captureService?.let { svc -> svc.configureOverride(svc.primaryGameDisplayId(), region) }
-                withAccessibility { startOneShotCapture() }
+                // Apply the override + capture on the picker's active
+                // display segment, not primaryGameDisplayId — in a
+                // multi-display selection the user can switch the picker
+                // pill to a non-primary display, and the gesture should
+                // act on that display.
+                captureService?.configureOverride(displayId, region)
+                withAccessibility { startOneShotCapture(displayId) }
             }
             onClose = { hideRegionPicker() }
         }
@@ -1173,9 +1178,14 @@ class MainActivity :
 
     /** Initiate a one-shot capture and route its session to the
      *  collector in [wireServiceCallbacks]. No-op if the service isn't
-     *  bound yet. */
-    private fun startOneShotCapture() {
-        _currentCaptureSession.value = captureService?.captureOnce()
+     *  bound yet. [displayId] threads through to [CaptureService.captureOnce]
+     *  for callers that have a specific target (e.g. region picker on a
+     *  non-primary display); null defers to captureOnce's default
+     *  primaryGameDisplayId. */
+    private fun startOneShotCapture(displayId: Int? = null) {
+        val svc = captureService ?: return
+        _currentCaptureSession.value =
+            if (displayId != null) svc.captureOnce(displayId) else svc.captureOnce()
     }
 
     // ── Accessibility service flow ─────────────────────────────────────────
@@ -1886,12 +1896,19 @@ class MainActivity :
         // The drag overlay is single-display; render it on the first target
         // (typically the only non-foregrounded capture display). Saved
         // selections fan out to every target below.
-        val gameDisplay = displayManager.getDisplay(targetIds.first())
-        val current = CaptureService.instance?.activeRegion
+        val targetDisplayId = targetIds.first()
+        val gameDisplay = displayManager.getDisplay(targetDisplayId)
+        // Editor renders against [targetDisplayId], so initialize from
+        // that display's region/override state — not the service's
+        // primary, which can be a different display under multi-display
+        // selection (foreground-filter routes the dropdown to the OTHER
+        // selected screens but primary tracks last-interacted, which can
+        // still be the foreground one).
+        val current = CaptureService.instance?.activeRegionForDisplay(targetDisplayId)
         AddCustomRegionSheet().also { sheet ->
             sheet.gameDisplay = gameDisplay
             if (current != null && !current.isFullScreen) {
-                if (captureService?.let { it.isOverrideForDisplay(it.primaryGameDisplayId()) } == true) {
+                if (captureService?.isOverrideForDisplay(targetDisplayId) == true) {
                     sheet.initRegion(current)
                 } else {
                     val regions = prefs.getRegionList()
@@ -1911,12 +1928,13 @@ class MainActivity :
             }
             sheet.onDismissed = { refreshRegionPicker() }
             sheet.onTranslateOnce = { region ->
-                // One-shot capture is single-display by nature (the in-app
-                // result panel shows one result), so the override stays on
-                // the primary even though the saved-region path above fans
-                // out to every target.
-                captureService?.let { svc -> svc.configureOverride(svc.primaryGameDisplayId(), region) }
-                withAccessibility { startOneShotCapture() }
+                // The dropdown's drag overlay rendered on [targetDisplayId],
+                // so the user drew this region against THAT screen — apply
+                // the override and capture against the same display rather
+                // than primaryGameDisplayId (which tracks last-interacted
+                // and can still point at the app's foregrounded display).
+                captureService?.configureOverride(targetDisplayId, region)
+                withAccessibility { startOneShotCapture(targetDisplayId) }
             }
         }.show(supportFragmentManager, AddCustomRegionSheet.TAG)
     }

@@ -176,10 +176,22 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     var screenshotManager: ScreenshotManager? = null
         private set
 
-    /** Repositions floating icons when display properties change (e.g. rotation). */
+    /** Repositions floating icons when display properties change (e.g.
+     *  rotation), and reconciles the icon registry when displays come or
+     *  go. The registry-reconcile arm is necessary because MainActivity's
+     *  own DisplayListener only runs while it's foregrounded — when the
+     *  user is gaming with the app backgrounded (the typical floating-icon
+     *  case), MainActivity isn't around to react to a hot-plug, so a
+     *  reconnected external display's stale [iconHandles] entry would
+     *  short-circuit the next reconcile and leave that display without a
+     *  working icon. */
     private val displayListener = object : DisplayManager.DisplayListener {
-        override fun onDisplayAdded(displayId: Int) {}
-        override fun onDisplayRemoved(displayId: Int) {}
+        override fun onDisplayAdded(displayId: Int) {
+            reconcileFloatingIcons()
+        }
+        override fun onDisplayRemoved(displayId: Int) {
+            reconcileFloatingIcons()
+        }
         override fun onDisplayChanged(displayId: Int) {
             val handle = iconHandles[displayId] ?: return
             val p = handle.icon.params ?: return
