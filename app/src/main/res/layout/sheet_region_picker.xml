@@ -25,16 +25,33 @@
             android:minWidth="0dp"
             android:minHeight="0dp" />
 
-        <TextView
-            android:id="@+id/tvRegionPickerTitle"
+        <FrameLayout
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/label_select_region"
-            android:textColor="?attr/ptText"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:gravity="center" />
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+
+            <TextView
+                android:id="@+id/tvRegionPickerTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="@string/label_select_region"
+                android:textColor="?attr/ptText"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:gravity="center" />
+
+            <!-- Pill segmented control for per-display region selection
+                 (built programmatically by RegionPickerSheet via buildPillToggle). -->
+            <FrameLayout
+                android:id="@+id/displaySegmentedControl"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginHorizontal="4dp"
+                android:visibility="gone" />
+
+        </FrameLayout>
 
         <Button
             android:id="@+id/btnAddRegion"

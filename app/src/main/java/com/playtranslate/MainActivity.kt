@@ -565,18 +565,10 @@ class MainActivity :
     }
 
     private fun openRegionPickerInline() {
-        val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-        // The picker targets the primary display until per-display region UX
-        // lands. The legacy single-display id is preserved across migration
-        // as the first entry of captureDisplayIds.
-        val primaryId = prefs.captureDisplayIds.firstOrNull()
-            ?: android.view.Display.DEFAULT_DISPLAY
-        val gameDisplay = displayManager.getDisplay(primaryId)
-        if (gameDisplay == null) { selectTab(Tab.TRANSLATE); return }
-
+        // The picker resolves its own display state from Prefs.captureDisplayIds
+        // and MainActivity.foregroundDisplayId — see RegionPickerSheet.onViewCreated.
         val sheet = RegionPickerSheet().apply {
             setShowsDialog(false)
-            this.gameDisplay = gameDisplay
             onSaved = {
                 configureService()
             }
