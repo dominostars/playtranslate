@@ -345,10 +345,15 @@ class CaptureService : Service() {
         afterRegionChange(setOf(displayId))
     }
 
-    /** Clear the override for [displayId], reverting to its persisted
-     *  region selection. */
+    /** Clear the override for [displayId] and signal a region change so
+     *  live mode caches and the in-app region label re-resolve from Prefs.
+     *  Always fires [afterRegionChange] — the floating-menu clear-region
+     *  path rewrites Prefs *before* calling this, so side effects must run
+     *  even when there was no runtime override to drop, otherwise the
+     *  cleared display's overlay/cleanRef/region label stay pinned to the
+     *  prior region. */
     fun clearOverride(displayId: Int) {
-        if (overrideRegions.remove(displayId) == null) return
+        overrideRegions.remove(displayId)
         afterRegionChange(setOf(displayId))
     }
 
