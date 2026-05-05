@@ -1902,7 +1902,13 @@ class MainActivity :
             configureService()
             if (!isLiveMode) {
                 selectTab(Tab.TRANSLATE)
-                withAccessibility { startOneShotCapture() }
+                // Capture the same display we just wrote the region to —
+                // configureService can rewrite primaryGameDisplayId to the
+                // first selected display, which on a multi-display setup
+                // with the activity foregrounded is the activity's own
+                // display. Mirrors openAddCustomRegionFromDropdown's
+                // editor/translate-once routing.
+                withAccessibility { startOneShotCapture(targetIds.first()) }
             }
         } else if (hadOverride) {
             configureService()
