@@ -158,11 +158,24 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 
 ## Credits
 
+### Libraries and services
+
 - [ML Kit](https://developers.google.com/ml-kit) — on-device OCR and translation
-- [JMdict](https://www.edrdg.org/jmdict/j_jmdict.html) — Japanese dictionary data (EDRDG licence)
 - [Kuromoji](https://github.com/atilika/kuromoji) — Japanese morphological analysis
+- [HanLP](https://github.com/hankcs/HanLP) — Chinese word segmentation
+- [KOMORAN](https://github.com/shineware/KOMORAN) — Korean morphological analysis
+- [Snowball stemmers](https://snowballstem.org/) via [Apache Lucene](https://lucene.apache.org/) — Latin/European stemming
 - [Lingva](https://github.com/thedaviddelta/lingva-translate) — online translation
 - [AnkiDroid](https://github.com/ankidroid/Anki-Android) — flashcard integration
+
+### Linguistic data
+
+- [JMdict](https://www.edrdg.org/jmdict/j_jmdict.html) and [KANJIDIC2](https://www.edrdg.org/kanjidic/kanjidic2.html) — Japanese dictionary and kanji data (EDRDG licence)
+- [CC-CEDICT](https://cc-cedict.org/wiki/) — Chinese-English dictionary (CC BY-SA 4.0)
+- [Wiktionary](https://en.wiktionary.org/) via [kaikki.org](https://kaikki.org/) — multilingual dictionary entries (CC BY-SA)
+- [Tatoeba](https://tatoeba.org/) — example sentences (CC BY 2.0)
+- [PanLex](https://panlex.org/) — multilingual translation pairs (CC0)
+- [wordfreq](https://github.com/rspeer/wordfreq) — word frequency data
 
 ## License
 
