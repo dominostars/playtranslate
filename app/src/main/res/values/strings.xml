@@ -104,6 +104,7 @@
     <string name="section_translation">Translation</string>
     <string name="section_words">Words</string>
     <string name="words_loading">Looking up words…</string>
+    <string name="lens_loading">Looking up…</string>
     <string name="def_source_machine_translated">⚠ Machine translated</string>
 
     <!-- Region labels -->

@@ -1,6 +1,7 @@
 package com.playtranslate.ui
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
@@ -24,6 +25,7 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.content.res.AppCompatResources
@@ -38,9 +40,12 @@ import com.playtranslate.blendColors
  * and persists post-release as the dictionary surface (replaces the
  * separate `WordLookupPopup` in the drag flow).
  *
- * Three render modes:
+ * Render modes:
  *  - **ZOOM** (default during drag): zoomed screenshot + crosshair on the
  *    right, optional accent left panel with word + reading.
+ *  - **LOADING**: post-release placeholder shown while the dictionary
+ *    lookup is in flight — same panel chrome as DEFINITIONS but with a
+ *    spinner + "Looking up…" text in the right side. Set via [setLoading].
  *  - **DEFINITIONS_DRAG**: dwell-triggered preview during drag — left panel
  *    stays, right side becomes the popup-formatted definitions panel.
  *  - **DEFINITIONS_STICKY**: post-release interactive lens — same visuals
@@ -135,6 +140,18 @@ class MagnifierLens(
      *  ZOOM mode leaves whatever label the controller most recently set. */
     fun setDefinitions(data: LensDefinitionData?, label: String?) {
         lensView?.setDefinitions(data, label)
+    }
+
+    /** Switch the lens to LOADING rendering — same panel chrome as
+     *  DEFINITIONS but the right side shows an indeterminate spinner and
+     *  "Looking up…" text instead of dictionary rows. Used after the user
+     *  releases on a word that wasn't dwell-cached, so they see immediate
+     *  visual confirmation that a lookup is running rather than staring at
+     *  the unchanged zoom for the lookup gap. The left-panel label is
+     *  updated from `word/reading` so the lens already shows the term we
+     *  are resolving. */
+    fun setLoading(word: String?, reading: String?) {
+        lensView?.setLoading(word, reading)
     }
 
     /** Promote the lens from drag-mode (NOT_FOCUSABLE | NOT_TOUCHABLE) to
@@ -308,7 +325,7 @@ class MagnifierLens(
         private val borderPx = density * 2f
         private val rightPanelW = lensW - leftPanelW
 
-        private enum class Mode { ZOOM, DEFINITIONS }
+        private enum class Mode { ZOOM, DEFINITIONS, LOADING }
         private var mode: Mode = Mode.ZOOM
 
         // The view is sized lensW × (lensH + arrowSizePx). The lens body
@@ -723,6 +740,15 @@ class MagnifierLens(
             invalidate()
         }
 
+        fun setLoading(word: String?, reading: String?) {
+            mode = Mode.LOADING
+            setLabel(word, reading)
+            populateLoading()
+            definitionsScroll.scrollTo(0, 0)
+            definitionsPanel.visibility = VISIBLE
+            invalidate()
+        }
+
         /** True when sticky-mode listeners are attached (set by
          *  [attachInteractiveListeners], cleared by
          *  [detachInteractiveListeners]). The lens is the single source
@@ -838,6 +864,33 @@ class MagnifierLens(
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
                 })
             }
+        }
+
+        /** Build a single horizontally-laid-out row with an indeterminate
+         *  spinner and "Looking up…" label. The row sits inside the same
+         *  weight=1, gravity=CENTER_VERTICAL ScrollView the definitions
+         *  use, so a single short row is visually centered in the panel
+         *  the way short-definition entries already are. */
+        private fun populateLoading() {
+            val ctx = context
+            definitionsContent.removeAllViews()
+            val row = LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            val spinnerSize = dp(16f)
+            row.addView(ProgressBar(ctx).apply {
+                isIndeterminate = true
+                indeterminateTintList = ColorStateList.valueOf(accentColor)
+                layoutParams = LinearLayout.LayoutParams(spinnerSize, spinnerSize)
+            })
+            row.addView(TextView(ctx).apply {
+                text = ctx.getString(R.string.lens_loading)
+                setTextColor(panelSecondaryText)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                setPadding(dp(8f), 0, 0, 0)
+            })
+            definitionsContent.addView(row)
         }
 
         // ZOOM-mode-only canvas painting. DEFINITIONS modes skip the zoom

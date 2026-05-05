@@ -694,6 +694,19 @@ class DragLookupController(
         val releaseKey = releaseHit?.let { DwellKey(it.line.text, it.token.charOffset) }
         val cachedData = if (cachedKey != null && cachedKey == releaseKey) dwellResult?.second else null
 
+        // Cache miss → the dictionary lookup is about to run async (~100–
+        // 300 ms). Flip the lens to LOADING so the user sees an immediate
+        // "lookup is running" cue (filled panel + spinner) instead of the
+        // unchanged zoom view. Cache hits skip this — the `setDefinitions`
+        // call inside the launch resolves on the next main-thread tick, so
+        // a flash of LOADING would be visually noisy.
+        if (cachedData == null) {
+            magnifier.setLoading(
+                releaseHit?.token?.lookupForm,
+                releaseHit?.token?.reading,
+            )
+        }
+
         Log.d(TAG, "Lift-time lookup at (${lastX.toInt()}, ${lastY.toInt()}), " +
             "line: ${hitLine.text}, cached=${cachedData != null}")
         lookupJob = scope.launch {
