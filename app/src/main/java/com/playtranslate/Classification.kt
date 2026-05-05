@@ -79,10 +79,19 @@ data class ClassificationResult(
  *
  * - `boxes[i].bounds` — OCR-crop space (set during an earlier capture,
  *   relative to the bitmap crop at that time).
- * - `bitmapRects[i]` — bitmap space, pre-converted from screen rects via
- *   [FrameCoordinates.viewListToBitmap]. Must correspond index-for-index
- *   with `boxes`. Indices past `bitmapRects.size` are skipped (defensive
- *   against a mid-cycle size mismatch).
+ * - `ocrBitmapRects[i]` — bitmap space, derived from each box's OCR bounds
+ *   via [FrameCoordinates.ocrToBitmap]. These are the *text* rects, not
+ *   the rendered overlay rects: `TranslationOverlayView.rebuildChildren`
+ *   inflates the rendered overlay by ~14 px boxPadding per side so the
+ *   translation has visual breathing room, and using that padded rect
+ *   here would falsely reach across genuine paragraph gaps and trigger
+ *   wouldGroup against unrelated neighbors. Pinhole detection still uses
+ *   the padded rendered rects (it samples actual on-screen pixels);
+ *   classification reasons about text relationships and needs the
+ *   unpadded rects so both sides of the wouldGroup compare in the same
+ *   coordinate space as the OCR-derived `ocrFullRect`. Must correspond
+ *   index-for-index with `boxes`. Indices past `ocrBitmapRects.size` are
+ *   skipped (defensive against a mid-cycle size mismatch).
  * - `ocrResult.groupBounds[i]` — OCR-crop space, converted to bitmap space
  *   via `coords.ocrToBitmap(...)` for the `wouldGroup` comparison.
  * - `coords.cropLeft` / `coords.cropTop` should be the pipeline's crop
@@ -93,7 +102,7 @@ data class ClassificationResult(
 fun classifyOcrResults(
     ocrResult: OcrManager.OcrResult,
     boxes: List<TranslationOverlayView.TextBox>,
-    bitmapRects: List<Rect>,
+    ocrBitmapRects: List<Rect>,
     coords: FrameCoordinates,
 ): ClassificationResult {
     val staleOverlayIndices = mutableSetOf<Int>()
@@ -131,11 +140,11 @@ fun classifyOcrResults(
         val ocrFullRect = coords.ocrToBitmap(ocrBound)
         var nearExisting = false
         for (boxIdx in boxes.indices) {
-            if (boxIdx >= bitmapRects.size) continue
+            if (boxIdx >= ocrBitmapRects.size) continue
             if (boxes[boxIdx].dirty) continue
             if (boxIdx in contentMatchRemovals) continue
             val orient = ocrResult.groupOrientations.getOrElse(ocrIdx) { TextOrientation.HORIZONTAL }
-            if (OcrManager.wouldGroup(bitmapRects[boxIdx], ocrFullRect, orient)) {
+            if (OcrManager.wouldGroup(ocrBitmapRects[boxIdx], ocrFullRect, orient)) {
                 nearExisting = true
                 staleOverlayIndices.add(boxIdx)
             }
@@ -199,16 +208,19 @@ fun classifyOcrResults(
  *
  * Two boxes are neighbors iff their bitmap-space rects would be grouped by
  * the same logic OCR uses to combine adjacent text into paragraphs (same-line
- * continuation, next line in block, etc.). `boxes` and `bitmapRects` must
- * correspond index-for-index; indices past `bitmapRects.size` are skipped
- * defensively.
+ * continuation, next line in block, etc.). [ocrBitmapRects] are the boxes'
+ * OCR-derived (unpadded) bitmap rects — same coordinate space classification
+ * uses for the proximity check, so cascade and stale agree about what
+ * "neighbor" means and don't drift apart on rendering padding. `boxes` and
+ * `ocrBitmapRects` must correspond index-for-index; indices past
+ * `ocrBitmapRects.size` are skipped defensively.
  *
  * The returned set always contains every index in [initialStale].
  */
 fun cascadeStaleRemovals(
     initialStale: Set<Int>,
     boxes: List<TranslationOverlayView.TextBox>,
-    bitmapRects: List<Rect>,
+    ocrBitmapRects: List<Rect>,
 ): Set<Int> {
     val cascadedRemovals = initialStale.toMutableSet()
     if (cascadedRemovals.isEmpty()) return cascadedRemovals
@@ -217,11 +229,11 @@ fun cascadeStaleRemovals(
         expanded = false
         for (i in boxes.indices) {
             if (i in cascadedRemovals || boxes[i].dirty) continue
-            if (i >= bitmapRects.size) continue
+            if (i >= ocrBitmapRects.size) continue
             for (removeIdx in cascadedRemovals.toSet()) {
-                if (removeIdx >= bitmapRects.size) continue
+                if (removeIdx >= ocrBitmapRects.size) continue
                 val orient = boxes[removeIdx].orientation
-                if (OcrManager.wouldGroup(bitmapRects[removeIdx], bitmapRects[i], orient)) {
+                if (OcrManager.wouldGroup(ocrBitmapRects[removeIdx], ocrBitmapRects[i], orient)) {
                     cascadedRemovals.add(i)
                     expanded = true
                     break

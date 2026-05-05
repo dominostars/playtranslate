@@ -63,8 +63,25 @@ class PinholeOverlayMode(
     private var cropTop = 0
     private var screenshotW = 0
     private var screenshotH = 0
+    /** Monotonic cycle counter for [Prefs.debugLiveMode] logs. Lets log
+     *  consumers correlate per-box pinhole metrics with the cycle's
+     *  transition summary and the surrounding render-offscreen lines. */
+    private var cycleNum = 0
 
     private enum class PinholeResult { KEEP, DIRTY, REMOVE }
+
+    /** Result of [checkPinholes] plus the metrics that drove the
+     *  classification decision. The metrics are only consumed by the
+     *  [Prefs.debugLiveMode] log path, but [checkPinholes] computes them
+     *  unconditionally on the way to its result, so threading them out is
+     *  effectively free. */
+    private data class PinholeOutcome(
+        val result: PinholeResult,
+        val pct: Float,
+        val changed: Int,
+        val total: Int,
+        val maxDelta: Int,
+    )
 
     override fun start() {
         currentJob?.cancel()
@@ -143,6 +160,8 @@ class PinholeOverlayMode(
         val mgr = a11y.screenshotManager ?: return prefs.captureIntervalMs
         val dirtyView = a11y.dirtyOverlayForDisplay(displayId)
         val hasDirty = cachedBoxes?.any { it.dirty } == true
+        cycleNum++
+        val debug = prefs.debugLiveMode
 
         // 1. Hide dirty overlay window before capture (hardware layer alpha + frame commit sync)
         if (hasDirty && dirtyView != null) {
@@ -303,7 +322,19 @@ class PinholeOverlayMode(
             // 7. Classify OCR results: content match, stale, or far (new text).
             //    The actual logic lives in Classification.kt as pure functions
             //    so it can be unit-tested without a live capture pipeline.
-            val classification = if (pipeline != null) {
+            //
+            //    Classification reasons about *text* relationships, so it
+            //    needs the boxes' OCR-derived bitmap rects (no rendering
+            //    padding) — bitmapRects (from getChildScreenRects) include
+            //    the ~14px boxPadding the renderer adds for visual breathing
+            //    room, which would falsely reach across genuine paragraph
+            //    gaps and trigger wouldGroup against unrelated neighbors.
+            //    Pinhole keeps using bitmapRects below: it samples actual
+            //    on-screen pixels, so the rendered (padded) rect is correct
+            //    there.
+            val ocrBitmapRects: List<Rect>
+            val classification: ClassificationResult
+            if (pipeline != null) {
                 val (ocrResult, _, pipeCropLeft, pipeCropTop, _, _) = pipeline
                 val classifyCoords = FrameCoordinates(
                     bitmapWidth = raw.width,
@@ -313,9 +344,11 @@ class PinholeOverlayMode(
                     cropLeft = pipeCropLeft,
                     cropTop = pipeCropTop,
                 )
-                classifyOcrResults(ocrResult, boxes, bitmapRects, classifyCoords)
+                ocrBitmapRects = boxes.map { classifyCoords.ocrToBitmap(it.bounds) }
+                classification = classifyOcrResults(ocrResult, boxes, ocrBitmapRects, classifyCoords)
             } else {
-                ClassificationResult(emptySet(), emptySet(), emptyList())
+                ocrBitmapRects = emptyList()
+                classification = ClassificationResult(emptySet(), emptySet(), emptyList())
             }
             val contentMatchRemovals = classification.contentMatchRemovals
             val staleOverlayIndices = classification.staleOverlayIndices
@@ -330,16 +363,31 @@ class PinholeOverlayMode(
                     if (idx >= bitmapRects.size) continue
                     if (box.dirty) continue
                     if (idx in staleOverlayIndices) continue
-                    when (checkPinholes(raw, cleanRef, bitmapRects[idx])) {
+                    val outcome = checkPinholes(raw, cleanRef, bitmapRects[idx])
+                    when (outcome.result) {
                         PinholeResult.REMOVE -> pinholeRemovals.add(idx)
                         PinholeResult.DIRTY -> pinholeDirty.add(idx)
                         PinholeResult.KEEP -> {}
+                    }
+                    if (debug && outcome.result != PinholeResult.KEEP) {
+                        val r = bitmapRects[idx]
+                        val pctStr = "%.1f".format(outcome.pct * 100f)
+                        DetectionLog.log(
+                            "D$displayId c$cycleNum box$idx ${outcome.result} " +
+                                "text=\"${box.sourceText.take(20)}\" " +
+                                "pct=$pctStr% changed=${outcome.changed}/${outcome.total} " +
+                                "maxDelta=${outcome.maxDelta} " +
+                                "rect=(${r.left},${r.top},${r.right},${r.bottom})"
+                        )
                     }
                 }
             }
 
             // 8b. Cascade stale to neighbors. See cascadeStaleRemovals in Classification.kt.
-            val cascadedRemovals = cascadeStaleRemovals(staleOverlayIndices, boxes, bitmapRects)
+            //     Same coordinate-space reasoning as the proximity check
+            //     above: cascade uses unpadded ocrBitmapRects so it agrees
+            //     with classification's notion of "neighbor".
+            val cascadedRemovals = cascadeStaleRemovals(staleOverlayIndices, boxes, ocrBitmapRects)
 
             // 9. Resolve: compute final state from immutable snapshot in one pass
             val allRemovals = cascadedRemovals + pinholeRemovals + contentMatchRemovals
@@ -355,6 +403,47 @@ class PinholeOverlayMode(
             val dirtyBoxes = nextBoxes.filter { it.dirty }
             cachedBoxes = nextBoxes.ifEmpty { null }
             val anyChanged = allRemovals.isNotEmpty() || pinholeDirty.isNotEmpty() || dirtyBoxes.isNotEmpty()
+
+            if (debug && (anyChanged || farOcrGroups.isNotEmpty())) {
+                DetectionLog.log(
+                    "D$displayId c$cycleNum transitions: " +
+                        "dirty=${pinholeDirty.toSortedSet()} " +
+                        "removed=(pinhole=${pinholeRemovals.toSortedSet()}, " +
+                        "contentMatch=${contentMatchRemovals.toSortedSet()}, " +
+                        "cascade=${cascadedRemovals.toSortedSet()}, " +
+                        "stale=${staleOverlayIndices.toSortedSet()}) " +
+                        "far=${farOcrGroups.size} " +
+                        "boxesIn=${boxes.size} cleanOut=${cleanBoxes.size} dirtyOut=${dirtyBoxes.size}"
+                )
+                // Why classification picked stale/contentMatch/far: dump
+                // each OCR group's text+bounds and each cached box's
+                // sourceText+bounds. Compare to figure out whether OCR is
+                // finding the same text the placeholder already covers
+                // (→ content-match should fire but isn't), or different
+                // text near it (→ stale is correct), or whether bounds
+                // are off enough that fillOverlayRegions left text visible.
+                if (pipeline != null) {
+                    val ocrR = pipeline.ocrResult
+                    for (i in ocrR.groupTexts.indices) {
+                        val t = ocrR.groupTexts[i].take(40)
+                        val b = ocrR.groupBounds.getOrNull(i)
+                        DetectionLog.log(
+                            "D$displayId c$cycleNum   ocr[$i] text=\"$t\" " +
+                                "ocrRect=${b?.let { "(${it.left},${it.top},${it.right},${it.bottom})" } ?: "null"}"
+                        )
+                    }
+                }
+                for (i in boxes.indices) {
+                    val b = boxes[i]
+                    val br = bitmapRects.getOrNull(i)
+                    DetectionLog.log(
+                        "D$displayId c$cycleNum   box[$i] src=\"${b.sourceText.take(40)}\" " +
+                            "ocrBounds=(${b.bounds.left},${b.bounds.top},${b.bounds.right},${b.bounds.bottom}) " +
+                            "bitmapRect=${br?.let { "(${it.left},${it.top},${it.right},${it.bottom})" } ?: "null"} " +
+                            "dirty=${b.dirty}"
+                    )
+                }
+            }
 
             // 10. Apply to views — single commit point
             dirtyView?.setBoxes(dirtyBoxes, cropLeft, cropTop, screenshotW, screenshotH)
@@ -465,8 +554,8 @@ class PinholeOverlayMode(
         // over-flags REMOVE for every box on the next cycle. Poll up to ~133ms
         // and fall through if it never settles.
         val view = a11y.translationOverlayForDisplay(displayId)
+        var waited = 0
         if (view != null) {
-            var waited = 0
             while (waited < 8 && !view.areChildrenLaidOut()) {
                 waitVsync(1)
                 waited++
@@ -477,6 +566,15 @@ class PinholeOverlayMode(
         }
         overlayBitmap?.recycle()
         overlayBitmap = view?.renderToOffscreen()
+        if (Prefs(service).debugLiveMode) {
+            val ob = overlayBitmap
+            DetectionLog.log(
+                "D$displayId c$cycleNum renderOffscreen: settled=${waited}vsync " +
+                    "viewDims=${view?.width ?: -1}x${view?.height ?: -1} " +
+                    "bitmapDims=${ob?.width ?: -1}x${ob?.height ?: -1} " +
+                    "boxCount=${boxes.size}"
+            )
+        }
     }
 
     // ── Detection Helpers ───────────────────────────────────────────────
@@ -573,8 +671,9 @@ class PinholeOverlayMode(
      */
     private fun checkPinholes(
         raw: Bitmap, cleanRef: Bitmap, bitmapRect: Rect
-    ): PinholeResult {
-        val overlay = overlayBitmap ?: return PinholeResult.KEEP
+    ): PinholeOutcome {
+        val keepZero = PinholeOutcome(PinholeResult.KEEP, 0f, 0, 0, 0)
+        val overlay = overlayBitmap ?: return keepZero
         val spacing = PinholeCalibration.PINHOLE_SPACING
 
         val left = bitmapRect.left.coerceIn(0, raw.width)
@@ -583,7 +682,7 @@ class PinholeOverlayMode(
         val bottom = bitmapRect.bottom.coerceIn(0, raw.height)
         val regionW = right - left
         val regionH = bottom - top
-        if (regionW <= 0 || regionH <= 0) return PinholeResult.KEEP
+        if (regionW <= 0 || regionH <= 0) return keepZero
 
         val rawPixels = IntArray(regionW * regionH)
         raw.getPixels(rawPixels, 0, regionW, left, top, regionW, regionH)
@@ -597,7 +696,7 @@ class PinholeOverlayMode(
         val ovBottom = bottom.coerceIn(0, overlay.height)
         val ovW = ovRight - ovLeft
         val ovH = ovBottom - ovTop
-        if (ovW != regionW || ovH != regionH) return PinholeResult.KEEP
+        if (ovW != regionW || ovH != regionH) return keepZero
         val ovPixels = IntArray(regionW * regionH)
         overlay.getPixels(ovPixels, 0, regionW, ovLeft, ovTop, regionW, regionH)
 
@@ -632,14 +731,14 @@ class PinholeOverlayMode(
             }
         }
 
-        if (totalPinholes == 0) return PinholeResult.KEEP
+        if (totalPinholes == 0) return keepZero
         val pct = changedPinholes.toFloat() / totalPinholes
         val result = when {
             pct >= PinholeCalibration.PINHOLE_CHANGE_PCT -> PinholeResult.REMOVE
             pct >= PinholeCalibration.PINHOLE_DIRTY_PCT -> PinholeResult.DIRTY
             else -> PinholeResult.KEEP
         }
-        return result
+        return PinholeOutcome(result, pct, changedPinholes, totalPinholes, maxDelta)
     }
 
     /**

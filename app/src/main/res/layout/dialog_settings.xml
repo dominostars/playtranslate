@@ -595,6 +595,11 @@
 
                         <include layout="@layout/settings_row_divider" />
 
+                        <include layout="@layout/settings_row_switch"
+                            android:id="@+id/rowLiveModeDebug" />
+
+                        <include layout="@layout/settings_row_divider" />
+
                         <include layout="@layout/settings_row_action"
                             android:id="@+id/rowForceCrash" />
 

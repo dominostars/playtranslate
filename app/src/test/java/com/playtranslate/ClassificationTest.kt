@@ -17,12 +17,12 @@ import org.robolectric.RobolectricTestRunner
  *  - [classifyOcrResults]: content match, proximity, far; dirty-box
  *    exclusion; first-match-wins; index guards for mid-cycle size drift.
  *  - [cascadeStaleRemovals]: empty seed, isolated seed, adjacent chain,
- *    disconnected multi-seed, dirty skip, bitmapRects overflow.
+ *    disconnected multi-seed, dirty skip, ocrBitmapRects overflow.
  *
  * Runs under Robolectric so [android.graphics.Rect] is available on the JVM.
  * All test rects use an identity [FrameCoordinates] with zero crop so
  * `coords.ocrToBitmap(r) == r` and proximity comparisons can use the same
- * coordinates as the bitmapRects list.
+ * coordinates as the ocrBitmapRects list.
  */
 @RunWith(RobolectricTestRunner::class)
 class ClassificationTest {
@@ -64,7 +64,7 @@ class ClassificationTest {
         val result = classifyOcrResults(
             ocrResult = ocrResult(),
             boxes = listOf(box(Rect(0, 0, 100, 100), sourceText = "abc")),
-            bitmapRects = listOf(Rect(0, 0, 100, 100)),
+            ocrBitmapRects = listOf(Rect(0, 0, 100, 100)),
             coords = identityCoords,
         )
         assertTrue(result.contentMatchRemovals.isEmpty())
@@ -80,7 +80,7 @@ class ClassificationTest {
                 "world" to Rect(0, 200, 100, 300),
             ),
             boxes = emptyList(),
-            bitmapRects = emptyList(),
+            ocrBitmapRects = emptyList(),
             coords = identityCoords,
         )
         assertTrue(result.contentMatchRemovals.isEmpty())
@@ -99,7 +99,7 @@ class ClassificationTest {
         val result = classifyOcrResults(
             ocrResult = ocrResult("hello" to ocrBounds),
             boxes = listOf(box(boxBounds, sourceText = "hello")),
-            bitmapRects = listOf(boxBounds),
+            ocrBitmapRects = listOf(boxBounds),
             coords = identityCoords,
         )
         assertEquals(setOf(0), result.contentMatchRemovals)
@@ -121,7 +121,7 @@ class ClassificationTest {
         val result = classifyOcrResults(
             ocrResult = ocrResult("hello" to ocrBounds),
             boxes = listOf(box(boxBounds, sourceText = "hello")),
-            bitmapRects = listOf(boxBounds),
+            ocrBitmapRects = listOf(boxBounds),
             coords = identityCoords,
         )
         assertTrue(
@@ -138,7 +138,7 @@ class ClassificationTest {
         val result = classifyOcrResults(
             ocrResult = ocrResult("hello" to ocrBounds),
             boxes = listOf(box(boxBounds, sourceText = "totally different text")),
-            bitmapRects = listOf(boxBounds),
+            ocrBitmapRects = listOf(boxBounds),
             coords = identityCoords,
         )
         assertTrue(result.contentMatchRemovals.isEmpty())
@@ -153,7 +153,7 @@ class ClassificationTest {
         val result = classifyOcrResults(
             ocrResult = ocrResult("hello" to ocrBounds),
             boxes = listOf(box(boxBounds, sourceText = "hello", dirty = true)),
-            bitmapRects = listOf(boxBounds),
+            ocrBitmapRects = listOf(boxBounds),
             coords = identityCoords,
         )
         assertTrue(
@@ -177,7 +177,7 @@ class ClassificationTest {
         val result = classifyOcrResults(
             ocrResult = ocrResult("hello" to ocrBounds),
             boxes = listOf(box(boxBounds, sourceText = "")),
-            bitmapRects = listOf(boxBounds),
+            ocrBitmapRects = listOf(boxBounds),
             coords = identityCoords,
         )
         assertTrue(result.contentMatchRemovals.isEmpty())
@@ -196,7 +196,7 @@ class ClassificationTest {
                 box(boxBounds0, sourceText = "hello"),
                 box(boxBounds1, sourceText = "hello"),
             ),
-            bitmapRects = listOf(boxBounds0, boxBounds1),
+            ocrBitmapRects = listOf(boxBounds0, boxBounds1),
             coords = identityCoords,
         )
         assertEquals(setOf(0), result.contentMatchRemovals)
@@ -216,7 +216,7 @@ class ClassificationTest {
         val result = classifyOcrResults(
             ocrResult = ocrResult("hello" to ocr0, "hello" to ocr1),
             boxes = listOf(box(boxBounds, sourceText = "hello")),
-            bitmapRects = listOf(boxBounds),
+            ocrBitmapRects = listOf(boxBounds),
             coords = identityCoords,
         )
         assertEquals(setOf(0), result.contentMatchRemovals)
@@ -239,7 +239,7 @@ class ClassificationTest {
                 box(boxBounds0, sourceText = "old1"),
                 box(boxBounds1, sourceText = "old2"),
             ),
-            bitmapRects = listOf(boxBounds0, boxBounds1),
+            ocrBitmapRects = listOf(boxBounds0, boxBounds1),
             coords = identityCoords,
         )
         assertEquals(setOf(0, 1), result.staleOverlayIndices)
@@ -252,7 +252,7 @@ class ClassificationTest {
         val result = classifyOcrResults(
             ocrResult = ocrResult("brand new" to ocrBounds),
             boxes = listOf(box(boxBounds, sourceText = "something else")),
-            bitmapRects = listOf(boxBounds),
+            ocrBitmapRects = listOf(boxBounds),
             coords = identityCoords,
         )
         assertTrue(result.contentMatchRemovals.isEmpty())
@@ -268,7 +268,7 @@ class ClassificationTest {
         val result = classifyOcrResults(
             ocrResult = ocrResult("xxxxx" to ocrBounds),
             boxes = listOf(box(boxBounds, sourceText = "old", dirty = true)),
-            bitmapRects = listOf(boxBounds),
+            ocrBitmapRects = listOf(boxBounds),
             coords = identityCoords,
         )
         assertTrue(result.staleOverlayIndices.isEmpty())
@@ -287,7 +287,7 @@ class ClassificationTest {
                 "other" to Rect(0, 0, 100, 100),                // Overlaps box 0
             ),
             boxes = listOf(box(boxBounds, sourceText = "hello")),
-            bitmapRects = listOf(boxBounds),
+            ocrBitmapRects = listOf(boxBounds),
             coords = identityCoords,
         )
         assertEquals(setOf(0), result.contentMatchRemovals)
@@ -312,7 +312,7 @@ class ClassificationTest {
         val result = classifyOcrResults(
             ocrResult = ocr,
             boxes = emptyList(),
-            bitmapRects = emptyList(),
+            ocrBitmapRects = emptyList(),
             coords = identityCoords,
         )
         assertEquals(1, result.farOcrGroups.size)
@@ -331,7 +331,7 @@ class ClassificationTest {
         val result = classifyOcrResults(
             ocrResult = ocr,
             boxes = emptyList(),
-            bitmapRects = emptyList(),
+            ocrBitmapRects = emptyList(),
             coords = identityCoords,
         )
         assertEquals(2, result.farOcrGroups.size)
@@ -340,7 +340,7 @@ class ClassificationTest {
     }
 
     @Test
-    fun classify_bitmapRectsShorterThanBoxes_skipsOverflowInProximity() {
+    fun classify_ocrBitmapRectsShorterThanBoxes_skipsOverflowInProximity() {
         // Defensive: if mid-cycle getChildScreenRects returns fewer entries
         // than cachedBoxes, the overflow indices must be silently skipped
         // for the proximity phase instead of throwing IndexOutOfBounds.
@@ -353,7 +353,7 @@ class ClassificationTest {
                 box(boxBounds0, sourceText = "a"),
                 box(boxBounds1, sourceText = "b"),
             ),
-            bitmapRects = listOf(boxBounds0),  // Only one entry
+            ocrBitmapRects = listOf(boxBounds0),  // Only one entry
             coords = identityCoords,
         )
         assertTrue(
@@ -383,7 +383,7 @@ class ClassificationTest {
                 "brand new" to Rect(5_000, 0, 5_100, 100),      // Far from all
             ),
             boxes = boxes,
-            bitmapRects = boxes.map { it.bounds },
+            ocrBitmapRects = boxes.map { it.bounds },
             coords = identityCoords,
         )
         assertEquals(setOf(0), result.contentMatchRemovals)
@@ -405,7 +405,7 @@ class ClassificationTest {
         val result = cascadeStaleRemovals(
             initialStale = emptySet(),
             boxes = listOf(box(Rect(0, 0, 100, 100))),
-            bitmapRects = listOf(Rect(0, 0, 100, 100)),
+            ocrBitmapRects = listOf(Rect(0, 0, 100, 100)),
         )
         assertTrue(result.isEmpty())
     }
@@ -417,7 +417,7 @@ class ClassificationTest {
         val result = cascadeStaleRemovals(
             initialStale = setOf(0),
             boxes = listOf(box(bounds0), box(bounds1)),
-            bitmapRects = listOf(bounds0, bounds1),
+            ocrBitmapRects = listOf(bounds0, bounds1),
         )
         assertEquals(setOf(0), result)
     }
@@ -429,7 +429,7 @@ class ClassificationTest {
         val result = cascadeStaleRemovals(
             initialStale = setOf(0),
             boxes = listOf(box(bounds0), box(bounds1)),
-            bitmapRects = listOf(bounds0, bounds1),
+            ocrBitmapRects = listOf(bounds0, bounds1),
         )
         assertEquals(setOf(0, 1), result)
     }
@@ -445,7 +445,7 @@ class ClassificationTest {
         val result = cascadeStaleRemovals(
             initialStale = setOf(0),
             boxes = listOf(box(bounds0), box(bounds1), box(bounds2)),
-            bitmapRects = listOf(bounds0, bounds1, bounds2),
+            ocrBitmapRects = listOf(bounds0, bounds1, bounds2),
         )
         assertEquals(
             "cascade must reach the end of the chain via transitive neighbors",
@@ -460,19 +460,19 @@ class ClassificationTest {
         val result = cascadeStaleRemovals(
             initialStale = setOf(0),
             boxes = listOf(box(bounds0), box(bounds1, dirty = true)),
-            bitmapRects = listOf(bounds0, bounds1),
+            ocrBitmapRects = listOf(bounds0, bounds1),
         )
         assertEquals(setOf(0), result)
     }
 
     @Test
-    fun cascade_bitmapRectsOverflow_safelySkipped() {
+    fun cascade_ocrBitmapRectsOverflow_safelySkipped() {
         val bounds0 = Rect(0, 0, 100, 100)
         val bounds1 = Rect(50, 0, 150, 100)  // Would overlap bounds0
         val result = cascadeStaleRemovals(
             initialStale = setOf(0),
             boxes = listOf(box(bounds0), box(bounds1)),
-            bitmapRects = listOf(bounds0),  // Only one entry
+            ocrBitmapRects = listOf(bounds0),  // Only one entry
         )
         assertEquals(
             "box 1 has no bitmapRect, cascade must silently skip it",
@@ -494,7 +494,7 @@ class ClassificationTest {
                 box(bounds0), box(bounds1), box(bounds2),
                 box(bounds3), box(bounds4),
             ),
-            bitmapRects = listOf(bounds0, bounds1, bounds2, bounds3, bounds4),
+            ocrBitmapRects = listOf(bounds0, bounds1, bounds2, bounds3, bounds4),
         )
         assertEquals(setOf(0, 1, 3, 4), result)
         assertFalse("isolated box 2 must not be pulled in", 2 in result)

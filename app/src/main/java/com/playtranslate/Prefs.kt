@@ -445,6 +445,13 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_DEBUG_SHOW_DETECTION_LOG, false)
         set(v) = sp.edit().putBoolean(KEY_DEBUG_SHOW_DETECTION_LOG, v).apply()
 
+    /** Debug-only: log per-cycle pinhole detection metrics + box transitions
+     *  + render-offscreen layout-settle stats. Used to diagnose live-mode
+     *  flicker; off in steady-state to keep logcat quiet. */
+    var debugLiveMode: Boolean
+        get() = sp.getBoolean(KEY_DEBUG_LIVE_MODE, false)
+        set(v) = sp.edit().putBoolean(KEY_DEBUG_LIVE_MODE, v).apply()
+
     /** Set to true after the user dismisses the target-pack migration dialog. */
     var targetPackMigrationDismissed: Boolean
         get() = sp.getBoolean(KEY_TARGET_PACK_MIGRATION_DISMISSED, false)
@@ -550,6 +557,7 @@ class Prefs(context: Context) {
         private const val KEY_DEBUG_FORCE_SINGLE_SCREEN      = "debug_force_single_screen"
         private const val KEY_DEBUG_SHOW_OCR_BOXES           = "debug_show_ocr_boxes"
         private const val KEY_DEBUG_SHOW_DETECTION_LOG      = "debug_show_detection_log"
+        private const val KEY_DEBUG_LIVE_MODE                = "debug_live_mode"
         private const val KEY_HOTKEY_TRANSLATION           = "hotkey_translation"
         private const val KEY_HOTKEY_FURIGANA              = "hotkey_furigana"
         private const val KEY_LAST_UPDATE_CHECK            = "last_update_check"

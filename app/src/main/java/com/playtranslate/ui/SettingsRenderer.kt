@@ -1087,6 +1087,16 @@ class SettingsRenderer(
         }
         rowDetectionLog.setOnClickListener { switchDetLog.toggle() }
 
+        // Live-mode debug logging
+        val rowLiveModeDebug = root.findViewById<View>(R.id.rowLiveModeDebug)
+        val switchLiveModeDebug = rowLiveModeDebug.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        rowLiveModeDebug.findViewById<TextView>(R.id.tvRowTitle).text = "Log live-mode pinhole metrics"
+        switchLiveModeDebug.isChecked = prefs.debugLiveMode
+        switchLiveModeDebug.setOnCheckedChangeListener { _, checked ->
+            prefs.debugLiveMode = checked
+        }
+        rowLiveModeDebug.setOnClickListener { switchLiveModeDebug.toggle() }
+
         // Force crash
         val rowForceCrash = root.findViewById<View>(R.id.rowForceCrash)
         rowForceCrash.findViewById<TextView>(R.id.tvRowTitle).text = "Force crash"
