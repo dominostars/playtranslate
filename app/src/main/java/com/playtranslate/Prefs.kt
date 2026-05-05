@@ -565,25 +565,20 @@ class Prefs(context: Context) {
         private const val KEY_TARGET_PACK_MIGRATION_DISMISSED = "target_pack_migration_dismissed"
 
         /**
-         * True when the device has more than one physical display connected.
-         *
-         * This is the narrow "physical topology" predicate — use it only at
-         * call sites where the decision truly depends on display count
-         * (e.g., the dim overlay that covers the app's own window, or
-         * cosmetic text that describes which display the icon lives on).
-         * For "can the user see both the app and the game at once?", use
-         * [isSingleScreen] instead — that predicate also accounts for
-         * Android multi-window mode.
+         * True when more than one currently-capturable display is connected
+         * (matches [capturableDisplays] — FLAG_PRIVATE excluded, STATE_ON
+         * required). On a foldable this flips between true (unfolded /
+         * both panels live) and false (folded — one panel STATE_OFF), which
+         * is the right shape for all current call sites: the dim overlay
+         * over the app's own window only matters when a second viewport is
+         * actually live, and the simplified disable prompt assumes the user
+         * has nowhere else to look. For "can the user see both the app and
+         * the game at once?", use [isSingleScreen] instead — it additionally
+         * accounts for Android multi-window mode.
          */
         fun hasMultipleDisplays(context: Context): Boolean {
             val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-            // Filter out private virtual displays — AccessibilityService's
-            // takeScreenshot rejects them (ERROR_TAKE_SCREENSHOT_INVALID_DISPLAY)
-            // so they aren't real translation targets and shouldn't tip the
-            // single-vs-multi heuristic.
-            return dm.displays.count {
-                it.flags and android.view.Display.FLAG_PRIVATE == 0
-            } > 1
+            return dm.capturableDisplays().size > 1
         }
 
         /**

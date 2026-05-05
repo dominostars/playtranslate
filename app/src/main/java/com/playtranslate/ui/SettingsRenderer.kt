@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
+import com.playtranslate.capturableDisplays
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -523,13 +524,7 @@ class SettingsRenderer(
     private fun setupCaptureDisplaySection() {
         val dm = ctx.getSystemService(Context.DISPLAY_SERVICE)
             as android.hardware.display.DisplayManager
-        // Filter to capturable displays. AccessibilityService.takeScreenshot
-        // rejects private virtual displays with ERROR_TAKE_SCREENSHOT_INVALID_DISPLAY,
-        // so showing them in the picker would let the user toggle on a display
-        // that always errors.
-        displayList = dm.displays.filter {
-            it.flags and android.view.Display.FLAG_PRIVATE == 0
-        }
+        displayList = dm.capturableDisplays()
 
         captureDisplaySection.visibility =
             if (displayList.size <= 1) View.GONE else View.VISIBLE

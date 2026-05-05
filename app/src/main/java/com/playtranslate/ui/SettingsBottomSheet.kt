@@ -18,6 +18,7 @@ import androidx.lifecycle.lifecycleScope
 import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
 import com.playtranslate.PlayTranslateAccessibilityService
+import com.playtranslate.capturableDisplays
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
 import com.playtranslate.fullScreenDialogTheme
@@ -48,7 +49,7 @@ class SettingsBottomSheet : DialogFragment() {
     private var currentView: View? = null
     private var prefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
     private var displayListener: DisplayManager.DisplayListener? = null
-    private var lastDisplayCount = 0
+    private var lastDisplayIds: Set<Int> = emptySet()
 
     private val requestAnkiPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -224,22 +225,21 @@ class SettingsBottomSheet : DialogFragment() {
 
     private fun setupDisplays(view: View, r: SettingsRenderer, prefs: Prefs) {
         val displayManager = requireContext().getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-        // Filter to capturable displays for the same reason as
-        // SettingsRenderer.setupCaptureDisplaySection — private virtual
-        // displays can't be captured by the accessibility API.
-        val displays = displayManager.displays.filter {
-            it.flags and android.view.Display.FLAG_PRIVATE == 0
-        }
-        lastDisplayCount = displays.size
+        val displays = displayManager.capturableDisplays()
+        lastDisplayIds = displays.mapTo(mutableSetOf()) { it.displayId }
 
         r.displayList = displays
 
         // Register display listener for hot-plug
         displayListener?.let { displayManager.unregisterDisplayListener(it) }
         displayListener = object : DisplayManager.DisplayListener {
-            override fun onDisplayAdded(displayId: Int) { reinflateIfDisplayCountChanged(displayManager) }
-            override fun onDisplayRemoved(displayId: Int) { reinflateIfDisplayCountChanged(displayManager) }
-            override fun onDisplayChanged(displayId: Int) {}
+            override fun onDisplayAdded(displayId: Int) { reinflateIfDisplaysChanged(displayManager) }
+            override fun onDisplayRemoved(displayId: Int) { reinflateIfDisplaysChanged(displayManager) }
+            // capturableDisplays() filters on STATE_ON, so a fold/unfold or
+            // monitor sleep/wake changes the picker's set without firing
+            // add/remove. Same-count swaps (one panel off as another comes on)
+            // would be missed by a count check, so compare the set of ids.
+            override fun onDisplayChanged(displayId: Int) { reinflateIfDisplaysChanged(displayManager) }
         }
         displayManager.registerDisplayListener(displayListener, null)
 
@@ -269,10 +269,10 @@ class SettingsBottomSheet : DialogFragment() {
         }
     }
 
-    private fun reinflateIfDisplayCountChanged(dm: DisplayManager) {
-        val newCount = dm.displays.size
-        if (newCount != lastDisplayCount && isAdded) {
-            lastDisplayCount = newCount
+    private fun reinflateIfDisplaysChanged(dm: DisplayManager) {
+        val newIds = dm.capturableDisplays().mapTo(mutableSetOf()) { it.displayId }
+        if (newIds != lastDisplayIds && isAdded) {
+            lastDisplayIds = newIds
             reinflateContent()
         }
     }
