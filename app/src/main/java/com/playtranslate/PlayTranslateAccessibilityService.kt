@@ -1927,7 +1927,14 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                     bitmap.recycle()
                     intent.putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_SCREENSHOT_PATH, path)
                 }
-                startActivity(intent)
+                // Pin the activity to the display the user just dragged on.
+                // Without this, a backgrounded-app launch falls back to the
+                // service's default-display routing and the result lands on
+                // the wrong screen on dual-display setups.
+                val opts = android.app.ActivityOptions.makeBasic()
+                    .setLaunchDisplayId(displayId)
+                    .toBundle()
+                startActivity(intent, opts)
             }
         } else {
             val intent = Intent(this, MainActivity::class.java).apply {

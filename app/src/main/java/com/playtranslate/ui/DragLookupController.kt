@@ -1298,7 +1298,21 @@ class DragLookupController(
                     wr.values.map { it.third }.toIntArray())
             }
         }
-        service.startActivity(intent)
+        // App-foregrounded launches land on MainActivity's display, which is
+        // the user's expected target. When the app is backgrounded, no
+        // foreground task pulls the activity onto the user's display, so it
+        // lands wherever Android default-routes (typically DEFAULT_DISPLAY) —
+        // wrong on dual-screen setups where the user just tapped the floating
+        // icon on a non-default display. Force the launch onto the icon's
+        // display in that case.
+        if (!MainActivity.isInForeground) {
+            val opts = android.app.ActivityOptions.makeBasic()
+                .setLaunchDisplayId(displayId)
+                .toBundle()
+            service.startActivity(intent, opts)
+        } else {
+            service.startActivity(intent)
+        }
     }
 
     private fun sendLineToMainApp(lineText: String) {
