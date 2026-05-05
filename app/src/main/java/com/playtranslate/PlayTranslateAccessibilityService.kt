@@ -924,7 +924,11 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      */
     private val onGameInputs: MutableMap<Int, () -> Unit> = mutableMapOf()
     private var lastKeyEventTime = 0L
-    private var buttonHeld = false
+    /** Derived from [heldKeyCodes] so a multi-key release pattern
+     *  (press A → press B → release A) reports B as still held instead
+     *  of incorrectly flipping to false on A's UP event. Single source
+     *  of truth: only the key event handler mutates heldKeyCodes. */
+    private val buttonHeld: Boolean get() = heldKeyCodes.isNotEmpty()
     private var touchActive = false
     private val TOUCH_HOLD_TIMEOUT_MS = 2000L
     private val touchTimeoutRunnable = Runnable { touchActive = false }
@@ -961,19 +965,19 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     fun startInputMonitoring(displayId: Int, callback: () -> Unit) {
         onGameInputs[displayId] = callback
         lastKeyEventTime = 0L
-        buttonHeld = false
+        heldKeyCodes.clear()
         touchActive = false
         addTouchSentinel(displayId)
     }
 
     /** Stop monitoring input for a single display. Tears down THIS display's
-     *  touch sentinel; global state (buttonHeld, touchActive) only resets
-     *  when the last listener goes away. */
+     *  touch sentinel; global state (heldKeyCodes, touchActive) only
+     *  resets when the last listener goes away. */
     fun stopInputMonitoring(displayId: Int) {
         onGameInputs.remove(displayId)
         removeTouchSentinelForDisplay(displayId)
         if (onGameInputs.isEmpty()) {
-            buttonHeld = false
+            heldKeyCodes.clear()
             touchActive = false
             debugHandler.removeCallbacks(touchTimeoutRunnable)
         }
@@ -982,7 +986,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     /** Stop input monitoring across every display (e.g. on stopLive). */
     fun stopInputMonitoring() {
         onGameInputs.clear()
-        buttonHeld = false
+        heldKeyCodes.clear()
         touchActive = false
         debugHandler.removeCallbacks(touchTimeoutRunnable)
         removeTouchSentinel()
@@ -1183,7 +1187,6 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             when (event.action) {
                 KeyEvent.ACTION_DOWN -> {
                     lastKeyEventTime = System.currentTimeMillis()
-                    buttonHeld = true
                     heldKeyCodes.add(event.keyCode)
                     if (isAnyDragLookupPopupShowing) {
                         dismissAllDragLookupPopups()
@@ -1192,7 +1195,6 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                     checkHotkeyCombos()
                 }
                 KeyEvent.ACTION_UP -> {
-                    buttonHeld = false
                     heldKeyCodes.remove(event.keyCode)
                     lastKeyEventTime = System.currentTimeMillis()
                     fireOnGameInput()

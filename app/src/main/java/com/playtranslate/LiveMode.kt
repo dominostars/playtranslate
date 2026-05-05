@@ -43,7 +43,17 @@ interface LiveMode {
     /** Start the mode's capture/detection loop. */
     fun start()
 
-    /** Stop the mode, cancel all jobs, release all resources. */
+    /** Stop the mode, cancel all jobs, release all resources.
+     *
+     *  May be called even when [start] was never called. The
+     *  [CaptureService.setLiveDisplays] re-entry path can populate
+     *  [CaptureService.liveModes] with new instances, then trigger
+     *  [CaptureService.updateForegroundState] which can route through
+     *  [CaptureService.stopLive] before those instances ever start —
+     *  every instance in the map gets [stop], even ones that haven't
+     *  had [start] yet. Implementations must be null-safe in resource
+     *  teardown (cancel-on-null jobs, recycle-if-not-null bitmaps,
+     *  etc.) so a stop-without-start doesn't crash. */
     fun stop()
 
     /** Refresh: clear state and re-capture (e.g., user pressed Reload). */
