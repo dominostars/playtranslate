@@ -59,6 +59,13 @@
             android:exported="false"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- DeepL API key entry sub-screen (launched from Settings → Translation Service). -->
+        <activity
+            android:name=".ui.DeepLSettingsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.PlayTranslate" />
+
 <!-- Foreground service that owns the OCR + translation pipeline. -->
         <service
             android:name=".CaptureService"

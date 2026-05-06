@@ -254,6 +254,21 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_DEEPL_KEY, BuildConfig.DEEPL_API_KEY) ?: ""
         set(v) = sp.edit().putString(KEY_DEEPL_KEY, v).apply()
 
+    /** User's explicit "use DeepL?" toggle. Independent of [deeplApiKey]
+     *  presence — disabling DeepL preserves the saved key so a later
+     *  re-enable can prepopulate the entry field. Default false; the
+     *  one-time migration in [migrateLegacyPrefs] flips this to true on
+     *  first launch for users who already had a stored key. */
+    var deeplEnabled: Boolean
+        get() = sp.getBoolean(KEY_DEEPL_ENABLED, false)
+        set(v) = sp.edit().putBoolean(KEY_DEEPL_ENABLED, v).apply()
+
+    /** User's explicit "use Lingva?" toggle. Default true so out-of-the-box
+     *  the free online backend is on. */
+    var lingvaEnabled: Boolean
+        get() = sp.getBoolean(KEY_LINGVA_ENABLED, true)
+        set(v) = sp.edit().putBoolean(KEY_LINGVA_ENABLED, v).apply()
+
     var ankiDeckId: Long
         get() = sp.getLong(KEY_ANKI_DECK_ID, -1L)
         set(v) = sp.edit().putLong(KEY_ANKI_DECK_ID, v).apply()
@@ -395,6 +410,16 @@ class Prefs(context: Context) {
             }
             // Nothing reads KEY_SELECTED_REGION_ID after this point — drop it.
             sp.edit().remove(KEY_SELECTED_REGION_ID).apply()
+        }
+
+        // First launch under the per-backend toggle UI: existing users with
+        // a stored DeepL key get DeepL on by default (the old waterfall
+        // would have used DeepL automatically; we want continuity). Users
+        // without a key keep the default-false. Guarded by absence of the
+        // new key so a deliberate user choice is never clobbered.
+        if (!sp.contains(KEY_DEEPL_ENABLED) &&
+            (sp.getString(KEY_DEEPL_KEY, "") ?: "").isNotBlank()) {
+            sp.edit().putBoolean(KEY_DEEPL_ENABLED, true).apply()
         }
     }
 
@@ -547,6 +572,8 @@ class Prefs(context: Context) {
         private const val KEY_ANKI_DECK_NAME = "anki_deck_name"
         private const val KEY_REGION_LIST    = "region_list"
         private const val KEY_DEEPL_KEY      = "deepl_api_key"
+        const val KEY_DEEPL_ENABLED          = "deepl_enabled"
+        const val KEY_LINGVA_ENABLED         = "lingva_enabled"
         private const val KEY_LEGACY_THEME_INDEX    = "theme_index"
         private const val KEY_THEME_MODE            = "theme_mode"
         private const val KEY_ACCENT_NAME           = "accent_name"

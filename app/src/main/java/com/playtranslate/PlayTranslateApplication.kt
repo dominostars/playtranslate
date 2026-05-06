@@ -6,7 +6,7 @@ import android.content.ComponentCallbacks2
 import android.os.Bundle
 import com.playtranslate.diagnostics.CrashHandler
 import com.playtranslate.translation.DeepLBackend
-import com.playtranslate.translation.GoogleGtxBackend
+import com.playtranslate.translation.LingvaBackend
 import com.playtranslate.translation.MlKitBackend
 import com.playtranslate.translation.TranslationBackendRegistry
 import java.lang.ref.WeakReference
@@ -22,8 +22,11 @@ class PlayTranslateApplication : Application() {
         // rebuilding the registry.
         TranslationBackendRegistry.init(
             listOf(
-                DeepLBackend { Prefs(this).deeplApiKey },
-                GoogleGtxBackend(),
+                DeepLBackend(
+                    keyProvider     = { Prefs(this).deeplApiKey },
+                    enabledProvider = { Prefs(this).deeplEnabled },
+                ),
+                LingvaBackend(enabledProvider = { Prefs(this).lingvaEnabled }),
                 MlKitBackend(),
             )
         )

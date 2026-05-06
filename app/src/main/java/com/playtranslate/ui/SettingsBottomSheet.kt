@@ -103,6 +103,11 @@ class SettingsBottomSheet : DialogFragment() {
         renderer?.refreshAnkiSection()
         renderer?.refreshOverlayIconSwitch()
         renderer?.refreshAutoModeToggle()
+        // Pick up backend toggle changes made while we were paused —
+        // DeepLSettingsActivity flips deeplEnabled while the prefs listener
+        // is unregistered, so onResume is the catch-up point.
+        renderer?.refreshDeeplBackendSwitch()
+        renderer?.refreshLingvaBackendSwitch()
 
         val ctx = context ?: return
         val sp = ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
@@ -111,6 +116,8 @@ class SettingsBottomSheet : DialogFragment() {
                 "show_overlay_icon" -> renderer?.refreshOverlayIconSwitch()
                 "compact_overlay_icon" -> renderer?.refreshCompactIconSwitch()
                 "auto_translation_mode" -> renderer?.refreshAutoModeToggle()
+                Prefs.KEY_DEEPL_ENABLED -> renderer?.refreshDeeplBackendSwitch()
+                Prefs.KEY_LINGVA_ENABLED -> renderer?.refreshLingvaBackendSwitch()
             }
         }
         sp.registerOnSharedPreferenceChangeListener(prefsListener)
@@ -195,6 +202,9 @@ class SettingsBottomSheet : DialogFragment() {
                 override fun openLanguageSetup(mode: String) {
                     setLanguageDelegate()
                     LanguageSetupActivity.launch(requireContext(), mode)
+                }
+                override fun openDeepLSettings() {
+                    startActivity(android.content.Intent(requireContext(), DeepLSettingsActivity::class.java))
                 }
                 override fun showHotkeyDialog(
                     title: String?, onSet: (List<Int>) -> Unit, onCancel: () -> Unit

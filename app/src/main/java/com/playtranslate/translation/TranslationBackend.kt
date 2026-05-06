@@ -21,6 +21,11 @@ interface TranslationBackend {
     /** Stable identifier used for cache keys, logs, and ordering overrides. */
     val id: BackendId
 
+    /** Human-readable label shown in Settings. Distinct from [id]: `id`
+     *  is a stable internal token (used by the cache, logs, ordering
+     *  overrides), while `displayName` is the user-facing brand. */
+    val displayName: String
+
     /** Lower = earlier in the waterfall. Resolved against [BackendId]
      *  ascending as the tiebreaker for determinism. */
     val priority: Int

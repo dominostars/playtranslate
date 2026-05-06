@@ -70,6 +70,7 @@ class SettingsRenderer(
         fun onScreenModeChanged()
         fun requestAnkiPermission()
         fun openLanguageSetup(mode: String)
+        fun openDeepLSettings()
         fun showHotkeyDialog(title: String?, onSet: (List<Int>) -> Unit, onCancel: () -> Unit)
         fun showAnkiDeckPicker(onDeckSelected: () -> Unit)
         fun getScrollY(): Int
@@ -668,26 +669,108 @@ class SettingsRenderer(
 
     // ── Translation service section ──────────────────────────────────────
 
+    private val rowBackendDeepl: View = root.findViewById(R.id.rowBackendDeepl)
+    private val rowBackendLingva: View = root.findViewById(R.id.rowBackendLingva)
+    private val rowBackendMlkit: View = root.findViewById(R.id.rowBackendMlkit)
+
     private fun setupTranslationServiceSection() {
-        val etDeeplKey = root.findViewById<EditText>(R.id.etDeeplKey)
-        etDeeplKey.setText(prefs.deeplApiKey)
-        etDeeplKey.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) =
-                Unit
+        wireBackendInfoRow(
+            rowBackendMlkit,
+            title = "ML Kit (on-device)",
+            subtitle = ctx.getString(R.string.tr_service_works_offline),
+        )
 
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) =
-                Unit
+        wireBackendSwitchRow(
+            row = rowBackendLingva,
+            title = "Lingva",
+            subtitle = ctx.getString(R.string.tr_service_requires_internet),
+            initial = prefs.lingvaEnabled,
+            onChanged = { checked -> prefs.lingvaEnabled = checked },
+        )
 
-            override fun afterTextChanged(s: Editable?) {
-                prefs.deeplApiKey = s?.toString()?.trim() ?: ""
+        wireDeeplBackendRow()
+    }
+
+    /** Refresh the DeepL switch from the current pref value. Called from
+     *  [SettingsBottomSheet]'s pref-change observer after
+     *  [DeepLSettingsActivity] returns. */
+    fun refreshDeeplBackendSwitch() {
+        rowBackendDeepl.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
+            it.isChecked = prefs.deeplEnabled
+        }
+    }
+
+    /** Refresh the Lingva switch from the current pref value. */
+    fun refreshLingvaBackendSwitch() {
+        rowBackendLingva.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
+            it.isChecked = prefs.lingvaEnabled
+        }
+    }
+
+    /** Wire the DeepL row. The switch in `settings_row_switch.xml` is
+     *  non-clickable; the whole row is the tap target (matching the
+     *  pattern used by every other toggle row in this screen). The row
+     *  click handles both directions:
+     *
+     *    - off → tap: open [DeepLSettingsActivity]. The activity writes
+     *      `deeplEnabled=true` on Save, and the pref-change listener in
+     *      [SettingsBottomSheet] flips the switch via
+     *      [refreshDeeplBackendSwitch]. The switch stays visually off
+     *      until that point so it never disagrees with the persisted state.
+     *    - on  → tap: directly disable (preserving the saved DeepL key
+     *      so a later re-enable can prepopulate it).
+     *
+     *  No `setOnCheckedChangeListener` on the switch itself — the switch
+     *  is purely a visual indicator. */
+    private fun wireDeeplBackendRow() {
+        rowBackendDeepl.findViewById<TextView>(R.id.tvRowTitle).text = "DeepL"
+        val tvSub = rowBackendDeepl.findViewById<TextView>(R.id.tvRowSubtitle)
+        tvSub.text = ctx.getString(R.string.tr_service_requires_internet)
+        tvSub.visibility = View.VISIBLE
+
+        val switch = rowBackendDeepl.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        switch.isChecked = prefs.deeplEnabled
+
+        rowBackendDeepl.setOnClickListener {
+            if (prefs.deeplEnabled) {
+                prefs.deeplEnabled = false
+                switch.isChecked = false
+            } else {
+                callbacks.openDeepLSettings()
             }
-        })
+        }
+    }
 
-        val rowDeeplLink = root.findViewById<View>(R.id.rowDeeplLink)
-        wireLinkRow(rowDeeplLink, "Get free DeepL API key",
-            "Adding a DeepL API key potentially improves online translations. " +
-                "The free plan requires a credit card and includes 500,000 characters per month.",
-            "https://www.deepl.com/en/pro#developer")
+    private fun wireBackendSwitchRow(
+        row: View,
+        title: String,
+        subtitle: String,
+        initial: Boolean,
+        onChanged: (Boolean) -> Unit,
+    ) {
+        row.findViewById<TextView>(R.id.tvRowTitle).text = title
+        val tvSub = row.findViewById<TextView>(R.id.tvRowSubtitle)
+        tvSub.text = subtitle
+        tvSub.visibility = View.VISIBLE
+
+        val switch = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        switch.isChecked = initial
+        // Single source of truth: row click toggles the switch and
+        // immediately writes the pref. The switch itself stays
+        // non-clickable per the layout, so we don't need a separate
+        // OnCheckedChangeListener — that path can't fire for user input.
+        row.setOnClickListener {
+            val next = !switch.isChecked
+            switch.isChecked = next
+            onChanged(next)
+        }
+    }
+
+    private fun wireBackendInfoRow(row: View, title: String, subtitle: String) {
+        row.findViewById<TextView>(R.id.tvRowTitle).text = title
+        val tvSub = row.findViewById<TextView>(R.id.tvRowSubtitle)
+        tvSub.text = subtitle
+        tvSub.visibility = View.VISIBLE
     }
 
     // ── Anki section ─────────────────────────────────────────────────────

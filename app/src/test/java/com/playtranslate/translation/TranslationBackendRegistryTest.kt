@@ -137,7 +137,7 @@ class TranslationBackendRegistryTest {
 
     @Test fun `preferredOnlineId returns first non-degraded usable id`() {
         val deepl = FakeOnlineBackend(id = "deepl", priority = 10)
-        val gtx = FakeOnlineBackend(id = "google-gtx", priority = 20)
+        val gtx = FakeOnlineBackend(id = "lingva", priority = 20)
         val mlkit = FakeDegradedBackend(id = "mlkit", priority = 30)
         TranslationBackendRegistry.init(listOf(deepl, gtx, mlkit))
 
@@ -146,11 +146,11 @@ class TranslationBackendRegistryTest {
 
     @Test fun `preferredOnlineId skips unusable online backends`() {
         val deepl = FakeOnlineBackend(id = "deepl", priority = 10, usable = false)
-        val gtx = FakeOnlineBackend(id = "google-gtx", priority = 20)
+        val gtx = FakeOnlineBackend(id = "lingva", priority = 20)
         val mlkit = FakeDegradedBackend(id = "mlkit", priority = 30)
         TranslationBackendRegistry.init(listOf(deepl, gtx, mlkit))
 
-        assertEquals("google-gtx", TranslationBackendRegistry.preferredOnlineId("ja", "en"))
+        assertEquals("lingva", TranslationBackendRegistry.preferredOnlineId("ja", "en"))
     }
 
     @Test fun `preferredOnlineId skips degraded backends`() {

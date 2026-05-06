@@ -372,40 +372,28 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
 
-                    <!-- DeepL API key input -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:paddingHorizontal="@dimen/pt_row_h_padding"
-                        android:paddingVertical="@dimen/pt_row_v_padding">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="DeepL API Key"
-                            style="@style/Text.PT.RowTitle" />
-
-                        <EditText
-                            android:id="@+id/etDeeplKey"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:hint="@string/hint_deepl_key"
-                            android:textColorHint="?attr/ptTextHint"
-                            android:textColor="?attr/ptText"
-                            android:textSize="13sp"
-                            android:fontFamily="monospace"
-                            android:singleLine="true"
-                            android:background="?attr/ptSurface"
-                            android:padding="10dp"
-                            android:importantForAutofill="no" />
-                    </LinearLayout>
+                    <include layout="@layout/settings_row_switch"
+                        android:id="@+id/rowBackendDeepl" />
 
                     <include layout="@layout/settings_row_divider" />
 
-                    <include layout="@layout/settings_row_link"
-                        android:id="@+id/rowDeeplLink" />
+                    <include layout="@layout/settings_row_switch"
+                        android:id="@+id/rowBackendLingva" />
+
+                    <include layout="@layout/settings_row_divider" />
+
+                    <include layout="@layout/settings_row_info"
+                        android:id="@+id/rowBackendMlkit" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_word_tatoeba_attribution"
+                        android:paddingHorizontal="16dp"
+                        android:paddingVertical="10dp"
+                        android:text="@string/tr_service_order_footer"
+                        android:textColor="?attr/ptTextHint"
+                        android:textSize="11sp" />
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>

@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger
 internal class FakeOnlineBackend(
     override val id: BackendId,
     override val priority: Int,
+    override val displayName: String = "fake-$id",
     private val response: String = "translated-by-$id",
     private val usable: Boolean = true,
 ) : TranslationBackend {
@@ -31,6 +32,7 @@ internal class FakeOnlineBackend(
 internal class FakeThrowingBackend(
     override val id: BackendId,
     override val priority: Int,
+    override val displayName: String = "fake-$id",
     private val exception: Exception = IOException("synthetic failure"),
 ) : TranslationBackend {
     override val requiresInternet: Boolean = true
@@ -47,6 +49,7 @@ internal class FakeThrowingBackend(
 internal class FakeDegradedBackend(
     override val id: BackendId = "mlkit-fake",
     override val priority: Int = 99,
+    override val displayName: String = "fake-degraded",
     private val response: String = "offline-fallback",
 ) : TranslationBackend {
     override val requiresInternet: Boolean = false

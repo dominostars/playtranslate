@@ -185,4 +185,19 @@
     <string name="pt_accent_violet">Violet</string>
     <string name="pt_accent_orchid">Orchid</string>
     <string name="pt_accent_rose">Rose</string>
+
+    <!-- Translation Service section -->
+    <string name="tr_service_requires_internet">Requires internet</string>
+    <string name="tr_service_works_offline">Works offline</string>
+
+    <!-- DeepL detail screen -->
+    <string name="deepl_settings_title">DeepL</string>
+    <string name="deepl_settings_save">Save</string>
+    <string name="deepl_settings_close_cd">Close</string>
+    <string name="deepl_settings_get_key_title">Get free DeepL API key</string>
+    <string name="deepl_settings_get_key_subtitle">The free plan requires a credit card and includes 500,000 characters per month.</string>
+    <string name="deepl_settings_about">DeepL is a translation service known for high-quality output, especially in European languages.</string>
+
+    <!-- Translation Service section footer in Settings -->
+    <string name="tr_service_order_footer">Translations try each enabled service in the order shown, falling back when one is unavailable.</string>
 </resources>

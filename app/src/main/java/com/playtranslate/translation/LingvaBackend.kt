@@ -10,18 +10,24 @@ import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 /**
- * Google's unofficial `translate.googleapis.com/translate_a/single`
- * endpoint with `client=gtx`. No API key required. Used by many
- * open-source translation tools.
+ * "Lingva" backend — historically a Lingva-proxy translator, currently
+ * pointed at Google's `translate.googleapis.com/translate_a/single`
+ * endpoint with `client=gtx` directly for lower latency. The class
+ * name intentionally matches the user-facing brand and the future
+ * intent (we may switch back to a real Lingva instance), even though
+ * today the implementation hits the gtx endpoint.
  *
- * (Historically this lived under the name "Lingva"; the original
- * implementation went through a Lingva proxy and was switched to the
- * gtx endpoint directly for lower latency. The class name now matches
- * the reality.)
+ * No API key required.
+ *
+ * [enabledProvider] reflects the user's explicit on/off state from
+ * Settings — the registry's waterfall skips this backend when disabled.
  */
-class GoogleGtxBackend : TranslationBackend {
+class LingvaBackend(
+    private val enabledProvider: () -> Boolean,
+) : TranslationBackend {
 
-    override val id: BackendId = "google-gtx"
+    override val id: BackendId = "lingva"
+    override val displayName: String = "Lingva"
     override val priority: Int = 20
     override val requiresInternet: Boolean = true
     override val isDegradedFallback: Boolean = false
@@ -31,7 +37,7 @@ class GoogleGtxBackend : TranslationBackend {
         .readTimeout(8, TimeUnit.SECONDS)
         .build()
 
-    override fun isUsable(source: String, target: String): Boolean = true
+    override fun isUsable(source: String, target: String): Boolean = enabledProvider()
 
     override suspend fun translate(text: String, source: String, target: String): String =
         withContext(Dispatchers.IO) {
@@ -65,6 +71,6 @@ class GoogleGtxBackend : TranslationBackend {
         Thread {
             c.dispatcher.executorService.shutdown()
             c.connectionPool.evictAll()
-        }.apply { isDaemon = true; name = "GoogleGtxBackend-close" }.start()
+        }.apply { isDaemon = true; name = "LingvaBackend-close" }.start()
     }
 }

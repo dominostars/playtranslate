@@ -24,15 +24,23 @@ class DeepLAuthException : IOException("Invalid DeepL API key")
  * key returned by [keyProvider] so a Settings change propagates without
  * rebuilding the registry.
  *
- * [keyProvider] is invoked on the calling coroutine's thread (Dispatchers.IO
- * inside [translate]). Implementations must be cheap and thread-safe;
- * `Prefs(context).deeplApiKey` qualifies.
+ * [keyProvider] and [enabledProvider] are invoked on the calling
+ * coroutine's thread (Dispatchers.IO inside [translate]). Implementations
+ * must be cheap and thread-safe; `Prefs(context).deeplApiKey` /
+ * `Prefs(context).deeplEnabled` qualify.
+ *
+ * [enabledProvider] reflects the user's explicit on/off state from
+ * Settings, which is independent of whether the key is set. The user
+ * may disable DeepL while keeping the saved key (for later re-enable),
+ * so `isUsable` AND's both signals.
  */
 class DeepLBackend(
     private val keyProvider: () -> String?,
+    private val enabledProvider: () -> Boolean,
 ) : TranslationBackend, QuotaAware {
 
     override val id: BackendId = "deepl"
+    override val displayName: String = "DeepL"
     override val priority: Int = 10
     override val requiresInternet: Boolean = true
     override val isDegradedFallback: Boolean = false
@@ -41,7 +49,7 @@ class DeepLBackend(
     private val gson = Gson()
 
     override fun isUsable(source: String, target: String): Boolean =
-        !keyProvider().isNullOrBlank()
+        enabledProvider() && !keyProvider().isNullOrBlank()
 
     override suspend fun translate(text: String, source: String, target: String): String =
         withContext(Dispatchers.IO) {
