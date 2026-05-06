@@ -48,6 +48,7 @@ import java.util.Locale
 import android.hardware.display.DisplayManager
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.ui.TranslationOverlayView
 
 private const val TAG = "CaptureService"
@@ -57,12 +58,16 @@ private const val CHANNEL_ID = "playtranslate_capture"
 /**
  * Foreground service that owns the OCR + translation pipeline.
  *
- * Translation priority:
- *  1. DeepL   — if an API key is configured in Settings
- *  2. Lingva  — free Google Translate proxy, no key required (default)
- *  3. ML Kit  — offline fallback when both online options are unavailable
+ * Translation backends are owned by [TranslationBackendRegistry]
+ * (registered at app start in [PlayTranslateApplication.onCreate]).
+ * The default waterfall order is:
  *
- * Notes are shown inline with the result only when ML Kit is used.
+ *  1. DeepL      — if an API key is configured in Settings
+ *  2. Google gtx — free `translate.googleapis.com/translate_a/single` endpoint
+ *  3. ML Kit     — offline fallback when both online options are unavailable
+ *
+ * Notes are shown inline with the result only when the chosen backend
+ * is the degraded fallback (ML Kit today).
  */
 class CaptureService : Service() {
 
@@ -96,9 +101,6 @@ class CaptureService : Service() {
     }
 
     internal val ocrManager get() = OcrManager.instance
-    private var translationManager: TranslationManager? = null  // ML Kit offline fallback
-    private var deeplTranslator: DeepLTranslator?  = null       // optional, key required
-    private var lingvaTranslator: LingvaTranslator? = null      // always present after configure()
 
     /**
      * The set of displays the user has selected to translate. P1 introduces
@@ -322,9 +324,12 @@ class CaptureService : Service() {
         instance = null
         stopLive()
         serviceScope.cancel()
-        translationManager?.close()
-        deeplTranslator?.close()
-        lingvaTranslator?.close()
+        // The TranslationBackendRegistry is owned at app scope (built in
+        // PlayTranslateApplication.onCreate) and outlives this service —
+        // MainActivity may rebind, and tearing down backends here would
+        // force every CaptureService re-creation to rebuild HTTP clients
+        // and re-acquire ML Kit model handles. Registry teardown happens
+        // implicitly at process death.
         // Outbound event flows hold no Activity references; collectors
         // attach with their own lifecycle scope and detach naturally.
         // No callback nulling needed here anymore.
@@ -475,61 +480,16 @@ class CaptureService : Service() {
         )
     }
 
-    /** Reconcile the shared translator fields with [target]. Called at the
-     *  top of every translation call so drift from a pref-change in another
-     *  code path (onboarding, Settings) is picked up automatically.
-     *
-     *  Delegates backend-toggle cache invalidation to [translationCache.reconcilePreferredBackend].
-     *  Pair changes are handled by the cache key itself — no explicit clear
-     *  needed; same-pair re-ensures preserve the "unchanged UI labels stay
-     *  cached" benefit that drives live mode. */
+    /** Called at the top of every translation call to keep the cache's
+     *  "preferred backend" identity in sync with current configuration.
+     *  Backends themselves are owned by [TranslationBackendRegistry] and
+     *  are pair-agnostic singletons — there is no per-pair instance
+     *  churn to reconcile. Pair changes are handled by the cache key
+     *  itself — no explicit clear needed. */
     private fun ensureLanguageManagersFor(target: TranslationTarget) {
         translationCache.reconcilePreferredBackend(
-            if (target.deeplKey.isNotBlank()) "deepl" else "lingva"
+            TranslationBackendRegistry.preferredOnlineId(target.source, target.target)
         )
-
-        // DeepL — only when a key is configured
-        if (target.deeplKey.isNotBlank()) {
-            val same = deeplTranslator?.let {
-                it.apiKey == target.deeplKey &&
-                it.sourceLang == target.source &&
-                it.targetLang == target.target
-            } ?: false
-            if (!same) {
-                deeplTranslator?.close()
-                deeplTranslator = DeepLTranslator(target.deeplKey, target.source, target.target)
-            }
-        } else if (deeplTranslator != null) {
-            deeplTranslator?.close()
-            deeplTranslator = null
-        }
-
-        // Lingva — always present, recreate only when language pair changes
-        val lingvaNeedsUpdate = lingvaTranslator?.let {
-            it.sourceLang != target.source || it.targetLang != target.target
-        } ?: true
-        if (lingvaNeedsUpdate) {
-            lingvaTranslator?.close()
-            lingvaTranslator = LingvaTranslator(target.source, target.target)
-        }
-
-        // ML Kit — offline fallback; download silently in the background.
-        val existing = translationManager
-        val needsNewManager = existing == null ||
-                existing.sourceLang != target.source ||
-                existing.targetLang != target.target
-        if (needsNewManager) {
-            existing?.close()
-            val newManager = TranslationManager(target.source, target.target)
-            translationManager = newManager
-            serviceScope.launch {
-                try {
-                    newManager.ensureModelReady()
-                } catch (e: Exception) {
-                    Log.w(TAG, "ML Kit model download failed (offline fallback unavailable): ${e.message}")
-                }
-            }
-        }
     }
 
     /** Start a one-shot capture cycle on [displayId]. Caller observes the
@@ -580,11 +540,11 @@ class CaptureService : Service() {
     //      `catch (CancellationException) { throw e }` lets cancellation
     //      reach the launched coroutine's completion.
     //
-    //   B. Translator-fallback CancellationException re-throw
-    //      ([translate]'s DeepL and Lingva blocks).
-    //      Without these, a cancelled capture would waterfall through
-    //      Lingva → ML Kit doing wasted fallback work that the cancelled
-    //      caller can never deliver.
+    //   B. Waterfall CancellationException re-throw
+    //      ([TranslationBackendRegistry.translate]).
+    //      Without it, a cancelled capture would waterfall through every
+    //      backend doing wasted fallback work the cancelled caller can
+    //      never deliver. The registry's catch arm explicitly re-throws.
     //
     //   C. Structured fan-out via coroutineScope
     //      ([translateGroupsSeparately]).
@@ -1526,10 +1486,9 @@ class CaptureService : Service() {
             Prefs(this).compactOverlayIcon)
 
     fun resetConfiguration() {
-        translationManager?.close()
-        translationManager = null
-        deeplTranslator  = null
-        lingvaTranslator = null
+        // Translation backends are owned by TranslationBackendRegistry at
+        // app scope and are not reset here — they survive service teardown
+        // and reconfigure cycles untouched.
         gameDisplayIds = emptySet()
         overrideRegions.clear()
         hasCaptureStateConfigured = false
@@ -1537,9 +1496,11 @@ class CaptureService : Service() {
     }
 
     /** True iff [configureSaved] has run (display + region set). Explicitly
-     *  decoupled from translator presence so a translation-only path that
-     *  constructs translators on-demand via [ensureLanguageManagersFor]
-     *  doesn't trick callers into skipping display/region setup. */
+     *  decoupled from translator availability — translation backends are
+     *  always present via [TranslationBackendRegistry], so a
+     *  translation-only path (e.g. one that doesn't capture) still has
+     *  to advance through display/region setup before [isConfigured]
+     *  flips. */
     val isConfigured: Boolean get() = hasCaptureStateConfigured
 
     // ── Capture cycle ─────────────────────────────────────────────────────
@@ -1736,73 +1697,33 @@ class CaptureService : Service() {
         translate(text, snapshotTranslationTarget())
 
     /**
-     * Translation waterfall: DeepL → Lingva → ML Kit.
-     * Returns the translated text and an optional inline note.
-     * A note is only shown when ML Kit is used (lower quality); callers
-     * use `note == null` as the "cacheable" signal.
+     * Run the translation waterfall and synthesise an inline note when
+     * the chosen backend is the degraded fallback.
+     *
+     * The waterfall itself lives in [TranslationBackendRegistry.translate]
+     * so it is testable on the JVM without dragging this service in.
+     * This method is the single choke point that:
+     *   - reconciles the cache's preferred-backend identity (mid-batch
+     *     pref changes pick up here without a per-caller round trip),
+     *   - turns the [com.playtranslate.translation.WaterfallResult] into
+     *     the legacy `(text, note)` tuple consumed by callers,
+     *   - drives [setDegraded] / the floating-icon "⚠ Offline" badge,
+     *   - and propagates [CancellationException] so a cancelled capture
+     *     reaches its terminal Cancelled state instead of stuck-in-flight.
+     *
+     * Note discipline: a non-null note is the "don't cache" signal in
+     * [translateGroupsSeparately] — online backends can then reclaim the
+     * cache slot on recovery.
      */
     private suspend fun translate(text: String, target: TranslationTarget): Pair<String, String?> {
-        // Single choke point for self-healing: every translation path in the
-        // service flows through here (captureOnce, processScreenshot, live
-        // mode's translateGroupsSeparately, translateOnce for drag-sentence /
-        // sentence-mode / edit-overlay). Ensuring at the call site — rather
-        // than at each public entry point — means a future caller can't
-        // accidentally bypass the self-heal and translate with stale
-        // managers. The check itself is O(1) field comparisons against
-        // [target], so calling it per group-translation is essentially free.
         ensureLanguageManagersFor(target)
-
-        // Capture local references to all three translators so a concurrent
-        // ensureFor() in another call can't null out or replace a translator
-        // we're about to use. The entire waterfall operates on the snapshot
-        // taken at this point — no re-reads of the shared fields below.
-        val deepl = deeplTranslator
-        val lingva = lingvaTranslator
-        val mlKit = translationManager
-
-        // 1. DeepL (if key is set)
-        if (deepl != null) {
-            try {
-                return Pair(deepl.translate(text), null).also { setDegraded(false) }
-            } catch (e: CancellationException) {
-                // Don't fall back through Lingva/ML Kit just because the
-                // caller cancelled — propagate so the capture job's
-                // cancellation reaches its terminal Cancelled state.
-                throw e
-            } catch (e: DeepLQuotaExceededException) {
-                Log.w(TAG, "DeepL quota exceeded, trying Lingva")
-            } catch (e: DeepLAuthException) {
-                Log.w(TAG, "DeepL auth failed, trying Lingva")
-            } catch (e: Exception) {
-                Log.w(TAG, "DeepL failed (${e.message}), trying Lingva")
-            }
-        }
-
-        // 2. Lingva (always attempted)
-        if (lingva != null) {
-            try {
-                return Pair(lingva.translate(text), null).also { setDegraded(false) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "Lingva failed (${e.message}), falling back to ML Kit")
-            }
-        }
-
-        // 3. ML Kit offline fallback — the non-null note signals "don't
-        //    cache" to [translateGroupsSeparately] so online services can
-        //    reclaim the entry on recovery.
-        val note = if (isNetworkAvailable())
-            getString(R.string.note_mlkit_service_unavailable)
-        else
-            getString(R.string.note_mlkit_no_internet)
-        return Pair(mlKitTranslate(text, mlKit), note).also { setDegraded(true) }
-    }
-
-    private suspend fun mlKitTranslate(text: String, manager: TranslationManager?): String {
-        val tm = manager ?: throw IllegalStateException("No offline translation model available")
-        tm.ensureModelReady()
-        return tm.translate(text)
+        val result = TranslationBackendRegistry.translate(text, target.source, target.target)
+        setDegraded(result.isDegraded)
+        val note = if (result.isDegraded) {
+            if (isNetworkAvailable()) getString(R.string.note_mlkit_service_unavailable)
+            else getString(R.string.note_mlkit_no_internet)
+        } else null
+        return result.text to note
     }
 
     /**

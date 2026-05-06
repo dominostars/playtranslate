@@ -40,9 +40,9 @@ sealed interface InstallResult {
  * HTTP download of a language pack zip with byte-progress reporting.
  *
  * Uses a fresh [OkHttpClient] per downloader instance (matching the pattern
- * in `DeepLTranslator` and `LingvaTranslator` — no shared client singleton
- * exists in the codebase). Timeouts are tuned for a 10-20 MB CDN-backed
- * download: 15s connect, 60s read.
+ * in the translation backends — no shared client singleton exists in the
+ * codebase). Timeouts are tuned for a 10-20 MB CDN-backed download:
+ * 15s connect, 60s read.
  */
 class LanguagePackDownloader(
     private val httpClient: OkHttpClient = defaultClient(),

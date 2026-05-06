@@ -5,12 +5,28 @@ import android.app.Application
 import android.content.ComponentCallbacks2
 import android.os.Bundle
 import com.playtranslate.diagnostics.CrashHandler
+import com.playtranslate.translation.DeepLBackend
+import com.playtranslate.translation.GoogleGtxBackend
+import com.playtranslate.translation.MlKitBackend
+import com.playtranslate.translation.TranslationBackendRegistry
 import java.lang.ref.WeakReference
 
 class PlayTranslateApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashHandler.install(this)
+        // Build the translation-backend registry once at process start.
+        // Backends are stateless or hold pooled HTTP clients that should
+        // outlive a single CaptureService instance. The DeepL key is read
+        // via closure each call so a Settings change propagates without
+        // rebuilding the registry.
+        TranslationBackendRegistry.init(
+            listOf(
+                DeepLBackend { Prefs(this).deeplApiKey },
+                GoogleGtxBackend(),
+                MlKitBackend(),
+            )
+        )
         // Track the currently-resumed PlayTranslate activity so display-id
         // queries always reflect the live state instead of a value cached
         // at lifecycle boundaries — Android can move an activity between
