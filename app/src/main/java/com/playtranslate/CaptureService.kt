@@ -492,6 +492,16 @@ class CaptureService : Service() {
         )
     }
 
+    /** Public hook for callers (Settings UI today) to drive cache
+     *  reconciliation eagerly when they know the user just changed
+     *  backend preferences — e.g. flipped the DeepL toggle, saved a new
+     *  DeepL key. Without this, an all-cached translate batch can serve
+     *  stale entries because [translate] (where reconciliation lives) is
+     *  never invoked. Cheap: a Map-clear on transition, no-op otherwise. */
+    fun reconcileBackendPreference() {
+        ensureLanguageManagersFor(snapshotTranslationTarget())
+    }
+
     /** Start a one-shot capture cycle on [displayId]. Caller observes the
      *  returned [CaptureSession]'s [CaptureSession.state] for
      *  progress/result. Cancels any prior one-shot session. */

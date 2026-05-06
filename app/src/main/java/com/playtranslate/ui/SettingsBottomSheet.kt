@@ -112,6 +112,14 @@ class SettingsBottomSheet : DialogFragment() {
         // up new DeepL keys, freshly toggled state, and triggers a usage
         // re-fetch (the call doesn't consume DeepL characters).
         renderer?.refreshAllBackendStatuses()
+        // Reconcile the translation cache against any backend preference
+        // changes made while we were paused (e.g. DeepLSettingsActivity
+        // saving a key flips deeplEnabled on). Without this, cache-hit-only
+        // translate batches could keep returning the previous backend's
+        // results until some unrelated cache miss happened to trigger
+        // reconciliation. The SP listener below handles the same path
+        // when Settings is in the foreground; this is the "paused" twin.
+        com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
 
         val ctx = context ?: return
         val sp = ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
@@ -123,10 +131,12 @@ class SettingsBottomSheet : DialogFragment() {
                 Prefs.KEY_DEEPL_ENABLED -> {
                     renderer?.refreshDeeplBackendSwitch()
                     renderer?.refreshAllBackendStatuses()
+                    com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
                 }
                 Prefs.KEY_LINGVA_ENABLED -> {
                     renderer?.refreshLingvaBackendSwitch()
                     renderer?.refreshAllBackendStatuses()
+                    com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
                 }
             }
         }
