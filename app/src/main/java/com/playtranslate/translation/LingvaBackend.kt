@@ -32,6 +32,8 @@ class LingvaBackend(
     override val requiresInternet: Boolean = true
     override val isDegradedFallback: Boolean = false
 
+    override val status: BackendStatus = BackendStatus.Info("No API key required")
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(8, TimeUnit.SECONDS)

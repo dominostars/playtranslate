@@ -372,17 +372,17 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
 
-                    <include layout="@layout/settings_row_switch"
+                    <include layout="@layout/settings_row_backend"
                         android:id="@+id/rowBackendDeepl" />
 
                     <include layout="@layout/settings_row_divider" />
 
-                    <include layout="@layout/settings_row_switch"
+                    <include layout="@layout/settings_row_backend"
                         android:id="@+id/rowBackendLingva" />
 
                     <include layout="@layout/settings_row_divider" />
 
-                    <include layout="@layout/settings_row_info"
+                    <include layout="@layout/settings_row_backend"
                         android:id="@+id/rowBackendMlkit" />
 
                     <TextView

@@ -200,4 +200,9 @@
 
     <!-- Translation Service section footer in Settings -->
     <string name="tr_service_order_footer">Translations try each enabled service in the order shown, falling back when one is unavailable.</string>
+
+    <!-- Translation Service per-backend status line (line 2) -->
+    <string name="tr_service_status_loading">Checking usage…</string>
+    <string name="tr_service_status_quota_fmt">%1$s / %2$s characters used</string>
+    <string name="tr_service_status_quota_with_reset_fmt">%1$s · resets %2$s</string>
 </resources>

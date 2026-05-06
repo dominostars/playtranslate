@@ -53,4 +53,16 @@ interface TranslationBackend {
     /** Release any held resources. Called from the registry's [close]
      *  during app teardown. Default no-op for stateless backends. */
     fun close() {}
+
+    /** Synchronous snapshot of the backend's secondary-subtitle state in
+     *  Settings. May return [BackendStatus.Loading] when a refresh is in
+     *  flight; the UI then awaits [refreshStatus]. Read-only and idempotent
+     *  — must not block. Default [BackendStatus.Hidden] (no status line). */
+    val status: BackendStatus get() = BackendStatus.Hidden
+
+    /** Refresh dynamic state (e.g. quota fetch) and return the fresh
+     *  snapshot. Implementations cache the result and expose it via
+     *  [status]. Default no-op returns the current [status]. Safe to call
+     *  repeatedly; implementations should single-flight if appropriate. */
+    suspend fun refreshStatus(): BackendStatus = status
 }

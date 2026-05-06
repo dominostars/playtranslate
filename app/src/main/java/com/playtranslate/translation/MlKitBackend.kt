@@ -20,10 +20,12 @@ import com.playtranslate.language.TranslationManagerProvider
 class MlKitBackend : TranslationBackend {
 
     override val id: BackendId = "mlkit"
-    override val displayName: String = "ML Kit (on-device)"
+    override val displayName: String = "ML Kit"
     override val priority: Int = 30
     override val requiresInternet: Boolean = false
     override val isDegradedFallback: Boolean = true
+
+    override val status: BackendStatus = BackendStatus.Info("On-device")
 
     override fun isUsable(source: String, target: String): Boolean = true
 

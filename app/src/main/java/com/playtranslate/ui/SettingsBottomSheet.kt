@@ -108,6 +108,10 @@ class SettingsBottomSheet : DialogFragment() {
         // is unregistered, so onResume is the catch-up point.
         renderer?.refreshDeeplBackendSwitch()
         renderer?.refreshLingvaBackendSwitch()
+        // Always re-render every backend's status line on resume — picks
+        // up new DeepL keys, freshly toggled state, and triggers a usage
+        // re-fetch (the call doesn't consume DeepL characters).
+        renderer?.refreshAllBackendStatuses()
 
         val ctx = context ?: return
         val sp = ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
@@ -116,8 +120,14 @@ class SettingsBottomSheet : DialogFragment() {
                 "show_overlay_icon" -> renderer?.refreshOverlayIconSwitch()
                 "compact_overlay_icon" -> renderer?.refreshCompactIconSwitch()
                 "auto_translation_mode" -> renderer?.refreshAutoModeToggle()
-                Prefs.KEY_DEEPL_ENABLED -> renderer?.refreshDeeplBackendSwitch()
-                Prefs.KEY_LINGVA_ENABLED -> renderer?.refreshLingvaBackendSwitch()
+                Prefs.KEY_DEEPL_ENABLED -> {
+                    renderer?.refreshDeeplBackendSwitch()
+                    renderer?.refreshAllBackendStatuses()
+                }
+                Prefs.KEY_LINGVA_ENABLED -> {
+                    renderer?.refreshLingvaBackendSwitch()
+                    renderer?.refreshAllBackendStatuses()
+                }
             }
         }
         sp.registerOnSharedPreferenceChangeListener(prefsListener)

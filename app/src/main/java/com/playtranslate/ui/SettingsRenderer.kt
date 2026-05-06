@@ -6,6 +6,7 @@ import android.content.res.ColorStateList
 import com.playtranslate.capturableDisplays
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.provider.Settings
@@ -41,10 +42,18 @@ import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.blendColors
 import com.playtranslate.compositeOver
 import com.playtranslate.themeColor
+import com.playtranslate.translation.BackendId
+import com.playtranslate.translation.BackendStatus
+import com.playtranslate.translation.Tone
+import com.playtranslate.translation.TranslationBackend
+import com.playtranslate.translation.TranslationBackendRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 /**
@@ -673,10 +682,18 @@ class SettingsRenderer(
     private val rowBackendLingva: View = root.findViewById(R.id.rowBackendLingva)
     private val rowBackendMlkit: View = root.findViewById(R.id.rowBackendMlkit)
 
+    /** Per-backend in-flight `refreshStatus` job, keyed by [BackendId]. Used
+     *  to single-flight: a new render that triggers a refresh cancels any
+     *  prior refresh for the same backend so a slow request can't overwrite
+     *  the result of a faster, more recent one. */
+    private val backendRefreshJobs: MutableMap<BackendId, Job> = mutableMapOf()
+
     private fun setupTranslationServiceSection() {
-        wireBackendInfoRow(
-            rowBackendMlkit,
-            title = "ML Kit (on-device)",
+        // ML Kit row: no toggle. Hide the switch from the shared layout.
+        rowBackendMlkit.findViewById<MaterialSwitch>(R.id.switchRowToggle).visibility = View.GONE
+        wireBackendStaticRow(
+            row = rowBackendMlkit,
+            title = "ML Kit",
             subtitle = ctx.getString(R.string.tr_service_works_offline),
         )
 
@@ -689,6 +706,10 @@ class SettingsRenderer(
         )
 
         wireDeeplBackendRow()
+
+        // Render every backend's status line, kicking off async refreshes
+        // for ones in Loading state.
+        refreshAllBackendStatuses()
     }
 
     /** Refresh the DeepL switch from the current pref value. Called from
@@ -707,21 +728,106 @@ class SettingsRenderer(
         }
     }
 
-    /** Wire the DeepL row. The switch in `settings_row_switch.xml` is
-     *  non-clickable; the whole row is the tap target (matching the
-     *  pattern used by every other toggle row in this screen). The row
-     *  click handles both directions:
+    /** Re-render every backend row's secondary subtitle line and kick off
+     *  an async [TranslationBackend.refreshStatus] for each. Called on
+     *  initial bind, on Settings resume (after [DeepLSettingsActivity]
+     *  returns), and on relevant pref changes.
+     *
+     *  We render the cached status synchronously first (so the row shows
+     *  the last known value immediately) and then trigger a background
+     *  refresh that updates the row when fresh data arrives. Backends
+     *  without async state (Lingva, ML Kit) inherit the default no-op
+     *  [refreshStatus] that returns the same status without I/O — so
+     *  always-launching is essentially free for them. */
+    fun refreshAllBackendStatuses() {
+        for (backend in TranslationBackendRegistry.orderedBackends()) {
+            val row = backendRowById(backend.id) ?: continue
+            renderBackendStatusLine(row, backend.status)
+            backendRefreshJobs[backend.id]?.cancel()
+            backendRefreshJobs[backend.id] = lifecycleScope.launch {
+                val fresh = backend.refreshStatus()
+                renderBackendStatusLine(row, fresh)
+            }
+        }
+    }
+
+    private fun backendRowById(id: BackendId): View? = when (id) {
+        "deepl"  -> rowBackendDeepl
+        "lingva" -> rowBackendLingva
+        "mlkit"  -> rowBackendMlkit
+        else     -> null
+    }
+
+    /** Apply a [BackendStatus] to a row's secondary subtitle TextView,
+     *  styling by tone and italic flag. The Loading state has its own
+     *  generic text since backends don't supply transient text. */
+    private fun renderBackendStatusLine(row: View, status: BackendStatus) {
+        val tv = row.findViewById<TextView>(R.id.tvRowSubtitle2) ?: return
+        when (status) {
+            is BackendStatus.Hidden -> tv.visibility = View.GONE
+            is BackendStatus.Loading -> {
+                tv.text = ctx.getString(R.string.tr_service_status_loading)
+                applyTone(tv, Tone.Neutral)
+                applyItalic(tv, true)
+                tv.visibility = View.VISIBLE
+            }
+            is BackendStatus.Info -> {
+                tv.text = status.text
+                applyTone(tv, status.tone)
+                applyItalic(tv, status.italic)
+                tv.visibility = View.VISIBLE
+            }
+            is BackendStatus.Quota -> {
+                tv.text = formatQuota(status)
+                // Danger tone when the user has hit (or exceeded) their
+                // limit for the period — translations will start failing
+                // through to the next backend.
+                val exhausted = status.used >= status.limit
+                applyTone(tv, if (exhausted) Tone.Danger else Tone.Neutral)
+                applyItalic(tv, false)
+                tv.visibility = View.VISIBLE
+            }
+        }
+    }
+
+    private fun applyTone(tv: TextView, tone: Tone) {
+        val attr = when (tone) {
+            Tone.Neutral -> R.attr.ptTextHint
+            Tone.Warning -> R.attr.ptWarning
+            Tone.Danger  -> R.attr.ptDanger
+        }
+        tv.setTextColor(ctx.themeColor(attr))
+    }
+
+    private fun applyItalic(tv: TextView, italic: Boolean) {
+        // Pass null for the family so only the style flag changes;
+        // otherwise re-styling a previously-italicised typeface can
+        // leave residual italic-ness on platforms where the styled
+        // typeface gets cached. This guarantees a clean toggle.
+        tv.setTypeface(null, if (italic) Typeface.ITALIC else Typeface.NORMAL)
+    }
+
+    private fun formatQuota(q: BackendStatus.Quota): String {
+        val used  = String.format(Locale.getDefault(), "%,d", q.used)
+        val limit = String.format(Locale.getDefault(), "%,d", q.limit)
+        val base  = ctx.getString(R.string.tr_service_status_quota_fmt, used, limit)
+        return q.resetEpochMs?.let { ms ->
+            val date = SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(ms))
+            ctx.getString(R.string.tr_service_status_quota_with_reset_fmt, base, date)
+        } ?: base
+    }
+
+    /** Wire the DeepL row's title + line-1 subtitle + tap behavior. The
+     *  line-2 subtitle is rendered separately by [renderBackendStatusLine]
+     *  via [refreshAllBackendStatuses]. The switch in
+     *  `settings_row_backend.xml` is non-clickable; the whole row is the
+     *  tap target.
      *
      *    - off → tap: open [DeepLSettingsActivity]. The activity writes
-     *      `deeplEnabled=true` on Save, and the pref-change listener in
-     *      [SettingsBottomSheet] flips the switch via
-     *      [refreshDeeplBackendSwitch]. The switch stays visually off
-     *      until that point so it never disagrees with the persisted state.
+     *      `deeplEnabled=true` on Save and the pref-change listener flips
+     *      the switch + retriggers status refresh.
      *    - on  → tap: directly disable (preserving the saved DeepL key
-     *      so a later re-enable can prepopulate it).
-     *
-     *  No `setOnCheckedChangeListener` on the switch itself — the switch
-     *  is purely a visual indicator. */
+     *      so a later re-enable can prepopulate it). */
     private fun wireDeeplBackendRow() {
         rowBackendDeepl.findViewById<TextView>(R.id.tvRowTitle).text = "DeepL"
         val tvSub = rowBackendDeepl.findViewById<TextView>(R.id.tvRowSubtitle)
@@ -766,11 +872,18 @@ class SettingsRenderer(
         }
     }
 
-    private fun wireBackendInfoRow(row: View, title: String, subtitle: String) {
+    /** Variant of [wireBackendSwitchRow] for rows without an interactive
+     *  toggle (the ML Kit row). Caller is responsible for hiding the
+     *  switch view; this method only wires the title / subtitle and
+     *  removes any click handler. */
+    private fun wireBackendStaticRow(row: View, title: String, subtitle: String) {
         row.findViewById<TextView>(R.id.tvRowTitle).text = title
         val tvSub = row.findViewById<TextView>(R.id.tvRowSubtitle)
         tvSub.text = subtitle
         tvSub.visibility = View.VISIBLE
+        row.isClickable = false
+        row.isFocusable = false
+        row.setOnClickListener(null)
     }
 
     // ── Anki section ─────────────────────────────────────────────────────
