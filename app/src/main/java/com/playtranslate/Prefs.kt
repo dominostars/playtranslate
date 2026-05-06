@@ -452,6 +452,15 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_DEBUG_LIVE_MODE, false)
         set(v) = sp.edit().putBoolean(KEY_DEBUG_LIVE_MODE, v).apply()
 
+    /** Debug-only: when on, [com.playtranslate.OcrSeedWriter] writes the
+     *  bitmap that was fed to OCR plus a transcription of the result to
+     *  external files dir. Intended for one-off seeding of the golden-set
+     *  test harness — not always-on (PNG compression on every capture is
+     *  not free). See [com.playtranslate.OcrSeedWriter]. */
+    var debugSaveOcrSeed: Boolean
+        get() = sp.getBoolean(KEY_DEBUG_SAVE_OCR_SEED, false)
+        set(v) = sp.edit().putBoolean(KEY_DEBUG_SAVE_OCR_SEED, v).apply()
+
     /** Set to true after the user dismisses the target-pack migration dialog. */
     var targetPackMigrationDismissed: Boolean
         get() = sp.getBoolean(KEY_TARGET_PACK_MIGRATION_DISMISSED, false)
@@ -558,6 +567,7 @@ class Prefs(context: Context) {
         private const val KEY_DEBUG_SHOW_OCR_BOXES           = "debug_show_ocr_boxes"
         private const val KEY_DEBUG_SHOW_DETECTION_LOG      = "debug_show_detection_log"
         private const val KEY_DEBUG_LIVE_MODE                = "debug_live_mode"
+        private const val KEY_DEBUG_SAVE_OCR_SEED            = "debug_save_ocr_seed"
         private const val KEY_HOTKEY_TRANSLATION           = "hotkey_translation"
         private const val KEY_HOTKEY_FURIGANA              = "hotkey_furigana"
         private const val KEY_LAST_UPDATE_CHECK            = "last_update_check"

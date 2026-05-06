@@ -37,5 +37,19 @@ dirty_*.png
 ocr_*.png
 session_*.jsonl
 
+# OCR golden-set test data — local only.
+# Screenshots are copyrighted game frames; transcribed expected.txt files
+# are rebuilt locally via the seed-capture toggle (Settings → Debug →
+# "Save OCR captures as seeds"). Test infrastructure (test class, recipes,
+# .gitkeep) is committed; the data is not.
+app/src/androidTest/assets/ocr_golden/**/*.png
+app/src/androidTest/assets/ocr_golden/**/*.txt
+app/src/androidTest/assets/ocr_golden/**/*.notes.md
+
+# OCR investigation staging directories (pulled from device, not source).
+/ocr-debug/
+/ocr-seeds/
+/ocr-golden-reports/
+
 # OS
 Thumbs.db

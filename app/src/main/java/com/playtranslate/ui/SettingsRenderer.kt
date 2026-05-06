@@ -1092,6 +1092,16 @@ class SettingsRenderer(
         }
         rowLiveModeDebug.setOnClickListener { switchLiveModeDebug.toggle() }
 
+        // Save OCR captures as seeds (for golden-set curation)
+        val rowSaveOcrSeed = root.findViewById<View>(R.id.rowSaveOcrSeed)
+        val switchSaveOcrSeed = rowSaveOcrSeed.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        rowSaveOcrSeed.findViewById<TextView>(R.id.tvRowTitle).text = "Save OCR captures as seeds"
+        switchSaveOcrSeed.isChecked = prefs.debugSaveOcrSeed
+        switchSaveOcrSeed.setOnCheckedChangeListener { _, checked ->
+            prefs.debugSaveOcrSeed = checked
+        }
+        rowSaveOcrSeed.setOnClickListener { switchSaveOcrSeed.toggle() }
+
         // Force crash
         val rowForceCrash = root.findViewById<View>(R.id.rowForceCrash)
         rowForceCrash.findViewById<TextView>(R.id.tvRowTitle).text = "Force crash"

@@ -667,7 +667,11 @@ class CaptureService : Service() {
             val ocrBitmap = blackoutFloatingIcon(bitmap, displayId, left, top)
             val ocrResult = try {
                 state.value = CaptureState.InProgress(getString(R.string.status_ocr))
-                ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
+                val result = ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
+                if (result != null && BuildConfig.DEBUG && Prefs(this@CaptureService).debugSaveOcrSeed) {
+                    OcrSeedWriter.writeSeed(this@CaptureService, ocrBitmap, result)
+                }
+                result
             } finally {
                 if (!ocrBitmap.isRecycled) ocrBitmap.recycle()
             }
@@ -1591,7 +1595,11 @@ class CaptureService : Service() {
             // nested try/finally.
             val ocrBitmap = blackoutFloatingIcon(bitmap, displayId, left, top)
             val ocrResult = try {
-                ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
+                val result = ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
+                if (result != null && BuildConfig.DEBUG && Prefs(this@CaptureService).debugSaveOcrSeed) {
+                    OcrSeedWriter.writeSeed(this@CaptureService, ocrBitmap, result)
+                }
+                result
             } finally {
                 if (!ocrBitmap.isRecycled) ocrBitmap.recycle()
             }

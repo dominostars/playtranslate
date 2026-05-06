@@ -1,10 +1,6 @@
 package com.playtranslate
 
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
-import android.graphics.Paint
 import android.graphics.Rect
 import com.google.mlkit.vision.text.Text
 import com.playtranslate.language.OcrBackend
@@ -133,8 +129,14 @@ class OcrManager private constructor() {
         val groupOrientations: List<TextOrientation> = emptyList()
     )
 
-    suspend fun recognise(bitmap: Bitmap, sourceLang: String = "ja", collectDebugBoxes: Boolean = false, screenshotWidth: Int = 0): OcrResult? {
-        val processed = prepareForOcr(bitmap)
+    suspend fun recognise(
+        bitmap: Bitmap,
+        sourceLang: String = "ja",
+        collectDebugBoxes: Boolean = false,
+        screenshotWidth: Int = 0,
+        recipe: OcrPreprocessingRecipe = OcrPreprocessingRecipe.Default
+    ): OcrResult? {
+        val processed = recipe.apply(bitmap, sampleIsDarkBackground(bitmap))
         val scaleFactor = processed.width.toFloat() / bitmap.width
         val addWordSpaces = SourceLanguageProfiles.forCode(sourceLang)?.wordsSeparatedByWhitespace ?: false
 
@@ -365,72 +367,14 @@ class OcrManager private constructor() {
     }
 
     /**
-     * Combined OCR preprocessing: scale + grayscale + contrast + auto-invert
-     * in a single bitmap allocation and one GPU-accelerated Canvas draw.
-     *
-     * - Grayscale removes color noise so contrast operates on pure luminance.
-     * - Contrast (2×) pushes mid-tones to black/white for clean binarization.
-     * - Auto-invert detects light-on-dark text (common in JRPGs) and flips it
-     *   to dark-on-light, which OCR engines are trained on.
-     */
-    private fun prepareForOcr(bitmap: Bitmap): Bitmap {
-        // Determine scale factor
-        val minDim = minOf(bitmap.width, bitmap.height)
-        var scaleFactor = if (minDim < TARGET_MIN_DIM)
-            (TARGET_MIN_DIM.toFloat() / minDim).coerceAtMost(3f)
-        else 1f
-        // Cap total output size to avoid OOM on narrow crops (e.g. 1920×357 × 3 = 5760×1071)
-        val maxDim = 3000
-        if (bitmap.width * scaleFactor > maxDim || bitmap.height * scaleFactor > maxDim) {
-            scaleFactor = minOf(maxDim.toFloat() / bitmap.width, maxDim.toFloat() / bitmap.height)
-        }
-        val outW = (bitmap.width * scaleFactor).toInt()
-        val outH = (bitmap.height * scaleFactor).toInt()
-
-        // Detect if image is light-on-dark by sampling corner brightness
-        val isDark = sampleIsDarkBackground(bitmap)
-
-        // Build combined color matrix: grayscale → contrast → optional inversion
-        // Grayscale: standard NTSC luminance weights
-        val gray = ColorMatrix().apply { setSaturation(0f) }
-
-        // Contrast: output = input * 2.0 - 127.5
-        val contrastScale = 2.0f
-        val contrastTranslate = (1f - contrastScale) / 2f * 255f
-        val contrast = ColorMatrix(floatArrayOf(
-            contrastScale, 0f, 0f, 0f, contrastTranslate,
-            0f, contrastScale, 0f, 0f, contrastTranslate,
-            0f, 0f, contrastScale, 0f, contrastTranslate,
-            0f, 0f, 0f, 1f, 0f
-        ))
-        gray.postConcat(contrast)
-
-        // Inversion for light-on-dark: output = 255 - input
-        if (isDark) {
-            val invert = ColorMatrix(floatArrayOf(
-                -1f, 0f, 0f, 0f, 255f,
-                0f, -1f, 0f, 0f, 255f,
-                0f, 0f, -1f, 0f, 255f,
-                0f, 0f, 0f, 1f, 0f
-            ))
-            gray.postConcat(invert)
-        }
-
-        val out = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
-        val paint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
-            colorFilter = ColorMatrixColorFilter(gray)
-        }
-        val canvas = Canvas(out)
-        if (scaleFactor != 1f) canvas.scale(scaleFactor, scaleFactor)
-        canvas.drawBitmap(bitmap, 0f, 0f, paint)
-        return out
-    }
-
-    /**
      * Samples corner pixels to estimate whether the image has a dark background
      * (suggesting light-on-dark text that should be inverted for OCR).
+     *
+     * Exposed [internal] so [OcrPreprocessingRecipe] implementations and the
+     * instrumented golden-set tests can reuse the same auto-invert decision
+     * production uses.
      */
-    private fun sampleIsDarkBackground(bitmap: Bitmap): Boolean {
+    internal fun sampleIsDarkBackground(bitmap: Bitmap): Boolean {
         val w = bitmap.width
         val h = bitmap.height
         val margin = (minOf(w, h) * 0.05f).toInt().coerceAtLeast(1)
@@ -626,8 +570,12 @@ class OcrManager private constructor() {
      * bitmap's coordinate space (undoing the internal upscale).
      * Used by drag-to-lookup to hit-test finger position against text lines.
      */
-    suspend fun recogniseWithPositions(bitmap: Bitmap, sourceLang: String = "ja"): List<OcrLine>? {
-        val processed = prepareForOcr(bitmap)
+    suspend fun recogniseWithPositions(
+        bitmap: Bitmap,
+        sourceLang: String = "ja",
+        recipe: OcrPreprocessingRecipe = OcrPreprocessingRecipe.Default
+    ): List<OcrLine>? {
+        val processed = recipe.apply(bitmap, sampleIsDarkBackground(bitmap))
         val scaleFactor = processed.width.toFloat() / bitmap.width
         val addWordSpaces = SourceLanguageProfiles.forCode(sourceLang)?.wordsSeparatedByWhitespace ?: false
 
@@ -818,13 +766,6 @@ class OcrManager private constructor() {
 
             return false
         }
-
-        /**
-         * Minimum pixel count on the shorter side before we skip upscaling.
-         * 1200px balances OCR accuracy against memory usage (~6.6MB vs ~18MB
-         * for full-screen captures). ML Kit downscales internally if larger.
-         */
-        private const val TARGET_MIN_DIM = 1200
 
         /**
          * Detects whether a Text.Line is vertical (tategaki) or horizontal
