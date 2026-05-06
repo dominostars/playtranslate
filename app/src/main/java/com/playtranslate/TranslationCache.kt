@@ -5,11 +5,12 @@ package com.playtranslate
  * triple so cross-pair stale reads are impossible by construction. A
  * cached JA→EN gloss can never be served for a JA→ES lookup.
  *
- * The preferred backend (DeepL vs Lingva — chosen by whether a DeepL
- * key is configured) is tracked separately via [reconcilePreferredBackend].
- * A backend toggle clears the cache so the newly-preferred backend's
- * translations aren't shadowed by whatever was cached under the old
- * preference. Pair changes are NOT handled here — the key does that job.
+ * The preferred backend's id (e.g. "deepl", "google-gtx", or "none"
+ * — sourced from [com.playtranslate.translation.TranslationBackendRegistry.preferredOnlineId])
+ * is tracked separately via [reconcilePreferredBackend]. A backend
+ * toggle clears the cache so the newly-preferred backend's translations
+ * aren't shadowed by whatever was cached under the old preference.
+ * Pair changes are NOT handled here — the key does that job.
  *
  * Not thread-safe. [com.playtranslate.CaptureService] mutates exclusively
  * from its `serviceScope` (Main-dispatched) with network calls dispatched
