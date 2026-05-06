@@ -38,9 +38,11 @@ sealed class BackendStatus {
     ) : BackendStatus()
 }
 
-/** Visual tone for an [BackendStatus.Info] line. The renderer maps:
+/** Visual tone for an [BackendStatus.Info] line and for the colored
+ *  spans of the backend row's line-1 subtitle. The renderer maps:
  *  - [Neutral] → `?attr/ptTextHint`
  *  - [Warning] → `?attr/ptWarning`
  *  - [Danger]  → `?attr/ptDanger`
+ *  - [Accent]  → `?attr/ptAccent`
  */
-enum class Tone { Neutral, Warning, Danger }
+enum class Tone { Neutral, Warning, Danger, Accent }

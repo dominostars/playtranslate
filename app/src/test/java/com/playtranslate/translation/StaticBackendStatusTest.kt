@@ -19,8 +19,11 @@ class StaticBackendStatusTest {
         assertEquals(expected, offBackend.status)
     }
 
-    @Test fun `MlKit status is the on-device info`() {
+    @Test fun `MlKit status is the bundled-fallback info`() {
         val backend = MlKitBackend()
-        assertEquals(BackendStatus.Info("On-device"), backend.status)
+        assertEquals(
+            BackendStatus.Info("Bundled with the app, used as a fallback"),
+            backend.status,
+        )
     }
 }

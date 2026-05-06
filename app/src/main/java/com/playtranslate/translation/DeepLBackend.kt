@@ -51,6 +51,7 @@ class DeepLBackend(
     override val priority: Int = 10
     override val requiresInternet: Boolean = true
     override val isDegradedFallback: Boolean = false
+    override val quality: BackendQuality = BackendQuality.Better
 
     private val gson = Gson()
 

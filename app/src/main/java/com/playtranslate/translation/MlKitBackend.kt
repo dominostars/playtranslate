@@ -24,8 +24,9 @@ class MlKitBackend : TranslationBackend {
     override val priority: Int = 30
     override val requiresInternet: Boolean = false
     override val isDegradedFallback: Boolean = true
+    override val quality: BackendQuality = BackendQuality.Bad
 
-    override val status: BackendStatus = BackendStatus.Info("On-device")
+    override val status: BackendStatus = BackendStatus.Info("Bundled with the app, used as a fallback")
 
     override fun isUsable(source: String, target: String): Boolean = true
 

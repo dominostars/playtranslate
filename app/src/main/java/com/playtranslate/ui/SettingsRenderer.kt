@@ -11,7 +11,10 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.provider.Settings
 import android.text.Editable
+import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.text.TextWatcher
+import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.LayoutInflater
@@ -43,6 +46,7 @@ import com.playtranslate.blendColors
 import com.playtranslate.compositeOver
 import com.playtranslate.themeColor
 import com.playtranslate.translation.BackendId
+import com.playtranslate.translation.BackendQuality
 import com.playtranslate.translation.BackendStatus
 import com.playtranslate.translation.Tone
 import com.playtranslate.translation.TranslationBackend
@@ -154,7 +158,7 @@ class SettingsRenderer(
         setGroupHeader(R.id.headerAutoTranslate, "AUTO-TRANSLATE")
         setGroupHeader(R.id.headerHotkeys, "HOTKEYS")
         setGroupHeader(R.id.headerCaptureDisplay, "CAPTURE DISPLAY")
-        setGroupHeader(R.id.headerTranslationService, "TRANSLATION SERVICE", badge = "Optional")
+        setGroupHeader(R.id.headerTranslationService, "TRANSLATION SERVICE")
         setGroupHeader(R.id.headerAnki, "ANKI")
         setGroupHeader(R.id.headerAppearance, "APPEARANCE")
         setGroupHeader(R.id.headerSupport, "SUPPORT")
@@ -691,25 +695,74 @@ class SettingsRenderer(
     private fun setupTranslationServiceSection() {
         // ML Kit row: no toggle. Hide the switch from the shared layout.
         rowBackendMlkit.findViewById<MaterialSwitch>(R.id.switchRowToggle).visibility = View.GONE
-        wireBackendStaticRow(
-            row = rowBackendMlkit,
-            title = "ML Kit",
-            subtitle = ctx.getString(R.string.tr_service_works_offline),
-        )
+        wireBackendStaticRow(row = rowBackendMlkit, title = "ML Kit")
 
         wireBackendSwitchRow(
             row = rowBackendLingva,
             title = "Lingva",
-            subtitle = ctx.getString(R.string.tr_service_requires_internet),
             initial = prefs.lingvaEnabled,
             onChanged = { checked -> prefs.lingvaEnabled = checked },
         )
 
         wireDeeplBackendRow()
 
+        // Compose line 1 for each backend from its metadata
+        // (requiresInternet + quality), styled with mixed-color spans.
+        for (backend in TranslationBackendRegistry.orderedBackends()) {
+            val row = backendRowById(backend.id) ?: continue
+            setBackendLine1(row, backend)
+        }
+
         // Render every backend's status line, kicking off async refreshes
         // for ones in Loading state.
         refreshAllBackendStatuses()
+    }
+
+    /** Compose the row's line-1 subtitle from the backend's metadata —
+     *  `(internet requirement) · (quality)` — with each half tinted by
+     *  its own [Tone] via a [ForegroundColorSpan]. The TextView's base
+     *  color (set by the `Text.PT.RowSubtitle` style) handles the parts
+     *  we don't span. */
+    private fun setBackendLine1(row: View, backend: TranslationBackend) {
+        val tv = row.findViewById<TextView>(R.id.tvRowSubtitle)
+        val builder = SpannableStringBuilder()
+
+        val (internetText, internetTone) = if (backend.requiresInternet) {
+            ctx.getString(R.string.tr_service_requires_internet) to null
+        } else {
+            ctx.getString(R.string.tr_service_works_offline) to Tone.Accent
+        }
+        appendMaybeColored(builder, internetText, internetTone)
+
+        builder.append(" · ")
+
+        val (qualityText, qualityTone) = when (backend.quality) {
+            BackendQuality.Bad    -> ctx.getString(R.string.tr_service_quality_bad)    to Tone.Danger
+            BackendQuality.Good   -> ctx.getString(R.string.tr_service_quality_good)   to null
+            BackendQuality.Better -> ctx.getString(R.string.tr_service_quality_better) to Tone.Accent
+        }
+        appendMaybeColored(builder, qualityText, qualityTone)
+
+        tv.text = builder
+        tv.visibility = View.VISIBLE
+    }
+
+    private fun appendMaybeColored(
+        builder: SpannableStringBuilder,
+        text: String,
+        tone: Tone?,
+    ) {
+        val start = builder.length
+        builder.append(text)
+        if (tone != null) {
+            val color = ctx.themeColor(toneAttr(tone))
+            builder.setSpan(
+                ForegroundColorSpan(color),
+                start,
+                builder.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
     }
 
     /** Refresh the DeepL switch from the current pref value. Called from
@@ -791,12 +844,14 @@ class SettingsRenderer(
     }
 
     private fun applyTone(tv: TextView, tone: Tone) {
-        val attr = when (tone) {
-            Tone.Neutral -> R.attr.ptTextHint
-            Tone.Warning -> R.attr.ptWarning
-            Tone.Danger  -> R.attr.ptDanger
-        }
-        tv.setTextColor(ctx.themeColor(attr))
+        tv.setTextColor(ctx.themeColor(toneAttr(tone)))
+    }
+
+    private fun toneAttr(tone: Tone): Int = when (tone) {
+        Tone.Neutral -> R.attr.ptTextHint
+        Tone.Warning -> R.attr.ptWarning
+        Tone.Danger  -> R.attr.ptDanger
+        Tone.Accent  -> R.attr.ptAccent
     }
 
     private fun applyItalic(tv: TextView, italic: Boolean) {
@@ -817,11 +872,11 @@ class SettingsRenderer(
         } ?: base
     }
 
-    /** Wire the DeepL row's title + line-1 subtitle + tap behavior. The
-     *  line-2 subtitle is rendered separately by [renderBackendStatusLine]
-     *  via [refreshAllBackendStatuses]. The switch in
-     *  `settings_row_backend.xml` is non-clickable; the whole row is the
-     *  tap target.
+    /** Wire the DeepL row's title + tap behavior. The line-1 subtitle is
+     *  composed by [setBackendLine1]; line 2 is rendered by
+     *  [renderBackendStatusLine] via [refreshAllBackendStatuses]. The
+     *  switch in `settings_row_backend.xml` is non-clickable; the whole
+     *  row is the tap target.
      *
      *    - off → tap: open [DeepLSettingsActivity]. The activity writes
      *      `deeplEnabled=true` on Save and the pref-change listener flips
@@ -830,9 +885,6 @@ class SettingsRenderer(
      *      so a later re-enable can prepopulate it). */
     private fun wireDeeplBackendRow() {
         rowBackendDeepl.findViewById<TextView>(R.id.tvRowTitle).text = "DeepL"
-        val tvSub = rowBackendDeepl.findViewById<TextView>(R.id.tvRowSubtitle)
-        tvSub.text = ctx.getString(R.string.tr_service_requires_internet)
-        tvSub.visibility = View.VISIBLE
 
         val switch = rowBackendDeepl.findViewById<MaterialSwitch>(R.id.switchRowToggle)
         switch.isChecked = prefs.deeplEnabled
@@ -850,14 +902,10 @@ class SettingsRenderer(
     private fun wireBackendSwitchRow(
         row: View,
         title: String,
-        subtitle: String,
         initial: Boolean,
         onChanged: (Boolean) -> Unit,
     ) {
         row.findViewById<TextView>(R.id.tvRowTitle).text = title
-        val tvSub = row.findViewById<TextView>(R.id.tvRowSubtitle)
-        tvSub.text = subtitle
-        tvSub.visibility = View.VISIBLE
 
         val switch = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
         switch.isChecked = initial
@@ -874,13 +922,10 @@ class SettingsRenderer(
 
     /** Variant of [wireBackendSwitchRow] for rows without an interactive
      *  toggle (the ML Kit row). Caller is responsible for hiding the
-     *  switch view; this method only wires the title / subtitle and
-     *  removes any click handler. */
-    private fun wireBackendStaticRow(row: View, title: String, subtitle: String) {
+     *  switch view; this method only wires the title and removes any
+     *  click handler. The line-1 subtitle is composed by [setBackendLine1]. */
+    private fun wireBackendStaticRow(row: View, title: String) {
         row.findViewById<TextView>(R.id.tvRowTitle).text = title
-        val tvSub = row.findViewById<TextView>(R.id.tvRowSubtitle)
-        tvSub.text = subtitle
-        tvSub.visibility = View.VISIBLE
         row.isClickable = false
         row.isFocusable = false
         row.setOnClickListener(null)
