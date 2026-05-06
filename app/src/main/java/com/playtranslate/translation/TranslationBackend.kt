@@ -2,6 +2,16 @@ package com.playtranslate.translation
 
 typealias BackendId = String
 
+/** Coarse quality label for a translation backend, surfaced in the
+ *  Settings row's line-1 subtitle. The renderer maps:
+ *  - [Bad]    → "Bad quality"   (danger color)
+ *  - [Good]   → "Good quality"  (default tint)
+ *  - [Better] → "Better quality" (accent color)
+ *
+ *  Subjective by nature; intended as a rough hint to help the user
+ *  decide which backend to enable. Not load-bearing in the waterfall. */
+enum class BackendQuality { Bad, Good, Better }
+
 /**
  * A pluggable translation source. Implementations are pair-agnostic
  * singletons — pair-specific state (e.g. ML Kit's per-pair Translator
@@ -32,6 +42,9 @@ interface TranslationBackend {
 
     /** Whether the backend needs network connectivity to function. */
     val requiresInternet: Boolean
+
+    /** Coarse quality hint shown in Settings. Default [BackendQuality.Good]. */
+    val quality: BackendQuality get() = BackendQuality.Good
 
     /** True for backends whose translations are signalled to the user as
      *  lower-quality / "degraded" (currently only the on-device ML Kit

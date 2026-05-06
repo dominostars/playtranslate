@@ -31,6 +31,7 @@ class LingvaBackend(
     override val priority: Int = 20
     override val requiresInternet: Boolean = true
     override val isDegradedFallback: Boolean = false
+    override val quality: BackendQuality = BackendQuality.Good
 
     override val status: BackendStatus = BackendStatus.Info("No API key required")
 

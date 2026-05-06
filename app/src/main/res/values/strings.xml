@@ -195,7 +195,7 @@
     <string name="deepl_settings_save">Save</string>
     <string name="deepl_settings_close_cd">Close</string>
     <string name="deepl_settings_get_key_title">Get free DeepL API key</string>
-    <string name="deepl_settings_get_key_subtitle">The free plan requires a credit card and includes 500,000 characters per month.</string>
+    <string name="deepl_settings_get_key_subtitle">The free plan includes 500,000 characters per month, but requires a credit card to sign up</string>
     <string name="deepl_settings_about">DeepL is a translation service known for high-quality output, especially in European languages.</string>
 
     <!-- Translation Service section footer in Settings -->
@@ -205,4 +205,9 @@
     <string name="tr_service_status_loading">Checking usage…</string>
     <string name="tr_service_status_quota_fmt">%1$s / %2$s characters used</string>
     <string name="tr_service_status_quota_with_reset_fmt">%1$s · resets %2$s</string>
+
+    <!-- Backend quality labels (line 1 second half) -->
+    <string name="tr_service_quality_bad">Bad quality</string>
+    <string name="tr_service_quality_good">Good quality</string>
+    <string name="tr_service_quality_better">Better quality</string>
 </resources>
