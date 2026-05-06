@@ -21,16 +21,23 @@ enum class InvertMode { NEVER, ALWAYS, AUTO }
  * of the auto-invert sampler at capture time — recipes with [InvertMode.AUTO]
  * consult it, [InvertMode.ALWAYS]/[NEVER] ignore it.
  *
- * The default recipe must produce a bit-identical output to the original
- * (pre-recipe-refactor) `prepareForOcr` so production OCR behavior doesn't
- * change when this abstraction lands.
+ * Production uses [Default]; see its kdoc for the current strategy.
  */
 sealed interface OcrPreprocessingRecipe {
     fun apply(bitmap: Bitmap, isDarkBackground: Boolean): Bitmap
 
-    /** Production preprocessing: scale + grayscale + linear ×2.0 + auto-invert. */
+    /**
+     * Production preprocessing: scale + grayscale + sigmoid (k=7) + auto-invert.
+     *
+     * Switched from the previous `LinearContrast(2.0f)` after the golden-set
+     * harness measured sigmoid k=7 producing ~40% fewer translation-affecting
+     * failures (Japanese-script substitutions + drops) across 16 screens —
+     * lin2.0's hard-clamping at 0/255 was destroying anti-aliased edge
+     * gradients on screens where ML Kit needed them, while sigmoid k=7's
+     * smooth midpoint transition preserved them.
+     */
     object Default : OcrPreprocessingRecipe {
-        private val delegate = LinearContrast(2.0f, InvertMode.AUTO)
+        private val delegate = SigmoidContrast(7f, InvertMode.AUTO)
         override fun apply(bitmap: Bitmap, isDarkBackground: Boolean): Bitmap =
             delegate.apply(bitmap, isDarkBackground)
     }
@@ -46,8 +53,9 @@ sealed interface OcrPreprocessingRecipe {
 
     /**
      * Scale + grayscale + linear contrast (`out = in * factor + translate` with
-     * hard clamp to 0..255) + optional invert. The default recipe is
-     * `LinearContrast(2.0f, AUTO)`.
+     * hard clamp to 0..255) + optional invert. Was the production recipe at
+     * `factor=2.0` until sigmoid k=7 measured better on the golden set;
+     * retained for benchmarking and as a fallback.
      */
     data class LinearContrast(
         val factor: Float,

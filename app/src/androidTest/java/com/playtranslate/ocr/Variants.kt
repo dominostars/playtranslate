@@ -32,25 +32,28 @@ internal object Variants {
         NamedRecipe("raw", OcrPreprocessingRecipe.Raw),
 
         // Production recipe (matches OcrPreprocessingRecipe.Default).
-        // Linear ×2.0 contrast with auto-invert. Reference point for any
-        // proposed change.
+        // Sigmoid k=7 with auto-invert — chosen after the harness measured it
+        // producing ~40% fewer translation-affecting failures than the prior
+        // lin2.0 on this golden set.
+        NamedRecipe("sigk7-auto", OcrPreprocessingRecipe.SigmoidContrast(7f, InvertMode.AUTO)),
+
+        // Previous production. Kept in the sweep so we can detect if a
+        // future change accidentally regresses to its profile.
         NamedRecipe("lin2.0-auto", OcrPreprocessingRecipe.LinearContrast(2.0f, InvertMode.AUTO)),
 
-        // Sigmoid candidates. k=7 is the gentler curve; k=10 is near-binary
-        // but with a smooth midpoint transition (no hard 0/255 clamping that
-        // linear contrast applies). Hypothesis was that smooth-clamping
-        // preserves anti-aliased edge gradients ML Kit needs.
-        NamedRecipe("sigk7-auto", OcrPreprocessingRecipe.SigmoidContrast(7f, InvertMode.AUTO)),
+        // Other sigmoid steepness. k=10 is near-binary but with a smooth
+        // midpoint transition (no hard 0/255 clamping that linear contrast
+        // applies). Comparison point for k=7.
         NamedRecipe("sigk10-auto", OcrPreprocessingRecipe.SigmoidContrast(10f, InvertMode.AUTO)),
 
-        // Invert ablations on the strongest sigmoid candidate. Tests whether
-        // pinning invert on or off beats the auto-detector (which we have
-        // evidence misfires on letterboxed light-background screens).
+        // Invert ablations on sigk10. Test whether pinning invert on or off
+        // beats the auto-detector (which we have evidence misfires on
+        // letterboxed light-background screens).
         NamedRecipe("sigk10-always", OcrPreprocessingRecipe.SigmoidContrast(10f, InvertMode.ALWAYS)),
         NamedRecipe("sigk10-never", OcrPreprocessingRecipe.SigmoidContrast(10f, InvertMode.NEVER)),
 
-        // Production-without-invert: isolates the contribution of the
-        // auto-invert step from the linear contrast.
+        // Linear without invert — isolates the contribution of the auto-invert
+        // step from the linear contrast in the previous-production recipe.
         NamedRecipe("lin2.0-never", OcrPreprocessingRecipe.LinearContrast(2.0f, InvertMode.NEVER)),
 
         // Softer linear contrast. The diagnostic-pass sweep on the original
