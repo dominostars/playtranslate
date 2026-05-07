@@ -25,16 +25,15 @@ android {
         buildConfigField("String", "DEEPL_API_KEY",
             "\"${localProps.getProperty("deepl.api.key", "")}\"")
 
-        // TranslateGemma toggle is feature-flagged off by default. Phase F
-        // validation on Thor (2026-05-07) found latency is 8.7s median /
-        // 12.8s p90 — 14× over the plan's interactive bar of 600 ms / 1.5 s.
-        // Quality is excellent (0.2% catastrophic, on par with ML Kit) but
-        // the speed makes interactive tap-and-wait UX unviable.
-        // See memory/project_translategemma_spike.md "Phase F validation"
-        // section. Flag stays false until a faster path lands (OpenCL Q4_0 or
-        // smaller model). The backend itself stays registered — `isUsable`
-        // returns false without a model file, so the waterfall is unchanged.
-        buildConfigField("boolean", "TRANSLATEGEMMA_ENABLED", "false")
+        // TranslateGemma toggle. Q4_0 + prefix-mode KV reuse (commits c8fc4134 /
+        // 9b337b60) brought Thor latency to median 1436ms / p90 2586ms / max
+        // 4642ms with zero quality flags — comfortably acceptable for manual
+        // lookups, slow but usable in live/overlay paths if the user opts
+        // into TG knowing the latency cost. No registry-level live-mode gate
+        // today; users decide via the Settings toggle. The catalog URL/sha256
+        // reconciliation is a separate pre-release gate (see
+        // langpack_catalog.json comment).
+        buildConfigField("boolean", "TRANSLATEGEMMA_ENABLED", "true")
     }
 
     signingConfigs {
