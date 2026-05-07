@@ -43,11 +43,16 @@ class TranslateGemmaBatchTest {
         val testCtx = instr.context
         val appCtx = instr.targetContext
 
-        check(TranslateGemmaModel.isInstalled(appCtx)) {
-            "Model not installed at ${TranslateGemmaModel.file(appCtx).absolutePath}. " +
+        // Relaxed from `isInstalled` (which strict-checks size against the
+        // catalog) so we can drop in experimental quants (Q4_0, Q5_K_M, etc.)
+        // by just sideloading to the same path.
+        val modelFile = TranslateGemmaModel.file(appCtx)
+        check(modelFile.exists() && modelFile.length() > 1_000_000) {
+            "Model not present at ${modelFile.absolutePath}. " +
                 "Sideload before running this test (see KDoc)."
         }
-        val modelPath = TranslateGemmaModel.file(appCtx).absolutePath
+        val modelPath = modelFile.absolutePath
+        println("TG_MODEL_PATH: $modelPath  size=${modelFile.length()}")
 
         val inputJson = testCtx.assets.open("p5_500_ja.json")
             .bufferedReader(Charsets.UTF_8).use { it.readText() }
