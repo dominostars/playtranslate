@@ -54,18 +54,58 @@ class LlamaTranslator(private val context: Context) {
     ): String = mutex.withLock {
         val didReload = ensureLoaded(modelPath)
         val pair = source to target
-        if (didReload || systemPair != pair) {
-            // First call after model (re)load, or pair changed: re-establish system prompt.
-            engine.setSystemPrompt(systemPromptFor(source, target))
-            systemPair = pair
+        val gemma3 = isGemma3Model(modelPath)
+        if (gemma3) {
+            // Prefix-mode path: Gemma 3's chat template emits empty for `role: system`
+            // and replays the system content in every user-turn diff, so the standard
+            // setSystemPrompt boundary saves nothing. We bake the fixed system block +
+            // "Please translate..." scaffolding into a manually-tokenized prefix, then
+            // per-call only decode the variable text + closing markers.
+            if (didReload || systemPair != pair) {
+                engine.processRawPrefix(buildGemma3Prefix(source, target))
+                systemPair = pair
+            } else {
+                engine.resetForNextPrompt()
+            }
+            val sb = StringBuilder()
+            engine.sendRawSuffix(buildGemma3Suffix(text), predictLength = 256)
+                .collect { token -> sb.append(token) }
+            sb.toString().trim()
         } else {
-            // System prompt KV is still live; just clear the prior turn's chat + KV.
-            engine.resetForNextPrompt()
+            if (didReload || systemPair != pair) {
+                engine.setSystemPrompt(systemPromptFor(source, target))
+                systemPair = pair
+            } else {
+                engine.resetForNextPrompt()
+            }
+            val sb = StringBuilder()
+            engine.sendUserPrompt(buildUserMessage(text, source, target), predictLength = 256)
+                .collect { token -> sb.append(token) }
+            sb.toString().trim()
         }
-        val sb = StringBuilder()
-        engine.sendUserPrompt(buildUserMessage(text, source, target), predictLength = 256)
-            .collect { token -> sb.append(token) }
-        sb.toString().trim()
+    }
+
+    private fun isGemma3Model(modelPath: String): Boolean =
+        modelPath.lowercase(Locale.ROOT).contains("translategemma")
+
+    private fun buildGemma3Prefix(source: String, target: String): String {
+        val src = source.lowercase(Locale.ROOT)
+        val tgt = target.lowercase(Locale.ROOT)
+        val srcName = languageDisplayName(src)
+        val tgtName = languageDisplayName(tgt)
+        // Mirrors the chat-template output we observed in logs, minus the variable
+        // text. Ends with the blank line after "into English:" so the suffix can
+        // start directly with the user's text.
+        return "<start_of_turn>user\n" +
+            "You are a professional $srcName ($src) to $tgtName ($tgt) translator. " +
+            "Your goal is to accurately convey the meaning and nuances of the original $srcName text " +
+            "while adhering to $tgtName grammar, vocabulary, and cultural sensitivities.\n\n" +
+            "Produce only the $tgtName translation, without any additional explanations or commentary.\n\n" +
+            "Please translate the following $srcName text into $tgtName:\n\n"
+    }
+
+    private fun buildGemma3Suffix(text: String): String {
+        return "$text<end_of_turn>\n<start_of_turn>model\n"
     }
 
     /** Best-effort cleanup. Safe to call at app teardown. */

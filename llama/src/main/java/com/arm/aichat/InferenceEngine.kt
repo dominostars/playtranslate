@@ -36,6 +36,28 @@ interface InferenceEngine {
     suspend fun resetForNextPrompt()
 
     /**
+     * PlayTranslate prefix-mode: tokenize and decode a raw text prefix without going
+     * through the chat-template formatter, and record its end position so subsequent
+     * [resetForNextPrompt] calls can rewind to here.
+     *
+     * The caller is responsible for emitting any role markers (e.g. <start_of_turn>user)
+     * in the prefix string. BOS is added automatically.
+     *
+     * Use case: models like Gemma 3 whose chat templates merge system content into the
+     * first user turn, defeating the system-prompt boundary that [setSystemPrompt] +
+     * [resetForNextPrompt] depends on. By managing the prefix manually we get a stable
+     * cache point inside the user turn.
+     */
+    suspend fun processRawPrefix(prefix: String)
+
+    /**
+     * PlayTranslate prefix-mode: decode a raw text suffix and stream generated tokens.
+     * Pairs with [processRawPrefix]. The suffix should include any closing role
+     * markers (e.g. <end_of_turn>\n<start_of_turn>model\n for Gemma 3).
+     */
+    fun sendRawSuffix(suffix: String, predictLength: Int = DEFAULT_PREDICT_LENGTH): Flow<String>
+
+    /**
      * Sends a user prompt to the loaded model and returns a Flow of generated tokens.
      */
     fun sendUserPrompt(message: String, predictLength: Int = DEFAULT_PREDICT_LENGTH): Flow<String>

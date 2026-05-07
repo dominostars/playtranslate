@@ -407,6 +407,99 @@ Java_com_arm_aichat_internal_InferenceEngineImpl_processSystemPrompt(
 }
 
 /**
+ * PlayTranslate prefix-mode: decode a raw text prefix without going through
+ * chat_add_and_format. Used when the model's chat template merges system into the
+ * user turn (e.g. Gemma 3, where `role: system` emits empty and the system content
+ * is replayed in every user-turn diff). By tokenizing the fixed prefix manually,
+ * the prefix's KV state stays stable across calls and [nativeResetForNextPrompt]
+ * can rewind to here, skipping the prefix decode on subsequent same-pair calls.
+ *
+ * Behavior: full reset, then tokenize raw text with add_special=true (so BOS is
+ * prepended automatically) and parse_special=true (so role markers like
+ * <start_of_turn> are recognized as special tokens). Sets system_prompt_position
+ * to the prefix length.
+ *
+ * Pair with [nativeProcessRawSuffix] for the variable per-call portion.
+ */
+extern "C"
+JNIEXPORT jint JNICALL
+Java_com_arm_aichat_internal_InferenceEngineImpl_nativeProcessRawPrefix(
+        JNIEnv *env,
+        jobject /*unused*/,
+        jstring jprefix
+) {
+    reset_long_term_states();
+    reset_short_term_states();
+
+    const auto *prefix = env->GetStringUTFChars(jprefix, nullptr);
+    LOGd("%s: Raw prefix received: \n%s", __func__, prefix);
+    std::string prefix_str(prefix);
+    env->ReleaseStringUTFChars(jprefix, prefix);
+
+    const auto prefix_tokens = common_tokenize(g_context, prefix_str, true, true);
+    LOGi("%s: Prefix token count: %zu", __func__, prefix_tokens.size());
+
+    const int max_batch_size = DEFAULT_CONTEXT_SIZE - OVERFLOW_HEADROOM;
+    if ((int) prefix_tokens.size() > max_batch_size) {
+        LOGe("%s: Prefix too long! %d tokens, max: %d",
+             __func__, (int) prefix_tokens.size(), max_batch_size);
+        return 1;
+    }
+
+    if (decode_tokens_in_batches(g_context, g_batch, prefix_tokens, current_position)) {
+        LOGe("%s: llama_decode() failed!", __func__);
+        return 2;
+    }
+
+    system_prompt_position = current_position = (int) prefix_tokens.size();
+    return 0;
+}
+
+/**
+ * PlayTranslate prefix-mode: decode a raw text suffix at current_position and
+ * prime stop_generation_position. Pairs with [nativeProcessRawPrefix].
+ *
+ * The suffix is the per-call variable portion plus any closing scaffolding (e.g.
+ * "<end_of_turn>\n<start_of_turn>model\n" for Gemma 3). Tokenized with
+ * add_special=false (no extra BOS mid-sequence) and parse_special=true.
+ */
+extern "C"
+JNIEXPORT jint JNICALL
+Java_com_arm_aichat_internal_InferenceEngineImpl_nativeProcessRawSuffix(
+        JNIEnv *env,
+        jobject /*unused*/,
+        jstring jsuffix,
+        jint n_predict
+) {
+    reset_short_term_states();
+
+    const auto *suffix = env->GetStringUTFChars(jsuffix, nullptr);
+    LOGd("%s: Raw suffix received: \n%s", __func__, suffix);
+    std::string suffix_str(suffix);
+    env->ReleaseStringUTFChars(jsuffix, suffix);
+
+    auto suffix_tokens = common_tokenize(g_context, suffix_str, false, true);
+
+    const int suffix_size_initial = (int) suffix_tokens.size();
+    const int max_batch_size = DEFAULT_CONTEXT_SIZE - OVERFLOW_HEADROOM;
+    if (current_position + suffix_size_initial > max_batch_size) {
+        const int new_size = max_batch_size - current_position;
+        const int skipped = suffix_size_initial - new_size;
+        suffix_tokens.resize(new_size);
+        LOGw("%s: Suffix too long for context! Truncated %d tokens", __func__, skipped);
+    }
+
+    if (decode_tokens_in_batches(g_context, g_batch, suffix_tokens, current_position, true)) {
+        LOGe("%s: llama_decode() failed!", __func__);
+        return 2;
+    }
+
+    current_position += (int) suffix_tokens.size();
+    stop_generation_position = current_position + n_predict;
+    return 0;
+}
+
+/**
  * PlayTranslate: trim chat history + KV cache back to "just after the system prompt"
  * without re-decoding the system prompt. Used between translations so each request is
  * independent but we don't pay the system-prompt decode cost every call.
