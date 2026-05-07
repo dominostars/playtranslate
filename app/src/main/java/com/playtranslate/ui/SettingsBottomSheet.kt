@@ -108,6 +108,7 @@ class SettingsBottomSheet : DialogFragment() {
         // is unregistered, so onResume is the catch-up point.
         renderer?.refreshDeeplBackendSwitch()
         renderer?.refreshLingvaBackendSwitch()
+        renderer?.refreshTranslategemmaSwitch()
         // Always re-render every backend's status line on resume — picks
         // up new DeepL keys, freshly toggled state, and triggers a usage
         // re-fetch (the call doesn't consume DeepL characters).
@@ -135,6 +136,11 @@ class SettingsBottomSheet : DialogFragment() {
                 }
                 Prefs.KEY_LINGVA_ENABLED -> {
                     renderer?.refreshLingvaBackendSwitch()
+                    renderer?.refreshAllBackendStatuses()
+                    com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
+                }
+                Prefs.KEY_TRANSLATEGEMMA_ENABLED -> {
+                    renderer?.refreshTranslategemmaSwitch()
                     renderer?.refreshAllBackendStatuses()
                     com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
                 }
@@ -225,6 +231,12 @@ class SettingsBottomSheet : DialogFragment() {
                 }
                 override fun openDeepLSettings() {
                     startActivity(android.content.Intent(requireContext(), DeepLSettingsActivity::class.java))
+                }
+                override fun startTranslateGemmaDownload() {
+                    showTranslateGemmaDownloadDialog()
+                }
+                override fun showTranslateGemmaDisableDialog() {
+                    this@SettingsBottomSheet.showTranslateGemmaDisableDialog()
                 }
                 override fun showHotkeyDialog(
                     title: String?, onSet: (List<Int>) -> Unit, onCancel: () -> Unit
@@ -366,6 +378,178 @@ class SettingsBottomSheet : DialogFragment() {
             if (result == PixelCopy.SUCCESS) onReady(scaleThumbnail(bmp))
             else { bmp.recycle(); onReady(null) }
         }, Handler(Looper.getMainLooper()))
+    }
+
+    // ── TranslateGemma flow ─────────────────────────────────────────────
+
+    private var translategemmaDownloadJob: kotlinx.coroutines.Job? = null
+
+    /** Show the modal download dialog (reuses dialog_language_progress.xml).
+     *  Drives a [com.playtranslate.translation.translategemma.TranslateGemmaDownloader]
+     *  from the bottom sheet's lifecycle scope — dismissing the sheet
+     *  cancels the coroutine but preserves the partial file (resume on
+     *  next attempt). The Cancel button explicitly deletes the partial
+     *  file. */
+    private fun showTranslateGemmaDownloadDialog() {
+        val ctx = context ?: return
+        val downloader = com.playtranslate.translation.translategemma.TranslateGemmaDownloader(ctx)
+
+        // Metered-network warning before kicking off the 2.49 GB download.
+        if (downloader.isCurrentNetworkMetered()) {
+            val sizeStr = com.playtranslate.translation.translategemma
+                .TranslateGemmaModel.humanSize(ctx)
+            androidx.appcompat.app.AlertDialog.Builder(ctx)
+                .setTitle(R.string.translategemma_metered_warning_title)
+                .setMessage(getString(R.string.translategemma_metered_warning_message, sizeStr))
+                .setPositiveButton(android.R.string.ok) { _, _ ->
+                    runTranslateGemmaDownload(ctx, downloader)
+                }
+                .setNegativeButton(android.R.string.cancel) { _, _ -> }
+                .show()
+            return
+        }
+        runTranslateGemmaDownload(ctx, downloader)
+    }
+
+    private fun runTranslateGemmaDownload(
+        ctx: Context,
+        downloader: com.playtranslate.translation.translategemma.TranslateGemmaDownloader,
+    ) {
+        val sizeStr = com.playtranslate.translation.translategemma
+            .TranslateGemmaModel.humanSize(ctx)
+        val view = LayoutInflater.from(ctx).inflate(R.layout.dialog_language_progress, null)
+        val tvStatus = view.findViewById<android.widget.TextView>(R.id.tvPopupStatus)
+        val progressBar = view.findViewById<android.widget.ProgressBar>(R.id.progressBarPopup)
+        val btnCancel = view.findViewById<android.widget.Button>(R.id.btnPopupCancel)
+
+        tvStatus.text = getString(R.string.translategemma_status_downloading, "0 B", sizeStr)
+        progressBar.max = 100
+        progressBar.progress = 0
+
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(ctx)
+            .setView(view)
+            .setCancelable(false)  // user cancels via the Cancel button explicitly
+            .create()
+
+        btnCancel.setOnClickListener {
+            translategemmaDownloadJob?.cancel()
+            // Explicit cancel deletes the partial file (no resume on next attempt).
+            downloader.deletePartial()
+            dialog.dismiss()
+            renderer?.refreshAllBackendStatuses()
+        }
+
+        translategemmaDownloadJob = viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val outcome = downloader.run { progress ->
+                    requireActivity().runOnUiThread {
+                        when (progress) {
+                            is com.playtranslate.translation.translategemma
+                                .TranslateGemmaDownloader.Progress.Downloading -> {
+                                val recv = com.playtranslate.translation.translategemma
+                                    .humanSize(progress.received)
+                                val total = com.playtranslate.translation.translategemma
+                                    .humanSize(progress.total)
+                                tvStatus.text = getString(
+                                    R.string.translategemma_status_downloading,
+                                    recv, total,
+                                )
+                                if (progress.total > 0) {
+                                    progressBar.progress =
+                                        ((progress.received * 100) / progress.total).toInt()
+                                }
+                            }
+                            is com.playtranslate.translation.translategemma
+                                .TranslateGemmaDownloader.Progress.Verifying -> {
+                                tvStatus.text = getString(R.string.translategemma_status_verifying)
+                                progressBar.progress = 100
+                            }
+                        }
+                    }
+                }
+                if (!isAdded) return@launch
+                requireActivity().runOnUiThread {
+                    dialog.dismiss()
+                    when (outcome) {
+                        is com.playtranslate.translation.translategemma
+                            .TranslateGemmaDownloader.Outcome.Success -> {
+                            // Flip the pref → SP listener fires → switch + status refresh + reconcile.
+                            Prefs(ctx).translateGemmaEnabled = true
+                        }
+                        is com.playtranslate.translation.translategemma
+                            .TranslateGemmaDownloader.Outcome.Refused -> {
+                            android.widget.Toast.makeText(
+                                ctx, outcome.reason, android.widget.Toast.LENGTH_LONG
+                            ).show()
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                        is com.playtranslate.translation.translategemma
+                            .TranslateGemmaDownloader.Outcome.Failed -> {
+                            android.widget.Toast.makeText(
+                                ctx,
+                                getString(R.string.translategemma_download_failed, outcome.reason),
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                        is com.playtranslate.translation.translategemma
+                            .TranslateGemmaDownloader.Outcome.Cancelled -> {
+                            // Partial file kept (lifecycle dismiss). Settings will say "Tap to download"
+                            // because isInstalled() is false — but next tap resumes from offset.
+                            android.widget.Toast.makeText(
+                                ctx, R.string.translategemma_download_paused,
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (isAdded) {
+                    requireActivity().runOnUiThread {
+                        dialog.dismiss()
+                        android.widget.Toast.makeText(
+                            ctx,
+                            getString(R.string.translategemma_download_failed,
+                                e.message ?: e.javaClass.simpleName),
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                        renderer?.refreshAllBackendStatuses()
+                    }
+                }
+            }
+        }
+
+        dialog.show()
+    }
+
+    /** AlertDialog with three options when the user taps an enabled TG row.
+     *  Cancel reverts the optimistic switch flip via [SettingsRenderer.refreshTranslategemmaSwitch]. */
+    private fun showTranslateGemmaDisableDialog() {
+        val ctx = context ?: return
+        val sizeStr = com.playtranslate.translation.translategemma
+            .TranslateGemmaModel.humanSize(ctx)
+        androidx.appcompat.app.AlertDialog.Builder(ctx)
+            .setTitle(R.string.translategemma_disable_title)
+            .setMessage(getString(R.string.translategemma_disable_message, sizeStr))
+            .setPositiveButton(R.string.translategemma_disable_keep) { _, _ ->
+                // File kept; only the toggle flips. SP listener picks up the change.
+                Prefs(ctx).translateGemmaEnabled = false
+            }
+            .setNeutralButton(R.string.translategemma_disable_delete) { _, _ ->
+                Prefs(ctx).translateGemmaEnabled = false
+                com.playtranslate.translation.translategemma
+                    .TranslateGemmaModel.delete(ctx)
+                renderer?.refreshAllBackendStatuses()
+            }
+            .setNegativeButton(R.string.translategemma_disable_cancel) { _, _ ->
+                // Revert the optimistic switch flip.
+                renderer?.refreshTranslategemmaSwitch()
+            }
+            .setOnCancelListener { renderer?.refreshTranslategemmaSwitch() }
+            .show()
     }
 
     // ── Companion ───────────────────────────────────────────────────────

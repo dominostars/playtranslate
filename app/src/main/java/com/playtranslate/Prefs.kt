@@ -269,6 +269,18 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_LINGVA_ENABLED, true)
         set(v) = sp.edit().putBoolean(KEY_LINGVA_ENABLED, v).apply()
 
+    /** User's explicit "use TranslateGemma?" toggle. Default false because the
+     *  backend requires a separate ~2.5 GB model download. The download flow
+     *  flips this to true on success; toggling it off opens a dialog with
+     *  "Disable only" / "Delete model" / "Cancel" choices.
+     *
+     *  The on-disk model file is the source of truth for "is the model
+     *  installed?" — see TranslateGemmaModel.isInstalled() — so we deliberately
+     *  do NOT track installation state in prefs. */
+    var translateGemmaEnabled: Boolean
+        get() = sp.getBoolean(KEY_TRANSLATEGEMMA_ENABLED, false)
+        set(v) = sp.edit().putBoolean(KEY_TRANSLATEGEMMA_ENABLED, v).apply()
+
     var ankiDeckId: Long
         get() = sp.getLong(KEY_ANKI_DECK_ID, -1L)
         set(v) = sp.edit().putLong(KEY_ANKI_DECK_ID, v).apply()
@@ -574,6 +586,7 @@ class Prefs(context: Context) {
         private const val KEY_DEEPL_KEY      = "deepl_api_key"
         const val KEY_DEEPL_ENABLED          = "deepl_enabled"
         const val KEY_LINGVA_ENABLED         = "lingva_enabled"
+        const val KEY_TRANSLATEGEMMA_ENABLED = "translategemma_enabled"
         private const val KEY_LEGACY_THEME_INDEX    = "theme_index"
         private const val KEY_THEME_MODE            = "theme_mode"
         private const val KEY_ACCENT_NAME           = "accent_name"

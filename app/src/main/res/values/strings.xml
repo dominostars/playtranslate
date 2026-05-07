@@ -210,4 +210,24 @@
     <string name="tr_service_quality_bad">Bad quality</string>
     <string name="tr_service_quality_good">Good quality</string>
     <string name="tr_service_quality_better">Better quality</string>
+
+    <!-- TranslateGemma backend (downloadable on-device 4B model) -->
+    <string name="translategemma_display_name">TranslateGemma</string>
+    <string name="translategemma_status_not_downloaded">Tap to download (%1$s)</string>
+    <string name="translategemma_status_downloaded_disabled">Downloaded but disabled (%1$s on disk)</string>
+    <string name="translategemma_status_ready">Ready (offline, %1$s on disk)</string>
+    <string name="translategemma_status_downloading">Downloading… %1$s of %2$s</string>
+    <string name="translategemma_status_verifying">Verifying download…</string>
+    <string name="translategemma_status_loading_model">Loading model…</string>
+    <string name="translategemma_disable_title">Disable TranslateGemma?</string>
+    <string name="translategemma_disable_message">The %1$s model is downloaded. You can keep it for later or delete it to free up space.</string>
+    <string name="translategemma_disable_keep">Disable only</string>
+    <string name="translategemma_disable_delete">Delete model</string>
+    <string name="translategemma_disable_cancel">Cancel</string>
+    <string name="translategemma_download_failed">Download failed: %1$s</string>
+    <string name="translategemma_insufficient_memory">This device doesn\'t have enough memory to run TranslateGemma.</string>
+    <string name="translategemma_insufficient_storage">Not enough free storage. TranslateGemma needs %1$s free.</string>
+    <string name="translategemma_metered_warning_title">Download on cellular?</string>
+    <string name="translategemma_metered_warning_message">TranslateGemma is %1$s. Continue on cellular?</string>
+    <string name="translategemma_download_paused">Download paused. Reopen Settings to resume.</string>
 </resources>

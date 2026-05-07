@@ -87,6 +87,20 @@ class SettingsRenderer(
         fun showHotkeyDialog(title: String?, onSet: (List<Int>) -> Unit, onCancel: () -> Unit)
         fun showAnkiDeckPicker(onDeckSelected: () -> Unit)
         fun getScrollY(): Int
+
+        /** Tap on the TranslateGemma row when the model isn't installed.
+         *  Implementer shows the download progress dialog, runs the
+         *  TranslateGemmaDownloader, and on success flips
+         *  [Prefs.translateGemmaEnabled] = true (which fires the pref-change
+         *  listener → status refresh + reconcile). */
+        fun startTranslateGemmaDownload()
+
+        /** Tap on the TranslateGemma row when it's currently enabled.
+         *  Implementer shows the 3-option AlertDialog (Disable only / Delete
+         *  model / Cancel). The Cancel branch must call
+         *  [SettingsRenderer.refreshTranslategemmaSwitch] to revert the
+         *  switch state since the renderer optimistically flipped it. */
+        fun showTranslateGemmaDisableDialog()
     }
 
     // ── View references for refresh ─────────────────────────────────────
@@ -684,6 +698,8 @@ class SettingsRenderer(
 
     private val rowBackendDeepl: View = root.findViewById(R.id.rowBackendDeepl)
     private val rowBackendLingva: View = root.findViewById(R.id.rowBackendLingva)
+    private val rowBackendTranslategemma: View = root.findViewById(R.id.rowBackendTranslategemma)
+    private val dividerBackendTranslategemma: View = root.findViewById(R.id.dividerBackendTranslategemma)
     private val rowBackendMlkit: View = root.findViewById(R.id.rowBackendMlkit)
 
     /** Per-backend in-flight `refreshStatus` job, keyed by [BackendId]. Used
@@ -705,6 +721,7 @@ class SettingsRenderer(
         )
 
         wireDeeplBackendRow()
+        wireTranslateGemmaBackendRow()
 
         // Compose line 1 for each backend from its metadata
         // (requiresInternet + quality), styled with mixed-color spans.
@@ -781,6 +798,16 @@ class SettingsRenderer(
         }
     }
 
+    /** Refresh the TranslateGemma switch from the current pref value.
+     *  Called from the SP listener after the Cancel branch of the disable
+     *  dialog (which needs to revert the optimistic toggle), and after a
+     *  successful download (which flips the pref to true). */
+    fun refreshTranslategemmaSwitch() {
+        rowBackendTranslategemma.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
+            it.isChecked = prefs.translateGemmaEnabled
+        }
+    }
+
     /** Re-render every backend row's secondary subtitle line and kick off
      *  an async [TranslationBackend.refreshStatus] for each. Called on
      *  initial bind, on Settings resume (after [DeepLSettingsActivity]
@@ -805,10 +832,11 @@ class SettingsRenderer(
     }
 
     private fun backendRowById(id: BackendId): View? = when (id) {
-        "deepl"  -> rowBackendDeepl
-        "lingva" -> rowBackendLingva
-        "mlkit"  -> rowBackendMlkit
-        else     -> null
+        "deepl"           -> rowBackendDeepl
+        "lingva"          -> rowBackendLingva
+        "translategemma"  -> rowBackendTranslategemma
+        "mlkit"           -> rowBackendMlkit
+        else              -> null
     }
 
     /** Apply a [BackendStatus] to a row's secondary subtitle TextView,
@@ -883,6 +911,55 @@ class SettingsRenderer(
      *      the switch + retriggers status refresh.
      *    - on  → tap: directly disable (preserving the saved DeepL key
      *      so a later re-enable can prepopulate it). */
+    /** Wire the TranslateGemma row's title + tap behavior, or hide it
+     *  entirely when the feature flag is off.
+     *
+     *    - off (model not installed) → tap: callbacks.startTranslateGemmaDownload().
+     *      The download flow is responsible for flipping the pref on success.
+     *    - off (model installed but disabled) → tap: enable directly.
+     *    - on  → tap: callbacks.showTranslateGemmaDisableDialog(); the Cancel
+     *      branch must call refreshTranslategemmaSwitch() to revert the
+     *      optimistic switch flip.
+     *
+     *  The switch state reflects the user's stored intent (`prefs.translateGemmaEnabled`),
+     *  NOT file-system installation state — so a downloaded-but-disabled model
+     *  shows the switch as off. The status line distinguishes the three states.
+     */
+    private fun wireTranslateGemmaBackendRow() {
+        if (!com.playtranslate.BuildConfig.TRANSLATEGEMMA_ENABLED) {
+            rowBackendTranslategemma.visibility = View.GONE
+            dividerBackendTranslategemma.visibility = View.GONE
+            return
+        }
+
+        rowBackendTranslategemma.findViewById<TextView>(R.id.tvRowTitle).text =
+            ctx.getString(R.string.translategemma_display_name)
+
+        val switch = rowBackendTranslategemma.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        switch.isChecked = prefs.translateGemmaEnabled
+
+        rowBackendTranslategemma.setOnClickListener {
+            if (prefs.translateGemmaEnabled) {
+                // Currently on → optimistically flip the switch off so the dialog
+                // shows the right "after" state. Cancel branch reverts it.
+                switch.isChecked = false
+                callbacks.showTranslateGemmaDisableDialog()
+            } else {
+                val installed = com.playtranslate.translation.translategemma
+                    .TranslateGemmaModel.isInstalled(ctx)
+                if (installed) {
+                    // Already downloaded; just enable.
+                    prefs.translateGemmaEnabled = true
+                    switch.isChecked = true
+                } else {
+                    // Need to download. The download flow flips the pref on success
+                    // (which fires the SP listener → switch refresh).
+                    callbacks.startTranslateGemmaDownload()
+                }
+            }
+        }
+    }
+
     private fun wireDeeplBackendRow() {
         rowBackendDeepl.findViewById<TextView>(R.id.tvRowTitle).text = "DeepL"
 

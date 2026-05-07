@@ -1,6 +1,23 @@
 {
   "catalogVersion": 1,
   "packs": {
+    "engine-translategemma": {
+      "display": "TranslateGemma 4B",
+      "type": "engine",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 2489909760,
+      "url": "https://huggingface.co/mradermacher/translategemma-4b-it-GGUF/resolve/main/translategemma-4b-it.Q4_K_M.gguf",
+      "sha256": "81200d03e843d2ec1ece6eeafe7d13cb6e5211e1fcd336ade55790b683a08330",
+      "licenses": [
+        {
+          "component": "TranslateGemma 4B (Gemma 3-based)",
+          "license": "Gemma",
+          "attribution": "© Google. Subject to the Gemma Terms of Use (https://ai.google.dev/gemma/terms)."
+        }
+      ]
+    },
     "ja": {
       "display": "Japanese",
       "script": "CJK_JAPANESE",

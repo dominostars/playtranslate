@@ -24,6 +24,13 @@ android {
 
         buildConfigField("String", "DEEPL_API_KEY",
             "\"${localProps.getProperty("deepl.api.key", "")}\"")
+
+        // TranslateGemma toggle is feature-flagged off by default until on-device
+        // latency validation passes (Phase F). The backend itself stays registered
+        // unconditionally — the flag only gates the user-visible Settings row.
+        // FLIPPED TO TRUE for on-device manual testing — flip back to false for
+        // any release build until Phase F validation passes.
+        buildConfigField("boolean", "TRANSLATEGEMMA_ENABLED", "true")
     }
 
     signingConfigs {
@@ -59,6 +66,16 @@ android {
     }
 
     packaging {
+        // TranslateGemma's GGML_BACKEND_DL=ON pattern needs to dlopen
+        // libggml-cpu-android_*.so files at runtime via opendir() on
+        // nativeLibraryDir. Modern Android packaging keeps .so files inside
+        // the APK (mmap-loaded by System.loadLibrary) which is great for size
+        // but means nativeLibraryDir is empty on disk. Forcing legacy packaging
+        // extracts them to /data/app/.../lib/arm64/ so the dynamic backend
+        // loader can find them. This is required by ggml's backend-DL design.
+        jniLibs {
+            useLegacyPackaging = true
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             excludes += "/META-INF/LICENSE.md"
@@ -103,6 +120,8 @@ kotlin {
 }
 
 dependencies {
+    implementation(project(":llama"))
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)

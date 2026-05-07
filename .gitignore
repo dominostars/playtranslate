@@ -53,3 +53,4 @@ app/src/androidTest/assets/ocr_golden/**/*.notes.md
 
 # OS
 Thumbs.db
+**/.cxx/
