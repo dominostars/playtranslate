@@ -21,7 +21,7 @@ import java.io.File
  */
 object TranslateGemmaModel {
     const val CATALOG_KEY = "engine-translategemma"
-    private const val FILENAME = "translategemma-4b-it.Q4_K_M.gguf"
+    private const val FILENAME = "translategemma-4b-it.Q4_0.gguf"
 
     fun catalogEntry(ctx: Context): CatalogEntry? =
         LanguagePackCatalogLoader.entryForKey(ctx, CATALOG_KEY)

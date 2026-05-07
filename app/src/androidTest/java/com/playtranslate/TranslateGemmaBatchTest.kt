@@ -20,11 +20,11 @@ import java.io.File
  * `TranslateGemmaModel.file(appCtx)`. The on-device download flow can place
  * it there, or it can be sideloaded via:
  *
- *   adb push <gguf> /sdcard/Download/translategemma-4b-it.Q4_K_M.gguf
+ *   adb push <gguf> /sdcard/Download/translategemma-4b-it.Q4_0.gguf
  *   adb shell run-as com.playtranslate sh -c \
  *     'mkdir -p /data/data/com.playtranslate/no_backup/models && \
- *      cp /sdcard/Download/translategemma-4b-it.Q4_K_M.gguf \
- *         /data/data/com.playtranslate/no_backup/models/translategemma-4b-it.Q4_K_M.gguf'
+ *      cp /sdcard/Download/translategemma-4b-it.Q4_0.gguf \
+ *         /data/data/com.playtranslate/no_backup/models/translategemma-4b-it.Q4_0.gguf'
  *
  * Output:
  *   <appCtx.getExternalFilesDir>/p5_500_translategemma.json

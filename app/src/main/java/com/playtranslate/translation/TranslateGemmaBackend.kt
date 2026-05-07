@@ -8,7 +8,7 @@ import java.util.Locale
 
 /**
  * Downloadable on-device translation backend powered by Google's TranslateGemma 4B
- * (Q4_K_M GGUF, ~2.49 GB) running through the bundled `:llama` JNI bridge.
+ * (Q4_0 GGUF, ~2.19 GB) running through the bundled `:llama` JNI bridge.
  *
  * Slots into the waterfall at priority [PRIORITY] — between Lingva (online, 20)
  * and ML Kit (offline-degraded, 30). When DeepL/Lingva fail (no internet, quota,
