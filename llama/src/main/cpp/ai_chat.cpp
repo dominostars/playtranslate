@@ -564,10 +564,10 @@ Java_com_arm_aichat_internal_InferenceEngineImpl_processUserPrompt(
     }
 
     // Ensure user prompt doesn't exceed the context size by truncating if necessary.
-    const int user_prompt_size = (int) user_tokens.size();
+    const int user_prompt_size_initial = (int) user_tokens.size();
     const int max_batch_size = DEFAULT_CONTEXT_SIZE - OVERFLOW_HEADROOM;
-    if (user_prompt_size > max_batch_size) {
-        const int skipped_tokens = user_prompt_size - max_batch_size;
+    if (user_prompt_size_initial > max_batch_size) {
+        const int skipped_tokens = user_prompt_size_initial - max_batch_size;
         user_tokens.resize(max_batch_size);
         LOGw("%s: User prompt too long! Skipped %d tokens!", __func__, skipped_tokens);
     }
@@ -578,9 +578,12 @@ Java_com_arm_aichat_internal_InferenceEngineImpl_processUserPrompt(
         return 2;
     }
 
-    // Update position
-    current_position += user_prompt_size;
-    stop_generation_position = current_position + user_prompt_size + n_predict;
+    // Update position based on what was actually decoded — never the pre-truncation
+    // size, otherwise current_position drifts past the real KV state and later
+    // decode/reset/shift logic operates on invented positions.
+    const int user_prompt_size_decoded = (int) user_tokens.size();
+    current_position += user_prompt_size_decoded;
+    stop_generation_position = current_position + user_prompt_size_decoded + n_predict;
     return 0;
 }
 

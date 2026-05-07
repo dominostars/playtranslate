@@ -287,8 +287,15 @@ internal class InferenceEngineImpl private constructor(
             _state.value = InferenceEngine.State.ProcessingUserPrompt
             nativeProcessRawSuffix(suffix, predictLength).let { result ->
                 if (result != 0) {
-                    Log.e(TAG, "Failed to process raw suffix: $result")
-                    return@flow
+                    // Native preprocessing failed — KV/position state may be partially
+                    // updated. Surface as Error so the next translate() call routes
+                    // through ensureLoaded() and reloads the model cleanly. Returning
+                    // here without state recovery would leave the singleton stuck in
+                    // ProcessingUserPrompt and brick all subsequent translations.
+                    val ex = RuntimeException("Failed to process raw suffix: $result")
+                    Log.e(TAG, ex.message!!)
+                    _state.value = InferenceEngine.State.Error(ex)
+                    throw ex
                 }
             }
             Log.i(TAG, "Raw suffix processed. Generating assistant prompt...")
@@ -334,8 +341,11 @@ internal class InferenceEngineImpl private constructor(
 
             processUserPrompt(message, predictLength).let { result ->
                 if (result != 0) {
-                    Log.e(TAG, "Failed to process user prompt: $result")
-                    return@flow
+                    // See nativeProcessRawSuffix branch above — same recovery rationale.
+                    val ex = RuntimeException("Failed to process user prompt: $result")
+                    Log.e(TAG, ex.message!!)
+                    _state.value = InferenceEngine.State.Error(ex)
+                    throw ex
                 }
             }
 
