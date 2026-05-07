@@ -1662,6 +1662,14 @@ class CaptureService : Service() {
      */
     internal suspend fun translateGroupsSeparately(groupTexts: List<String>): List<Pair<String, String?>> {
         val target = snapshotTranslationTarget()
+
+        // OCR-only bypass: when source and target language are the same,
+        // skip translation entirely — OCR output is the final result.
+        // This handles all paths: one-shot hold, live mode, and in-app panel.
+        if (target.source == target.target) {
+            return groupTexts.map { Pair(it, null) }
+        }
+
         val keys = groupTexts.map { cacheKey(it, target) }
         val uncached = keys.withIndex()
             .filter { (_, key) -> key !in translationCache }
