@@ -98,6 +98,9 @@ internal class InferenceEngineImpl private constructor(
     private external fun processSystemPrompt(systemPrompt: String): Int
 
     @FastNative
+    private external fun nativeResetForNextPrompt(): Int
+
+    @FastNative
     private external fun processUserPrompt(userPrompt: String, predictLength: Int): Int
 
     @FastNative
@@ -213,6 +216,26 @@ internal class InferenceEngineImpl private constructor(
             }
             Log.i(TAG, "System prompt processed! Awaiting user prompt...")
             _state.value = InferenceEngine.State.ModelReady
+        }
+
+    /**
+     * PlayTranslate: clear chat history + KV cache back to "just after system prompt"
+     * without re-decoding the system prompt. ~150ms cheaper than calling setSystemPrompt
+     * again when the system prompt is unchanged.
+     */
+    override suspend fun resetForNextPrompt() =
+        withContext(llamaDispatcher) {
+            check(_state.value is InferenceEngine.State.ModelReady) {
+                "Cannot reset in ${_state.value.javaClass.simpleName}!"
+            }
+            nativeResetForNextPrompt().let { result ->
+                if (result != 0) {
+                    RuntimeException("Failed to reset for next prompt: $result").also {
+                        _state.value = InferenceEngine.State.Error(it)
+                        throw it
+                    }
+                }
+            }
         }
 
     /**

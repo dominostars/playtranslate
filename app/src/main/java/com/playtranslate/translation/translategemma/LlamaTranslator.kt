@@ -6,7 +6,6 @@ import android.util.Log
 import com.arm.aichat.AiChat
 import com.arm.aichat.InferenceEngine
 import com.arm.aichat.isModelLoaded
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -36,6 +35,11 @@ class LlamaTranslator(private val context: Context) {
 
     @Volatile private var loadedModelPath: String? = null
 
+    // Cached pair for which the engine's KV cache currently holds a live system prompt.
+    // When [translate] is called with the same (source, target) again, we skip the
+    // setSystemPrompt re-decode and just trim KV/chat-history back to "after system".
+    private var systemPair: Pair<String, String>? = null
+
     /**
      * Translate [text] from [source] to [target] using the model at [modelPath].
      * Suspends while the model loads on first call (~2–10s on a flagship phone).
@@ -48,10 +52,16 @@ class LlamaTranslator(private val context: Context) {
         target: String,
         modelPath: String,
     ): String = mutex.withLock {
-        ensureLoaded(modelPath)
-        // Reset KV cache + chat history before each request so consecutive calls don't
-        // accumulate context. setSystemPrompt internally calls reset_long_term_states().
-        engine.setSystemPrompt(systemPromptFor(source, target))
+        val didReload = ensureLoaded(modelPath)
+        val pair = source to target
+        if (didReload || systemPair != pair) {
+            // First call after model (re)load, or pair changed: re-establish system prompt.
+            engine.setSystemPrompt(systemPromptFor(source, target))
+            systemPair = pair
+        } else {
+            // System prompt KV is still live; just clear the prior turn's chat + KV.
+            engine.resetForNextPrompt()
+        }
         val sb = StringBuilder()
         engine.sendUserPrompt(buildUserMessage(text, source, target), predictLength = 256)
             .collect { token -> sb.append(token) }
@@ -66,8 +76,13 @@ class LlamaTranslator(private val context: Context) {
         }.onFailure { Log.w(TAG, "close() encountered $it (ignored)") }
     }
 
-    private suspend fun ensureLoaded(modelPath: String) {
-        if (loadedModelPath == modelPath && engine.state.value.isModelLoaded) return
+    /**
+     * @return `true` if the model was (re)loaded as part of this call. The caller uses
+     * this to decide whether the system prompt needs to be re-established (KV cache is
+     * empty after a load) vs. just reset back to "after system".
+     */
+    private suspend fun ensureLoaded(modelPath: String): Boolean {
+        if (loadedModelPath == modelPath && engine.state.value.isModelLoaded) return false
         preflightMemory()
         if (engine.state.value.isModelLoaded) {
             Log.i(TAG, "Switching model: cleanUp existing then load $modelPath")
@@ -86,6 +101,8 @@ class LlamaTranslator(private val context: Context) {
         }
         engine.loadModel(modelPath)
         loadedModelPath = modelPath
+        systemPair = null
+        return true
     }
 
     private fun preflightMemory() {

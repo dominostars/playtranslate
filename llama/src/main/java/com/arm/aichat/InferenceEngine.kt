@@ -26,6 +26,16 @@ interface InferenceEngine {
     suspend fun setSystemPrompt(systemPrompt: String)
 
     /**
+     * PlayTranslate: trim chat history + KV cache back to "just after the system prompt"
+     * without re-decoding the system prompt. Use between independent prompts when the
+     * system prompt is unchanged, to skip the per-call system-prompt decode cost.
+     *
+     * Safe to call on a [State.ModelReady] engine. If no system prompt has been set,
+     * this is equivalent to a full state reset.
+     */
+    suspend fun resetForNextPrompt()
+
+    /**
      * Sends a user prompt to the loaded model and returns a Flow of generated tokens.
      */
     fun sendUserPrompt(message: String, predictLength: Int = DEFAULT_PREDICT_LENGTH): Flow<String>

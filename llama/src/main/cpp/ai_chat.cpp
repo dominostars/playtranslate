@@ -406,6 +406,41 @@ Java_com_arm_aichat_internal_InferenceEngineImpl_processSystemPrompt(
     return 0;
 }
 
+/**
+ * PlayTranslate: trim chat history + KV cache back to "just after the system prompt"
+ * without re-decoding the system prompt. Used between translations so each request is
+ * independent but we don't pay the system-prompt decode cost every call.
+ *
+ * Behavior:
+ *  - If a system prompt was processed (system_prompt_position > 0): drop KV positions
+ *    [system_prompt_position, end), trim chat_msgs to size 1 (the system message),
+ *    rewind current_position to system_prompt_position.
+ *  - If no system prompt was processed (system_prompt_position == 0): full reset.
+ *  - Always: reset short-term sampler / output buffer state.
+ */
+extern "C"
+JNIEXPORT jint JNICALL
+Java_com_arm_aichat_internal_InferenceEngineImpl_nativeResetForNextPrompt(
+        JNIEnv * /*env*/,
+        jobject /*unused*/
+) {
+    if (system_prompt_position > 0) {
+        if (current_position > system_prompt_position) {
+            llama_memory_seq_rm(llama_get_memory(g_context), 0, system_prompt_position, -1);
+        }
+        if (chat_msgs.size() > 1) {
+            chat_msgs.resize(1);
+        }
+        current_position = system_prompt_position;
+    } else {
+        llama_memory_clear(llama_get_memory(g_context), false);
+        chat_msgs.clear();
+        current_position = 0;
+    }
+    reset_short_term_states();
+    return 0;
+}
+
 extern "C"
 JNIEXPORT jint JNICALL
 Java_com_arm_aichat_internal_InferenceEngineImpl_processUserPrompt(
