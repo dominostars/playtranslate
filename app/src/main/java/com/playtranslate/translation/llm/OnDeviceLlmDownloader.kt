@@ -156,8 +156,19 @@ class OnDeviceLlmDownloader(
         val dir = context.noBackupFilesDir
         val sf = StatFs(dir.absolutePath)
         val free = sf.availableBytes
-        // 5% headroom for filesystem overhead and existing partial files.
-        val needed = (expectedSize * 105 / 100).coerceAtLeast(expectedSize + 100_000_000L)
+        // Partial-file accounting. After a download is interrupted we keep the
+        // partial on disk for resume (LanguagePackDownloader uses HTTP Range);
+        // the bytes we still need to *fetch* are (expectedSize - alreadyOnDisk).
+        // A naive expectedSize-sized check would falsely refuse the resume
+        // attempt — user's 1 GB partial of a 2 GB GGUF would need only ~1 GB
+        // more free, but the old check demanded ~2 GB.
+        val destination = modelHelper.file(context)
+        val alreadyOnDisk = if (destination.exists()) destination.length() else 0L
+        val remainingBytes = (expectedSize - alreadyOnDisk).coerceAtLeast(0L)
+        // 5% headroom for filesystem overhead, plus a 100 MB minimum so a tiny
+        // remaining-bytes value still has reasonable elbow room for verification
+        // / ext4 metadata / etc.
+        val needed = (remainingBytes * 105 / 100).coerceAtLeast(remainingBytes + 100_000_000L)
         if (free < needed) {
             return "Need ${humanSize(needed)} free, only ${humanSize(free)} available"
         }
