@@ -156,13 +156,33 @@ class LlamaTranslator private constructor(private val context: Context) {
     private suspend fun ensureLoaded(modelPath: String, availMemFloorBytes: Long): Boolean {
         if (loadedModelPath == modelPath && engine.state.value.isModelLoaded) return false
         preflightMemory(availMemFloorBytes)
-        if (engine.state.value.isModelLoaded) {
+
+        // Recovery path. A prior translate() may have left the engine in Error
+        // (e.g. native llama_decode failed under memory pressure, or a malformed
+        // prompt tripped a JNI assertion). [InferenceEngineImpl.cleanUp] accepts
+        // Error as input and resets to Initialized — that's the only path back
+        // to a usable engine without restarting the process. Without this, the
+        // sibling on-device backends (TG + Qwen) would *both* keep failing after
+        // a single transient error since they share the singleton, with the
+        // waterfall silently masking the brick by falling through to ML Kit.
+        // This branch must come BEFORE the isModelLoaded check below — Error is
+        // not a "loaded" state, so isModelLoaded is false and the existing
+        // model-switch cleanUp wouldn't catch it.
+        if (engine.state.value is InferenceEngine.State.Error) {
+            Log.w(TAG, "Engine in Error state; running cleanUp to recover before reload")
+            engine.cleanUp()
+            loadedModelPath = null
+            systemPair = null
+        } else if (engine.state.value.isModelLoaded) {
             Log.i(TAG, "Switching model: cleanUp existing then load $modelPath")
             engine.cleanUp()
         }
+
         // The engine's init coroutine flips state Uninitialized → Initializing → Initialized
         // asynchronously after construction. loadModel requires Initialized state, so wait
-        // for it before calling.
+        // for it before calling. If the engine reaches Error here it's a startup-level
+        // init failure (separate from the runtime Error path handled above), which is
+        // not recoverable by another cleanUp — surface it.
         if (engine.state.value !is InferenceEngine.State.Initialized) {
             Log.i(TAG, "Awaiting engine.Initialized before loadModel...")
             engine.state.firstOrNull { it is InferenceEngine.State.Initialized || it is InferenceEngine.State.Error }
