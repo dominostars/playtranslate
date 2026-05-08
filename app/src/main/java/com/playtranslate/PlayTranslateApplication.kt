@@ -11,9 +11,21 @@ import com.playtranslate.translation.MlKitBackend
 import com.playtranslate.translation.QwenBackend
 import com.playtranslate.translation.TranslateGemmaBackend
 import com.playtranslate.translation.TranslationBackendRegistry
+import com.playtranslate.translation.translategemma.LlamaTranslator
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.lang.ref.WeakReference
 
 class PlayTranslateApplication : Application() {
+
+    /** Application-scoped coroutine scope for fire-and-forget background work
+     *  (onTrimMemory unloads, etc.). Outlives any individual UI lifecycle.
+     *  IO dispatcher because LLM unload has to wait on the engine's
+     *  llamaDispatcher and shouldn't tie up the main thread. */
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onCreate() {
         super.onCreate()
         CrashHandler.install(this)
@@ -121,6 +133,17 @@ class PlayTranslateApplication : Application() {
         if (BuildConfig.DEBUG) return
         if (level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE) {
             OcrManager.instance.releaseAll()
+            // Drop the on-device LLM model + KV cache / scratch (~300-400 MB
+            // of real allocations on top of mmap'd weights). At
+            // TRIM_MEMORY_COMPLETE we're at the top of the LRU kill list;
+            // freeing now might defer the kill, and if it doesn't we lose
+            // nothing. Mutex-serialized inside [LlamaTranslator.unloadModel]
+            // so it can't race an in-flight translate(). Async because the
+            // engine's cleanUp() does runBlocking on its own dispatcher and
+            // we don't want to ANR the main thread that delivered onTrimMemory.
+            appScope.launch {
+                LlamaTranslator.getInstance(this@PlayTranslateApplication).unloadModel()
+            }
         }
     }
 }

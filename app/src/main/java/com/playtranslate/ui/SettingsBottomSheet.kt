@@ -144,15 +144,34 @@ class SettingsBottomSheet : DialogFragment() {
                     renderer?.refreshTranslategemmaSwitch()
                     renderer?.refreshAllBackendStatuses()
                     com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
+                    maybeUnloadOnDeviceLlmIfBothDisabled(ctx)
                 }
                 Prefs.KEY_QWEN_ENABLED -> {
                     renderer?.refreshQwenSwitch()
                     renderer?.refreshAllBackendStatuses()
                     com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
+                    maybeUnloadOnDeviceLlmIfBothDisabled(ctx)
                 }
             }
         }
         sp.registerOnSharedPreferenceChangeListener(prefsListener)
+    }
+
+    /** When the user disables BOTH on-device LLM backends, drop the loaded
+     *  model from native memory. Frees ~300-400 MB of KV cache + scratch
+     *  immediately and lets the kernel reclaim the mmap'd weight pages. If
+     *  only one backend is disabled, the singleton stays loaded for the other.
+     *
+     *  Mutex-serialized inside [LlamaTranslator.unloadModel] — won't race with
+     *  any in-flight translation triggered just before the toggle changed. */
+    private fun maybeUnloadOnDeviceLlmIfBothDisabled(ctx: Context) {
+        val prefs = Prefs(ctx)
+        if (!prefs.translateGemmaEnabled && !prefs.qwenEnabled) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                com.playtranslate.translation.translategemma.LlamaTranslator
+                    .getInstance(ctx).unloadModel()
+            }
+        }
     }
 
     override fun onPause() {
@@ -558,6 +577,16 @@ class SettingsBottomSheet : DialogFragment() {
                 Prefs(ctx).translateGemmaEnabled = false
                 com.playtranslate.translation.translategemma
                     .TranslateGemmaModel.delete(ctx)
+                // Drop the loaded model from native memory too. Without this,
+                // the unlinked file's mmap'd pages remain valid and a subsequent
+                // re-download would serve stale weights from the previous mmap
+                // because LlamaTranslator.ensureLoaded matches on the path string
+                // (which is unchanged after delete + re-download to the same
+                // FILENAME). See Codex adversarial-review Finding #1.
+                viewLifecycleOwner.lifecycleScope.launch {
+                    com.playtranslate.translation.translategemma.LlamaTranslator
+                        .getInstance(ctx).unloadModel()
+                }
                 renderer?.refreshAllBackendStatuses()
             }
             .setNegativeButton(R.string.translategemma_disable_cancel) { _, _ ->
@@ -721,6 +750,12 @@ class SettingsBottomSheet : DialogFragment() {
             .setNeutralButton(R.string.qwen_disable_delete) { _, _ ->
                 Prefs(ctx).qwenEnabled = false
                 com.playtranslate.translation.qwen.QwenModel.delete(ctx)
+                // See translategemma_disable_delete branch above for why we
+                // also unload the native model on file delete.
+                viewLifecycleOwner.lifecycleScope.launch {
+                    com.playtranslate.translation.translategemma.LlamaTranslator
+                        .getInstance(ctx).unloadModel()
+                }
                 renderer?.refreshAllBackendStatuses()
             }
             .setNegativeButton(R.string.qwen_disable_cancel) { _, _ ->

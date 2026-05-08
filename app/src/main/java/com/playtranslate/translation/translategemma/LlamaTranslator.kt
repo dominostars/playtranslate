@@ -138,9 +138,38 @@ class LlamaTranslator private constructor(private val context: Context) {
         return "$text<end_of_turn>\n<start_of_turn>model\n"
     }
 
-    /** Best-effort cleanup. Safe to call at app teardown. Per-backend [close] is now
-     *  a no-op since the singleton outlives any individual backend; explicit teardown
-     *  only happens here if someone wants to tear down the engine for memory reasons. */
+    /**
+     * Drop the loaded GGUF and release native KV cache + scratch, **without**
+     * destroying the engine itself. After this call, the next [translate] will
+     * re-issue [InferenceEngine.loadModel] from scratch.
+     *
+     * Mutex-serialized so it can't race with an in-flight translate(). Callers
+     * launch from a coroutine; the mutex waits for any active translation to
+     * finish before unloading.
+     *
+     * Used by:
+     *  - Settings toggle-off (when both TG and Qwen become disabled — frees
+     *    ~300-400 MB of KV/scratch + lets mmap pages be reclaimed),
+     *  - "Delete model" disable-dialog branch (forces a fresh load on
+     *    re-download instead of serving stale weights from the previous mmap),
+     *  - `Application.onTrimMemory` at TRIM_MEMORY_COMPLETE (defensive backstop
+     *    when the system is about to kill us anyway).
+     */
+    suspend fun unloadModel() = mutex.withLock {
+        val state = engine.state.value
+        if (state.isModelLoaded || state is InferenceEngine.State.Error) {
+            Log.i(TAG, "Unloading model (was in ${state.javaClass.simpleName})")
+            runCatching { engine.cleanUp() }
+                .onFailure { Log.w(TAG, "unloadModel() encountered $it (ignored)") }
+        }
+        loadedModelPath = null
+        systemPair = null
+    }
+
+    /** Best-effort full teardown. Safe to call at app teardown. Tears down both
+     *  the loaded model AND the engine itself; after this, getInstance() would
+     *  need to be re-created (which the singleton-via-companion currently
+     *  doesn't support — only call at process exit). */
     fun close() {
         runCatching {
             if (engine.state.value.isModelLoaded) engine.cleanUp()
