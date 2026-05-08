@@ -8,6 +8,7 @@ import com.playtranslate.diagnostics.CrashHandler
 import com.playtranslate.translation.DeepLBackend
 import com.playtranslate.translation.LingvaBackend
 import com.playtranslate.translation.MlKitBackend
+import com.playtranslate.translation.QwenBackend
 import com.playtranslate.translation.TranslateGemmaBackend
 import com.playtranslate.translation.TranslationBackendRegistry
 import java.lang.ref.WeakReference
@@ -31,6 +32,10 @@ class PlayTranslateApplication : Application() {
                 TranslateGemmaBackend(
                     context         = this,
                     enabledProvider = { Prefs(this).translateGemmaEnabled },
+                ),
+                QwenBackend(
+                    context         = this,
+                    enabledProvider = { Prefs(this).qwenEnabled },
                 ),
                 MlKitBackend(),
             )

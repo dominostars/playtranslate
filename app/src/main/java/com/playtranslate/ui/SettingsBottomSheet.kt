@@ -109,6 +109,7 @@ class SettingsBottomSheet : DialogFragment() {
         renderer?.refreshDeeplBackendSwitch()
         renderer?.refreshLingvaBackendSwitch()
         renderer?.refreshTranslategemmaSwitch()
+        renderer?.refreshQwenSwitch()
         // Always re-render every backend's status line on resume — picks
         // up new DeepL keys, freshly toggled state, and triggers a usage
         // re-fetch (the call doesn't consume DeepL characters).
@@ -141,6 +142,11 @@ class SettingsBottomSheet : DialogFragment() {
                 }
                 Prefs.KEY_TRANSLATEGEMMA_ENABLED -> {
                     renderer?.refreshTranslategemmaSwitch()
+                    renderer?.refreshAllBackendStatuses()
+                    com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
+                }
+                Prefs.KEY_QWEN_ENABLED -> {
+                    renderer?.refreshQwenSwitch()
                     renderer?.refreshAllBackendStatuses()
                     com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
                 }
@@ -237,6 +243,12 @@ class SettingsBottomSheet : DialogFragment() {
                 }
                 override fun showTranslateGemmaDisableDialog() {
                     this@SettingsBottomSheet.showTranslateGemmaDisableDialog()
+                }
+                override fun startQwenDownload() {
+                    showQwenDownloadDialog()
+                }
+                override fun showQwenDisableDialog() {
+                    this@SettingsBottomSheet.showQwenDisableDialog()
                 }
                 override fun showHotkeyDialog(
                     title: String?, onSet: (List<Int>) -> Unit, onCancel: () -> Unit
@@ -556,6 +568,168 @@ class SettingsBottomSheet : DialogFragment() {
             .show()
     }
 
+    // ── Qwen flow ───────────────────────────────────────────────────────
+
+    private var qwenDownloadJob: kotlinx.coroutines.Job? = null
+
+    /** Show the modal download dialog for Qwen. Mirrors
+     *  [showTranslateGemmaDownloadDialog] but with QwenModel + a 4 GB total-mem
+     *  floor (Qwen 1.5B fits comfortably below TG's 6 GB requirement). */
+    private fun showQwenDownloadDialog() {
+        val ctx = context ?: return
+        val downloader = com.playtranslate.translation.llm.OnDeviceLlmDownloader(
+            context = ctx,
+            modelHelper = com.playtranslate.translation.qwen.QwenModel,
+            totalMemFloorBytes = QWEN_TOTAL_MEM_FLOOR_BYTES,
+        )
+
+        if (downloader.isCurrentNetworkMetered()) {
+            val sizeStr = com.playtranslate.translation.qwen.QwenModel.humanSize(ctx)
+            androidx.appcompat.app.AlertDialog.Builder(ctx)
+                .setTitle(R.string.qwen_metered_warning_title)
+                .setMessage(getString(R.string.qwen_metered_warning_message, sizeStr))
+                .setPositiveButton(android.R.string.ok) { _, _ ->
+                    runQwenDownload(ctx, downloader)
+                }
+                .setNegativeButton(android.R.string.cancel) { _, _ -> }
+                .show()
+            return
+        }
+        runQwenDownload(ctx, downloader)
+    }
+
+    private fun runQwenDownload(
+        ctx: Context,
+        downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
+    ) {
+        val sizeStr = com.playtranslate.translation.qwen.QwenModel.humanSize(ctx)
+        val view = LayoutInflater.from(ctx).inflate(R.layout.dialog_language_progress, null)
+        val tvStatus = view.findViewById<android.widget.TextView>(R.id.tvPopupStatus)
+        val progressBar = view.findViewById<android.widget.ProgressBar>(R.id.progressBarPopup)
+        val btnCancel = view.findViewById<android.widget.Button>(R.id.btnPopupCancel)
+
+        tvStatus.text = getString(R.string.qwen_status_downloading, "0 B", sizeStr)
+        progressBar.max = 100
+        progressBar.progress = 0
+
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(ctx)
+            .setView(view)
+            .setCancelable(false)
+            .create()
+
+        btnCancel.setOnClickListener {
+            qwenDownloadJob?.cancel()
+            downloader.deletePartial()
+            dialog.dismiss()
+            renderer?.refreshAllBackendStatuses()
+        }
+
+        qwenDownloadJob = viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val outcome = downloader.run { progress ->
+                    requireActivity().runOnUiThread {
+                        when (progress) {
+                            is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Downloading -> {
+                                val recv = com.playtranslate.translation.llm
+                                    .humanSize(progress.received)
+                                val total = com.playtranslate.translation.llm
+                                    .humanSize(progress.total)
+                                tvStatus.text = getString(
+                                    R.string.qwen_status_downloading,
+                                    recv, total,
+                                )
+                                if (progress.total > 0) {
+                                    progressBar.progress =
+                                        ((progress.received * 100) / progress.total).toInt()
+                                }
+                            }
+                            is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Verifying -> {
+                                tvStatus.text = getString(R.string.qwen_status_verifying)
+                                progressBar.progress = 100
+                            }
+                        }
+                    }
+                }
+                if (!isAdded) return@launch
+                requireActivity().runOnUiThread {
+                    dialog.dismiss()
+                    when (outcome) {
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Success -> {
+                            Prefs(ctx).qwenEnabled = true
+                        }
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Refused -> {
+                            android.widget.Toast.makeText(
+                                ctx, outcome.reason, android.widget.Toast.LENGTH_LONG
+                            ).show()
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Failed -> {
+                            android.widget.Toast.makeText(
+                                ctx,
+                                getString(R.string.qwen_download_failed, outcome.reason),
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Cancelled -> {
+                            android.widget.Toast.makeText(
+                                ctx, R.string.qwen_download_paused,
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (isAdded) {
+                    requireActivity().runOnUiThread {
+                        dialog.dismiss()
+                        android.widget.Toast.makeText(
+                            ctx,
+                            getString(R.string.qwen_download_failed,
+                                e.message ?: e.javaClass.simpleName),
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                        renderer?.refreshAllBackendStatuses()
+                    }
+                }
+            }
+        }
+
+        dialog.show()
+    }
+
+    /** AlertDialog with three options when the user taps an enabled Qwen row.
+     *  Cancel reverts the optimistic switch flip via [SettingsRenderer.refreshQwenSwitch]. */
+    private fun showQwenDisableDialog() {
+        val ctx = context ?: return
+        val sizeStr = com.playtranslate.translation.qwen.QwenModel.humanSize(ctx)
+        androidx.appcompat.app.AlertDialog.Builder(ctx)
+            .setTitle(R.string.qwen_disable_title)
+            .setMessage(getString(R.string.qwen_disable_message, sizeStr))
+            .setPositiveButton(R.string.qwen_disable_keep) { _, _ ->
+                Prefs(ctx).qwenEnabled = false
+            }
+            .setNeutralButton(R.string.qwen_disable_delete) { _, _ ->
+                Prefs(ctx).qwenEnabled = false
+                com.playtranslate.translation.qwen.QwenModel.delete(ctx)
+                renderer?.refreshAllBackendStatuses()
+            }
+            .setNegativeButton(R.string.qwen_disable_cancel) { _, _ ->
+                renderer?.refreshQwenSwitch()
+            }
+            .setOnCancelListener { renderer?.refreshQwenSwitch() }
+            .show()
+    }
+
     // ── Companion ───────────────────────────────────────────────────────
 
     companion object {
@@ -563,9 +737,15 @@ class SettingsBottomSheet : DialogFragment() {
         private const val ARG_HIDE_DISMISS = "hide_dismiss"
 
         // Permanent device gate for TG. Below 6 GB total RAM, TG 4B would run too
-        // close to the OOM-killer threshold. Sibling backends (e.g. Qwen 1.5B)
-        // can pass a lower floor when constructing their own OnDeviceLlmDownloader.
+        // close to the OOM-killer threshold.
         private const val TG_TOTAL_MEM_FLOOR_BYTES = 6_000_000_000L
+
+        // Permanent device gate for Qwen. Qwen 1.5B's much smaller working set
+        // (~1.2-1.4 GB) fits comfortably on a 4 GB device with the rest of
+        // Android + a foreground game running. The transient availMem floor at
+        // load time (1.5 GB, see QwenBackend.availMemFloorBytes) is the second
+        // line of defense against OOM kills.
+        private const val QWEN_TOTAL_MEM_FLOOR_BYTES = 4_000_000_000L
 
         fun newInstance(hideDismiss: Boolean = false) = SettingsBottomSheet().apply {
             if (hideDismiss) arguments = Bundle().apply { putBoolean(ARG_HIDE_DISMISS, true) }

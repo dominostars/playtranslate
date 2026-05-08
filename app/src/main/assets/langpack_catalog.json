@@ -18,6 +18,23 @@
         }
       ]
     },
+    "engine-qwen-1-5b": {
+      "display": "Qwen 2.5 1.5B",
+      "type": "engine",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 937535744,
+      "url": "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_0.gguf",
+      "sha256": "a5ab77ebbd1d6d70250ff415339935bebac619b7acc508f71545f08231369dc1",
+      "licenses": [
+        {
+          "component": "Qwen 2.5 1.5B Instruct",
+          "license": "Apache-2.0",
+          "attribution": "© Alibaba Cloud. Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0."
+        }
+      ]
+    },
     "ja": {
       "display": "Japanese",
       "script": "CJK_JAPANESE",

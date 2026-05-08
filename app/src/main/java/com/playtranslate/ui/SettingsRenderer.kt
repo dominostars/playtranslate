@@ -101,6 +101,16 @@ class SettingsRenderer(
          *  [SettingsRenderer.refreshTranslategemmaSwitch] to revert the
          *  switch state since the renderer optimistically flipped it. */
         fun showTranslateGemmaDisableDialog()
+
+        /** Tap on the Qwen row when the model isn't installed. Mirrors
+         *  [startTranslateGemmaDownload] for the Qwen-configured
+         *  [com.playtranslate.translation.llm.OnDeviceLlmDownloader]. */
+        fun startQwenDownload()
+
+        /** Tap on the Qwen row when it's currently enabled. Mirrors
+         *  [showTranslateGemmaDisableDialog] for Qwen — the Cancel branch must
+         *  call [SettingsRenderer.refreshQwenSwitch] to revert the switch. */
+        fun showQwenDisableDialog()
     }
 
     // ── View references for refresh ─────────────────────────────────────
@@ -700,6 +710,8 @@ class SettingsRenderer(
     private val rowBackendLingva: View = root.findViewById(R.id.rowBackendLingva)
     private val rowBackendTranslategemma: View = root.findViewById(R.id.rowBackendTranslategemma)
     private val dividerBackendTranslategemma: View = root.findViewById(R.id.dividerBackendTranslategemma)
+    private val rowBackendQwen: View = root.findViewById(R.id.rowBackendQwen)
+    private val dividerBackendQwen: View = root.findViewById(R.id.dividerBackendQwen)
     private val rowBackendMlkit: View = root.findViewById(R.id.rowBackendMlkit)
 
     /** Per-backend in-flight `refreshStatus` job, keyed by [BackendId]. Used
@@ -722,6 +734,7 @@ class SettingsRenderer(
 
         wireDeeplBackendRow()
         wireTranslateGemmaBackendRow()
+        wireQwenBackendRow()
 
         // Compose line 1 for each backend from its metadata
         // (requiresInternet + quality), styled with mixed-color spans.
@@ -808,6 +821,16 @@ class SettingsRenderer(
         }
     }
 
+    /** Refresh the Qwen switch from the current pref value. Called from the SP
+     *  listener after the Cancel branch of the disable dialog (which needs to
+     *  revert the optimistic toggle), and after a successful download (which
+     *  flips the pref to true). */
+    fun refreshQwenSwitch() {
+        rowBackendQwen.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
+            it.isChecked = prefs.qwenEnabled
+        }
+    }
+
     /** Re-render every backend row's secondary subtitle line and kick off
      *  an async [TranslationBackend.refreshStatus] for each. Called on
      *  initial bind, on Settings resume (after [DeepLSettingsActivity]
@@ -835,6 +858,7 @@ class SettingsRenderer(
         "deepl"           -> rowBackendDeepl
         "lingva"          -> rowBackendLingva
         "translategemma"  -> rowBackendTranslategemma
+        "qwen"            -> rowBackendQwen
         "mlkit"           -> rowBackendMlkit
         else              -> null
     }
@@ -955,6 +979,33 @@ class SettingsRenderer(
                     // Need to download. The download flow flips the pref on success
                     // (which fires the SP listener → switch refresh).
                     callbacks.startTranslateGemmaDownload()
+                }
+            }
+        }
+    }
+
+    /** Wire the Qwen backend row (download / enable / disable-with-dialog).
+     *  Mirrors [wireTranslateGemmaBackendRow] without the BuildConfig flag —
+     *  Qwen ships visible by default. */
+    private fun wireQwenBackendRow() {
+        rowBackendQwen.findViewById<TextView>(R.id.tvRowTitle).text =
+            ctx.getString(R.string.qwen_display_name)
+
+        val switch = rowBackendQwen.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        switch.isChecked = prefs.qwenEnabled
+
+        rowBackendQwen.setOnClickListener {
+            if (prefs.qwenEnabled) {
+                switch.isChecked = false
+                callbacks.showQwenDisableDialog()
+            } else {
+                val installed = com.playtranslate.translation.qwen
+                    .QwenModel.isInstalled(ctx)
+                if (installed) {
+                    prefs.qwenEnabled = true
+                    switch.isChecked = true
+                } else {
+                    callbacks.startQwenDownload()
                 }
             }
         }

@@ -386,6 +386,12 @@
                     <include layout="@layout/settings_row_backend"
                         android:id="@+id/rowBackendTranslategemma" />
 
+                    <include layout="@layout/settings_row_divider"
+                        android:id="@+id/dividerBackendQwen" />
+
+                    <include layout="@layout/settings_row_backend"
+                        android:id="@+id/rowBackendQwen" />
+
                     <include layout="@layout/settings_row_divider" />
 
                     <include layout="@layout/settings_row_backend"

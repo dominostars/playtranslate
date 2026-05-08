@@ -281,6 +281,15 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_TRANSLATEGEMMA_ENABLED, false)
         set(v) = sp.edit().putBoolean(KEY_TRANSLATEGEMMA_ENABLED, v).apply()
 
+    /** User-controlled toggle for the on-device Qwen 2.5 1.5B backend. Default
+     *  off; flipped on by the download flow's Success outcome (or by tapping
+     *  the row when the model file is already on disk). The disable dialog
+     *  flips it back off. File existence is checked separately via
+     *  [com.playtranslate.translation.qwen.QwenModel.isInstalled]. */
+    var qwenEnabled: Boolean
+        get() = sp.getBoolean(KEY_QWEN_ENABLED, false)
+        set(v) = sp.edit().putBoolean(KEY_QWEN_ENABLED, v).apply()
+
     var ankiDeckId: Long
         get() = sp.getLong(KEY_ANKI_DECK_ID, -1L)
         set(v) = sp.edit().putLong(KEY_ANKI_DECK_ID, v).apply()
@@ -587,6 +596,7 @@ class Prefs(context: Context) {
         const val KEY_DEEPL_ENABLED          = "deepl_enabled"
         const val KEY_LINGVA_ENABLED         = "lingva_enabled"
         const val KEY_TRANSLATEGEMMA_ENABLED = "translategemma_enabled"
+        const val KEY_QWEN_ENABLED           = "qwen_enabled"
         private const val KEY_LEGACY_THEME_INDEX    = "theme_index"
         private const val KEY_THEME_MODE            = "theme_mode"
         private const val KEY_ACCENT_NAME           = "accent_name"
