@@ -3,6 +3,7 @@ package com.playtranslate
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.playtranslate.translation.translategemma.LlamaTranslator
+import com.playtranslate.translation.translategemma.PromptStyle
 import com.playtranslate.translation.translategemma.TranslateGemmaModel
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
@@ -59,13 +60,13 @@ class TranslateGemmaBatchTest {
         val arr = JSONArray(inputJson)
         val sentences = (0 until arr.length()).map { arr.getString(it) }
 
-        val translator = LlamaTranslator(appCtx)
+        val translator = LlamaTranslator.getInstance(appCtx)
 
         // Warmup: first call pays the model-load cost. Translate one short sentence
         // and discard timing. The model stays loaded for the timed run.
         println("TG_WARMUP_START")
         val warmStart = System.currentTimeMillis()
-        translator.translate("こんにちは", "ja", "en", modelPath)
+        translator.translate("こんにちは", "ja", "en", modelPath, PromptStyle.Gemma3Prefix)
         val warmMs = System.currentTimeMillis() - warmStart
         println("TG_WARMUP_DONE: ${warmMs}ms")
 
@@ -75,7 +76,7 @@ class TranslateGemmaBatchTest {
         for ((i, s) in sentences.withIndex()) {
             val tr0 = System.currentTimeMillis()
             val translated = try {
-                translator.translate(s, "ja", "en", modelPath)
+                translator.translate(s, "ja", "en", modelPath, PromptStyle.Gemma3Prefix)
             } catch (e: Exception) {
                 "[ERROR: ${e.javaClass.simpleName}: ${e.message}]"
             }
@@ -94,7 +95,8 @@ class TranslateGemmaBatchTest {
         }
         val totalMs = System.currentTimeMillis() - t0
 
-        translator.close()
+        // Singleton outlives this test — closing it would prevent any subsequent
+        // test from finding the model loaded. Engine teardown is at process exit.
 
         val outDir = appCtx.getExternalFilesDir(null) ?: appCtx.filesDir
         val outFile = File(outDir, "p5_500_translategemma.json")

@@ -3,6 +3,7 @@ package com.playtranslate.translation
 import android.content.Context
 import com.playtranslate.R
 import com.playtranslate.translation.translategemma.LlamaTranslator
+import com.playtranslate.translation.translategemma.PromptStyle
 import com.playtranslate.translation.translategemma.TranslateGemmaModel
 import java.util.Locale
 
@@ -31,8 +32,6 @@ class TranslateGemmaBackend(
     override val isDegradedFallback: Boolean = false
     override val quality: BackendQuality = BackendQuality.Better
 
-    private val translator: LlamaTranslator by lazy { LlamaTranslator(context.applicationContext) }
-
     override fun isUsable(source: String, target: String): Boolean {
         if (!enabledProvider()) return false
         if (!TranslateGemmaModel.isInstalled(context)) return false
@@ -41,10 +40,21 @@ class TranslateGemmaBackend(
 
     override suspend fun translate(text: String, source: String, target: String): String {
         val modelPath = TranslateGemmaModel.file(context).absolutePath
-        return translator.translate(text, source, target, modelPath)
+        return LlamaTranslator.getInstance(context).translate(
+            text = text,
+            source = source,
+            target = target,
+            modelPath = modelPath,
+            promptStyle = PromptStyle.Gemma3Prefix,
+            availMemFloorBytes = AVAIL_MEM_FLOOR_BYTES,
+        )
     }
 
-    override fun close() = translator.close()
+    // No-op: the underlying LlamaTranslator is a process-singleton shared with any
+    // sibling on-device backend (e.g. Qwen). Closing it from one backend's close()
+    // would tear down the engine for the still-active sibling. Engine teardown
+    // happens via process death; explicit teardown is via LlamaTranslator.close().
+    override fun close() {}
 
     override val status: BackendStatus
         get() {
@@ -80,6 +90,12 @@ class TranslateGemmaBackend(
 
     companion object {
         const val PRIORITY = 25
+
+        // Transient floor at LlamaTranslator load time. TG 4B's working set
+        // (~2.2 GB GGUF mmap + ~200 MB KV + scratch) needs comfortable headroom
+        // on a 6 GB device. Below this, the waterfall falls through to the next
+        // backend rather than risking an OOM kill.
+        private const val AVAIL_MEM_FLOOR_BYTES = 4_000_000_000L
 
         /**
          * The 51 languages TranslateGemma 4B is trained on (WMT24++ benchmark coverage).

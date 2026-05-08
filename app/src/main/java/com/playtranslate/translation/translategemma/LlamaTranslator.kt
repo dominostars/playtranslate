@@ -12,23 +12,48 @@ import kotlinx.coroutines.sync.withLock
 import java.util.Locale
 
 /**
- * Thin wrapper over [com.arm.aichat.AiChat] for the TranslateGemma translation use case.
- *
- * Responsibilities:
- *  - Lazy-load the GGUF model the first time [translate] is called.
- *  - Reset KV cache and chat history between calls so each translation is independent
- *    (calls `setSystemPrompt` per request — see InferenceEngineImpl edit).
- *  - Aggregate the streamed `Flow<String>` token output into one string.
- *  - Pre-flight check available memory at load time and surface a transient exception
- *    that the waterfall can fall through.
- *
- * Concurrency: a [Mutex] serializes calls — `InferenceEngineImpl` already runs on a
- * single-threaded dispatcher, but the mutex prevents Kotlin-side re-entry while a
- * translation is in flight. PT's translation waterfall is one-call-at-a-time so this
- * is not a bottleneck; if a future caller needs parallelism, they go via the registry
- * which already serializes too.
+ * The two on-device LLM prompting flows we support. The caller declares which one
+ * applies to the model it's asking [LlamaTranslator] to load — there is no
+ * automatic detection from the file path.
  */
-class LlamaTranslator(private val context: Context) {
+sealed interface PromptStyle {
+    /**
+     * Models whose chat template has a true `system` role (e.g. Qwen 2.5).
+     * Drives [InferenceEngine.setSystemPrompt] + [InferenceEngine.sendUserPrompt],
+     * with [InferenceEngine.resetForNextPrompt] reusing system-prompt KV across calls.
+     */
+    object StandardChat : PromptStyle
+
+    /**
+     * Models whose chat template emits empty for `role: system` and replays the
+     * system content into every user-turn diff (e.g. Gemma 3). The fixed prefix
+     * (system block + "Please translate..." scaffolding) is decoded once via
+     * [InferenceEngine.processRawPrefix]; per-call only the variable suffix runs
+     * through [InferenceEngine.sendRawSuffix].
+     */
+    object Gemma3Prefix : PromptStyle
+}
+
+/**
+ * Process-singleton wrapper around the [com.arm.aichat.AiChat] inference engine.
+ *
+ * **Why a singleton.** The underlying engine is itself a process-wide singleton with
+ * shared native state in `ai_chat.cpp` (g_context, chat_msgs, system_prompt_position).
+ * Two `LlamaTranslator` instances with independent Kotlin mutexes would let two
+ * backends interleave engine calls and corrupt KV/chat state — the single-threaded
+ * `llamaDispatcher` only protects individual JNI calls, not multi-step sequences.
+ * The singleton's mutex is the right scope for "atomic translate() sequence."
+ *
+ * **Backend swaps.** Multiple [com.playtranslate.translation.TranslationBackend]s
+ * may share this singleton (TranslateGemma, Qwen, ...), each calling [translate]
+ * with its own [modelPath] and [PromptStyle]. When the requested path differs from
+ * the loaded one, [ensureLoaded] performs a clean cleanUp + loadModel cycle (~2-10 s).
+ *
+ * **Concurrency.** Per-call [Mutex] serializes the entire prepare + decode + collect
+ * sequence within the singleton. PT's translation waterfall is one-call-at-a-time
+ * per request anyway; parallel translateGroupsSeparately fan-out simply queues here.
+ */
+class LlamaTranslator private constructor(private val context: Context) {
 
     private val engine: InferenceEngine by lazy { AiChat.getInferenceEngine(context.applicationContext) }
     private val mutex = Mutex()
@@ -42,51 +67,56 @@ class LlamaTranslator(private val context: Context) {
 
     /**
      * Translate [text] from [source] to [target] using the model at [modelPath].
-     * Suspends while the model loads on first call (~2–10s on a flagship phone).
-     * Throws [TranslateGemmaTransientException] if memory pressure precludes loading;
-     * the registry's waterfall treats this as a fall-through to ML Kit.
+     *
+     * [promptStyle] is required — the caller declares which prompting flow matches
+     * its model. Defaulting it would silently mis-route a model through the wrong
+     * chat path (TG fed through StandardChat → wrong template → garbage output, not
+     * an error). The whole reason the prior filename-substring detection was
+     * removed is to make this contract typed.
+     *
+     * [availMemFloorBytes] is checked against [ActivityManager.MemoryInfo.availMem]
+     * before any load. Below the floor, throws [TranslateGemmaTransientException]
+     * which the registry's waterfall treats as fall-through to the next backend.
+     * Default 4 GB suits a TG-4B-class working set; smaller models can pass a
+     * lower floor (e.g. 1.5 GB for Qwen 1.5B).
+     *
+     * Suspends while the model loads on first call (~2-10 s on a flagship phone).
      */
     suspend fun translate(
         text: String,
         source: String,
         target: String,
         modelPath: String,
+        promptStyle: PromptStyle,
+        availMemFloorBytes: Long = DEFAULT_AVAIL_MEM_FLOOR_BYTES,
     ): String = mutex.withLock {
-        val didReload = ensureLoaded(modelPath)
+        val didReload = ensureLoaded(modelPath, availMemFloorBytes)
         val pair = source to target
-        val gemma3 = isGemma3Model(modelPath)
-        if (gemma3) {
-            // Prefix-mode path: Gemma 3's chat template emits empty for `role: system`
-            // and replays the system content in every user-turn diff, so the standard
-            // setSystemPrompt boundary saves nothing. We bake the fixed system block +
-            // "Please translate..." scaffolding into a manually-tokenized prefix, then
-            // per-call only decode the variable text + closing markers.
-            if (didReload || systemPair != pair) {
-                engine.processRawPrefix(buildGemma3Prefix(source, target))
-                systemPair = pair
-            } else {
-                engine.resetForNextPrompt()
+        val sb = StringBuilder()
+        when (promptStyle) {
+            PromptStyle.Gemma3Prefix -> {
+                if (didReload || systemPair != pair) {
+                    engine.processRawPrefix(buildGemma3Prefix(source, target))
+                    systemPair = pair
+                } else {
+                    engine.resetForNextPrompt()
+                }
+                engine.sendRawSuffix(buildGemma3Suffix(text), predictLength = 256)
+                    .collect { token -> sb.append(token) }
             }
-            val sb = StringBuilder()
-            engine.sendRawSuffix(buildGemma3Suffix(text), predictLength = 256)
-                .collect { token -> sb.append(token) }
-            sb.toString().trim()
-        } else {
-            if (didReload || systemPair != pair) {
-                engine.setSystemPrompt(systemPromptFor(source, target))
-                systemPair = pair
-            } else {
-                engine.resetForNextPrompt()
+            PromptStyle.StandardChat -> {
+                if (didReload || systemPair != pair) {
+                    engine.setSystemPrompt(systemPromptFor(source, target))
+                    systemPair = pair
+                } else {
+                    engine.resetForNextPrompt()
+                }
+                engine.sendUserPrompt(buildUserMessage(text, source, target), predictLength = 256)
+                    .collect { token -> sb.append(token) }
             }
-            val sb = StringBuilder()
-            engine.sendUserPrompt(buildUserMessage(text, source, target), predictLength = 256)
-                .collect { token -> sb.append(token) }
-            sb.toString().trim()
         }
+        sb.toString().trim()
     }
-
-    private fun isGemma3Model(modelPath: String): Boolean =
-        modelPath.lowercase(Locale.ROOT).contains("translategemma")
 
     private fun buildGemma3Prefix(source: String, target: String): String {
         val src = source.lowercase(Locale.ROOT)
@@ -108,7 +138,9 @@ class LlamaTranslator(private val context: Context) {
         return "$text<end_of_turn>\n<start_of_turn>model\n"
     }
 
-    /** Best-effort cleanup. Safe to call at app teardown. */
+    /** Best-effort cleanup. Safe to call at app teardown. Per-backend [close] is now
+     *  a no-op since the singleton outlives any individual backend; explicit teardown
+     *  only happens here if someone wants to tear down the engine for memory reasons. */
     fun close() {
         runCatching {
             if (engine.state.value.isModelLoaded) engine.cleanUp()
@@ -121,9 +153,9 @@ class LlamaTranslator(private val context: Context) {
      * this to decide whether the system prompt needs to be re-established (KV cache is
      * empty after a load) vs. just reset back to "after system".
      */
-    private suspend fun ensureLoaded(modelPath: String): Boolean {
+    private suspend fun ensureLoaded(modelPath: String, availMemFloorBytes: Long): Boolean {
         if (loadedModelPath == modelPath && engine.state.value.isModelLoaded) return false
-        preflightMemory()
+        preflightMemory(availMemFloorBytes)
         if (engine.state.value.isModelLoaded) {
             Log.i(TAG, "Switching model: cleanUp existing then load $modelPath")
             engine.cleanUp()
@@ -145,14 +177,14 @@ class LlamaTranslator(private val context: Context) {
         return true
     }
 
-    private fun preflightMemory() {
+    private fun preflightMemory(availMemFloorBytes: Long) {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val mi = ActivityManager.MemoryInfo()
         am.getMemoryInfo(mi)
-        if (mi.availMem < AVAIL_MEM_FLOOR_BYTES) {
+        if (mi.availMem < availMemFloorBytes) {
             throw TranslateGemmaTransientException(
-                "Low memory (${mi.availMem / 1_000_000} MB available, need ${AVAIL_MEM_FLOOR_BYTES / 1_000_000} MB); " +
-                    "falling through to ML Kit"
+                "Low memory (${mi.availMem / 1_000_000} MB available, need ${availMemFloorBytes / 1_000_000} MB); " +
+                    "falling through to next backend"
             )
         }
     }
@@ -182,17 +214,36 @@ Produce only the $tgtName translation, without any additional explanations or co
 
     companion object {
         private const val TAG = "LlamaTranslator"
-        // Below ~4 GB available, loading + KV cache + scratch is at risk of OOM kill.
-        // This is the *transient* check at load time (per-attempt), not a permanent device gate.
-        private const val AVAIL_MEM_FLOOR_BYTES = 4_000_000_000L
+
+        // Below ~4 GB available, loading + KV cache + scratch is at risk of OOM kill
+        // for a TG-4B-class model. Smaller models (Qwen 1.5B) can pass a lower floor
+        // explicitly to translate(). This is the *transient* check at load time
+        // (per-attempt), not a permanent device gate — see the install-time
+        // [com.playtranslate.translation.translategemma.TranslateGemmaDownloader.preflightRam].
+        const val DEFAULT_AVAIL_MEM_FLOOR_BYTES = 4_000_000_000L
+
+        @Volatile private var INSTANCE: LlamaTranslator? = null
+
+        /** Process-wide singleton. Both TG and Qwen backends route through this one
+         *  instance so they share the underlying engine's mutex and `loadedModelPath`
+         *  state. */
+        fun getInstance(context: Context): LlamaTranslator =
+            INSTANCE ?: synchronized(this) {
+                INSTANCE ?: LlamaTranslator(context.applicationContext).also { INSTANCE = it }
+            }
     }
 }
 
 /**
- * Transient (retry-later) failure to load or run TranslateGemma.
+ * Transient (retry-later) failure to load or run an on-device LLM backend.
  *
  * The waterfall in [com.playtranslate.translation.TranslationBackendRegistry.translate]
- * catches this and falls through to the next backend (typically ML Kit). Throwing this
- * does NOT disable TG — the next translate() call may succeed if memory pressure relaxes.
+ * catches this and falls through to the next backend (typically ML Kit or a smaller
+ * on-device model). Throwing this does NOT disable the backend — the next translate()
+ * call may succeed if memory pressure relaxes.
+ *
+ * Despite the name, this exception applies to any LlamaTranslator-driven backend,
+ * not only TranslateGemma. The class is kept here for now to avoid renaming during
+ * Phase 0; Phase 1 will move both this and the singleton into a shared `llm/` package.
  */
 class TranslateGemmaTransientException(message: String) : RuntimeException(message)
