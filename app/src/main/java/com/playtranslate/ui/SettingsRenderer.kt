@@ -959,6 +959,12 @@ class SettingsRenderer(
         rowBackendTranslategemma.findViewById<TextView>(R.id.tvRowTitle).text =
             ctx.getString(R.string.translategemma_display_name)
 
+        val backend = com.playtranslate.translation.TranslationBackendRegistry
+            .byId("translategemma") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+        if (backend != null && configureIncompatibleHardwareRow(rowBackendTranslategemma, backend)) {
+            return
+        }
+
         val switch = rowBackendTranslategemma.findViewById<MaterialSwitch>(R.id.switchRowToggle)
         switch.isChecked = prefs.translateGemmaEnabled
 
@@ -991,6 +997,12 @@ class SettingsRenderer(
         rowBackendQwen.findViewById<TextView>(R.id.tvRowTitle).text =
             ctx.getString(R.string.qwen_display_name)
 
+        val backend = com.playtranslate.translation.TranslationBackendRegistry
+            .byId("qwen") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+        if (backend != null && configureIncompatibleHardwareRow(rowBackendQwen, backend)) {
+            return
+        }
+
         val switch = rowBackendQwen.findViewById<MaterialSwitch>(R.id.switchRowToggle)
         switch.isChecked = prefs.qwenEnabled
 
@@ -1009,6 +1021,26 @@ class SettingsRenderer(
                 }
             }
         }
+    }
+
+    /**
+     * If [backend] reports [com.playtranslate.translation.llm.OnDeviceLlmBackend.meetsHardwareRequirements]
+     * = false, configure [row] in a "visible but inert" state: hide the
+     * toggle switch and disable click handling. Title and status line are
+     * left to the caller / [refreshAllBackendStatuses] — the status getter
+     * on the backend surfaces [com.playtranslate.translation.llm.OnDeviceLlmBackend.hardwareIncompatibilityReason]
+     * as the line-2 explanation. Returns true if the row was configured as
+     * incompatible (caller should early-return).
+     */
+    private fun configureIncompatibleHardwareRow(
+        row: View,
+        backend: com.playtranslate.translation.llm.OnDeviceLlmBackend,
+    ): Boolean {
+        if (backend.meetsHardwareRequirements()) return false
+        row.findViewById<MaterialSwitch>(R.id.switchRowToggle).visibility = View.GONE
+        row.setOnClickListener(null)
+        row.isClickable = false
+        return true
     }
 
     private fun wireDeeplBackendRow() {

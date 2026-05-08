@@ -1,8 +1,10 @@
 package com.playtranslate.translation.llm
 
+import android.app.ActivityManager
 import android.content.Context
+import android.os.Build
 import androidx.annotation.StringRes
-import com.playtranslate.translation.BackendId
+import com.playtranslate.R
 import com.playtranslate.translation.BackendStatus
 import com.playtranslate.translation.Tone
 import com.playtranslate.translation.TranslationBackend
@@ -30,17 +32,76 @@ abstract class OnDeviceLlmBackend(
 
     protected abstract val modelHelper: ModelHelper
     protected abstract val promptStyle: PromptStyle
+
+    /** Transient per-call floor checked at translate time inside
+     *  [LlamaTranslator]. If `availMem` drops below this value a translate
+     *  call throws a transient exception and the registry's waterfall
+     *  falls through to the next backend. */
     protected abstract val availMemFloorBytes: Long
+
+    /** Permanent device-level floor: the minimum `MemoryInfo.totalMem` we
+     *  require to even consider this backend installable on this device.
+     *  Read by [meetsHardwareRequirements] (UI gate) and by
+     *  [OnDeviceLlmDownloader] (download-time gate, via Settings). Public so
+     *  Settings can wire its downloader without duplicating the constant. */
+    abstract val totalMemFloorBytes: Long
+
     protected abstract val statusStringIds: StatusStringIds
 
     final override val requiresInternet: Boolean = false
     final override val isDegradedFallback: Boolean = false
 
     final override fun isUsable(source: String, target: String): Boolean {
+        // Hardware gate is the cheapest check and a hard prerequisite — a
+        // device that can't even host the native library never proceeds. This
+        // mirrors the UI's row-disabling logic so the waterfall can never
+        // accidentally select an un-runnable backend even if a pref persists
+        // across an OS / device change.
+        if (!meetsHardwareRequirements()) return false
         if (!enabledProvider()) return false
         if (!modelHelper.isInstalled(context)) return false
         if (source.equals(target, ignoreCase = true)) return false
         return supportsPair(source, target)
+    }
+
+    /**
+     * True iff this device has the static hardware capabilities required to
+     * run this backend at all (arm64 ABI + sufficient total RAM). Consulted
+     * by:
+     *   - the Settings UI to decide whether the row is interactive,
+     *   - [isUsable] as the first gate in the registry waterfall,
+     *   - [OnDeviceLlmDownloader.preflightRam] as a defense-in-depth check.
+     *
+     * Distinct from [isUsable]: this is a static device-level fact (doesn't
+     * change while the app runs); [isUsable] is per-translation and depends
+     * on prefs, file presence, and the language pair.
+     */
+    fun meetsHardwareRequirements(): Boolean = supportsRequiredAbi() && hasEnoughTotalMemory()
+
+    /**
+     * Localized human-readable explanation for *why* the device doesn't meet
+     * the hardware requirements, or null if it does. Surfaced in the row's
+     * status line when the switch is hidden.
+     */
+    fun hardwareIncompatibilityReason(): String? {
+        if (!supportsRequiredAbi()) {
+            return context.getString(R.string.llm_hardware_unsupported_arm64)
+        }
+        if (!hasEnoughTotalMemory()) {
+            val needGb = (totalMemFloorBytes + 999_999_999L) / 1_000_000_000L
+            return context.getString(R.string.llm_hardware_unsupported_ram, needGb)
+        }
+        return null
+    }
+
+    private fun supportsRequiredAbi(): Boolean =
+        Build.SUPPORTED_ABIS.any { it == "arm64-v8a" }
+
+    private fun hasEnoughTotalMemory(): Boolean {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val mi = ActivityManager.MemoryInfo()
+        am.getMemoryInfo(mi)
+        return mi.totalMem >= totalMemFloorBytes
     }
 
     /**
@@ -69,6 +130,12 @@ abstract class OnDeviceLlmBackend(
 
     override val status: BackendStatus
         get() {
+            // Surface hardware incompatibility as the line-2 status — takes
+            // precedence over download/enabled/ready states because there's
+            // no point telling the user "downloaded" if the model can't run.
+            hardwareIncompatibilityReason()?.let {
+                return BackendStatus.Info(it, Tone.Neutral)
+            }
             val sizeStr = modelHelper.humanSize(context)
             return when {
                 !modelHelper.isInstalled(context) ->

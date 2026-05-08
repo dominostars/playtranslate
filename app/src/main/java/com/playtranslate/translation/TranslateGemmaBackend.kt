@@ -40,6 +40,13 @@ class TranslateGemmaBackend(
     // backend rather than risking an OOM kill.
     override val availMemFloorBytes: Long = 4_000_000_000L
 
+    // Permanent device gate. Below 6 GB total RAM, TG 4B would run too close
+    // to the OOM-killer threshold even at peak available-memory. Surfaced
+    // both to the Settings row (which disables itself when the device falls
+    // short) and to the downloader (which refuses to fetch the 2 GB GGUF on
+    // a device that can't run it).
+    override val totalMemFloorBytes: Long = 6_000_000_000L
+
     override val statusStringIds = StatusStringIds(
         notDownloaded = R.string.translategemma_status_not_downloaded,
         disabled = R.string.translategemma_status_downloaded_disabled,

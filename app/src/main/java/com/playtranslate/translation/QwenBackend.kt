@@ -40,6 +40,10 @@ class QwenBackend(
     // can run the model.
     override val availMemFloorBytes: Long = 1_500_000_000L
 
+    // Permanent device gate. 4 GB total RAM is comfortable for Qwen 1.5B's
+    // smaller working set; smaller devices can't run on-device LLMs at all.
+    override val totalMemFloorBytes: Long = 4_000_000_000L
+
     override val statusStringIds = StatusStringIds(
         notDownloaded = R.string.qwen_status_not_downloaded,
         disabled = R.string.qwen_status_downloaded_disabled,

@@ -422,10 +422,13 @@ class SettingsBottomSheet : DialogFragment() {
      *  attempt). The Cancel button explicitly deletes the partial file. */
     private fun showTranslateGemmaDownloadDialog() {
         val ctx = context ?: return
+        val backend = com.playtranslate.translation.TranslationBackendRegistry
+            .byId("translategemma") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+            ?: return
         val downloader = com.playtranslate.translation.llm.OnDeviceLlmDownloader(
             context = ctx,
             modelHelper = com.playtranslate.translation.translategemma.TranslateGemmaModel,
-            totalMemFloorBytes = TG_TOTAL_MEM_FLOOR_BYTES,
+            totalMemFloorBytes = backend.totalMemFloorBytes,
         )
 
         // Metered-network warning before kicking off the multi-GB download.
@@ -606,10 +609,13 @@ class SettingsBottomSheet : DialogFragment() {
      *  floor (Qwen 1.5B fits comfortably below TG's 6 GB requirement). */
     private fun showQwenDownloadDialog() {
         val ctx = context ?: return
+        val backend = com.playtranslate.translation.TranslationBackendRegistry
+            .byId("qwen") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+            ?: return
         val downloader = com.playtranslate.translation.llm.OnDeviceLlmDownloader(
             context = ctx,
             modelHelper = com.playtranslate.translation.qwen.QwenModel,
-            totalMemFloorBytes = QWEN_TOTAL_MEM_FLOOR_BYTES,
+            totalMemFloorBytes = backend.totalMemFloorBytes,
         )
 
         if (downloader.isCurrentNetworkMetered()) {
@@ -771,16 +777,10 @@ class SettingsBottomSheet : DialogFragment() {
         const val TAG = "SettingsBottomSheet"
         private const val ARG_HIDE_DISMISS = "hide_dismiss"
 
-        // Permanent device gate for TG. Below 6 GB total RAM, TG 4B would run too
-        // close to the OOM-killer threshold.
-        private const val TG_TOTAL_MEM_FLOOR_BYTES = 6_000_000_000L
-
-        // Permanent device gate for Qwen. Qwen 1.5B's much smaller working set
-        // (~1.2-1.4 GB) fits comfortably on a 4 GB device with the rest of
-        // Android + a foreground game running. The transient availMem floor at
-        // load time (1.5 GB, see QwenBackend.availMemFloorBytes) is the second
-        // line of defense against OOM kills.
-        private const val QWEN_TOTAL_MEM_FLOOR_BYTES = 4_000_000_000L
+        // (TG and Qwen total-mem floors used to live here as TG_TOTAL_MEM_FLOOR_BYTES
+        // and QWEN_TOTAL_MEM_FLOOR_BYTES, but they're now properties on the backend
+        // class itself — see OnDeviceLlmBackend.totalMemFloorBytes — so the UI's
+        // hardware-gate logic and the downloader's preflight read the same source.)
 
         fun newInstance(hideDismiss: Boolean = false) = SettingsBottomSheet().apply {
             if (hideDismiss) arguments = Bundle().apply { putBoolean(ARG_HIDE_DISMISS, true) }

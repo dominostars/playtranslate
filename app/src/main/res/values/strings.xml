@@ -249,4 +249,11 @@
     <string name="qwen_metered_warning_title">Download on cellular?</string>
     <string name="qwen_metered_warning_message">Qwen 2.5 1.5B is %1$s. Continue on cellular?</string>
     <string name="qwen_download_paused">Download paused. Reopen Settings to resume.</string>
+
+    <!-- Status line shown on a TG / Qwen row when the device's hardware can't
+         run on-device LLMs. The row stays visible (so the user understands
+         which feature is disabled and why) but the toggle switch is hidden
+         and the row is not interactive. -->
+    <string name="llm_hardware_unsupported_arm64">Not supported on this device (requires an arm64 CPU)</string>
+    <string name="llm_hardware_unsupported_ram">Not supported on this device (requires at least %1$d GB RAM)</string>
 </resources>
