@@ -385,16 +385,19 @@ class SettingsBottomSheet : DialogFragment() {
     private var translategemmaDownloadJob: kotlinx.coroutines.Job? = null
 
     /** Show the modal download dialog (reuses dialog_language_progress.xml).
-     *  Drives a [com.playtranslate.translation.translategemma.TranslateGemmaDownloader]
-     *  from the bottom sheet's lifecycle scope — dismissing the sheet
-     *  cancels the coroutine but preserves the partial file (resume on
-     *  next attempt). The Cancel button explicitly deletes the partial
-     *  file. */
+     *  Drives a [com.playtranslate.translation.llm.OnDeviceLlmDownloader] configured
+     *  for TG from the bottom sheet's lifecycle scope — dismissing the sheet
+     *  cancels the coroutine but preserves the partial file (resume on next
+     *  attempt). The Cancel button explicitly deletes the partial file. */
     private fun showTranslateGemmaDownloadDialog() {
         val ctx = context ?: return
-        val downloader = com.playtranslate.translation.translategemma.TranslateGemmaDownloader(ctx)
+        val downloader = com.playtranslate.translation.llm.OnDeviceLlmDownloader(
+            context = ctx,
+            modelHelper = com.playtranslate.translation.translategemma.TranslateGemmaModel,
+            totalMemFloorBytes = TG_TOTAL_MEM_FLOOR_BYTES,
+        )
 
-        // Metered-network warning before kicking off the 2.49 GB download.
+        // Metered-network warning before kicking off the multi-GB download.
         if (downloader.isCurrentNetworkMetered()) {
             val sizeStr = com.playtranslate.translation.translategemma
                 .TranslateGemmaModel.humanSize(ctx)
@@ -413,7 +416,7 @@ class SettingsBottomSheet : DialogFragment() {
 
     private fun runTranslateGemmaDownload(
         ctx: Context,
-        downloader: com.playtranslate.translation.translategemma.TranslateGemmaDownloader,
+        downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
     ) {
         val sizeStr = com.playtranslate.translation.translategemma
             .TranslateGemmaModel.humanSize(ctx)
@@ -444,11 +447,11 @@ class SettingsBottomSheet : DialogFragment() {
                 val outcome = downloader.run { progress ->
                     requireActivity().runOnUiThread {
                         when (progress) {
-                            is com.playtranslate.translation.translategemma
-                                .TranslateGemmaDownloader.Progress.Downloading -> {
-                                val recv = com.playtranslate.translation.translategemma
+                            is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Downloading -> {
+                                val recv = com.playtranslate.translation.llm
                                     .humanSize(progress.received)
-                                val total = com.playtranslate.translation.translategemma
+                                val total = com.playtranslate.translation.llm
                                     .humanSize(progress.total)
                                 tvStatus.text = getString(
                                     R.string.translategemma_status_downloading,
@@ -459,8 +462,8 @@ class SettingsBottomSheet : DialogFragment() {
                                         ((progress.received * 100) / progress.total).toInt()
                                 }
                             }
-                            is com.playtranslate.translation.translategemma
-                                .TranslateGemmaDownloader.Progress.Verifying -> {
+                            is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Verifying -> {
                                 tvStatus.text = getString(R.string.translategemma_status_verifying)
                                 progressBar.progress = 100
                             }
@@ -471,20 +474,20 @@ class SettingsBottomSheet : DialogFragment() {
                 requireActivity().runOnUiThread {
                     dialog.dismiss()
                     when (outcome) {
-                        is com.playtranslate.translation.translategemma
-                            .TranslateGemmaDownloader.Outcome.Success -> {
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Success -> {
                             // Flip the pref → SP listener fires → switch + status refresh + reconcile.
                             Prefs(ctx).translateGemmaEnabled = true
                         }
-                        is com.playtranslate.translation.translategemma
-                            .TranslateGemmaDownloader.Outcome.Refused -> {
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Refused -> {
                             android.widget.Toast.makeText(
                                 ctx, outcome.reason, android.widget.Toast.LENGTH_LONG
                             ).show()
                             renderer?.refreshAllBackendStatuses()
                         }
-                        is com.playtranslate.translation.translategemma
-                            .TranslateGemmaDownloader.Outcome.Failed -> {
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Failed -> {
                             android.widget.Toast.makeText(
                                 ctx,
                                 getString(R.string.translategemma_download_failed, outcome.reason),
@@ -492,8 +495,8 @@ class SettingsBottomSheet : DialogFragment() {
                             ).show()
                             renderer?.refreshAllBackendStatuses()
                         }
-                        is com.playtranslate.translation.translategemma
-                            .TranslateGemmaDownloader.Outcome.Cancelled -> {
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Cancelled -> {
                             // Partial file kept (lifecycle dismiss). Settings will say "Tap to download"
                             // because isInstalled() is false — but next tap resumes from offset.
                             android.widget.Toast.makeText(
@@ -524,6 +527,7 @@ class SettingsBottomSheet : DialogFragment() {
 
         dialog.show()
     }
+
 
     /** AlertDialog with three options when the user taps an enabled TG row.
      *  Cancel reverts the optimistic switch flip via [SettingsRenderer.refreshTranslategemmaSwitch]. */
@@ -557,6 +561,11 @@ class SettingsBottomSheet : DialogFragment() {
     companion object {
         const val TAG = "SettingsBottomSheet"
         private const val ARG_HIDE_DISMISS = "hide_dismiss"
+
+        // Permanent device gate for TG. Below 6 GB total RAM, TG 4B would run too
+        // close to the OOM-killer threshold. Sibling backends (e.g. Qwen 1.5B)
+        // can pass a lower floor when constructing their own OnDeviceLlmDownloader.
+        private const val TG_TOTAL_MEM_FLOOR_BYTES = 6_000_000_000L
 
         fun newInstance(hideDismiss: Boolean = false) = SettingsBottomSheet().apply {
             if (hideDismiss) arguments = Bundle().apply { putBoolean(ARG_HIDE_DISMISS, true) }

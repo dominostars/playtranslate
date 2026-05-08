@@ -1,4 +1,4 @@
-package com.playtranslate.translation.translategemma
+package com.playtranslate.translation.llm
 
 import android.app.ActivityManager
 import android.content.Context
@@ -6,7 +6,6 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.StatFs
 import android.util.Log
-import com.playtranslate.language.DownloadProgress
 import com.playtranslate.language.LanguagePackDownloader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -17,22 +16,24 @@ import java.security.MessageDigest
 import kotlin.coroutines.coroutineContext
 
 /**
- * Drives a manifest-backed download of the TranslateGemma GGUF.
+ * Drives a manifest-backed download of an on-device LLM GGUF.
  *
  * Pipeline:
- *  1. Pre-flight checks (RAM / free storage / metered) — surfaced as [Outcome.Refused].
- *  2. Streamed download via [LanguagePackDownloader] (resumable, so the partial file
- *     persists across cancel-by-dismiss; only [cancel] explicitly deletes it).
+ *  1. Pre-flight checks (RAM / free storage) — surfaced as [Outcome.Refused].
+ *  2. Streamed download via [LanguagePackDownloader] (resumable — the partial
+ *     file persists across cancel-by-dismiss; only [deletePartial] removes it).
  *  3. Streaming SHA-256 over the file. On hash mismatch: delete and report failure.
- *  4. On success: flip `prefs.translateGemmaEnabled = true` is the caller's job —
- *     we just emit [Outcome.Success].
+ *  4. On success: caller flips the per-backend `enabled` pref. We just emit
+ *     [Outcome.Success].
  *
- * The downloader is stateless apart from the URL/file paths derived from the catalog
- * entry; all UI state lives in the caller (the SettingsBottomSheet that hosts the
- * progress dialog).
+ * Lifted from the previous TG-specific `TranslateGemmaDownloader`; parameterized
+ * via [modelHelper] and [totalMemFloorBytes] so siblings (Qwen, ...) reuse the
+ * same pipeline without code duplication.
  */
-class TranslateGemmaDownloader(
+class OnDeviceLlmDownloader(
     private val context: Context,
+    private val modelHelper: ModelHelper,
+    private val totalMemFloorBytes: Long,
     private val httpDownloader: LanguagePackDownloader = LanguagePackDownloader(),
 ) {
 
@@ -45,8 +46,11 @@ class TranslateGemmaDownloader(
         data object Success : Outcome
         data class Refused(val reason: String) : Outcome
         data class Failed(val reason: String, val cause: Throwable? = null) : Outcome
-        /** Caller cancelled mid-flight. Partial file may still be on disk;
-         *  caller decides whether to keep it (for resume) or delete it. */
+
+        /**
+         * Caller cancelled mid-flight. Partial file may still be on disk;
+         * caller decides whether to keep it (for resume) or delete it.
+         */
         data object Cancelled : Outcome
     }
 
@@ -58,34 +62,47 @@ class TranslateGemmaDownloader(
     suspend fun run(
         onProgress: (Progress) -> Unit,
     ): Outcome = withContext(Dispatchers.IO) {
-        val entry = TranslateGemmaModel.catalogEntry(context)
-            ?: return@withContext Outcome.Failed("Catalog entry missing for engine-translategemma")
+        val entry = modelHelper.catalogEntry(context)
+            ?: return@withContext Outcome.Failed(
+                "Catalog entry missing for ${modelHelper.catalogKey}",
+            )
         val url = entry.url
-            ?: return@withContext Outcome.Failed("Catalog URL missing for engine-translategemma")
+            ?: return@withContext Outcome.Failed(
+                "Catalog URL missing for ${modelHelper.catalogKey}",
+            )
         val expectedSize = entry.size
         val expectedSha = entry.sha256
-            ?: return@withContext Outcome.Failed("Catalog SHA256 missing for engine-translategemma")
+            ?: return@withContext Outcome.Failed(
+                "Catalog SHA256 missing for ${modelHelper.catalogKey}",
+            )
 
         // -- Pre-flights -----------------------------------------------------------
         preflightRam()?.let { return@withContext Outcome.Refused(it) }
         preflightStorage(expectedSize)?.let { return@withContext Outcome.Refused(it) }
-        // Metered-network is a *warning* the caller should surface BEFORE calling run().
+        // Metered-network is a *warning* the caller surfaces BEFORE calling run().
         // We don't gate here — the caller is responsible for prompting the user.
 
-        val destination = TranslateGemmaModel.file(context)
-        Log.i(TAG, "Starting download: $url -> ${destination.absolutePath} (expected $expectedSize bytes)")
+        val destination = modelHelper.file(context)
+        Log.i(
+            TAG,
+            "Starting download: $url -> ${destination.absolutePath} (expected $expectedSize bytes)",
+        )
 
         // -- Download --------------------------------------------------------------
         try {
             httpDownloader.download(url, destination) { p ->
-                onProgress(Progress.Downloading(p.bytesReceived, if (p.totalBytes > 0) p.totalBytes else expectedSize))
+                val total = if (p.totalBytes > 0) p.totalBytes else expectedSize
+                onProgress(Progress.Downloading(p.bytesReceived, total))
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             return@withContext Outcome.Cancelled
         } catch (e: Exception) {
             // Don't delete the partial file — resume on next attempt.
             Log.w(TAG, "Download interrupted: ${e.message}")
-            return@withContext Outcome.Failed("Download interrupted: ${e.message ?: e.javaClass.simpleName}", e)
+            return@withContext Outcome.Failed(
+                "Download interrupted: ${e.message ?: e.javaClass.simpleName}",
+                e,
+            )
         }
 
         // -- Verify ----------------------------------------------------------------
@@ -95,13 +112,17 @@ class TranslateGemmaDownloader(
         val actualSize = destination.length()
         if (actualSize != expectedSize) {
             destination.delete()
-            return@withContext Outcome.Failed("Size mismatch (got $actualSize, expected $expectedSize)")
+            return@withContext Outcome.Failed(
+                "Size mismatch (got $actualSize, expected $expectedSize)",
+            )
         }
 
         val actualSha = computeSha256(destination)
         if (!actualSha.equals(expectedSha, ignoreCase = true)) {
             destination.delete()
-            return@withContext Outcome.Failed("SHA-256 mismatch (got $actualSha, expected $expectedSha)")
+            return@withContext Outcome.Failed(
+                "SHA-256 mismatch (got $actualSha, expected $expectedSha)",
+            )
         }
 
         Log.i(TAG, "Download + verify succeeded: ${destination.absolutePath}")
@@ -110,7 +131,7 @@ class TranslateGemmaDownloader(
 
     /** Delete any partial file. Use on explicit user cancel (not on transient failure). */
     fun deletePartial() {
-        val f = TranslateGemmaModel.file(context)
+        val f = modelHelper.file(context)
         if (f.exists()) {
             val ok = f.delete()
             Log.i(TAG, "Deleted partial file: ${f.absolutePath} ok=$ok")
@@ -123,8 +144,10 @@ class TranslateGemmaDownloader(
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val mi = ActivityManager.MemoryInfo()
         am.getMemoryInfo(mi)
-        if (mi.totalMem < TOTAL_MEM_FLOOR_BYTES) {
-            return "Insufficient RAM (${mi.totalMem / 1_000_000_000} GB total, need 6 GB)"
+        if (mi.totalMem < totalMemFloorBytes) {
+            val totalGb = mi.totalMem / 1_000_000_000
+            val needGb = totalMemFloorBytes / 1_000_000_000
+            return "Insufficient RAM ($totalGb GB total, need $needGb GB)"
         }
         return null
     }
@@ -164,10 +187,6 @@ class TranslateGemmaDownloader(
     }
 
     companion object {
-        private const val TAG = "TranslateGemmaDownloader"
-        // Permanent device gate. Below 6 GB total RAM, the model would run too close
-        // to the OOM-killer threshold. Note: separate from the *availMem* gate at
-        // load-time which surfaces transient pressure to fall through to ML Kit.
-        private const val TOTAL_MEM_FLOOR_BYTES = 6_000_000_000L
+        private const val TAG = "OnDeviceLlmDownloader"
     }
 }

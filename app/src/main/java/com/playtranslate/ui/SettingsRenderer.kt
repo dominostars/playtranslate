@@ -89,10 +89,10 @@ class SettingsRenderer(
         fun getScrollY(): Int
 
         /** Tap on the TranslateGemma row when the model isn't installed.
-         *  Implementer shows the download progress dialog, runs the
-         *  TranslateGemmaDownloader, and on success flips
-         *  [Prefs.translateGemmaEnabled] = true (which fires the pref-change
-         *  listener → status refresh + reconcile). */
+         *  Implementer shows the download progress dialog, runs the shared
+         *  [com.playtranslate.translation.llm.OnDeviceLlmDownloader] configured
+         *  for TG, and on success flips [Prefs.translateGemmaEnabled] = true
+         *  (which fires the pref-change listener → status refresh + reconcile). */
         fun startTranslateGemmaDownload()
 
         /** Tap on the TranslateGemma row when it's currently enabled.

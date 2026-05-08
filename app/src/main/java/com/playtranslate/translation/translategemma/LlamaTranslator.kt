@@ -219,7 +219,7 @@ Produce only the $tgtName translation, without any additional explanations or co
         // for a TG-4B-class model. Smaller models (Qwen 1.5B) can pass a lower floor
         // explicitly to translate(). This is the *transient* check at load time
         // (per-attempt), not a permanent device gate — see the install-time
-        // [com.playtranslate.translation.translategemma.TranslateGemmaDownloader.preflightRam].
+        // total-RAM check inside [com.playtranslate.translation.llm.OnDeviceLlmDownloader].
         const val DEFAULT_AVAIL_MEM_FLOOR_BYTES = 4_000_000_000L
 
         @Volatile private var INSTANCE: LlamaTranslator? = null
