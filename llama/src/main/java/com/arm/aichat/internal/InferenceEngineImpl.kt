@@ -409,7 +409,21 @@ internal class InferenceEngineImpl private constructor(
                 }
 
                 is InferenceEngine.State.Error -> {
-                    Log.i(TAG, "Resetting error states...")
+                    // Reset Kotlin state AND release any leftover native model /
+                    // context / KV / sampler / chat templates. Without this,
+                    // recovering from a runtime Error (e.g. llama_decode failed
+                    // mid-translation, transitioning ModelReady → Error) would
+                    // leak the previously-loaded model+context, and a subsequent
+                    // loadModel() would stack fresh allocations on top.
+                    //
+                    // unload() is idempotent / null-safe: every individual free
+                    // call inside it (common_sampler_free, llama_free,
+                    // llama_model_free, llama_batch_free) handles a virgin /
+                    // already-freed state, so calling from "Error after init
+                    // failure" (no model ever loaded) is also safe.
+                    Log.i(TAG, "Resetting error states (releasing any leftover native resources)...")
+                    _state.value = InferenceEngine.State.UnloadingModel
+                    unload()
                     _state.value = InferenceEngine.State.Initialized
                     Log.i(TAG, "States reset!")
                     Unit
