@@ -8,7 +8,7 @@
       "bundled": false,
       "packVersion": 1,
       "size": 2190470400,
-      "url": "https://huggingface.co/mradermacher/translategemma-4b-it-GGUF/resolve/main/translategemma-4b-it.Q4_0.gguf",
+      "url": "https://huggingface.co/playtranslate/translategemma-4b-it-Q4_0/resolve/main/translategemma-4b-it.Q4_0.gguf",
       "sha256": "cb7a1b969fdf25bbf64d5d5d94c66005bfac32fb166854675b6e780f20c79cad",
       "licenses": [
         {
@@ -25,7 +25,7 @@
       "bundled": false,
       "packVersion": 1,
       "size": 937535744,
-      "url": "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_0.gguf",
+      "url": "https://huggingface.co/playtranslate/qwen2.5-1.5b-instruct-Q4_0/resolve/main/Qwen2.5-1.5B-Instruct-Q4_0.gguf",
       "sha256": "a5ab77ebbd1d6d70250ff415339935bebac619b7acc508f71545f08231369dc1",
       "licenses": [
         {
