@@ -49,6 +49,13 @@ abstract class OnDeviceLlmBackend(
     protected abstract val statusStringIds: StatusStringIds
 
     final override val requiresInternet: Boolean = false
+    // false matches the abstraction (users opt into TG/Qwen; they aren't
+    // "degraded"). Known side effect: when an on-device LLM produces a
+    // translation because an online backend transiently failed, the result
+    // gets cached and outlasts the recovery — see the "Note discipline"
+    // comment in CaptureService.translateGroupsSeparately. A clean fix
+    // would split the cache-suppression and "⚠ Offline" semantics of this
+    // flag; not worth the plumbing for the small staleness window today.
     final override val isDegradedFallback: Boolean = false
 
     final override fun isUsable(source: String, target: String): Boolean {
