@@ -135,6 +135,10 @@ internal class InferenceEngineImpl private constructor(
 
     init {
         llamaScope.launch {
+            // Throwable, not Exception: System.loadLibrary throws UnsatisfiedLinkError
+            // (an Error subclass). State→Error is what LlamaTranslator.ensureLoaded
+            // suspends on; rethrowing here would route to the uncaught-exception handler
+            // (no parent listener under SupervisorJob) instead of unblocking callers.
             try {
                 check(_state.value is InferenceEngine.State.Uninitialized) {
                     "Cannot load native library in ${_state.value.javaClass.simpleName}!"
@@ -146,9 +150,10 @@ internal class InferenceEngineImpl private constructor(
                 _state.value = InferenceEngine.State.Initialized
                 Log.i(TAG, "Native library loaded! System info: \n${systemInfo()}")
 
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to load native library", e)
-                throw e
+            } catch (t: Throwable) {
+                Log.e(TAG, "Failed to load native library", t)
+                val ex = (t as? Exception) ?: RuntimeException(t)
+                _state.value = InferenceEngine.State.Error(ex)
             }
         }
     }

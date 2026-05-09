@@ -583,7 +583,7 @@ Java_com_arm_aichat_internal_InferenceEngineImpl_processUserPrompt(
     // decode/reset/shift logic operates on invented positions.
     const int user_prompt_size_decoded = (int) user_tokens.size();
     current_position += user_prompt_size_decoded;
-    stop_generation_position = current_position + user_prompt_size_decoded + n_predict;
+    stop_generation_position = current_position + n_predict;
     return 0;
 }
 
