@@ -352,11 +352,11 @@
             </LinearLayout>
 
             <!-- ══════════════════════════════════════════════════════ -->
-            <!-- TRANSLATION SERVICE                                   -->
+            <!-- ONLINE TRANSLATIONS                                   -->
             <!-- ══════════════════════════════════════════════════════ -->
 
             <include layout="@layout/settings_group_header"
-                android:id="@+id/headerTranslationService" />
+                android:id="@+id/headerOnlineTranslations" />
 
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
@@ -380,8 +380,39 @@
                     <include layout="@layout/settings_row_backend"
                         android:id="@+id/rowBackendLingva" />
 
-                    <include layout="@layout/settings_row_divider"
-                        android:id="@+id/dividerBackendTranslategemma" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_word_tatoeba_attribution"
+                        android:paddingHorizontal="16dp"
+                        android:paddingVertical="10dp"
+                        android:text="@string/tr_service_order_footer"
+                        android:textColor="?attr/ptTextHint"
+                        android:textSize="11sp" />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- OFFLINE TRANSLATIONS                                  -->
+            <!-- ══════════════════════════════════════════════════════ -->
+
+            <include layout="@layout/settings_group_header"
+                android:id="@+id/headerOfflineTranslations" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
 
                     <include layout="@layout/settings_row_backend"
                         android:id="@+id/rowBackendTranslategemma" />
@@ -403,7 +434,7 @@
                         android:background="@drawable/bg_word_tatoeba_attribution"
                         android:paddingHorizontal="16dp"
                         android:paddingVertical="10dp"
-                        android:text="@string/tr_service_order_footer"
+                        android:text="@string/tr_service_offline_footer"
                         android:textColor="?attr/ptTextHint"
                         android:textSize="11sp" />
 

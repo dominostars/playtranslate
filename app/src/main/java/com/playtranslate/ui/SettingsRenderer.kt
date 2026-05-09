@@ -183,7 +183,8 @@ class SettingsRenderer(
         setGroupHeader(R.id.headerAutoTranslate, "AUTO-TRANSLATE")
         setGroupHeader(R.id.headerHotkeys, "HOTKEYS")
         setGroupHeader(R.id.headerCaptureDisplay, "CAPTURE DISPLAY")
-        setGroupHeader(R.id.headerTranslationService, "TRANSLATION SERVICE")
+        setGroupHeader(R.id.headerOnlineTranslations, "ONLINE TRANSLATIONS")
+        setGroupHeader(R.id.headerOfflineTranslations, "OFFLINE TRANSLATIONS")
         setGroupHeader(R.id.headerAnki, "ANKI")
         setGroupHeader(R.id.headerAppearance, "APPEARANCE")
         setGroupHeader(R.id.headerSupport, "SUPPORT")
@@ -710,7 +711,6 @@ class SettingsRenderer(
     private val rowBackendDeepl: View = root.findViewById(R.id.rowBackendDeepl)
     private val rowBackendLingva: View = root.findViewById(R.id.rowBackendLingva)
     private val rowBackendTranslategemma: View = root.findViewById(R.id.rowBackendTranslategemma)
-    private val dividerBackendTranslategemma: View = root.findViewById(R.id.dividerBackendTranslategemma)
     private val rowBackendQwen: View = root.findViewById(R.id.rowBackendQwen)
     private val dividerBackendQwen: View = root.findViewById(R.id.dividerBackendQwen)
     private val rowBackendMlkit: View = root.findViewById(R.id.rowBackendMlkit)
@@ -750,22 +750,15 @@ class SettingsRenderer(
     }
 
     /** Compose the row's line-1 subtitle from the backend's metadata —
-     *  `(internet requirement) · (quality)` — with each half tinted by
-     *  its own [Tone] via a [ForegroundColorSpan]. The TextView's base
-     *  color (set by the `Text.PT.RowSubtitle` style) handles the parts
-     *  we don't span. */
+     *  `(quality) · (speed)` for offline backends, just `(quality)` for
+     *  online — with each part tinted by its own [Tone] via a
+     *  [ForegroundColorSpan]. The TextView's base color (set by the
+     *  `Text.PT.RowSubtitle` style) handles parts we don't span. The
+     *  online/offline distinction itself is now carried by the section
+     *  header (Online vs Offline cards), not a per-row pill. */
     private fun setBackendLine1(row: View, backend: TranslationBackend) {
         val tv = row.findViewById<TextView>(R.id.tvRowSubtitle)
         val builder = SpannableStringBuilder()
-
-        val (internetText, internetTone) = if (backend.requiresInternet) {
-            ctx.getString(R.string.tr_service_requires_internet) to null
-        } else {
-            ctx.getString(R.string.tr_service_works_offline) to Tone.Accent
-        }
-        appendMaybeColored(builder, internetText, internetTone)
-
-        builder.append(" · ")
 
         val (qualityText, qualityTone) = when (backend.quality) {
             BackendQuality.Bad    -> ctx.getString(R.string.tr_service_quality_bad)    to Tone.Danger
@@ -963,8 +956,11 @@ class SettingsRenderer(
      */
     private fun wireTranslateGemmaBackendRow() {
         if (!com.playtranslate.BuildConfig.TRANSLATEGEMMA_ENABLED) {
+            // TG is the first row in the Offline card; the divider that
+            // follows it (between TG and Qwen) becomes a stray top border
+            // when TG is hidden, so hide it too.
             rowBackendTranslategemma.visibility = View.GONE
-            dividerBackendTranslategemma.visibility = View.GONE
+            dividerBackendQwen.visibility = View.GONE
             return
         }
 

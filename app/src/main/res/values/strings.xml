@@ -198,8 +198,9 @@
     <string name="deepl_settings_get_key_subtitle">The free plan includes 500,000 characters per month, but requires a credit card to sign up</string>
     <string name="deepl_settings_about">DeepL is a translation service known for high-quality output, especially in European languages.</string>
 
-    <!-- Translation Service section footer in Settings -->
+    <!-- Translation Service section footers in Settings -->
     <string name="tr_service_order_footer">Translations try each enabled service in the order shown, falling back when one is unavailable.</string>
+    <string name="tr_service_offline_footer">Offline translations are used as a fallback when online translations are unavailable. MLKit translations are bad, but the other options can be very slow and taxing, be weary of using them for auto translation.</string>
 
     <!-- Translation Service per-backend status line (line 2) -->
     <string name="tr_service_status_loading">Checking usage…</string>
