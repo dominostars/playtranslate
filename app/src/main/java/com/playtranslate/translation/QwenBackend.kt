@@ -30,7 +30,8 @@ class QwenBackend(
     override val id: BackendId = "qwen"
     override val displayName: String = context.getString(R.string.qwen_display_name)
     override val priority: Int = PRIORITY
-    override val quality: BackendQuality = BackendQuality.Good
+    override val quality: BackendQuality = BackendQuality.Okay
+    override val speed: BackendSpeed = BackendSpeed.Slow
     override val modelHelper = QwenModel
     override val promptStyle = PromptStyle.StandardChat
 

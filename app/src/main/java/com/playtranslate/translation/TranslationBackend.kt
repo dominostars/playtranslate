@@ -5,12 +5,19 @@ typealias BackendId = String
 /** Coarse quality label for a translation backend, surfaced in the
  *  Settings row's line-1 subtitle. The renderer maps:
  *  - [Bad]    → "Bad quality"   (danger color)
+ *  - [Okay]   → "Okay quality"  (default tint)
  *  - [Good]   → "Good quality"  (default tint)
  *  - [Better] → "Better quality" (accent color)
  *
  *  Subjective by nature; intended as a rough hint to help the user
  *  decide which backend to enable. Not load-bearing in the waterfall. */
-enum class BackendQuality { Bad, Good, Better }
+enum class BackendQuality { Bad, Okay, Good, Better }
+
+/** Coarse speed label for offline backends, surfaced in the Settings
+ *  row's line-1 subtitle alongside [BackendQuality]. Online backends
+ *  leave [TranslationBackend.speed] null — their perceived speed is
+ *  network-bound, not a useful comparison axis. */
+enum class BackendSpeed { VerySlow, Slow, Fast }
 
 /**
  * A pluggable translation source. Implementations are pair-agnostic
@@ -45,6 +52,11 @@ interface TranslationBackend {
 
     /** Coarse quality hint shown in Settings. Default [BackendQuality.Good]. */
     val quality: BackendQuality get() = BackendQuality.Good
+
+    /** Coarse speed hint shown in Settings for offline backends only.
+     *  Default null = no speed indicator (online backends, where speed
+     *  is dominated by network conditions rather than the backend itself). */
+    val speed: BackendSpeed? get() = null
 
     /** True for backends whose translations are signalled to the user as
      *  lower-quality / "degraded" (currently only the on-device ML Kit

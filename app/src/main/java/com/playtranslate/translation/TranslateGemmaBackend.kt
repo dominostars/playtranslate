@@ -31,6 +31,7 @@ class TranslateGemmaBackend(
     override val displayName: String = context.getString(R.string.translategemma_display_name)
     override val priority: Int = PRIORITY
     override val quality: BackendQuality = BackendQuality.Better
+    override val speed: BackendSpeed = BackendSpeed.VerySlow
     override val modelHelper = TranslateGemmaModel
     override val promptStyle = PromptStyle.Gemma3Prefix
 

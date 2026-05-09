@@ -144,10 +144,27 @@ abstract class OnDeviceLlmBackend(
                 return BackendStatus.Info(it, Tone.Neutral)
             }
             val sizeStr = modelHelper.humanSize(context)
+            // Neutral tone across all states so an enabled on-device LLM doesn't
+            // visually outweigh sibling rows (DeepL, Lingva); accent would read
+            // as "preferred" which isn't the intent. Memory + disk format is
+            // shared between not-downloaded and active states — the toggle
+            // and download progress UI carry the state distinction; this line
+            // is purely informational about resource cost.
+            //
+            // We surface availMemFloorBytes (what LlamaTranslator.preflightMemory
+            // checks per-translation), not totalMemFloorBytes (the device-class
+            // gate). The latter is bigger because it bakes in headroom for the
+            // OS and other apps; reading "Requires 6 GB" when the model itself
+            // works in ~2.4 GB is confusing. Devices below totalMemFloorBytes
+            // never see this string — they get the hardware-incompatibility
+            // reason from hardwareIncompatibilityReason() above.
+            val memGb = availMemFloorBytes / 1_000_000_000.0
+            val memStr = if (memGb == memGb.toLong().toDouble()) "${memGb.toLong()} GB"
+                         else "%.1f GB".format(memGb)
             return when {
                 !modelHelper.isInstalled(context) ->
                     BackendStatus.Info(
-                        context.getString(statusStringIds.notDownloaded, sizeStr),
+                        context.getString(statusStringIds.notDownloaded, memStr, sizeStr),
                         Tone.Neutral,
                     )
                 !enabledProvider() ->
@@ -157,8 +174,8 @@ abstract class OnDeviceLlmBackend(
                     )
                 else ->
                     BackendStatus.Info(
-                        context.getString(statusStringIds.ready, sizeStr),
-                        Tone.Accent,
+                        context.getString(statusStringIds.ready, memStr, sizeStr),
+                        Tone.Neutral,
                     )
             }
         }

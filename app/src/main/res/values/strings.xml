@@ -208,14 +208,20 @@
 
     <!-- Backend quality labels (line 1 second half) -->
     <string name="tr_service_quality_bad">Bad quality</string>
+    <string name="tr_service_quality_okay">Okay quality</string>
     <string name="tr_service_quality_good">Good quality</string>
     <string name="tr_service_quality_better">Better quality</string>
 
+    <!-- Backend speed labels (line 1 third part — offline backends only) -->
+    <string name="tr_service_speed_very_slow">Very slow</string>
+    <string name="tr_service_speed_slow">Slow</string>
+    <string name="tr_service_speed_fast">Fast</string>
+
     <!-- TranslateGemma backend (downloadable on-device 4B model) -->
     <string name="translategemma_display_name">TranslateGemma</string>
-    <string name="translategemma_status_not_downloaded">Tap to download (%1$s)</string>
+    <string name="translategemma_status_not_downloaded">Requires %1$s memory, %2$s on disk</string>
     <string name="translategemma_status_downloaded_disabled">Downloaded but disabled (%1$s on disk)</string>
-    <string name="translategemma_status_ready">Ready (offline, %1$s on disk)</string>
+    <string name="translategemma_status_ready">Requires %1$s memory, %2$s on disk</string>
     <string name="translategemma_status_downloading">Downloading… %1$s of %2$s</string>
     <string name="translategemma_status_verifying">Verifying download…</string>
     <string name="translategemma_status_loading_model">Loading model…</string>
@@ -232,9 +238,9 @@
     <string name="translategemma_download_paused">Download paused. Reopen Settings to resume.</string>
 
     <string name="qwen_display_name">Qwen 2.5 1.5B</string>
-    <string name="qwen_status_not_downloaded">Tap to download (%1$s)</string>
+    <string name="qwen_status_not_downloaded">Requires %1$s memory, %2$s on disk</string>
     <string name="qwen_status_downloaded_disabled">Downloaded but disabled (%1$s on disk)</string>
-    <string name="qwen_status_ready">Ready (offline, %1$s on disk)</string>
+    <string name="qwen_status_ready">Requires %1$s memory, %2$s on disk</string>
     <string name="qwen_status_downloading">Downloading… %1$s of %2$s</string>
     <string name="qwen_status_verifying">Verifying download…</string>
     <string name="qwen_status_loading_model">Loading model…</string>

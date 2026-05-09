@@ -47,6 +47,7 @@ import com.playtranslate.compositeOver
 import com.playtranslate.themeColor
 import com.playtranslate.translation.BackendId
 import com.playtranslate.translation.BackendQuality
+import com.playtranslate.translation.BackendSpeed
 import com.playtranslate.translation.BackendStatus
 import com.playtranslate.translation.Tone
 import com.playtranslate.translation.TranslationBackend
@@ -768,10 +769,21 @@ class SettingsRenderer(
 
         val (qualityText, qualityTone) = when (backend.quality) {
             BackendQuality.Bad    -> ctx.getString(R.string.tr_service_quality_bad)    to Tone.Danger
+            BackendQuality.Okay   -> ctx.getString(R.string.tr_service_quality_okay)   to null
             BackendQuality.Good   -> ctx.getString(R.string.tr_service_quality_good)   to null
             BackendQuality.Better -> ctx.getString(R.string.tr_service_quality_better) to Tone.Accent
         }
         appendMaybeColored(builder, qualityText, qualityTone)
+
+        backend.speed?.let { speed ->
+            builder.append(" · ")
+            val (speedText, speedTone) = when (speed) {
+                BackendSpeed.VerySlow -> ctx.getString(R.string.tr_service_speed_very_slow) to Tone.Danger
+                BackendSpeed.Slow     -> ctx.getString(R.string.tr_service_speed_slow)      to Tone.Warning
+                BackendSpeed.Fast     -> ctx.getString(R.string.tr_service_speed_fast)      to Tone.Accent
+            }
+            appendMaybeColored(builder, speedText, speedTone)
+        }
 
         tv.text = builder
         tv.visibility = View.VISIBLE
