@@ -34,10 +34,12 @@ android {
                 arguments += "-DGGML_CPU_ALL_VARIANTS=ON"
 
                 // OpenCL backend for Adreno GPU acceleration (Snapdragon 8 Gen 2/3/Elite).
-                // Requires Khronos OpenCL headers + libOpenCL.so in the NDK sysroot — see
-                // docs/backend/OPENCL.md for the one-time setup. The backend produces an
-                // additional libggml-opencl.so that GGML_BACKEND_DL loads at runtime
-                // alongside the CPU variants. Falls through to CPU on non-Adreno hardware.
+                // The Khronos headers + ICD-Loader stub are vendored as git submodules
+                // under <project-root>/vendor/ and built from source by our CMake (see
+                // llama/src/main/cpp/CMakeLists.txt) — no manual NDK-sysroot setup needed.
+                // Produces an additional libggml-opencl.so that GGML_BACKEND_DL loads at
+                // runtime alongside the CPU variants; falls through to CPU on non-Adreno
+                // hardware via the device's vendor-supplied libOpenCL.so.
                 arguments += "-DGGML_OPENCL=ON"
                 arguments += "-DGGML_OPENCL_USE_ADRENO_KERNELS=ON"
 

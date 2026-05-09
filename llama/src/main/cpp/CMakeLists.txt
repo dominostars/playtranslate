@@ -30,6 +30,19 @@ if(DEFINED ANDROID_ABI)
     endif()
 endif()
 
+# --------------------------------------------------------------------------
+# Vendored OpenCL: build the Khronos ICD-Loader stub from source so a clean
+# clone builds without the developer hand-populating the NDK sysroot. The
+# Headers and ICD-Loader live as git submodules under <project-root>/vendor/
+# (pinned to a coordinated Khronos release tag). vendor/cmake/FindOpenCL.cmake
+# wires the resulting `OpenCL` target into llama.cpp's find_package(OpenCL),
+# overriding CMake's default FindOpenCL via CMAKE_MODULE_PATH.
+# --------------------------------------------------------------------------
+set(VENDOR_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../../vendor)
+set(OPENCL_ICD_LOADER_HEADERS_DIR "${VENDOR_DIR}/OpenCL-Headers" CACHE PATH "" FORCE)
+add_subdirectory(${VENDOR_DIR}/OpenCL-ICD-Loader opencl-icd-loader EXCLUDE_FROM_ALL)
+list(PREPEND CMAKE_MODULE_PATH "${VENDOR_DIR}/cmake")
+
 # Vendored llama.cpp at <project-root>/third-party/llama.cpp
 # Path from this CMakeLists: cpp/ -> ../../../../ (project root) -> third-party/llama.cpp
 set(LLAMA_SRC ${CMAKE_CURRENT_LIST_DIR}/../../../../third-party/llama.cpp)
