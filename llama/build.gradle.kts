@@ -51,7 +51,10 @@ android {
     externalNativeBuild {
         cmake {
             path("src/main/cpp/CMakeLists.txt")
-            version = "3.31.6"
+            // 3.22.1 is the version the Android SDK Manager auto-installs alongside the NDK,
+            // so a clean clone gets CMake without a separate install step. Range above
+            // (3.14...3.28 from llama.cpp) keeps us within what the toolchain handles.
+            version = "3.22.1"
         }
     }
     compileOptions {
