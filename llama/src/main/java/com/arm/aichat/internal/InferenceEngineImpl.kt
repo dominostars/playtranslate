@@ -202,9 +202,9 @@ internal class InferenceEngineImpl private constructor(
      *
      * TODO-han.yin: return error code if system prompt not correct processed?
      */
-    override suspend fun setSystemPrompt(prompt: String) =
+    override suspend fun setSystemPrompt(systemPrompt: String) =
         withContext(llamaDispatcher) {
-            require(prompt.isNotBlank()) { "Cannot process empty system prompt!" }
+            require(systemPrompt.isNotBlank()) { "Cannot process empty system prompt!" }
             // PlayTranslate: removed the "_readyForSystemPrompt" gate so this call can be used
             // as an explicit chat-history reset between independent translations. The native
             // side's reset_long_term_states() handles the state reset cleanly, so calling
@@ -217,7 +217,7 @@ internal class InferenceEngineImpl private constructor(
             Log.i(TAG, "Sending system prompt...")
             _readyForSystemPrompt = false
             _state.value = InferenceEngine.State.ProcessingSystemPrompt
-            processSystemPrompt(prompt).let { result ->
+            processSystemPrompt(systemPrompt).let { result ->
                 if (result != 0) {
                     RuntimeException("Failed to process system prompt: $result").also {
                         _state.value = InferenceEngine.State.Error(it)
