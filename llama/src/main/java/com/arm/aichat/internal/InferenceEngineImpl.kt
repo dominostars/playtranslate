@@ -421,11 +421,12 @@ internal class InferenceEngineImpl private constructor(
                     // leak the previously-loaded model+context, and a subsequent
                     // loadModel() would stack fresh allocations on top.
                     //
-                    // unload() is idempotent / null-safe: every individual free
-                    // call inside it (common_sampler_free, llama_free,
-                    // llama_model_free, llama_batch_free) handles a virgin /
-                    // already-freed state, so calling from "Error after init
-                    // failure" (no model ever loaded) is also safe.
+                    // unload() is null-safe across all Error variants: the free
+                    // calls themselves no-op on null, reset_long_term_states()
+                    // skips KV clearing when g_context is null, and unload()
+                    // nulls the globals after freeing — so calling from
+                    // "Error after prepare()'s init_context failed" (no context
+                    // ever created) reaches the same Initialized state cleanly.
                     Log.i(TAG, "Resetting error states (releasing any leftover native resources)...")
                     _state.value = InferenceEngine.State.UnloadingModel
                     unload()

@@ -272,7 +272,11 @@ static void reset_long_term_states(const bool clear_kv_cache = true) {
     system_prompt_position = 0;
     current_position = 0;
 
-    if (clear_kv_cache)
+    // g_context can be null when prepare()'s init_context call failed (Kotlin
+    // moves the engine to Error before assigning g_context), or after unload()
+    // has freed and nulled it. llama_get_memory() flat-derefs the context, so
+    // skipping the clear is the only safe choice.
+    if (clear_kv_cache && g_context != nullptr)
         llama_memory_clear(llama_get_memory(g_context), false);
 }
 
@@ -688,12 +692,16 @@ Java_com_arm_aichat_internal_InferenceEngineImpl_unload(JNIEnv * /*unused*/, job
     reset_long_term_states();
     reset_short_term_states();
 
-    // Free up resources
-    common_sampler_free(g_sampler);
+    // Free up resources, then null the globals so a subsequent unload() (or
+    // anything else that touches them before the next successful load) sees
+    // a virgin state rather than dangling pointers. The free calls themselves
+    // are null-safe; what wasn't safe was leaving these pointing at freed
+    // memory after the call.
+    common_sampler_free(g_sampler);  g_sampler = nullptr;
     g_chat_templates.reset();
-    llama_batch_free(g_batch);
-    llama_free(g_context);
-    llama_model_free(g_model);
+    llama_batch_free(g_batch);       g_batch = {};
+    llama_free(g_context);           g_context = nullptr;
+    llama_model_free(g_model);       g_model = nullptr;
 }
 
 extern "C"
