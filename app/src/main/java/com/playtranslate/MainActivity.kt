@@ -1371,7 +1371,7 @@ class MainActivity :
             .setTitle(getString(R.string.pack_upgrade_title))
             .setMessage(message)
             .addButton(
-                getString(R.string.pack_upgrade_button_download),
+                getString(R.string.pack_upgrade_button_now),
                 themeColor(R.attr.ptAccent),
             ) {
                 PackUpgradeOrchestrator(this, lifecycleScope).upgradeAll(stale) {

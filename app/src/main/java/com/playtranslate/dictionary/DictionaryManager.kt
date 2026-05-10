@@ -60,6 +60,19 @@ class DictionaryManager private constructor(private val context: Context) {
     private var db: SQLiteDatabase? = null
     private val mutex = Mutex()
 
+    /** Set at DB-open time via a single PRAGMA. Names the assumption that
+     *  all v2-introduced columns ship together via build_jmdict.py's atomic
+     *  schema bump (`headword.rank_score`, `reading.rank_score`,
+     *  `reading.uk_applicable`). We probe `reading.rank_score` as a single
+     *  representative; if a future build splits the schema bump across
+     *  versions, this assumption breaks and we'd need per-column probes.
+     *
+     *  When `false`, the three ranking queries fall back to OLD SQL that
+     *  uses `entry.freq_score` JOIN — the pre-ja-v2 ranking. This keeps
+     *  v1 packs functional (degraded ranking, no crashes) while the
+     *  upgrade flow brings the user current. */
+    private var supportsV2Schema: Boolean = false
+
     // ── Public API ────────────────────────────────────────────────────────
 
     /**
@@ -328,6 +341,11 @@ class DictionaryManager private constructor(private val context: Context) {
             null
         }
 
+        // Detect whether this pack has the v2 schema columns. Single PRAGMA
+        // per DB-open, cached for the session. Drives the OLD vs NEW ranking
+        // SQL branch in queryEntryIds / queryEntryIdsWithReading.
+        db?.let { supportsV2Schema = checkColumnExists(it, "reading", "rank_score") }
+
         // Bootstrap the bundled-pack manifest once the DB is known-good.
         // Idempotent — writeManifestIfMissing no-ops on subsequent boots.
         if (db != null) {
@@ -342,6 +360,16 @@ class DictionaryManager private constructor(private val context: Context) {
 
         db
     }
+
+    /** True if [table] has [column] in its current schema. Cheap: a PRAGMA
+     *  table_info call (metadata, no scan). Used at DB-open time to decide
+     *  which ranking SQL to dispatch. */
+    private fun checkColumnExists(db: SQLiteDatabase, table: String, column: String): Boolean =
+        db.rawQuery("PRAGMA table_info($table)", null).use { c ->
+            val nameIdx = c.getColumnIndex("name")
+            generateSequence { if (c.moveToNext()) c.getString(nameIdx) else null }
+                .any { it == column }
+        }
 
     /** Returns false if the on-device DB is missing required tables/columns.
      *  Delegates to [JmdictSchemaProbe] so this and
@@ -395,57 +423,40 @@ class DictionaryManager private constructor(private val context: Context) {
      *  search). Ranks by the sum of per-headword and per-reading rank
      *  scores, both precomputed at pack-build time from JMdict priority
      *  tags + position. No uk-bonus here — the kanji form is explicit user
-     *  input that already disambiguates. */
+     *  input that already disambiguates.
+     *
+     *  Falls back to OLD pre-ja-v2 SQL when the on-disk pack lacks the v2
+     *  schema columns (see [supportsV2Schema]). */
     private fun queryEntryIdsWithReading(db: SQLiteDatabase, word: String, reading: String): List<Long> {
         val ids = mutableListOf<Long>()
-        db.rawQuery(
-            """SELECT h.entry_id
-               FROM headword h
-               JOIN reading r ON r.entry_id = h.entry_id
-               WHERE h.text = ? AND r.text = ?
-               GROUP BY h.entry_id
-               ORDER BY MAX(h.rank_score + r.rank_score) DESC
-               LIMIT 8""",
-            arrayOf(word, reading)
-        ).use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
+        val sql = if (supportsV2Schema) NEW_QUERY_KANJI_WITH_READING else OLD_QUERY_KANJI_WITH_READING
+        db.rawQuery(sql, arrayOf(word, reading))
+            .use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
         return ids
     }
 
     private fun queryEntryIds(db: SQLiteDatabase, word: String): List<Long> {
         val ids = mutableListOf<Long>()
 
-        // Kanji-form path: rank by per-headword score (priority + position
-        // penalty). Per-row score, deduped via GROUP BY in case the same
-        // entry has multiple matching headword rows.
-        db.rawQuery(
-            """SELECT entry_id FROM headword
-               WHERE text = ?
-               GROUP BY entry_id
-               ORDER BY MAX(rank_score) DESC
-               LIMIT 8""",
-            arrayOf(word)
-        ).use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
+        // Kanji-form path. NEW: rank by per-headword score (priority +
+        // position penalty). OLD: ORDER BY entry.freq_score DESC via JOIN.
+        val kanjiSql = if (supportsV2Schema) NEW_QUERY_KANJI else OLD_QUERY_KANJI
+        db.rawQuery(kanjiSql, arrayOf(word))
+            .use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
 
         if (ids.isEmpty()) {
-            // Pure-kana fallback: rank by per-reading score plus a +1.5M
+            // Pure-kana fallback. NEW: rank by per-reading score plus a +1.5M
             // uk-bonus when the matched reading is at position 0 AND the
             // entry has a uk-tagged sense applicable to this reading
             // (precomputed into reading.uk_applicable at build time, with
             // <stagr> restrictions respected). Validated empirically to
             // flip 此処 above 個々 for ここ without raising 鴇 above 時 for
             // とき (鴇's とき is at position=1, gate filters it out).
-            db.rawQuery(
-                """SELECT entry_id FROM reading
-                   WHERE text = ?
-                   GROUP BY entry_id
-                   ORDER BY MAX(
-                       rank_score
-                       + CASE WHEN position = 0 AND uk_applicable = 1
-                              THEN 1500000 ELSE 0 END
-                   ) DESC
-                   LIMIT 8""",
-                arrayOf(word)
-            ).use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
+            // OLD: ORDER BY entry.freq_score DESC via JOIN — degraded but
+            // functional ranking against pre-ja-v2 packs.
+            val kanaSql = if (supportsV2Schema) NEW_QUERY_KANA else OLD_QUERY_KANA
+            db.rawQuery(kanaSql, arrayOf(word))
+                .use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
         }
 
         return ids
@@ -569,6 +580,66 @@ class DictionaryManager private constructor(private val context: Context) {
             instance ?: synchronized(this) {
                 instance ?: DictionaryManager(context.applicationContext).also { instance = it }
             }
+
+        // ── Ranking SQL constants ─────────────────────────────────────────
+        // Two parallel sets: NEW_QUERY_* uses ja-v2's per-headword/-reading
+        // rank_score columns; OLD_QUERY_* uses pre-v2's entry.freq_score
+        // JOIN and is selected when the on-disk pack lacks rank_score (see
+        // [supportsV2Schema]). NEW path is correct; OLD path is degraded
+        // but functional, used as a graceful fallback for v1 packs while
+        // the upgrade flow brings the user current.
+
+        private const val NEW_QUERY_KANJI = """
+            SELECT entry_id FROM headword
+            WHERE text = ?
+            GROUP BY entry_id
+            ORDER BY MAX(rank_score) DESC
+            LIMIT 8
+        """
+
+        private const val NEW_QUERY_KANA = """
+            SELECT entry_id FROM reading
+            WHERE text = ?
+            GROUP BY entry_id
+            ORDER BY MAX(
+                rank_score
+                + CASE WHEN position = 0 AND uk_applicable = 1
+                       THEN 1500000 ELSE 0 END
+            ) DESC
+            LIMIT 8
+        """
+
+        private const val NEW_QUERY_KANJI_WITH_READING = """
+            SELECT h.entry_id
+            FROM headword h
+            JOIN reading r ON r.entry_id = h.entry_id
+            WHERE h.text = ? AND r.text = ?
+            GROUP BY h.entry_id
+            ORDER BY MAX(h.rank_score + r.rank_score) DESC
+            LIMIT 8
+        """
+
+        private const val OLD_QUERY_KANJI = """
+            SELECT DISTINCT h.entry_id FROM headword h
+            JOIN entry e ON e.id = h.entry_id
+            WHERE h.text = ?
+            ORDER BY e.freq_score DESC LIMIT 8
+        """
+
+        private const val OLD_QUERY_KANA = """
+            SELECT DISTINCT r.entry_id FROM reading r
+            JOIN entry e ON e.id = r.entry_id
+            WHERE r.text = ?
+            ORDER BY e.freq_score DESC LIMIT 8
+        """
+
+        private const val OLD_QUERY_KANJI_WITH_READING = """
+            SELECT DISTINCT h.entry_id FROM headword h
+            JOIN entry e ON e.id = h.entry_id
+            JOIN reading r ON r.entry_id = h.entry_id
+            WHERE h.text = ? AND r.text = ?
+            ORDER BY e.freq_score DESC LIMIT 8
+        """
 
         /**
          * Resolve meanings for [literal] in [targetLang] with English fallback.

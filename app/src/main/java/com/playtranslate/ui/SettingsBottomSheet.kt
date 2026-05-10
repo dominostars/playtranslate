@@ -269,6 +269,11 @@ class SettingsBottomSheet : DialogFragment() {
                 override fun showQwenDisableDialog() {
                     this@SettingsBottomSheet.showQwenDisableDialog()
                 }
+                override fun onUpdateLanguagePacksTapped(
+                    stalePacks: List<com.playtranslate.language.StalePack>
+                ) {
+                    this@SettingsBottomSheet.startPackUpgrade(stalePacks)
+                }
                 override fun showHotkeyDialog(
                     title: String?, onSet: (List<Int>) -> Unit, onCancel: () -> Unit
                 ) {
@@ -414,6 +419,31 @@ class SettingsBottomSheet : DialogFragment() {
     // ── TranslateGemma flow ─────────────────────────────────────────────
 
     private var translategemmaDownloadJob: kotlinx.coroutines.Job? = null
+
+    /** Kick off [com.playtranslate.language.PackUpgradeOrchestrator] for the
+     *  user's deferred-upgrade list (the "Update language packs" cell tap).
+     *
+     *  Uses **the Activity's lifecycleScope**, NOT this Fragment's view scope:
+     *  the OverlayProgress dialog the orchestrator shows is attached to the
+     *  Activity's decorView, so it survives a Settings dismiss. Tying the
+     *  coroutine to the Fragment view would silently cancel the in-flight
+     *  download while the user stares at a frozen progress bar.
+     *
+     *  On completion, refreshes just the Language section so the cell hides
+     *  (since `staleInstalledPacks()` is now empty). Falls back gracefully
+     *  if the renderer/activity is gone by the time the orchestrator returns
+     *  (Settings dismissed mid-flight). */
+    private fun startPackUpgrade(
+        stalePacks: List<com.playtranslate.language.StalePack>
+    ) {
+        val activity = activity as? androidx.appcompat.app.AppCompatActivity ?: return
+        com.playtranslate.language.PackUpgradeOrchestrator(activity, activity.lifecycleScope)
+            .upgradeAll(stalePacks) {
+                if (isAdded && view != null) {
+                    runCatching { renderer?.refreshLanguageSection() }
+                }
+            }
+    }
 
     /** Show the modal download dialog (OverlayProgress).
      *  Drives a [com.playtranslate.translation.llm.OnDeviceLlmDownloader] configured

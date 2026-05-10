@@ -37,13 +37,15 @@ class PackUpgradeOrchestratorTest {
                 catalogKey = "ja",
                 displayName = "Japanese",
                 kind = PackKind.SOURCE,
+                upgradeMode = UpgradeMode.ADDITIVE,
                 sourceLangId = SourceLangId.JA,
             )
         )
         val message = PackUpgradeOrchestrator.describeForAlert(activity, stale)
         // "Game Language (...)" — the parenthesized name comes from
         // SourceLangId.displayName(default locale). On a default-en system
-        // that's "Japanese".
+        // that's "Japanese". Mode is intentionally not surfaced in the
+        // user-facing label.
         assertTrue(
             "Expected 'Game Language' label and Japanese name, got: $message",
             message.contains("Game Language") && message.contains("Japanese"),
@@ -56,6 +58,7 @@ class PackUpgradeOrchestratorTest {
                 catalogKey = "target-fr",
                 displayName = "French",
                 kind = PackKind.TARGET,
+                upgradeMode = UpgradeMode.FORCE,
                 targetLangCode = "fr",
             )
         )
@@ -68,13 +71,26 @@ class PackUpgradeOrchestratorTest {
 
     @Test fun `describeForAlert renders multiple packs as separate lines`() {
         val stale = listOf(
-            StalePack("ja", "Japanese", PackKind.SOURCE, sourceLangId = SourceLangId.JA),
-            StalePack("target-fr", "French", PackKind.TARGET, targetLangCode = "fr"),
+            StalePack("ja", "Japanese", PackKind.SOURCE, UpgradeMode.ADDITIVE, sourceLangId = SourceLangId.JA),
+            StalePack("target-fr", "French", PackKind.TARGET, UpgradeMode.FORCE, targetLangCode = "fr"),
         )
         val message = PackUpgradeOrchestrator.describeForAlert(activity, stale)
         assertEquals(
             "Two stale packs → exactly two lines (one per pack)",
             2, message.lines().size,
+        )
+    }
+
+    @Test fun `describeForAlert mixes FORCE and ADDITIVE without distinguishing them`() {
+        // Per the design (single combined overlay, mixed labeling), the user
+        // doesn't see whether a pack is force-redownload or additive-upgrade.
+        // Both render identically in the alert body.
+        val additive = StalePack("ja", "Japanese", PackKind.SOURCE, UpgradeMode.ADDITIVE, sourceLangId = SourceLangId.JA)
+        val force = StalePack("ja", "Japanese", PackKind.SOURCE, UpgradeMode.FORCE, sourceLangId = SourceLangId.JA)
+        assertEquals(
+            "FORCE and ADDITIVE render the same",
+            PackUpgradeOrchestrator.describeForAlert(activity, listOf(additive)),
+            PackUpgradeOrchestrator.describeForAlert(activity, listOf(force)),
         )
     }
 

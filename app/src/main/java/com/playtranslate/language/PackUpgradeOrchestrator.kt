@@ -167,17 +167,25 @@ class PackUpgradeOrchestrator(
         )
         val app = activity.applicationContext
 
-        // Step 1: explicit dict handle close. JapaneseEngine.close() is a
-        // no-op (DictionaryManager is a process-scoped singleton), so
-        // releaseForPack inside uninstall would otherwise leave us with a
-        // stale handle pointing at the unlinked inode after the directory
-        // delete + recreate. Lazy reopen happens on next ensureOpen.
+        // Step 1: explicit dict handle close. Required for BOTH FORCE and
+        // ADDITIVE modes. JapaneseEngine.close() is a no-op (DictionaryManager
+        // is a process-scoped singleton), so without this explicit close the
+        // singleton retains its SQLite handle to the OLD inode. After install's
+        // safeSwap renames the old dir to backup and promotes the new dir
+        // into place, lookups would still go to the unlinked inode (returning
+        // stale data) until the process restarts. Lazy reopen on next ensureOpen
+        // picks up the new pack.
         if (sid == SourceLangId.JA) {
             DictionaryManager.get(app).close()
         }
 
-        // Step 2: uninstall (calls releaseForPack internally — line 318).
-        LanguagePackStore.uninstall(app, sid)
+        // Step 2 (FORCE only): pre-uninstall. ADDITIVE skips this — install's
+        // safeSwap atomically backs up the old pack before promoting the new
+        // one and restores on failure, so the user keeps a working pack
+        // through any cancellation / network drop / SHA mismatch.
+        if (pack.upgradeMode == UpgradeMode.FORCE) {
+            LanguagePackStore.uninstall(app, sid)
+        }
 
         // Step 3: install with progress callback.
         return LanguagePackStore.install(app, sid) { progress ->
@@ -195,9 +203,12 @@ class PackUpgradeOrchestrator(
         )
         val app = activity.applicationContext
 
-        // uninstallTarget calls TargetGlossDatabaseProvider.release internally
-        // (line 343). No FST handle leak risk because that's not a singleton.
-        LanguagePackStore.uninstallTarget(app, lang)
+        // FORCE only: pre-uninstall (calls TargetGlossDatabaseProvider.release
+        // internally per line 343). ADDITIVE skips — installTarget's safeSwap
+        // preserves the old pack until the new one is verified.
+        if (pack.upgradeMode == UpgradeMode.FORCE) {
+            LanguagePackStore.uninstallTarget(app, lang)
+        }
 
         return LanguagePackStore.installTarget(app, lang) { progress ->
             reportProgress(dialog, packLabel, progress)

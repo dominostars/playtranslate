@@ -11,21 +11,21 @@ import org.robolectric.RobolectricTestRunner
 import java.io.File
 
 /**
- * Validates the pure-kana ranking SQL — specifically, that the per-row
- * `rank_score + CASE WHEN position=0 AND uk_applicable=1 THEN 1500000`
- * expression in [DictionaryManager.queryEntryIds]'s reading-fallback
- * branch produces the validated 此処 → 個々 → 九 ordering for ここ.
+ * Validates the ranking SQL across BOTH the v2 path (rank_score +
+ * uk_applicable) AND the OLD pre-v2 fallback path (entry.freq_score JOIN)
+ * that engages when an on-disk pack lacks the v2 schema columns. The
+ * column-existence guard in `DictionaryManager.supportsV2Schema` decides
+ * which to dispatch per query.
  *
  * The Python `tests/test_build_jmdict.py` suite validates the score
- * VALUES; this test validates the SQL CORRECTLY USES them. Together they
- * cover both halves of the ranking pipeline.
+ * VALUES; this test validates the SQL CORRECTLY USES them.
  *
- * The SQL is a verbatim copy of the kana fallback in DictionaryManager —
- * if you change one, you must change the other. The duplication is
- * deliberate: it makes the test load-bearing.
+ * The SQL strings here are verbatim copies of the constants in
+ * `DictionaryManager.companion`. If you change one, you must change the
+ * other — the duplication is deliberate so this test is load-bearing.
  */
 @RunWith(RobolectricTestRunner::class)
-class KanaRankingSqlTest {
+class RankingFallbackSqlTest {
 
     @get:Rule val tmp = TemporaryFolder()
 
@@ -119,6 +119,78 @@ class KanaRankingSqlTest {
         assertEquals(8, ids.size)
     }
 
+    // ── OLD SQL fallback (pre-v2 schema) ────────────────────────────────
+
+    /** Verbatim copy of `DictionaryManager.OLD_QUERY_KANA`. Used when the
+     *  on-disk pack lacks rank_score / uk_applicable. */
+    private val OLD_QUERY_KANA = """
+        SELECT DISTINCT r.entry_id FROM reading r
+        JOIN entry e ON e.id = r.entry_id
+        WHERE r.text = ?
+        ORDER BY e.freq_score DESC LIMIT 8
+    """.trimIndent()
+
+    /** Verbatim copy of `DictionaryManager.OLD_QUERY_KANJI`. */
+    private val OLD_QUERY_KANJI = """
+        SELECT DISTINCT h.entry_id FROM headword h
+        JOIN entry e ON e.id = h.entry_id
+        WHERE h.text = ?
+        ORDER BY e.freq_score DESC LIMIT 8
+    """.trimIndent()
+
+    /** Verbatim copy of `DictionaryManager.OLD_QUERY_KANJI_WITH_READING`. */
+    private val OLD_QUERY_KANJI_WITH_READING = """
+        SELECT DISTINCT h.entry_id FROM headword h
+        JOIN entry e ON e.id = h.entry_id
+        JOIN reading r ON r.entry_id = h.entry_id
+        WHERE h.text = ? AND r.text = ?
+        ORDER BY e.freq_score DESC LIMIT 8
+    """.trimIndent()
+
+    @Test fun `OLD SQL ranks by entry freq_score against v1-shaped DB`() {
+        val db = openV1Db()
+        // Three entries sharing reading "ここ", ranked by entry.freq_score.
+        // Without the v2 columns, this is the best ranking we have. 個々 (4)
+        // wins over 此処 (3) — same as Yomitan/Jisho behavior pre-uk-bonus.
+        insertV1Entry(db, entryId = 1288810, freqScore = 3)
+        insertV1Reading(db, entryId = 1288810, position = 0, text = "ここ")
+        insertV1Entry(db, entryId = 1593190, freqScore = 4)
+        insertV1Reading(db, entryId = 1593190, position = 0, text = "ここ")
+        insertV1Entry(db, entryId = 1578150, freqScore = 5)
+        insertV1Reading(db, entryId = 1578150, position = 4, text = "ここ")
+
+        val ids = runQuery(db, OLD_QUERY_KANA, "ここ")
+        // OLD SQL: ranks purely by entry.freq_score DESC. 九 (5) wins, then
+        // 個々 (4), then 此処 (3). This is the "wrong but functional"
+        // pre-v2 behavior. The point of v2 was to fix this — but until the
+        // user upgrades, the fallback path keeps the dictionary working.
+        assertEquals(listOf(1578150L, 1593190L, 1288810L), ids)
+    }
+
+    @Test fun `OLD kanji SQL returns matches against v1-shaped DB`() {
+        val db = openV1Db()
+        insertV1Entry(db, entryId = 1, freqScore = 5)
+        insertV1Headword(db, entryId = 1, position = 0, text = "九")
+        insertV1Entry(db, entryId = 2, freqScore = 3)
+        insertV1Headword(db, entryId = 2, position = 0, text = "九")
+
+        val ids = runQuery(db, OLD_QUERY_KANJI, "九")
+        assertEquals("freq_score DESC", listOf(1L, 2L), ids)
+    }
+
+    @Test fun `OLD kanji-with-reading SQL returns matches against v1-shaped DB`() {
+        val db = openV1Db()
+        insertV1Entry(db, entryId = 1, freqScore = 5)
+        insertV1Headword(db, entryId = 1, position = 0, text = "此処")
+        insertV1Reading(db, entryId = 1, position = 0, text = "ここ")
+        insertV1Entry(db, entryId = 2, freqScore = 3)
+        insertV1Headword(db, entryId = 2, position = 0, text = "此処")
+        insertV1Reading(db, entryId = 2, position = 0, text = "ここ")
+
+        val ids = runQuery2(db, OLD_QUERY_KANJI_WITH_READING, "此処", "ここ")
+        assertEquals(listOf(1L, 2L), ids)
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────
 
     private fun openDb(): SQLiteDatabase {
@@ -166,5 +238,47 @@ class KanaRankingSqlTest {
             while (c.moveToNext()) out.add(c.getLong(0))
         }
         return out
+    }
+
+    private fun runQuery2(db: SQLiteDatabase, sql: String, a: String, b: String): List<Long> {
+        val out = mutableListOf<Long>()
+        db.rawQuery(sql, arrayOf(a, b)).use { c ->
+            while (c.moveToNext()) out.add(c.getLong(0))
+        }
+        return out
+    }
+
+    /** v1-shaped DB: entry, headword (no rank_score / ke_pri), reading (no
+     *  rank_score / re_inf / uk_applicable). Used to validate OLD SQL paths
+     *  work against pre-v2 packs. */
+    private fun openV1Db(): SQLiteDatabase {
+        val file = File(tmp.root, "ranking_v1.sqlite")
+        if (file.exists()) file.delete()
+        val db = SQLiteDatabase.openOrCreateDatabase(file, null)
+        db.execSQL("CREATE TABLE entry (id INTEGER PRIMARY KEY, is_common INTEGER DEFAULT 0, freq_score INTEGER DEFAULT 0)")
+        db.execSQL("CREATE TABLE headword (entry_id INTEGER, position INTEGER, text TEXT)")
+        db.execSQL("CREATE TABLE reading (entry_id INTEGER, position INTEGER, text TEXT, no_kanji INTEGER DEFAULT 0, re_pri TEXT DEFAULT '', freq_score INTEGER DEFAULT 0)")
+        return db
+    }
+
+    private fun insertV1Entry(db: SQLiteDatabase, entryId: Long, freqScore: Int) {
+        db.execSQL(
+            "INSERT INTO entry (id, freq_score) VALUES (?, ?)",
+            arrayOf<Any>(entryId, freqScore),
+        )
+    }
+
+    private fun insertV1Headword(db: SQLiteDatabase, entryId: Long, position: Int, text: String) {
+        db.execSQL(
+            "INSERT INTO headword (entry_id, position, text) VALUES (?, ?, ?)",
+            arrayOf<Any>(entryId, position, text),
+        )
+    }
+
+    private fun insertV1Reading(db: SQLiteDatabase, entryId: Long, position: Int, text: String) {
+        db.execSQL(
+            "INSERT INTO reading (entry_id, position, text) VALUES (?, ?, ?)",
+            arrayOf<Any>(entryId, position, text),
+        )
     }
 }

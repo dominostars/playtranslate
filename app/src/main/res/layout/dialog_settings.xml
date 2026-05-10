@@ -93,6 +93,12 @@
                     <include layout="@layout/settings_row_value"
                         android:id="@+id/rowTargetLang" />
 
+                    <include layout="@layout/settings_row_divider"
+                        android:id="@+id/dividerUpdatePacks" />
+
+                    <include layout="@layout/settings_row_value_multiline"
+                        android:id="@+id/rowUpdateLanguagePacks" />
+
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

@@ -503,12 +503,28 @@ object LanguagePackStore {
                 )
 
             if (versionStale || schemaStale) {
+                // Classify FORCE vs ADDITIVE. Schema-broken always FORCE
+                // (corruption/structural-break needs clean reinstall). Otherwise
+                // the catalog's additiveFromVersion gates eligibility: if the
+                // on-disk packVersion is at-or-above that boundary, the pack
+                // can be upgraded without pre-uninstall (safeSwap preserves
+                // the old pack until the new one is verified). Below the
+                // boundary — or if the catalog declares no additive baseline —
+                // the existing pre-uninstall + install flow runs.
+                val mode = when {
+                    schemaStale -> UpgradeMode.FORCE
+                    entry.additiveFromVersion == null -> UpgradeMode.FORCE
+                    manifest.packVersion >= entry.additiveFromVersion -> UpgradeMode.ADDITIVE
+                    else -> UpgradeMode.FORCE
+                }
+
                 out += StalePack(
                     catalogKey = key,
                     displayName = entry.display,
                     kind = if (isTarget) PackKind.TARGET else PackKind.SOURCE,
                     targetLangCode = targetLangCode,
                     sourceLangId = sourceLangId,
+                    upgradeMode = mode,
                 )
             }
         }
@@ -525,16 +541,33 @@ object LanguagePackStore {
  *  ([LanguagePackStore.install] vs [LanguagePackStore.installTarget]). */
 enum class PackKind { SOURCE, TARGET }
 
+/** Pack-upgrade strategy decided at staleness-scan time.
+ *
+ *  - [FORCE]: existing pre-uninstall + install flow. Used when the on-disk
+ *    pack is below the catalog's `additiveFromVersion` boundary, when the
+ *    catalog declares no additive baseline, or when the schema probe finds
+ *    structural corruption.
+ *  - [ADDITIVE]: install runs WITHOUT a pre-uninstall. The existing pack
+ *    stays usable on disk; `LanguagePackStore.install`'s `safeSwap` backs
+ *    up the old dir before promoting the new one and restores on failure.
+ *    Mid-download cancellation or network failure leaves the user with a
+ *    working pack instead of nothing. */
+enum class UpgradeMode { FORCE, ADDITIVE }
+
 /** One pack identified by [LanguagePackStore.staleInstalledPacks] as needing
  *  a re-download. Carries enough context for the upgrade orchestrator to
  *  drive its install/uninstall calls without re-querying the catalog.
  *
  *  [sourceLangId] is always the **packId variant** (e.g. always JA) so
- *  `releaseForPack` and `dirFor` see the canonical pack, not a sibling. */
+ *  `releaseForPack` and `dirFor` see the canonical pack, not a sibling.
+ *
+ *  [upgradeMode] determines whether the orchestrator pre-uninstalls before
+ *  the new install. */
 data class StalePack(
     val catalogKey: String,
     val displayName: String,
     val kind: PackKind,
+    val upgradeMode: UpgradeMode,
     val targetLangCode: String? = null,
     val sourceLangId: SourceLangId? = null,
 )

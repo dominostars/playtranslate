@@ -35,6 +35,24 @@ data class CatalogEntry(
     val coverageNote: String? = null,
     /** null or "source" for source packs (backward compat), "target" for target gloss packs. */
     val type: String? = null,
+    /**
+     * Lowest on-disk packVersion that can take the **additive upgrade** path
+     * to the current [packVersion] — meaning the existing pack stays on disk
+     * during install and only gets atomically swapped after the new pack is
+     * verified, so cancellation / failure / network drop leaves the user
+     * with a usable pack.
+     *
+     * - `null` (or omitted in JSON) → no version qualifies for additive;
+     *   ALL stale packs are FORCE (the existing pre-uninstall + install flow).
+     * - `1` → on-disk packVersion ≥ 1 takes ADDITIVE.
+     * - Comparison is `onDisk.packVersion >= additiveFromVersion`. Below
+     *   the boundary is FORCE; at-or-above is ADDITIVE.
+     *
+     * Bump this field to force users below a breaking change through clean
+     * reinstall; leave it stable to allow incremental upgrades within a
+     * compatibility window. See `project_pack_update_policy.md`.
+     */
+    val additiveFromVersion: Int? = null,
 )
 
 /**

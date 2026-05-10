@@ -113,12 +113,27 @@ class SettingsRenderer(
          *  [showTranslateGemmaDisableDialog] for Qwen — the Cancel branch must
          *  call [SettingsRenderer.refreshQwenSwitch] to revert the switch. */
         fun showQwenDisableDialog()
+
+        /** Tap on the "Update language packs" row in the Language section.
+         *  Implementer instantiates [com.playtranslate.language.PackUpgradeOrchestrator]
+         *  and calls `upgradeAll(stalePacks)`. On completion, calls
+         *  [SettingsRenderer.refreshLanguageSection] so the cell hides
+         *  (since `staleInstalledPacks()` is now empty). Use the **Activity's**
+         *  lifecycleScope for the orchestrator coroutine — NOT the Fragment's
+         *  view lifecycle scope, which would cancel the in-flight download
+         *  while the OverlayProgress dialog (attached to the Activity's
+         *  decorView) keeps spinning. */
+        fun onUpdateLanguagePacksTapped(
+            stalePacks: List<com.playtranslate.language.StalePack>
+        )
     }
 
     // ── View references for refresh ─────────────────────────────────────
 
     private val rowSourceLang: View = root.findViewById(R.id.rowSourceLang)
     private val rowTargetLang: View = root.findViewById(R.id.rowTargetLang)
+    private val rowUpdateLanguagePacks: View = root.findViewById(R.id.rowUpdateLanguagePacks)
+    private val dividerUpdatePacks: View = root.findViewById(R.id.dividerUpdatePacks)
 
     private val cardOnScreenControls: MaterialCardView = root.findViewById(R.id.cardOnScreenControls)
     private val rowOverlayIcon: View = root.findViewById(R.id.rowOverlayIcon)
@@ -221,6 +236,40 @@ class SettingsRenderer(
         rowTargetLang.setOnClickListener {
             callbacks.openLanguageSetup(LanguageSetupActivity.MODE_TARGET)
         }
+
+        // "Update language packs" cell — visible iff there are stale packs
+        // on disk (additive or force, mixed labeling). Subtitle is the same
+        // multi-line list the launch-time OverlayAlert uses, via
+        // PackUpgradeOrchestrator.describeForAlert. The activity is reachable
+        // via root.context — same Activity that hosts the rows.
+        val activity = root.context as? android.app.Activity
+        val stalePacks = if (activity != null) {
+            com.playtranslate.language.LanguagePackStore.staleInstalledPacks(activity)
+        } else {
+            emptyList()
+        }
+        if (stalePacks.isEmpty() || activity == null) {
+            rowUpdateLanguagePacks.visibility = View.GONE
+            dividerUpdatePacks.visibility = View.GONE
+        } else {
+            rowUpdateLanguagePacks.visibility = View.VISIBLE
+            dividerUpdatePacks.visibility = View.VISIBLE
+            rowUpdateLanguagePacks.findViewById<TextView>(R.id.tvRowTitle).text =
+                root.context.getString(R.string.lang_section_update_packs_title)
+            rowUpdateLanguagePacks.findViewById<TextView>(R.id.tvRowSubtitle).text =
+                com.playtranslate.language.PackUpgradeOrchestrator
+                    .describeForAlert(activity, stalePacks)
+            rowUpdateLanguagePacks.setOnClickListener {
+                callbacks.onUpdateLanguagePacksTapped(stalePacks)
+            }
+        }
+    }
+
+    /** Public shim for the Settings cell callback to refresh the Language
+     *  section after the upgrade orchestrator completes. The cell hides when
+     *  staleInstalledPacks() is now empty. */
+    fun refreshLanguageSection() {
+        setupLanguageSection()
     }
 
     private fun resolveSourceName(): String =

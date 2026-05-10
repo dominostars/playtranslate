@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Variant of settings_row_value with a vertical title+subtitle stack on the
+    left and a chevron on the right (no inline value). Subtitle supports
+    multi-line text. Used by the "Update language packs" cell in Settings →
+    Language section, where the subtitle lists each pack pending an update.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="66dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingHorizontal="@dimen/pt_row_h_padding"
+    android:paddingVertical="@dimen/pt_row_v_padding"
+    android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true">
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:layout_marginEnd="8dp">
+
+        <TextView
+            android:id="@+id/tvRowTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/Text.PT.RowTitle" />
+
+        <TextView
+            android:id="@+id/tvRowSubtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:maxLines="6"
+            android:ellipsize="end"
+            style="@style/Text.PT.RowSubtitle" />
+
+    </LinearLayout>
+
+    <ImageView
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:src="@drawable/ic_chevron_right"
+        app:tint="?attr/ptTextMuted"
+        android:importantForAccessibility="no" />
+
+</LinearLayout>

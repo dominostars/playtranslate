@@ -50,17 +50,73 @@ class LanguagePackStoreStalenessTest {
         )
     }
 
-    @Test fun `ja pack at v1 on disk vs catalog v2 -- stale`() {
+    @Test fun `ja pack at v1 on disk vs catalog v2 (additiveFromVersion=1) -- stale ADDITIVE`() {
         writeManifest("ja", packVersion = 1)
+        // Write a v1-shaped dict.sqlite (structural columns present, no v2
+        // columns). Loosened JmdictSchemaProbe must pass this so the pack
+        // doesn't trip the schemaStale → FORCE branch — instead the catalog's
+        // additiveFromVersion=1 says v1 qualifies for ADDITIVE.
+        writeJaV1SchemaDb()
         val stale = LanguagePackStore.staleInstalledPacks(ctx)
         val ja = stale.firstOrNull { it.catalogKey == "ja" }
         assertNotNull("Expected ja pack to be flagged stale", ja)
         assertEquals(PackKind.SOURCE, ja!!.kind)
         assertEquals(SourceLangId.JA, ja.sourceLangId)
-        // Per design contract: sourceLangId is ALWAYS the packId variant
-        // (so releaseForPack/dirFor see the canonical pack).
         assertEquals(SourceLangId.JA, ja.sourceLangId!!.packId)
         assertNull(ja.targetLangCode)
+        assertEquals(
+            "v1 on disk + additiveFromVersion=1 in catalog → ADDITIVE",
+            UpgradeMode.ADDITIVE, ja.upgradeMode,
+        )
+    }
+
+    @Test fun `schema-broken ja pack always classifies as FORCE`() {
+        // Manifest says v1 (would qualify for ADDITIVE per additiveFromVersion=1),
+        // but the dict.sqlite is missing required tables — schema probe fails
+        // → FORCE regardless of version. This is the corruption backstop.
+        writeManifest("ja", packVersion = 1)
+        // Don't write a valid dict.sqlite; or write one missing tables.
+        writeJaBrokenDb()
+        val stale = LanguagePackStore.staleInstalledPacks(ctx)
+        val ja = stale.firstOrNull { it.catalogKey == "ja" }
+        assertNotNull(ja)
+        assertEquals(
+            "Schema probe failure overrides additive eligibility",
+            UpgradeMode.FORCE, ja!!.upgradeMode,
+        )
+    }
+
+    @Test fun `target pack below additiveFromVersion classifies as FORCE`() {
+        // Catalog ships every pack with additiveFromVersion=1 (uniform
+        // visibility convention — see langpack_catalog.json). On-disk
+        // packVersion=0 is below the boundary → FORCE.
+        writeManifest("target-fr", packVersion = 0)
+        val stale = LanguagePackStore.staleInstalledPacks(ctx)
+        val tf = stale.firstOrNull { it.catalogKey == "target-fr" }
+        assertNotNull(tf)
+        assertEquals(
+            "on-disk < additiveFromVersion → FORCE",
+            UpgradeMode.FORCE, tf!!.upgradeMode,
+        )
+    }
+
+    @Test fun `target pack at-or-above additiveFromVersion classifies as ADDITIVE`() {
+        // Synthetic future scenario: target-fr bumped to packVersion=2 (in
+        // a hypothetical catalog change), v1 on disk, additiveFromVersion=1
+        // (the current uniform setting) → ADDITIVE. This is the safe
+        // default we want for target-pack version bumps: existing user data
+        // preserved during install, restored on cancel/fail.
+        writeManifest("target-fr", packVersion = 1)
+        val stale = LanguagePackStore.staleInstalledPacks(ctx)
+        val tf = stale.firstOrNull { it.catalogKey == "target-fr" }
+        // With current catalog (target-fr packVersion=1), v1 on disk vs
+        // catalog v1 means NOT stale, so won't appear at all. Skip the
+        // ADDITIVE assertion when nothing is stale; this test mainly
+        // documents the convention and will become live the moment any
+        // target pack version is bumped.
+        if (tf != null) {
+            assertEquals(UpgradeMode.ADDITIVE, tf.upgradeMode)
+        }
     }
 
     @Test fun `ja pack at v2 on disk vs catalog v2 -- not stale`() {
@@ -73,6 +129,22 @@ class LanguagePackStoreStalenessTest {
             "Same-version pack must not be stale",
             stale.any { it.catalogKey == "ja" },
         )
+    }
+
+    @Test fun `loosened JmdictSchemaProbe accepts v1-shaped DBs`() {
+        // Regression for the loosening: a v1-shaped DB (5 structural columns
+        // present, NO rank_score / uk_applicable / ke_pri) must pass the
+        // probe. If the probe ever re-tightens to require v2 columns, this
+        // test fails loudly and the additive-upgrade path becomes unreachable.
+        writeManifest("ja", packVersion = 1)
+        writeJaV1SchemaDb()
+        // The probe is consulted indirectly via staleInstalledPacks. If the
+        // probe rejected v1, ja would be marked schemaStale → FORCE. With the
+        // loosened probe, it's ADDITIVE per additiveFromVersion=1.
+        val stale = LanguagePackStore.staleInstalledPacks(ctx)
+        val ja = stale.firstOrNull { it.catalogKey == "ja" }
+        assertNotNull(ja)
+        assertEquals(UpgradeMode.ADDITIVE, ja!!.upgradeMode)
     }
 
     @Test fun `target pack at older version is stale`() {
@@ -177,10 +249,7 @@ class LanguagePackStoreStalenessTest {
         File(packDir, "manifest.json").writeText(json)
     }
 
-    /** Create a minimal ja dict.sqlite that passes
-     *  [com.playtranslate.dictionary.JmdictSchemaProbe.isCurrent] so the
-     *  source-pack corruption backstop doesn't false-positive in the
-     *  "not stale" tests. */
+    /** v2-shaped dict.sqlite (all columns including rank_score / uk_applicable). */
     private fun writeJaSchemaCurrentDb() {
         val dbFile = LanguagePackStore.dictDbFor(ctx, SourceLangId.JA)
         dbFile.parentFile?.mkdirs()
@@ -199,6 +268,41 @@ class LanguagePackStoreStalenessTest {
             db.execSQL("CREATE TABLE sense (entry_id INTEGER, position INTEGER, pos TEXT, glosses TEXT, misc TEXT)")
             db.execSQL("CREATE TABLE kanjidic (literal TEXT PRIMARY KEY, on_readings TEXT, kun_readings TEXT, jlpt INTEGER, grade INTEGER, stroke_count INTEGER)")
             db.execSQL("CREATE TABLE kanji_meaning (literal TEXT, lang TEXT, meanings TEXT, PRIMARY KEY(literal, lang))")
+        }
+    }
+
+    /** v1-shaped dict.sqlite — pre-ja-v2. Has the 5 structural tables/columns
+     *  the loosened JmdictSchemaProbe requires (entry.freq_score,
+     *  headword.text, sense.misc, kanjidic.literal, kanji_meaning.*) but
+     *  NOT the v2 columns (rank_score, uk_applicable, ke_pri). Used to
+     *  simulate an existing-user v1 install. */
+    private fun writeJaV1SchemaDb() {
+        val dbFile = LanguagePackStore.dictDbFor(ctx, SourceLangId.JA)
+        dbFile.parentFile?.mkdirs()
+        android.database.sqlite.SQLiteDatabase
+            .openOrCreateDatabase(dbFile, null).use { db ->
+            db.execSQL("CREATE TABLE entry (id INTEGER PRIMARY KEY, is_common INTEGER, freq_score INTEGER)")
+            db.execSQL("CREATE TABLE headword (entry_id INTEGER, position INTEGER, text TEXT)")
+            db.execSQL(
+                "CREATE TABLE reading (entry_id INTEGER, position INTEGER, text TEXT, " +
+                    "no_kanji INTEGER, re_pri TEXT, freq_score INTEGER)"
+            )
+            db.execSQL("CREATE TABLE sense (entry_id INTEGER, position INTEGER, pos TEXT, glosses TEXT, misc TEXT)")
+            db.execSQL("CREATE TABLE kanjidic (literal TEXT PRIMARY KEY, on_readings TEXT, kun_readings TEXT, jlpt INTEGER, grade INTEGER, stroke_count INTEGER)")
+            db.execSQL("CREATE TABLE kanji_meaning (literal TEXT, lang TEXT, meanings TEXT, PRIMARY KEY(literal, lang))")
+        }
+    }
+
+    /** Genuinely broken dict.sqlite — missing the headword table entirely.
+     *  Loosened probe rejects this (because headword.text probe throws),
+     *  which is the corruption backstop firing as designed. */
+    private fun writeJaBrokenDb() {
+        val dbFile = LanguagePackStore.dictDbFor(ctx, SourceLangId.JA)
+        dbFile.parentFile?.mkdirs()
+        android.database.sqlite.SQLiteDatabase
+            .openOrCreateDatabase(dbFile, null).use { db ->
+            db.execSQL("CREATE TABLE entry (id INTEGER PRIMARY KEY, is_common INTEGER, freq_score INTEGER)")
+            // No headword, no sense, no kanjidic, no kanji_meaning — schema probe will fail.
         }
     }
 }

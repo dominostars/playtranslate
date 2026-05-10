@@ -30,30 +30,34 @@ class JmdictSchemaProbeTest {
         assertTrue("v2 schema should be current", JmdictSchemaProbe.isCurrent(dbFile))
     }
 
-    @Test fun `returns false when reading_rank_score column is missing (ja-v1-shaped)`() {
+    @Test fun `returns true for ja-v1-shaped schema (loosened probe)`() {
+        // CRITICAL regression: the loosened probe must accept v1 packs. If
+        // the probe ever re-tightens to require rank_score/uk_applicable/ke_pri,
+        // every v1 pack on disk gets schemaStale=true → classified FORCE,
+        // and the additive-upgrade path becomes unreachable. See
+        // JmdictSchemaProbe class docstring + plan file.
         val dbFile = newDbFile()
         SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { db ->
-            // ja-v1: reading table has freq_score but not rank_score / re_inf
-            // / uk_applicable. headword has only entry_id/position/text.
             createV1Schema(db)
         }
-        assertFalse(
-            "ja-v1 schema (missing rank_score) should be stale",
+        assertTrue(
+            "v1 schema (no rank_score / uk_applicable / ke_pri) MUST pass — column-existence guard handles missing columns at runtime",
             JmdictSchemaProbe.isCurrent(dbFile),
         )
     }
 
-    @Test fun `returns false when headword_rank_score column is missing`() {
+    @Test fun `headword without rank_score still passes (v2 columns not required)`() {
+        // v2-shape minus headword.rank_score. Loosened probe doesn't care.
         val dbFile = newDbFile()
         SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { db ->
             createV2Schema(db)
             db.execSQL("DROP TABLE headword")
             db.execSQL("CREATE TABLE headword (entry_id INTEGER, position INTEGER, text TEXT)")
         }
-        assertFalse(JmdictSchemaProbe.isCurrent(dbFile))
+        assertTrue(JmdictSchemaProbe.isCurrent(dbFile))
     }
 
-    @Test fun `returns false when uk_applicable column is missing`() {
+    @Test fun `reading without uk_applicable still passes (v2 columns not required)`() {
         val dbFile = newDbFile()
         SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { db ->
             createV2Schema(db)
@@ -63,14 +67,12 @@ class JmdictSchemaProbeTest {
                 CREATE TABLE reading (
                     entry_id INTEGER, position INTEGER, text TEXT,
                     no_kanji INTEGER DEFAULT 0,
-                    re_pri TEXT DEFAULT '', freq_score INTEGER DEFAULT 0,
-                    re_inf TEXT DEFAULT '', rank_score INTEGER DEFAULT 0
-                    -- intentionally no uk_applicable
+                    re_pri TEXT DEFAULT '', freq_score INTEGER DEFAULT 0
                 )
                 """.trimIndent(),
             )
         }
-        assertFalse(JmdictSchemaProbe.isCurrent(dbFile))
+        assertTrue(JmdictSchemaProbe.isCurrent(dbFile))
     }
 
     @Test fun `returns false on missing kanji_meaning table (pre-multilingual pack)`() {
@@ -113,8 +115,13 @@ class JmdictSchemaProbeTest {
         // both code paths return the same boolean against the same DB.
         val goodDb = newDbFile("good.sqlite")
         SQLiteDatabase.openOrCreateDatabase(goodDb, null).use { createV2Schema(it) }
-        val badDb = newDbFile("bad.sqlite")
-        SQLiteDatabase.openOrCreateDatabase(badDb, null).use { createV1Schema(it) }
+        // Truly broken: missing the headword table entirely. (V1-shaped DBs
+        // pass the loosened probe — see the dedicated v1 test above.)
+        val brokenDb = newDbFile("broken.sqlite")
+        SQLiteDatabase.openOrCreateDatabase(brokenDb, null).use { db ->
+            db.execSQL("CREATE TABLE entry (id INTEGER PRIMARY KEY, freq_score INTEGER)")
+            // Intentionally NO headword/sense/kanjidic/kanji_meaning tables.
+        }
 
         // Calling via the file overload (LanguagePackStore's path) and via
         // the SQLiteDatabase overload (DictionaryManager's path) must agree.
@@ -128,10 +135,10 @@ class JmdictSchemaProbeTest {
             assertTrue(JmdictSchemaProbe.isCurrent(db))
         }
         SQLiteDatabase.openDatabase(
-            badDb.absolutePath, null, SQLiteDatabase.OPEN_READONLY,
+            brokenDb.absolutePath, null, SQLiteDatabase.OPEN_READONLY,
         ).use { db ->
             assertEquals(
-                JmdictSchemaProbe.isCurrent(badDb),
+                JmdictSchemaProbe.isCurrent(brokenDb),
                 JmdictSchemaProbe.isCurrent(db),
             )
             assertFalse(JmdictSchemaProbe.isCurrent(db))
