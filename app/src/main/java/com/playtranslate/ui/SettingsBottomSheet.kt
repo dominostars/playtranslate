@@ -553,6 +553,13 @@ class SettingsBottomSheet : DialogFragment() {
                         renderer?.refreshAllBackendStatuses()
                     }
                 }
+            } finally {
+                // OverlayProgress lives on activity.window.decorView, not the
+                // fragment view — a fragment-only lifecycle cancel (sheet
+                // dismissed mid-download) would otherwise leave the scrim
+                // stuck. dismiss() is idempotent so this is safe even after
+                // the success/outcome branches above already dismissed.
+                dialog?.dismiss()
             }
         }
     }
@@ -726,6 +733,13 @@ class SettingsBottomSheet : DialogFragment() {
                         renderer?.refreshAllBackendStatuses()
                     }
                 }
+            } finally {
+                // See translategemma flow above — OverlayProgress sits on
+                // activity decor, so a fragment-only lifecycle cancel
+                // bypasses the inner dismisses. Idempotent late dismiss
+                // catches the !isAdded return and CancellationException
+                // paths.
+                dialog?.dismiss()
             }
         }
     }
