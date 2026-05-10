@@ -8,6 +8,7 @@ import com.playtranslate.translation.translategemma.TranslateGemmaModel
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -48,10 +49,15 @@ class TranslateGemmaBatchTest {
         // catalog) so we can drop in experimental quants (Q4_0, Q5_K_M, etc.)
         // by just sideloading to the same path.
         val modelFile = TranslateGemmaModel.file(appCtx)
-        check(modelFile.exists() && modelFile.length() > 1_000_000) {
+        // Skip (don't fail) when the model isn't sideloaded — keeps the
+        // benchmark out of the way of `connectedAndroidTest` runs that
+        // don't have the multi-GB GGUF on the device. Sideload steps in
+        // the KDoc above.
+        assumeTrue(
             "Model not present at ${modelFile.absolutePath}. " +
-                "Sideload before running this test (see KDoc)."
-        }
+                "Sideload before running this test (see KDoc).",
+            modelFile.exists() && modelFile.length() > 1_000_000,
+        )
         val modelPath = modelFile.absolutePath
         println("TG_MODEL_PATH: $modelPath  size=${modelFile.length()}")
 

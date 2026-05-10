@@ -8,6 +8,7 @@ import com.playtranslate.translation.translategemma.PromptStyle
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -51,10 +52,14 @@ class QwenBatchTest {
         // catalog) so we can drop in experimental quants by sideloading to the
         // same path.
         val modelFile = QwenModel.file(appCtx)
-        check(modelFile.exists() && modelFile.length() > 1_000_000) {
+        // See TranslateGemmaBatchTest — skip (don't fail) when the model
+        // isn't sideloaded so connectedAndroidTest stays usable from a
+        // clean device.
+        assumeTrue(
             "Model not present at ${modelFile.absolutePath}. " +
-                "Sideload before running this test (see KDoc)."
-        }
+                "Sideload before running this test (see KDoc).",
+            modelFile.exists() && modelFile.length() > 1_000_000,
+        )
         val modelPath = modelFile.absolutePath
         println("QWEN_MODEL_PATH: $modelPath  size=${modelFile.length()}")
 
