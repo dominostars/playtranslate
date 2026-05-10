@@ -15,9 +15,14 @@ android {
         consumerProguardFiles("consumer-rules.pro")
 
         ndk {
-            // arm64-v8a only — minSdk 30 = 64-bit-only world (Play Store + most Android 11+ devices).
-            // Saves ~5–8 MB per APK split vs. shipping armeabi-v7a too.
-            abiFilters += listOf("arm64-v8a")
+            // arm64-v8a (real Android devices) + x86_64 (emulators on
+            // Intel/AMD hosts, occasional Chromebook/x86 device). minSdk 30
+            // makes 32-bit irrelevant in practice; armeabi-v7a + x86 are
+            // omitted to keep the APK lean (~5–8 MB per ABI split). x86_64
+            // builds CPU-only (no Adreno OpenCL driver outside emulators
+            // anyway — the OpenCL backend ships dormant); inference works,
+            // it's just slower than on arm64 GPU-accelerated paths.
+            abiFilters += listOf("arm64-v8a", "x86_64")
         }
         externalNativeBuild {
             cmake {

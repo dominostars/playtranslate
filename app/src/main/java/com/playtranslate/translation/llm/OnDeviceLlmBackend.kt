@@ -102,7 +102,7 @@ abstract class OnDeviceLlmBackend(
     }
 
     private fun supportsRequiredAbi(): Boolean =
-        Build.SUPPORTED_ABIS.any { it == "arm64-v8a" }
+        Build.SUPPORTED_ABIS.any { it == "arm64-v8a" || it == "x86_64" }
 
     private fun hasEnoughTotalMemory(): Boolean {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager

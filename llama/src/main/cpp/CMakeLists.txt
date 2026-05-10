@@ -25,6 +25,13 @@ if(DEFINED ANDROID_ABI)
         set(GGML_SYSTEM_ARCH "x86")
         set(GGML_CPU_KLEIDIAI OFF)
         set(GGML_OPENMP OFF)
+        # x86_64 is mostly emulators (Intel/AMD dev hosts); a runtime-dispatched
+        # CPU-microarch matrix (sse42 / haswell / icelake / zen4 / …) ships ~12
+        # variants at ~5 MB each, which dwarfs the actual perf win — virtualization
+        # overhead dominates emulator inference, and the rare real x86_64 Android
+        # device (Chromebook ARC++) isn't perf-critical either. Override the
+        # global GGML_CPU_ALL_VARIANTS=ON flag to a single baseline binary.
+        set(GGML_CPU_ALL_VARIANTS OFF CACHE BOOL "" FORCE)
     else()
         message(FATAL_ERROR "Unsupported ABI: ${ANDROID_ABI}")
     endif()
