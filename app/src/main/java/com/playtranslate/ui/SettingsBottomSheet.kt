@@ -415,7 +415,7 @@ class SettingsBottomSheet : DialogFragment() {
 
     private var translategemmaDownloadJob: kotlinx.coroutines.Job? = null
 
-    /** Show the modal download dialog (reuses dialog_language_progress.xml).
+    /** Show the modal download dialog (OverlayProgress).
      *  Drives a [com.playtranslate.translation.llm.OnDeviceLlmDownloader] configured
      *  for TG from the bottom sheet's lifecycle scope — dismissing the sheet
      *  cancels the coroutine but preserves the partial file (resume on next
@@ -452,29 +452,25 @@ class SettingsBottomSheet : DialogFragment() {
         ctx: Context,
         downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
     ) {
+        val activity = activity ?: return
         val sizeStr = com.playtranslate.translation.translategemma
             .TranslateGemmaModel.humanSize(ctx)
-        val view = LayoutInflater.from(ctx).inflate(R.layout.dialog_language_progress, null)
-        val tvStatus = view.findViewById<android.widget.TextView>(R.id.tvPopupStatus)
-        val progressBar = view.findViewById<android.widget.ProgressBar>(R.id.progressBarPopup)
-        val btnCancel = view.findViewById<android.widget.Button>(R.id.btnPopupCancel)
 
-        tvStatus.text = getString(R.string.translategemma_status_downloading, "0 B", sizeStr)
-        progressBar.max = 100
-        progressBar.progress = 0
-
-        val dialog = androidx.appcompat.app.AlertDialog.Builder(ctx)
-            .setView(view)
-            .setCancelable(false)  // user cancels via the Cancel button explicitly
-            .create()
-
-        btnCancel.setOnClickListener {
-            translategemmaDownloadJob?.cancel()
-            // Explicit cancel deletes the partial file (no resume on next attempt).
-            downloader.deletePartial()
-            dialog.dismiss()
-            renderer?.refreshAllBackendStatuses()
-        }
+        // Reference captured into the cancel callback below; the dialog is
+        // assigned right after via the Builder, then mutated as the download
+        // progresses.
+        var dialog: OverlayProgress? = null
+        dialog = OverlayProgress.Builder(ctx)
+            .setTitle(getString(R.string.translategemma_display_name))
+            .setMessage(getString(R.string.translategemma_status_downloading, "0 B", sizeStr))
+            .setProgress(0)
+            .setOnCancel {
+                translategemmaDownloadJob?.cancel()
+                // Explicit cancel deletes the partial file (no resume on next attempt).
+                downloader.deletePartial()
+                renderer?.refreshAllBackendStatuses()
+            }
+            .showInActivity(activity)
 
         translategemmaDownloadJob = viewLifecycleOwner.lifecycleScope.launch {
             try {
@@ -487,26 +483,27 @@ class SettingsBottomSheet : DialogFragment() {
                                     .humanSize(progress.received)
                                 val total = com.playtranslate.translation.llm
                                     .humanSize(progress.total)
-                                tvStatus.text = getString(
+                                dialog?.setMessage(getString(
                                     R.string.translategemma_status_downloading,
                                     recv, total,
-                                )
+                                ))
                                 if (progress.total > 0) {
-                                    progressBar.progress =
+                                    dialog?.setProgress(
                                         ((progress.received * 100) / progress.total).toInt()
+                                    )
                                 }
                             }
                             is com.playtranslate.translation.llm
                                 .OnDeviceLlmDownloader.Progress.Verifying -> {
-                                tvStatus.text = getString(R.string.translategemma_status_verifying)
-                                progressBar.progress = 100
+                                dialog?.setMessage(getString(R.string.translategemma_status_verifying))
+                                dialog?.setProgress(100)
                             }
                         }
                     }
                 }
                 if (!isAdded) return@launch
                 requireActivity().runOnUiThread {
-                    dialog.dismiss()
+                    dialog?.dismiss()
                     when (outcome) {
                         is com.playtranslate.translation.llm
                             .OnDeviceLlmDownloader.Outcome.Success -> {
@@ -546,7 +543,7 @@ class SettingsBottomSheet : DialogFragment() {
             } catch (e: Exception) {
                 if (isAdded) {
                     requireActivity().runOnUiThread {
-                        dialog.dismiss()
+                        dialog?.dismiss()
                         android.widget.Toast.makeText(
                             ctx,
                             getString(R.string.translategemma_download_failed,
@@ -558,8 +555,6 @@ class SettingsBottomSheet : DialogFragment() {
                 }
             }
         }
-
-        dialog.show()
     }
 
 
@@ -638,27 +633,20 @@ class SettingsBottomSheet : DialogFragment() {
         ctx: Context,
         downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
     ) {
+        val activity = activity ?: return
         val sizeStr = com.playtranslate.translation.qwen.QwenModel.humanSize(ctx)
-        val view = LayoutInflater.from(ctx).inflate(R.layout.dialog_language_progress, null)
-        val tvStatus = view.findViewById<android.widget.TextView>(R.id.tvPopupStatus)
-        val progressBar = view.findViewById<android.widget.ProgressBar>(R.id.progressBarPopup)
-        val btnCancel = view.findViewById<android.widget.Button>(R.id.btnPopupCancel)
 
-        tvStatus.text = getString(R.string.qwen_status_downloading, "0 B", sizeStr)
-        progressBar.max = 100
-        progressBar.progress = 0
-
-        val dialog = androidx.appcompat.app.AlertDialog.Builder(ctx)
-            .setView(view)
-            .setCancelable(false)
-            .create()
-
-        btnCancel.setOnClickListener {
-            qwenDownloadJob?.cancel()
-            downloader.deletePartial()
-            dialog.dismiss()
-            renderer?.refreshAllBackendStatuses()
-        }
+        var dialog: OverlayProgress? = null
+        dialog = OverlayProgress.Builder(ctx)
+            .setTitle(getString(R.string.qwen_display_name))
+            .setMessage(getString(R.string.qwen_status_downloading, "0 B", sizeStr))
+            .setProgress(0)
+            .setOnCancel {
+                qwenDownloadJob?.cancel()
+                downloader.deletePartial()
+                renderer?.refreshAllBackendStatuses()
+            }
+            .showInActivity(activity)
 
         qwenDownloadJob = viewLifecycleOwner.lifecycleScope.launch {
             try {
@@ -671,26 +659,27 @@ class SettingsBottomSheet : DialogFragment() {
                                     .humanSize(progress.received)
                                 val total = com.playtranslate.translation.llm
                                     .humanSize(progress.total)
-                                tvStatus.text = getString(
+                                dialog?.setMessage(getString(
                                     R.string.qwen_status_downloading,
                                     recv, total,
-                                )
+                                ))
                                 if (progress.total > 0) {
-                                    progressBar.progress =
+                                    dialog?.setProgress(
                                         ((progress.received * 100) / progress.total).toInt()
+                                    )
                                 }
                             }
                             is com.playtranslate.translation.llm
                                 .OnDeviceLlmDownloader.Progress.Verifying -> {
-                                tvStatus.text = getString(R.string.qwen_status_verifying)
-                                progressBar.progress = 100
+                                dialog?.setMessage(getString(R.string.qwen_status_verifying))
+                                dialog?.setProgress(100)
                             }
                         }
                     }
                 }
                 if (!isAdded) return@launch
                 requireActivity().runOnUiThread {
-                    dialog.dismiss()
+                    dialog?.dismiss()
                     when (outcome) {
                         is com.playtranslate.translation.llm
                             .OnDeviceLlmDownloader.Outcome.Success -> {
@@ -727,7 +716,7 @@ class SettingsBottomSheet : DialogFragment() {
             } catch (e: Exception) {
                 if (isAdded) {
                     requireActivity().runOnUiThread {
-                        dialog.dismiss()
+                        dialog?.dismiss()
                         android.widget.Toast.makeText(
                             ctx,
                             getString(R.string.qwen_download_failed,
@@ -739,8 +728,6 @@ class SettingsBottomSheet : DialogFragment() {
                 }
             }
         }
-
-        dialog.show()
     }
 
     /** OverlayAlert with three options when the user taps an enabled Qwen row.

@@ -305,36 +305,13 @@ class LanguageSetupActivity : AppCompatActivity() {
         )
     }
 
-    // ── Download + load popup (overlay-styled dark card) ────────────────
+    // ── Download + load popup (OverlayProgress) ─────────────────────────
 
-    private fun buildPopupDialog(): Triple<Dialog, TextView, ProgressBar> {
-        val dialog = Dialog(this, android.R.style.Theme_Translucent_NoTitleBar)
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_language_progress, null)
-
-        // Center the card in a dim scrim matching overlay popup feel.
-        val wrapper = FrameLayout(this).apply {
-            setBackgroundColor(android.graphics.Color.argb(128, 0, 0, 0))
-            addView(view, FrameLayout.LayoutParams(
-                (resources.displayMetrics.widthPixels * 0.82f).toInt(),
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER
-            ))
-        }
-
-        dialog.setContentView(wrapper)
-        dialog.setCancelable(false)
-
-        val tvStatus = view.findViewById<TextView>(R.id.tvPopupStatus)
-        val progressBar = view.findViewById<ProgressBar>(R.id.progressBarPopup)
-        val btnCancel = view.findViewById<Button>(R.id.btnPopupCancel)
-
-        btnCancel.setOnClickListener {
-            activeJob?.cancel()
-            dialog.dismiss()
-        }
-
-        return Triple(dialog, tvStatus, progressBar)
-    }
+    private fun buildPopupDialog(title: String): OverlayProgress =
+        OverlayProgress.Builder(this)
+            .setTitle(title)
+            .setOnCancel { activeJob?.cancel() }
+            .showInActivity(this)
 
     private fun showDownloadAndLoadPopup(
         langName: String,
@@ -342,25 +319,23 @@ class LanguageSetupActivity : AppCompatActivity() {
         loadAction: suspend () -> Unit,
         onSuccess: () -> Unit,
     ) {
-        val (dialog, tvStatus, progressBar) = buildPopupDialog()
-        tvStatus.text = "Downloading $langName"
-        progressBar.isIndeterminate = false
-        progressBar.progress = 0
-        dialog.show()
+        val dialog = buildPopupDialog(langName)
+        dialog.setMessage("Downloading $langName")
+        dialog.setProgress(0)
 
         activeJob = lifecycleScope.launch {
             val result = downloadAction { progress ->
                 if (progress is DownloadProgress.Downloading && progress.totalBytes > 0) {
                     val pct = (progress.bytesReceived * 100L / progress.totalBytes).toInt()
-                    runOnUiThread { progressBar.progress = pct }
+                    runOnUiThread { dialog.setProgress(pct) }
                 }
             }
             when (result) {
                 is InstallResult.Success -> {
                     runOnUiThread {
-                        tvStatus.text = "Loading $langName"
-                        progressBar.isIndeterminate = true
-                        dialog.findViewById<Button>(R.id.btnPopupCancel)?.visibility = View.GONE
+                        dialog.setMessage("Loading $langName")
+                        dialog.setIndeterminate(true)
+                        dialog.hideCancel()
                     }
                     try {
                         withContext(Dispatchers.IO) { loadAction() }
@@ -390,11 +365,10 @@ class LanguageSetupActivity : AppCompatActivity() {
         loadAction: suspend () -> Unit,
         onSuccess: () -> Unit,
     ) {
-        val (dialog, tvStatus, progressBar) = buildPopupDialog()
-        tvStatus.text = "Loading $langName"
-        progressBar.isIndeterminate = true
-        dialog.findViewById<Button>(R.id.btnPopupCancel)?.visibility = View.GONE
-        dialog.show()
+        val dialog = buildPopupDialog(langName)
+        dialog.setMessage("Loading $langName")
+        dialog.setIndeterminate(true)
+        dialog.hideCancel()
 
         activeJob = lifecycleScope.launch {
             try {

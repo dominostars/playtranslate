@@ -1,14 +1,6 @@
 package com.playtranslate.ui
 
 import android.app.Activity
-import android.app.Dialog
-import android.graphics.Color
-import android.view.Gravity
-import android.view.LayoutInflater
-import android.widget.Button
-import android.widget.FrameLayout
-import android.widget.ProgressBar
-import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import com.playtranslate.R
 import com.playtranslate.TranslationManager
@@ -66,27 +58,25 @@ class TargetPackInstaller(
             && LanguagePackCatalogLoader.entryForKey(activity, "target-$targetCode") != null
             && !LanguagePackStore.isTargetInstalled(activity, targetCode)
 
-        val (dialog, tvStatus, progressBar) = buildPopupDialog()
+        val dialog = buildPopupDialog(targetName)
 
         if (needsTargetPack) {
-            tvStatus.text = "Downloading $targetName definitions"
-            progressBar.isIndeterminate = false
-            progressBar.progress = 0
-            dialog.show()
+            dialog.setMessage("Downloading $targetName definitions")
+            dialog.setProgress(0)
             activeJob = scope.launch {
                 val result = LanguagePackStore.installTarget(
                     activity.applicationContext, targetCode
                 ) { progress ->
                     if (progress is DownloadProgress.Downloading && progress.totalBytes > 0) {
                         val pct = (progress.bytesReceived * 100L / progress.totalBytes).toInt()
-                        activity.runOnUiThread { progressBar.progress = pct }
+                        activity.runOnUiThread { dialog.setProgress(pct) }
                     }
                 }
                 when (result) {
                     is InstallResult.Success -> {
                         activity.runOnUiThread {
-                            tvStatus.text = "Loading $targetName"
-                            progressBar.isIndeterminate = true
+                            dialog.setMessage("Loading $targetName")
+                            dialog.setIndeterminate(true)
                         }
                         runLoadThenFinish(dialog, sourceLangCode, targetCode, onSuccess)
                     }
@@ -98,9 +88,8 @@ class TargetPackInstaller(
                 }
             }
         } else {
-            tvStatus.text = "Downloading $targetName"
-            progressBar.isIndeterminate = true
-            dialog.show()
+            dialog.setMessage("Downloading $targetName")
+            dialog.setIndeterminate(true)
             activeJob = scope.launch {
                 runLoadThenFinish(dialog, sourceLangCode, targetCode, onSuccess)
             }
@@ -112,7 +101,7 @@ class TargetPackInstaller(
     }
 
     private suspend fun runLoadThenFinish(
-        dialog: Dialog,
+        dialog: OverlayProgress,
         sourceLangCode: String,
         targetCode: String,
         onSuccess: () -> Unit,
@@ -139,29 +128,11 @@ class TargetPackInstaller(
         }
     }
 
-    private fun buildPopupDialog(): Triple<Dialog, TextView, ProgressBar> {
-        val dialog = Dialog(activity, android.R.style.Theme_Translucent_NoTitleBar)
-        val view = LayoutInflater.from(activity)
-            .inflate(R.layout.dialog_language_progress, null)
-        val wrapper = FrameLayout(activity).apply {
-            setBackgroundColor(Color.argb(128, 0, 0, 0))
-            addView(view, FrameLayout.LayoutParams(
-                (activity.resources.displayMetrics.widthPixels * 0.82f).toInt(),
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER
-            ))
-        }
-        dialog.setContentView(wrapper)
-        dialog.setCancelable(false)
-        val tvStatus = view.findViewById<TextView>(R.id.tvPopupStatus)
-        val progressBar = view.findViewById<ProgressBar>(R.id.progressBarPopup)
-        val btnCancel = view.findViewById<Button>(R.id.btnPopupCancel)
-        btnCancel.setOnClickListener {
-            activeJob?.cancel()
-            dialog.dismiss()
-        }
-        return Triple(dialog, tvStatus, progressBar)
-    }
+    private fun buildPopupDialog(title: String): OverlayProgress =
+        OverlayProgress.Builder(activity)
+            .setTitle(title)
+            .setOnCancel { activeJob?.cancel() }
+            .showInActivity(activity)
 
     private fun showErrorPopup(reason: String) {
         AlertDialog.Builder(activity)
