@@ -629,7 +629,6 @@ class SettingsBottomSheet : DialogFragment() {
                 renderer?.refreshAllBackendStatuses()
             }
             .addCancelButton { renderer?.refreshTranslategemmaSwitch() }
-            .setOnDismiss { renderer?.refreshTranslategemmaSwitch() }
             .showInActivity(activity)
     }
 
@@ -801,7 +800,6 @@ class SettingsBottomSheet : DialogFragment() {
                 renderer?.refreshAllBackendStatuses()
             }
             .addCancelButton { renderer?.refreshQwenSwitch() }
-            .setOnDismiss { renderer?.refreshQwenSwitch() }
             .showInActivity(activity)
     }
 

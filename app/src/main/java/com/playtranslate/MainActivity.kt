@@ -1334,13 +1334,9 @@ class MainActivity :
             ) {
                 LogExporter.deleteCrashFiles(this)
             }
-            .addButton(
-                "Later",
-                themeColor(R.attr.ptDivider),
-                themeColor(R.attr.ptText)
-            ) {
-                // No action — files remain, prompt re-fires next launch.
-            }
+            // No handler — scrim tap and "Later" tap both just dismiss;
+            // files remain on disk and the prompt re-fires next launch.
+            .addCancelButton("Later")
             .showInActivity(this)
     }
 
@@ -1378,20 +1374,15 @@ class MainActivity :
                     onProceed(skipTargetCodes)
                 }
             }
-            .addButton(
-                getString(R.string.pack_upgrade_button_later),
-                themeColor(R.attr.ptDivider),
-                themeColor(R.attr.ptText),
-            ) {
-                // Re-prompts on next launch — the staleness scan keeps
-                // returning these packs until the user actually downloads.
+            // addCancelButton routes both the button tap AND scrim tap
+            // through this handler, so onProceed always resumes
+            // setupOnboarding/preload/checkTargetPackMigration regardless
+            // of which dismissal path the user took. Re-prompts on next
+            // launch — the staleness scan keeps returning these packs
+            // until the user actually downloads.
+            .addCancelButton(getString(R.string.pack_upgrade_button_later)) {
                 onProceed(skipTargetCodes)
             }
-            // Scrim tap (tap-outside) dismisses the alert without firing
-            // either button. Treat it as Update Later so onProceed still
-            // resumes setupOnboarding/preload/checkTargetPackMigration —
-            // otherwise those run only on next launch.
-            .setOnDismiss { onProceed(skipTargetCodes) }
             .showInActivity(this)
     }
 
@@ -1423,14 +1414,10 @@ class MainActivity :
             ) {
                 prefs.updateCheckSkippedTag = release.tag
             }
-            .addButton(
-                "Ask again later",
-                themeColor(R.attr.ptDivider),
-                themeColor(R.attr.ptText)
-            ) {
-                // 24h debounce timestamp was already committed inside
-                // UpdateChecker.maybeCheck — no extra bookkeeping needed.
-            }
+            // 24h debounce timestamp was already committed inside
+            // UpdateChecker.maybeCheck — no per-dismissal bookkeeping
+            // needed; both cancel-button tap and scrim tap end the alert.
+            .addCancelButton("Ask again later")
             .showInActivity(this)
     }
 

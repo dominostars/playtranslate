@@ -31,14 +31,14 @@ class OverlayAlert private constructor(
     private val message: String?,
     private val buttons: List<ButtonConfig>,
     private val showIcon: Boolean,
-    private val onDismiss: (() -> Unit)?,
+    private val onCancel: (() -> Unit)?,
 ) {
 
     data class ButtonConfig(
         val label: String,
         val color: Int,
         val textColor: Int,
-        val onClick: () -> Unit
+        val onClick: () -> Unit,
     )
 
     class Builder(private val context: Context) {
@@ -46,7 +46,9 @@ class OverlayAlert private constructor(
         private var message: String? = null
         private val buttons = mutableListOf<ButtonConfig>()
         private var showIcon = true
-        private var onDismiss: (() -> Unit)? = null
+        /** Set by [addCancelButton]. Invoked on cancel-button tap AND scrim
+         *  tap — both are "user dismissed without taking an action." */
+        private var onCancel: (() -> Unit)? = null
 
         constructor(context: Context, wm: WindowManager, displayId: Int) : this(context) {
             this.wm = wm
@@ -66,28 +68,29 @@ class OverlayAlert private constructor(
          *  confirms). */
         fun hideIcon() = apply { this.showIcon = false }
 
-        /** Fires when the alert is dismissed via the scrim (tap outside the
-         *  dialog) — i.e. the user dismissed without picking a button.
-         *  Buttons run their own onClick instead and do NOT invoke this.
-         *  Use for reverting optimistic UI state flips when no choice was made. */
-        fun setOnDismiss(callback: () -> Unit) = apply { this.onDismiss = callback }
-
         fun addButton(label: String, color: Int, textColor: Int = com.playtranslate.OverlayColors.card(context), onClick: () -> Unit) = apply {
             buttons.add(ButtonConfig(label, color, textColor, onClick))
         }
 
-        fun addCancelButton(onClick: (() -> Unit)? = null) = apply {
-            buttons.add(ButtonConfig("Cancel",
+        /** Adds a styled cancel button (divider background, ptText label).
+         *  [onClick] fires on both cancel-button tap AND scrim tap — one
+         *  handler covers any "user dismissed without taking an action"
+         *  exit. Use for reverting optimistic UI state, resuming deferred
+         *  init, etc. Action buttons (added via [addButton]) keep their
+         *  own onClick and do NOT invoke [onClick] here. */
+        fun addCancelButton(label: String = "Cancel", onClick: (() -> Unit)? = null) = apply {
+            onCancel = onClick
+            buttons.add(ButtonConfig(
+                label,
                 com.playtranslate.OverlayColors.divider(context),
-                com.playtranslate.OverlayColors.text(context)
-            ) {
-                onClick?.invoke()
-            })
+                com.playtranslate.OverlayColors.text(context),
+                onClick = { onClick?.invoke() },
+            ))
         }
 
         /** Shows via WindowManager as an accessibility overlay. */
         fun show(): OverlayAlert {
-            val alert = OverlayAlert(context, title, message, buttons, showIcon, onDismiss)
+            val alert = OverlayAlert(context, title, message, buttons, showIcon, onCancel)
             alert.showAsAccessibilityOverlay(
                 wm ?: error("OverlayAlert.Builder.show() requires a WindowManager"),
                 displayId,
@@ -97,7 +100,7 @@ class OverlayAlert private constructor(
 
         /** Shows attached to the given Activity's decorView. */
         fun showInActivity(activity: Activity): OverlayAlert {
-            val alert = OverlayAlert(activity, title, message, buttons, showIcon, onDismiss)
+            val alert = OverlayAlert(activity, title, message, buttons, showIcon, onCancel)
             alert.showInActivity(activity)
             return alert
         }
@@ -109,12 +112,15 @@ class OverlayAlert private constructor(
     private fun buildScrim(): FrameLayout {
         val dp = context.resources.displayMetrics.density
 
-        // Full-screen scrim
+        // Full-screen scrim. Tapping it acts as a shortcut for the cancel
+        // button — invokes the same onCancel handler. Order: dismiss first,
+        // then handler — matches the button path so any handler that chains
+        // another dialog sees the alert already gone, no overlap/flicker.
         val scrimView = FrameLayout(context).apply {
             setBackgroundColor(Color.argb(160, 0, 0, 0))
             setOnClickListener {
-                onDismiss?.invoke()
                 dismiss()
+                onCancel?.invoke()
             }
         }
 
