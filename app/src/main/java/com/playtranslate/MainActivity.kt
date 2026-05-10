@@ -1387,6 +1387,11 @@ class MainActivity :
                 // returning these packs until the user actually downloads.
                 onProceed(skipTargetCodes)
             }
+            // Scrim tap (tap-outside) dismisses the alert without firing
+            // either button. Treat it as Update Later so onProceed still
+            // resumes setupOnboarding/preload/checkTargetPackMigration —
+            // otherwise those run only on next launch.
+            .setOnDismiss { onProceed(skipTargetCodes) }
             .showInActivity(this)
     }
 

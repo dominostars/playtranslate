@@ -126,9 +126,12 @@ class PackUpgradeOrchestrator(
 
             when (result) {
                 is InstallResult.Success -> { /* loop to next pack */ }
-                is InstallResult.Failed -> return Outcome.Failed(
-                    "Failed to install ${pack.displayName}: ${result.reason}"
-                )
+                is InstallResult.Failed -> {
+                    activity.runOnUiThread { dialog.dismiss() }
+                    return Outcome.Failed(
+                        "Failed to install ${pack.displayName}: ${result.reason}"
+                    )
+                }
                 is InstallResult.Cancelled -> {
                     activity.runOnUiThread { dialog.dismiss() }
                     return Outcome.Cancelled
