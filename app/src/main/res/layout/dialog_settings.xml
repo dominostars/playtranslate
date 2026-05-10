@@ -93,13 +93,25 @@
                     <include layout="@layout/settings_row_value"
                         android:id="@+id/rowTargetLang" />
 
-                    <include layout="@layout/settings_row_divider"
-                        android:id="@+id/dividerUpdatePacks" />
-
-                    <include layout="@layout/settings_row_value_multiline"
-                        android:id="@+id/rowUpdateLanguagePacks" />
-
                 </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Update language packs — separate card so warning tint
+                 (when there are stale packs) doesn't bleed onto Source/Target. -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardUpdateLanguagePacks"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <include layout="@layout/settings_row_value_multiline"
+                    android:id="@+id/rowUpdateLanguagePacks" />
+
             </com.google.android.material.card.MaterialCardView>
 
             <!-- ══════════════════════════════════════════════════════ -->

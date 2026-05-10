@@ -132,8 +132,8 @@ class SettingsRenderer(
 
     private val rowSourceLang: View = root.findViewById(R.id.rowSourceLang)
     private val rowTargetLang: View = root.findViewById(R.id.rowTargetLang)
+    private val cardUpdateLanguagePacks: MaterialCardView = root.findViewById(R.id.cardUpdateLanguagePacks)
     private val rowUpdateLanguagePacks: View = root.findViewById(R.id.rowUpdateLanguagePacks)
-    private val dividerUpdatePacks: View = root.findViewById(R.id.dividerUpdatePacks)
 
     private val cardOnScreenControls: MaterialCardView = root.findViewById(R.id.cardOnScreenControls)
     private val rowOverlayIcon: View = root.findViewById(R.id.rowOverlayIcon)
@@ -237,11 +237,11 @@ class SettingsRenderer(
             callbacks.openLanguageSetup(LanguageSetupActivity.MODE_TARGET)
         }
 
-        // "Update language packs" cell — visible iff there are stale packs
-        // on disk (additive or force, mixed labeling). Subtitle is the same
-        // multi-line list the launch-time OverlayAlert uses, via
-        // PackUpgradeOrchestrator.describeForAlert. The activity is reachable
-        // via root.context — same Activity that hosts the rows.
+        // "Update language packs" cell — its OWN MaterialCardView so the
+        // warning tint (background fill + stroke) doesn't bleed onto the
+        // Source/Target rows. Visible iff there are stale packs on disk
+        // (additive or force, mixed labeling). Subtitle is the same
+        // multi-line list the launch-time OverlayAlert uses.
         val activity = root.context as? android.app.Activity
         val stalePacks = if (activity != null) {
             com.playtranslate.language.LanguagePackStore.staleInstalledPacks(activity)
@@ -249,11 +249,9 @@ class SettingsRenderer(
             emptyList()
         }
         if (stalePacks.isEmpty() || activity == null) {
-            rowUpdateLanguagePacks.visibility = View.GONE
-            dividerUpdatePacks.visibility = View.GONE
+            cardUpdateLanguagePacks.visibility = View.GONE
         } else {
-            rowUpdateLanguagePacks.visibility = View.VISIBLE
-            dividerUpdatePacks.visibility = View.VISIBLE
+            cardUpdateLanguagePacks.visibility = View.VISIBLE
             rowUpdateLanguagePacks.findViewById<TextView>(R.id.tvRowTitle).text =
                 root.context.getString(R.string.lang_section_update_packs_title)
             rowUpdateLanguagePacks.findViewById<TextView>(R.id.tvRowSubtitle).text =
@@ -262,7 +260,21 @@ class SettingsRenderer(
             rowUpdateLanguagePacks.setOnClickListener {
                 callbacks.onUpdateLanguagePacksTapped(stalePacks)
             }
+            applyUpdatePacksWarningTint()
         }
+    }
+
+    /** Tint the Update language packs card with the warning attention color
+     *  — same blend recipe (`blendColors(attention, baseCard, 0.20f)`) and
+     *  full-strength stroke that `refreshOnScreenControlsTint` uses for the
+     *  Game Screen Controls card in dual-screen mode when the floating-icon
+     *  switch is off. Conveys "this pack is degraded; tap to fix" with the
+     *  same visual weight as other recoverable-state warnings. */
+    private fun applyUpdatePacksWarningTint() {
+        val baseCard = ctx.themeColor(R.attr.ptCard)
+        val warning = ctx.themeColor(R.attr.ptWarning)
+        cardUpdateLanguagePacks.setCardBackgroundColor(blendColors(warning, baseCard, 0.20f))
+        cardUpdateLanguagePacks.strokeColor = warning
     }
 
     /** Public shim for the Settings cell callback to refresh the Language
