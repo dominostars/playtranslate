@@ -10,14 +10,13 @@ import java.io.File
  * delegate here so they can't drift apart.
  *
  * **Scope: corruption backstop, NOT a version check.** This deliberately
- * does NOT probe ja-v2-introduced columns (`headword.rank_score`,
- * `reading.rank_score`, `reading.uk_applicable`) — those are handled at
- * runtime by `DictionaryManager.supportsV2Schema` (column-existence guard
- * via `PRAGMA table_info`). If we re-tightened this probe to require the
- * v2 columns, the additive-upgrade path would be unreachable: every v1
- * pack on disk would be `schemaStale=true` → classified as FORCE → the
- * additive flow is dead code. See
- * `~/.claude/plans/cheerful-yawning-donut.md`.
+ * does NOT probe the per-row `rank_score` / `uk_applicable` columns —
+ * those are handled at runtime by `DictionaryManager.hasRankScore`
+ * (column-existence guard via `PRAGMA table_info`, with a fallback to
+ * the legacy `entry.freq_score`-JOIN SQL). If we re-tightened this probe
+ * to require those columns, packs that predate them would all be
+ * `schemaStale=true` → classified as FORCE → the additive-upgrade path
+ * would be unreachable. See `~/.claude/plans/cheerful-yawning-donut.md`.
  *
  * Returns false only when a TABLE is missing or a pre-v2 column has
  * gone away — both signal genuine corruption, in which case the caller
@@ -44,8 +43,9 @@ internal object JmdictSchemaProbe {
             null,
         ).use { }
         // NOTE: do NOT probe rank_score / uk_applicable here. See class
-        // docstring — those are runtime-guarded by supportsV2Schema, not
-        // version-gated. Adding them here breaks the additive-upgrade path.
+        // docstring — those are runtime-guarded by DictionaryManager
+        // .hasRankScore, not version-gated. Adding them here breaks the
+        // additive-upgrade path.
         true
     } catch (_: Exception) {
         false

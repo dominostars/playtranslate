@@ -14,7 +14,7 @@ import java.io.File
  * Validates the ranking SQL across BOTH the v2 path (rank_score +
  * uk_applicable) AND the OLD pre-v2 fallback path (entry.freq_score JOIN)
  * that engages when an on-disk pack lacks the v2 schema columns. The
- * column-existence guard in `DictionaryManager.supportsV2Schema` decides
+ * column-existence guard in `DictionaryManager.hasRankScore` decides
  * which to dispatch per query.
  *
  * The Python `tests/test_build_jmdict.py` suite validates the score
@@ -121,25 +121,25 @@ class RankingFallbackSqlTest {
 
     // ── OLD SQL fallback (pre-v2 schema) ────────────────────────────────
 
-    /** Verbatim copy of `DictionaryManager.OLD_QUERY_KANA`. Used when the
+    /** Verbatim copy of `DictionaryManager.LEGACY_QUERY_KANA`. Used when the
      *  on-disk pack lacks rank_score / uk_applicable. */
-    private val OLD_QUERY_KANA = """
+    private val LEGACY_QUERY_KANA = """
         SELECT DISTINCT r.entry_id FROM reading r
         JOIN entry e ON e.id = r.entry_id
         WHERE r.text = ?
         ORDER BY e.freq_score DESC LIMIT 8
     """.trimIndent()
 
-    /** Verbatim copy of `DictionaryManager.OLD_QUERY_KANJI`. */
-    private val OLD_QUERY_KANJI = """
+    /** Verbatim copy of `DictionaryManager.LEGACY_QUERY_KANJI`. */
+    private val LEGACY_QUERY_KANJI = """
         SELECT DISTINCT h.entry_id FROM headword h
         JOIN entry e ON e.id = h.entry_id
         WHERE h.text = ?
         ORDER BY e.freq_score DESC LIMIT 8
     """.trimIndent()
 
-    /** Verbatim copy of `DictionaryManager.OLD_QUERY_KANJI_WITH_READING`. */
-    private val OLD_QUERY_KANJI_WITH_READING = """
+    /** Verbatim copy of `DictionaryManager.LEGACY_QUERY_KANJI_WITH_READING`. */
+    private val LEGACY_QUERY_KANJI_WITH_READING = """
         SELECT DISTINCT h.entry_id FROM headword h
         JOIN entry e ON e.id = h.entry_id
         JOIN reading r ON r.entry_id = h.entry_id
@@ -159,7 +159,7 @@ class RankingFallbackSqlTest {
         insertV1Entry(db, entryId = 1578150, freqScore = 5)
         insertV1Reading(db, entryId = 1578150, position = 4, text = "ここ")
 
-        val ids = runQuery(db, OLD_QUERY_KANA, "ここ")
+        val ids = runQuery(db, LEGACY_QUERY_KANA, "ここ")
         // OLD SQL: ranks purely by entry.freq_score DESC. 九 (5) wins, then
         // 個々 (4), then 此処 (3). This is the "wrong but functional"
         // pre-v2 behavior. The point of v2 was to fix this — but until the
@@ -174,7 +174,7 @@ class RankingFallbackSqlTest {
         insertV1Entry(db, entryId = 2, freqScore = 3)
         insertV1Headword(db, entryId = 2, position = 0, text = "九")
 
-        val ids = runQuery(db, OLD_QUERY_KANJI, "九")
+        val ids = runQuery(db, LEGACY_QUERY_KANJI, "九")
         assertEquals("freq_score DESC", listOf(1L, 2L), ids)
     }
 
@@ -187,7 +187,7 @@ class RankingFallbackSqlTest {
         insertV1Headword(db, entryId = 2, position = 0, text = "此処")
         insertV1Reading(db, entryId = 2, position = 0, text = "ここ")
 
-        val ids = runQuery2(db, OLD_QUERY_KANJI_WITH_READING, "此処", "ここ")
+        val ids = runQuery2(db, LEGACY_QUERY_KANJI_WITH_READING, "此処", "ここ")
         assertEquals(listOf(1L, 2L), ids)
     }
 

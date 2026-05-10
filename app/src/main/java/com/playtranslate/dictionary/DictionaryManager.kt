@@ -18,8 +18,19 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.WeakHashMap
 
 private const val TAG = "DictionaryManager"
+
+/** Run [block] while holding an extra SQLite reference on the receiver, so a
+ *  concurrent close()+reopen (e.g. PackUpgradeOrchestrator's post-install
+ *  eviction) can't tear the underlying connection down mid-cursor.
+ *  Returns null if the connection was already closed before we could
+ *  acquire — caller treats that the same as "no result". */
+private inline fun <T> SQLiteDatabase.withRefcount(block: () -> T): T? {
+    try { acquireReference() } catch (_: IllegalStateException) { return null }
+    try { return block() } finally { releaseReference() }
+}
 
 /** Result from [DictionaryManager.tokenizeWithSurfaces]. */
 data class TokenWithReading(
@@ -60,18 +71,32 @@ class DictionaryManager private constructor(private val context: Context) {
     private var db: SQLiteDatabase? = null
     private val mutex = Mutex()
 
-    /** Set at DB-open time via a single PRAGMA. Names the assumption that
-     *  all v2-introduced columns ship together via build_jmdict.py's atomic
-     *  schema bump (`headword.rank_score`, `reading.rank_score`,
-     *  `reading.uk_applicable`). We probe `reading.rank_score` as a single
-     *  representative; if a future build splits the schema bump across
-     *  versions, this assumption breaks and we'd need per-column probes.
+    /** Per-handle capability cache for `reading.rank_score`. Keyed by
+     *  SQLiteDatabase identity so an upgrade close()+reopen race can't
+     *  mismatch a refcount-held old handle with a freshly-detected flag
+     *  for a different handle. WeakHashMap auto-evicts entries when
+     *  handles GC, so we don't pin closed connections.
      *
-     *  When `false`, the three ranking queries fall back to OLD SQL that
-     *  uses `entry.freq_score` JOIN — the pre-ja-v2 ranking. This keeps
-     *  v1 packs functional (degraded ranking, no crashes) while the
-     *  upgrade flow brings the user current. */
-    private var supportsV2Schema: Boolean = false
+     *  When the column is missing the ranking SQL falls back to the legacy
+     *  `entry.freq_score`-JOIN path — degraded ranking, no crashes — until
+     *  the pack is upgraded. */
+    private val rankScoreSupport = WeakHashMap<SQLiteDatabase, Boolean>()
+    private val rankScoreSupportLock = Any()
+
+    /** All access to [rankScoreSupport] — read AND write — happens inside
+     *  the lock. WeakHashMap's `get` can internally expunge stale entries,
+     *  so even reads mutate the structure; serializing every operation
+     *  prevents the map from being torn during a concurrent expunge.
+     *  Spelling out get / put / return inline (vs. `getOrPut`) makes the
+     *  invariant visible at a glance. */
+    private fun hasRankScore(db: SQLiteDatabase): Boolean {
+        synchronized(rankScoreSupportLock) {
+            rankScoreSupport[db]?.let { return it }
+            val supports = checkColumnExists(db, "reading", "rank_score")
+            rankScoreSupport[db] = supports
+            return supports
+        }
+    }
 
     // ── Public API ────────────────────────────────────────────────────────
 
@@ -114,64 +139,65 @@ class DictionaryManager private constructor(private val context: Context) {
      * Falls back to [Deinflector.tokenize] if the database is not ready.
      */
     suspend fun tokenizeWithSurfaces(text: String): List<TokenWithReading> = withContext(Dispatchers.IO) {
-        val database = ensureOpen()
-            ?: return@withContext Deinflector.tokenize(text).map { TokenWithReading(it, it, null) }
+        val deinflectorFallback = { Deinflector.tokenize(text).map { TokenWithReading(it, it, null) } }
+        val database = ensureOpen() ?: return@withContext deinflectorFallback()
+        database.withRefcount {
+            val tokens   = Deinflector.rawTokenInfos(text)
+            val surfaces = tokens.map { it.surface }
+            val result   = mutableListOf<TokenWithReading>()
 
-        val tokens   = Deinflector.rawTokenInfos(text)
-        val surfaces = tokens.map { it.surface }
-        val result   = mutableListOf<TokenWithReading>()
-
-        // Batch-query all candidate N-grams upfront (2 queries instead of ~60)
-        val candidates = mutableSetOf<String>()
-        for (i in tokens.indices) {
-            val maxN = minOf(4, tokens.size - i)
-            for (n in maxN downTo 2) {
-                val phrase = surfaces.subList(i, i + n).joinToString("")
-                if (isLookupWorthy(phrase)) candidates.add(phrase)
-            }
-        }
-        val knownPhrases = batchCheckEntries(database, candidates)
-
-        var i = 0
-        while (i < tokens.size) {
-            // Try multi-token N-grams (4 down to 2) at the current position.
-            var advanced = false
-            val maxN = minOf(4, tokens.size - i)
-            for (n in maxN downTo 2) {
-                val phrase = surfaces.subList(i, i + n).joinToString("")
-                if (phrase in knownPhrases) {
-                    result.add(TokenWithReading(phrase, phrase, reading = null))
-                    i += n
-                    advanced = true
-                    break
+            // Batch-query all candidate N-grams upfront (2 queries instead of ~60)
+            val candidates = mutableSetOf<String>()
+            for (i in tokens.indices) {
+                val maxN = minOf(4, tokens.size - i)
+                for (n in maxN downTo 2) {
+                    val phrase = surfaces.subList(i, i + n).joinToString("")
+                    if (isLookupWorthy(phrase)) candidates.add(phrase)
                 }
             }
+            val knownPhrases = batchCheckEntries(database, candidates)
 
-            if (!advanced) {
-                val t = tokens[i]
-                if (isContentWord(t.pos)) {
-                    val lookupForm = t.baseForm ?: t.surface
-                    if (isLookupWorthy(lookupForm)) {
-                        // Gather the surface span: for verbs/adjectives, include
-                        // following auxiliary tokens (e.g. ない after 使わ)
-                        var surfaceSpan = t.surface
-                        if (t.pos == "動詞" || t.pos == "形容詞") {
-                            var j = i + 1
-                            while (j < tokens.size && tokens[j].pos in setOf("助動詞", "助詞")) {
-                                surfaceSpan += tokens[j].surface
-                                j++
-                            }
-                        }
-                        val reading = t.reading?.let { Deinflector.katakanaToHiragana(it) }
-                        result.add(TokenWithReading(surfaceSpan, lookupForm, reading))
+            var i = 0
+            while (i < tokens.size) {
+                // Try multi-token N-grams (4 down to 2) at the current position.
+                var advanced = false
+                val maxN = minOf(4, tokens.size - i)
+                for (n in maxN downTo 2) {
+                    val phrase = surfaces.subList(i, i + n).joinToString("")
+                    if (phrase in knownPhrases) {
+                        result.add(TokenWithReading(phrase, phrase, reading = null))
+                        i += n
+                        advanced = true
+                        break
                     }
                 }
-                i++
-            }
-        }
 
-        Log.d(TAG, "tokenizeWithSurfaces: ${result.map { "(${it.surface} → ${it.lookupForm} [${it.reading}])" }}")
-        result
+                if (!advanced) {
+                    val t = tokens[i]
+                    if (isContentWord(t.pos)) {
+                        val lookupForm = t.baseForm ?: t.surface
+                        if (isLookupWorthy(lookupForm)) {
+                            // Gather the surface span: for verbs/adjectives, include
+                            // following auxiliary tokens (e.g. ない after 使わ)
+                            var surfaceSpan = t.surface
+                            if (t.pos == "動詞" || t.pos == "形容詞") {
+                                var j = i + 1
+                                while (j < tokens.size && tokens[j].pos in setOf("助動詞", "助詞")) {
+                                    surfaceSpan += tokens[j].surface
+                                    j++
+                                }
+                            }
+                            val reading = t.reading?.let { Deinflector.katakanaToHiragana(it) }
+                            result.add(TokenWithReading(surfaceSpan, lookupForm, reading))
+                        }
+                    }
+                    i++
+                }
+            }
+
+            Log.d(TAG, "tokenizeWithSurfaces: ${result.map { "(${it.surface} → ${it.lookupForm} [${it.reading}])" }}")
+            result
+        } ?: deinflectorFallback()
     }
 
     /**
@@ -240,32 +266,33 @@ class DictionaryManager private constructor(private val context: Context) {
      */
     suspend fun lookup(word: String, reading: String? = null): DictionaryResponse? = withContext(Dispatchers.IO) {
         val database = ensureOpen() ?: return@withContext null
-
-        // 1. Exact match narrowed by reading (if available)
-        if (reading != null) {
-            val narrowedIds = queryEntryIdsWithReading(database, word, reading)
-            if (narrowedIds.isNotEmpty()) {
-                Log.d(TAG, "lookup($word, reading=$reading): narrowed ids=$narrowedIds")
-                return@withContext buildResponse(database, narrowedIds)
+        database.withRefcount {
+            // 1. Exact match narrowed by reading (if available)
+            if (reading != null) {
+                val narrowedIds = queryEntryIdsWithReading(database, word, reading)
+                if (narrowedIds.isNotEmpty()) {
+                    Log.d(TAG, "lookup($word, reading=$reading): narrowed ids=$narrowedIds")
+                    return@withRefcount buildResponse(database, narrowedIds)
+                }
             }
-        }
 
-        // 2. Exact match (headword or reading table, no reading filter)
-        val directIds = queryEntryIds(database, word)
-        if (directIds.isNotEmpty()) {
-            Log.d(TAG, "lookup($word): exact match ids=$directIds")
-            return@withContext buildResponse(database, directIds)
-        }
-
-        // 2. Try de-inflected candidates (first dictionary hit wins)
-        for (candidate in Deinflector.candidates(word)) {
-            val ids = queryEntryIds(database, candidate.text)
-            if (ids.isNotEmpty()) {
-                return@withContext buildResponse(database, ids, candidate.reason)
+            // 2. Exact match (headword or reading table, no reading filter)
+            val directIds = queryEntryIds(database, word)
+            if (directIds.isNotEmpty()) {
+                Log.d(TAG, "lookup($word): exact match ids=$directIds")
+                return@withRefcount buildResponse(database, directIds)
             }
-        }
 
-        null
+            // 3. Try de-inflected candidates (first dictionary hit wins)
+            for (candidate in Deinflector.candidates(word)) {
+                val ids = queryEntryIds(database, candidate.text)
+                if (ids.isNotEmpty()) {
+                    return@withRefcount buildResponse(database, ids, candidate.reason)
+                }
+            }
+
+            null
+        }
     }
 
     /**
@@ -282,29 +309,31 @@ class DictionaryManager private constructor(private val context: Context) {
      */
     suspend fun lookupKanji(literal: Char, targetLang: String = "en"): KanjiDetail? = withContext(Dispatchers.IO) {
         val database = ensureOpen() ?: return@withContext null
-        database.rawQuery(
-            "SELECT on_readings, kun_readings, jlpt, grade, stroke_count FROM kanjidic WHERE literal=?",
-            arrayOf(literal.toString())
-        ).use { c ->
-            if (!c.moveToFirst()) return@withContext null
-            val onReadings   = c.getString(0).split(',').filter { it.isNotBlank() }
-            val kunReadings  = c.getString(1).split(',').filter { it.isNotBlank() }
-            val jlpt         = c.getInt(2)
-            val grade        = c.getInt(3)
-            val strokeCount  = c.getInt(4)
+        database.withRefcount {
+            database.rawQuery(
+                "SELECT on_readings, kun_readings, jlpt, grade, stroke_count FROM kanjidic WHERE literal=?",
+                arrayOf(literal.toString())
+            ).use { c ->
+                if (!c.moveToFirst()) return@withRefcount null
+                val onReadings   = c.getString(0).split(',').filter { it.isNotBlank() }
+                val kunReadings  = c.getString(1).split(',').filter { it.isNotBlank() }
+                val jlpt         = c.getInt(2)
+                val grade        = c.getInt(3)
+                val strokeCount  = c.getInt(4)
 
-            val (meanings, resolvedLang) = resolveKanjiMeanings(database, literal, targetLang)
-            if (meanings.isEmpty()) return@withContext null
-            KanjiDetail(
-                literal      = literal,
-                meanings     = meanings,
-                meaningsLang = resolvedLang,
-                onReadings   = onReadings,
-                kunReadings  = kunReadings,
-                jlpt         = jlpt,
-                grade        = grade,
-                strokeCount  = strokeCount,
-            )
+                val (meanings, resolvedLang) = resolveKanjiMeanings(database, literal, targetLang)
+                if (meanings.isEmpty()) return@withRefcount null
+                KanjiDetail(
+                    literal      = literal,
+                    meanings     = meanings,
+                    meaningsLang = resolvedLang,
+                    onReadings   = onReadings,
+                    kunReadings  = kunReadings,
+                    jlpt         = jlpt,
+                    grade        = grade,
+                    strokeCount  = strokeCount,
+                )
+            }
         }
     }
 
@@ -341,10 +370,9 @@ class DictionaryManager private constructor(private val context: Context) {
             null
         }
 
-        // Detect whether this pack has the v2 schema columns. Single PRAGMA
-        // per DB-open, cached for the session. Drives the OLD vs NEW ranking
-        // SQL branch in queryEntryIds / queryEntryIdsWithReading.
-        db?.let { supportsV2Schema = checkColumnExists(it, "reading", "rank_score") }
+        // Capability detection for `reading.rank_score` happens lazily on
+        // first query via hasRankScore(db) — keyed per-handle so race-safe
+        // against close()+reopen during an upgrade.
 
         // Bootstrap the bundled-pack manifest once the DB is known-good.
         // Idempotent — writeManifestIfMissing no-ops on subsequent boots.
@@ -425,11 +453,11 @@ class DictionaryManager private constructor(private val context: Context) {
      *  tags + position. No uk-bonus here — the kanji form is explicit user
      *  input that already disambiguates.
      *
-     *  Falls back to OLD pre-ja-v2 SQL when the on-disk pack lacks the v2
-     *  schema columns (see [supportsV2Schema]). */
+     *  Falls back to legacy `entry.freq_score`-JOIN SQL when the on-disk
+     *  pack lacks `reading.rank_score` (see [hasRankScore]). */
     private fun queryEntryIdsWithReading(db: SQLiteDatabase, word: String, reading: String): List<Long> {
         val ids = mutableListOf<Long>()
-        val sql = if (supportsV2Schema) NEW_QUERY_KANJI_WITH_READING else OLD_QUERY_KANJI_WITH_READING
+        val sql = if (hasRankScore(db)) RANKED_QUERY_KANJI_WITH_READING else LEGACY_QUERY_KANJI_WITH_READING
         db.rawQuery(sql, arrayOf(word, reading))
             .use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
         return ids
@@ -440,21 +468,21 @@ class DictionaryManager private constructor(private val context: Context) {
 
         // Kanji-form path. NEW: rank by per-headword score (priority +
         // position penalty). OLD: ORDER BY entry.freq_score DESC via JOIN.
-        val kanjiSql = if (supportsV2Schema) NEW_QUERY_KANJI else OLD_QUERY_KANJI
+        val kanjiSql = if (hasRankScore(db)) RANKED_QUERY_KANJI else LEGACY_QUERY_KANJI
         db.rawQuery(kanjiSql, arrayOf(word))
             .use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
 
         if (ids.isEmpty()) {
-            // Pure-kana fallback. NEW: rank by per-reading score plus a +1.5M
-            // uk-bonus when the matched reading is at position 0 AND the
-            // entry has a uk-tagged sense applicable to this reading
+            // Pure-kana fallback. RANKED: per-reading rank_score plus a
+            // +1.5M uk-bonus when the matched reading is at position 0 AND
+            // the entry has a uk-tagged sense applicable to this reading
             // (precomputed into reading.uk_applicable at build time, with
             // <stagr> restrictions respected). Validated empirically to
             // flip 此処 above 個々 for ここ without raising 鴇 above 時 for
             // とき (鴇's とき is at position=1, gate filters it out).
-            // OLD: ORDER BY entry.freq_score DESC via JOIN — degraded but
-            // functional ranking against pre-ja-v2 packs.
-            val kanaSql = if (supportsV2Schema) NEW_QUERY_KANA else OLD_QUERY_KANA
+            // LEGACY: ORDER BY entry.freq_score DESC via JOIN — degraded
+            // but functional ranking when rank_score is absent.
+            val kanaSql = if (hasRankScore(db)) RANKED_QUERY_KANA else LEGACY_QUERY_KANA
             db.rawQuery(kanaSql, arrayOf(word))
                 .use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
         }
@@ -582,14 +610,16 @@ class DictionaryManager private constructor(private val context: Context) {
             }
 
         // ── Ranking SQL constants ─────────────────────────────────────────
-        // Two parallel sets: NEW_QUERY_* uses ja-v2's per-headword/-reading
-        // rank_score columns; OLD_QUERY_* uses pre-v2's entry.freq_score
-        // JOIN and is selected when the on-disk pack lacks rank_score (see
-        // [supportsV2Schema]). NEW path is correct; OLD path is degraded
-        // but functional, used as a graceful fallback for v1 packs while
-        // the upgrade flow brings the user current.
+        // Two parallel sets selected by [hasRankScore] per handle:
+        //   RANKED_QUERY_* — uses per-row rank_score / uk_applicable columns;
+        //                    full ranking incl. the pure-kana uk-bonus.
+        //   LEGACY_QUERY_* — falls back to entry.freq_score JOIN when those
+        //                    columns are absent on the on-disk pack.
+        // The LEGACY path is degraded but functional; queries succeed and
+        // the dictionary stays usable while the user upgrades to a pack
+        // that carries the rank_score column.
 
-        private const val NEW_QUERY_KANJI = """
+        private const val RANKED_QUERY_KANJI = """
             SELECT entry_id FROM headword
             WHERE text = ?
             GROUP BY entry_id
@@ -597,7 +627,7 @@ class DictionaryManager private constructor(private val context: Context) {
             LIMIT 8
         """
 
-        private const val NEW_QUERY_KANA = """
+        private const val RANKED_QUERY_KANA = """
             SELECT entry_id FROM reading
             WHERE text = ?
             GROUP BY entry_id
@@ -609,7 +639,7 @@ class DictionaryManager private constructor(private val context: Context) {
             LIMIT 8
         """
 
-        private const val NEW_QUERY_KANJI_WITH_READING = """
+        private const val RANKED_QUERY_KANJI_WITH_READING = """
             SELECT h.entry_id
             FROM headword h
             JOIN reading r ON r.entry_id = h.entry_id
@@ -619,21 +649,21 @@ class DictionaryManager private constructor(private val context: Context) {
             LIMIT 8
         """
 
-        private const val OLD_QUERY_KANJI = """
+        private const val LEGACY_QUERY_KANJI = """
             SELECT DISTINCT h.entry_id FROM headword h
             JOIN entry e ON e.id = h.entry_id
             WHERE h.text = ?
             ORDER BY e.freq_score DESC LIMIT 8
         """
 
-        private const val OLD_QUERY_KANA = """
+        private const val LEGACY_QUERY_KANA = """
             SELECT DISTINCT r.entry_id FROM reading r
             JOIN entry e ON e.id = r.entry_id
             WHERE r.text = ?
             ORDER BY e.freq_score DESC LIMIT 8
         """
 
-        private const val OLD_QUERY_KANJI_WITH_READING = """
+        private const val LEGACY_QUERY_KANJI_WITH_READING = """
             SELECT DISTINCT h.entry_id FROM headword h
             JOIN entry e ON e.id = h.entry_id
             JOIN reading r ON r.entry_id = h.entry_id
