@@ -33,6 +33,7 @@ import com.playtranslate.language.PreloadResult
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.translation.llm.humanSize
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.blendColors
 import com.playtranslate.compositeOver
@@ -320,20 +321,26 @@ class LanguageSetupActivity : AppCompatActivity() {
         onSuccess: () -> Unit,
     ) {
         val dialog = buildPopupDialog(langName)
-        dialog.setMessage("Downloading $langName")
+        dialog.setMessage("Downloading")
         dialog.setProgress(0)
 
         activeJob = lifecycleScope.launch {
             val result = downloadAction { progress ->
                 if (progress is DownloadProgress.Downloading && progress.totalBytes > 0) {
                     val pct = (progress.bytesReceived * 100L / progress.totalBytes).toInt()
-                    runOnUiThread { dialog.setProgress(pct) }
+                    runOnUiThread {
+                        dialog.setProgress(pct)
+                        dialog.setMessage(
+                            "Downloading… " +
+                                "${humanSize(progress.bytesReceived)} of ${humanSize(progress.totalBytes)}"
+                        )
+                    }
                 }
             }
             when (result) {
                 is InstallResult.Success -> {
                     runOnUiThread {
-                        dialog.setMessage("Loading $langName")
+                        dialog.setMessage("Loading")
                         dialog.setIndeterminate(true)
                         dialog.hideCancel()
                     }
@@ -366,7 +373,7 @@ class LanguageSetupActivity : AppCompatActivity() {
         onSuccess: () -> Unit,
     ) {
         val dialog = buildPopupDialog(langName)
-        dialog.setMessage("Loading $langName")
+        dialog.setMessage("Loading")
         dialog.setIndeterminate(true)
         dialog.hideCancel()
 

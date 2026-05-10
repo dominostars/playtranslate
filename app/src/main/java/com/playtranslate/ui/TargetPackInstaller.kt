@@ -8,6 +8,7 @@ import com.playtranslate.language.DownloadProgress
 import com.playtranslate.language.InstallResult
 import com.playtranslate.language.LanguagePackCatalogLoader
 import com.playtranslate.language.LanguagePackStore
+import com.playtranslate.translation.llm.humanSize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineScope
@@ -61,7 +62,7 @@ class TargetPackInstaller(
         val dialog = buildPopupDialog(targetName)
 
         if (needsTargetPack) {
-            dialog.setMessage("Downloading $targetName definitions")
+            dialog.setMessage("Downloading definitions")
             dialog.setProgress(0)
             activeJob = scope.launch {
                 val result = LanguagePackStore.installTarget(
@@ -69,13 +70,19 @@ class TargetPackInstaller(
                 ) { progress ->
                     if (progress is DownloadProgress.Downloading && progress.totalBytes > 0) {
                         val pct = (progress.bytesReceived * 100L / progress.totalBytes).toInt()
-                        activity.runOnUiThread { dialog.setProgress(pct) }
+                        activity.runOnUiThread {
+                            dialog.setProgress(pct)
+                            dialog.setMessage(
+                                "Downloading definitions… " +
+                                    "${humanSize(progress.bytesReceived)} of ${humanSize(progress.totalBytes)}"
+                            )
+                        }
                     }
                 }
                 when (result) {
                     is InstallResult.Success -> {
                         activity.runOnUiThread {
-                            dialog.setMessage("Loading $targetName")
+                            dialog.setMessage("Loading")
                             dialog.setIndeterminate(true)
                         }
                         runLoadThenFinish(dialog, sourceLangCode, targetCode, onSuccess)
@@ -88,7 +95,7 @@ class TargetPackInstaller(
                 }
             }
         } else {
-            dialog.setMessage("Downloading $targetName")
+            dialog.setMessage("Downloading translation model")
             dialog.setIndeterminate(true)
             activeJob = scope.launch {
                 runLoadThenFinish(dialog, sourceLangCode, targetCode, onSuccess)
