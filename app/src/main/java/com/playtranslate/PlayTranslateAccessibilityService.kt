@@ -224,6 +224,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             .registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
         reconcileFloatingIcons()
         registerHotkeyCallbacks()
+        PlayTranslateTileService.TileSync.refresh(this)
     }
 
     /** Wire hotkey callbacks to CaptureService. Safe to call multiple times. */
@@ -251,6 +252,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         screenshotManager = null
         serviceScope.cancel()
         instance = null
+        PlayTranslateTileService.TileSync.refresh(this)
         return super.onUnbind(intent)
     }
 
@@ -1503,8 +1505,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         menu.showDegradedWarning = CaptureService.instance?.degradedState?.value == true
         menu.onHideIcon = {
             dismissFloatingMenu()
-            Prefs(this).showOverlayIcon = false
-            hideFloatingIcon("menu_turn_off")
+            disable(this, "menu_turn_off")
         }
         menu.onHideTemporary = {
             dismissFloatingMenu()
@@ -1646,8 +1647,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 }
             }
             builder.addButton("Turn Off", OverlayColors.divider(this), OverlayColors.danger(this)) {
-                    prefs.showOverlayIcon = false
-                    hideFloatingIcon("confirm_turn_off_single")
+                    disable(this, "confirm_turn_off_single")
                 }
                 .addCancelButton()
         } else {
@@ -1666,8 +1666,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                     }
             }
             builder.addButton("Turn Off", OverlayColors.divider(this), OverlayColors.danger(this)) {
-                    prefs.showOverlayIcon = false
-                    hideFloatingIcon("confirm_turn_off_multi")
+                    disable(this, "confirm_turn_off_multi")
                 }
                 .addCancelButton()
         }
@@ -2001,6 +2000,17 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         var instance: PlayTranslateAccessibilityService? = null
 
         val isEnabled: Boolean get() = instance != null
+
+        /** Single source of truth for "PlayTranslate is going inactive". Writes
+         *  the pref, stops live mode if running, hides the floating icon, and
+         *  refreshes the QS tile. Safe to call when the service isn't bound —
+         *  the icon-hide is a no-op (no icon to hide). */
+        fun disable(ctx: Context, reason: String) {
+            Prefs(ctx).showOverlayIcon = false
+            CaptureService.instance?.let { if (it.isLive) it.stopLive() }
+            instance?.hideFloatingIcon(reason)
+            PlayTranslateTileService.TileSync.refresh(ctx)
+        }
 
         /**
          * Static convenience for overlay owners that don't have a service

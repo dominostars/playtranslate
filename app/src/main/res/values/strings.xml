@@ -18,6 +18,10 @@
     <string name="accessibility_dialog_open">Open Accessibility Settings</string>
     <string name="status_accessibility_needed">Enable PlayTranslate in Accessibility Settings first</string>
 
+    <!-- Quick Settings tile -->
+    <string name="tile_label">PlayTranslate</string>
+    <string name="tile_subtitle_a11y_required">Enable accessibility</string>
+
     <!-- Status messages -->
     <string name="status_idle">Tap Translate to capture the game screen</string>
     <string name="status_hold_hint">Long-press Regions or Auto for quick-select menus</string>

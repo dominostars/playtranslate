@@ -36,6 +36,7 @@ import com.playtranslate.BuildConfig
 import com.playtranslate.CaptureService
 import com.playtranslate.OverlayMode
 import com.playtranslate.PlayTranslateAccessibilityService
+import com.playtranslate.PlayTranslateTileService
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.diagnostics.LogExporter
@@ -268,8 +269,13 @@ class SettingsRenderer(
                     .show()
                 return@setOnCheckedChangeListener
             }
-            prefs.showOverlayIcon = checked
-            PlayTranslateAccessibilityService.instance?.reconcileFloatingIcons()
+            if (checked) {
+                prefs.showOverlayIcon = true
+                PlayTranslateAccessibilityService.instance?.reconcileFloatingIcons()
+                PlayTranslateTileService.TileSync.refresh(ctx)
+            } else {
+                PlayTranslateAccessibilityService.disable(ctx, "settings_toggle_off")
+            }
             refreshOnScreenControlsTint(isSingle)
         }
         rowOverlayIcon.setOnClickListener { switchOverlayIcon.toggle() }
