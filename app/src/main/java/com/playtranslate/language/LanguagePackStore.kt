@@ -79,29 +79,12 @@ object LanguagePackStore {
         return false
     }
 
-    /** Matches the check in `DictionaryManager.isSchemaUpToDate`. Returns
-     *  false if the DB is missing any of the columns/tables the runtime
-     *  queries, so we don't commit to a DB we'll end up deleting.
-     *
-     *  MUST probe `headword` — not `kanji` — post-rename. Old DBs that
-     *  still have the `kanji` table fail here, which is exactly what we
-     *  want: [isInstalled] deletes them and routes the user to re-download.
-     */
-    internal fun isJmdictSchemaCurrent(dbFile: File): Boolean = try {
-        SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
-            db.rawQuery("SELECT freq_score FROM entry LIMIT 1", null).use { }
-            db.rawQuery("SELECT text FROM headword LIMIT 1", null).use { }
-            db.rawQuery("SELECT misc FROM sense LIMIT 1", null).use { }
-            db.rawQuery("SELECT literal FROM kanjidic LIMIT 1", null).use { }
-            // kanji_meaning was split out from kanjidic so non-English
-            // KANJIDIC2 glosses can be served natively. Packs without this
-            // table are pre-multilingual and must be re-downloaded.
-            db.rawQuery("SELECT literal, lang, meanings FROM kanji_meaning LIMIT 1", null).use { }
-        }
-        true
-    } catch (_: Exception) {
-        false
-    }
+    /** Returns false if the on-device DB is missing tables/columns the
+     *  current runtime queries. Delegates to [JmdictSchemaProbe] so this
+     *  and [com.playtranslate.dictionary.DictionaryManager.isSchemaUpToDate]
+     *  share one definition. */
+    internal fun isJmdictSchemaCurrent(dbFile: File): Boolean =
+        com.playtranslate.dictionary.JmdictSchemaProbe.isCurrent(dbFile)
 
     // ── Target gloss packs ──────────────────────────────────────────────
 
@@ -111,18 +94,31 @@ object LanguagePackStore {
     fun targetIndexFstFor(ctx: Context, targetLang: String): File =
         File(targetDirFor(ctx, targetLang), "index.fst")
 
+    /** Per-target on-disk manifest. The zip's manifest.json lands here as
+     *  part of the existing extract+swap flow — `staleInstalledPacks` reads
+     *  this file directly to compare on-disk packVersion against catalog. */
+    fun targetManifestFileFor(ctx: Context, targetLang: String): File =
+        File(targetDirFor(ctx, targetLang), "manifest.json")
+
     /** English target needs no pack — definitions are already in every source pack.
      *  All three FST payload files must be present; a partial directory left
      *  by an interrupted install or a manual file delete would otherwise look
      *  installed to the picker / installer while [FstTargetGlossDatabase.open]
      *  refuses to load it, soft-locking the user on English fallback with no
-     *  reinstall affordance. */
+     *  reinstall affordance.
+     *
+     *  Also requires `manifest.json` so [staleInstalledPacks] can compare its
+     *  on-disk packVersion to the catalog's. Older builds didn't ship a
+     *  target manifest; the target-pack build scripts have been writing one
+     *  since well before this change shipped, but the require lets us treat
+     *  manifest absence as "needs re-install" cleanly. */
     fun isTargetInstalled(ctx: Context, targetLang: String): Boolean {
         if (targetLang == "en") return true
         val dir = targetDirFor(ctx, targetLang)
         return File(dir, "index.fst").exists() &&
             File(dir, "data.bin").exists() &&
-            File(dir, "strings.bin").exists()
+            File(dir, "strings.bin").exists() &&
+            File(dir, "manifest.json").exists()
     }
 
     /**
@@ -430,6 +426,115 @@ object LanguagePackStore {
         }
     }
 
+    // ── Stale-pack scan (launch-time upgrade detection) ─────────────────
+
+    /**
+     * Returns the list of currently-installed packs whose on-disk
+     * manifest's packVersion is older than the catalog's. Run synchronously
+     * at app launch (it's just a few file reads). Caller decides whether
+     * to prompt the user for a re-download.
+     *
+     * **Filters out**:
+     * - Bundled packs (catalog manages those via APK assets, not download).
+     * - Engine packs (`type = "engine"`) — those are managed by
+     *   `LlamaTranslator`/`OnDeviceLlmBackend`, not LanguagePackStore.
+     * - Packs not currently installed (per spec, only previously-installed
+     *   packs prompt the upgrade alert; first-time install goes through
+     *   the onboarding flow instead).
+     *
+     * **Reads manifests directly via [LanguagePackManifestIO] rather than
+     * routing through [isInstalled] / [isTargetInstalled]**, because those
+     * auto-delete on schema mismatch and would race with this scan. The
+     * upgrade orchestrator owns the controlled-deletion path.
+     *
+     * Source corruption backstop: if a source pack's on-disk DB fails the
+     * shared schema probe ([com.playtranslate.dictionary.JmdictSchemaProbe]),
+     * it's marked stale even when packVersion would otherwise match —
+     * forcing a re-download for any structurally-broken pack.
+     *
+     * For source packs the returned `sourceLangId` is **always the packId
+     * variant** (e.g. always JA, never a sibling variant if any are
+     * introduced) so callers can pass it straight to `releaseForPack`,
+     * `dirFor`, etc., where collapsing to the canonical pack matters.
+     */
+    fun staleInstalledPacks(ctx: Context): List<StalePack> {
+        val app = ctx.applicationContext
+        val catalog = LanguagePackCatalogLoader.load(app)
+        val out = mutableListOf<StalePack>()
+
+        for ((key, entry) in catalog.packs) {
+            if (entry.bundled) continue
+
+            // Pack-type guard: accept null/"source"/"target", skip engine
+            // and any other unknown type. Required, not just defensive —
+            // engine packs (engine-translategemma, engine-qwen-1-5b) live
+            // outside LanguagePackStore and would crash SourceLangId.fromCode.
+            val type = entry.type
+            if (type != null && type != "source" && type != "target") continue
+
+            val isTarget = key.startsWith("target-") || type == "target"
+
+            val manifestFile: File
+            val sourceLangId: SourceLangId?
+            val targetLangCode: String?
+            if (isTarget) {
+                targetLangCode = key.removePrefix("target-")
+                manifestFile = targetManifestFileFor(app, targetLangCode)
+                sourceLangId = null
+            } else {
+                // Source: map catalog key to SourceLangId.packId so ZH and
+                // ZH_HANT (if it ever appears as a separate catalog key)
+                // collapse to the canonical pack.
+                val sid = SourceLangId.fromCode(key)?.packId ?: continue
+                manifestFile = manifestFileFor(app, sid)
+                sourceLangId = sid
+                targetLangCode = null
+            }
+
+            // Skip never-installed packs.
+            if (!manifestFile.exists()) continue
+
+            val manifest = LanguagePackManifestIO.read(manifestFile) ?: continue
+
+            val versionStale = manifest.packVersion < entry.packVersion
+            val schemaStale = sourceLangId == SourceLangId.JA &&
+                !com.playtranslate.dictionary.JmdictSchemaProbe.isCurrent(
+                    dictDbFor(app, sourceLangId)
+                )
+
+            if (versionStale || schemaStale) {
+                out += StalePack(
+                    catalogKey = key,
+                    displayName = entry.display,
+                    kind = if (isTarget) PackKind.TARGET else PackKind.SOURCE,
+                    targetLangCode = targetLangCode,
+                    sourceLangId = sourceLangId,
+                )
+            }
+        }
+
+        return out
+    }
+
     private const val TAG = "LanguagePackStore"
     private const val SUPPORTED_SCHEMA_VERSION = 1
 }
+
+/** Whether a [StalePack] refers to a source-language pack or a target gloss
+ *  pack. The two install/uninstall paths are different
+ *  ([LanguagePackStore.install] vs [LanguagePackStore.installTarget]). */
+enum class PackKind { SOURCE, TARGET }
+
+/** One pack identified by [LanguagePackStore.staleInstalledPacks] as needing
+ *  a re-download. Carries enough context for the upgrade orchestrator to
+ *  drive its install/uninstall calls without re-querying the catalog.
+ *
+ *  [sourceLangId] is always the **packId variant** (e.g. always JA) so
+ *  `releaseForPack` and `dirFor` see the canonical pack, not a sibling. */
+data class StalePack(
+    val catalogKey: String,
+    val displayName: String,
+    val kind: PackKind,
+    val targetLangCode: String? = null,
+    val sourceLangId: SourceLangId? = null,
+)

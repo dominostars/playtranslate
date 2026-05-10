@@ -97,6 +97,17 @@
     <string name="lang_state_extracting">Extracting…</string>
     <string name="lang_state_failed">Failed — retry</string>
     <string name="lang_size_mb">%1$d MB</string>
+
+    <!-- Pack-upgrade flow (launch-time staleness scan) -->
+    <string name="pack_upgrade_title">Language Packs Require Redownload</string>
+    <string name="pack_upgrade_button_download">Download</string>
+    <string name="pack_upgrade_button_later">Download Later</string>
+    <string name="pack_upgrade_progress_title">Updating language packs</string>
+    <string name="pack_upgrade_progress_format">Downloading %1$s…</string>
+    <string name="pack_upgrade_progress_format_with_bytes">Downloading %1$s… %2$s of %3$s</string>
+    <string name="pack_upgrade_priming_models">Loading translation models…</string>
+    <string name="pack_upgrade_label_source">Game Language (%1$s)</string>
+    <string name="pack_upgrade_label_target">Your Language (%1$s)</string>
     <string name="settings_display_hint">Select the display that shows the game. Usually Display 0 is the main/top screen.</string>
     <string name="settings_no_displays_found">No displays found</string>
     <string name="hint_deepl_key">Paste your DeepL API key here</string>

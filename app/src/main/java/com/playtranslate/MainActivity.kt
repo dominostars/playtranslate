@@ -55,9 +55,12 @@ import com.playtranslate.diagnostics.LogExporter
 import com.playtranslate.language.LanguagePackCatalogLoader
 import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.HintTextKind
+import com.playtranslate.language.PackKind
+import com.playtranslate.language.PackUpgradeOrchestrator
 import com.playtranslate.language.PreloadResult
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.language.StalePack
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.ui.ClickableTextView
@@ -322,24 +325,36 @@ class MainActivity :
 
         setupRegionButton()
         setupButtons()
-        setupOnboarding()
         setupEditOverlay()
         startAndBindService()
         (getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
             .registerDisplayListener(displayListener, null)
-        // Only preload when the source pack is actually present. Fresh-
-        // install and data-wiped users route through the welcome flow to
-        // download a pack first; preloading before that would just log a
-        // PackMissing and is pointless.
-        if (LanguagePackStore.isInstalled(applicationContext, prefs.sourceLangId)) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                preloadEngineAndRecover(prefs.sourceLangId)
-            }
-        }
 
-        // One-shot migration: if the user already has a non-English target but
-        // no target gloss pack installed, offer to download it.
-        checkTargetPackMigration()
+        // Pack-upgrade gate: scan installed packs against the bundled
+        // catalog. If any are stale (catalog packVersion > on-disk
+        // packVersion), prompt the user to redownload via OverlayAlert
+        // BEFORE running pack-dependent setup (setupOnboarding, the
+        // isInstalled+preload check, checkTargetPackMigration). Otherwise
+        // those callers race with the upgrade flow. See plan
+        // `~/.claude/plans/cheerful-yawning-donut.md` and the StalePack
+        // ordering analysis from the plan review.
+        maybePromptForPackUpgrade { skipTargetCodes ->
+            setupOnboarding()
+            // Only preload when the source pack is actually present.
+            // Fresh-install and data-wiped users route through the welcome
+            // flow to download a pack first; preloading before that would
+            // just log a PackMissing and is pointless.
+            if (LanguagePackStore.isInstalled(applicationContext, prefs.sourceLangId)) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    preloadEngineAndRecover(prefs.sourceLangId)
+                }
+            }
+            // One-shot migration: if the user already has a non-English target but
+            // no target gloss pack installed, offer to download it. Skips any
+            // target the upgrade flow already handled (or is about to handle)
+            // to avoid two prompts addressing the same pack.
+            checkTargetPackMigration(skipTargetCodes)
+        }
 
         // Fragment event handlers live on TranslationResultHost (which
         // this activity already implements) — no separate sink wiring
@@ -1329,6 +1344,52 @@ class MainActivity :
             .showInActivity(this)
     }
 
+    /**
+     * Synchronously scans installed packs against the bundled catalog. If
+     * any are stale, shows an OverlayAlert offering Download / Download
+     * Later and **defers [onProceed] until the alert resolves**. If
+     * nothing is stale, calls [onProceed] immediately.
+     *
+     * [onProceed] receives the set of target language codes that are
+     * being handled by the upgrade flow, so the caller's [checkTargetPackMigration]
+     * can skip those targets to avoid double-prompting the user.
+     */
+    private fun maybePromptForPackUpgrade(onProceed: (skipTargetCodes: Set<String>) -> Unit) {
+        val stale = LanguagePackStore.staleInstalledPacks(this)
+        val skipTargetCodes: Set<String> = stale
+            .filter { it.kind == PackKind.TARGET }
+            .mapNotNull { it.targetLangCode }
+            .toSet()
+
+        if (stale.isEmpty()) {
+            onProceed(skipTargetCodes)
+            return
+        }
+
+        val message = PackUpgradeOrchestrator.describeForAlert(this, stale)
+        OverlayAlert.Builder(this)
+            .setTitle(getString(R.string.pack_upgrade_title))
+            .setMessage(message)
+            .addButton(
+                getString(R.string.pack_upgrade_button_download),
+                themeColor(R.attr.ptAccent),
+            ) {
+                PackUpgradeOrchestrator(this, lifecycleScope).upgradeAll(stale) {
+                    onProceed(skipTargetCodes)
+                }
+            }
+            .addButton(
+                getString(R.string.pack_upgrade_button_later),
+                themeColor(R.attr.ptDivider),
+                themeColor(R.attr.ptText),
+            ) {
+                // Re-prompts on next launch — the staleness scan keeps
+                // returning these packs until the user actually downloads.
+                onProceed(skipTargetCodes)
+            }
+            .showInActivity(this)
+    }
+
     private fun maybeCheckForUpdates() {
         if (onboardingContainer.visibility == View.VISIBLE) return
         lifecycleScope.launch {
@@ -2037,9 +2098,13 @@ class MainActivity :
         ((row as? LinearLayout)?.getChildAt(0) as? RadioButton)?.isChecked = highlighted
     }
 
-    private fun checkTargetPackMigration() {
+    private fun checkTargetPackMigration(skipTargetCodes: Set<String> = emptySet()) {
         val target = prefs.targetLang
         if (target == "en") return
+        // The pack-upgrade flow at launch already prompted the user about
+        // these target codes (or just finished re-installing them) — don't
+        // double-prompt with the migration AlertDialog.
+        if (target in skipTargetCodes) return
         if (LanguagePackStore.isTargetInstalled(this, target)) return
         if (prefs.targetPackMigrationDismissed) return
         val catalogKey = "target-$target"

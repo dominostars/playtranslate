@@ -344,25 +344,11 @@ class DictionaryManager private constructor(private val context: Context) {
     }
 
     /** Returns false if the on-device DB is missing required tables/columns.
-     *
-     *  Must probe `headword` (not `kanji`) post-rename. Pre-rename DBs — both
-     *  the legacy bundled JMdict and any downloaded v1-era pack — don't have
-     *  that table, so this returns false and the caller drops the DB; the
-     *  stale-install cleanup in [LanguagePackStore.isInstalled] then deletes
-     *  the file and routes the user through a fresh download. */
-    private fun isSchemaUpToDate(dbFile: File): Boolean {
-        return try {
-            SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { tempDb ->
-                tempDb.rawQuery("SELECT freq_score FROM entry LIMIT 1", null).use { }
-                tempDb.rawQuery("SELECT text FROM headword LIMIT 1", null).use { }
-                tempDb.rawQuery("SELECT misc FROM sense LIMIT 1", null).use { }
-                tempDb.rawQuery("SELECT literal FROM kanjidic LIMIT 1", null).use { }
-            }
-            true
-        } catch (_: Exception) {
-            false
-        }
-    }
+     *  Delegates to [JmdictSchemaProbe] so this and
+     *  [com.playtranslate.language.LanguagePackStore.isJmdictSchemaCurrent]
+     *  share one definition. */
+    private fun isSchemaUpToDate(dbFile: File): Boolean =
+        JmdictSchemaProbe.isCurrent(dbFile)
 
     // ── Database queries ──────────────────────────────────────────────────
 
@@ -405,16 +391,21 @@ class DictionaryManager private constructor(private val context: Context) {
         return found
     }
 
-    /** Query entries matching both a kanji form and a reading (narrowed search). */
+    /** Query entries matching both a kanji form and a reading (narrowed
+     *  search). Ranks by the sum of per-headword and per-reading rank
+     *  scores, both precomputed at pack-build time from JMdict priority
+     *  tags + position. No uk-bonus here — the kanji form is explicit user
+     *  input that already disambiguates. */
     private fun queryEntryIdsWithReading(db: SQLiteDatabase, word: String, reading: String): List<Long> {
         val ids = mutableListOf<Long>()
         db.rawQuery(
-            """SELECT DISTINCT h.entry_id
+            """SELECT h.entry_id
                FROM headword h
-               JOIN entry e ON e.id = h.entry_id
                JOIN reading r ON r.entry_id = h.entry_id
                WHERE h.text = ? AND r.text = ?
-               ORDER BY e.freq_score DESC LIMIT 8""",
+               GROUP BY h.entry_id
+               ORDER BY MAX(h.rank_score + r.rank_score) DESC
+               LIMIT 8""",
             arrayOf(word, reading)
         ).use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
         return ids
@@ -423,14 +414,36 @@ class DictionaryManager private constructor(private val context: Context) {
     private fun queryEntryIds(db: SQLiteDatabase, word: String): List<Long> {
         val ids = mutableListOf<Long>()
 
+        // Kanji-form path: rank by per-headword score (priority + position
+        // penalty). Per-row score, deduped via GROUP BY in case the same
+        // entry has multiple matching headword rows.
         db.rawQuery(
-            "SELECT DISTINCT h.entry_id FROM headword h JOIN entry e ON e.id = h.entry_id WHERE h.text = ? ORDER BY e.freq_score DESC LIMIT 8",
+            """SELECT entry_id FROM headword
+               WHERE text = ?
+               GROUP BY entry_id
+               ORDER BY MAX(rank_score) DESC
+               LIMIT 8""",
             arrayOf(word)
         ).use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
 
         if (ids.isEmpty()) {
+            // Pure-kana fallback: rank by per-reading score plus a +1.5M
+            // uk-bonus when the matched reading is at position 0 AND the
+            // entry has a uk-tagged sense applicable to this reading
+            // (precomputed into reading.uk_applicable at build time, with
+            // <stagr> restrictions respected). Validated empirically to
+            // flip 此処 above 個々 for ここ without raising 鴇 above 時 for
+            // とき (鴇's とき is at position=1, gate filters it out).
             db.rawQuery(
-                "SELECT DISTINCT r.entry_id FROM reading r JOIN entry e ON e.id = r.entry_id WHERE r.text = ? ORDER BY e.freq_score DESC LIMIT 8",
+                """SELECT entry_id FROM reading
+                   WHERE text = ?
+                   GROUP BY entry_id
+                   ORDER BY MAX(
+                       rank_score
+                       + CASE WHEN position = 0 AND uk_applicable = 1
+                              THEN 1500000 ELSE 0 END
+                   ) DESC
+                   LIMIT 8""",
                 arrayOf(word)
             ).use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
         }

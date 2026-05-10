@@ -17,6 +17,8 @@ licensed under Creative Commons Attribution-ShareAlike 3.0.
 See https://www.edrdg.org/edrdg/licence.html
 """
 
+from __future__ import annotations
+
 import argparse
 import gzip
 import json
@@ -151,6 +153,106 @@ def compute_freq_score(priorities: set) -> int:
     return score
 
 
+# ── Per-headword rank score (for cross-entry kana ranking) ────────────────────
+#
+# Empirically validated against JMdict_e (2026-05-10): 11/12 spot-check passes,
+# 0 archaic-winner flags, recommended bonus magnitude 1.5M. See
+# project_kana_lookup_ranking.md and the corresponding plan file.
+
+PRIORITY_TAGS = {"ichi1", "news1", "gai1", "spec1", "spec2"}
+FREQ_TAGS = PRIORITY_TAGS | {f"nf{i:02d}" for i in range(1, 49)}
+
+# JMdict <re_inf> entity NAMES we treat as archaic (irregular / out-dated /
+# rarely-used kana). Comparing against entity names (short form) requires the
+# value->name reverse map produced by preprocess_xml; the entity VALUES that
+# the XML actually contains are descriptive sentences ("rarely used kana
+# form" etc.) which we don't want to spread across the codebase.
+ARCHAIC_RE_INF = {"ik", "ok", "rk"}
+
+# JMdict <misc> entity NAME for "usually written using kana alone".
+UK_ENTITY_NAME = "uk"
+
+
+def compute_reading_rank_score(
+    re_pri_tags: set, re_inf_tags: set, position: int
+) -> int:
+    """Per-reading rank score for cross-entry ranking on pure-kana queries.
+
+    Mirrors yomitan-import's headword.Score (`+1M IsPriority + 1M IsFrequent`)
+    plus a kana-archaic penalty derived from re_inf info tags. The validation
+    report dropped the kanji-archaic penalty (it backfires because rK marks
+    'usually-kana' words) — only re_inf archaic tags penalize here.
+    """
+    score = 0
+    if PRIORITY_TAGS & re_pri_tags:
+        score += 1_000_000
+    if len(FREQ_TAGS & re_pri_tags) > 1:
+        score += 1_000_000
+    score -= 5_000_000 * len(ARCHAIC_RE_INF & re_inf_tags)
+    score -= 10_000 * position
+    return score
+
+
+def compute_headword_rank_score(ke_pri_tags: set, position: int) -> int:
+    """Per-headword (kanji form) rank score for kanji-disambiguated queries.
+
+    No archaic penalty: ke_inf tags like rK/sK mark 'usually-kana' words and
+    penalizing them would suppress exactly the entries we want to elevate
+    via the pure-kana uk-bonus. Validation report Mode C confirmed this.
+    """
+    score = 0
+    if PRIORITY_TAGS & ke_pri_tags:
+        score += 1_000_000
+    if len(FREQ_TAGS & ke_pri_tags) > 1:
+        score += 1_000_000
+    score -= 10_000 * position
+    return score
+
+
+def compute_uk_readings_for_entry(entry, value_to_name: dict[str, str]) -> set:
+    """Return the set of reading texts (reb strings) in this <entry> that are
+    covered by some <sense> with `<misc>uk</misc>`, respecting `<stagr>`
+    restrictions (a uk sense may apply only to specific readings).
+
+    Used to set reading.uk_applicable per row at build time so the runtime
+    pure-kana ranking SQL can apply a +1.5M bonus on (position == 0 AND
+    uk_applicable == 1) without joining against sense at query time.
+    """
+    all_reading_texts = [
+        r_ele.findtext("reb")
+        for r_ele in entry.findall("r_ele")
+        if r_ele.findtext("reb")
+    ]
+    uk_readings: set = set()
+    for sense in entry.findall("sense"):
+        sense_has_uk = False
+        for m in sense.findall("misc"):
+            if m.text and value_to_name.get(m.text) == UK_ENTITY_NAME:
+                sense_has_uk = True
+                break
+        if not sense_has_uk:
+            continue
+        stagrs = [s.text for s in sense.findall("stagr") if s.text]
+        if not stagrs:
+            uk_readings.update(all_reading_texts)
+        else:
+            uk_readings.update(stagrs)
+    return uk_readings
+
+
+def extract_re_inf_names(r_ele, value_to_name: dict[str, str]) -> set:
+    """Extract the set of <re_inf> entity NAMES (short form: 'ik', 'ok',
+    'rk') for one <r_ele>. Converts expanded entity values back via
+    value_to_name. Empty set when no info tags."""
+    out: set = set()
+    for inf in r_ele.findall("re_inf"):
+        if inf.text:
+            name = value_to_name.get(inf.text)
+            if name:
+                out.add(name)
+    return out
+
+
 def download_jmdict() -> bytes:
     print(f"Downloading {JMDICT_URL} ...")
     # ftp.edrdg.org has a cert hostname mismatch; disable verification for this build script
@@ -165,10 +267,17 @@ def download_jmdict() -> bytes:
     return data
 
 
-def preprocess_xml(xml_bytes: bytes) -> bytes:
+def preprocess_xml(xml_bytes: bytes) -> tuple[bytes, dict[str, str]]:
     """
     ElementTree can't resolve DOCTYPE entities from inline DTDs.
     Extract them with regex, strip the DOCTYPE block, then substitute.
+
+    Returns (preprocessed_xml, value_to_name). The value->name map lets
+    callers convert expanded entity values (e.g. "word usually written
+    using kana alone") back to short entity names (e.g. "uk") for compact
+    storage and stable comparison. Most JMdict priority entities have
+    name == value so the map is identity for them; misc/info/dialect
+    entities have descriptive values, so the map is load-bearing there.
     """
     text = xml_bytes.decode("utf-8")
 
@@ -196,7 +305,12 @@ def preprocess_xml(xml_bytes: bytes) -> bytes:
         )
         text = text.replace(f"&{name};", safe)
 
-    return text.encode("utf-8")
+    # Reverse map for converting expanded values back to entity names. If two
+    # entities share the same value the last one wins; in JMdict practice
+    # values are unique within categories so this is fine.
+    value_to_name = {v: k for k, v in entities.items()}
+
+    return text.encode("utf-8"), value_to_name
 
 
 def create_schema(conn: sqlite3.Connection) -> None:
@@ -210,7 +324,17 @@ def create_schema(conn: sqlite3.Connection) -> None:
         CREATE TABLE headword (
             entry_id   INTEGER NOT NULL,
             position   INTEGER NOT NULL,
-            text       TEXT    NOT NULL
+            text       TEXT    NOT NULL,
+            -- JMdict <ke_pri> tags for THIS kanji form, comma-joined and
+            -- sorted (e.g. "ichi1,news1,nf07"). Empty when no priority.
+            ke_pri     TEXT    NOT NULL DEFAULT '',
+            -- Per-headword rank score for cross-entry ranking on
+            -- kanji-disambiguated queries. Computed at build time from
+            -- ke_pri + position via compute_headword_rank_score. Scale is
+            -- millions (positive priority signals + negative position
+            -- penalty). Distinct from entry.freq_score (0-5, used for
+            -- star display) — see project_kana_lookup_ranking.md.
+            rank_score INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE reading (
             entry_id   INTEGER NOT NULL,
@@ -227,9 +351,26 @@ def create_schema(conn: sqlite3.Connection) -> None:
             -- ここ reading is unmarked). See project_kana_lookup_ranking.md.
             re_pri     TEXT    NOT NULL DEFAULT '',
             -- 0-5 score derived from re_pri via the same compute_freq_score
-            -- function entry uses. Stored precomputed so the runtime can
-            -- ORDER BY r.freq_score DESC without parsing strings.
-            freq_score INTEGER NOT NULL DEFAULT 0
+            -- function entry uses. Currently unused at runtime — superseded
+            -- by rank_score (millions scale). Kept to avoid disrupting
+            -- callers; cleanup is a separate concern.
+            freq_score INTEGER NOT NULL DEFAULT 0,
+            -- JMdict <re_inf> info tags for this reading as entity NAMES
+            -- (short form: "ik", "ok", "rk"), comma-joined and sorted.
+            -- Empty when no info tags. The compact name form lets the
+            -- ranking SQL compare against {ik,ok,rk} cheaply.
+            re_inf     TEXT    NOT NULL DEFAULT '',
+            -- Per-reading rank score for pure-kana cross-entry ranking.
+            -- Computed at build time from re_pri + re_inf + position via
+            -- compute_reading_rank_score. Scale is millions; new in ja-v2.
+            rank_score INTEGER NOT NULL DEFAULT 0,
+            -- 1 if THIS reading is covered by some sense's <misc>uk</misc>
+            -- (respecting <stagr> restrictions that scope a uk sense to
+            -- specific readings). The pure-kana SQL adds a +1.5M bonus
+            -- when uk_applicable=1 AND position=0. Validated empirically
+            -- to flip 此処 above 個々 for ここ without raising 鴇 above
+            -- 時 for とき.
+            uk_applicable INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE sense (
             entry_id   INTEGER NOT NULL,
@@ -272,7 +413,11 @@ def shorten_pos(raw: str) -> str:
     return POS_ABBREV.get(raw, raw)
 
 
-def parse_and_insert(xml_bytes: bytes, conn: sqlite3.Connection) -> None:
+def parse_and_insert(
+    xml_bytes: bytes,
+    conn: sqlite3.Connection,
+    value_to_name: dict[str, str],
+) -> None:
     print("Parsing XML and inserting entries...")
     cur = conn.cursor()
     root = ET.fromstring(xml_bytes)
@@ -294,33 +439,61 @@ def parse_and_insert(xml_bytes: bytes, conn: sqlite3.Connection) -> None:
 
         cur.execute("INSERT OR IGNORE INTO entry VALUES (?,?,?)", (entry_id, is_common, freq_score))
 
+        # Pre-compute uk_applicable per reading. Scan senses for the &uk;
+        # misc tag and respect <stagr> restrictions that scope a uk sense
+        # to specific readings. Done before the reading inserts so each
+        # row gets the right flag.
+        uk_readings = compute_uk_readings_for_entry(entry, value_to_name)
+
         # Kanji forms (headword table — the name is schema-shared with
         # other source packs; for Japanese the values are genuine kanji.)
         for pos, k_ele in enumerate(entry.findall("k_ele")):
             keb = k_ele.findtext("keb")
-            if keb:
-                cur.execute(
-                    "INSERT INTO headword VALUES (?,?,?)", (entry_id, pos, keb)
-                )
+            if not keb:
+                continue
+            ke_pri_tags = {p.text for p in k_ele.findall("ke_pri") if p.text}
+            ke_pri_str = ",".join(sorted(ke_pri_tags))
+            rank_score = compute_headword_rank_score(ke_pri_tags, pos)
+            cur.execute(
+                "INSERT INTO headword VALUES (?,?,?,?,?)",
+                (entry_id, pos, keb, ke_pri_str, rank_score),
+            )
 
         # Reading forms
         for pos, r_ele in enumerate(entry.findall("r_ele")):
             reb = r_ele.findtext("reb")
+            if not reb:
+                continue
             no_kanji = 1 if r_ele.find("re_nokanji") is not None else 0
-            if reb:
-                # Per-reading priority — JMdict's <re_pri> tags scoped to
-                # this <r_ele>, NOT the entry-wide aggregate. Distinguishes
-                # entries where the queried reading is dominant (carries
-                # priority marks) from entries where it's a marginal
-                # historical reading. Empty string when the reading has no
-                # priority marks.
-                re_pri_tags = {p.text for p in r_ele.findall("re_pri") if p.text}
-                re_pri_str = ",".join(sorted(re_pri_tags))
-                re_pri_score = compute_freq_score(re_pri_tags)
-                cur.execute(
-                    "INSERT INTO reading VALUES (?,?,?,?,?,?)",
-                    (entry_id, pos, reb, no_kanji, re_pri_str, re_pri_score),
-                )
+            # Per-reading priority — JMdict's <re_pri> tags scoped to
+            # this <r_ele>, NOT the entry-wide aggregate. Distinguishes
+            # entries where the queried reading is dominant (carries
+            # priority marks) from entries where it's a marginal
+            # historical reading. Empty string when the reading has no
+            # priority marks.
+            re_pri_tags = {p.text for p in r_ele.findall("re_pri") if p.text}
+            re_pri_str = ",".join(sorted(re_pri_tags))
+            re_pri_freq_score = compute_freq_score(re_pri_tags)
+            # Per-reading info tags. Stored as compact entity names; see
+            # extract_re_inf_names for the value→name conversion rationale.
+            re_inf_tags = extract_re_inf_names(r_ele, value_to_name)
+            re_inf_str = ",".join(sorted(re_inf_tags))
+            rank_score = compute_reading_rank_score(re_pri_tags, re_inf_tags, pos)
+            uk_app = 1 if reb in uk_readings else 0
+            cur.execute(
+                "INSERT INTO reading VALUES (?,?,?,?,?,?,?,?,?)",
+                (
+                    entry_id,
+                    pos,
+                    reb,
+                    no_kanji,
+                    re_pri_str,
+                    re_pri_freq_score,
+                    re_inf_str,
+                    rank_score,
+                    uk_app,
+                ),
+            )
 
         # Senses — POS carries forward until explicitly changed (JMdict convention)
         current_pos: list[str] = []
@@ -833,7 +1006,7 @@ def build_sqlite(db_path: Path) -> None:
 
     xml_bytes = download_jmdict()
     print("Pre-processing XML entities...")
-    clean_xml = preprocess_xml(xml_bytes)
+    clean_xml, value_to_name = preprocess_xml(xml_bytes)
     del xml_bytes  # free memory
 
     print(f"Building {db_path} ...")
@@ -843,7 +1016,7 @@ def build_sqlite(db_path: Path) -> None:
     conn.execute("PRAGMA cache_size=65536")
 
     create_schema(conn)
-    parse_and_insert(clean_xml, conn)
+    parse_and_insert(clean_xml, conn, value_to_name)
 
     kanjidic_xml = download_kanjidic()
     parse_and_insert_kanjidic(kanjidic_xml, conn)
@@ -1016,7 +1189,7 @@ def main() -> int:
              "(prior behavior; the JA reader's missing-table guard handles "
              "it).",
     )
-    parser.add_argument("--pack-version", type=int, default=1)
+    parser.add_argument("--pack-version", type=int, default=2)
     args = parser.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -1081,7 +1254,7 @@ def main() -> int:
     print()
     print("Next steps:")
     print(f"  1. sha256sum {zip_path}")
-    print(f"  2. Upload {zip_path} to dominostars/playtranslate-langpacks tag ja-v1")
+    print(f"  2. Upload {zip_path} to dominostars/playtranslate-langpacks tag ja-v2")
     print(f"  3. Update assets/langpack_catalog.json with URL + sha256 + new size")
     return 0
 
