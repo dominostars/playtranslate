@@ -563,20 +563,24 @@ class SettingsBottomSheet : DialogFragment() {
     }
 
 
-    /** AlertDialog with three options when the user taps an enabled TG row.
-     *  Cancel reverts the optimistic switch flip via [SettingsRenderer.refreshTranslategemmaSwitch]. */
+    /** OverlayAlert with three options when the user taps an enabled TG row.
+     *  Scrim-tap and Cancel both revert the optimistic switch flip via
+     *  [SettingsRenderer.refreshTranslategemmaSwitch]. */
     private fun showTranslateGemmaDisableDialog() {
         val ctx = context ?: return
+        val activity = activity ?: return
+        val oc = com.playtranslate.OverlayColors
         val sizeStr = com.playtranslate.translation.translategemma
             .TranslateGemmaModel.humanSize(ctx)
-        androidx.appcompat.app.AlertDialog.Builder(ctx)
-            .setTitle(R.string.translategemma_disable_title)
+        OverlayAlert.Builder(ctx)
+            .setTitle(getString(R.string.translategemma_disable_title))
             .setMessage(getString(R.string.translategemma_disable_message, sizeStr))
-            .setPositiveButton(R.string.translategemma_disable_keep) { _, _ ->
+            .hideIcon()
+            .addButton(getString(R.string.translategemma_disable_keep), oc.accent(ctx)) {
                 // File kept; only the toggle flips. SP listener picks up the change.
                 Prefs(ctx).translateGemmaEnabled = false
             }
-            .setNeutralButton(R.string.translategemma_disable_delete) { _, _ ->
+            .addButton(getString(R.string.translategemma_disable_delete), oc.divider(ctx), oc.danger(ctx)) {
                 Prefs(ctx).translateGemmaEnabled = false
                 com.playtranslate.translation.translategemma
                     .TranslateGemmaModel.delete(ctx)
@@ -592,12 +596,9 @@ class SettingsBottomSheet : DialogFragment() {
                 }
                 renderer?.refreshAllBackendStatuses()
             }
-            .setNegativeButton(R.string.translategemma_disable_cancel) { _, _ ->
-                // Revert the optimistic switch flip.
-                renderer?.refreshTranslategemmaSwitch()
-            }
-            .setOnCancelListener { renderer?.refreshTranslategemmaSwitch() }
-            .show()
+            .addCancelButton { renderer?.refreshTranslategemmaSwitch() }
+            .setOnDismiss { renderer?.refreshTranslategemmaSwitch() }
+            .showInActivity(activity)
     }
 
     // ── Qwen flow ───────────────────────────────────────────────────────
@@ -742,18 +743,22 @@ class SettingsBottomSheet : DialogFragment() {
         dialog.show()
     }
 
-    /** AlertDialog with three options when the user taps an enabled Qwen row.
-     *  Cancel reverts the optimistic switch flip via [SettingsRenderer.refreshQwenSwitch]. */
+    /** OverlayAlert with three options when the user taps an enabled Qwen row.
+     *  Scrim-tap and Cancel both revert the optimistic switch flip via
+     *  [SettingsRenderer.refreshQwenSwitch]. */
     private fun showQwenDisableDialog() {
         val ctx = context ?: return
+        val activity = activity ?: return
+        val oc = com.playtranslate.OverlayColors
         val sizeStr = com.playtranslate.translation.qwen.QwenModel.humanSize(ctx)
-        androidx.appcompat.app.AlertDialog.Builder(ctx)
-            .setTitle(R.string.qwen_disable_title)
+        OverlayAlert.Builder(ctx)
+            .setTitle(getString(R.string.qwen_disable_title))
             .setMessage(getString(R.string.qwen_disable_message, sizeStr))
-            .setPositiveButton(R.string.qwen_disable_keep) { _, _ ->
+            .hideIcon()
+            .addButton(getString(R.string.qwen_disable_keep), oc.accent(ctx)) {
                 Prefs(ctx).qwenEnabled = false
             }
-            .setNeutralButton(R.string.qwen_disable_delete) { _, _ ->
+            .addButton(getString(R.string.qwen_disable_delete), oc.divider(ctx), oc.danger(ctx)) {
                 Prefs(ctx).qwenEnabled = false
                 com.playtranslate.translation.qwen.QwenModel.delete(ctx)
                 // See translategemma_disable_delete branch above for why we
@@ -764,11 +769,9 @@ class SettingsBottomSheet : DialogFragment() {
                 }
                 renderer?.refreshAllBackendStatuses()
             }
-            .setNegativeButton(R.string.qwen_disable_cancel) { _, _ ->
-                renderer?.refreshQwenSwitch()
-            }
-            .setOnCancelListener { renderer?.refreshQwenSwitch() }
-            .show()
+            .addCancelButton { renderer?.refreshQwenSwitch() }
+            .setOnDismiss { renderer?.refreshQwenSwitch() }
+            .showInActivity(activity)
     }
 
     // ── Companion ───────────────────────────────────────────────────────

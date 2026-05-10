@@ -31,6 +31,7 @@ class OverlayAlert private constructor(
     private val message: String?,
     private val buttons: List<ButtonConfig>,
     private val showIcon: Boolean,
+    private val onDismiss: (() -> Unit)?,
 ) {
 
     data class ButtonConfig(
@@ -45,6 +46,7 @@ class OverlayAlert private constructor(
         private var message: String? = null
         private val buttons = mutableListOf<ButtonConfig>()
         private var showIcon = true
+        private var onDismiss: (() -> Unit)? = null
 
         constructor(context: Context, wm: WindowManager, displayId: Int) : this(context) {
             this.wm = wm
@@ -64,6 +66,12 @@ class OverlayAlert private constructor(
          *  confirms). */
         fun hideIcon() = apply { this.showIcon = false }
 
+        /** Fires when the alert is dismissed via the scrim (tap outside the
+         *  dialog) — i.e. the user dismissed without picking a button.
+         *  Buttons run their own onClick instead and do NOT invoke this.
+         *  Use for reverting optimistic UI state flips when no choice was made. */
+        fun setOnDismiss(callback: () -> Unit) = apply { this.onDismiss = callback }
+
         fun addButton(label: String, color: Int, textColor: Int = com.playtranslate.OverlayColors.card(context), onClick: () -> Unit) = apply {
             buttons.add(ButtonConfig(label, color, textColor, onClick))
         }
@@ -79,7 +87,7 @@ class OverlayAlert private constructor(
 
         /** Shows via WindowManager as an accessibility overlay. */
         fun show(): OverlayAlert {
-            val alert = OverlayAlert(context, title, message, buttons, showIcon)
+            val alert = OverlayAlert(context, title, message, buttons, showIcon, onDismiss)
             alert.showAsAccessibilityOverlay(
                 wm ?: error("OverlayAlert.Builder.show() requires a WindowManager"),
                 displayId,
@@ -89,7 +97,7 @@ class OverlayAlert private constructor(
 
         /** Shows attached to the given Activity's decorView. */
         fun showInActivity(activity: Activity): OverlayAlert {
-            val alert = OverlayAlert(activity, title, message, buttons, showIcon)
+            val alert = OverlayAlert(activity, title, message, buttons, showIcon, onDismiss)
             alert.showInActivity(activity)
             return alert
         }
@@ -104,7 +112,10 @@ class OverlayAlert private constructor(
         // Full-screen scrim
         val scrimView = FrameLayout(context).apply {
             setBackgroundColor(Color.argb(160, 0, 0, 0))
-            setOnClickListener { dismiss() }
+            setOnClickListener {
+                onDismiss?.invoke()
+                dismiss()
+            }
         }
 
         // Dialog card
