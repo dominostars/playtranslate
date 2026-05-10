@@ -188,9 +188,38 @@ class PackUpgradeOrchestrator(
         }
 
         // Step 3: install with progress callback.
-        return LanguagePackStore.install(app, sid) { progress ->
+        val result = LanguagePackStore.install(app, sid) { progress ->
             reportProgress(dialog, packLabel, progress)
         }
+
+        // Step 4: post-install eviction (BOTH FORCE and ADDITIVE). The Step-1
+        // close handles the singleton at start-of-flight, but in ADDITIVE
+        // mode the OLD pack stays on disk during the long download — any
+        // background path (CaptureService live-mode, in-flight tokenization,
+        // drag-word handlers) can reopen DictionaryManager against the OLD
+        // inode AND the cached `JapaneseEngine` keeps `Deinflector._tokenizer`
+        // pointed at the OLD tokenizer/ bins. After safeSwap, both stay
+        // bound to the unlinked old inodes until process death.
+        //
+        // Two evictions needed:
+        //   1. DictionaryManager.close() — drops the SQLite handle so the
+        //      next ensureOpen reads the new dict.sqlite at the same path.
+        //   2. SourceLanguageEngines.releaseForPack(packId) — drops the
+        //      cached JapaneseEngine; next get() constructs a new one whose
+        //      init block calls Deinflector.initPackDir(newPackDir), which
+        //      clears _tokenizer so the next tokenize call loads the new
+        //      Kuromoji bins. JapaneseEngine.close() is a no-op (singleton),
+        //      so we have to evict via the engine cache, not the engine itself.
+        //
+        // Refcounting keeps any in-flight cursor valid; only NEW lookups
+        // pick up the new pack. Stale-data window shrinks from "until
+        // process kill" to "any in-flight lookup that started before this
+        // post-install eviction." Per Codex review findings 2026-05-10.
+        if (result is InstallResult.Success && sid == SourceLangId.JA) {
+            DictionaryManager.get(app).close()
+            SourceLanguageEngines.releaseForPack(sid.packId)
+        }
+        return result
     }
 
     private suspend fun upgradeTargetPack(
@@ -210,9 +239,21 @@ class PackUpgradeOrchestrator(
             LanguagePackStore.uninstallTarget(app, lang)
         }
 
-        return LanguagePackStore.installTarget(app, lang) { progress ->
+        val result = LanguagePackStore.installTarget(app, lang) { progress ->
             reportProgress(dialog, packLabel, progress)
         }
+
+        // Same post-install eviction as the source path, for the same
+        // reason: a background lookup during the long download could call
+        // TargetGlossDatabaseProvider.get(lang) and cache an
+        // FstTargetGlossDatabase pointed at the OLD FST blob. After
+        // safeSwap promotes the new files, the cached handle stays bound
+        // to the unlinked old inode until process death. Release after
+        // success forces the next get() to reopen against the new files.
+        if (result is InstallResult.Success) {
+            TargetGlossDatabaseProvider.release(lang)
+        }
+        return result
     }
 
     private fun reportProgress(
