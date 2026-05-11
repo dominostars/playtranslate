@@ -365,9 +365,34 @@ class SettingsBottomSheet : DialogFragment() {
 
     // ── Re-inflate (used for theme changes in dialog mode) ──────────────
 
+    /**
+     * Swaps the bottom-sheet's entire content view for a freshly-inflated
+     * [R.layout.dialog_settings]. Used for theme changes (MainActivity)
+     * and display hot-plug (this class's display listener).
+     *
+     * Skipped when:
+     *  - A child DialogFragment is currently shown (deck picker, card-type
+     *    picker, field-mapping dialog). The dialog window's
+     *    FragmentContainerView refuses raw View children, so swapping
+     *    the CoordinatorLayout root crashes. The fresh layout is seen
+     *    next time Settings opens; the in-flight picker is already
+     *    using up-to-date prefs.
+     *  - We don't have a stable parent (currentView detached) or the
+     *    fragment isn't attached anymore.
+     */
     fun reinflateContent() {
+        if (!isAdded) return
         val old = currentView ?: return
         val parent = old.parent as? ViewGroup ?: return
+        // FragmentContainerView guards against non-Fragment children;
+        // any child dialog fragment currently in childFragmentManager
+        // would make the swap crash on parent.addView. Defer.
+        val hasChildDialogs = childFragmentManager.fragments.any { it.isAdded }
+        if (hasChildDialogs) {
+            android.util.Log.d(TAG,
+                "reinflateContent skipped — child dialog fragments active")
+            return
+        }
         val index = parent.indexOfChild(old)
         parent.removeView(old)
         val newView = LayoutInflater.from(requireActivity())
