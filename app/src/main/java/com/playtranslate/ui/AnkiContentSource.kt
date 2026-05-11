@@ -24,6 +24,7 @@ enum class ContentSource(@StringRes val labelRes: Int) {
     SENTENCE             (R.string.anki_content_sentence),
     SENTENCE_TRANSLATION (R.string.anki_content_sentence_translation),
     DEFINITION           (R.string.anki_content_definition),
+    EXAMPLE_SENTENCES    (R.string.anki_content_examples),
     PICTURE              (R.string.anki_content_picture),
     FREQUENCY            (R.string.anki_content_frequency),
     PART_OF_SPEECH       (R.string.anki_content_part_of_speech),
@@ -44,6 +45,7 @@ data class CardOutputs(
     val sentenceTranslation: String,
     val picture: String,
     val definition: String,
+    val examples: String,
     val frequency: String,
     val partOfSpeech: String,
     val wordsTable: String,
@@ -56,6 +58,7 @@ fun CardOutputs.valueFor(source: ContentSource): String = when (source) {
     ContentSource.SENTENCE             -> sentence
     ContentSource.SENTENCE_TRANSLATION -> sentenceTranslation
     ContentSource.DEFINITION           -> definition
+    ContentSource.EXAMPLE_SENTENCES    -> examples
     ContentSource.PICTURE              -> picture
     ContentSource.FREQUENCY            -> frequency
     ContentSource.PART_OF_SPEECH       -> partOfSpeech

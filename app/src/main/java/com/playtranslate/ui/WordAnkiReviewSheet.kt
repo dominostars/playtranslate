@@ -1174,6 +1174,7 @@ class WordAnkiReviewSheet : DialogFragment() {
                     definitionHtml = buildWordDefinitionHtml(inlineStyler),
                     freqScore = freqScore,
                     imageFilename = imageFilename,
+                    examplesHtml = buildExamplesHtml(inlineStyler),
                 )
             },
         )
@@ -1253,6 +1254,32 @@ class WordAnkiReviewSheet : DialogFragment() {
             append("<div style=\"font-size:1.1em;margin:12px 4px;\">$defHtml</div>")
         }
         append("</div>")
+    }
+
+    /**
+     * Builds the Tatoeba example-sentences HTML for the structured-path
+     * send (EXAMPLE_SENTENCES ContentSource). Omits the "More examples"
+     * section header that [appendMoreExamplesHtml] emits — the
+     * receiving field's template (e.g. Migaku's "Example Sentences")
+     * already carries its own label. Honors [removedTatoebaIdx] so
+     * user curation on the sheet is reflected in the card.
+     */
+    internal fun buildExamplesHtml(styler: HtmlStyler): String {
+        val pairs = tatoebaPairs ?: return ""
+        val visible = pairs.withIndex().filter { (idx, _) -> idx !in removedTatoebaIdx }
+        if (visible.isEmpty()) return ""
+        val sb = StringBuilder()
+        visible.forEach { (_, p) ->
+            sb.append("<div ${styler("gl-ex", "")}>")
+            sb.append(htmlEscape(p.source))
+            if (p.target.isNotBlank()) {
+                sb.append("<div ${styler("gl-ex-tr", "")}>")
+                sb.append(htmlEscape(p.target))
+                sb.append("</div>")
+            }
+            sb.append("</div>")
+        }
+        return sb.toString()
     }
 
     /**
@@ -1446,7 +1473,11 @@ class WordAnkiReviewSheet : DialogFragment() {
                 )
             },
             structured = { imageFilename ->
-                AnkiCardOutputBuilder.forSentence(data, imageFilename)
+                AnkiCardOutputBuilder.forSentence(
+                    cardData = data,
+                    imageFilename = imageFilename,
+                    examplesHtml = buildExamplesHtml(inlineStyler),
+                )
             },
         )
         when (result) {

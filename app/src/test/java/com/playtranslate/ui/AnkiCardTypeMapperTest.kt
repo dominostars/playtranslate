@@ -153,13 +153,13 @@ class AnkiCardTypeMapperTest {
         assertEquals(ContentSource.EXPRESSION,           mapping["Target Word"])
         assertEquals(ContentSource.DEFINITION,           mapping["Definitions"])
         assertEquals(ContentSource.PICTURE,              mapping["Screenshot"])
-        // Audio fields, secondary media, examples, AND THE STATE FLAGS
-        // must stay null. Filling Is Vocabulary Card / Is Audio Card
-        // with anything would flip Migaku's card rendering.
+        assertEquals(ContentSource.EXAMPLE_SENTENCES,    mapping["Example Sentences"])
+        // Audio fields, secondary media, AND THE STATE FLAGS stay null.
+        // Filling Is Vocabulary Card / Is Audio Card with anything
+        // would flip Migaku's card rendering.
         assertEquals(null, mapping["Sentence Audio"])
         assertEquals(null, mapping["Word Audio"])
         assertEquals(null, mapping["Images"])
-        assertEquals(null, mapping["Example Sentences"])
         assertEquals(null, mapping["Is Vocabulary Card"])
         assertEquals(null, mapping["Is Audio Card"])
     }
@@ -251,6 +251,7 @@ class AnkiCardTypeMapperTest {
         sentenceTranslation = "trans",
         picture = "pic.jpg",
         definition = "<div>def</div>",
+        examples = "<div>ex</div>",
         frequency = "★★★",
         partOfSpeech = "noun",
         wordsTable = "<table>words</table>",
@@ -286,6 +287,13 @@ class AnkiCardTypeMapperTest {
         )
         val out = AnkiCardTypeMapper.assembleNote(fields, mapping, sampleOutputs())
         assertEquals(listOf("expr", ""), out)
+    }
+
+    @Test fun `assembleNote routes EXAMPLE_SENTENCES through outputs examples`() {
+        val fields = listOf("Example Sentences")
+        val mapping = mapOf("Example Sentences" to ContentSource.EXAMPLE_SENTENCES)
+        val out = AnkiCardTypeMapper.assembleNote(fields, mapping, sampleOutputs())
+        assertEquals(listOf("<div>ex</div>"), out)
     }
 
     @Test fun `assembleNote with empty field list returns empty list`() {

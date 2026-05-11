@@ -63,11 +63,16 @@ object AnkiCardTypeMapper {
      * which is the canonical PT-side equivalent.
      */
     private val MIGAKU_DEFAULTS: Map<String, ContentSource> = mapOf(
-        "Sentence"    to ContentSource.SENTENCE,
-        "Translation" to ContentSource.SENTENCE_TRANSLATION,
-        "Target Word" to ContentSource.EXPRESSION,
-        "Definitions" to ContentSource.DEFINITION,
-        "Screenshot"  to ContentSource.PICTURE,
+        "Sentence"          to ContentSource.SENTENCE,
+        "Translation"       to ContentSource.SENTENCE_TRANSLATION,
+        "Target Word"       to ContentSource.EXPRESSION,
+        "Definitions"       to ContentSource.DEFINITION,
+        "Screenshot"        to ContentSource.PICTURE,
+        // Migaku is the only template among the four we recognize with
+        // a dedicated example-sentences slot. Filled from Tatoeba pairs
+        // when the send routes through WordAnkiReviewSheet (which
+        // carries the word-lookup context); empty otherwise.
+        "Example Sentences" to ContentSource.EXAMPLE_SENTENCES,
     )
 
     private val BASIC_WORD_DEFAULTS: Map<String, ContentSource> = mapOf(

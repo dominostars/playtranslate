@@ -36,10 +36,18 @@ object AnkiCardOutputBuilder {
         if (imageFilename.isNullOrEmpty()) ""
         else "<img src=\"$imageFilename\" style=\"max-width:100%;\">"
 
-    /** Builds outputs from a sentence sheet's current state. */
+    /**
+     * Builds outputs from a sentence sheet's current state. The caller
+     * may supply pre-rendered [examplesHtml] (Tatoeba pairs for the
+     * highlighted word) — usually available only when the send is
+     * routed through [WordAnkiReviewSheet], which carries the
+     * surrounding word-lookup context. Sentence-only flows
+     * ([AnkiReviewBottomSheet]) pass empty.
+     */
     fun forSentence(
         cardData: SentenceAnkiContentFragment.CardData,
         imageFilename: String?,
+        examplesHtml: String = "",
     ): CardOutputs {
         val firstHighlighted = cardData.words.firstOrNull {
             it.word in cardData.selectedWords
@@ -78,6 +86,7 @@ object AnkiCardOutputBuilder {
             sentenceTranslation = translationHtml,
             picture = pictureHtml(imageFilename),
             definition = definition,
+            examples = examplesHtml,
             frequency = frequency,
             partOfSpeech = "",
             wordsTable = wordsHtml,
@@ -88,7 +97,8 @@ object AnkiCardOutputBuilder {
      * Builds outputs from a word-sheet send. [definitionHtml] is the
      * caller's pre-rendered Definition HTML (built via
      * `WordAnkiReviewSheet.buildWordDefinitionHtml(inlineStyler)`)
-     * because it depends on the sheet's curation state.
+     * because it depends on the sheet's curation state. Same for
+     * [examplesHtml] (Tatoeba pairs, honoring `removedTatoebaIdx`).
      */
     fun forWord(
         word: String,
@@ -97,6 +107,7 @@ object AnkiCardOutputBuilder {
         definitionHtml: String,
         freqScore: Int,
         imageFilename: String?,
+        examplesHtml: String = "",
     ): CardOutputs = CardOutputs(
         expression = word,
         reading = reading,
@@ -104,6 +115,7 @@ object AnkiCardOutputBuilder {
         sentenceTranslation = "",
         picture = pictureHtml(imageFilename),
         definition = definitionHtml,
+        examples = examplesHtml,
         frequency = SentenceAnkiHtmlBuilder.starsString(freqScore),
         partOfSpeech = pos,
         wordsTable = "",
