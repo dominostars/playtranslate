@@ -24,14 +24,23 @@ object AnkiCardTypeMapper {
      * that format; ditto audio fields. `Glossary` is an alternative
      * primary definition slot — user can swap to DEFINITION via the
      * mapping dialog if they prefer it over `MainDefinition`.
+     *
+     * Flag wiring: `IsWordAndSentenceCard` fires for PT word sends
+     * (the closest Lapis variant — word on front, sentence below as
+     * hint, matching PT's word-flow data shape). `IsSentenceCard`
+     * fires for PT sentence sends. Lapis recommends "only one
+     * selector at a time", which the mode-aware sources guarantee:
+     * exactly one of the two flag fields is non-empty per send.
      */
     private val LAPIS_DEFAULTS: Map<String, ContentSource> = mapOf(
-        "Expression"        to ContentSource.EXPRESSION,
-        "ExpressionReading" to ContentSource.READING,
-        "MainDefinition"    to ContentSource.DEFINITION,
-        "Sentence"          to ContentSource.SENTENCE,
-        "Picture"           to ContentSource.PICTURE,
-        "Frequency"         to ContentSource.FREQUENCY,
+        "Expression"            to ContentSource.EXPRESSION,
+        "ExpressionReading"     to ContentSource.READING,
+        "MainDefinition"        to ContentSource.DEFINITION,
+        "Sentence"              to ContentSource.SENTENCE,
+        "Picture"               to ContentSource.PICTURE,
+        "Frequency"             to ContentSource.FREQUENCY,
+        "IsWordAndSentenceCard" to ContentSource.VOCABULARY_CARD_FLAG,
+        "IsSentenceCard"        to ContentSource.SENTENCE_CARD_FLAG,
     )
 
     /**
@@ -43,11 +52,18 @@ object AnkiCardTypeMapper {
      * format we don't produce per-token; audio fields are unmapped.
      */
     private val JPMN_DEFAULTS: Map<String, ContentSource> = mapOf(
-        "Word"              to ContentSource.EXPRESSION,
-        "WordReading"       to ContentSource.READING,
-        "PrimaryDefinition" to ContentSource.DEFINITION,
-        "Sentence"          to ContentSource.SENTENCE,
-        "Picture"           to ContentSource.PICTURE,
+        "Word"                    to ContentSource.EXPRESSION,
+        "WordReading"             to ContentSource.READING,
+        "PrimaryDefinition"       to ContentSource.DEFINITION,
+        "Sentence"                to ContentSource.SENTENCE,
+        "Picture"                 to ContentSource.PICTURE,
+        // JPMN's vocab variant is the no-flag default; we only fire the
+        // sentence + targeted-sentence flags. IsTargetedSentenceCard
+        // combines with IsSentenceCard per JPMN's compound-flag rules:
+        // sentence sends with bolded words → "Targeted Sentence Card"
+        // (sentence on front, bolded word is the test target).
+        "IsSentenceCard"          to ContentSource.SENTENCE_CARD_FLAG,
+        "IsTargetedSentenceCard"  to ContentSource.TARGETED_SENTENCE_CARD_FLAG,
     )
 
     /**
@@ -63,16 +79,21 @@ object AnkiCardTypeMapper {
      * which is the canonical PT-side equivalent.
      */
     private val MIGAKU_DEFAULTS: Map<String, ContentSource> = mapOf(
-        "Sentence"          to ContentSource.SENTENCE,
-        "Translation"       to ContentSource.SENTENCE_TRANSLATION,
-        "Target Word"       to ContentSource.EXPRESSION,
-        "Definitions"       to ContentSource.DEFINITION,
-        "Screenshot"        to ContentSource.PICTURE,
+        "Sentence"           to ContentSource.SENTENCE,
+        "Translation"        to ContentSource.SENTENCE_TRANSLATION,
+        "Target Word"        to ContentSource.EXPRESSION,
+        "Definitions"        to ContentSource.DEFINITION,
+        "Screenshot"         to ContentSource.PICTURE,
         // Migaku is the only template among the four we recognize with
         // a dedicated example-sentences slot. Filled from Tatoeba pairs
         // when the send routes through WordAnkiReviewSheet (which
         // carries the word-lookup context); empty otherwise.
-        "Example Sentences" to ContentSource.EXAMPLE_SENTENCES,
+        "Example Sentences"  to ContentSource.EXAMPLE_SENTENCES,
+        // Is Vocabulary Card fires "x" for word sends only (matches
+        // Migaku's own addon: "x" toggles vocab variant; empty leaves
+        // the default sentence-card layout). Is Audio Card stays
+        // unmapped because PT doesn't produce audio.
+        "Is Vocabulary Card" to ContentSource.VOCABULARY_CARD_FLAG,
     )
 
     private val BASIC_WORD_DEFAULTS: Map<String, ContentSource> = mapOf(

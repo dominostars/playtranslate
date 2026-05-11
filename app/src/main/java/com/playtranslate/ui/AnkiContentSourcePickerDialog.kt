@@ -19,9 +19,14 @@ import com.playtranslate.themeColor
  * Full-screen picker for a single field's [ContentSource]. Opened from
  * [AnkiFieldMappingDialog] when the user taps a row to change what
  * content fills that field. Same grouped-card surface as
- * [AnkiCardTypePickerDialog] — single section containing every
- * ContentSource as a row, with the currently-mapped source highlighted
- * (accent background + bold title + trailing checkmark).
+ * [AnkiCardTypePickerDialog], split into two sections by
+ * [ContentSource.Kind]:
+ *  - CONTENT (NONE + the substantive content sources)
+ *  - CARD TYPE FLAG (mode-aware "x"/"" markers for Mustache section
+ *    gates like Migaku's `Is Vocabulary Card` or Lapis's
+ *    `IsSentenceCard`)
+ * The currently-mapped source is highlighted (accent background +
+ * bold title + trailing checkmark).
  *
  * Tapping any row dismisses the picker and invokes [onPicked] with the
  * selected source. Tapping back without picking is a no-op (the
@@ -68,13 +73,25 @@ class AnkiContentSourcePickerDialog : DialogFragment() {
         toolbar.setNavigationOnClickListener { dismiss() }
 
         val container = view.findViewById<LinearLayout>(R.id.contentSourceListContainer)
-        renderSection(container)
+        val content = ContentSource.values().filter { it.kind == ContentSource.Kind.CONTENT }
+        val flags = ContentSource.values().filter { it.kind == ContentSource.Kind.FLAG }
+        renderSection(container, R.string.anki_content_section_content, content)
+        renderSection(container, R.string.anki_content_section_flag, flags)
     }
 
-    private fun renderSection(parent: LinearLayout) {
+    private fun renderSection(
+        parent: LinearLayout,
+        @androidx.annotation.StringRes titleRes: Int,
+        options: List<ContentSource>,
+    ) {
+        if (options.isEmpty()) return
         val ctx = requireContext()
         val inflater = LayoutInflater.from(ctx)
-        val options = ContentSource.values().toList()
+
+        val header = inflater.inflate(R.layout.settings_group_header, parent, false)
+        header.findViewById<TextView>(R.id.tvGroupTitle).text =
+            ctx.getString(titleRes).uppercase()
+        parent.addView(header)
 
         val card = inflater.inflate(R.layout.language_list_section, parent, false) as MaterialCardView
         val rowContainer = card.findViewById<LinearLayout>(R.id.sectionRows)

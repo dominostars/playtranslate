@@ -214,6 +214,19 @@
     <string name="anki_content_part_of_speech">Part of speech</string>
     <string name="anki_content_words_table">Words list (sentence cards)</string>
 
+    <!-- Card-type state flags. The "(x)" suffix discloses the literal
+         value the flag emits when it fires — visible reminder that
+         these go into Mustache section-gate fields, not regular
+         content fields. -->
+    <string name="anki_content_flag_vocabulary">Vocabulary card marker (x)</string>
+    <string name="anki_content_flag_sentence">Sentence card marker (x)</string>
+    <string name="anki_content_flag_targeted_sentence">Targeted sentence card marker (x)</string>
+    <string name="anki_content_flag_always_on">Always-on marker (x)</string>
+
+    <!-- Section headers for the source picker. -->
+    <string name="anki_content_section_content">Content</string>
+    <string name="anki_content_section_flag">Card type flag</string>
+
     <string name="cd_back">Back</string>
 
     <!-- Appearance — theme mode + accent picker -->

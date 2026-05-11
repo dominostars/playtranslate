@@ -17,7 +17,10 @@ import com.playtranslate.R
  * [com.playtranslate.Prefs.getAnkiFieldMapping]), so renaming a
  * constant is a breaking change for already-saved user mappings.
  */
-enum class ContentSource(@StringRes val labelRes: Int) {
+enum class ContentSource(
+    @StringRes val labelRes: Int,
+    val kind: Kind = Kind.CONTENT,
+) {
     NONE                 (R.string.anki_content_none),
     EXPRESSION           (R.string.anki_content_expression),
     READING              (R.string.anki_content_reading),
@@ -29,6 +32,19 @@ enum class ContentSource(@StringRes val labelRes: Int) {
     FREQUENCY            (R.string.anki_content_frequency),
     PART_OF_SPEECH       (R.string.anki_content_part_of_speech),
     WORDS_TABLE          (R.string.anki_content_words_table),
+
+    // Card-type state flags. Each emits literal "x" when its mode
+    // condition fires (computed inside AnkiCardOutputBuilder), empty
+    // string otherwise. Lets users opt their template's "Is*Card"
+    // fields into PT's mode signal without writing template logic.
+    VOCABULARY_CARD_FLAG        (R.string.anki_content_flag_vocabulary,        Kind.FLAG),
+    SENTENCE_CARD_FLAG          (R.string.anki_content_flag_sentence,          Kind.FLAG),
+    TARGETED_SENTENCE_CARD_FLAG (R.string.anki_content_flag_targeted_sentence, Kind.FLAG),
+    ALWAYS_ON_MARKER            (R.string.anki_content_flag_always_on,         Kind.FLAG);
+
+    /** Two visual groups for the source picker: substantive content
+     *  vs. card-type state flags whose value is "x" / empty. */
+    enum class Kind { CONTENT, FLAG }
 }
 
 /**
@@ -49,20 +65,28 @@ data class CardOutputs(
     val frequency: String,
     val partOfSpeech: String,
     val wordsTable: String,
+    val vocabularyCardFlag: String,
+    val sentenceCardFlag: String,
+    val targetedSentenceCardFlag: String,
+    val alwaysOnMarker: String,
 )
 
 fun CardOutputs.valueFor(source: ContentSource): String = when (source) {
-    ContentSource.NONE                 -> ""
-    ContentSource.EXPRESSION           -> expression
-    ContentSource.READING              -> reading
-    ContentSource.SENTENCE             -> sentence
-    ContentSource.SENTENCE_TRANSLATION -> sentenceTranslation
-    ContentSource.DEFINITION           -> definition
-    ContentSource.EXAMPLE_SENTENCES    -> examples
-    ContentSource.PICTURE              -> picture
-    ContentSource.FREQUENCY            -> frequency
-    ContentSource.PART_OF_SPEECH       -> partOfSpeech
-    ContentSource.WORDS_TABLE          -> wordsTable
+    ContentSource.NONE                        -> ""
+    ContentSource.EXPRESSION                  -> expression
+    ContentSource.READING                     -> reading
+    ContentSource.SENTENCE                    -> sentence
+    ContentSource.SENTENCE_TRANSLATION        -> sentenceTranslation
+    ContentSource.DEFINITION                  -> definition
+    ContentSource.EXAMPLE_SENTENCES           -> examples
+    ContentSource.PICTURE                     -> picture
+    ContentSource.FREQUENCY                   -> frequency
+    ContentSource.PART_OF_SPEECH              -> partOfSpeech
+    ContentSource.WORDS_TABLE                 -> wordsTable
+    ContentSource.VOCABULARY_CARD_FLAG        -> vocabularyCardFlag
+    ContentSource.SENTENCE_CARD_FLAG          -> sentenceCardFlag
+    ContentSource.TARGETED_SENTENCE_CARD_FLAG -> targetedSentenceCardFlag
+    ContentSource.ALWAYS_ON_MARKER            -> alwaysOnMarker
 }
 
 /**

@@ -65,22 +65,30 @@ class AnkiCardTypeMapperTest {
     @Test fun `Lapis canonical name picks Lapis defaults`() {
         val m = model("Lapis", LAPIS_FIELDS)
         val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
-        assertEquals(ContentSource.EXPRESSION, mapping["Expression"])
-        assertEquals(ContentSource.READING,    mapping["ExpressionReading"])
-        assertEquals(ContentSource.DEFINITION, mapping["MainDefinition"])
-        assertEquals(ContentSource.SENTENCE,   mapping["Sentence"])
-        assertEquals(ContentSource.PICTURE,    mapping["Picture"])
-        assertEquals(ContentSource.FREQUENCY,  mapping["Frequency"])
-        // Bracketed-furigana, audio, secondary slots, state flags, pitch
-        // — none of which we produce or want to auto-populate — stay
-        // null (treated as ContentSource.NONE by the dialog).
+        assertEquals(ContentSource.EXPRESSION,             mapping["Expression"])
+        assertEquals(ContentSource.READING,                mapping["ExpressionReading"])
+        assertEquals(ContentSource.DEFINITION,             mapping["MainDefinition"])
+        assertEquals(ContentSource.SENTENCE,               mapping["Sentence"])
+        assertEquals(ContentSource.PICTURE,                mapping["Picture"])
+        assertEquals(ContentSource.FREQUENCY,              mapping["Frequency"])
+        // New flag wiring: word-mode and sentence-mode variants get
+        // their own Lapis variant flags. Lapis allows only one selector
+        // at a time, which the mode-aware flag values enforce
+        // (exactly one of vocabularyCardFlag / sentenceCardFlag is
+        // non-empty per send).
+        assertEquals(ContentSource.VOCABULARY_CARD_FLAG,   mapping["IsWordAndSentenceCard"])
+        assertEquals(ContentSource.SENTENCE_CARD_FLAG,     mapping["IsSentenceCard"])
+        // Bracketed-furigana, audio, alternative-definition slots, the
+        // OTHER state flags (IsClickCard / IsAudioCard), pitch — none
+        // of which we produce or want to auto-populate — stay null
+        // (treated as ContentSource.NONE by the dialog).
         assertEquals(null, mapping["ExpressionFurigana"])
         assertEquals(null, mapping["SentenceFurigana"])
         assertEquals(null, mapping["ExpressionAudio"])
         assertEquals(null, mapping["SentenceAudio"])
         assertEquals(null, mapping["Glossary"])
+        assertEquals(null, mapping["IsClickCard"])
         assertEquals(null, mapping["IsAudioCard"])
-        assertEquals(null, mapping["IsSentenceCard"])
         assertEquals(null, mapping["FreqSort"])
         assertEquals(null, mapping["PitchPosition"])
         assertEquals(null, mapping["MiscInfo"])
@@ -107,21 +115,27 @@ class AnkiCardTypeMapperTest {
     @Test fun `JPMN canonical name picks JPMN defaults`() {
         val m = model("Japanese Mining Note", JPMN_FIELDS)
         val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
-        assertEquals(ContentSource.EXPRESSION, mapping["Word"])
-        assertEquals(ContentSource.READING,    mapping["WordReading"])
-        assertEquals(ContentSource.DEFINITION, mapping["PrimaryDefinition"])
-        assertEquals(ContentSource.SENTENCE,   mapping["Sentence"])
-        assertEquals(ContentSource.PICTURE,    mapping["Picture"])
-        // Per-token sentence kana, audio, secondary slots, state flags,
-        // pre-stylized frequency / pitch HTML — all stay null because
-        // we don't produce content in those formats.
+        assertEquals(ContentSource.EXPRESSION,                  mapping["Word"])
+        assertEquals(ContentSource.READING,                     mapping["WordReading"])
+        assertEquals(ContentSource.DEFINITION,                  mapping["PrimaryDefinition"])
+        assertEquals(ContentSource.SENTENCE,                    mapping["Sentence"])
+        assertEquals(ContentSource.PICTURE,                     mapping["Picture"])
+        // JPMN's vocab-default has no flag; we only fire sentence-mode
+        // flags. Targeted-sentence flag carries the selectedWords
+        // condition inside the builder.
+        assertEquals(ContentSource.SENTENCE_CARD_FLAG,          mapping["IsSentenceCard"])
+        assertEquals(ContentSource.TARGETED_SENTENCE_CARD_FLAG, mapping["IsTargetedSentenceCard"])
+        // Per-token sentence kana, audio, secondary slots, hover/click
+        // user-preference flags, pre-stylized frequency / pitch HTML —
+        // all stay null because we don't produce content in those
+        // formats or auto-populate user preferences.
         assertEquals(null, mapping["WordReadingHiragana"])
         assertEquals(null, mapping["SentenceReading"])
         assertEquals(null, mapping["WordAudio"])
         assertEquals(null, mapping["SentenceAudio"])
         assertEquals(null, mapping["SecondaryDefinition"])
         assertEquals(null, mapping["IsHoverCard"])
-        assertEquals(null, mapping["IsTargetedSentenceCard"])
+        assertEquals(null, mapping["IsClickCard"])
         assertEquals(null, mapping["FrequenciesStylized"])
         assertEquals(null, mapping["AJTWordPitch"])
     }
@@ -154,13 +168,13 @@ class AnkiCardTypeMapperTest {
         assertEquals(ContentSource.DEFINITION,           mapping["Definitions"])
         assertEquals(ContentSource.PICTURE,              mapping["Screenshot"])
         assertEquals(ContentSource.EXAMPLE_SENTENCES,    mapping["Example Sentences"])
-        // Audio fields, secondary media, AND THE STATE FLAGS stay null.
-        // Filling Is Vocabulary Card / Is Audio Card with anything
-        // would flip Migaku's card rendering.
+        // Is Vocabulary Card now wired to the mode-aware vocab flag —
+        // fires "x" on word sends, empty on sentence sends. Is Audio
+        // Card stays unmapped (we don't produce audio).
+        assertEquals(ContentSource.VOCABULARY_CARD_FLAG, mapping["Is Vocabulary Card"])
         assertEquals(null, mapping["Sentence Audio"])
         assertEquals(null, mapping["Word Audio"])
         assertEquals(null, mapping["Images"])
-        assertEquals(null, mapping["Is Vocabulary Card"])
         assertEquals(null, mapping["Is Audio Card"])
     }
 
@@ -255,6 +269,10 @@ class AnkiCardTypeMapperTest {
         frequency = "★★★",
         partOfSpeech = "noun",
         wordsTable = "<table>words</table>",
+        vocabularyCardFlag = "x",
+        sentenceCardFlag = "",
+        targetedSentenceCardFlag = "",
+        alwaysOnMarker = "x",
     )
 
     @Test fun `assembleNote walks fields in declaration order`() {
@@ -332,5 +350,66 @@ class AnkiCardTypeMapperTest {
             imageFilename = null,
         )
         assertEquals("", outputs.picture)
+    }
+
+    // ─── Card-type state flags ───────────────────────────────────────────
+    // Mode-aware values live inside the builder; tests pin the exact
+    // "x" / "" matrix so a future tweak can't silently flip variants.
+
+    @Test fun `forWord emits vocabulary flag and always-on, leaves sentence flags empty`() {
+        val outputs = AnkiCardOutputBuilder.forWord(
+            word = "猫", reading = "ねこ", pos = "noun",
+            definitionHtml = "", freqScore = 0, imageFilename = null,
+        )
+        assertEquals("x", outputs.vocabularyCardFlag)
+        assertEquals("",  outputs.sentenceCardFlag)
+        assertEquals("",  outputs.targetedSentenceCardFlag)
+        assertEquals("x", outputs.alwaysOnMarker)
+    }
+
+    @Test fun `forSentence with selectedWords emits sentence and targeted flags and always-on`() {
+        val data = SentenceAnkiContentFragment.CardData(
+            source = "私は猫が好き",
+            target = "I like cats",
+            words = emptyList(),
+            selectedWords = setOf("猫"),
+            screenshotPath = null,
+            sourceLangId = com.playtranslate.language.SourceLangId.JA,
+        )
+        val outputs = AnkiCardOutputBuilder.forSentence(data, imageFilename = null)
+        assertEquals("",  outputs.vocabularyCardFlag)
+        assertEquals("x", outputs.sentenceCardFlag)
+        assertEquals("x", outputs.targetedSentenceCardFlag)
+        assertEquals("x", outputs.alwaysOnMarker)
+    }
+
+    @Test fun `forSentence without selectedWords leaves targeted flag empty`() {
+        // No bolded word in the sentence means JPMN's
+        // IsTargetedSentenceCard would have nothing to target — the
+        // flag must stay empty so JPMN renders a pure sentence card
+        // (whole-sentence test) rather than a broken targeted card.
+        val data = SentenceAnkiContentFragment.CardData(
+            source = "今日はいい天気だ",
+            target = "Nice weather today",
+            words = emptyList(),
+            selectedWords = emptySet(),
+            screenshotPath = null,
+            sourceLangId = com.playtranslate.language.SourceLangId.JA,
+        )
+        val outputs = AnkiCardOutputBuilder.forSentence(data, imageFilename = null)
+        assertEquals("",  outputs.vocabularyCardFlag)
+        assertEquals("x", outputs.sentenceCardFlag)
+        assertEquals("",  outputs.targetedSentenceCardFlag)
+        assertEquals("x", outputs.alwaysOnMarker)
+    }
+
+    @Test fun `assembleNote routes ALWAYS_ON_MARKER to whichever field is mapped`() {
+        // User maps a custom IsCustom field → always-on marker.
+        // Verifies the assembly path treats flag sources just like
+        // content sources — flat valueFor lookup, no special-casing.
+        val fields = listOf("IsCustom")
+        val mapping = mapOf("IsCustom" to ContentSource.ALWAYS_ON_MARKER)
+        val out = AnkiCardTypeMapper.assembleNote(fields, mapping, sampleOutputs())
+        assertEquals(listOf("x"), out)
     }
 }

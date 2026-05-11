@@ -90,6 +90,20 @@ object AnkiCardOutputBuilder {
             frequency = frequency,
             partOfSpeech = "",
             wordsTable = wordsHtml,
+            // Flag values for sentence-mode sends:
+            //  - SENTENCE_CARD_FLAG always fires (Lapis/JPMN signal).
+            //  - TARGETED_SENTENCE_CARD_FLAG fires only when there's a
+            //    bolded word to target (JPMN's IsTargetedSentenceCard
+            //    requires a bolded word in the Sentence field, which
+            //    wrapHighlighted only produces with selectedWords).
+            //  - VOCABULARY_CARD_FLAG stays empty — sentence sends are
+            //    not vocab-variant cards.
+            //  - ALWAYS_ON_MARKER fires for users who manually mapped a
+            //    flag field to always-on.
+            vocabularyCardFlag = "",
+            sentenceCardFlag = "x",
+            targetedSentenceCardFlag = if (cardData.selectedWords.isNotEmpty()) "x" else "",
+            alwaysOnMarker = "x",
         )
     }
 
@@ -119,6 +133,14 @@ object AnkiCardOutputBuilder {
         frequency = SentenceAnkiHtmlBuilder.starsString(freqScore),
         partOfSpeech = pos,
         wordsTable = "",
+        // Flag values for word-mode sends: VOCABULARY_CARD_FLAG fires
+        // (Migaku/Lapis vocab-variant signal); sentence flags stay
+        // empty since word cards aren't sentence-variant. ALWAYS_ON
+        // fires for manually-mapped always-on flag fields.
+        vocabularyCardFlag = "x",
+        sentenceCardFlag = "",
+        targetedSentenceCardFlag = "",
+        alwaysOnMarker = "x",
     )
 
     /**
