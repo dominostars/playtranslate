@@ -405,26 +405,27 @@ class SettingsBottomSheet : DialogFragment() {
      * and display hot-plug (this class's display listener).
      *
      * Skipped when:
-     *  - A child DialogFragment is currently shown (deck picker, card-type
-     *    picker, field-mapping dialog). The dialog window's
-     *    FragmentContainerView refuses raw View children, so swapping
-     *    the CoordinatorLayout root crashes. The fresh layout is seen
-     *    next time Settings opens; the in-flight picker is already
-     *    using up-to-date prefs.
-     *  - We don't have a stable parent (currentView detached) or the
-     *    fragment isn't attached anymore.
+     *  - The fragment isn't attached or currentView has been detached.
+     *  - The parent is a FragmentContainerView. AndroidX's FCV refuses
+     *    raw View children — only Fragment-managed views. Showing any
+     *    child DialogFragment in this session (deck / card-type /
+     *    field-mapping / source picker) replaces the sheet's content
+     *    parent with an FCV, and that container persists for the rest
+     *    of the session — even after the dialog dismisses. So a
+     *    simple "is a child dialog currently shown" check isn't
+     *    enough; we have to look at what the parent actually is.
+     *
+     * The fresh layout is picked up next time Settings opens (its
+     * onViewCreated re-runs against a clean view tree).
      */
     fun reinflateContent() {
         if (!isAdded) return
         val old = currentView ?: return
         val parent = old.parent as? ViewGroup ?: return
-        // FragmentContainerView guards against non-Fragment children;
-        // any child dialog fragment currently in childFragmentManager
-        // would make the swap crash on parent.addView. Defer.
-        val hasChildDialogs = childFragmentManager.fragments.any { it.isAdded }
-        if (hasChildDialogs) {
+        if (parent is androidx.fragment.app.FragmentContainerView) {
             android.util.Log.d(TAG,
-                "reinflateContent skipped — child dialog fragments active")
+                "reinflateContent skipped — parent is FragmentContainerView " +
+                    "(a child DialogFragment was shown earlier this session)")
             return
         }
         val index = parent.indexOfChild(old)
