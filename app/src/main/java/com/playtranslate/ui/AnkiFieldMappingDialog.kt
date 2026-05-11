@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import android.graphics.Typeface
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -16,6 +17,7 @@ import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
 import com.playtranslate.fullScreenDialogTheme
+import com.playtranslate.themeColor
 
 private const val TAG = "FieldMappingDialog"
 
@@ -135,16 +137,38 @@ class AnkiFieldMappingDialog : DialogFragment() {
             val valueTv = row.findViewById<TextView>(R.id.tvRowValue)
             titleTv.text = fieldName
             val current = workingMapping[fieldName] ?: ContentSource.NONE
-            valueTv.text = ctx.getString(current.labelRes)
+            applyValueStyle(valueTv, current)
             row.setOnClickListener {
                 showSourcePopup(row) { picked ->
                     workingMapping[fieldName] = picked
-                    valueTv.text = ctx.getString(picked.labelRes)
+                    applyValueStyle(valueTv, picked)
                 }
             }
             rowContainer.addView(row)
         }
         container.addView(card)
+    }
+
+    /**
+     * Renders the row's value text. NONE gets the same italic +
+     * `ptTextHint` treatment the offline-translation cells use for
+     * their neutral-tone secondary subtitle — visually marks the
+     * absence of a mapping without making it disappear. Any other
+     * source uses the default RowValue color (`ptTextMuted`) with
+     * upright type. Pass null for the family in setTypeface so only
+     * the style flag toggles; otherwise platforms can cache italic
+     * state on the resolved typeface.
+     */
+    private fun applyValueStyle(tv: TextView, source: ContentSource) {
+        val ctx = requireContext()
+        tv.text = ctx.getString(source.labelRes)
+        if (source == ContentSource.NONE) {
+            tv.setTypeface(null, Typeface.ITALIC)
+            tv.setTextColor(ctx.themeColor(R.attr.ptTextHint))
+        } else {
+            tv.setTypeface(null, Typeface.NORMAL)
+            tv.setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+        }
     }
 
     private fun showSourcePopup(

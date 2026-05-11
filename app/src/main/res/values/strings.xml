@@ -201,7 +201,7 @@
 
     <!-- ContentSource labels (dropdown options). Names persist in prefs,
          so re-labeling here is safe but renaming enum constants is not. -->
-    <string name="anki_content_none">(Blank)</string>
+    <string name="anki_content_none">Empty</string>
     <string name="anki_content_expression">Word / headword</string>
     <string name="anki_content_reading">Word reading (kana)</string>
     <string name="anki_content_sentence">Source sentence</string>
