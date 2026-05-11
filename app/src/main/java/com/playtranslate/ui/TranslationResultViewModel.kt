@@ -13,6 +13,7 @@ import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.language.WordTranslator
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
+import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.headwordFor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -317,8 +318,19 @@ class TranslationResultViewModel : ViewModel() {
                             val primary = entry.headwordFor(surfaceByToken[word])
                                 ?: entry.headwordFor(word)
                                 ?: entry.headwords.firstOrNull()
-                            val displayWord = primary?.written ?: primary?.reading ?: word
-                            val reading = primary?.reading?.takeIf { it != primary.written } ?: ""
+                            // headwordDisplay swaps the kanji for the kana
+                            // on JMdict uk-tagged entries (e.g. なぜ over
+                            // 何故), suppressing the reading column since
+                            // it would just duplicate the headword — UNLESS
+                            // the source text actually showed the kanji
+                            // (surfaceByToken[word] matches a written form),
+                            // in which case we honor what the user saw.
+                            val display = entry.headwordDisplay(
+                                primary,
+                                surfaceByToken[word],
+                            )
+                            val displayWord = display.written
+                            val reading = display.reading ?: ""
                             val freqScore = entry.freqScore
 
                             val meaning = when (defResult) {

@@ -34,7 +34,7 @@ import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.R
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.model.TranslationResult
-import com.playtranslate.model.headwordFor
+import com.playtranslate.model.headwordDisplay
 import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -513,14 +513,21 @@ class TranslationResultFragment : Fragment() {
 
                 // Build popup data based on DefinitionResult tier.
                 val word: String
+                // Reading shown beneath the headword in the popup. Sourced
+                // from headwordDisplay (which suppresses it for JMdict uk
+                // entries) rather than the span's tokenizer reading, so
+                // kana-only rows don't accidentally render reading=ナゼ
+                // beneath word=なぜ via Kuromoji's katakana convention.
+                val popupReading: String?
                 val popupLabel: String?
                 val senses: List<WordLookupPopup.SenseDisplay>
                 val freqScore: Int
                 val isCommon: Boolean
                 when {
                     entry != null && defResult is DefinitionResult.Native -> {
-                        val form = entry.headwordFor(lookupForm)
-                        word = form?.written ?: form?.reading ?: entry.slug
+                        val display = entry.headwordDisplay(lookupForm)
+                        word = display.written
+                        popupReading = display.reading
                         popupLabel = null
                         val targetSensesSorted = defResult.targetSenses.sortedBy { it.senseOrd }
                         val isTargetDriven = prefs.targetLang != "en" && targetSensesSorted.isNotEmpty()
@@ -567,8 +574,9 @@ class TranslationResultFragment : Fragment() {
                         isCommon = entry.isCommon == true
                     }
                     entry != null && defResult is DefinitionResult.MachineTranslated -> {
-                        val form = entry.headwordFor(lookupForm)
-                        word = form?.written ?: form?.reading ?: entry.slug
+                        val display = entry.headwordDisplay(lookupForm)
+                        word = display.written
+                        popupReading = display.reading
                         popupLabel = "⚠ Machine translated"
                         val defs = defResult.translatedDefinitions
                         senses = if (defs != null) {
@@ -593,8 +601,9 @@ class TranslationResultFragment : Fragment() {
                         isCommon = entry.isCommon == true
                     }
                     entry != null && defResult is DefinitionResult.EnglishFallback && defResult.translatedDefinitions != null -> {
-                        val form = entry.headwordFor(lookupForm)
-                        word = form?.written ?: form?.reading ?: entry.slug
+                        val display = entry.headwordDisplay(lookupForm)
+                        word = display.written
+                        popupReading = display.reading
                         popupLabel = "⚠ Machine translated"
                         val defs = defResult.translatedDefinitions
                         senses = flatSenses.mapIndexed { i, sense ->
@@ -607,8 +616,9 @@ class TranslationResultFragment : Fragment() {
                         isCommon = entry.isCommon == true
                     }
                     entry != null -> {
-                        val form = entry.headwordFor(lookupForm)
-                        word = form?.written ?: form?.reading ?: entry.slug
+                        val display = entry.headwordDisplay(lookupForm)
+                        word = display.written
+                        popupReading = display.reading
                         popupLabel = null
                         senses = flatSenses.map { sense ->
                             WordLookupPopup.SenseDisplay(
@@ -621,6 +631,7 @@ class TranslationResultFragment : Fragment() {
                     }
                     reading.isNotEmpty() -> {
                         word = lookupForm
+                        popupReading = reading
                         popupLabel = null
                         senses = listOf(
                             WordLookupPopup.SenseDisplay(
@@ -650,7 +661,6 @@ class TranslationResultFragment : Fragment() {
 
                 val dm = resources.displayMetrics
                 dismissWordPopup()
-                val lookupReading = reading.ifEmpty { null }
                 wordPopup = WordLookupPopup(activity, activity.windowManager).apply {
                     useActivityWindow = true
                     verticalMarginDp = 5
@@ -664,7 +674,7 @@ class TranslationResultFragment : Fragment() {
                         val wr = (vm.wordLookups.value as? WordLookupsState.Settled)
                             ?.rows?.toLegacyMap() ?: emptyMap()
                         host?.onWordTapped(
-                            word, lookupReading,
+                            word, popupReading,
                             ready?.screenshotPath,
                             ready?.originalText,
                             ready?.translatedText,
@@ -674,7 +684,7 @@ class TranslationResultFragment : Fragment() {
                     onDismiss = { setWordHighlight(null) }
                 }
                 setWordHighlight(span.first)
-                wordPopup?.show(word, lookupReading, senses, freqScore,
+                wordPopup?.show(word, popupReading, senses, freqScore,
                     isCommon, screenX, screenY, dm.widthPixels, dm.heightPixels,
                     anchorHeight = lineH, label = popupLabel)
             } catch (_: Exception) {}

@@ -23,6 +23,7 @@ import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.model.DictionaryEntry
+import com.playtranslate.model.headwordDisplay
 import kotlinx.coroutines.*
 import java.io.File
 import kotlin.math.abs
@@ -978,7 +979,7 @@ class DragLookupController(
         val reading = matchedToken?.reading
         val popupData: PopupData = when {
             entry != null && defResult is DefinitionResult.Native -> {
-                val form = entry.headwords.firstOrNull()
+                val display = entry.headwordDisplay(entry.headwords.firstOrNull(), matchedSurface)
                 // Target-driven for non-English targets: render the pack's
                 // sense list directly, no JMdict-position alignment (which
                 // is unrecoverable — see WordDetailBottomSheet for full
@@ -1024,8 +1025,8 @@ class DragLookupController(
                     }
                 }
                 PopupData(
-                    word = form?.written ?: form?.reading ?: entry.slug,
-                    reading = form?.reading,
+                    word = display.written,
+                    reading = display.reading,
                     senses = senses,
                     freqScore = entry.freqScore,
                     isCommon = entry.isCommon == true,
@@ -1033,11 +1034,11 @@ class DragLookupController(
                 )
             }
             entry != null && defResult is DefinitionResult.MachineTranslated -> {
-                val form = entry.headwords.firstOrNull()
+                val display = entry.headwordDisplay(entry.headwords.firstOrNull(), matchedSurface)
                 val defs = defResult.translatedDefinitions
                 PopupData(
-                    word = form?.written ?: form?.reading ?: entry.slug,
-                    reading = form?.reading,
+                    word = display.written,
+                    reading = display.reading,
                     senses = if (defs != null) {
                         // Translated definitions available — show them directly
                         flatSenses.mapIndexed { i, sense ->
@@ -1066,11 +1067,11 @@ class DragLookupController(
             }
             entry != null && defResult is DefinitionResult.EnglishFallback && defResult.translatedDefinitions != null -> {
                 // Translated definitions without headword translation
-                val form = entry.headwords.firstOrNull()
+                val display = entry.headwordDisplay(entry.headwords.firstOrNull(), matchedSurface)
                 val defs = defResult.translatedDefinitions
                 PopupData(
-                    word = form?.written ?: form?.reading ?: entry.slug,
-                    reading = form?.reading,
+                    word = display.written,
+                    reading = display.reading,
                     senses = flatSenses.mapIndexed { i, sense ->
                         WordLookupPopup.SenseDisplay(
                             pos = sense.partsOfSpeech.joinToString(", "),
@@ -1085,10 +1086,10 @@ class DragLookupController(
             }
             entry != null -> {
                 // EnglishFallback with no translations — show English as-is
-                val form = entry.headwords.firstOrNull()
+                val display = entry.headwordDisplay(entry.headwords.firstOrNull(), matchedSurface)
                 PopupData(
-                    word = form?.written ?: form?.reading ?: entry.slug,
-                    reading = form?.reading,
+                    word = display.written,
+                    reading = display.reading,
                     senses = flatSenses.map { sense ->
                         WordLookupPopup.SenseDisplay(
                             pos = sense.partsOfSpeech.joinToString(", "),

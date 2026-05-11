@@ -131,6 +131,65 @@ fun DictionaryEntry.headwordFor(query: String?): Headword? {
 }
 
 /**
+ * True when any sense carries JMdict's "usually written using kana alone"
+ * (uk) tag — surfaced as the friendly "Kana only" string by build_jmdict.py's
+ * MISC_ABBREV map. UI surfaces use this to drop the kanji and present the
+ * reading as the canonical headword.
+ */
+val DictionaryEntry.isKanaOnly: Boolean
+    get() = senses.any { sense ->
+        sense.misc.any { it.equals("Kana only", ignoreCase = true) }
+    }
+
+/**
+ * Headword display fields for a dictionary entry, with kana-only suppression
+ * already applied. [queriedWord] is the surface the user clicked, used to
+ * pick the matching variant (entry 2863328 groups 無下 + 無気; clicking 無気
+ * must show 無気). Falls back to the entry's first headword when no variant
+ * matches.
+ *
+ * When [DictionaryEntry.isKanaOnly] is true and the resolved variant has a
+ * reading, the kanji is suppressed: [written] becomes the kana reading and
+ * [reading] is null (since duplicating it on the muted reading line would
+ * just repeat the headword).
+ */
+data class HeadwordDisplay(val written: String, val reading: String?)
+
+/**
+ * [surface] is the text the user actually saw — the OCR'd / clicked
+ * source. When it matches one of the entry's kanji headwords, the
+ * kana-only override is suppressed: the user engaged with the kanji
+ * form (何故 in the wild), so the UI shows that with the kana as a
+ * reading instead of collapsing to the bare kana (なぜ). Pass null
+ * when no surface context is available (e.g. drag-flow lens fallbacks);
+ * the override then fires as before.
+ */
+fun DictionaryEntry.headwordDisplay(
+    form: Headword?,
+    surface: String? = null,
+): HeadwordDisplay {
+    val surfaceIsKanji = surface != null && headwords.any { it.written == surface }
+    if (isKanaOnly && !surfaceIsKanji) {
+        val kana = form?.reading?.takeIf { it.isNotBlank() }
+            ?: headwords.firstNotNullOfOrNull { hw ->
+                hw.reading?.takeIf { it.isNotBlank() }
+            }
+        if (kana != null) return HeadwordDisplay(written = kana, reading = null)
+    }
+    val written = form?.written?.takeIf { it.isNotBlank() }
+        ?: form?.reading?.takeIf { it.isNotBlank() }
+        ?: slug
+    val reading = form?.reading?.takeIf { it.isNotBlank() && it != written }
+    return HeadwordDisplay(written = written, reading = reading)
+}
+
+fun DictionaryEntry.headwordDisplay(queriedWord: String? = null): HeadwordDisplay =
+    headwordDisplay(
+        form = headwordFor(queriedWord) ?: headwords.firstOrNull(),
+        surface = queriedWord,
+    )
+
+/**
  * Returns a POS label suitable for blank-`pos` target rows (PanLex,
  * which doesn't carry POS metadata). When every sense across every
  * returned entry shares the same POS list — JMdict entries that are

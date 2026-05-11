@@ -38,7 +38,7 @@ import com.playtranslate.model.CharacterDetail
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.HanziDetail
 import com.playtranslate.model.KanjiDetail
-import com.playtranslate.model.headwordFor
+import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.unambiguousFallbackPos
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -677,12 +677,13 @@ class WordDetailBottomSheet : DialogFragment() {
         queriedWord: String,
     ) {
         val ctx = requireContext()
-        // Prefer the headword that matches the user's clicked surface so we
-        // don't show a different variant kanji as the title (entry 2863328
-        // groups 無下 + 無気; tapping 無気 must show 無気, not 無下).
-        val headword = entry.headwordFor(queriedWord)
-        val written = headword?.written?.takeIf { it.isNotBlank() } ?: entry.slug
-        val reading = headword?.reading?.takeIf { it.isNotBlank() && it != written }
+        // headwordDisplay picks the variant matching the user's clicked
+        // surface (entry 2863328 groups 無下 + 無気; tapping 無気 must show
+        // 無気, not 無下) and suppresses the kanji entirely for entries
+        // marked "Kana only" (JMdict uk tag — e.g. なぜ over 何故).
+        val display = entry.headwordDisplay(queriedWord)
+        val written = display.written
+        val reading = display.reading
 
         // Replace the placeholder (the queried word) with the canonical
         // headword from the entry. The typeface was already set in
