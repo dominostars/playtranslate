@@ -760,18 +760,28 @@ class OcrManager private constructor() {
         }
 
         /**
-         * Opening punctuation that visually hangs to the left of body text in
-         * CJK and Western typography. When such a character is the first
-         * non-whitespace symbol of a line, the line's bounding box outdents
-         * past where the body text starts; without compensation, that line's
-         * left edge fails the leftAligned check against subsequent body
-         * lines that align to the body indent. See [effectiveAlignLeft].
+         * Characters that should not be treated as the body-text left edge
+         * when they appear as a line's first glyph. Two distinct sources:
+         *
+         *  - Opening punctuation that visually hangs to the left of body text
+         *    in CJK and Western typography (brackets, quotes, middle dots).
+         *    These genuinely outdent past the body indent and need
+         *    compensation so the leftAligned check against subsequent body
+         *    lines doesn't fail.
+         *  - Glyphs OCR commonly misreads for hanging openers (e.g. ML Kit
+         *    reading a CJK middle dot or low-set bullet as a comma). A real
+         *    body line essentially never starts with one of these, so
+         *    skipping them when they appear is safe and protects alignment
+         *    from OCR noise.
+         *
+         * See [effectiveAlignLeft] for the shift logic.
          */
         private val HANGING_PUNCT_LEFT = setOf(
             '「', '『', '（', '【', '〔', '《', '〈',
             '(', '[', '{',
             '・', '·',
-            '“', '‘', // " '
+            '“', '‘', '"', '\'',
+            ',',
         )
 
         /**
