@@ -760,6 +760,60 @@ class OcrManager private constructor() {
         }
 
         /**
+         * Which question is the caller asking? Two semantically distinct uses
+         * of "do these rects belong together," each needing a different rule
+         * for the intersection short-circuit.
+         *
+         * [SAME_PASS_LAYOUT] — clustering rects produced by a single OCR pass
+         * into paragraphs. ML Kit per-line detection has already separated
+         * these as distinct lines, so any pixel intersection is incidental
+         * (ascender/descender slivers, glyph-box padding) and is NOT evidence
+         * of grouping. Decisions rest on inline (same-line gap) and block
+         * (next-line + alignment + height-match) checks alone.
+         *
+         * [CROSS_FRAME_SAME_REGION] — matching a fresh OCR rect against a rect
+         * from a previous frame's overlay state, to decide if they represent
+         * the same on-screen region. Stable regions may shift a few pixels or
+         * be partially occluded between frames, so substantial rect overlap
+         * is evidence of same-region identity even when heights diverge.
+         * Sliver-only overlaps still fall through to the layout checks — see
+         * [hasSubstantialOverlap].
+         */
+        enum class GroupingMode { SAME_PASS_LAYOUT, CROSS_FRAME_SAME_REGION }
+
+        /**
+         * Minimum overlap-area / min(area_a, area_b) ratio for the intersect
+         * short-circuit to fire in [GroupingMode.CROSS_FRAME_SAME_REGION].
+         * A sliver overlap between two stacked-but-distinct lines (e.g. a 3-
+         * pixel ascender bleed) sits well below this; a partially-occluded
+         * re-OCR of the same region sits well above (typically near 1.0).
+         *
+         * TODO: tune against the OCR golden-set fixtures once we add inter-
+         * frame partial-occlusion cases.
+         */
+        private const val CROSS_FRAME_OVERLAP_RATIO = 0.30
+
+        /**
+         * True iff [a] and [b] overlap by at least [CROSS_FRAME_OVERLAP_RATIO]
+         * of the smaller rect's area. Used only by the
+         * [GroupingMode.CROSS_FRAME_SAME_REGION] path of [wouldGroup] /
+         * [groupDecision] — see [GroupingMode] kdoc for why same-pass callers
+         * must NOT use this check.
+         */
+        private fun hasSubstantialOverlap(a: Rect, b: Rect): Boolean {
+            if (!Rect.intersects(a, b)) return false
+            val ix = minOf(a.right, b.right) - maxOf(a.left, b.left)
+            val iy = minOf(a.bottom, b.bottom) - maxOf(a.top, b.top)
+            if (ix <= 0 || iy <= 0) return false
+            val overlap = ix.toLong() * iy.toLong()
+            val areaA = a.width().toLong() * a.height().toLong()
+            val areaB = b.width().toLong() * b.height().toLong()
+            val minArea = minOf(areaA, areaB)
+            if (minArea <= 0) return false
+            return overlap.toDouble() / minArea >= CROSS_FRAME_OVERLAP_RATIO
+        }
+
+        /**
          * Characters that should not be treated as the body-text left edge
          * when they appear as a line's first glyph. Two distinct sources:
          *
@@ -853,8 +907,15 @@ class OcrManager private constructor() {
 
         /**
          * Would two rects be grouped as the same text block?
-         * Three checks: intersection (fill leak), inline (same line/column),
-         * block (next line/column in paragraph with alignment).
+         * Up to three checks: intersection (cross-frame only), inline (same
+         * line/column), block (next line/column in paragraph with alignment).
+         *
+         * The [mode] selects how the intersection signal is interpreted — see
+         * [GroupingMode] for the full semantic split. Briefly: same-pass
+         * callers (paragraph clustering) ignore intersection because ML Kit
+         * already separated the lines; cross-frame callers (region identity)
+         * use intersection — but only when overlap area is substantial — as
+         * evidence the two rects track the same on-screen region.
          *
          * When [orientation] is [TextOrientation.VERTICAL], all axis logic is
          * swapped: "inline" checks for vertical continuation in the same column,
@@ -880,13 +941,14 @@ class OcrManager private constructor() {
             orientation: TextOrientation = TextOrientation.HORIZONTAL,
             aAlignLeft: Int? = null,
             bAlignLeft: Int? = null,
+            mode: GroupingMode = GroupingMode.SAME_PASS_LAYOUT,
         ): Boolean {
             if (orientation == TextOrientation.VERTICAL) {
-                return wouldGroupVertical(a, b)
+                return wouldGroupVertical(a, b, mode)
             }
             val refH = maxOf(a.height(), b.height())
             if (refH <= 0) return false
-            if (Rect.intersects(a, b)) return true
+            if (mode == GroupingMode.CROSS_FRAME_SAME_REGION && hasSubstantialOverlap(a, b)) return true
 
             val aCenterY = (a.top + a.bottom) / 2
             val bCenterY = (b.top + b.bottom) / 2
@@ -915,10 +977,10 @@ class OcrManager private constructor() {
             return false
         }
 
-        private fun wouldGroupVertical(a: Rect, b: Rect): Boolean {
+        private fun wouldGroupVertical(a: Rect, b: Rect, mode: GroupingMode): Boolean {
             val refW = maxOf(a.width(), b.width())
             if (refW <= 0) return false
-            if (Rect.intersects(a, b)) return true
+            if (mode == GroupingMode.CROSS_FRAME_SAME_REGION && hasSubstantialOverlap(a, b)) return true
 
             val aCenterX = (a.left + a.right) / 2
             val bCenterX = (b.left + b.right) / 2
@@ -952,29 +1014,36 @@ class OcrManager private constructor() {
          *  reason-string cost stays out of hot paths.
          *
          *  [aAlignLeft] / [bAlignLeft] mirror [wouldGroup]'s overrides for
-         *  hanging-punctuation compensation. */
+         *  hanging-punctuation compensation. [mode] selects the intersection
+         *  semantics — see [GroupingMode]. */
         fun groupDecision(
             a: Rect,
             b: Rect,
             orientation: TextOrientation = TextOrientation.HORIZONTAL,
             aAlignLeft: Int? = null,
             bAlignLeft: Int? = null,
+            mode: GroupingMode = GroupingMode.SAME_PASS_LAYOUT,
         ): GroupDecision = if (orientation == TextOrientation.VERTICAL)
-            groupDecisionVertical(a, b)
+            groupDecisionVertical(a, b, mode)
         else
-            groupDecisionHorizontal(a, b, aAlignLeft, bAlignLeft)
+            groupDecisionHorizontal(a, b, aAlignLeft, bAlignLeft, mode)
 
         private fun groupDecisionHorizontal(
             a: Rect,
             b: Rect,
-            aAlignLeft: Int? = null,
-            bAlignLeft: Int? = null,
+            aAlignLeft: Int?,
+            bAlignLeft: Int?,
+            mode: GroupingMode,
         ): GroupDecision {
             val refH = maxOf(a.height(), b.height())
             if (refH <= 0) return GroupDecision.NotGrouped("refH=0 (degenerate rect)")
 
-            // 1. Intersection: rects physically overlap
-            if (Rect.intersects(a, b)) return GroupDecision.Grouped("intersect")
+            // 1. Intersection: rects substantially overlap. Cross-frame only
+            //    — same-pass rects from ML Kit are known-distinct, so sliver
+            //    overlaps there are noise, not evidence. See [GroupingMode].
+            if (mode == GroupingMode.CROSS_FRAME_SAME_REGION && hasSubstantialOverlap(a, b)) {
+                return GroupDecision.Grouped("intersect (cross-frame, substantial overlap)")
+            }
 
             // 2. Inline: horizontal continuation on the same line
             val aCenterY = (a.top + a.bottom) / 2
@@ -1045,11 +1114,13 @@ class OcrManager private constructor() {
          *   or center-Y-aligned, right-to-left flow)
          * - Reference dimension is width (column thickness) not height.
          */
-        private fun groupDecisionVertical(a: Rect, b: Rect): GroupDecision {
+        private fun groupDecisionVertical(a: Rect, b: Rect, mode: GroupingMode): GroupDecision {
             val refW = maxOf(a.width(), b.width())
             if (refW <= 0) return GroupDecision.NotGrouped("refW=0 (degenerate rect)")
 
-            if (Rect.intersects(a, b)) return GroupDecision.Grouped("intersect")
+            if (mode == GroupingMode.CROSS_FRAME_SAME_REGION && hasSubstantialOverlap(a, b)) {
+                return GroupDecision.Grouped("intersect (cross-frame, substantial overlap)")
+            }
 
             val aCenterX = (a.left + a.right) / 2
             val bCenterX = (b.left + b.right) / 2

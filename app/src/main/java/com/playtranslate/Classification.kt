@@ -147,7 +147,14 @@ fun classifyOcrResults(
             if (boxes[boxIdx].dirty) continue
             if (boxIdx in contentMatchRemovals) continue
             val orient = ocrResult.groupOrientations.getOrElse(ocrIdx) { TextOrientation.HORIZONTAL }
-            if (OcrManager.wouldGroup(ocrBitmapRects[boxIdx], ocrFullRect, orient)) {
+            // CROSS_FRAME_SAME_REGION: comparing a rect from the prior overlay
+            // state against a fresh OCR rect. Substantial overlap is evidence
+            // the two represent the same on-screen region (typewriter reveal,
+            // partial occlusion) even when heights diverge.
+            if (OcrManager.wouldGroup(
+                    ocrBitmapRects[boxIdx], ocrFullRect, orient,
+                    mode = OcrManager.Companion.GroupingMode.CROSS_FRAME_SAME_REGION,
+                )) {
                 nearExisting = true
                 staleOverlayIndices.add(boxIdx)
             }
