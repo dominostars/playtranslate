@@ -27,93 +27,169 @@ class AnkiCardTypeMapperTest {
     private fun model(name: String, fields: List<String>) =
         AnkiManager.ModelInfo(id = 1L, name = name, fieldNames = fields, type = 0, sortf = 0)
 
+    // Field fixtures use the canonical schemas as of 2026-05:
+    //  - Lapis from donkuri/lapis README
+    //  - JPMN from Aquafina-water-bottle/jp-mining-note templates
+    //  - Migaku from the Browser Extension note type (confirmed against
+    //    a real install)
+
+    private val LAPIS_FIELDS = listOf(
+        "Expression", "ExpressionFurigana", "ExpressionReading", "ExpressionAudio",
+        "SelectionText", "MainDefinition", "DefinitionPicture",
+        "Sentence", "SentenceFurigana", "SentenceAudio",
+        "Picture", "Glossary", "Hint",
+        "IsWordAndSentenceCard", "IsClickCard", "IsSentenceCard", "IsAudioCard",
+        "PitchPosition", "PitchCategories",
+        "Frequency", "FreqSort", "MiscInfo",
+    )
+
+    private val JPMN_FIELDS = listOf(
+        "Word", "WordReading", "WordReadingHiragana", "WordAudio",
+        "Sentence", "SentenceReading", "SentenceAudio",
+        "PrimaryDefinition", "PrimaryDefinitionPicture",
+        "SecondaryDefinition", "AdditionalNotes", "ExtraDefinitions",
+        "Picture", "Hint", "HintNotHidden",
+        "Key", "AltDisplay",
+        "IsHoverCard", "IsSentenceCard", "IsClickCard", "IsTargetedSentenceCard",
+        "FrequenciesStylized", "AJTWordPitch", "UtilityDictionaries",
+    )
+
+    private val MIGAKU_FIELDS = listOf(
+        "Sentence", "Translation", "Target Word", "Definitions", "Screenshot",
+        "Sentence Audio", "Word Audio", "Images", "Example Sentences",
+        "Is Vocabulary Card", "Is Audio Card",
+    )
+
     // ─── Lapis ───────────────────────────────────────────────────────────
 
     @Test fun `Lapis canonical name picks Lapis defaults`() {
-        val m = model("Lapis", listOf(
-            "Word", "WordReading", "Sentence", "SentenceMeaning", "Glossary", "Picture",
-        ))
-        val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
-        assertEquals(ContentSource.EXPRESSION,           mapping["Word"])
-        assertEquals(ContentSource.READING,              mapping["WordReading"])
-        assertEquals(ContentSource.SENTENCE,             mapping["Sentence"])
-        assertEquals(ContentSource.SENTENCE_TRANSLATION, mapping["SentenceMeaning"])
-        assertEquals(ContentSource.DEFINITION,           mapping["Glossary"])
-        assertEquals(ContentSource.PICTURE,              mapping["Picture"])
-    }
-
-    @Test fun `Lapis name matching is case-insensitive`() {
-        val m = model("LAPIS-2024", listOf(
-            "Word", "WordReading", "Sentence", "SentenceMeaning", "Glossary", "Picture",
-        ))
-        val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.WORD)
-        assertEquals(ContentSource.EXPRESSION, mapping["Word"])
-        assertEquals(ContentSource.DEFINITION, mapping["Glossary"])
-    }
-
-    @Test fun `Lapis detected by field-schema after rename`() {
-        // Renamed model whose name no longer mentions Lapis, but the
-        // characteristic Word + Glossary + SentenceMeaning fields are
-        // present. Should still match.
-        val m = model("My Mining Cards", listOf(
-            "Word", "WordReading", "Sentence", "SentenceMeaning", "Glossary", "Picture",
-        ))
-        val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
-        assertEquals(ContentSource.EXPRESSION,           mapping["Word"])
-        assertEquals(ContentSource.SENTENCE_TRANSLATION, mapping["SentenceMeaning"])
-    }
-
-    // ─── JPMN ────────────────────────────────────────────────────────────
-
-    @Test fun `JPMN canonical name picks JPMN defaults`() {
-        val m = model("Japanese Mining Note", listOf(
-            "Expression", "ExpressionReading", "ExpressionFurigana",
-            "MainDefinition", "Sentence", "SentenceFurigana", "SentenceReading",
-            "Picture", "FrequencySort",
-        ))
+        val m = model("Lapis", LAPIS_FIELDS)
         val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
         assertEquals(ContentSource.EXPRESSION, mapping["Expression"])
         assertEquals(ContentSource.READING,    mapping["ExpressionReading"])
         assertEquals(ContentSource.DEFINITION, mapping["MainDefinition"])
         assertEquals(ContentSource.SENTENCE,   mapping["Sentence"])
         assertEquals(ContentSource.PICTURE,    mapping["Picture"])
-        assertEquals(ContentSource.FREQUENCY,  mapping["FrequencySort"])
-        // Fields whose format we can't produce stay unmapped (callers
-        // see them as ContentSource.NONE at the mapping dialog).
+        assertEquals(ContentSource.FREQUENCY,  mapping["Frequency"])
+        // Bracketed-furigana, audio, secondary slots, state flags, pitch
+        // — none of which we produce or want to auto-populate — stay
+        // null (treated as ContentSource.NONE by the dialog).
         assertEquals(null, mapping["ExpressionFurigana"])
         assertEquals(null, mapping["SentenceFurigana"])
+        assertEquals(null, mapping["ExpressionAudio"])
+        assertEquals(null, mapping["SentenceAudio"])
+        assertEquals(null, mapping["Glossary"])
+        assertEquals(null, mapping["IsAudioCard"])
+        assertEquals(null, mapping["IsSentenceCard"])
+        assertEquals(null, mapping["FreqSort"])
+        assertEquals(null, mapping["PitchPosition"])
+        assertEquals(null, mapping["MiscInfo"])
+    }
+
+    @Test fun `Lapis name matching is case-insensitive`() {
+        val m = model("LAPIS-2024", LAPIS_FIELDS)
+        val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.WORD)
+        assertEquals(ContentSource.EXPRESSION, mapping["Expression"])
+        assertEquals(ContentSource.DEFINITION, mapping["MainDefinition"])
+    }
+
+    @Test fun `Lapis detected by MainDefinition+Expression fingerprint after rename`() {
+        // Renamed Lapis model. `MainDefinition` is unique to Lapis
+        // (JPMN uses `PrimaryDefinition`) so the fingerprint catches it.
+        val m = model("My Mining Cards", LAPIS_FIELDS)
+        val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
+        assertEquals(ContentSource.EXPRESSION, mapping["Expression"])
+        assertEquals(ContentSource.DEFINITION, mapping["MainDefinition"])
+    }
+
+    // ─── JPMN ────────────────────────────────────────────────────────────
+
+    @Test fun `JPMN canonical name picks JPMN defaults`() {
+        val m = model("Japanese Mining Note", JPMN_FIELDS)
+        val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
+        assertEquals(ContentSource.EXPRESSION, mapping["Word"])
+        assertEquals(ContentSource.READING,    mapping["WordReading"])
+        assertEquals(ContentSource.DEFINITION, mapping["PrimaryDefinition"])
+        assertEquals(ContentSource.SENTENCE,   mapping["Sentence"])
+        assertEquals(ContentSource.PICTURE,    mapping["Picture"])
+        // Per-token sentence kana, audio, secondary slots, state flags,
+        // pre-stylized frequency / pitch HTML — all stay null because
+        // we don't produce content in those formats.
+        assertEquals(null, mapping["WordReadingHiragana"])
         assertEquals(null, mapping["SentenceReading"])
+        assertEquals(null, mapping["WordAudio"])
+        assertEquals(null, mapping["SentenceAudio"])
+        assertEquals(null, mapping["SecondaryDefinition"])
+        assertEquals(null, mapping["IsHoverCard"])
+        assertEquals(null, mapping["IsTargetedSentenceCard"])
+        assertEquals(null, mapping["FrequenciesStylized"])
+        assertEquals(null, mapping["AJTWordPitch"])
     }
 
     @Test fun `JPMN abbreviated name also matches`() {
-        val m = model("JPMN v3", listOf(
-            "Expression", "ExpressionReading", "MainDefinition", "Sentence", "Picture",
-        ))
+        val m = model("JPMN v3", JPMN_FIELDS)
         val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
-        assertEquals(ContentSource.EXPRESSION, mapping["Expression"])
-        assertEquals(ContentSource.DEFINITION, mapping["MainDefinition"])
+        assertEquals(ContentSource.EXPRESSION, mapping["Word"])
+        assertEquals(ContentSource.DEFINITION, mapping["PrimaryDefinition"])
     }
 
-    @Test fun `JPMN detected by Expression+MainDefinition+ExpressionReading fingerprint`() {
-        // Schema fingerprint kicks in when the name is unrecognisable.
-        val m = model("MyVocab", listOf(
-            "Expression", "ExpressionReading", "MainDefinition", "Sentence", "Picture",
-        ))
+    @Test fun `JPMN detected by PrimaryDefinition+Word fingerprint after rename`() {
+        // Renamed JPMN model. `PrimaryDefinition` is unique to JPMN
+        // (Lapis uses `MainDefinition`) so the fingerprint catches it.
+        val m = model("My Vocab Cards", JPMN_FIELDS)
         val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
-        assertEquals(ContentSource.EXPRESSION, mapping["Expression"])
-        assertEquals(ContentSource.READING,    mapping["ExpressionReading"])
-        assertEquals(ContentSource.DEFINITION, mapping["MainDefinition"])
+        assertEquals(ContentSource.EXPRESSION, mapping["Word"])
+        assertEquals(ContentSource.READING,    mapping["WordReading"])
+        assertEquals(ContentSource.DEFINITION, mapping["PrimaryDefinition"])
     }
 
-    @Test fun `JPMN fingerprint accepts ExpressionFurigana instead of Reading`() {
-        val m = model("MyVocab", listOf(
-            "Expression", "ExpressionFurigana", "MainDefinition", "Sentence",
-        ))
+    // ─── Migaku (Browser Extension schema) ───────────────────────────────
+
+    @Test fun `Migaku canonical name picks Migaku defaults`() {
+        val m = model("Migaku Japanese", MIGAKU_FIELDS)
         val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
-        assertEquals(ContentSource.EXPRESSION, mapping["Expression"])
-        assertEquals(ContentSource.DEFINITION, mapping["MainDefinition"])
-        // ExpressionFurigana stays unmapped — format mismatch.
-        assertEquals(null, mapping["ExpressionFurigana"])
+        assertEquals(ContentSource.SENTENCE,             mapping["Sentence"])
+        assertEquals(ContentSource.SENTENCE_TRANSLATION, mapping["Translation"])
+        assertEquals(ContentSource.EXPRESSION,           mapping["Target Word"])
+        assertEquals(ContentSource.DEFINITION,           mapping["Definitions"])
+        assertEquals(ContentSource.PICTURE,              mapping["Screenshot"])
+        // Audio fields, secondary media, examples, AND THE STATE FLAGS
+        // must stay null. Filling Is Vocabulary Card / Is Audio Card
+        // with anything would flip Migaku's card rendering.
+        assertEquals(null, mapping["Sentence Audio"])
+        assertEquals(null, mapping["Word Audio"])
+        assertEquals(null, mapping["Images"])
+        assertEquals(null, mapping["Example Sentences"])
+        assertEquals(null, mapping["Is Vocabulary Card"])
+        assertEquals(null, mapping["Is Audio Card"])
+    }
+
+    @Test fun `Migaku name matching is case-insensitive`() {
+        val m = model("MIGAKU Custom", MIGAKU_FIELDS)
+        val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
+        assertEquals(ContentSource.SENTENCE,   mapping["Sentence"])
+        assertEquals(ContentSource.EXPRESSION, mapping["Target Word"])
+    }
+
+    @Test fun `Migaku detected by Is Vocabulary Card fingerprint after rename`() {
+        // Renamed Migaku model. "Is Vocabulary Card" (with spaces) is
+        // distinctive — Lapis uses `IsAudioCard` without spaces.
+        val m = model("My Custom Cards", MIGAKU_FIELDS)
+        val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
+        assertEquals(ContentSource.SENTENCE,             mapping["Sentence"])
+        assertEquals(ContentSource.SENTENCE_TRANSLATION, mapping["Translation"])
+        assertEquals(ContentSource.EXPRESSION,           mapping["Target Word"])
+    }
+
+    @Test fun `Migaku wins over Lapis when both could match (name)`() {
+        // Defensive: a "Migaku-Lapis Hybrid" with Migaku-style fields
+        // routes via Migaku (its schema is wholly different — name's
+        // "lapis" substring shouldn't drag it through Lapis defaults
+        // and silently mis-fill).
+        val m = model("Migaku Lapis Hybrid", MIGAKU_FIELDS)
+        val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
+        // Sentence field gets SENTENCE (Migaku), not anything else.
+        assertEquals(ContentSource.SENTENCE, mapping["Sentence"])
     }
 
     // ─── Basic shape ─────────────────────────────────────────────────────
@@ -154,14 +230,15 @@ class AnkiCardTypeMapperTest {
         assertTrue(mapping.isEmpty())
     }
 
-    @Test fun `Lapis-named model without Lapis fields returns empty intersection`() {
-        // Name says Lapis but the fields don't actually exist on this
-        // model. filterKeys narrows to fields that ARE present —
-        // expected behavior is no spurious keys for absent fields.
-        val m = model("Lapis", listOf("Word", "OtherField"))
+    @Test fun `Lapis-named model with subset of Lapis fields narrows correctly`() {
+        // Name says Lapis but the model only carries a subset of the
+        // canonical fields. filterKeys narrows to fields that are
+        // actually present — expected behavior is no spurious keys for
+        // absent fields, no mapping at all for unknown fields.
+        val m = model("Lapis", listOf("Expression", "OtherField"))
         val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
-        assertEquals(ContentSource.EXPRESSION, mapping["Word"])
-        assertEquals(null, mapping["WordReading"])
+        assertEquals(ContentSource.EXPRESSION, mapping["Expression"])
+        assertEquals(null, mapping["MainDefinition"])
         assertEquals(null, mapping["OtherField"])
     }
 

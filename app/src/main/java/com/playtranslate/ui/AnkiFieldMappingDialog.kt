@@ -1,6 +1,7 @@
 package com.playtranslate.ui
 
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -14,6 +15,8 @@ import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
 import com.playtranslate.fullScreenDialogTheme
 import com.playtranslate.themeColor
+
+private const val TAG = "FieldMappingDialog"
 
 /**
  * Per-field mapping editor. Shown after the user picks a non-Default
@@ -74,17 +77,23 @@ class AnkiFieldMappingDialog : DialogFragment() {
 
         // Initial state: saved mapping if any, else template defaults.
         val saved = prefs.getAnkiFieldMapping(modelId)
+        Log.d(TAG, "onViewCreated: model='$modelName' id=$modelId " +
+            "mode=$mode fieldNames=$fieldNames saved=$saved")
         val starter = if (saved.isNotEmpty()) {
+            Log.d(TAG, "  using saved mapping ($saved)")
             saved
         } else {
             val model = AnkiManager.ModelInfo(modelId, modelName, fieldNames, 0, 0)
-            AnkiCardTypeMapper.defaultsForModel(model, mode)
+            val defaults = AnkiCardTypeMapper.defaultsForModel(model, mode)
+            Log.d(TAG, "  no saved mapping; defaults from mapper=$defaults")
+            defaults
         }
         // Initialize working map: every field gets an entry (NONE if
         // unmapped) so the dialog shows a complete view.
         fieldNames.forEach { fieldName ->
             workingMapping[fieldName] = starter[fieldName] ?: ContentSource.NONE
         }
+        Log.d(TAG, "  workingMapping initialized: $workingMapping")
 
         val toolbar = view.findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
         toolbar.title = ctx.getString(R.string.anki_field_mapping_title, modelName)

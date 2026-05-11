@@ -1,7 +1,10 @@
 package com.playtranslate.ui
 
+import android.util.Log
 import com.playtranslate.AnkiManager
 import java.util.Locale
+
+private const val TAG = "CardTypeMapper"
 
 /**
  * Maps a freshly-picked AnkiDroid note type to a starter field-mapping
@@ -13,32 +16,58 @@ import java.util.Locale
  */
 object AnkiCardTypeMapper {
 
-    /** Lapis (Donkuri / Marv) — popular simple mining template. */
-    private val LAPIS_DEFAULTS: Map<String, ContentSource> = mapOf(
-        "Word"            to ContentSource.EXPRESSION,
-        "WordReading"     to ContentSource.READING,
-        "Sentence"        to ContentSource.SENTENCE,
-        "SentenceMeaning" to ContentSource.SENTENCE_TRANSLATION,
-        "Glossary"        to ContentSource.DEFINITION,
-        "Picture"         to ContentSource.PICTURE,
-    )
-
     /**
-     * JPMN (Aquafina / Arbyste). We deliberately leave
-     * `ExpressionFurigana` / `SentenceFurigana` / `SentenceReading` at
-     * NONE: JPMN expects bracketed `kanji[kana]` format in those fields,
-     * which PlayTranslate doesn't currently produce. Filling them with
-     * plain kana would silently break the `{{furigana:}}` filter the
-     * JPMN template uses. Users who want plain kana there can override
-     * in the mapping dialog.
+     * Lapis (donkuri/lapis). Per the canonical README, Lapis uses an
+     * Expression/MainDefinition/Glossary schema (NOT Word/Glossary like
+     * older docs sometimes claim). Furigana / Reading variants (the
+     * bracketed `kanji[kana]` form) stay NONE because we don't compute
+     * that format; ditto audio fields. `Glossary` is an alternative
+     * primary definition slot — user can swap to DEFINITION via the
+     * mapping dialog if they prefer it over `MainDefinition`.
      */
-    private val JPMN_DEFAULTS: Map<String, ContentSource> = mapOf(
+    private val LAPIS_DEFAULTS: Map<String, ContentSource> = mapOf(
         "Expression"        to ContentSource.EXPRESSION,
         "ExpressionReading" to ContentSource.READING,
         "MainDefinition"    to ContentSource.DEFINITION,
         "Sentence"          to ContentSource.SENTENCE,
         "Picture"           to ContentSource.PICTURE,
-        "FrequencySort"     to ContentSource.FREQUENCY,
+        "Frequency"         to ContentSource.FREQUENCY,
+    )
+
+    /**
+     * JPMN — jp-mining-note (Aquafina-water-bottle). Per the actual
+     * template files (jp-mining-note/main/front.html + back.html), JPMN
+     * uses `Word`/`WordReading`/`PrimaryDefinition` — distinct from
+     * Lapis's `Expression`/`MainDefinition`. `WordReadingHiragana` /
+     * `SentenceReading` stay NONE because they expect plain kana / kana
+     * format we don't produce per-token; audio fields are unmapped.
+     */
+    private val JPMN_DEFAULTS: Map<String, ContentSource> = mapOf(
+        "Word"              to ContentSource.EXPRESSION,
+        "WordReading"       to ContentSource.READING,
+        "PrimaryDefinition" to ContentSource.DEFINITION,
+        "Sentence"          to ContentSource.SENTENCE,
+        "Picture"           to ContentSource.PICTURE,
+    )
+
+    /**
+     * Migaku — the modern Migaku Browser Extension note type. Field
+     * names use spaces (e.g. `Target Word`) — opposite of Lapis/JPMN.
+     * Importantly, `Is Vocabulary Card` and `Is Audio Card` are STATE
+     * FLAGS: any non-empty content flips Migaku's card rendering.
+     * Those MUST stay NONE.
+     *
+     * Audio fields (`Sentence Audio`, `Word Audio`) and `Example
+     * Sentences` are unmapped — we don't produce that content. `Images`
+     * is a secondary media slot; we put screenshots in `Screenshot`
+     * which is the canonical PT-side equivalent.
+     */
+    private val MIGAKU_DEFAULTS: Map<String, ContentSource> = mapOf(
+        "Sentence"    to ContentSource.SENTENCE,
+        "Translation" to ContentSource.SENTENCE_TRANSLATION,
+        "Target Word" to ContentSource.EXPRESSION,
+        "Definitions" to ContentSource.DEFINITION,
+        "Screenshot"  to ContentSource.PICTURE,
     )
 
     private val BASIC_WORD_DEFAULTS: Map<String, ContentSource> = mapOf(
@@ -73,33 +102,72 @@ object AnkiCardTypeMapper {
     ): Map<String, ContentSource> {
         val fields = model.fieldNames.toSet()
         val nameLower = model.name.lowercase(Locale.ROOT)
+        Log.d(TAG, "defaultsForModel: name='${model.name}' " +
+            "mode=$mode fieldCount=${model.fieldNames.size}")
+        Log.d(TAG, "  fields=${model.fieldNames}")
 
-        // Lapis: name OR characteristic field-set.
-        if ("lapis" in nameLower) return LAPIS_DEFAULTS.filterKeys { it in fields }
-        if (fields.containsAll(setOf("Word", "Glossary", "SentenceMeaning"))) {
-            return LAPIS_DEFAULTS.filterKeys { it in fields }
+        // Migaku (modern Browser Extension schema). Name match catches
+        // the canonical "Migaku Japanese" model; the field fingerprint
+        // `Is Vocabulary Card` is distinctive because (a) Lapis uses
+        // `IsAudioCard` / `IsSentenceCard` *without* spaces, and (b) no
+        // other mining template uses a "Vocabulary Card" state flag.
+        // Checked first so a "Migaku JPMN" combo name routes via the
+        // Migaku schema (whose field names are completely different).
+        if ("migaku" in nameLower) {
+            val out = MIGAKU_DEFAULTS.filterKeys { it in fields }
+            Log.d(TAG, "  matched: Migaku (name); applied=$out")
+            return out
+        }
+        if ("Is Vocabulary Card" in fields || "Is Audio Card" in fields) {
+            val out = MIGAKU_DEFAULTS.filterKeys { it in fields }
+            Log.d(TAG, "  matched: Migaku (state-flag fingerprint); applied=$out")
+            return out
+        }
+
+        // Lapis: name OR characteristic field-set. `MainDefinition` is
+        // unique to Lapis among the templates we know (JPMN uses
+        // `PrimaryDefinition`), so its presence alongside `Expression`
+        // is a strong fingerprint.
+        if ("lapis" in nameLower) {
+            val out = LAPIS_DEFAULTS.filterKeys { it in fields }
+            Log.d(TAG, "  matched: Lapis (name); applied=$out")
+            return out
+        }
+        if ("MainDefinition" in fields && "Expression" in fields) {
+            val out = LAPIS_DEFAULTS.filterKeys { it in fields }
+            Log.d(TAG, "  matched: Lapis (fingerprint); applied=$out")
+            return out
         }
 
         // JPMN: name (Aquafina canonical "Japanese Mining Note" / common
-        // "JPMN" abbreviation) OR characteristic field-set.
+        // "JPMN" abbreviation) OR characteristic field-set. JPMN uses
+        // `Word`/`PrimaryDefinition` (NOT `Expression`/`MainDefinition`
+        // — that's Lapis), so the fingerprint targets `PrimaryDefinition`
+        // alongside `Word`.
         if ("japanese mining note" in nameLower || "jpmn" in nameLower) {
-            return JPMN_DEFAULTS.filterKeys { it in fields }
+            val out = JPMN_DEFAULTS.filterKeys { it in fields }
+            Log.d(TAG, "  matched: JPMN (name); applied=$out")
+            return out
         }
-        if (fields.containsAll(setOf("Expression", "MainDefinition")) &&
-            (fields.contains("ExpressionReading") || fields.contains("ExpressionFurigana"))) {
-            return JPMN_DEFAULTS.filterKeys { it in fields }
+        if ("PrimaryDefinition" in fields && "Word" in fields) {
+            val out = JPMN_DEFAULTS.filterKeys { it in fields }
+            Log.d(TAG, "  matched: JPMN (fingerprint); applied=$out")
+            return out
         }
 
         // Anki Basic shape: exact {Front, Back} or {Front, Back, Picture}.
         // Anything else with a Front field is too ambiguous — leave blank.
         if (fields == setOf("Front", "Back") ||
             fields == setOf("Front", "Back", "Picture")) {
-            return when (mode) {
+            val out = when (mode) {
                 CardMode.WORD     -> BASIC_WORD_DEFAULTS.filterKeys { it in fields }
                 CardMode.SENTENCE -> BASIC_SENTENCE_DEFAULTS.filterKeys { it in fields }
             }
+            Log.d(TAG, "  matched: Basic shape ($mode); applied=$out")
+            return out
         }
 
+        Log.d(TAG, "  no template match — mapping will start blank")
         return emptyMap()
     }
 
