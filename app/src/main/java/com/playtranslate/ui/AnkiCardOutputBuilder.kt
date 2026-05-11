@@ -69,7 +69,11 @@ object AnkiCardOutputBuilder {
         val frequency = firstHighlighted?.let {
             SentenceAnkiHtmlBuilder.starsString(it.freqScore)
         }.orEmpty()
-        val sentenceHtml = wrapHighlighted(cardData.source, cardData.selectedWords)
+        val sentenceHtml = wrapHighlighted(
+            text = cardData.source,
+            highlighted = cardData.selectedWords,
+            words = cardData.words,
+        )
         val translationHtml = cardData.target.replace(Regex("[\\n\\r]+"), "<br>")
         val sortedWords = if (cardData.selectedWords.isNotEmpty()) {
             cardData.words.sortedByDescending { it.word in cardData.selectedWords }
@@ -151,17 +155,46 @@ object AnkiCardOutputBuilder {
      * against a separately-mapped bracketed-format field, which is out
      * of scope for v1.
      *
-     * Longer words are matched first so that "猫" doesn't steal a match
-     * from "黒猫" when both are highlighted. Match is purely literal
-     * substring — no deinflection (that's a Japanese-only concern best
-     * served by the future SentenceFurigana output channel).
+     * Matches against the SURFACE form of each highlighted word, not
+     * its dictionary form, so conjugated verbs/adjectives bold
+     * correctly. The user looked up 倒れる but the sentence contains
+     * 倒れている; we want the latter wrapped. PT's tokeniser already
+     * records each word's surface form in [WordEntry.surfaceForm] when
+     * the sentence is analysed — we just look it up here and match
+     * surfaces literally. Falls back to the dictionary form when
+     * surfaceForm is missing (rare; happens for manually-typed words).
+     *
+     * Longer surfaces are matched first so that "猫" doesn't steal a
+     * match from "黒猫" when both are highlighted.
      */
-    private fun wrapHighlighted(text: String, highlighted: Set<String>): String {
+    private fun wrapHighlighted(
+        text: String,
+        highlighted: Set<String>,
+        words: List<SentenceAnkiHtmlBuilder.WordEntry>,
+    ): String {
         if (highlighted.isEmpty()) {
             return text.replace(Regex("[\\n\\r]+"), "<br>")
         }
-        val sortedHighlights = highlighted.filter { it.isNotEmpty() }
-            .sortedByDescending { it.length }
+        // Resolve each highlighted dictionary form to its surface form.
+        // Multiple WordEntries may share a dictionary form (rare); we
+        // collect ALL their surfaces so every occurrence gets bolded.
+        // Falls back to the dictionary form itself when no surface was
+        // recorded.
+        val targets = buildSet {
+            highlighted.forEach { dict ->
+                if (dict.isEmpty()) return@forEach
+                val surfaces = words.asSequence()
+                    .filter { it.word == dict && it.surfaceForm.isNotEmpty() }
+                    .map { it.surfaceForm }
+                    .toList()
+                if (surfaces.isEmpty()) {
+                    add(dict)
+                } else {
+                    addAll(surfaces)
+                }
+            }
+        }.toList().sortedByDescending { it.length }
+
         val sb = StringBuilder()
         var i = 0
         while (i < text.length) {
@@ -172,7 +205,7 @@ object AnkiCardOutputBuilder {
                 while (i < text.length && (text[i] == '\n' || text[i] == '\r')) i++
                 continue
             }
-            val hit = sortedHighlights.firstOrNull { text.startsWith(it, i) }
+            val hit = targets.firstOrNull { text.startsWith(it, i) }
             if (hit != null) {
                 sb.append("<b>").append(hit).append("</b>")
                 i += hit.length
