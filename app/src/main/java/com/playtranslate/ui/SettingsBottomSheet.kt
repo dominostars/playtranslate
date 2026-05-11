@@ -16,6 +16,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
 import com.playtranslate.AnkiManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.playtranslate.Prefs
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.capturableDisplays
@@ -294,6 +296,38 @@ class SettingsBottomSheet : DialogFragment() {
                     val picker = AnkiCardTypePickerDialog.newInstance(CardMode.SENTENCE)
                     picker.onCardTypePicked = { _, _ -> onPicked() }
                     picker.show(childFragmentManager, AnkiCardTypePickerDialog.TAG)
+                }
+                override fun showAnkiCardTypeMapping(onSaved: () -> Unit) {
+                    val sheet = this@SettingsBottomSheet
+                    val ctx = sheet.requireContext()
+                    val prefs = Prefs(ctx)
+                    val pickedId = prefs.ankiModelId
+                    if (pickedId == -1L) return  // shouldn't be reachable; row's hidden
+                    sheet.viewLifecycleOwner.lifecycleScope.launch {
+                        val models = withContext(Dispatchers.IO) { AnkiManager(ctx).getModels() }
+                        val picked = models.firstOrNull { it.id == pickedId }
+                        if (picked == null) {
+                            // Model disappeared from AnkiDroid since the
+                            // user selected it. Fall back to default
+                            // and Toast, matching the send-time guard.
+                            prefs.ankiModelId = -1L
+                            prefs.ankiModelName = ""
+                            android.widget.Toast.makeText(
+                                ctx, R.string.anki_card_type_stale_fallback,
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                            onSaved()
+                            return@launch
+                        }
+                        val dialog = AnkiFieldMappingDialog.newInstance(
+                            modelId = picked.id,
+                            modelName = picked.name,
+                            fieldNames = picked.fieldNames,
+                            mode = CardMode.SENTENCE,
+                        )
+                        dialog.onSaved = { _, _ -> onSaved() }
+                        dialog.show(childFragmentManager, AnkiFieldMappingDialog.TAG)
+                    }
                 }
                 override fun getScrollY(): Int = settingsScrollView.scrollY
             }

@@ -90,6 +90,7 @@ class SettingsRenderer(
         fun showHotkeyDialog(title: String?, onSet: (List<Int>) -> Unit, onCancel: () -> Unit)
         fun showAnkiDeckPicker(onDeckSelected: () -> Unit)
         fun showAnkiCardTypePicker(onPicked: () -> Unit)
+        fun showAnkiCardTypeMapping(onSaved: () -> Unit)
         fun getScrollY(): Int
 
         /** Tap on the TranslateGemma row when the model isn't installed.
@@ -164,6 +165,8 @@ class SettingsRenderer(
     private val rowAnkiDeck: View = root.findViewById(R.id.rowAnkiDeck)
     private val dividerAnkiCardType: View = root.findViewById(R.id.dividerAnkiCardType)
     private val rowAnkiCardType: View = root.findViewById(R.id.rowAnkiCardType)
+    private val dividerAnkiEditMapping: View = root.findViewById(R.id.dividerAnkiEditMapping)
+    private val rowAnkiEditMapping: View = root.findViewById(R.id.rowAnkiEditMapping)
     private val tvAnkiSectionTitle: TextView = root.findViewById(R.id.tvAnkiSectionTitle)
 
     private val llThemeModePicker: LinearLayout = root.findViewById(R.id.llThemeModePicker)
@@ -1192,9 +1195,7 @@ class SettingsRenderer(
             !installed -> {
                 tvAnkiSectionTitle.visibility = View.GONE
                 llAnkiPermission.visibility = View.GONE
-                rowAnkiDeck.visibility = View.GONE
-                rowAnkiCardType.visibility = View.GONE
-                dividerAnkiCardType.visibility = View.GONE
+                hideAllAnkiRows()
             }
 
             !ankiManager.hasPermission() -> {
@@ -1209,9 +1210,7 @@ class SettingsRenderer(
                     onClick = { callbacks.requestAnkiPermission() }
                 )
                 llAnkiPermission.visibility = View.VISIBLE
-                rowAnkiDeck.visibility = View.GONE
-                rowAnkiCardType.visibility = View.GONE
-                dividerAnkiCardType.visibility = View.GONE
+                hideAllAnkiRows()
             }
 
             else -> {
@@ -1219,8 +1218,17 @@ class SettingsRenderer(
                 llAnkiPermission.visibility = View.GONE
                 setupAnkiDeckRow()
                 setupAnkiCardTypeRow()
+                refreshAnkiEditMappingRow()
             }
         }
+    }
+
+    private fun hideAllAnkiRows() {
+        rowAnkiDeck.visibility = View.GONE
+        rowAnkiCardType.visibility = View.GONE
+        dividerAnkiCardType.visibility = View.GONE
+        rowAnkiEditMapping.visibility = View.GONE
+        dividerAnkiEditMapping.visibility = View.GONE
     }
 
     private fun setupAnkiDeckRow() {
@@ -1297,6 +1305,29 @@ class SettingsRenderer(
             ctx.getString(R.string.anki_card_type_row_empty)
         }
         rowAnkiCardType.findViewById<TextView>(R.id.tvRowValue).text = label
+        refreshAnkiEditMappingRow()
+    }
+
+    /**
+     * The "Edit field mapping" row is only relevant when the user has
+     * picked a non-default card type — the Default (PlayTranslate) path
+     * uses v004's fixed two-field schema and has nothing to map.
+     */
+    private fun refreshAnkiEditMappingRow() {
+        val hasCustom = prefs.ankiModelId != -1L
+        if (!hasCustom) {
+            rowAnkiEditMapping.visibility = View.GONE
+            dividerAnkiEditMapping.visibility = View.GONE
+            return
+        }
+        rowAnkiEditMapping.findViewById<TextView>(R.id.tvRowTitle).text =
+            ctx.getString(R.string.anki_card_type_edit_mapping_row_label)
+        rowAnkiEditMapping.findViewById<TextView>(R.id.tvRowValue).text = ""
+        rowAnkiEditMapping.setOnClickListener {
+            callbacks.showAnkiCardTypeMapping { refreshAnkiCardTypeValue() }
+        }
+        rowAnkiEditMapping.visibility = View.VISIBLE
+        dividerAnkiEditMapping.visibility = View.VISIBLE
     }
 
     // ── Appearance ───────────────────────────────────────────────────────

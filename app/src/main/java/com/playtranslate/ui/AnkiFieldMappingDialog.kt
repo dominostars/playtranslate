@@ -5,16 +5,17 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.fragment.app.DialogFragment
+import com.google.android.material.card.MaterialCardView
 import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
 import com.playtranslate.fullScreenDialogTheme
-import com.playtranslate.themeColor
 
 private const val TAG = "FieldMappingDialog"
 
@@ -98,38 +99,38 @@ class AnkiFieldMappingDialog : DialogFragment() {
         val toolbar = view.findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
         toolbar.title = ctx.getString(R.string.anki_field_mapping_title, modelName)
         toolbar.setNavigationOnClickListener { dismiss() }
-        toolbar.inflateMenu(R.menu.menu_anki_field_mapping)
-        toolbar.setOnMenuItemClickListener { item ->
-            if (item.itemId == R.id.action_save) {
-                prefs.ankiModelId = modelId
-                prefs.ankiModelName = modelName
-                prefs.setAnkiFieldMapping(modelId, workingMapping)
-                onSaved?.invoke(modelId, modelName)
-                dismiss()
-                true
-            } else false
-        }
 
         val container = view.findViewById<LinearLayout>(R.id.fieldMappingContainer)
         renderRows(container)
+
+        view.findViewById<FrameLayout>(R.id.btnSaveMapping).setOnClickListener {
+            prefs.ankiModelId = modelId
+            prefs.ankiModelName = modelName
+            prefs.setAnkiFieldMapping(modelId, workingMapping)
+            onSaved?.invoke(modelId, modelName)
+            dismiss()
+        }
     }
 
     private fun renderRows(container: LinearLayout) {
+        if (fieldNames.isEmpty()) return
         val ctx = requireContext()
         val inflater = LayoutInflater.from(ctx)
-        val density = ctx.resources.displayMetrics.density
+
+        // Group all fields inside a single MaterialCardView, with inset
+        // dividers between rows — same grouped-card look as the Anki
+        // section in Settings and the Card Type picker. Reuses the
+        // shared `language_list_section` wrapper.
+        val card = inflater.inflate(R.layout.language_list_section, container, false) as MaterialCardView
+        val rowContainer = card.findViewById<LinearLayout>(R.id.sectionRows)
 
         fieldNames.forEachIndexed { idx, fieldName ->
             if (idx > 0) {
-                // Inset divider between rows (matches settings card style).
-                container.addView(View(ctx).apply {
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT, 1
-                    ).also { it.marginStart = (16 * density).toInt() }
-                    setBackgroundColor(ctx.themeColor(R.attr.ptDivider))
-                })
+                rowContainer.addView(
+                    inflater.inflate(R.layout.settings_row_divider, rowContainer, false)
+                )
             }
-            val row = inflater.inflate(R.layout.settings_row_value, container, false)
+            val row = inflater.inflate(R.layout.settings_row_value, rowContainer, false)
             val titleTv = row.findViewById<TextView>(R.id.tvRowTitle)
             val valueTv = row.findViewById<TextView>(R.id.tvRowValue)
             titleTv.text = fieldName
@@ -141,8 +142,9 @@ class AnkiFieldMappingDialog : DialogFragment() {
                     valueTv.text = ctx.getString(picked.labelRes)
                 }
             }
-            container.addView(row)
+            rowContainer.addView(row)
         }
+        container.addView(card)
     }
 
     private fun showSourcePopup(

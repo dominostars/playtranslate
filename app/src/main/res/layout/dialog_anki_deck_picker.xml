@@ -30,7 +30,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="@dimen/pt_section_h_padding" />
+            android:paddingHorizontal="@dimen/pt_section_h_padding"
+            android:paddingTop="4dp"
+            android:paddingBottom="20dp" />
 
     </androidx.core.widget.NestedScrollView>
 

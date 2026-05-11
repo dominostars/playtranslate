@@ -70,6 +70,40 @@ fun Fragment.loadAnkiDecksInto(
     }
 }
 
+/**
+ * Selected-row background for grouped-card pickers (deck + card type).
+ * Mirrors LanguageSetupActivity's buildSelectedRowBackground: a 10%
+ * accent fill over the card color, with a 1dp stroke made from the
+ * accent blended 10% into the (composited) divider color. Pass corner
+ * radii so the drawable's top/bottom corners track the parent card's
+ * rounded corners on the first/last row.
+ */
+internal fun Context.pickerSelectedRowBackground(
+    topCornerRadius: Float,
+    bottomCornerRadius: Float,
+): GradientDrawable {
+    val dp = resources.displayMetrics.density
+    val accent = themeColor(com.playtranslate.R.attr.ptAccent)
+    val card = themeColor(com.playtranslate.R.attr.ptCard)
+    // ptDivider is a low-alpha hairline; composite it over the card so
+    // the blend works against the color the user actually sees.
+    val effectiveDivider = com.playtranslate.compositeOver(
+        themeColor(com.playtranslate.R.attr.ptDivider), card,
+    )
+    val fill = com.playtranslate.blendColors(accent, card, 0.10f)
+    val stroke = com.playtranslate.blendColors(accent, effectiveDivider, 0.10f)
+    return GradientDrawable().apply {
+        setColor(fill)
+        setStroke((1 * dp).toInt(), stroke)
+        cornerRadii = floatArrayOf(
+            topCornerRadius, topCornerRadius,
+            topCornerRadius, topCornerRadius,
+            bottomCornerRadius, bottomCornerRadius,
+            bottomCornerRadius, bottomCornerRadius,
+        )
+    }
+}
+
 /** Inflates a settings-style group header into [parent]. [suffix] sits as
  *  the right-aligned trailing slot (10sp, ptTextHint) and is hidden when null. */
 fun ankiGroupHeader(parent: LinearLayout, title: String, suffix: String? = null) {

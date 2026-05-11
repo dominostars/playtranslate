@@ -191,6 +191,9 @@
     <string name="anki_card_type_pick_title">Select Card Type</string>
     <string name="anki_card_type_no_models">No card types found in AnkiDroid</string>
     <string name="anki_card_type_stale_fallback">Card type no longer exists; using default</string>
+    <string name="anki_card_type_section_default">Default</string>
+    <string name="anki_card_type_section_custom">Card Types</string>
+    <string name="anki_card_type_edit_mapping_row_label">Edit field mapping</string>
 
     <string name="anki_field_mapping_title">Configure %1$s</string>
     <string name="anki_field_mapping_save">Save</string>
