@@ -173,7 +173,6 @@
     <string name="anki_deck_row_empty">Pick a deck</string>
     <string name="anki_deck_label_format">Deck: %1$s</string>
     <string name="anki_save_button_label">Save Anki Card</string>
-    <string name="anki_group_deck">Anki Deck</string>
     <string name="anki_group_original">Original</string>
     <string name="anki_group_translation">Translation</string>
     <string name="anki_group_words">Words on card</string>
@@ -184,6 +183,32 @@
     <string name="anki_word_remove_content_description">Remove from card</string>
     <string name="anki_screenshot_remove_content_description">Remove screenshot</string>
     <string name="anki_pick_deck_title">Pick a deck</string>
+
+    <!-- Card Type picker + field mapping -->
+    <string name="anki_section_header">Anki</string>
+    <string name="anki_card_type_row_label">Card Type</string>
+    <string name="anki_card_type_row_empty">Default (PlayTranslate)</string>
+    <string name="anki_card_type_pick_title">Select Card Type</string>
+    <string name="anki_card_type_no_models">No card types found in AnkiDroid</string>
+    <string name="anki_card_type_stale_fallback">Card type no longer exists; using default</string>
+
+    <string name="anki_field_mapping_title">Configure %1$s</string>
+    <string name="anki_field_mapping_save">Save</string>
+    <string name="anki_field_mapping_unconfigured">Configure fields for this card type before sending</string>
+
+    <!-- ContentSource labels (dropdown options). Names persist in prefs,
+         so re-labeling here is safe but renaming enum constants is not. -->
+    <string name="anki_content_none">(Blank)</string>
+    <string name="anki_content_expression">Word / headword</string>
+    <string name="anki_content_reading">Word reading (kana)</string>
+    <string name="anki_content_sentence">Source sentence</string>
+    <string name="anki_content_sentence_translation">Translated sentence</string>
+    <string name="anki_content_definition">Definition</string>
+    <string name="anki_content_picture">Screenshot filename</string>
+    <string name="anki_content_frequency">Frequency stars</string>
+    <string name="anki_content_part_of_speech">Part of speech</string>
+    <string name="anki_content_words_table">Words list (sentence cards)</string>
+
     <string name="cd_back">Back</string>
 
     <!-- Appearance — theme mode + accent picker -->

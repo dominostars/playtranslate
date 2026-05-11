@@ -211,7 +211,12 @@ class WordAnkiReviewSheet : DialogFragment() {
         wordContainer.visibility = if (hasSentenceData) View.GONE else View.VISIBLE
 
         deckSubtitleView = view.findViewById(R.id.tvWordAnkiSendSubtitle)
-        addAnkiDeckRow(deckHost) { refreshDeckSubtitle() }
+        addAnkiSection(
+            parent = deckHost,
+            mode = CardMode.WORD,
+            onDeckChanged = { refreshDeckSubtitle() },
+            onCardTypeChanged = { /* no visible affordance reflects card type */ },
+        )
         refreshDeckSubtitle()
 
         buildWordContent(wordContainer, word, reading, pos, fallbackDefinition,
@@ -1152,20 +1157,36 @@ class WordAnkiReviewSheet : DialogFragment() {
         word: String, reading: String, pos: String, fallbackDefinition: String,
         freqScore: Int, deckId: Long, screenshotPath: String?
     ) {
-        val ankiManager = AnkiManager(requireContext())
-
-        val imageFilename: String? = if (screenshotPath != null) {
-            withContext(Dispatchers.IO) { ankiManager.addMediaFromFile(File(screenshotPath)) }
-        } else null
-
-        val front = buildWordFrontHtml(word)
-        val back  = buildWordBackHtml(word, reading, pos, fallbackDefinition,
-            freqScore, imageFilename)
-
-        val success = withContext(Dispatchers.IO) { ankiManager.addNote(deckId, front, back) }
-        val msg = if (success) getString(R.string.anki_added) else getString(R.string.anki_failed)
-        Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
-        if (success) dismiss()
+        val result = dispatchSendToAnki(
+            deckId = deckId,
+            mode = CardMode.WORD,
+            screenshotPath = screenshotPath,
+            legacyFront = { buildWordFrontHtml(word) },
+            legacyBack = { imageFilename ->
+                buildWordBackHtml(word, reading, pos, fallbackDefinition,
+                    freqScore, imageFilename)
+            },
+            structured = { imageFilename ->
+                AnkiCardOutputBuilder.forWord(
+                    word = word,
+                    reading = reading,
+                    pos = pos,
+                    definitionHtml = buildWordDefinitionHtml(inlineStyler),
+                    freqScore = freqScore,
+                    imageFilename = imageFilename,
+                )
+            },
+        )
+        when (result) {
+            AnkiSendResult.Success -> {
+                Toast.makeText(requireContext(), R.string.anki_added, Toast.LENGTH_SHORT).show()
+                dismiss()
+            }
+            AnkiSendResult.Failed -> {
+                Toast.makeText(requireContext(), R.string.anki_failed, Toast.LENGTH_SHORT).show()
+            }
+            AnkiSendResult.NeedsMapping -> { /* dispatcher already handled */ }
+        }
     }
 
     private fun buildWordFrontHtml(word: String): String = buildString {
@@ -1222,8 +1243,10 @@ class WordAnkiReviewSheet : DialogFragment() {
 
         val entry = resolvedEntry
         if (entry != null) {
-            appendSensesHtml(entry, fallbackDefinition)
-            appendMoreExamplesHtml()
+            // Legacy v004 path — surrounding <style> block provides the
+            // gl-* CSS, so emit class refs.
+            appendSensesHtml(entry, fallbackDefinition, classStyler)
+            appendMoreExamplesHtml(classStyler)
         } else {
             val defHtml = fallbackDefinition.lines().filter { it.isNotBlank() }
                 .joinToString("<br>") { it.trimStart() }
@@ -1232,8 +1255,32 @@ class WordAnkiReviewSheet : DialogFragment() {
         append("</div>")
     }
 
+    /**
+     * Builds the per-sense Definition HTML for the structured-path
+     * word-card send (DEFINITION ContentSource). Mirrors the legacy
+     * branch logic in [buildWordBackHtml] but emits inline styles (no
+     * surrounding `<style>` block ships in the structured path) via
+     * [inlineStyler]. Honors the same curation state
+     * ([removedSenses] / [removedExamples] / [removedTatoebaIdx]) so
+     * what the user sees on the sheet is what lands on the card.
+     */
+    internal fun buildWordDefinitionHtml(styler: HtmlStyler): String {
+        val entry = resolvedEntry
+        val fallback = arguments?.getString(ARG_DEFINITION) ?: ""
+        val sb = StringBuilder()
+        if (entry != null) {
+            sb.appendSensesHtml(entry, fallback, styler)
+            sb.appendMoreExamplesHtml(styler)
+        } else if (fallback.isNotBlank()) {
+            val defHtml = fallback.lines().filter { it.isNotBlank() }
+                .joinToString("<br>") { it.trimStart() }
+            sb.append("<div ${styler("gl-gloss", "")}>$defHtml</div>")
+        }
+        return sb.toString()
+    }
+
     private fun StringBuilder.appendSensesHtml(
-        entry: DictionaryEntry, fallback: String,
+        entry: DictionaryEntry, fallback: String, styler: HtmlStyler,
     ) {
         val flatSenses = resolvedFlatSenses
         val defResult = resolvedDefResult
@@ -1267,28 +1314,28 @@ class WordAnkiReviewSheet : DialogFragment() {
                 val posLabels = target.pos.filter { it.isNotBlank() }
                     .takeIf { it.isNotEmpty() }
                     ?: fallbackPos
-                append("<div class=\"gl-sense\">")
+                append("<div ${styler("gl-sense", "")}>")
                 if (posLabels.isNotEmpty()) {
-                    append("<div class=\"gl-pos\">")
+                    append("<div ${styler("gl-pos", "")}>")
                     append(htmlEscape(posLabels.joinToString(" · ")))
                     append("</div>")
                 }
-                append("<div class=\"gl-gloss\">")
+                append("<div ${styler("gl-gloss", "")}>")
                 append(numberPrefix)
                 append(htmlEscape(target.glosses.joinToString("; ")))
                 append("</div>")
                 if (target.misc.isNotEmpty()) {
-                    append("<div class=\"gl-misc\">")
+                    append("<div ${styler("gl-misc", "")}>")
                     append(htmlEscape(target.misc.joinToString(" · ")))
                     append("</div>")
                 }
                 target.examples.withIndex()
                     .filter { (eIdx, _) -> (idx to eIdx) !in removedExamples }
                     .forEach { (_, ex) ->
-                        append("<div class=\"gl-ex\">")
+                        append("<div ${styler("gl-ex", "")}>")
                         append(htmlEscape(ex.text))
                         if (ex.translation.isNotBlank()) {
-                            append("<div class=\"gl-ex-tr\">")
+                            append("<div ${styler("gl-ex-tr", "")}>")
                             append(htmlEscape(ex.translation))
                             append("</div>")
                         }
@@ -1321,19 +1368,19 @@ class WordAnkiReviewSheet : DialogFragment() {
                 ?: translatedDefs?.getOrNull(flatIdx)
                 ?: sense.targetDefinitions.joinToString("; ")
             val numberPrefix = if (numVisible > 1) "${displayIdx + 1}. " else ""
-            append("<div class=\"gl-sense\">")
+            append("<div ${styler("gl-sense", "")}>")
             if (posLabels.isNotEmpty()) {
-                append("<div class=\"gl-pos\">")
+                append("<div ${styler("gl-pos", "")}>")
                 append(htmlEscape(posLabels.joinToString(" · ")))
                 append("</div>")
             }
-            append("<div class=\"gl-gloss\">")
+            append("<div ${styler("gl-gloss", "")}>")
             append(numberPrefix)
             append(htmlEscape(gloss))
             append("</div>")
             val miscText = sense.misc.takeIf { it.isNotEmpty() }?.joinToString(" · ")
             if (miscText != null) {
-                append("<div class=\"gl-misc\">")
+                append("<div ${styler("gl-misc", "")}>")
                 append(htmlEscape(miscText))
                 append("</div>")
             }
@@ -1341,10 +1388,10 @@ class WordAnkiReviewSheet : DialogFragment() {
                 .filter { (eIdx, _) -> (flatIdx to eIdx) !in removedExamples }
                 .forEach { (eIdx, ex) ->
                     val tr = exampleTranslationCache[flatIdx to eIdx] ?: ex.translation
-                    append("<div class=\"gl-ex\">")
+                    append("<div ${styler("gl-ex", "")}>")
                     append(htmlEscape(ex.text))
                     if (tr.isNotBlank()) {
-                        append("<div class=\"gl-ex-tr\">")
+                        append("<div ${styler("gl-ex-tr", "")}>")
                         append(htmlEscape(tr))
                         append("</div>")
                     }
@@ -1354,18 +1401,18 @@ class WordAnkiReviewSheet : DialogFragment() {
         }
     }
 
-    private fun StringBuilder.appendMoreExamplesHtml() {
+    private fun StringBuilder.appendMoreExamplesHtml(styler: HtmlStyler) {
         val pairs = tatoebaPairs ?: return
         val visible = pairs.withIndex().filter { (idx, _) -> idx !in removedTatoebaIdx }
         if (visible.isEmpty()) return
-        append("<div class=\"gl-section\">")
+        append("<div ${styler("gl-section", "")}>")
         append(getString(R.string.word_detail_more_examples))
         append("</div>")
         visible.forEach { (_, p) ->
-            append("<div class=\"gl-ex\">")
+            append("<div ${styler("gl-ex", "")}>")
             append(htmlEscape(p.source))
             if (p.target.isNotBlank()) {
-                append("<div class=\"gl-ex-tr\">")
+                append("<div ${styler("gl-ex-tr", "")}>")
                 append(htmlEscape(p.target))
                 append("</div>")
             }
@@ -1383,23 +1430,36 @@ class WordAnkiReviewSheet : DialogFragment() {
 
     private suspend fun sendSentenceToAnki(deckId: Long) {
         val data = getContentFragment()?.getCardData() ?: return
-        val ankiManager = AnkiManager(requireContext())
-
-        val imageFilename: String? = if (data.screenshotPath != null) {
-            withContext(Dispatchers.IO) { ankiManager.addMediaFromFile(File(data.screenshotPath)) }
-        } else null
-
-        val front = SentenceAnkiHtmlBuilder.buildFrontHtml(data.source, data.words, data.selectedWords, data.sourceLangId)
-        val back  = SentenceAnkiHtmlBuilder.buildBackHtml(data.source, data.target, data.words,
-            imageFilename, data.selectedWords, data.sourceLangId)
-
-        val success = withContext(Dispatchers.IO) { ankiManager.addNote(deckId, front, back) }
-        val msg = if (success) getString(R.string.anki_added) else getString(R.string.anki_failed)
-        Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
-
-        if (success) {
-            parentFragmentManager.setFragmentResult(AnkiReviewBottomSheet.RESULT_ANKI_ADDED, bundleOf())
-            dismiss()
+        val result = dispatchSendToAnki(
+            deckId = deckId,
+            mode = CardMode.SENTENCE,
+            screenshotPath = data.screenshotPath,
+            legacyFront = {
+                SentenceAnkiHtmlBuilder.buildFrontHtml(
+                    data.source, data.words, data.selectedWords, data.sourceLangId,
+                )
+            },
+            legacyBack = { imageFilename ->
+                SentenceAnkiHtmlBuilder.buildBackHtml(
+                    data.source, data.target, data.words,
+                    imageFilename, data.selectedWords, data.sourceLangId,
+                )
+            },
+            structured = { imageFilename ->
+                AnkiCardOutputBuilder.forSentence(data, imageFilename)
+            },
+        )
+        when (result) {
+            AnkiSendResult.Success -> {
+                Toast.makeText(requireContext(), R.string.anki_added, Toast.LENGTH_SHORT).show()
+                parentFragmentManager.setFragmentResult(
+                    AnkiReviewBottomSheet.RESULT_ANKI_ADDED, bundleOf())
+                dismiss()
+            }
+            AnkiSendResult.Failed -> {
+                Toast.makeText(requireContext(), R.string.anki_failed, Toast.LENGTH_SHORT).show()
+            }
+            AnkiSendResult.NeedsMapping -> { /* dispatcher already handled */ }
         }
     }
 

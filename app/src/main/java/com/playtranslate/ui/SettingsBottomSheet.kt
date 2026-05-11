@@ -287,6 +287,14 @@ class SettingsBottomSheet : DialogFragment() {
                     picker.onDeckSelected = onDeckSelected
                     picker.show(childFragmentManager, AnkiDeckPickerDialog.TAG)
                 }
+                override fun showAnkiCardTypePicker(onPicked: () -> Unit) {
+                    // Settings doesn't know mode; use SENTENCE as the
+                    // default for Basic-shape detection. Mapping dialog
+                    // lets the user override per template anyway.
+                    val picker = AnkiCardTypePickerDialog.newInstance(CardMode.SENTENCE)
+                    picker.onCardTypePicked = { _, _ -> onPicked() }
+                    picker.show(childFragmentManager, AnkiCardTypePickerDialog.TAG)
+                }
                 override fun getScrollY(): Int = settingsScrollView.scrollY
             }
         )

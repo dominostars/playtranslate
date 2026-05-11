@@ -84,7 +84,12 @@ class AnkiReviewBottomSheet : DialogFragment() {
         // inflation and break the restore path.
         val deckHost = view.findViewById<LinearLayout>(R.id.sentenceAnkiDeckHost)
         deckSubtitleView = view.findViewById(R.id.tvAnkiSendSubtitle)
-        addAnkiDeckRow(deckHost) { refreshDeckSubtitle() }
+        addAnkiSection(
+            parent = deckHost,
+            mode = CardMode.SENTENCE,
+            onDeckChanged = { refreshDeckSubtitle() },
+            onCardTypeChanged = { /* no visible affordance reflects card type */ },
+        )
         refreshDeckSubtitle()
 
         if (savedInstanceState == null) {
@@ -126,23 +131,35 @@ class AnkiReviewBottomSheet : DialogFragment() {
 
     private suspend fun sendToAnki(deckId: Long) {
         val data = getContentFragment()?.getCardData() ?: return
-        val ankiManager = AnkiManager(requireContext())
-
-        val imageFilename: String? = if (data.screenshotPath != null) {
-            withContext(Dispatchers.IO) { ankiManager.addMediaFromFile(File(data.screenshotPath)) }
-        } else null
-
-        val front = SentenceAnkiHtmlBuilder.buildFrontHtml(data.source, data.words, data.selectedWords, data.sourceLangId)
-        val back  = SentenceAnkiHtmlBuilder.buildBackHtml(data.source, data.target, data.words,
-            imageFilename, data.selectedWords, data.sourceLangId)
-
-        val success = withContext(Dispatchers.IO) { ankiManager.addNote(deckId, front, back) }
-        val msg = if (success) getString(R.string.anki_added) else getString(R.string.anki_failed)
-        Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
-
-        if (success) {
-            parentFragmentManager.setFragmentResult(RESULT_ANKI_ADDED, bundleOf())
-            dismiss()
+        val result = dispatchSendToAnki(
+            deckId = deckId,
+            mode = CardMode.SENTENCE,
+            screenshotPath = data.screenshotPath,
+            legacyFront = {
+                SentenceAnkiHtmlBuilder.buildFrontHtml(
+                    data.source, data.words, data.selectedWords, data.sourceLangId,
+                )
+            },
+            legacyBack = { imageFilename ->
+                SentenceAnkiHtmlBuilder.buildBackHtml(
+                    data.source, data.target, data.words,
+                    imageFilename, data.selectedWords, data.sourceLangId,
+                )
+            },
+            structured = { imageFilename ->
+                AnkiCardOutputBuilder.forSentence(data, imageFilename)
+            },
+        )
+        when (result) {
+            AnkiSendResult.Success -> {
+                Toast.makeText(requireContext(), R.string.anki_added, Toast.LENGTH_SHORT).show()
+                parentFragmentManager.setFragmentResult(RESULT_ANKI_ADDED, bundleOf())
+                dismiss()
+            }
+            AnkiSendResult.Failed -> {
+                Toast.makeText(requireContext(), R.string.anki_failed, Toast.LENGTH_SHORT).show()
+            }
+            AnkiSendResult.NeedsMapping -> { /* dispatcher already Toasted + opened dialog */ }
         }
     }
 

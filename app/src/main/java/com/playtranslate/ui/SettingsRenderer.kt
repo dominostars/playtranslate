@@ -89,6 +89,7 @@ class SettingsRenderer(
         fun openDeepLSettings()
         fun showHotkeyDialog(title: String?, onSet: (List<Int>) -> Unit, onCancel: () -> Unit)
         fun showAnkiDeckPicker(onDeckSelected: () -> Unit)
+        fun showAnkiCardTypePicker(onPicked: () -> Unit)
         fun getScrollY(): Int
 
         /** Tap on the TranslateGemma row when the model isn't installed.
@@ -161,6 +162,8 @@ class SettingsRenderer(
     private val llAnkiGetApp: LinearLayout = root.findViewById(R.id.llAnkiGetApp)
     private val llAnkiPermission: LinearLayout = root.findViewById(R.id.llAnkiPermission)
     private val rowAnkiDeck: View = root.findViewById(R.id.rowAnkiDeck)
+    private val dividerAnkiCardType: View = root.findViewById(R.id.dividerAnkiCardType)
+    private val rowAnkiCardType: View = root.findViewById(R.id.rowAnkiCardType)
     private val tvAnkiSectionTitle: TextView = root.findViewById(R.id.tvAnkiSectionTitle)
 
     private val llThemeModePicker: LinearLayout = root.findViewById(R.id.llThemeModePicker)
@@ -1190,6 +1193,8 @@ class SettingsRenderer(
                 tvAnkiSectionTitle.visibility = View.GONE
                 llAnkiPermission.visibility = View.GONE
                 rowAnkiDeck.visibility = View.GONE
+                rowAnkiCardType.visibility = View.GONE
+                dividerAnkiCardType.visibility = View.GONE
             }
 
             !ankiManager.hasPermission() -> {
@@ -1205,12 +1210,15 @@ class SettingsRenderer(
                 )
                 llAnkiPermission.visibility = View.VISIBLE
                 rowAnkiDeck.visibility = View.GONE
+                rowAnkiCardType.visibility = View.GONE
+                dividerAnkiCardType.visibility = View.GONE
             }
 
             else -> {
                 tvAnkiSectionTitle.visibility = View.GONE
                 llAnkiPermission.visibility = View.GONE
                 setupAnkiDeckRow()
+                setupAnkiCardTypeRow()
             }
         }
     }
@@ -1247,6 +1255,48 @@ class SettingsRenderer(
         val freshPrefs = Prefs(ctx)
         val deckName = freshPrefs.ankiDeckName.ifEmpty { "Not selected" }
         rowAnkiDeck.findViewById<TextView>(R.id.tvRowValue).text = deckName
+    }
+
+    private fun setupAnkiCardTypeRow() {
+        rowAnkiCardType.findViewById<TextView>(R.id.tvRowTitle).text = "Card Type"
+        refreshAnkiCardTypeValue()
+        rowAnkiCardType.setOnClickListener {
+            callbacks.showAnkiCardTypePicker { refreshAnkiCardTypeValue() }
+        }
+        rowAnkiCardType.visibility = View.VISIBLE
+        dividerAnkiCardType.visibility = View.VISIBLE
+        validateAnkiCardType()
+    }
+
+    /**
+     * Heal the saved card type against AnkiDroid's live model list. If
+     * the saved id was deleted (or never existed), reset to the Default
+     * sentinel. If found, refresh the saved name so a rename in
+     * AnkiDroid surfaces here too.
+     */
+    private fun validateAnkiCardType() {
+        if (prefs.ankiModelId == -1L) return
+        lifecycleScope.launch {
+            val models = withContext(Dispatchers.IO) { AnkiManager(ctx).getModels() }
+            if (models.isEmpty()) return@launch
+            val match = models.firstOrNull { it.id == prefs.ankiModelId }
+            if (match == null) {
+                prefs.ankiModelId = -1L
+                prefs.ankiModelName = ""
+                refreshAnkiCardTypeValue()
+            } else if (match.name != prefs.ankiModelName) {
+                prefs.ankiModelName = match.name
+                refreshAnkiCardTypeValue()
+            }
+        }
+    }
+
+    private fun refreshAnkiCardTypeValue() {
+        val freshPrefs = Prefs(ctx)
+        val label = freshPrefs.ankiModelName.ifBlank {
+            ctx.getString(R.string.anki_card_type_row_empty)
+        }
+        rowAnkiCardType.findViewById<TextView>(R.id.tvRowValue).text = label
     }
 
     // ── Appearance ───────────────────────────────────────────────────────

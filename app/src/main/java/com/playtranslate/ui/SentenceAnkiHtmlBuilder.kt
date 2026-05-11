@@ -85,7 +85,10 @@ object SentenceAnkiHtmlBuilder {
         val sorted = if (highlightedWords.isNotEmpty()) {
             words.sortedByDescending { it.word in highlightedWords }
         } else words
-        val wordsHtml = buildWordsHtml(sorted, highlightedWords)
+        // Legacy back HTML wraps a <style> block that defines the gl-*
+        // classes. classStyler emits class refs that the surrounding
+        // <style> applies — no inline duplication.
+        val wordsHtml = buildWordsHtmlWith(sorted, highlightedWords, classStyler)
         return buildString {
             append("<style>")
             append("body{visibility:hidden!important;white-space:normal!important;}")
@@ -185,30 +188,44 @@ object SentenceAnkiHtmlBuilder {
 
     fun starsString(score: Int) = "\u2605".repeat(score)
 
-    private fun buildWordsHtml(
+    /**
+     * Builds the per-word HTML table used at the bottom of the legacy
+     * v004 back-side AND in the structured-path WORDS_TABLE output. The
+     * [styler] callback decides whether each element carries a `class=""`
+     * (legacy path, with the `<style>` block in the surrounding card
+     * supplying CSS) or an inline `style=""` (structured path, no
+     * surrounding CSS available). `internal` so [AnkiCardOutputBuilder]
+     * can pass [inlineStyler] for the structured path.
+     */
+    internal fun buildWordsHtmlWith(
         words: List<WordEntry>,
-        highlightedWords: Set<String> = emptySet()
+        highlightedWords: Set<String>,
+        styler: HtmlStyler,
     ): String {
         if (words.isEmpty()) return ""
         val sb = StringBuilder()
         words.forEach { entry ->
             val isHighlighted = entry.word in highlightedWords
             if (isHighlighted) {
-                sb.append("<div class=\"gl-hl-bg\" style=\"margin-bottom:14px;border-radius:6px;padding:8px 10px;\">")
-                sb.append("<div class=\"gl-hl\"><b>${entry.word}</b></div>")
+                sb.append("<div ${styler("gl-hl-bg", "margin-bottom:14px;border-radius:6px;padding:8px 10px;")}>")
+                sb.append("<div ${styler("gl-hl", "")}><b>${entry.word}</b></div>")
             } else {
-                sb.append("<div style=\"margin-bottom:14px;\">")
+                sb.append("<div ${styler(null, "margin-bottom:14px;")}>")
                 sb.append("<div><b>${entry.word}</b></div>")
             }
             if (entry.reading.isNotEmpty() || entry.freqScore > 0) {
-                sb.append("<div style=\"font-size:0.85em;\">")
-                if (entry.reading.isNotEmpty()) sb.append("<span class=\"gl-hint\">${entry.reading}</span>")
-                if (entry.freqScore > 0) sb.append(" <span style=\"color:#606060;\">${starsString(entry.freqScore)}</span>")
+                sb.append("<div ${styler(null, "font-size:0.85em;")}>")
+                if (entry.reading.isNotEmpty()) {
+                    sb.append("<span ${styler("gl-hint", "")}>${entry.reading}</span>")
+                }
+                if (entry.freqScore > 0) {
+                    sb.append(" <span ${styler(null, "color:#606060;")}>${starsString(entry.freqScore)}</span>")
+                }
                 sb.append("</div>")
             }
-            val style = if (isHighlighted) "margin-left:10px;font-weight:bold;" else "margin-left:10px;"
+            val extra = if (isHighlighted) "margin-left:10px;font-weight:bold;" else "margin-left:10px;"
             entry.meaning.split("\n").filter { it.isNotBlank() }.forEach { line ->
-                sb.append("<div class=\"gl-secondary\" style=\"$style\">$line</div>")
+                sb.append("<div ${styler("gl-secondary", extra)}>$line</div>")
             }
             sb.append("</div>")
         }

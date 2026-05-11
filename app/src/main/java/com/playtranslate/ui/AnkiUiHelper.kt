@@ -133,90 +133,120 @@ fun ankiInsetDivider(parent: LinearLayout, indentDp: Int = 16) {
 }
 
 /**
- * Adds the "Deck" group (header + single tappable row) to [parent]. The
- * row's title IS the current deck name (or a "Pick a deck" placeholder
- * when none is set), with a trailing chevron — no separate label. Tapping
- * launches the same full-screen [AnkiDeckPickerDialog] used in Settings.
+ * Inflates the unified Anki section (header "Anki" + one card with two
+ * `settings_row_value` rows: Deck and Card Type) into [parent]. Tapping
+ * either row launches its respective full-screen picker. Includes
+ * stale-prefs healing for both the saved deck id and saved model id —
+ * runs once on view-created, only acts when AnkiDroid is installed +
+ * permission granted + the query returns non-empty (so we don't wipe a
+ * valid selection on a transient query failure).
  *
- * @return the row's title TextView so callers can refresh it after the
- *         picker dismisses (e.g., to also update a sheet title).
+ * @param mode              CardMode of the calling sheet — passed to
+ *                          the card-type picker so Basic-shape
+ *                          templates get mode-appropriate defaults.
+ * @param onDeckChanged     called after the deck picker dismisses.
+ * @param onCardTypeChanged called after the card-type flow resolves
+ *                          (mapping dialog Save, or "Default" picked).
  */
-fun Fragment.addAnkiDeckRow(parent: LinearLayout, onDeckChanged: () -> Unit): TextView {
+fun Fragment.addAnkiSection(
+    parent: LinearLayout,
+    mode: CardMode,
+    onDeckChanged: () -> Unit,
+    onCardTypeChanged: () -> Unit,
+) {
     val ctx = requireContext()
     val density = ctx.resources.displayMetrics.density
-    ankiGroupHeader(parent, ctx.getString(R.string.anki_group_deck))
+    val inflater = android.view.LayoutInflater.from(ctx)
+    val prefs = Prefs(ctx)
+    val accent = ctx.themeColor(R.attr.ptAccent)
+    val muted = ctx.themeColor(R.attr.ptTextMuted)
+
+    ankiGroupHeader(parent, ctx.getString(R.string.anki_section_header))
     val card = ankiGroupCard(parent)
 
-    val row = LinearLayout(ctx).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        minimumHeight = (56 * density).toInt()
-        setPadding((16 * density).toInt(), (14 * density).toInt(),
-            (16 * density).toInt(), (14 * density).toInt())
-        background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).run {
-            val d = getDrawable(0)
-            recycle()
-            d
+    // -- Deck row --
+    val deckRow = inflater.inflate(R.layout.settings_row_value, card, false)
+    val deckTitle = deckRow.findViewById<TextView>(R.id.tvRowTitle)
+    val deckValue = deckRow.findViewById<TextView>(R.id.tvRowValue)
+    deckTitle.text = ctx.getString(R.string.anki_deck_row_label)
+    fun applyDeckValue(name: String) {
+        if (name.isBlank()) {
+            deckValue.text = ctx.getString(R.string.anki_deck_row_empty)
+            deckValue.setTextColor(muted)
+        } else {
+            deckValue.text = name
+            deckValue.setTextColor(accent)
         }
-        isClickable = true
-        isFocusable = true
-        layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
     }
-    val accent = ctx.themeColor(R.attr.ptAccent)
-    val empty = ctx.themeColor(R.attr.ptTextMuted)
-    val initialName = Prefs(ctx).ankiDeckName
-    val titleTv = TextView(ctx).apply {
-        text = initialName.ifBlank { ctx.getString(R.string.anki_deck_row_empty) }
-        setTextColor(if (initialName.isBlank()) empty else accent)
-        textSize = 15f
-        setTypeface(typeface, android.graphics.Typeface.BOLD)
-        maxLines = 1
-        ellipsize = android.text.TextUtils.TruncateAt.END
-        layoutParams = LinearLayout.LayoutParams(
-            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f,
-        )
-    }
-    row.addView(titleTv)
-    row.addView(android.widget.ImageView(ctx).apply {
-        setImageResource(R.drawable.ic_chevron_right)
-        setColorFilter(ctx.themeColor(R.attr.ptTextMuted))
-        layoutParams = LinearLayout.LayoutParams(
-            (20 * density).toInt(), (20 * density).toInt(),
-        )
-    })
-    row.setOnClickListener {
+    applyDeckValue(prefs.ankiDeckName)
+    deckRow.setOnClickListener {
         showAnkiDeckPicker { _, name ->
-            titleTv.text = name.ifBlank { ctx.getString(R.string.anki_deck_row_empty) }
-            titleTv.setTextColor(if (name.isBlank()) empty else accent)
+            applyDeckValue(name)
             onDeckChanged()
         }
     }
-    card.addView(row)
+    card.addView(deckRow)
 
-    // Heal stale prefs against AnkiDroid's live deck list. If the deck
-    // the user previously chose was renamed or deleted in AnkiDroid,
-    // [Prefs.ankiDeckId] would otherwise be carried into the Send call
-    // and fail at note-creation time. Mirrors the recovery
-    // SettingsRenderer.validateAnkiDeck does on the settings sheet.
+    // -- Divider --
+    val divider = View(ctx).apply {
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, (1 * density).toInt(),
+        ).also { it.marginStart = (16 * density).toInt() }
+        setBackgroundColor(ctx.themeColor(R.attr.ptDivider))
+    }
+    card.addView(divider)
+
+    // -- Card Type row --
+    val cardTypeRow = inflater.inflate(R.layout.settings_row_value, card, false)
+    val cardTypeTitle = cardTypeRow.findViewById<TextView>(R.id.tvRowTitle)
+    val cardTypeValue = cardTypeRow.findViewById<TextView>(R.id.tvRowValue)
+    cardTypeTitle.text = ctx.getString(R.string.anki_card_type_row_label)
+    fun applyCardTypeValue(name: String) {
+        if (name.isBlank()) {
+            cardTypeValue.text = ctx.getString(R.string.anki_card_type_row_empty)
+            cardTypeValue.setTextColor(muted)
+        } else {
+            cardTypeValue.text = name
+            cardTypeValue.setTextColor(accent)
+        }
+    }
+    applyCardTypeValue(prefs.ankiModelName)
+    cardTypeRow.setOnClickListener {
+        showAnkiCardTypePicker(mode) { _, name ->
+            applyCardTypeValue(name)
+            onCardTypeChanged()
+        }
+    }
+    card.addView(cardTypeRow)
+
+    // -- Healing pass: rectify deck + model selections against
+    //    AnkiDroid's live state. Runs once on view-created.
     viewLifecycleOwner.lifecycleScope.launch {
         val ankiManager = AnkiManager(ctx)
         if (!ankiManager.isAnkiDroidInstalled() || !ankiManager.hasPermission()) return@launch
-        val decks = withContext(Dispatchers.IO) { ankiManager.getDecks() }
-        if (decks.isEmpty()) return@launch
-        val prefs = Prefs(ctx)
-        if (decks.containsKey(prefs.ankiDeckId)) return@launch
-        val first = decks.entries.first()
-        prefs.ankiDeckId = first.key
-        prefs.ankiDeckName = first.value
-        titleTv.text = first.value
-        titleTv.setTextColor(accent)
-        onDeckChanged()
+        val (decks, models) = withContext(Dispatchers.IO) {
+            ankiManager.getDecks() to ankiManager.getModels()
+        }
+        if (decks.isNotEmpty() && !decks.containsKey(prefs.ankiDeckId)) {
+            val first = decks.entries.first()
+            prefs.ankiDeckId = first.key
+            prefs.ankiDeckName = first.value
+            applyDeckValue(first.value)
+            onDeckChanged()
+        }
+        if (models.isNotEmpty() && prefs.ankiModelId != -1L) {
+            val match = models.firstOrNull { it.id == prefs.ankiModelId }
+            if (match == null) {
+                prefs.ankiModelId = -1L
+                prefs.ankiModelName = ""
+                applyCardTypeValue("")
+                onCardTypeChanged()
+            } else if (match.name != prefs.ankiModelName) {
+                prefs.ankiModelName = match.name
+                applyCardTypeValue(match.name)
+            }
+        }
     }
-
-    return titleTv
 }
 
 /**
@@ -236,6 +266,45 @@ fun Fragment.showAnkiDeckPicker(onPicked: (deckId: Long, deckName: String) -> Un
         onPicked(prefs.ankiDeckId, prefs.ankiDeckName)
     }
     picker.show(childFragmentManager, AnkiDeckPickerDialog.TAG)
+}
+
+/**
+ * Launches the Card Type picker. No-ops silently when AnkiDroid is
+ * absent / permission missing. [onPicked] fires after the user resolves
+ * the flow — either by selecting "Default (PlayTranslate)" or by
+ * Saving the mapping dialog. Cancelling the mapping dialog does NOT
+ * fire [onPicked] (selection reverts).
+ */
+fun Fragment.showAnkiCardTypePicker(
+    mode: CardMode,
+    onPicked: (modelId: Long, modelName: String) -> Unit,
+) {
+    val ctx = requireContext()
+    val ankiManager = AnkiManager(ctx)
+    if (!ankiManager.isAnkiDroidInstalled() || !ankiManager.hasPermission()) return
+    val picker = AnkiCardTypePickerDialog.newInstance(mode)
+    picker.onCardTypePicked = onPicked
+    picker.show(childFragmentManager, AnkiCardTypePickerDialog.TAG)
+}
+
+/**
+ * Opens [AnkiFieldMappingDialog] directly for [model] — used by the
+ * send-time guard when the user has picked a card type but never
+ * configured its field mapping. [onSaved] fires when the user Saves.
+ */
+fun Fragment.showAnkiCardTypeMappingDialog(
+    model: AnkiManager.ModelInfo,
+    mode: CardMode,
+    onSaved: (modelId: Long, modelName: String) -> Unit,
+) {
+    val dialog = AnkiFieldMappingDialog.newInstance(
+        modelId = model.id,
+        modelName = model.name,
+        fieldNames = model.fieldNames,
+        mode = mode,
+    )
+    dialog.onSaved = onSaved
+    dialog.show(parentFragmentManager, AnkiFieldMappingDialog.TAG)
 }
 
 /**
