@@ -204,7 +204,7 @@
     <string name="anki_content_sentence">Source sentence</string>
     <string name="anki_content_sentence_translation">Translated sentence</string>
     <string name="anki_content_definition">Definition</string>
-    <string name="anki_content_picture">Screenshot filename</string>
+    <string name="anki_content_picture">Screenshot</string>
     <string name="anki_content_frequency">Frequency stars</string>
     <string name="anki_content_part_of_speech">Part of speech</string>
     <string name="anki_content_words_table">Words list (sentence cards)</string>

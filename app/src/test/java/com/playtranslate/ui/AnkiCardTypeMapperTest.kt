@@ -292,4 +292,37 @@ class AnkiCardTypeMapperTest {
         val out = AnkiCardTypeMapper.assembleNote(emptyList(), emptyMap(), sampleOutputs())
         assertTrue(out.isEmpty())
     }
+
+    // ─── Picture HTML ────────────────────────────────────────────────────
+    // CardOutputs.picture must contain <img> markup so it renders in
+    // user templates that emit {{Picture}} directly (Lapis / JPMN /
+    // Migaku / Basic). Shipping a bare filename leaves the literal
+    // string visible on the card.
+
+    @Test fun `forWord wraps image filename in img markup`() {
+        val outputs = AnkiCardOutputBuilder.forWord(
+            word = "猫",
+            reading = "ねこ",
+            pos = "noun",
+            definitionHtml = "<div>cat</div>",
+            freqScore = 3,
+            imageFilename = "1746876543.jpg",
+        )
+        assertEquals(
+            "<img src=\"1746876543.jpg\" style=\"max-width:100%;\">",
+            outputs.picture,
+        )
+    }
+
+    @Test fun `forWord leaves picture empty when no image`() {
+        val outputs = AnkiCardOutputBuilder.forWord(
+            word = "猫",
+            reading = "ねこ",
+            pos = "noun",
+            definitionHtml = "",
+            freqScore = 0,
+            imageFilename = null,
+        )
+        assertEquals("", outputs.picture)
+    }
 }
