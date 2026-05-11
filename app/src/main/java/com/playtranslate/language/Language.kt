@@ -96,6 +96,17 @@ enum class TextDirection { LTR, RTL }
 enum class TextOrientation { HORIZONTAL, VERTICAL }
 
 /**
+ * Block-level horizontal alignment of an OCR'd paragraph. Detected post-grouping
+ * from the geometry of the constituent line rects (see
+ * [com.playtranslate.OcrManager.Companion.classifyGroupAlignment]). LEFT is the
+ * default — it covers truly left-aligned paragraphs *and* every ambiguous case
+ * (single-line groups, vertical groups, mixed evidence) where we have no
+ * positive evidence of centering. Only used to align the skeleton placeholder
+ * and the rendered translation; never feeds back into grouping decisions.
+ */
+enum class TextAlignment { LEFT, CENTER }
+
+/**
  * The on-device OCR backend that produces recognized text for a source
  * language. Sealed so the [ScreenTextRecognizerFactory] `when` is exhaustive
  * at compile time.

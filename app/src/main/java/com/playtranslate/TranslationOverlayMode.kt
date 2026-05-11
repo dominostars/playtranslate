@@ -201,7 +201,8 @@ class TranslationOverlayMode(
                 val (bgColor, textColor) = colors[idx]
                 val lineCount = liveGroupLineCounts.getOrElse(idx) { 1 }
                 val orient = ocrResult.groupOrientations.getOrElse(idx) { com.playtranslate.language.TextOrientation.HORIZONTAL }
-                TranslationOverlayView.TextBox("", bounds, bgColor, textColor, lineCount, orientation = orient)
+                val align = ocrResult.groupAlignments.getOrElse(idx) { com.playtranslate.language.TextAlignment.LEFT }
+                TranslationOverlayView.TextBox("", bounds, bgColor, textColor, lineCount, orientation = orient, alignment = align)
             }
             service.showLiveOverlay(placeholderBoxes, left, top, raw.width, raw.height, displayId = displayId)
 
@@ -662,6 +663,7 @@ class TranslationOverlayMode(
             }
             val newGroupBounds = ocrResult.groupBounds.filterIndexed { i, _ -> sourceFilter(i) }
             val newGroupOrientations = ocrResult.groupOrientations.filterIndexed { i, _ -> sourceFilter(i) }
+            val newGroupAlignments = ocrResult.groupAlignments.filterIndexed { i, _ -> sourceFilter(i) }
 
             val perGroup = service.translateGroupsSeparately(newGroupTexts)
             val cRef = colorRef
@@ -671,7 +673,8 @@ class TranslationOverlayMode(
                 perGroup.indices.map { idx ->
                     val (bg, tc) = colors.getOrElse(idx) { Pair(android.graphics.Color.argb(200,0,0,0), android.graphics.Color.WHITE) }
                     val orient = newGroupOrientations.getOrElse(idx) { com.playtranslate.language.TextOrientation.HORIZONTAL }
-                    TranslationOverlayView.TextBox(perGroup[idx].first, newGroupBounds[idx], bg, tc, orientation = orient)
+                    val align = newGroupAlignments.getOrElse(idx) { com.playtranslate.language.TextAlignment.LEFT }
+                    TranslationOverlayView.TextBox(perGroup[idx].first, newGroupBounds[idx], bg, tc, orientation = orient, alignment = align)
                 }
             } else emptyList()
 

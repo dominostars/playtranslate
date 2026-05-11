@@ -1,6 +1,7 @@
 package com.playtranslate
 
 import android.graphics.Rect
+import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.ui.TranslationOverlayView
 
@@ -32,6 +33,7 @@ data class FarGroup(
     val bounds: Rect,
     val lineCount: Int,
     val orientation: TextOrientation = TextOrientation.HORIZONTAL,
+    val alignment: TextAlignment = TextAlignment.LEFT,
 )
 
 /**
@@ -128,7 +130,8 @@ fun classifyOcrResults(
                     contentMatchRemovals.add(boxIdx)
                     val lc = ocrResult.groupLineCounts.getOrElse(ocrIdx) { 1 }
                     val orient = ocrResult.groupOrientations.getOrElse(ocrIdx) { TextOrientation.HORIZONTAL }
-                    farOcrGroups.add(FarGroup(ocrText, ocrBound, lc, orient))
+                    val align = ocrResult.groupAlignments.getOrElse(ocrIdx) { TextAlignment.LEFT }
+                    farOcrGroups.add(FarGroup(ocrText, ocrBound, lc, orient, align))
                     contentMatched = true
                     break
                 }
@@ -170,6 +173,7 @@ fun classifyOcrResults(
         if (!nearExisting) {
             val lc = ocrResult.groupLineCounts.getOrElse(ocrIdx) { 1 }
             val orient = ocrResult.groupOrientations.getOrElse(ocrIdx) { TextOrientation.HORIZONTAL }
+            val align = ocrResult.groupAlignments.getOrElse(ocrIdx) { TextAlignment.LEFT }
             val coalesceIdx = farOcrGroups.indexOfFirst { existing ->
                 val existingBitmapRect = coords.ocrToBitmap(existing.bounds)
                 OcrManager.wouldGroup(existingBitmapRect, ocrFullRect, existing.orientation)
@@ -177,6 +181,10 @@ fun classifyOcrResults(
             if (coalesceIdx >= 0) {
                 val existing = farOcrGroups[coalesceIdx]
                 val separator = if (existing.orientation == TextOrientation.VERTICAL) "\n" else " "
+                // Two distinct OCR groups that classification stitched together
+                // are not the same paragraph — drop to LEFT unless both already
+                // agreed on CENTER, so we never falsely center a mixed merge.
+                val mergedAlign = if (existing.alignment == align) align else TextAlignment.LEFT
                 farOcrGroups[coalesceIdx] = FarGroup(
                     text = existing.text + separator + ocrText,
                     bounds = Rect(
@@ -187,9 +195,10 @@ fun classifyOcrResults(
                     ),
                     lineCount = existing.lineCount + lc,
                     orientation = existing.orientation,
+                    alignment = mergedAlign,
                 )
             } else {
-                farOcrGroups.add(FarGroup(ocrText, ocrBound, lc, orient))
+                farOcrGroups.add(FarGroup(ocrText, ocrBound, lc, orient, align))
             }
         }
     }

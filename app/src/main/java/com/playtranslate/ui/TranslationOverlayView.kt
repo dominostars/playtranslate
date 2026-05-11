@@ -22,6 +22,7 @@ import androidx.core.view.doOnLayout
 import androidx.core.widget.TextViewCompat
 import com.playtranslate.PinholeCalibration
 import com.playtranslate.R
+import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
 
 /**
@@ -72,7 +73,10 @@ class TranslationOverlayView(
         /** Original OCR source text this overlay translates. Used for content-based matching. */
         val sourceText: String = "",
         /** Text orientation — vertical boxes render with 90° CW rotated text. */
-        val orientation: TextOrientation = TextOrientation.HORIZONTAL
+        val orientation: TextOrientation = TextOrientation.HORIZONTAL,
+        /** Block alignment for horizontal boxes — drives skeleton bar placement
+         *  and translated-text gravity. Ignored for vertical boxes. */
+        val alignment: TextAlignment = TextAlignment.LEFT
     )
 
     private val dp = context.resources.displayMetrics.density
@@ -139,6 +143,7 @@ class TranslationOverlayView(
             if (ba.isFurigana != bb.isFurigana) return false
             if (ba.sourceText != bb.sourceText) return false
             if (ba.orientation != bb.orientation) return false
+            if (ba.alignment != bb.alignment) return false
             val ra = ba.bounds; val rb = bb.bounds
             if (Math.abs(ra.left - rb.left) > tolerance ||
                 Math.abs(ra.top - rb.top) > tolerance ||
@@ -331,7 +336,7 @@ class TranslationOverlayView(
                 val isVertical = box.orientation == TextOrientation.VERTICAL
 
                 val child: View = if (box.translatedText.isEmpty()) {
-                    buildSkeletonView(rectW, rectH, box.lineCount, box.bgColor, box.textColor)
+                    buildSkeletonView(rectW, rectH, box.lineCount, box.bgColor, box.textColor, box.alignment)
                 } else {
                     OutlinedTextView(context).apply {
                         text = box.translatedText
@@ -339,7 +344,16 @@ class TranslationOverlayView(
                         outlineColor = box.textColor xor 0x00FFFFFF  // invert RGB, keep alpha
                         outlineWidth = 1f * dp
                         typeface = Typeface.DEFAULT_BOLD
-                        gravity = Gravity.CENTER_VERTICAL
+                        // Vertical text is rotated at the FrameLayout level —
+                        // horizontal alignment of the inner TextView still maps
+                        // to horizontal screen alignment after rotation, so we
+                        // only apply CENTER when the source group classified as
+                        // such. Vertical boxes always classify LEFT in OcrManager,
+                        // so no extra orientation gate is needed here.
+                        gravity = if (box.alignment == TextAlignment.CENTER)
+                            Gravity.CENTER
+                        else
+                            Gravity.CENTER_VERTICAL
                         setPadding(textMargin, textMargin, textMargin, textMargin)
                         // Pinholes need opaque bg (pinholes handle transparency).
                         // Without pinholes, use native alpha (~224 = 88% opaque).
@@ -376,8 +390,14 @@ class TranslationOverlayView(
         if (hasPlaceholders) startShimmer()
     }
 
-    /** Builds a skeleton placeholder with [lineCount] bars evenly spaced within the box. */
-    private fun buildSkeletonView(boxW: Int, boxH: Int, lineCount: Int, bgColor: Int, barColor: Int): View {
+    /** Builds a skeleton placeholder with [lineCount] bars evenly spaced within the box.
+     *  When [alignment] is [TextAlignment.CENTER], bars are horizontally centered
+     *  within the box so the short last-row bar visually reflects center-aligned
+     *  source text rather than dropping to the left edge. */
+    private fun buildSkeletonView(
+        boxW: Int, boxH: Int, lineCount: Int, bgColor: Int, barColor: Int,
+        alignment: TextAlignment = TextAlignment.LEFT,
+    ): View {
         val container = FrameLayout(context).apply {
             setBackgroundColor(bgColor)
         }
@@ -400,8 +420,13 @@ class TranslationOverlayView(
                 }
             }
             skeletonBars.add(bar)
+            val barLeft = if (alignment == TextAlignment.CENTER) {
+                ((boxW - barW) / 2).coerceAtLeast(sideMargin)
+            } else {
+                sideMargin
+            }
             val barLp = LayoutParams(barW, skeletonBarHeight).apply {
-                leftMargin = sideMargin
+                leftMargin = barLeft
                 topMargin = barTop
             }
             container.addView(bar, barLp)

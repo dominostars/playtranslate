@@ -490,7 +490,8 @@ class PinholeOverlayMode(
                 val farBounds = farOcrGroups.map { it.bounds }
                 val farLineCounts = farOcrGroups.map { it.lineCount }
                 val farOrientations = farOcrGroups.map { it.orientation }
-                val placeholders = buildPlaceholderBoxes(farTexts, farBounds, farLineCounts, raw, cropLeft, cropTop, farOrientations)
+                val farAlignments = farOcrGroups.map { it.alignment }
+                val placeholders = buildPlaceholderBoxes(farTexts, farBounds, farLineCounts, raw, cropLeft, cropTop, farOrientations, farAlignments)
 
                 if (placeholders.isNotEmpty()) {
                     val partial = placeholders.mapIndexed { i, ph ->
@@ -838,7 +839,8 @@ class PinholeOverlayMode(
     private fun buildPlaceholderBoxes(
         texts: List<String>, bounds: List<Rect>, lineCounts: List<Int>,
         raw: Bitmap, left: Int, top: Int,
-        orientations: List<com.playtranslate.language.TextOrientation> = emptyList()
+        orientations: List<com.playtranslate.language.TextOrientation> = emptyList(),
+        alignments: List<com.playtranslate.language.TextAlignment> = emptyList()
     ): List<TranslationOverlayView.TextBox> {
         val colorScale = 4
         val colorRef = Bitmap.createScaledBitmap(raw, raw.width / colorScale, raw.height / colorScale, false)
@@ -851,8 +853,9 @@ class PinholeOverlayMode(
         return bounds.mapIndexed { idx, rect ->
             val (bg, tc) = colors.getOrElse(idx) { Pair(Color.argb(224, 0, 0, 0), Color.WHITE) }
             val orient = orientations.getOrElse(idx) { com.playtranslate.language.TextOrientation.HORIZONTAL }
+            val align = alignments.getOrElse(idx) { com.playtranslate.language.TextAlignment.LEFT }
             TranslationOverlayView.TextBox("", rect, bg, tc, lineCounts.getOrElse(idx) { 1 },
-                sourceText = texts.getOrElse(idx) { "" }, orientation = orient)
+                sourceText = texts.getOrElse(idx) { "" }, orientation = orient, alignment = align)
         }
     }
 

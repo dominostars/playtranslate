@@ -8,6 +8,7 @@ import com.playtranslate.language.ScreenTextRecognizer
 import com.playtranslate.language.ScreenTextRecognizerFactory
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.model.TextSegment
 import java.util.concurrent.ConcurrentHashMap
@@ -134,7 +135,11 @@ class OcrManager private constructor() {
         /** Debug bounding boxes at block/line/element level, or null if debug is off. */
         val debugBoxes: OcrDebugBoxes? = null,
         /** Orientation per group (majority vote of constituent lines). */
-        val groupOrientations: List<TextOrientation> = emptyList()
+        val groupOrientations: List<TextOrientation> = emptyList(),
+        /** Detected block alignment per group. Always [TextAlignment.LEFT] for
+         *  vertical groups and for horizontal groups with insufficient evidence
+         *  of centering (the safe default — never falsely centers text). */
+        val groupAlignments: List<TextAlignment> = emptyList()
     )
 
     suspend fun recognise(
@@ -312,7 +317,29 @@ class OcrManager private constructor() {
             else TextOrientation.HORIZONTAL
         }
 
-        return OcrResult(fullText, segments, groupTexts, groupBounds, groupLineCounts, lineBoxes, debugBoxes, groupOrientations)
+        // Detect block alignment per horizontal group; vertical groups always
+        // default to LEFT (the horizontal alignment concept doesn't apply, and
+        // overlay rendering ignores alignment for rotated vertical text).
+        val groupAlignments = groups.zip(groupOrientations).mapIndexed { gi, (group, orient) ->
+            val align = if (orient == TextOrientation.VERTICAL) {
+                TextAlignment.LEFT
+            } else {
+                classifyGroupAlignment(group)
+            }
+            if (debugLogGroupingEnabled && group.size >= 2 && orient == TextOrientation.HORIZONTAL) {
+                val sample = group.firstOrNull()?.text?.take(24)?.replace('\n', ' ').orEmpty()
+                android.util.Log.d(
+                    "DetectionLog",
+                    "[align] group[$gi] ${align.name} lines=${group.size} \"$sample\""
+                )
+            }
+            align
+        }
+
+        return OcrResult(
+            fullText, segments, groupTexts, groupBounds, groupLineCounts,
+            lineBoxes, debugBoxes, groupOrientations, groupAlignments,
+        )
     }
 
     /**
@@ -774,6 +801,44 @@ class OcrManager private constructor() {
             val cap = (box.height() * 1.5f).toInt()
             val charWidth = (symbolWidth ?: box.height()).coerceAtMost(cap)
             return box.left + charWidth
+        }
+
+        /**
+         * Classify the block alignment of an already-grouped horizontal paragraph.
+         *
+         * Returns [TextAlignment.LEFT] when:
+         *   - the group has fewer than 2 lines (no evidence to classify against),
+         *   - or the effective-left spread fits within the same per-pair tolerance
+         *     `wouldGroup` uses (`refH * 0.5`) — left-aligned text wins over
+         *     coincidentally-tight centers, since same-width lines satisfy both.
+         *
+         * Returns [TextAlignment.CENTER] only when:
+         *   - the left spread exceeds the tolerance (lines actually have varying
+         *     left edges), AND the centerX spread fits within tolerance — i.e.
+         *     the only thing the lines share is their center axis.
+         *
+         * Uses [effectiveAlignLeft] so hanging opening punctuation
+         * (「『（) on one line doesn't masquerade as a varying left edge.
+         * Vertical groups should be filtered out by the caller — this function
+         * is horizontal-only.
+         */
+        internal fun classifyGroupAlignment(group: List<Text.Line>): TextAlignment {
+            if (group.size < 2) return TextAlignment.LEFT
+            val boxes = group.mapNotNull { it.boundingBox }
+            if (boxes.size < 2) return TextAlignment.LEFT
+            val effectiveLefts = group.mapNotNull { effectiveAlignLeft(it) }
+            if (effectiveLefts.size < 2) return TextAlignment.LEFT
+            val refH = boxes.maxOf { it.height() }
+            if (refH <= 0) return TextAlignment.LEFT
+            val tol = (refH * 0.5f).toInt()
+            val leftSpread = (effectiveLefts.max() - effectiveLefts.min())
+            val centerXs = boxes.map { it.centerX() }
+            val centerSpread = centerXs.max() - centerXs.min()
+            // Left wins on ties — same-width left-aligned lines satisfy both
+            // checks, and we never want to falsely center actually-left text.
+            if (leftSpread <= tol) return TextAlignment.LEFT
+            if (centerSpread <= tol) return TextAlignment.CENTER
+            return TextAlignment.LEFT
         }
 
         /**
