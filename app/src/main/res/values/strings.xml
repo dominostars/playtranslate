@@ -198,6 +198,7 @@
     <string name="anki_field_mapping_title">Configure %1$s</string>
     <string name="anki_field_mapping_save">Save</string>
     <string name="anki_field_mapping_unconfigured">Configure fields for this card type before sending</string>
+    <string name="anki_content_source_pick_title">Map \"%1$s\"</string>
 
     <!-- ContentSource labels (dropdown options). Names persist in prefs,
          so re-labeling here is safe but renaming enum constants is not. -->

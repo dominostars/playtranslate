@@ -8,7 +8,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.fragment.app.DialogFragment
 import com.google.android.material.card.MaterialCardView
@@ -139,7 +138,7 @@ class AnkiFieldMappingDialog : DialogFragment() {
             val current = workingMapping[fieldName] ?: ContentSource.NONE
             applyValueStyle(valueTv, current)
             row.setOnClickListener {
-                showSourcePopup(row) { picked ->
+                showSourcePicker(fieldName, workingMapping[fieldName] ?: ContentSource.NONE) { picked ->
                     workingMapping[fieldName] = picked
                     applyValueStyle(valueTv, picked)
                 }
@@ -171,22 +170,20 @@ class AnkiFieldMappingDialog : DialogFragment() {
         }
     }
 
-    private fun showSourcePopup(
-        anchor: View,
+    /**
+     * Pushes [AnkiContentSourcePickerDialog] for [fieldName]; on
+     * dismiss-with-selection, [onPicked] fires. Cancelling without
+     * a selection (back button / nav-up) leaves the working mapping
+     * untouched.
+     */
+    private fun showSourcePicker(
+        fieldName: String,
+        current: ContentSource,
         onPicked: (ContentSource) -> Unit,
     ) {
-        val ctx = requireContext()
-        val popup = PopupMenu(ctx, anchor)
-        val options = ContentSource.values()
-        options.forEachIndexed { i, source ->
-            popup.menu.add(0, i, i, ctx.getString(source.labelRes))
-        }
-        popup.setOnMenuItemClickListener { item ->
-            val picked = options[item.itemId]
-            onPicked(picked)
-            true
-        }
-        popup.show()
+        val picker = AnkiContentSourcePickerDialog.newInstance(fieldName, current)
+        picker.onPicked = onPicked
+        picker.show(childFragmentManager, AnkiContentSourcePickerDialog.TAG)
     }
 
     companion object {
