@@ -29,6 +29,17 @@ class PlayTranslateApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashHandler.install(this)
+        // Push the persisted grouping-debug flag into the process-wide
+        // OcrManager singleton before any OCR can run. The SettingsRenderer
+        // toggle also writes this on change, so the in-memory copy stays in
+        // sync with [Prefs.debugLogGrouping] without OcrManager holding a
+        // Context of its own. Gated on BuildConfig.DEBUG so a stale `true`
+        // value carried over from a debug build can't leak OCR text to
+        // logcat in a release upgrade — release builds also hide the Debug
+        // section, so there'd be no way to turn it back off.
+        if (BuildConfig.DEBUG) {
+            OcrManager.instance.debugLogGroupingEnabled = Prefs(this).debugLogGrouping
+        }
         // Build the translation-backend registry once at process start.
         // Backends are stateless or hold pooled HTTP clients that should
         // outlive a single CaptureService instance. The DeepL key is read

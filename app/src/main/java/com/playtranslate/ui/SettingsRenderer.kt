@@ -34,6 +34,7 @@ import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.AnkiManager
 import com.playtranslate.BuildConfig
 import com.playtranslate.CaptureService
+import com.playtranslate.OcrManager
 import com.playtranslate.OverlayMode
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.PlayTranslateTileService
@@ -1577,6 +1578,17 @@ class SettingsRenderer(
             prefs.debugSaveOcrSeed = checked
         }
         rowSaveOcrSeed.setOnClickListener { switchSaveOcrSeed.toggle() }
+
+        // Log OCR grouping decisions (per-pair MERGE/SPLIT + numeric reason)
+        val rowLogGrouping = root.findViewById<View>(R.id.rowLogGrouping)
+        val switchLogGrouping = rowLogGrouping.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        rowLogGrouping.findViewById<TextView>(R.id.tvRowTitle).text = "Log OCR grouping decisions"
+        switchLogGrouping.isChecked = prefs.debugLogGrouping
+        switchLogGrouping.setOnCheckedChangeListener { _, checked ->
+            prefs.debugLogGrouping = checked
+            OcrManager.instance.debugLogGroupingEnabled = checked
+        }
+        rowLogGrouping.setOnClickListener { switchLogGrouping.toggle() }
 
         // Force crash
         val rowForceCrash = root.findViewById<View>(R.id.rowForceCrash)

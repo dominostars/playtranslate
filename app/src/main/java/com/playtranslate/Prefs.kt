@@ -507,6 +507,14 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_DEBUG_SAVE_OCR_SEED, false)
         set(v) = sp.edit().putBoolean(KEY_DEBUG_SAVE_OCR_SEED, v).apply()
 
+    /** Debug-only: log every candidate line's grouping decision during OCR
+     *  with the previous group's bounds, the candidate's bounds + text, and
+     *  the numeric reason it merged (or didn't). Use to diagnose why rows
+     *  fail to combine — see [OcrManager.wouldGroup]. */
+    var debugLogGrouping: Boolean
+        get() = sp.getBoolean(KEY_DEBUG_LOG_GROUPING, false)
+        set(v) = sp.edit().putBoolean(KEY_DEBUG_LOG_GROUPING, v).apply()
+
     /** Set to true after the user dismisses the target-pack migration dialog. */
     var targetPackMigrationDismissed: Boolean
         get() = sp.getBoolean(KEY_TARGET_PACK_MIGRATION_DISMISSED, false)
@@ -618,6 +626,7 @@ class Prefs(context: Context) {
         private const val KEY_DEBUG_SHOW_DETECTION_LOG      = "debug_show_detection_log"
         private const val KEY_DEBUG_LIVE_MODE                = "debug_live_mode"
         private const val KEY_DEBUG_SAVE_OCR_SEED            = "debug_save_ocr_seed"
+        private const val KEY_DEBUG_LOG_GROUPING             = "debug_log_grouping"
         private const val KEY_HOTKEY_TRANSLATION           = "hotkey_translation"
         private const val KEY_HOTKEY_FURIGANA              = "hotkey_furigana"
         private const val KEY_LAST_UPDATE_CHECK            = "last_update_check"
