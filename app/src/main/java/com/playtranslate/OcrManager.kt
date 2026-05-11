@@ -486,23 +486,35 @@ class OcrManager private constructor() {
                 // axis as line widths vary. Mixing a union edge with the
                 // last line's opposite edge pulled groupRect.centerX/Y off
                 // the real axis and broke center-aligned wrapped text.
-                val groupRect = if (orientation == TextOrientation.VERTICAL) {
+                val groupRect: Rect
+                val groupAlignLeft: Int?
+                val candidateAlignLeft: Int?
+                if (orientation == TextOrientation.VERTICAL) {
                     val groupTop = lastGroup.mapNotNull { it.boundingBox?.top }.minOrNull() ?: 0
                     val groupBottom = lastGroup.mapNotNull { it.boundingBox?.bottom }.maxOrNull() ?: 0
-                    Rect(prevBox?.left ?: 0, groupTop, prevBox?.right ?: 0, groupBottom)
+                    groupRect = Rect(prevBox?.left ?: 0, groupTop, prevBox?.right ?: 0, groupBottom)
+                    groupAlignLeft = null
+                    candidateAlignLeft = null
                 } else {
                     val groupLeft = lastGroup.mapNotNull { it.boundingBox?.left }.minOrNull() ?: 0
                     val groupRight = lastGroup.mapNotNull { it.boundingBox?.right }.maxOrNull() ?: 0
-                    Rect(groupLeft, prevBox?.top ?: 0, groupRight, prevBox?.bottom ?: 0)
+                    groupRect = Rect(groupLeft, prevBox?.top ?: 0, groupRight, prevBox?.bottom ?: 0)
+                    // Per-line effective lefts compensate for hanging
+                    // punctuation outdent (e.g. 「, ·) — see
+                    // [effectiveAlignLeft]. Used only by the leftAligned
+                    // sub-check; centerX still uses groupRect's actual
+                    // edges so center-aligned wrapped text is unaffected.
+                    groupAlignLeft = lastGroup.mapNotNull { effectiveAlignLeft(it) }.minOrNull()
+                    candidateAlignLeft = effectiveAlignLeft(line)
                 }
                 // wouldGroup is the canonical predicate — used unconditionally
                 // so the debug-log toggle is purely observational. groupDecision
                 // is called only to produce a reason string for the log; if it
                 // ever diverges from wouldGroup the log wording becomes
                 // misleading but grouping behavior stays consistent.
-                val merged = wouldGroup(groupRect, lineBox, orientation)
+                val merged = wouldGroup(groupRect, lineBox, orientation, groupAlignLeft, candidateAlignLeft)
                 if (logDecisions) {
-                    val decision = groupDecision(groupRect, lineBox, orientation)
+                    val decision = groupDecision(groupRect, lineBox, orientation, groupAlignLeft, candidateAlignLeft)
                     val prevSnippet = lastGroup.last().text.take(24).replace('\n', ' ')
                     val candSnippet = line.text.take(24).replace('\n', ' ')
                     val verdict = if (merged) "MERGE" else "SPLIT"
@@ -721,6 +733,50 @@ class OcrManager private constructor() {
         }
 
         /**
+         * Opening punctuation that visually hangs to the left of body text in
+         * CJK and Western typography. When such a character is the first
+         * non-whitespace symbol of a line, the line's bounding box outdents
+         * past where the body text starts; without compensation, that line's
+         * left edge fails the leftAligned check against subsequent body
+         * lines that align to the body indent. See [effectiveAlignLeft].
+         */
+        private val HANGING_PUNCT_LEFT = setOf(
+            '「', '『', '（', '【', '〔', '《', '〈',
+            '(', '[', '{',
+            '・', '·',
+            '“', '‘', // " '
+        )
+
+        /**
+         * Effective left edge of [line] for paragraph-alignment checks. If
+         * the line begins with a [HANGING_PUNCT_LEFT] character, the returned
+         * left is shifted right past that glyph so a body line beneath
+         * `「こんにちは` aligns to where `こ` starts, not where `「` starts.
+         *
+         * Width estimate prefers ML Kit's per-symbol bounding box (accurate
+         * when emitted) and falls back to line height (CJK glyphs are roughly
+         * square). The shift is capped at 1.5× line height to bound the
+         * adjustment when the first symbol box looks unusual. Returns the
+         * raw [Rect.left] when no adjustment applies, or null if [line] has
+         * no bounding box.
+         *
+         * Used only for the leftAligned sub-check in [wouldGroup] /
+         * [groupDecisionHorizontal]. The rect's actual center stays intact
+         * so center-aligned wrapped text is unaffected.
+         */
+        internal fun effectiveAlignLeft(line: Text.Line): Int? {
+            val box = line.boundingBox ?: return null
+            val firstChar = line.text.firstOrNull { !it.isWhitespace() && it != '|' }
+                ?: return box.left
+            if (firstChar !in HANGING_PUNCT_LEFT) return box.left
+            val symbolWidth = line.elements.firstOrNull()
+                ?.symbols?.firstOrNull()?.boundingBox?.width()
+            val cap = (box.height() * 1.5f).toInt()
+            val charWidth = (symbolWidth ?: box.height()).coerceAtMost(cap)
+            return box.left + charWidth
+        }
+
+        /**
          * Would two rects be grouped as the same text block?
          * Three checks: intersection (fill leak), inline (same line/column),
          * block (next line/column in paragraph with alignment).
@@ -729,6 +785,12 @@ class OcrManager private constructor() {
          * swapped: "inline" checks for vertical continuation in the same column,
          * and "block" checks for horizontal continuation to the next column
          * (right-to-left).
+         *
+         * [aAlignLeft] / [bAlignLeft] override only the leftAligned sub-check
+         * (block path, horizontal orientation). Callers pass these to
+         * compensate for hanging-punctuation outdent — see [effectiveAlignLeft].
+         * When null (default), the rect's own [Rect.left] is used, preserving
+         * legacy behavior for all bare-rect callers (e.g. [Classification]).
          *
          * Hot path: called from [Classification] for every live-overlay /
          * pinhole-detection pair, so the boolean version intentionally
@@ -740,7 +802,9 @@ class OcrManager private constructor() {
         fun wouldGroup(
             a: Rect,
             b: Rect,
-            orientation: TextOrientation = TextOrientation.HORIZONTAL
+            orientation: TextOrientation = TextOrientation.HORIZONTAL,
+            aAlignLeft: Int? = null,
+            bAlignLeft: Int? = null,
         ): Boolean {
             if (orientation == TextOrientation.VERTICAL) {
                 return wouldGroupVertical(a, b)
@@ -763,7 +827,9 @@ class OcrManager private constructor() {
                      else 0
             if (dy < (refH * 0.8f).toInt()) {
                 val alignTolerance = (refH * 0.5f).toInt()
-                val leftAligned = kotlin.math.abs(a.left - b.left) <= alignTolerance
+                val aLeft = aAlignLeft ?: a.left
+                val bLeft = bAlignLeft ?: b.left
+                val leftAligned = kotlin.math.abs(aLeft - bLeft) <= alignTolerance
                 val centerAligned = kotlin.math.abs(a.centerX() - b.centerX()) <= alignTolerance
                 if (leftAligned || centerAligned) {
                     val lo = minOf(a.height(), b.height())
@@ -808,17 +874,27 @@ class OcrManager private constructor() {
         /** Explainer twin of [wouldGroup]: same predicate, but allocates a
          *  [GroupDecision] with a human-readable reason. Used only by
          *  [groupLinesOnePass] when the debug-log toggle is on, so the
-         *  reason-string cost stays out of hot paths. */
+         *  reason-string cost stays out of hot paths.
+         *
+         *  [aAlignLeft] / [bAlignLeft] mirror [wouldGroup]'s overrides for
+         *  hanging-punctuation compensation. */
         fun groupDecision(
             a: Rect,
             b: Rect,
-            orientation: TextOrientation = TextOrientation.HORIZONTAL
+            orientation: TextOrientation = TextOrientation.HORIZONTAL,
+            aAlignLeft: Int? = null,
+            bAlignLeft: Int? = null,
         ): GroupDecision = if (orientation == TextOrientation.VERTICAL)
             groupDecisionVertical(a, b)
         else
-            groupDecisionHorizontal(a, b)
+            groupDecisionHorizontal(a, b, aAlignLeft, bAlignLeft)
 
-        private fun groupDecisionHorizontal(a: Rect, b: Rect): GroupDecision {
+        private fun groupDecisionHorizontal(
+            a: Rect,
+            b: Rect,
+            aAlignLeft: Int? = null,
+            bAlignLeft: Int? = null,
+        ): GroupDecision {
             val refH = maxOf(a.height(), b.height())
             if (refH <= 0) return GroupDecision.NotGrouped("refH=0 (degenerate rect)")
 
@@ -843,7 +919,12 @@ class OcrManager private constructor() {
                      else 0
             val vgapThreshold = (refH * 0.8f).toInt()
             val alignTolerance = (refH * 0.5f).toInt()
-            val leftDiff = kotlin.math.abs(a.left - b.left)
+            val aLeft = aAlignLeft ?: a.left
+            val bLeft = bAlignLeft ?: b.left
+            val rawLeftDiff = kotlin.math.abs(a.left - b.left)
+            val leftDiff = kotlin.math.abs(aLeft - bLeft)
+            val shifted = aLeft != a.left || bLeft != b.left
+            val leftStr = if (shifted) "leftΔ=$leftDiff(adj,raw=$rawLeftDiff)" else "leftΔ=$leftDiff"
             val centerDiff = kotlin.math.abs(a.centerX() - b.centerX())
             val lo = minOf(a.height(), b.height())
             val hi = maxOf(a.height(), b.height())
@@ -867,13 +948,13 @@ class OcrManager private constructor() {
                 }
                 val hRatioStr = if (lo > 0) "%.2f".format(heightRatio) else "n/a"
                 return GroupDecision.Grouped(
-                    "block (dy=$dy<${vgapThreshold}px, align=$which leftΔ=$leftDiff centerΔ=$centerDiff tol=${alignTolerance}px, hRatio=$hRatioStr, refH=$refH)"
+                    "block (dy=$dy<${vgapThreshold}px, align=$which $leftStr centerΔ=$centerDiff tol=${alignTolerance}px, hRatio=$hRatioStr, refH=$refH)"
                 )
             }
 
             val fails = buildList {
                 if (!vgapOk) add("vgap dy=$dy ≥ ${vgapThreshold}px")
-                if (!alignOk) add("align: leftΔ=$leftDiff centerΔ=$centerDiff > tol=${alignTolerance}px")
+                if (!alignOk) add("align: $leftStr centerΔ=$centerDiff > tol=${alignTolerance}px")
                 if (!heightOk) add("height: lo=$lo hi=$hi ratio=${"%.2f".format(heightRatio)} > 0.30")
                 if (sameLine && dx >= inlineGapThreshold) add("inline gap dx=$dx ≥ ${inlineGapThreshold}px")
             }
