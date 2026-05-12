@@ -36,8 +36,9 @@ abstract class OnDeviceLlmBackend(
     /** Transient per-call floor checked at translate time inside
      *  [LlamaTranslator]. If `availMem` drops below this value a translate
      *  call throws a transient exception and the registry's waterfall
-     *  falls through to the next backend. */
-    protected abstract val availMemFloorBytes: Long
+     *  falls through to the next backend. Public so Settings can read it
+     *  for the pre-toggle availMem gate (mirrors [totalMemFloorBytes]). */
+    abstract val availMemFloorBytes: Long
 
     /** Permanent device-level floor: the minimum `MemoryInfo.totalMem` we
      *  require to even consider this backend installable on this device.

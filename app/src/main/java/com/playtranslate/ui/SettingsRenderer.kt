@@ -97,8 +97,20 @@ class SettingsRenderer(
          *  Implementer shows the download progress dialog, runs the shared
          *  [com.playtranslate.translation.llm.OnDeviceLlmDownloader] configured
          *  for TG, and on success flips [Prefs.translateGemmaEnabled] = true
-         *  (which fires the pref-change listener → status refresh + reconcile). */
+         *  (which fires the pref-change listener → status refresh + reconcile).
+         *
+         *  Implementer is responsible for running the pre-download availMem
+         *  gate (OverlayAlert with Check-again / Cancel) before kicking off
+         *  the actual download. */
         fun startTranslateGemmaDownload()
+
+        /** Tap on the TranslateGemma row when the model is already downloaded
+         *  but the switch is currently off. Implementer runs the pre-toggle
+         *  availMem gate (OverlayAlert with Check-again / Delete model / Cancel)
+         *  and on success flips [Prefs.translateGemmaEnabled] = true. The
+         *  renderer optimistically flips the switch on; the Cancel / Delete
+         *  branches must revert it via [refreshTranslategemmaSwitch]. */
+        fun enableInstalledTranslateGemma()
 
         /** Tap on the TranslateGemma row when it's currently enabled.
          *  Implementer shows the 3-option AlertDialog (Disable only / Delete
@@ -111,6 +123,11 @@ class SettingsRenderer(
          *  [startTranslateGemmaDownload] for the Qwen-configured
          *  [com.playtranslate.translation.llm.OnDeviceLlmDownloader]. */
         fun startQwenDownload()
+
+        /** Tap on the Qwen row when the model is already downloaded but the
+         *  switch is currently off. Mirrors [enableInstalledTranslateGemma]
+         *  for Qwen; revert via [refreshQwenSwitch] on Cancel / Delete. */
+        fun enableInstalledQwen()
 
         /** Tap on the Qwen row when it's currently enabled. Mirrors
          *  [showTranslateGemmaDisableDialog] for Qwen — the Cancel branch must
@@ -1060,12 +1077,15 @@ class SettingsRenderer(
                 val installed = com.playtranslate.translation.translategemma
                     .TranslateGemmaModel.isInstalled(ctx)
                 if (installed) {
-                    // Already downloaded; just enable.
-                    prefs.translateGemmaEnabled = true
+                    // Optimistic flip; the bottom sheet runs the availMem gate
+                    // and either flips the pref on success or reverts via
+                    // refreshTranslategemmaSwitch() on Cancel / Delete.
                     switch.isChecked = true
+                    callbacks.enableInstalledTranslateGemma()
                 } else {
-                    // Need to download. The download flow flips the pref on success
-                    // (which fires the SP listener → switch refresh).
+                    // Need to download. The download flow runs the availMem
+                    // gate, then flips the pref on success (which fires the SP
+                    // listener → switch refresh).
                     callbacks.startTranslateGemmaDownload()
                 }
             }
@@ -1096,8 +1116,10 @@ class SettingsRenderer(
                 val installed = com.playtranslate.translation.qwen
                     .QwenModel.isInstalled(ctx)
                 if (installed) {
-                    prefs.qwenEnabled = true
+                    // Optimistic flip; the bottom sheet runs the availMem gate
+                    // and either flips the pref or reverts via refreshQwenSwitch().
                     switch.isChecked = true
+                    callbacks.enableInstalledQwen()
                 } else {
                     callbacks.startQwenDownload()
                 }

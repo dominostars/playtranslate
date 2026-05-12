@@ -262,11 +262,17 @@ class SettingsBottomSheet : DialogFragment() {
                 override fun startTranslateGemmaDownload() {
                     showTranslateGemmaDownloadDialog()
                 }
+                override fun enableInstalledTranslateGemma() {
+                    this@SettingsBottomSheet.enableInstalledTranslateGemma()
+                }
                 override fun showTranslateGemmaDisableDialog() {
                     this@SettingsBottomSheet.showTranslateGemmaDisableDialog()
                 }
                 override fun startQwenDownload() {
                     showQwenDownloadDialog()
+                }
+                override fun enableInstalledQwen() {
+                    this@SettingsBottomSheet.enableInstalledQwen()
                 }
                 override fun showQwenDisableDialog() {
                     this@SettingsBottomSheet.showQwenDisableDialog()
@@ -539,6 +545,139 @@ class SettingsBottomSheet : DialogFragment() {
             }
     }
 
+    /**
+     * Run the pre-toggle availMem gate before [onProceed]. If
+     * `MemoryInfo.availMem` is below [backend].`availMemFloorBytes`, show an
+     * OverlayAlert (matching the disable-dialog visual style) with:
+     *   - [Check memory again] — re-reads availMem and re-evaluates; if now
+     *     OK, dismisses + invokes [onProceed]; otherwise the alert reappears.
+     *   - [Delete model] (danger background) — only present when [allowDelete]
+     *     is true; invokes [onDelete] then [onCancel] so the renderer can
+     *     revert the optimistic switch flip.
+     *   - [Cancel] — invokes [onCancel].
+     *
+     * If availMem is above the floor, [onProceed] is invoked synchronously.
+     *
+     * The gate value comes from [com.playtranslate.translation.llm.OnDeviceLlmBackend.availMemFloorBytes]
+     * — the same threshold [com.playtranslate.translation.translategemma.LlamaTranslator.preflightMemory]
+     * enforces at translate time, so the install-time gate and the run-time
+     * gate agree on "low memory."
+     */
+    private fun checkAvailMemAndProceed(
+        backend: com.playtranslate.translation.llm.OnDeviceLlmBackend,
+        modelDisplayName: String,
+        onProceed: () -> Unit,
+        allowDelete: Boolean = false,
+        onDelete: (() -> Unit)? = null,
+        onCancel: () -> Unit = {},
+    ) {
+        val ctx = context ?: return
+        val activity = activity ?: return
+        val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        val mi = android.app.ActivityManager.MemoryInfo()
+        am.getMemoryInfo(mi)
+        if (mi.availMem >= backend.availMemFloorBytes) {
+            onProceed()
+            return
+        }
+
+        val oc = com.playtranslate.OverlayColors
+        val needStr = formatGb(backend.availMemFloorBytes)
+        val freeStr = formatGb(mi.availMem)
+        val builder = OverlayAlert.Builder(ctx)
+            .setTitle(getString(R.string.llm_low_memory_title))
+            .setMessage(getString(
+                R.string.llm_low_memory_message,
+                modelDisplayName, needStr, freeStr,
+            ))
+            .hideIcon()
+            .addButton(getString(R.string.llm_low_memory_recheck), oc.accent(ctx)) {
+                // Recurse: re-reads availMem and either proceeds (if memory
+                // freed in the meantime) or shows the alert again. The prior
+                // OverlayAlert has already dismissed by the time onClick fires
+                // (see OverlayAlert.kt:232-235), so there's no overlap.
+                checkAvailMemAndProceed(
+                    backend, modelDisplayName, onProceed,
+                    allowDelete, onDelete, onCancel,
+                )
+            }
+        if (allowDelete && onDelete != null) {
+            // Danger background (user explicitly chose "delete it instead").
+            // White text for contrast against the saturated red — neither
+            // pt_*_text_on_accent nor card maps cleanly here.
+            builder.addButton(
+                getString(R.string.llm_low_memory_delete),
+                oc.danger(ctx),
+                android.graphics.Color.WHITE,
+            ) {
+                onDelete()
+                onCancel()
+            }
+        }
+        builder.addCancelButton(getString(R.string.llm_low_memory_cancel)) { onCancel() }
+        builder.showInActivity(activity)
+    }
+
+    private fun formatGb(bytes: Long): String {
+        val gb = bytes / 1_000_000_000.0
+        return if (gb == gb.toLong().toDouble()) "${gb.toLong()} GB"
+               else "%.1f GB".format(gb)
+    }
+
+    /** Re-enable an already-downloaded TranslateGemma model. Routes through
+     *  the availMem gate; on success flips the pref. The [Delete model] branch
+     *  of the gate matches the disable-dialog "Delete model" behavior so the
+     *  user can free disk space if they decide the model isn't right for the
+     *  device after all. */
+    private fun enableInstalledTranslateGemma() {
+        val ctx = context ?: return
+        val backend = com.playtranslate.translation.TranslationBackendRegistry
+            .byId("translategemma") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+            ?: return
+        checkAvailMemAndProceed(
+            backend = backend,
+            modelDisplayName = getString(R.string.translategemma_display_name),
+            onProceed = { Prefs(ctx).translateGemmaEnabled = true },
+            allowDelete = true,
+            onDelete = {
+                com.playtranslate.translation.translategemma.TranslateGemmaModel.delete(ctx)
+                // Drop the loaded model from native memory too — see the
+                // disable-dialog delete branch for why (avoids stale mmap
+                // after a re-download to the same filename).
+                viewLifecycleOwner.lifecycleScope.launch {
+                    com.playtranslate.translation.translategemma.LlamaTranslator
+                        .getInstance(ctx).unloadModel()
+                }
+                renderer?.refreshAllBackendStatuses()
+            },
+            onCancel = { renderer?.refreshTranslategemmaSwitch() },
+        )
+    }
+
+    /** Re-enable an already-downloaded Qwen model. Mirrors
+     *  [enableInstalledTranslateGemma]. */
+    private fun enableInstalledQwen() {
+        val ctx = context ?: return
+        val backend = com.playtranslate.translation.TranslationBackendRegistry
+            .byId("qwen") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+            ?: return
+        checkAvailMemAndProceed(
+            backend = backend,
+            modelDisplayName = getString(R.string.qwen_display_name),
+            onProceed = { Prefs(ctx).qwenEnabled = true },
+            allowDelete = true,
+            onDelete = {
+                com.playtranslate.translation.qwen.QwenModel.delete(ctx)
+                viewLifecycleOwner.lifecycleScope.launch {
+                    com.playtranslate.translation.translategemma.LlamaTranslator
+                        .getInstance(ctx).unloadModel()
+                }
+                renderer?.refreshAllBackendStatuses()
+            },
+            onCancel = { renderer?.refreshQwenSwitch() },
+        )
+    }
+
     /** Show the modal download dialog (OverlayProgress).
      *  Drives a [com.playtranslate.translation.llm.OnDeviceLlmDownloader] configured
      *  for TG from the bottom sheet's lifecycle scope — dismissing the sheet
@@ -555,6 +694,27 @@ class SettingsBottomSheet : DialogFragment() {
             totalMemFloorBytes = backend.totalMemFloorBytes,
         )
 
+        // Pre-download availMem gate — runs first so we don't sink a 2 GB
+        // download into a device that can't currently load the model. The
+        // pre-download path has nothing to delete yet, so allowDelete=false
+        // (Check-again / Cancel only). onCancel is a no-op: the renderer
+        // didn't optimistically flip a switch for the download path; tapping
+        // the row enters this method directly and the switch is still off.
+        checkAvailMemAndProceed(
+            backend = backend,
+            modelDisplayName = getString(R.string.translategemma_display_name),
+            onProceed = { showTranslateGemmaDownloadDialogPostGate(ctx, downloader) },
+        )
+    }
+
+    /** Post-availMem-gate continuation of [showTranslateGemmaDownloadDialog].
+     *  Surfaces the metered-network warning (if any) and kicks off the
+     *  download. Split out so the gate's [onProceed] can re-enter this flow
+     *  after a successful [Check memory again] tap. */
+    private fun showTranslateGemmaDownloadDialogPostGate(
+        ctx: Context,
+        downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
+    ) {
         // Metered-network warning before kicking off the multi-GB download.
         if (downloader.isCurrentNetworkMetered()) {
             val sizeStr = com.playtranslate.translation.translategemma
@@ -744,6 +904,21 @@ class SettingsBottomSheet : DialogFragment() {
             totalMemFloorBytes = backend.totalMemFloorBytes,
         )
 
+        // Pre-download availMem gate — mirrors the TG flow. See the comment
+        // there for why allowDelete=false and onCancel is empty.
+        checkAvailMemAndProceed(
+            backend = backend,
+            modelDisplayName = getString(R.string.qwen_display_name),
+            onProceed = { showQwenDownloadDialogPostGate(ctx, downloader) },
+        )
+    }
+
+    /** Post-availMem-gate continuation of [showQwenDownloadDialog]. Mirrors
+     *  [showTranslateGemmaDownloadDialogPostGate]. */
+    private fun showQwenDownloadDialogPostGate(
+        ctx: Context,
+        downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
+    ) {
         if (downloader.isCurrentNetworkMetered()) {
             val sizeStr = com.playtranslate.translation.qwen.QwenModel.humanSize(ctx)
             androidx.appcompat.app.AlertDialog.Builder(ctx)

@@ -364,4 +364,13 @@
          and the row is not interactive. -->
     <string name="llm_hardware_unsupported_arm64">Not supported on this device (requires an arm64 CPU)</string>
     <string name="llm_hardware_unsupported_ram">Not supported on this device (requires at least %1$d GB RAM)</string>
+
+    <!-- Pre-toggle availMem gate. Args: %1$s model name, %2$s needed GB,
+         %3$s currently-free GB. Shown before download (uninstalled) and
+         before flipping the switch on (re-enable of a downloaded model). -->
+    <string name="llm_low_memory_title">Not enough free memory</string>
+    <string name="llm_low_memory_message">%1$s needs about %2$s of free memory to run. Right now only %3$s is free.\n\nClose other apps to free up memory, or cancel if this model isn\'t right for your device.</string>
+    <string name="llm_low_memory_recheck">Check memory again</string>
+    <string name="llm_low_memory_delete">Delete model</string>
+    <string name="llm_low_memory_cancel">Cancel</string>
 </resources>
