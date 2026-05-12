@@ -789,30 +789,61 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val display = dm.getDisplay(displayId) ?: run { scheduleDebugCapture(); return }
 
         serviceScope.launch {
-            val bitmap = screenshotManager?.requestClean(displayId)
-            if (bitmap == null || !debugRunning) {
-                bitmap?.recycle()
+            val raw = screenshotManager?.requestClean(displayId)
+            if (raw == null || !debugRunning) {
+                raw?.recycle()
                 scheduleDebugCapture()
                 return@launch
             }
-            val screenshotW = bitmap.width
-            val screenshotH = bitmap.height
+            val screenshotW = raw.width
+            val screenshotH = raw.height
+
+            // Mirror the production OCR pipeline so the debug overlay shows
+            // what runOcrPipeline would see — same active region, same
+            // status-bar clamp, same floating-icon blackout. Falls back to
+            // a full-screen unclamped crop if the capture service isn't bound.
+            val captureSvc = CaptureService.instance
+            val region = captureSvc?.activeRegionForDisplay(displayId)
+                ?: RegionEntry("", 0f, 1f, 0f, 1f)
+            val statusBarHeight = captureSvc?.getStatusBarHeightForDisplay(displayId) ?: 0
+            val crop = OverlayToolkit.computeOcrCrop(raw.width, raw.height, region, statusBarHeight)
+            val needsCrop = crop.top > 0 || crop.left > 0 ||
+                crop.bottom < raw.height || crop.right < raw.width
+            val cropped = if (needsCrop) Bitmap.createBitmap(
+                raw, crop.left, crop.top,
+                (crop.right - crop.left).coerceAtLeast(1),
+                (crop.bottom - crop.top).coerceAtLeast(1),
+            ) else raw
 
             val ocr = debugOcrManager
             val result = try {
                 kotlinx.coroutines.withContext(Dispatchers.Default) {
-                    ocr.recognise(bitmap, SourceLanguageProfiles[prefs.sourceLangId].translationCode, collectDebugBoxes = true)
+                    val ocrBitmap = OverlayToolkit.blackoutFloatingIcon(
+                        cropped, crop.left, crop.top,
+                        getFloatingIconRect(displayId), prefs.compactOverlayIcon,
+                    )
+                    try {
+                        ocr.recognise(
+                            ocrBitmap,
+                            SourceLanguageProfiles[prefs.sourceLangId].translationCode,
+                            collectDebugBoxes = true,
+                            screenshotWidth = raw.width,
+                        )
+                    } finally {
+                        if (ocrBitmap !== raw && ocrBitmap !== cropped) ocrBitmap.recycle()
+                    }
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Debug OCR failed: ${e.message}")
                 null
             } finally {
-                bitmap.recycle()
+                if (cropped !== raw && !cropped.isRecycled) cropped.recycle()
+                raw.recycle()
             }
 
             val boxes = result?.debugBoxes
             if (boxes != null && debugRunning) {
-                showDebugOverlay(display, boxes, 0, 0, screenshotW, screenshotH)
+                showDebugOverlay(display, boxes, crop.left, crop.top, screenshotW, screenshotH)
             } else {
                 hideDebugOverlay()
             }
