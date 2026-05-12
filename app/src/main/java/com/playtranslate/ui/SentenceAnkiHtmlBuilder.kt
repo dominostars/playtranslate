@@ -304,35 +304,99 @@ object SentenceAnkiHtmlBuilder {
     ): String {
         if (sourceLangId != SourceLangId.JA) return plainBody(text)
         val targets = resolveHighlightTargets(words, highlightedWords)
+        // Anchor kanji-bearing Kuromoji tokens to their start offsets
+        // in the source text. We walk the source character-by-character
+        // below; this index tells us "at position i, expand the next N
+        // chars into a furigana bracket using the cached reading."
+        // Pure-kana tokens, whitespace, and punctuation are NOT indexed
+        // and just get copied through from the source. That keeps the
+        // builder source-text-canonical (matching buildSentencePlain)
+        // and removes the dependency on Kuromoji emitting whitespace as
+        // tokens — newlines turn into `<br>` because we see them
+        // directly in `text`, not because Kuromoji happened to surface
+        // them.
+        val kanjiTokenAt = indexKanjiTokensByStart(text)
         val sb = StringBuilder()
-        var charPos = 0
+        var i = 0
         // Inclusive char offset where the active <b> span should close;
         // -1 when we're not inside a bold span. Targets are matched at
         // their start positions only; we leave the closing tag on the
-        // first token whose end reaches or passes the target's end —
-        // surface forms in `words` come from Kuromoji-aligned lookups
-        // so off-boundary targets shouldn't happen in practice.
+        // step whose post-emit cursor reaches or passes the target's
+        // end. Surface forms in `words` come from Kuromoji-aligned
+        // lookups so off-boundary targets shouldn't happen in practice.
         var boldCloseAt = -1
-        for (token in Deinflector.tokenizeWithReadings(text)) {
-            val tokenEnd = charPos + token.surface.length
+        while (i < text.length) {
             if (boldCloseAt < 0) {
-                val hit = targets.firstOrNull { text.startsWith(it, charPos) }
+                val hit = targets.firstOrNull { text.startsWith(it, i) }
                 if (hit != null) {
                     sb.append("<b>")
-                    boldCloseAt = charPos + hit.length
+                    boldCloseAt = i + hit.length
                 }
             }
-            emitFuriganaToken(sb, token)
-            if (boldCloseAt in 0..tokenEnd) {
+            val token = kanjiTokenAt[i]
+            if (token != null) {
+                emitFuriganaParts(sb, token.surface, token.reading!!)
+                i += token.surface.length
+            } else {
+                val c = text[i]
+                if (c == '\n' || c == '\r') {
+                    sb.append("<br>")
+                    i++
+                    while (i < text.length && (text[i] == '\n' || text[i] == '\r')) i++
+                } else {
+                    sb.append(c)
+                    i++
+                }
+            }
+            if (boldCloseAt in 0..i) {
                 sb.append("</b>")
                 boldCloseAt = -1
             }
-            charPos = tokenEnd
         }
         if (boldCloseAt >= 0) sb.append("</b>")
         val out = stripBoundarySeparators(sb.toString())
         Log.d(TAG, "buildSentenceFurigana: in='$text' out='$out'")
         return out
+    }
+
+    /**
+     * Anchors each kanji-bearing Kuromoji token to its start offset in
+     * the source text. Greedy left-to-right via `indexOf`, advancing
+     * the scan past each match so duplicate surfaces (e.g. two の's)
+     * are claimed in tokenization order. Tokens whose surface doesn't
+     * appear in source — which can happen if Kuromoji normalises
+     * characters — are skipped silently; we'd rather drop the bracket
+     * than emit it at the wrong position.
+     */
+    private fun indexKanjiTokensByStart(text: String): Map<Int, Deinflector.ReadingToken> {
+        val out = mutableMapOf<Int, Deinflector.ReadingToken>()
+        var scanPos = 0
+        for (token in Deinflector.tokenizeWithReadings(text)) {
+            val start = text.indexOf(token.surface, scanPos)
+            if (start < 0) continue
+            if (token.hasKanji && !token.reading.isNullOrEmpty()) {
+                out[start] = token
+            }
+            scanPos = start + token.surface.length
+        }
+        return out
+    }
+
+    /**
+     * Emits one `<wbr>kanji[reading]<wbr>` bracket per per-kanji
+     * splitFurigana part, with okurigana / internal kana written
+     * through as plain text. Shared by the sentence and expression
+     * builders.
+     */
+    private fun emitFuriganaParts(sb: StringBuilder, surface: String, reading: String) {
+        for (part in Deinflector.splitFurigana(surface, reading)) {
+            val r = part.reading
+            if (r != null) {
+                sb.append(WBR).append(part.text).append('[').append(r).append(']').append(WBR)
+            } else {
+                appendPlain(sb, part.text)
+            }
+        }
     }
 
     /**
@@ -356,33 +420,6 @@ object SentenceAnkiHtmlBuilder {
         }
     }.toList().sortedByDescending { it.length }
 
-    private fun emitFuriganaToken(sb: StringBuilder, token: Deinflector.ReadingToken) {
-        val surface = token.surface
-        val reading = token.reading
-        if (!token.hasKanji || reading.isNullOrEmpty()) {
-            // Pure-kana / non-CJK tokens emit as plain text. No
-            // surrounding separators \u2014 Migaku doesn't tap-popup
-            // non-bracket text, so there's no reason to give them
-            // word boundaries.
-            appendPlain(sb, surface)
-            return
-        }
-        for (part in Deinflector.splitFurigana(surface, reading)) {
-            val r = part.reading
-            if (r != null) {
-                // `<wbr>kanji[reading]<wbr>` \u2014 leading `<wbr>` anchors
-                // Anki's regex (the `>` in the tag is excluded from
-                // its base-text class so the regex can't span back
-                // into preceding kana), trailing `<wbr>` isolates the
-                // bracket-word from any following kana so Migaku's
-                // word_post stays empty. See KDoc for full rationale.
-                sb.append(WBR).append(part.text).append('[').append(r).append(']').append(WBR)
-            } else {
-                appendPlain(sb, part.text)
-            }
-        }
-    }
-
     /**
      * Emits the EXPRESSION field value for word-mode (single-word)
      * sends: per-kanji furigana brackets with the same `<wbr>`
@@ -402,11 +439,7 @@ object SentenceAnkiHtmlBuilder {
         if (sourceLangId != SourceLangId.JA || reading.isEmpty()) return word
         if (!word.any(::isKanjiChar)) return word
         val sb = StringBuilder()
-        for (part in Deinflector.splitFurigana(word, reading)) {
-            val r = part.reading
-            if (r != null) sb.append(WBR).append(part.text).append('[').append(r).append(']').append(WBR)
-            else sb.append(part.text)
-        }
+        emitFuriganaParts(sb, word, reading)
         val out = stripBoundarySeparators(sb.toString())
         Log.d(TAG, "buildExpressionFurigana: word='$word' reading='$reading' out='$out'")
         return out

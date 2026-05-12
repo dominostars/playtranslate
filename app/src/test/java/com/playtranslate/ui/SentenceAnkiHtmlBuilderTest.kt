@@ -225,6 +225,34 @@ class SentenceAnkiHtmlBuilderTest {
         assertEquals("今度[こんど]<wbr>はC", result)
     }
 
+    @Test fun `Sentence furigana preserves newlines as br tags`() {
+        // Regression / robustness: the builder must not depend on
+        // Kuromoji emitting whitespace as its own token. Multi-line
+        // OCR captures need their line breaks preserved as `<br>` on
+        // the rendered card — the plain-sentence builder already does
+        // this character-by-character; the furigana builder used to
+        // rely on Kuromoji's whitespace token behaviour.
+        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            "友達に\n聞いた", sourceLangId = SourceLangId.JA
+        )
+        assertTrue(
+            "Expected newline preserved as <br>; was: $result",
+            result.contains("<br>"),
+        )
+    }
+
+    @Test fun `Sentence furigana preserves literal spaces from source`() {
+        // Spaces inside OCR'd Japanese (e.g. line-wrap artefacts) get
+        // copied through unchanged — same as the plain builder.
+        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            "今日 は", sourceLangId = SourceLangId.JA
+        )
+        assertTrue(
+            "Expected literal space preserved; was: $result",
+            result.contains(" は"),
+        )
+    }
+
     @Test fun `Sentence furigana wraps highlighted dict-form in bold`() {
         // Matches JPMN's `<b> 偽者[にせもの]</b>` SentenceReading shape:
         // `<b>` wraps the entire highlighted surface (which may span
