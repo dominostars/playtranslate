@@ -494,79 +494,34 @@ class OcrManager private constructor() {
         return hGroups + vGroups
     }
 
-    /** Groups pre-sorted lines using orientation-aware proximity rules. */
+    /** Groups pre-sorted lines using orientation-aware proximity rules.
+     *  Thin adapter around [groupBoxesOnePass]: extracts boxes + effective
+     *  align-lefts from each [Text.Line], runs the index-level grouping, and
+     *  remaps groups back to Text.Line lists. The algorithm lives on the
+     *  companion so unit tests can exercise it with synthetic rects without
+     *  fabricating ML Kit objects. */
     private fun groupLinesOnePass(
         sortedLines: List<Text.Line>,
         orientation: TextOrientation
     ): List<List<Text.Line>> {
         if (sortedLines.isEmpty()) return emptyList()
-        val logDecisions = debugLogGroupingEnabled
-        val groups = mutableListOf<MutableList<Text.Line>>()
-        for (line in sortedLines) {
-            val lineBox = line.boundingBox ?: continue
-            val lastGroup = groups.lastOrNull()
-            if (lastGroup != null) {
-                val prevBox = lastGroup.last().boundingBox
-                // Use the *union* of all prior line edges across the
-                // wrap axis (left+right for horizontal, top+bottom for
-                // vertical) so the group's center stays on the paragraph
-                // axis as line widths vary. Mixing a union edge with the
-                // last line's opposite edge pulled groupRect.centerX/Y off
-                // the real axis and broke center-aligned wrapped text.
-                val groupRect: Rect
-                val groupAlignLeft: Int?
-                val candidateAlignLeft: Int?
-                if (orientation == TextOrientation.VERTICAL) {
-                    val groupTop = lastGroup.mapNotNull { it.boundingBox?.top }.minOrNull() ?: 0
-                    val groupBottom = lastGroup.mapNotNull { it.boundingBox?.bottom }.maxOrNull() ?: 0
-                    groupRect = Rect(prevBox?.left ?: 0, groupTop, prevBox?.right ?: 0, groupBottom)
-                    groupAlignLeft = null
-                    candidateAlignLeft = null
-                } else {
-                    val groupLeft = lastGroup.mapNotNull { it.boundingBox?.left }.minOrNull() ?: 0
-                    val groupRight = lastGroup.mapNotNull { it.boundingBox?.right }.maxOrNull() ?: 0
-                    groupRect = Rect(groupLeft, prevBox?.top ?: 0, groupRight, prevBox?.bottom ?: 0)
-                    // Per-line effective lefts compensate for hanging
-                    // punctuation outdent (e.g. 「, ·) — see
-                    // [effectiveAlignLeft]. Used only by the leftAligned
-                    // sub-check; centerX still uses groupRect's actual
-                    // edges so center-aligned wrapped text is unaffected.
-                    groupAlignLeft = lastGroup.mapNotNull { effectiveAlignLeft(it) }.minOrNull()
-                    candidateAlignLeft = effectiveAlignLeft(line)
-                }
-                // wouldGroup is the canonical predicate — used unconditionally
-                // so the debug-log toggle is purely observational. groupDecision
-                // is called only to produce a reason string for the log; if it
-                // ever diverges from wouldGroup the log wording becomes
-                // misleading but grouping behavior stays consistent.
-                val merged = wouldGroup(groupRect, lineBox, orientation, groupAlignLeft, candidateAlignLeft)
-                if (logDecisions) {
-                    val decision = groupDecision(groupRect, lineBox, orientation, groupAlignLeft, candidateAlignLeft)
-                    val prevSnippet = lastGroup.last().text.take(24).replace('\n', ' ')
-                    val candSnippet = line.text.take(24).replace('\n', ' ')
-                    val verdict = if (merged) "MERGE" else "SPLIT"
-                    android.util.Log.d(
-                        "DetectionLog",
-                        "[group:${orientation.name[0]}] $verdict prev=${rectStr(groupRect)} \"$prevSnippet\" cand=${rectStr(lineBox)} \"$candSnippet\" :: ${decision.reason}"
-                    )
-                }
-                if (merged) {
-                    lastGroup += line
-                    continue
-                }
-            } else if (logDecisions) {
-                val candSnippet = line.text.take(24).replace('\n', ' ')
-                android.util.Log.d(
-                    "DetectionLog",
-                    "[group:${orientation.name[0]}] FIRST cand=${rectStr(lineBox)} \"$candSnippet\""
-                )
-            }
-            groups += mutableListOf(line)
+        // Drop lines without a bounding box up front so the index-level
+        // function can assume each input has one. Matches the pre-extraction
+        // behavior, where `line.boundingBox ?: continue` skipped them.
+        val kept = sortedLines.filter { it.boundingBox != null }
+        if (kept.isEmpty()) return emptyList()
+        val boxes = kept.map { it.boundingBox!! }
+        val alignLefts: List<Int?> = if (orientation == TextOrientation.HORIZONTAL) {
+            kept.map { effectiveAlignLeft(it) }
+        } else {
+            List(kept.size) { null }
         }
-        return groups
+        val texts = if (debugLogGroupingEnabled) kept.map { it.text } else null
+        val indexGroups = groupBoxesOnePass(
+            boxes, alignLefts, orientation, debugLogGroupingEnabled, texts
+        )
+        return indexGroups.map { idxs -> idxs.map { kept[it] } }
     }
-
-    private fun rectStr(r: Rect): String = "[L=${r.left} T=${r.top} R=${r.right} B=${r.bottom}]"
 
     private data class SplitGroup(
         val lines: List<Text.Line>,
@@ -1249,5 +1204,128 @@ class OcrManager private constructor() {
             // Angle brackets used as decorative dialogue borders
             '<', '>', '＜', '＞', '〈', '〉', '《', '》', '«', '»'
         )
+
+        internal fun rectStr(r: Rect): String =
+            "[L=${r.left} T=${r.top} R=${r.right} B=${r.bottom}]"
+
+        /**
+         * Index-level grouping pass. Pure function over rectangles + per-line
+         * effective align-lefts, factored out of [groupLinesOnePass] so unit
+         * tests can drive the algorithm without fabricating ML Kit objects.
+         *
+         * Walks groups most-recent-first and joins the candidate into the
+         * first group that passes [wouldGroup]. Checking every existing group
+         * (not just the latest) reconnects body lines when a foreign-column
+         * line (e.g. right-column sidebar entry) interleaves between two
+         * body lines in top-Y sort order and breaks the simple "last group
+         * is always the right candidate" assumption.
+         *
+         * - [boxes] : line bounding boxes, in sort order (top-to-bottom for
+         *   horizontal, right-to-left for vertical).
+         * - [alignLefts] : per-line effective left edge, with hanging-
+         *   punctuation outdent compensated (see [effectiveAlignLeft]).
+         *   Pass `null` per entry to skip compensation; must be the same
+         *   length as [boxes].
+         * - [texts] : optional per-line text, only used to populate the
+         *   debug-log snippets. Pass `null` when logging is off.
+         *
+         * Returns a list of groups, each group being the indices into
+         * [boxes] that ended up together, in encounter order.
+         */
+        internal fun groupBoxesOnePass(
+            boxes: List<Rect>,
+            alignLefts: List<Int?>,
+            orientation: TextOrientation,
+            logDecisions: Boolean = false,
+            texts: List<String>? = null,
+        ): List<List<Int>> {
+            require(boxes.size == alignLefts.size) {
+                "boxes and alignLefts must match length"
+            }
+            require(texts == null || texts.size == boxes.size) {
+                "texts must match boxes length when provided"
+            }
+            if (boxes.isEmpty()) return emptyList()
+            val groups = mutableListOf<MutableList<Int>>()
+            val orientChar = orientation.name[0]
+            for (idx in boxes.indices) {
+                val lineBox = boxes[idx]
+                if (groups.isEmpty()) {
+                    if (logDecisions) {
+                        val snippet = (texts?.get(idx) ?: "").take(24).replace('\n', ' ')
+                        android.util.Log.d(
+                            "DetectionLog",
+                            "[group:$orientChar] FIRST cand=${rectStr(lineBox)} \"$snippet\""
+                        )
+                    }
+                    groups += mutableListOf(idx)
+                    continue
+                }
+
+                val candidateAlignLeft =
+                    if (orientation == TextOrientation.VERTICAL) null else alignLefts[idx]
+                var merged = false
+                for (gi in groups.indices.reversed()) {
+                    val candidateGroup = groups[gi]
+                    val prevBox = boxes[candidateGroup.last()]
+                    // Use the *union* of all prior line edges across the
+                    // wrap axis (left+right for horizontal, top+bottom for
+                    // vertical) so the group's center stays on the paragraph
+                    // axis as line widths vary. Mixing a union edge with the
+                    // last line's opposite edge pulled groupRect.centerX/Y
+                    // off the real axis and broke center-aligned wrapped text.
+                    val groupRect: Rect
+                    val groupAlignLeft: Int?
+                    if (orientation == TextOrientation.VERTICAL) {
+                        val groupTop = candidateGroup.minOf { boxes[it].top }
+                        val groupBottom = candidateGroup.maxOf { boxes[it].bottom }
+                        groupRect = Rect(prevBox.left, groupTop, prevBox.right, groupBottom)
+                        groupAlignLeft = null
+                    } else {
+                        val groupLeft = candidateGroup.minOf { boxes[it].left }
+                        val groupRight = candidateGroup.maxOf { boxes[it].right }
+                        groupRect = Rect(groupLeft, prevBox.top, groupRight, prevBox.bottom)
+                        // Per-line effective lefts compensate for hanging
+                        // punctuation outdent (e.g. 「, ·). Used only by the
+                        // leftAligned sub-check; centerX still uses
+                        // groupRect's actual edges so center-aligned wrapped
+                        // text is unaffected.
+                        groupAlignLeft = candidateGroup.mapNotNull { alignLefts[it] }.minOrNull()
+                    }
+                    // wouldGroup is the canonical predicate — used
+                    // unconditionally so the debug-log toggle is purely
+                    // observational. groupDecision is called only to
+                    // produce a reason string for the log; if it ever
+                    // diverges from wouldGroup the log wording becomes
+                    // misleading but grouping behavior stays consistent.
+                    val groupMerged = wouldGroup(
+                        groupRect, lineBox, orientation, groupAlignLeft, candidateAlignLeft
+                    )
+                    if (logDecisions) {
+                        val decision = groupDecision(
+                            groupRect, lineBox, orientation, groupAlignLeft, candidateAlignLeft
+                        )
+                        val prevSnippet =
+                            (texts?.get(candidateGroup.last()) ?: "").take(24).replace('\n', ' ')
+                        val candSnippet =
+                            (texts?.get(idx) ?: "").take(24).replace('\n', ' ')
+                        val verdict = if (groupMerged) "MERGE" else "SPLIT"
+                        android.util.Log.d(
+                            "DetectionLog",
+                            "[group:$orientChar] $verdict g$gi prev=${rectStr(groupRect)} \"$prevSnippet\" cand=${rectStr(lineBox)} \"$candSnippet\" :: ${decision.reason}"
+                        )
+                    }
+                    if (groupMerged) {
+                        candidateGroup += idx
+                        merged = true
+                        break
+                    }
+                }
+                if (!merged) {
+                    groups += mutableListOf(idx)
+                }
+            }
+            return groups
+        }
     }
 }
