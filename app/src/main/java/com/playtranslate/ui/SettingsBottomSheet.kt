@@ -305,11 +305,24 @@ class SettingsBottomSheet : DialogFragment() {
                     if (pickedId == -1L) return  // shouldn't be reachable; row's hidden
                     sheet.viewLifecycleOwner.lifecycleScope.launch {
                         val models = withContext(Dispatchers.IO) { AnkiManager(ctx).getModels() }
+                        if (models.isEmpty()) {
+                            // Empty list always means transient query /
+                            // permission failure — a working AnkiDroid
+                            // install always has built-in Basic + Cloze.
+                            // Don't destructively reset prefs; just
+                            // surface the error and let the user retry.
+                            // Same guard as dispatchSendToAnki.
+                            android.widget.Toast.makeText(
+                                ctx, R.string.anki_models_unavailable,
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                            return@launch
+                        }
                         val picked = models.firstOrNull { it.id == pickedId }
                         if (picked == null) {
-                            // Model disappeared from AnkiDroid since the
-                            // user selected it. Fall back to default
-                            // and Toast, matching the send-time guard.
+                            // Model genuinely disappeared (models is non-
+                            // empty, our id isn't in it). Fall back to
+                            // default and Toast.
                             prefs.ankiModelId = -1L
                             prefs.ankiModelName = ""
                             android.widget.Toast.makeText(

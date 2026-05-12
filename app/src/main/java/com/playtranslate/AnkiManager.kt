@@ -234,18 +234,34 @@ class AnkiManager(private val context: Context) {
         }
         return try {
             val noteUri = context.contentResolver.insert(NOTE_URI, cv) ?: return false
-            // Move every generated card to the user's selected deck.
-            // One note can generate multiple cards via a note type's
-            // card templates (e.g. "Basic (and reversed card)" → ord=0
-            // forward + ord=1 reverse). The insert-side `did` is
-            // ignored by AnkiDroid 2.23.x, and conditional templates
-            // mean we can't hardcode an ord list — query the cards
-            // URI to see exactly which ones the model emitted, then
-            // update each. Individual update failures are logged but
-            // don't fail the send; ord=0 succeeding is the common
-            // case and matches the previous behavior.
-            val cardsUri = Uri.withAppendedPath(noteUri, "cards")
             val cardValues = ContentValues().apply { put("deck_id", deckId) }
+
+            // Baseline: move cards/0 directly. AnkiDroid 2.23.x ignores
+            // the insert-side `did`, so we have to relocate the card
+            // ourselves. This direct update worked on every AnkiDroid
+            // version that supported the structured insert at all, so
+            // we keep it as an unconditional fallback in case the
+            // enumeration step below (newer query path) fails for any
+            // reason. For single-template note types (the dominant
+            // case — v004, Basic, Lapis, JPMN, Migaku) this also moves
+            // the only generated card, so enumeration is a pure
+            // additive enhancement.
+            try {
+                val zeroUri = Uri.withAppendedPath(noteUri, "cards/0")
+                context.contentResolver.update(zeroUri, cardValues, null, null)
+            } catch (e: Exception) {
+                Log.e(TAG, "card deck update failed for ord=0: ${e.message}", e)
+            }
+
+            // Multi-card enhancement: enumerate any other generated
+            // cards (ord>=1) and move them too. Note types like
+            // "Basic (and reversed card)" emit a second card at ord=1
+            // that the baseline above doesn't reach. Failures here are
+            // non-fatal — the common single-card case is already
+            // handled and the worst-case degradation is "second card
+            // lands in default deck", which is the pre-multi-card
+            // behavior anyway.
+            val cardsUri = Uri.withAppendedPath(noteUri, "cards")
             try {
                 context.contentResolver.query(cardsUri, arrayOf("ord"), null, null, null)
                     ?.use { cursor ->
@@ -253,6 +269,7 @@ class AnkiManager(private val context: Context) {
                         if (ordCol < 0) return@use
                         while (cursor.moveToNext()) {
                             val ord = cursor.getInt(ordCol)
+                            if (ord == 0) continue  // already moved above
                             val cardUri = Uri.withAppendedPath(noteUri, "cards/$ord")
                             try {
                                 context.contentResolver.update(cardUri, cardValues, null, null)
