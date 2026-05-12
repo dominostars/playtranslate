@@ -332,6 +332,19 @@ class SettingsBottomSheet : DialogFragment() {
                             onSaved()
                             return@launch
                         }
+                        if (AnkiCardTypeMapper.isBasicShape(picked.fieldNames)) {
+                            // Basic-shape templates bypass the mapping
+                            // system entirely — dispatchSendToAnki routes
+                            // them through assembleBasicNote which
+                            // derives Front/Back from the send mode and
+                            // ignores any saved mapping. Don't open the
+                            // mapping dialog; explain instead.
+                            android.widget.Toast.makeText(
+                                ctx, R.string.anki_card_type_basic_no_mapping,
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                            return@launch
+                        }
                         val dialog = AnkiFieldMappingDialog.newInstance(
                             modelId = picked.id,
                             modelName = picked.name,

@@ -177,7 +177,18 @@ class AnkiManager(private val context: Context) {
                 val nameCol   = cursor.getColumnIndex("name")
                 val fieldsCol = cursor.getColumnIndex("field_names")
                 val typeCol   = cursor.getColumnIndex("type")
-                val sortfCol  = cursor.getColumnIndex("sortf")
+                // The documented FlashCardsContract column is
+                // `sort_field_index`; older AnkiDroid revisions exposed
+                // the column as `sortf` matching Anki desktop's
+                // database schema. Probe the documented name first
+                // and fall back to the legacy alias — without this
+                // probe, `getColumnIndex` returns -1 on modern
+                // AnkiDroid and our sort-field guard would always
+                // inspect field index 0 regardless of the model's
+                // real sort field.
+                val sortfCol = cursor.getColumnIndex("sort_field_index")
+                    .takeIf { it >= 0 }
+                    ?: cursor.getColumnIndex("sortf")
                 while (cursor.moveToNext()) {
                     val id   = if (idCol   >= 0) cursor.getLong(idCol)     else continue
                     val name = if (nameCol >= 0) cursor.getString(nameCol) ?: continue else continue
