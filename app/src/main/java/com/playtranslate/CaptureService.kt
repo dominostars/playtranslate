@@ -1666,7 +1666,11 @@ class CaptureService : Service() {
         // OCR-only bypass: when source and target language are the same,
         // skip translation entirely — OCR output is the final result.
         // This handles all paths: one-shot hold, live mode, and in-app panel.
+        // Clear degraded state too — bypass means we aren't going through a
+        // backend, so any stale "Offline"/"degraded" badge from a prior
+        // fallback should drop.
         if (target.source == target.target) {
+            setDegraded(false)
             return groupTexts.map { Pair(it, null) }
         }
 
@@ -1734,6 +1738,20 @@ class CaptureService : Service() {
      * cache slot on recovery.
      */
     private suspend fun translate(text: String, target: TranslationTarget): Pair<String, String?> {
+        // OCR-only bypass: when source and target language are the same, skip
+        // translation entirely. This is the universal choke point — every
+        // translation path (batched groups via translateGroupsSeparately, plus
+        // every translateOnce caller: edit overlay, drag-sentence, sentence
+        // tab) flows through here. The earlier bypass in
+        // translateGroupsSeparately is a redundant early-return for the
+        // group/cache path. Clear degraded state too — bypass means we aren't
+        // going through a backend, so any stale "Offline"/"degraded" badge
+        // from a prior fallback should drop.
+        if (target.source == target.target) {
+            setDegraded(false)
+            return text to null
+        }
+
         ensureLanguageManagersFor(target)
         val result = TranslationBackendRegistry.translate(text, target.source, target.target)
         setDegraded(result.isDegraded)
