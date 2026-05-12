@@ -136,18 +136,35 @@ class AnkiCardTypePickerDialog : DialogFragment() {
                     subtitle = model.fieldNames.joinToString(" · "),
                     isSelected = prefs.ankiModelId == model.id,
                     onClick = {
-                        val mapping = AnkiFieldMappingDialog.newInstance(
-                            modelId = model.id,
-                            modelName = model.name,
-                            fieldNames = model.fieldNames,
-                            mode = mode,
-                        )
-                        mapping.onSaved = { id, name ->
-                            onCardTypePicked?.invoke(id, name)
+                        if (AnkiCardTypeMapper.isBasicShape(model.fieldNames)) {
+                            // Basic-shape templates send mode-appropriate
+                            // content automatically at dispatch time — no
+                            // per-field mapping to configure. Commit the
+                            // selection directly and skip the mapping
+                            // dialog.
+                            prefs.ankiModelId = model.id
+                            prefs.ankiModelName = model.name
+                            // Wipe any stale mapping from an earlier
+                            // build that auto-populated Basic defaults
+                            // — those would otherwise sit unused in
+                            // prefs forever.
+                            prefs.setAnkiFieldMapping(model.id, emptyMap())
+                            onCardTypePicked?.invoke(model.id, model.name)
+                            dismiss()
+                        } else {
+                            val mapping = AnkiFieldMappingDialog.newInstance(
+                                modelId = model.id,
+                                modelName = model.name,
+                                fieldNames = model.fieldNames,
+                                mode = mode,
+                            )
+                            mapping.onSaved = { id, name ->
+                                onCardTypePicked?.invoke(id, name)
+                            }
+                            val fm = parentFragmentManager
+                            dismiss()
+                            mapping.show(fm, AnkiFieldMappingDialog.TAG)
                         }
-                        val fm = parentFragmentManager
-                        dismiss()
-                        mapping.show(fm, AnkiFieldMappingDialog.TAG)
                     },
                 )
             },

@@ -124,21 +124,33 @@ object AnkiCardTypeMapper {
         "Is Vocabulary Card" to ContentSource.VOCABULARY_CARD_FLAG,
     )
 
-    private val BASIC_WORD_DEFAULTS: Map<String, ContentSource> = mapOf(
-        "Front"   to ContentSource.EXPRESSION,
-        "Back"    to ContentSource.DEFINITION,
-        "Picture" to ContentSource.PICTURE,
-    )
-
-    private val BASIC_SENTENCE_DEFAULTS: Map<String, ContentSource> = mapOf(
-        "Front"   to ContentSource.SENTENCE,
-        "Back"    to ContentSource.SENTENCE_TRANSLATION,
-        "Picture" to ContentSource.PICTURE,
-    )
+    /**
+     * Anki Basic-shape templates skip the per-field mapping system
+     * entirely. Their schema is too simple to make a meaningful
+     * mapping decision (Front = the question, Back = the answer),
+     * and storing a mapping would force a mode commitment at picker
+     * time — picking Basic in sentence mode and then toggling to
+     * word mode would silently send Word/Definition into the
+     * sentence-mode template. Instead, Basic sends are assembled at
+     * dispatch time from the current mode via [assembleBasicNote].
+     *
+     * Trade-off: power users can't customise Basic mappings
+     * (e.g. put `READING` on the Front of a Basic card). Anyone
+     * who wants that customisation should pick a mining template or
+     * a custom card type, both of which go through the normal
+     * mapping flow.
+     */
+    fun isBasicShape(fieldNames: Collection<String>): Boolean {
+        val fields = fieldNames.toSet()
+        return fields == setOf("Front", "Back") ||
+               fields == setOf("Front", "Back", "Picture")
+    }
 
     /**
      * Returns starter defaults for a recognised template, or empty map
-     * if [model] doesn't match a known shape. Detection layered:
+     * if [model] doesn't match a known shape (or is a Basic shape —
+     * see [isBasicShape] / [assembleBasicNote] for why Basic skips
+     * the mapping system). Detection layered:
      *
      * 1. Model name substring (case-insensitive) — catches renamed
      *    models whose schema may have drifted.
@@ -146,10 +158,13 @@ object AnkiCardTypeMapper {
      *    layouts even when the user renamed the model.
      * 3. Otherwise empty — the user wires it up manually.
      *
-     * [mode] only affects Basic-shape detection; mining-note templates
-     * (Lapis, JPMN) have stable field semantics across word and
-     * sentence cards.
+     * [mode] currently has no effect — mining-note templates have
+     * mode-stable schemas (mode is carried via the card-type FLAG
+     * fields at send time, not via different mappings). It's kept on
+     * the signature for forward-compatibility with future
+     * mode-aware mining defaults.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun defaultsForModel(
         model: AnkiManager.ModelInfo,
         mode: CardMode,
@@ -209,16 +224,11 @@ object AnkiCardTypeMapper {
             return out
         }
 
-        // Anki Basic shape: exact {Front, Back} or {Front, Back, Picture}.
-        // Anything else with a Front field is too ambiguous — leave blank.
-        if (fields == setOf("Front", "Back") ||
-            fields == setOf("Front", "Back", "Picture")) {
-            val out = when (mode) {
-                CardMode.WORD     -> BASIC_WORD_DEFAULTS.filterKeys { it in fields }
-                CardMode.SENTENCE -> BASIC_SENTENCE_DEFAULTS.filterKeys { it in fields }
-            }
-            Log.d(TAG, "  matched: Basic shape ($mode); applied=$out")
-            return out
+        // Anki Basic shape is handled outside the mapping system —
+        // see isBasicShape / assembleBasicNote.
+        if (isBasicShape(model.fieldNames)) {
+            Log.d(TAG, "  matched: Basic shape — handled via assembleBasicNote, no mapping")
+            return emptyMap()
         }
 
         Log.d(TAG, "  no template match — mapping will start blank")
@@ -237,5 +247,33 @@ object AnkiCardTypeMapper {
         outputs: CardOutputs,
     ): List<String> = modelFieldNames.map { fieldName ->
         outputs.valueFor(mapping[fieldName] ?: ContentSource.NONE)
+    }
+
+    /**
+     * Assembles a Basic-shape note (`Front` + `Back`, optional
+     * `Picture`) directly from the current send mode. Bypasses the
+     * per-field mapping system because Basic's two-field schema
+     * doesn't carry enough state to disambiguate word from sentence
+     * sends, and storing a mapping per model id would force a mode
+     * commitment at picker time — see [isBasicShape] for the full
+     * rationale.
+     */
+    fun assembleBasicNote(
+        modelFieldNames: List<String>,
+        mode: CardMode,
+        outputs: CardOutputs,
+    ): List<String> = modelFieldNames.map { fieldName ->
+        when (fieldName) {
+            "Front" -> when (mode) {
+                CardMode.WORD     -> outputs.expression
+                CardMode.SENTENCE -> outputs.sentence
+            }
+            "Back" -> when (mode) {
+                CardMode.WORD     -> outputs.definition
+                CardMode.SENTENCE -> outputs.sentenceTranslation
+            }
+            "Picture" -> outputs.picture
+            else -> ""
+        }
     }
 }

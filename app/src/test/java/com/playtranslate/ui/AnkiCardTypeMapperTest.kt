@@ -2,6 +2,7 @@ package com.playtranslate.ui
 
 import com.playtranslate.AnkiManager
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -221,33 +222,67 @@ class AnkiCardTypeMapperTest {
     }
 
     // ─── Basic shape ─────────────────────────────────────────────────────
+    // Basic-shape templates bypass the mapping system entirely — fields
+    // are assembled at dispatch time from the current mode via
+    // assembleBasicNote. See AnkiCardTypeMapper.isBasicShape for the
+    // full rationale (mainly: a stored mode-dependent mapping
+    // commits the user to a mode at picker time and silently
+    // mismatches when they later toggle the sheet).
 
-    @Test fun `Basic 2-field word-mode defaults`() {
+    @Test fun `Basic 2-field model is recognised as Basic shape`() {
+        assertTrue(AnkiCardTypeMapper.isBasicShape(listOf("Front", "Back")))
+    }
+
+    @Test fun `Basic 3-field with Picture is recognised as Basic shape`() {
+        assertTrue(AnkiCardTypeMapper.isBasicShape(listOf("Front", "Back", "Picture")))
+    }
+
+    @Test fun `Basic-like with extra field is NOT recognised as Basic shape`() {
+        // Anything beyond {Front, Back} or {Front, Back, Picture} is
+        // too ambiguous to auto-assemble — falls through to custom-
+        // template handling and the mapping dialog.
+        assertFalse(AnkiCardTypeMapper.isBasicShape(listOf("Front", "Back", "Notes")))
+    }
+
+    @Test fun `defaultsForModel returns empty for Basic shape`() {
+        // No mapping is stored for Basic — assembleBasicNote handles
+        // the assembly at dispatch time instead.
         val m = model("Basic", listOf("Front", "Back"))
-        val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.WORD)
-        assertEquals(ContentSource.EXPRESSION, mapping["Front"])
-        assertEquals(ContentSource.DEFINITION, mapping["Back"])
+        assertTrue(AnkiCardTypeMapper.defaultsForModel(m, CardMode.WORD).isEmpty())
+        assertTrue(AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE).isEmpty())
     }
 
-    @Test fun `Basic 2-field sentence-mode defaults`() {
-        val m = model("Basic", listOf("Front", "Back"))
-        val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
-        assertEquals(ContentSource.SENTENCE,             mapping["Front"])
-        assertEquals(ContentSource.SENTENCE_TRANSLATION, mapping["Back"])
+    @Test fun `assembleBasicNote word-mode emits Expression on Front and Definition on Back`() {
+        val flds = AnkiCardTypeMapper.assembleBasicNote(
+            modelFieldNames = listOf("Front", "Back"),
+            mode = CardMode.WORD,
+            outputs = sampleOutputs(),
+        )
+        assertEquals(listOf("expr", "<div>def</div>"), flds)
     }
 
-    @Test fun `Basic 3-field with Picture in sentence mode`() {
-        val m = model("Basic with Picture", listOf("Front", "Back", "Picture"))
-        val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
-        assertEquals(ContentSource.SENTENCE,             mapping["Front"])
-        assertEquals(ContentSource.SENTENCE_TRANSLATION, mapping["Back"])
-        assertEquals(ContentSource.PICTURE,              mapping["Picture"])
+    @Test fun `assembleBasicNote sentence-mode emits Sentence on Front and Translation on Back`() {
+        val flds = AnkiCardTypeMapper.assembleBasicNote(
+            modelFieldNames = listOf("Front", "Back"),
+            mode = CardMode.SENTENCE,
+            outputs = sampleOutputs(),
+        )
+        assertEquals(listOf("sent", "trans"), flds)
     }
 
-    @Test fun `Basic-like with extra field is NOT detected (too ambiguous)`() {
-        val m = model("Basic-ish", listOf("Front", "Back", "Notes"))
-        val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.WORD)
-        assertTrue(mapping.isEmpty())
+    @Test fun `assembleBasicNote 3-field includes Picture in both modes`() {
+        val wordFlds = AnkiCardTypeMapper.assembleBasicNote(
+            modelFieldNames = listOf("Front", "Back", "Picture"),
+            mode = CardMode.WORD,
+            outputs = sampleOutputs(),
+        )
+        assertEquals(listOf("expr", "<div>def</div>", "pic.jpg"), wordFlds)
+        val sentenceFlds = AnkiCardTypeMapper.assembleBasicNote(
+            modelFieldNames = listOf("Front", "Back", "Picture"),
+            mode = CardMode.SENTENCE,
+            outputs = sampleOutputs(),
+        )
+        assertEquals(listOf("sent", "trans", "pic.jpg"), sentenceFlds)
     }
 
     // ─── Unknown ─────────────────────────────────────────────────────────

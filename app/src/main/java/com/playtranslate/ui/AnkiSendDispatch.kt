@@ -20,6 +20,15 @@ private const val TAG = "AnkiSendDispatch"
 private sealed interface ModelTarget {
     /** Default (PlayTranslate) — write to v004 via the legacy path. */
     data object Legacy : ModelTarget
+    /**
+     * Anki Basic shape ({Front, Back} or {Front, Back, Picture}).
+     * Bypasses the mapping system — fields are assembled at send time
+     * from the current mode via [AnkiCardTypeMapper.assembleBasicNote].
+     */
+    data class Basic(
+        val model: AnkiManager.ModelInfo,
+    ) : ModelTarget
+    /** Custom or mining-template card — uses the saved per-field mapping. */
     data class Structured(
         val model: AnkiManager.ModelInfo,
         val mapping: Map<String, ContentSource>,
@@ -94,6 +103,12 @@ suspend fun Fragment.dispatchSendToAnki(
                 Toast.makeText(ctx, R.string.anki_card_type_stale_fallback,
                     Toast.LENGTH_SHORT).show()
                 ModelTarget.Legacy
+            } else if (AnkiCardTypeMapper.isBasicShape(picked.fieldNames)) {
+                // Basic-shape templates don't carry a stored mapping —
+                // assembleBasicNote derives Front/Back from the current
+                // send mode at dispatch time. See AnkiCardTypeMapper
+                // for the full rationale.
+                ModelTarget.Basic(picked)
             } else {
                 val mapping = prefs.getAnkiFieldMapping(pickedId)
                 if (mapping.values.none { it != ContentSource.NONE }) {
@@ -116,12 +131,42 @@ suspend fun Fragment.dispatchSendToAnki(
                 ?: return AnkiSendResult.Failed
             v004 to listOf(legacyFront(), legacyBack(imageFilename))
         }
+        is ModelTarget.Basic -> {
+            val outputs = structured(imageFilename)
+            val flds = AnkiCardTypeMapper.assembleBasicNote(
+                target.model.fieldNames, mode, outputs)
+            Log.d(TAG, "basic send: model=${target.model.name} mode=$mode " +
+                "fields=${flds.size} non-empty=${flds.count { it.isNotEmpty() }}")
+            target.model.id to flds
+        }
         is ModelTarget.Structured -> {
             val outputs = structured(imageFilename)
             val flds = AnkiCardTypeMapper.assembleNote(
                 target.model.fieldNames, target.mapping, outputs)
             Log.d(TAG, "structured send: model=${target.model.name} " +
                 "fields=${flds.size} non-empty=${flds.count { it.isNotEmpty() }}")
+            // Sort field guard: AnkiDroid (and Anki desktop) compute
+            // a checksum of `fields[sortf]` for duplicate detection.
+            // An empty sort field means every note we insert has the
+            // same csum — AnkiDroid's content provider rejects the
+            // second one onwards as a duplicate (returns null URI,
+            // surfacing as a generic "Failed to add card" toast). The
+            // canonical trigger is JPMN's leading `Key` field, which
+            // PT's defaults intentionally leave unmapped so the user
+            // can pick what uniquely identifies their cards. Catch
+            // that here with a clear actionable error instead of the
+            // mysterious silent failure.
+            val sortf = target.model.sortf
+            if (sortf in flds.indices && flds[sortf].isEmpty()) {
+                val sortFieldName = target.model.fieldNames.getOrNull(sortf).orEmpty()
+                Toast.makeText(
+                    ctx,
+                    ctx.getString(R.string.anki_sort_field_empty, sortFieldName),
+                    Toast.LENGTH_LONG,
+                ).show()
+                showAnkiCardTypeMappingDialog(target.model, mode) { _, _ -> }
+                return AnkiSendResult.NeedsMapping
+            }
             target.model.id to flds
         }
     }
