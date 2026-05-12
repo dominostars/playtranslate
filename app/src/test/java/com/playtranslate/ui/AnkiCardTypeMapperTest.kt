@@ -44,14 +44,15 @@ class AnkiCardTypeMapperTest {
     )
 
     private val JPMN_FIELDS = listOf(
-        "Word", "WordReading", "WordReadingHiragana", "WordAudio",
-        "Sentence", "SentenceReading", "SentenceAudio",
+        "Key", "Word", "WordReading", "WordReadingHiragana",
         "PrimaryDefinition", "PrimaryDefinitionPicture",
-        "SecondaryDefinition", "AdditionalNotes", "ExtraDefinitions",
-        "Picture", "Hint", "HintNotHidden",
-        "Key", "AltDisplay",
-        "IsHoverCard", "IsSentenceCard", "IsClickCard", "IsTargetedSentenceCard",
-        "FrequenciesStylized", "AJTWordPitch", "UtilityDictionaries",
+        "Sentence", "SentenceReading",
+        "AltDisplay", "AdditionalNotes",
+        "IsSentenceCard", "IsClickCard", "IsHoverCard", "IsTargetedSentenceCard",
+        "Hint", "HintNotHidden", "Picture",
+        "WordAudio", "SentenceAudio",
+        "FrequenciesStylized", "SecondaryDefinition", "ExtraDefinitions",
+        "AJTWordPitch", "UtilityDictionaries",
     )
 
     private val MIGAKU_FIELDS = listOf(
@@ -75,10 +76,9 @@ class AnkiCardTypeMapperTest {
         // so the plain Expression slot maps to the plain EXPRESSION
         // source (no brackets — they'd display as literal text). The
         // ExpressionFurigana slot is filtered through `{{furigana:}}`
-        // on the back, so it takes the bracketed variant. SENTENCE
-        // already carries brackets and renders correctly through
-        // either `{{kanji:}}` (front) or `{{furigana:}}` (back).
-        assertEquals(ContentSource.SENTENCE,                 mapping["SentenceFurigana"])
+        // on the back, so it takes the bracketed variant. Same shape
+        // for Sentence / SentenceFurigana.
+        assertEquals(ContentSource.SENTENCE_FURIGANA,        mapping["SentenceFurigana"])
         assertEquals(ContentSource.EXPRESSION_FURIGANA,      mapping["ExpressionFurigana"])
         // New flag wiring: word-mode and sentence-mode variants get
         // their own Lapis variant flags. Lapis allows only one selector
@@ -122,22 +122,27 @@ class AnkiCardTypeMapperTest {
     @Test fun `JPMN canonical name picks JPMN defaults`() {
         val m = model("Japanese Mining Note", JPMN_FIELDS)
         val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
+        // JPMN has dedicated plain + bracketed slots for both Word
+        // and Sentence. The three Word fields differentiate:
+        //   Word               = plain kanji ("偽者")
+        //   WordReading        = bracketed furigana ("偽者[にせもの]")
+        //   WordReadingHiragana = pure kana ("にせもの")
+        // Same shape for the sentence fields.
         assertEquals(ContentSource.EXPRESSION,                  mapping["Word"])
-        assertEquals(ContentSource.READING,                     mapping["WordReading"])
+        assertEquals(ContentSource.EXPRESSION_FURIGANA,         mapping["WordReading"])
+        assertEquals(ContentSource.READING,                     mapping["WordReadingHiragana"])
         assertEquals(ContentSource.DEFINITION,                  mapping["PrimaryDefinition"])
         assertEquals(ContentSource.SENTENCE,                    mapping["Sentence"])
+        assertEquals(ContentSource.SENTENCE_FURIGANA,           mapping["SentenceReading"])
         assertEquals(ContentSource.PICTURE,                     mapping["Picture"])
         // JPMN's vocab-default has no flag; we only fire sentence-mode
         // flags. Targeted-sentence flag carries the selectedWords
         // condition inside the builder.
         assertEquals(ContentSource.SENTENCE_CARD_FLAG,          mapping["IsSentenceCard"])
         assertEquals(ContentSource.TARGETED_SENTENCE_CARD_FLAG, mapping["IsTargetedSentenceCard"])
-        // Per-token sentence kana, audio, secondary slots, hover/click
-        // user-preference flags, pre-stylized frequency / pitch HTML —
-        // all stay null because we don't produce content in those
-        // formats or auto-populate user preferences.
-        assertEquals(null, mapping["WordReadingHiragana"])
-        assertEquals(null, mapping["SentenceReading"])
+        // Audio, secondary definition slots, user-preference flags,
+        // pre-stylized frequency / pitch HTML — none of which PT
+        // produces or auto-populates — stay unmapped.
         assertEquals(null, mapping["WordAudio"])
         assertEquals(null, mapping["SentenceAudio"])
         assertEquals(null, mapping["SecondaryDefinition"])
@@ -159,9 +164,9 @@ class AnkiCardTypeMapperTest {
         // (Lapis uses `MainDefinition`) so the fingerprint catches it.
         val m = model("My Vocab Cards", JPMN_FIELDS)
         val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
-        assertEquals(ContentSource.EXPRESSION, mapping["Word"])
-        assertEquals(ContentSource.READING,    mapping["WordReading"])
-        assertEquals(ContentSource.DEFINITION, mapping["PrimaryDefinition"])
+        assertEquals(ContentSource.EXPRESSION,           mapping["Word"])
+        assertEquals(ContentSource.EXPRESSION_FURIGANA,  mapping["WordReading"])
+        assertEquals(ContentSource.DEFINITION,           mapping["PrimaryDefinition"])
     }
 
     // ─── Migaku (Browser Extension schema) ───────────────────────────────
@@ -169,10 +174,10 @@ class AnkiCardTypeMapperTest {
     @Test fun `Migaku canonical name picks Migaku defaults`() {
         val m = model("Migaku Japanese", MIGAKU_FIELDS)
         val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
-        // Migaku Target Word renders with furigana via Migaku's
-        // support.html — needs bracketed payload (EXPRESSION_FURIGANA).
-        // Sentence is filtered, so SENTENCE works.
-        assertEquals(ContentSource.SENTENCE,              mapping["Sentence"])
+        // Migaku Sentence and Target Word both render with furigana
+        // via Migaku's support.html — both map to the bracketed
+        // variants for ruby + tap-popup.
+        assertEquals(ContentSource.SENTENCE_FURIGANA,     mapping["Sentence"])
         assertEquals(ContentSource.SENTENCE_TRANSLATION,  mapping["Translation"])
         assertEquals(ContentSource.EXPRESSION_FURIGANA,   mapping["Target Word"])
         assertEquals(ContentSource.DEFINITION,            mapping["Definitions"])
@@ -191,7 +196,7 @@ class AnkiCardTypeMapperTest {
     @Test fun `Migaku name matching is case-insensitive`() {
         val m = model("MIGAKU Custom", MIGAKU_FIELDS)
         val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
-        assertEquals(ContentSource.SENTENCE,            mapping["Sentence"])
+        assertEquals(ContentSource.SENTENCE_FURIGANA,   mapping["Sentence"])
         assertEquals(ContentSource.EXPRESSION_FURIGANA, mapping["Target Word"])
     }
 
@@ -200,7 +205,7 @@ class AnkiCardTypeMapperTest {
         // distinctive — Lapis uses `IsAudioCard` without spaces.
         val m = model("My Custom Cards", MIGAKU_FIELDS)
         val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
-        assertEquals(ContentSource.SENTENCE,             mapping["Sentence"])
+        assertEquals(ContentSource.SENTENCE_FURIGANA,    mapping["Sentence"])
         assertEquals(ContentSource.SENTENCE_TRANSLATION, mapping["Translation"])
         assertEquals(ContentSource.EXPRESSION_FURIGANA,  mapping["Target Word"])
     }
@@ -212,7 +217,7 @@ class AnkiCardTypeMapperTest {
         // and silently mis-fill).
         val m = model("Migaku Lapis Hybrid", MIGAKU_FIELDS)
         val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
-        assertEquals(ContentSource.SENTENCE, mapping["Sentence"])
+        assertEquals(ContentSource.SENTENCE_FURIGANA, mapping["Sentence"])
     }
 
     // ─── Basic shape ─────────────────────────────────────────────────────
@@ -272,6 +277,7 @@ class AnkiCardTypeMapperTest {
         expressionFurigana = "expr[fur]",
         reading = "kana",
         sentence = "sent",
+        sentenceFurigana = "sent[fur]",
         sentenceTranslation = "trans",
         picture = "pic.jpg",
         definition = "<div>def</div>",

@@ -140,7 +140,44 @@ class SentenceAnkiHtmlBuilderTest {
         assertFalse(result.contains("<br>"))
     }
 
-    // ── SENTENCE furigana brackets ───────────────────────────────────────
+    // ── SENTENCE (plain) ─────────────────────────────────────────────────
+    // Plain Japanese text with `<b>` around each highlighted-word
+    // surface form. Mirrors JPMN's `Sentence` authoring convention:
+    // raw kanji + `<b>` highlights, no bracket markup.
+
+    @Test fun `Plain sentence wraps highlighted dict-form in bold`() {
+        val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
+            word = "聞く", reading = "きく", meaning = "to hear",
+            surfaceForm = "聞いた",
+        ))
+        val result = SentenceAnkiHtmlBuilder.buildSentencePlain(
+            "友達に聞いた", words, highlightedWords = setOf("聞く"),
+        )
+        assertEquals("友達に<b>聞いた</b>", result)
+    }
+
+    @Test fun `Plain sentence falls back to dict-form when no surface match`() {
+        val result = SentenceAnkiHtmlBuilder.buildSentencePlain(
+            "今日はいい天気", words = emptyList(), highlightedWords = setOf("天気"),
+        )
+        assertEquals("今日はいい<b>天気</b>", result)
+    }
+
+    @Test fun `Plain sentence emits raw text when nothing highlighted`() {
+        val result = SentenceAnkiHtmlBuilder.buildSentencePlain(
+            "友達に聞いた", words = emptyList(), highlightedWords = emptySet(),
+        )
+        assertEquals("友達に聞いた", result)
+    }
+
+    @Test fun `Plain sentence collapses newlines to br`() {
+        val result = SentenceAnkiHtmlBuilder.buildSentencePlain(
+            "line1\nline2", words = emptyList(), highlightedWords = emptySet(),
+        )
+        assertEquals("line1<br>line2", result)
+    }
+
+    // ── SENTENCE_FURIGANA brackets ───────────────────────────────────────
     // `kanji[reading]` per kanji block; kana stays bare. Anki's
     // `{{furigana:Field}}` filter strips brackets and renders ruby.
 
@@ -186,6 +223,28 @@ class SentenceAnkiHtmlBuilderTest {
             "今度はC", sourceLangId = SourceLangId.JA
         )
         assertEquals("今度[こんど]<wbr>はC", result)
+    }
+
+    @Test fun `Sentence furigana wraps highlighted dict-form in bold`() {
+        // Matches JPMN's `<b> 偽者[にせもの]</b>` SentenceReading shape:
+        // `<b>` wraps the entire highlighted surface (which may span
+        // multiple Kuromoji tokens), including the bracket form and
+        // any okurigana. The bracket's leading `<wbr>` lands inside
+        // the `<b>` because emit happens after opening the bold — the
+        // wbr is invisible and `<b>` itself already serves as a
+        // boundary for Anki's regex (its `>` is excluded from the
+        // base-text class), so the extra wbr inside is harmless.
+        val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
+            word = "聞く", reading = "きく", meaning = "to hear",
+            surfaceForm = "聞いた",
+        ))
+        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            "友達に聞いた",
+            words = words,
+            highlightedWords = setOf("聞く"),
+            sourceLangId = SourceLangId.JA,
+        )
+        assertEquals("友達[ともだち]<wbr>に<b><wbr>聞[き]<wbr>いた</b>", result)
     }
 
     @Test fun `Expression furigana isolates each kanji in compound headword`() {

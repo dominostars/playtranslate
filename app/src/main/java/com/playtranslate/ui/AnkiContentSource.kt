@@ -31,12 +31,14 @@ enum class ContentSource(
     EXPRESSION           (R.string.anki_content_expression),
     EXPRESSION_FURIGANA  (R.string.anki_content_expression_furigana),
     READING              (R.string.anki_content_reading),
-    // SENTENCE always carries Anki-native furigana brackets
-    // (`kanji[reading]` with `<wbr>` separators). Every known
-    // sentence-field template (Migaku, JPMN, Lapis, Basic-with-filter)
-    // pipes the value through `{{kanji:}}` or `{{furigana:}}`, both
-    // of which strip the brackets correctly. No plain variant needed.
+    // SENTENCE is the plain sentence text with `<b>` around each
+    // highlighted-word surface. For template fields rendered raw via
+    // `{{Sentence}}` — JPMN renders the Sentence field that way on
+    // every card type — putting bracketed content there shows literal
+    // `[reading]` markup. SENTENCE_FURIGANA below carries the
+    // bracketed + `<wbr>` variant for furigana-filtered fields.
     SENTENCE             (R.string.anki_content_sentence),
+    SENTENCE_FURIGANA    (R.string.anki_content_sentence_furigana),
     SENTENCE_TRANSLATION (R.string.anki_content_sentence_translation),
     DEFINITION           (R.string.anki_content_definition),
     EXAMPLE_SENTENCES    (R.string.anki_content_examples),
@@ -73,6 +75,7 @@ data class CardOutputs(
     val expressionFurigana: String,
     val reading: String,
     val sentence: String,
+    val sentenceFurigana: String,
     val sentenceTranslation: String,
     val picture: String,
     val definition: String,
@@ -92,6 +95,7 @@ fun CardOutputs.valueFor(source: ContentSource): String = when (source) {
     ContentSource.EXPRESSION_FURIGANA         -> expressionFurigana
     ContentSource.READING                     -> reading
     ContentSource.SENTENCE                    -> sentence
+    ContentSource.SENTENCE_FURIGANA           -> sentenceFurigana
     ContentSource.SENTENCE_TRANSLATION        -> sentenceTranslation
     ContentSource.DEFINITION                  -> definition
     ContentSource.EXAMPLE_SENTENCES           -> examples

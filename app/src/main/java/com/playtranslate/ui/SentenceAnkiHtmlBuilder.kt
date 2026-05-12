@@ -203,8 +203,52 @@ object SentenceAnkiHtmlBuilder {
     fun starsString(score: Int) = "\u2605".repeat(score)
 
     /**
-     * Emits the SENTENCE field value: Anki-native furigana brackets
-     * (`kanji[reading]`) for Japanese with each kanji bracket
+     * Emits the SENTENCE field value: plain Japanese text with `<b>`
+     * around each highlighted-word surface form. For template fields
+     * rendered raw via `{{Sentence}}` \u2014 JPMN renders Sentence that way
+     * on every card type \u2014 putting bracket syntax here shows literal
+     * `[reading]` markup. The bracketed variant lives in
+     * [buildSentenceFurigana] / SENTENCE_FURIGANA for furigana-filtered
+     * fields.
+     *
+     * Highlight resolution: each entry in [highlightedWords] is a
+     * dictionary form. We resolve to the matching
+     * [WordEntry.surfaceForm] when the word is conjugated (so \u5012\u308c\u3066\u3044\u308b
+     * stays bold in the sentence, not the un-inflected \u5012\u308c\u308b). When no
+     * surfaceForm exists, falls back to the dictionary form verbatim.
+     * Newlines collapse to `<br>`.
+     */
+    fun buildSentencePlain(
+        text: String,
+        words: List<WordEntry>,
+        highlightedWords: Set<String>,
+    ): String {
+        val targets = resolveHighlightTargets(words, highlightedWords)
+        val sb = StringBuilder()
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            if (c == '\n' || c == '\r') {
+                sb.append("<br>")
+                i++
+                while (i < text.length && (text[i] == '\n' || text[i] == '\r')) i++
+                continue
+            }
+            val hit = targets.firstOrNull { text.startsWith(it, i) }
+            if (hit != null) {
+                sb.append("<b>").append(hit).append("</b>")
+                i += hit.length
+            } else {
+                sb.append(c)
+                i++
+            }
+        }
+        return sb.toString()
+    }
+
+    /**
+     * Emits the SENTENCE_FURIGANA field value: Anki-native furigana
+     * brackets (`kanji[reading]`) for Japanese with each kanji bracket
      * **isolated by `<wbr>` separators**. Plain text passthrough for
      * everything else.
      *
@@ -254,17 +298,63 @@ object SentenceAnkiHtmlBuilder {
      */
     fun buildSentenceFurigana(
         text: String,
+        words: List<WordEntry> = emptyList(),
+        highlightedWords: Set<String> = emptySet(),
         sourceLangId: SourceLangId = SourceLangId.JA,
     ): String {
         if (sourceLangId != SourceLangId.JA) return plainBody(text)
+        val targets = resolveHighlightTargets(words, highlightedWords)
         val sb = StringBuilder()
+        var charPos = 0
+        // Inclusive char offset where the active <b> span should close;
+        // -1 when we're not inside a bold span. Targets are matched at
+        // their start positions only; we leave the closing tag on the
+        // first token whose end reaches or passes the target's end —
+        // surface forms in `words` come from Kuromoji-aligned lookups
+        // so off-boundary targets shouldn't happen in practice.
+        var boldCloseAt = -1
         for (token in Deinflector.tokenizeWithReadings(text)) {
+            val tokenEnd = charPos + token.surface.length
+            if (boldCloseAt < 0) {
+                val hit = targets.firstOrNull { text.startsWith(it, charPos) }
+                if (hit != null) {
+                    sb.append("<b>")
+                    boldCloseAt = charPos + hit.length
+                }
+            }
             emitFuriganaToken(sb, token)
+            if (boldCloseAt in 0..tokenEnd) {
+                sb.append("</b>")
+                boldCloseAt = -1
+            }
+            charPos = tokenEnd
         }
+        if (boldCloseAt >= 0) sb.append("</b>")
         val out = stripBoundarySeparators(sb.toString())
         Log.d(TAG, "buildSentenceFurigana: in='$text' out='$out'")
         return out
     }
+
+    /**
+     * Resolves [highlightedWords] (dictionary forms) to the actual
+     * surface forms present in [text], using each [WordEntry]'s
+     * recorded surfaceForm when available. Sorted longest-first so a
+     * longer target wins when multiple targets share a prefix. Shared
+     * by `buildSentencePlain` and `buildSentenceFurigana`.
+     */
+    private fun resolveHighlightTargets(
+        words: List<WordEntry>,
+        highlightedWords: Set<String>,
+    ): List<String> = buildSet {
+        highlightedWords.forEach { dict ->
+            if (dict.isEmpty()) return@forEach
+            val surfaces = words.asSequence()
+                .filter { it.word == dict && it.surfaceForm.isNotEmpty() }
+                .map { it.surfaceForm }
+                .toList()
+            if (surfaces.isEmpty()) add(dict) else addAll(surfaces)
+        }
+    }.toList().sortedByDescending { it.length }
 
     private fun emitFuriganaToken(sb: StringBuilder, token: Deinflector.ReadingToken) {
         val surface = token.surface

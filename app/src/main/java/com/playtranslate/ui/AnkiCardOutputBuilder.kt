@@ -83,13 +83,25 @@ object AnkiCardOutputBuilder {
         val frequency = firstHighlighted?.let {
             SentenceAnkiHtmlBuilder.starsString(it.freqScore)
         }.orEmpty()
-        // SENTENCE always carries Anki-native furigana brackets — see
-        // SentenceAnkiHtmlBuilder.buildSentenceFurigana. Templates with
-        // a `{{furigana:Sentence}}` filter render ruby; templates that
-        // bind `{{Sentence}}` bare show literal brackets (accepted
-        // tradeoff for picker simplicity, one SENTENCE source).
-        val sentenceHtml = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+        // SENTENCE: plain sentence text with `<b>` around highlighted
+        // surface forms. For fields rendered raw via `{{Sentence}}` —
+        // JPMN's Sentence on every card type, Lapis's Sentence when no
+        // filter wraps it — putting bracket syntax here shows literal
+        // markup. The bracketed variant goes in SENTENCE_FURIGANA below.
+        val sentenceHtml = SentenceAnkiHtmlBuilder.buildSentencePlain(
             text = cardData.source,
+            words = cardData.words,
+            highlightedWords = cardData.selectedWords,
+        )
+        // SENTENCE_FURIGANA: bracketed + `<wbr>` variant with `<b>`
+        // around the highlighted bracketed block (matches JPMN's
+        // `<b> 偽者[にせもの]</b>` shape). For fields wrapped with
+        // `{{furigana:}}` (Lapis SentenceFurigana, JPMN SentenceReading,
+        // Migaku Sentence).
+        val sentenceFuriganaHtml = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            text = cardData.source,
+            words = cardData.words,
+            highlightedWords = cardData.selectedWords,
             sourceLangId = cardData.sourceLangId,
         )
         val translationHtml = cardData.target.replace(Regex("[\\n\\r]+"), "<br>")
@@ -106,6 +118,7 @@ object AnkiCardOutputBuilder {
             expressionFurigana = expressionFurigana,
             reading = reading,
             sentence = sentenceHtml,
+            sentenceFurigana = sentenceFuriganaHtml,
             sentenceTranslation = translationHtml,
             picture = pictureHtml(imageFilename),
             definition = definition,
@@ -159,6 +172,7 @@ object AnkiCardOutputBuilder {
         ),
         reading = reading,
         sentence = "",
+        sentenceFurigana = "",
         sentenceTranslation = "",
         picture = pictureHtml(imageFilename),
         definition = definitionHtml,

@@ -33,19 +33,18 @@ object AnkiCardTypeMapper {
      * exactly one of the two flag fields is non-empty per send.
      */
     private val LAPIS_DEFAULTS: Map<String, ContentSource> = mapOf(
-        // Lapis splits its Expression slot into plain and furigana
-        // variants: the front templates render `{{Expression}}` raw
-        // (so brackets would leak through as literal text), while the
-        // back renders `{{furigana:ExpressionFurigana}}`. Map each
-        // accordingly. The SENTENCE source already carries brackets
-        // and is fine for both Sentence (filtered via `{{kanji:}}`)
-        // and SentenceFurigana (filtered via `{{furigana:}}`).
+        // Lapis splits both Expression and Sentence into plain +
+        // furigana variants. `Expression` and `Sentence` are rendered
+        // raw via `{{Expression}}` / `{{kanji:Sentence}}` (the latter
+        // strips brackets but plain works too); the `*Furigana` fields
+        // are rendered with `{{furigana:}}` and need the bracketed
+        // payload to produce ruby.
         "Expression"            to ContentSource.EXPRESSION,
         "ExpressionFurigana"    to ContentSource.EXPRESSION_FURIGANA,
         "ExpressionReading"     to ContentSource.READING,
         "MainDefinition"        to ContentSource.DEFINITION,
         "Sentence"              to ContentSource.SENTENCE,
-        "SentenceFurigana"      to ContentSource.SENTENCE,
+        "SentenceFurigana"      to ContentSource.SENTENCE_FURIGANA,
         "Picture"               to ContentSource.PICTURE,
         "Frequency"             to ContentSource.FREQUENCY,
         "IsWordAndSentenceCard" to ContentSource.VOCABULARY_CARD_FLAG,
@@ -54,17 +53,34 @@ object AnkiCardTypeMapper {
 
     /**
      * JPMN — jp-mining-note (Aquafina-water-bottle). Per the actual
-     * template files (jp-mining-note/main/front.html + back.html), JPMN
-     * uses `Word`/`WordReading`/`PrimaryDefinition` — distinct from
-     * Lapis's `Expression`/`MainDefinition`. `WordReadingHiragana` /
-     * `SentenceReading` stay NONE because they expect plain kana / kana
-     * format we don't produce per-token; audio fields are unmapped.
+     * apkg's template references, JPMN has THREE word fields and TWO
+     * sentence fields with distinct semantics:
+     *
+     *  - `Word`                = plain kanji form (e.g. `偽者`),
+     *                            rendered raw via `{{Word}}` and
+     *                            `{{text:Word}}`
+     *  - `WordReading`         = bracketed furigana form
+     *                            (e.g. `偽者[にせもの]`), rendered via
+     *                            `{{furigana:WordReading}}` on the back
+     *  - `WordReadingHiragana` = pure hiragana (e.g. `にせもの`), used
+     *                            for sorting and the kana-only display
+     *
+     *  - `Sentence`        = plain text with `<b>` highlight
+     *                        (e.g. `…<b>偽者</b>だな！`), rendered raw
+     *                        via `{{Sentence}}` on every card type
+     *  - `SentenceReading` = bracketed furigana form with `<b>`
+     *                        (e.g. `…<b> 偽者[にせもの]</b>だな！`),
+     *                        rendered via `{{furigana:SentenceReading}}`
+     *
+     * Audio fields are unmapped — PT doesn't produce audio.
      */
     private val JPMN_DEFAULTS: Map<String, ContentSource> = mapOf(
         "Word"                    to ContentSource.EXPRESSION,
-        "WordReading"             to ContentSource.READING,
+        "WordReading"             to ContentSource.EXPRESSION_FURIGANA,
+        "WordReadingHiragana"     to ContentSource.READING,
         "PrimaryDefinition"       to ContentSource.DEFINITION,
         "Sentence"                to ContentSource.SENTENCE,
+        "SentenceReading"         to ContentSource.SENTENCE_FURIGANA,
         "Picture"                 to ContentSource.PICTURE,
         // JPMN's vocab variant is the no-flag default; we only fire the
         // sentence + targeted-sentence flags. IsTargetedSentenceCard
@@ -88,10 +104,10 @@ object AnkiCardTypeMapper {
      * which is the canonical PT-side equivalent.
      */
     private val MIGAKU_DEFAULTS: Map<String, ContentSource> = mapOf(
-        // Migaku's `Target Word` template renders with furigana
-        // (Migaku's support.html parses the bracket syntax for ruby
-        // and the tap-popup), so map to the bracketed variant.
-        "Sentence"           to ContentSource.SENTENCE,
+        // Migaku's `Sentence` and `Target Word` both render with
+        // furigana — Migaku's support.html parses the bracket syntax
+        // for ruby + the tap-popup. Both map to bracketed variants.
+        "Sentence"           to ContentSource.SENTENCE_FURIGANA,
         "Translation"        to ContentSource.SENTENCE_TRANSLATION,
         "Target Word"        to ContentSource.EXPRESSION_FURIGANA,
         "Definitions"        to ContentSource.DEFINITION,
