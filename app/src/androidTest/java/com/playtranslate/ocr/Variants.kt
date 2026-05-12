@@ -1,5 +1,6 @@
 package com.playtranslate.ocr
 
+import com.playtranslate.DiacriticsOcrPreprocessing
 import com.playtranslate.InvertMode
 import com.playtranslate.OcrPreprocessingRecipe
 
@@ -60,5 +61,11 @@ internal object Variants {
         // bug screen showed factors 1.1–1.9 all preserved the kanji that
         // 2.0 dropped, so 1.5 is a representative "softer" point.
         NamedRecipe("lin1.5-auto", OcrPreprocessingRecipe.LinearContrast(1.5f, InvertMode.AUTO)),
+
+        // 1400-px upscale + sigmoid k=4 + 3×3 soft-unsharp-mask sharpen.
+        // Production recipe for diacritic Latin languages (vi/fr/es/pt/tr/ro/id);
+        // included here so the JP sweep can detect regressions if the recipe
+        // ever gets routed to JA by mistake.
+        NamedRecipe("diacritics", DiacriticsOcrPreprocessing),
     )
 }
