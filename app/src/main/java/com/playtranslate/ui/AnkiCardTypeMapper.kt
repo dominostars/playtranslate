@@ -33,13 +33,15 @@ object AnkiCardTypeMapper {
      * exactly one of the two flag fields is non-empty per send.
      */
     private val LAPIS_DEFAULTS: Map<String, ContentSource> = mapOf(
-        // SENTENCE / EXPRESSION already carry Anki-native furigana
-        // brackets, so Lapis's SentenceFurigana / ExpressionFurigana
-        // fields and its plain Sentence / Expression fields receive
-        // the same payload — both render correctly via Lapis's
-        // `{{furigana:}}`-filtered templates.
+        // Lapis splits its Expression slot into plain and furigana
+        // variants: the front templates render `{{Expression}}` raw
+        // (so brackets would leak through as literal text), while the
+        // back renders `{{furigana:ExpressionFurigana}}`. Map each
+        // accordingly. The SENTENCE source already carries brackets
+        // and is fine for both Sentence (filtered via `{{kanji:}}`)
+        // and SentenceFurigana (filtered via `{{furigana:}}`).
         "Expression"            to ContentSource.EXPRESSION,
-        "ExpressionFurigana"    to ContentSource.EXPRESSION,
+        "ExpressionFurigana"    to ContentSource.EXPRESSION_FURIGANA,
         "ExpressionReading"     to ContentSource.READING,
         "MainDefinition"        to ContentSource.DEFINITION,
         "Sentence"              to ContentSource.SENTENCE,
@@ -86,9 +88,12 @@ object AnkiCardTypeMapper {
      * which is the canonical PT-side equivalent.
      */
     private val MIGAKU_DEFAULTS: Map<String, ContentSource> = mapOf(
+        // Migaku's `Target Word` template renders with furigana
+        // (Migaku's support.html parses the bracket syntax for ruby
+        // and the tap-popup), so map to the bracketed variant.
         "Sentence"           to ContentSource.SENTENCE,
         "Translation"        to ContentSource.SENTENCE_TRANSLATION,
-        "Target Word"        to ContentSource.EXPRESSION,
+        "Target Word"        to ContentSource.EXPRESSION_FURIGANA,
         "Definitions"        to ContentSource.DEFINITION,
         "Screenshot"         to ContentSource.PICTURE,
         // Migaku is the only template among the four we recognize with

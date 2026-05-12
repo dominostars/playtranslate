@@ -204,6 +204,7 @@
          so re-labeling here is safe but renaming enum constants is not. -->
     <string name="anki_content_none">Empty</string>
     <string name="anki_content_expression">Word / headword</string>
+    <string name="anki_content_expression_furigana">Word / headword with furigana</string>
     <string name="anki_content_reading">Word reading (kana)</string>
     <string name="anki_content_sentence">Source sentence</string>
     <string name="anki_content_sentence_translation">Translated sentence</string>

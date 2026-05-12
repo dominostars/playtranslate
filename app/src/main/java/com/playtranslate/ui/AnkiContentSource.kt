@@ -22,14 +22,20 @@ enum class ContentSource(
     val kind: Kind = Kind.CONTENT,
 ) {
     NONE                 (R.string.anki_content_none),
-    // SENTENCE and EXPRESSION always carry Anki-native furigana
-    // brackets (`kanji[reading]`) for JA. The bracketed format is the
-    // common denominator across Migaku, JPMN, Lapis, and any template
-    // using Anki's built-in `{{furigana:Field}}` filter. Templates
-    // that bind `{{Sentence}}` bare show literal brackets — accepted
-    // tradeoff for picker simplicity (one source per concept).
+    // EXPRESSION is the plain headword text (no brackets). It maps to
+    // template fields rendered raw via `{{Expression}}` /
+    // `{{TargetWord}}` etc — e.g. Lapis's vocab-card FRONT, which has
+    // no `{{furigana:}}` filter and would otherwise display literal
+    // `[reading]` markup. EXPRESSION_FURIGANA below carries the
+    // bracketed variant for furigana-filtered fields.
     EXPRESSION           (R.string.anki_content_expression),
+    EXPRESSION_FURIGANA  (R.string.anki_content_expression_furigana),
     READING              (R.string.anki_content_reading),
+    // SENTENCE always carries Anki-native furigana brackets
+    // (`kanji[reading]` with `<wbr>` separators). Every known
+    // sentence-field template (Migaku, JPMN, Lapis, Basic-with-filter)
+    // pipes the value through `{{kanji:}}` or `{{furigana:}}`, both
+    // of which strip the brackets correctly. No plain variant needed.
     SENTENCE             (R.string.anki_content_sentence),
     SENTENCE_TRANSLATION (R.string.anki_content_sentence_translation),
     DEFINITION           (R.string.anki_content_definition),
@@ -64,6 +70,7 @@ enum class ContentSource(
  */
 data class CardOutputs(
     val expression: String,
+    val expressionFurigana: String,
     val reading: String,
     val sentence: String,
     val sentenceTranslation: String,
@@ -82,6 +89,7 @@ data class CardOutputs(
 fun CardOutputs.valueFor(source: ContentSource): String = when (source) {
     ContentSource.NONE                        -> ""
     ContentSource.EXPRESSION                  -> expression
+    ContentSource.EXPRESSION_FURIGANA         -> expressionFurigana
     ContentSource.READING                     -> reading
     ContentSource.SENTENCE                    -> sentence
     ContentSource.SENTENCE_TRANSLATION        -> sentenceTranslation

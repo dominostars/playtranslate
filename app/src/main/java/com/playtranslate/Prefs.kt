@@ -344,13 +344,14 @@ class Prefs(context: Context) {
     /**
      * Resolves a persisted [com.playtranslate.ui.ContentSource] enum-name
      * string, including legacy names that were collapsed into the
-     * surviving sources. A previous build briefly shipped four
-     * furigana variants (`SENTENCE_ANKI_FURIGANA`,
+     * surviving sources. Two short-lived intermediate builds shipped
+     * format-flavoured variants (`SENTENCE_ANKI_FURIGANA`,
      * `SENTENCE_MIGAKU_FURIGANA`, `EXPRESSION_ANKI_FURIGANA`,
-     * `EXPRESSION_MIGAKU_FURIGANA`) before SENTENCE / EXPRESSION
-     * started always emitting furigana brackets themselves — users
-     * who mapped fields to those values would otherwise see them
-     * silently fall through to NONE here.
+     * `EXPRESSION_MIGAKU_FURIGANA`) and both now resolve to the
+     * surviving sources — sentence variants to SENTENCE (which carries
+     * brackets), expression variants to EXPRESSION_FURIGANA (the
+     * bracketed variant; the plain EXPRESSION source name never
+     * shipped a furigana payload).
      */
     private fun resolveContentSourceName(name: String): com.playtranslate.ui.ContentSource {
         val direct = com.playtranslate.ui.ContentSource.values().firstOrNull { it.name == name }
@@ -359,7 +360,7 @@ class Prefs(context: Context) {
             "SENTENCE_ANKI_FURIGANA", "SENTENCE_MIGAKU_FURIGANA"
                 -> com.playtranslate.ui.ContentSource.SENTENCE
             "EXPRESSION_ANKI_FURIGANA", "EXPRESSION_MIGAKU_FURIGANA"
-                -> com.playtranslate.ui.ContentSource.EXPRESSION
+                -> com.playtranslate.ui.ContentSource.EXPRESSION_FURIGANA
             else -> com.playtranslate.ui.ContentSource.NONE
         }
     }

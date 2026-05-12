@@ -52,18 +52,25 @@ object AnkiCardOutputBuilder {
         val firstHighlighted = cardData.words.firstOrNull {
             it.word in cardData.selectedWords
         }
-        // EXPRESSION: highlighted word's headword folded with its
-        // dict-reading into Anki-native furigana brackets when
-        // applicable (JA). Falls back to the whole sentence as plain
-        // text when nothing is highlighted — the field must be
-        // non-empty in case a model uses sortf=0 and EXPRESSION lands
-        // at the sort slot.
-        val expression = firstHighlighted?.let {
+        // EXPRESSION: highlighted word's plain headword text (no
+        // brackets). For template fields that render `{{Expression}}`
+        // raw — like Lapis's vocab-card front — putting brackets here
+        // shows literal `[reading]` markup. Templates that want
+        // furigana on the Expression use EXPRESSION_FURIGANA below.
+        // Falls back to the whole sentence when nothing is highlighted
+        // so the field is non-empty (matters when a model uses
+        // sortf=0 and EXPRESSION lands at the sort slot).
+        val expression = firstHighlighted?.word
+            ?: cardData.source.replace(Regex("[\\n\\r]+"), " ").trim()
+        // EXPRESSION_FURIGANA: per-kanji bracketed headword for fields
+        // wrapped with `{{furigana:}}` (Lapis ExpressionFurigana,
+        // Migaku Target Word, etc.). Empty when nothing is highlighted.
+        val expressionFurigana = firstHighlighted?.let {
             SentenceAnkiHtmlBuilder.buildExpressionFurigana(
                 word = it.word, reading = it.reading,
                 sourceLangId = cardData.sourceLangId,
             )
-        } ?: cardData.source.replace(Regex("[\\n\\r]+"), " ").trim()
+        }.orEmpty()
         val reading = firstHighlighted?.reading.orEmpty()
         // DEFINITION: empty when nothing's highlighted. assembleNote's
         // sentence-mode fold (not yet implemented for this flow; see
@@ -96,6 +103,7 @@ object AnkiCardOutputBuilder {
         )
         return CardOutputs(
             expression = expression,
+            expressionFurigana = expressionFurigana,
             reading = reading,
             sentence = sentenceHtml,
             sentenceTranslation = translationHtml,
@@ -140,10 +148,13 @@ object AnkiCardOutputBuilder {
         sourceLangId: com.playtranslate.language.SourceLangId =
             com.playtranslate.language.SourceLangId.JA,
     ): CardOutputs = CardOutputs(
-        // EXPRESSION: per-kanji furigana brackets so templates with a
-        // `{{furigana:Expression}}` (or equivalent) filter render
-        // ruby. Falls through to the bare word for non-JA langs.
-        expression = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
+        // EXPRESSION: plain headword text — for fields rendered raw
+        // via `{{Expression}}` (Lapis vocab-card front, Hint, etc.).
+        expression = word,
+        // EXPRESSION_FURIGANA: per-kanji bracketed headword for fields
+        // wrapped with `{{furigana:}}` (Lapis ExpressionFurigana,
+        // Migaku Target Word, etc.).
+        expressionFurigana = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
             word = word, reading = reading, sourceLangId = sourceLangId,
         ),
         reading = reading,

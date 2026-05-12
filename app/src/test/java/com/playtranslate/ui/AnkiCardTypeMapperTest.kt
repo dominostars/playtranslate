@@ -71,13 +71,15 @@ class AnkiCardTypeMapperTest {
         assertEquals(ContentSource.SENTENCE,                 mapping["Sentence"])
         assertEquals(ContentSource.PICTURE,                  mapping["Picture"])
         assertEquals(ContentSource.FREQUENCY,                mapping["Frequency"])
-        // Lapis's bracketed-furigana fields and its plain
-        // Sentence/Expression fields receive identical payloads now
-        // that SENTENCE / EXPRESSION already carry Anki-native
-        // furigana brackets. Lapis's `{{furigana:}}` filter renders
-        // both correctly.
+        // Lapis renders `{{Expression}}` raw on the vocab-card front,
+        // so the plain Expression slot maps to the plain EXPRESSION
+        // source (no brackets — they'd display as literal text). The
+        // ExpressionFurigana slot is filtered through `{{furigana:}}`
+        // on the back, so it takes the bracketed variant. SENTENCE
+        // already carries brackets and renders correctly through
+        // either `{{kanji:}}` (front) or `{{furigana:}}` (back).
         assertEquals(ContentSource.SENTENCE,                 mapping["SentenceFurigana"])
-        assertEquals(ContentSource.EXPRESSION,               mapping["ExpressionFurigana"])
+        assertEquals(ContentSource.EXPRESSION_FURIGANA,      mapping["ExpressionFurigana"])
         // New flag wiring: word-mode and sentence-mode variants get
         // their own Lapis variant flags. Lapis allows only one selector
         // at a time, which the mode-aware flag values enforce
@@ -167,16 +169,15 @@ class AnkiCardTypeMapperTest {
     @Test fun `Migaku canonical name picks Migaku defaults`() {
         val m = model("Migaku Japanese", MIGAKU_FIELDS)
         val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
-        // SENTENCE / EXPRESSION already carry furigana brackets, so
-        // Migaku's Sentence / Target Word fields receive the bracketed
-        // payload and Migaku's `{{furigana:}}`-filtered template
-        // renders ruby.
-        assertEquals(ContentSource.SENTENCE,             mapping["Sentence"])
-        assertEquals(ContentSource.SENTENCE_TRANSLATION, mapping["Translation"])
-        assertEquals(ContentSource.EXPRESSION,           mapping["Target Word"])
-        assertEquals(ContentSource.DEFINITION,           mapping["Definitions"])
-        assertEquals(ContentSource.PICTURE,              mapping["Screenshot"])
-        assertEquals(ContentSource.EXAMPLE_SENTENCES,    mapping["Example Sentences"])
+        // Migaku Target Word renders with furigana via Migaku's
+        // support.html — needs bracketed payload (EXPRESSION_FURIGANA).
+        // Sentence is filtered, so SENTENCE works.
+        assertEquals(ContentSource.SENTENCE,              mapping["Sentence"])
+        assertEquals(ContentSource.SENTENCE_TRANSLATION,  mapping["Translation"])
+        assertEquals(ContentSource.EXPRESSION_FURIGANA,   mapping["Target Word"])
+        assertEquals(ContentSource.DEFINITION,            mapping["Definitions"])
+        assertEquals(ContentSource.PICTURE,               mapping["Screenshot"])
+        assertEquals(ContentSource.EXAMPLE_SENTENCES,     mapping["Example Sentences"])
         // Is Vocabulary Card now wired to the mode-aware vocab flag —
         // fires "x" on word sends, empty on sentence sends. Is Audio
         // Card stays unmapped (we don't produce audio).
@@ -190,8 +191,8 @@ class AnkiCardTypeMapperTest {
     @Test fun `Migaku name matching is case-insensitive`() {
         val m = model("MIGAKU Custom", MIGAKU_FIELDS)
         val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
-        assertEquals(ContentSource.SENTENCE,   mapping["Sentence"])
-        assertEquals(ContentSource.EXPRESSION, mapping["Target Word"])
+        assertEquals(ContentSource.SENTENCE,            mapping["Sentence"])
+        assertEquals(ContentSource.EXPRESSION_FURIGANA, mapping["Target Word"])
     }
 
     @Test fun `Migaku detected by Is Vocabulary Card fingerprint after rename`() {
@@ -201,7 +202,7 @@ class AnkiCardTypeMapperTest {
         val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
         assertEquals(ContentSource.SENTENCE,             mapping["Sentence"])
         assertEquals(ContentSource.SENTENCE_TRANSLATION, mapping["Translation"])
-        assertEquals(ContentSource.EXPRESSION,           mapping["Target Word"])
+        assertEquals(ContentSource.EXPRESSION_FURIGANA,  mapping["Target Word"])
     }
 
     @Test fun `Migaku wins over Lapis when both could match (name)`() {
@@ -268,6 +269,7 @@ class AnkiCardTypeMapperTest {
 
     private fun sampleOutputs() = CardOutputs(
         expression = "expr",
+        expressionFurigana = "expr[fur]",
         reading = "kana",
         sentence = "sent",
         sentenceTranslation = "trans",
