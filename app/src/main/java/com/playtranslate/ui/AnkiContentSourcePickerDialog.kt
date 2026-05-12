@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.text.HtmlCompat
 import androidx.fragment.app.DialogFragment
 import com.google.android.material.card.MaterialCardView
 import com.playtranslate.R
@@ -23,14 +24,18 @@ import com.playtranslate.themeColor
  * [ContentSource.Kind]:
  *  - CONTENT (NONE + the substantive content sources, including the
  *    Sentence/Expression furigana-bracket variants — those appear
- *    adjacent to their plain counterparts so users see "Sentence" and
- *    "Sentence with furigana (Migaku)" as a contiguous group instead
- *    of scattered across the picker)
+ *    adjacent to their plain counterparts so users see the related
+ *    options as a contiguous group instead of scattered across the
+ *    picker)
  *  - CARD TYPE FLAG (mode-aware "x"/"" markers for Mustache section
  *    gates like Migaku's `Is Vocabulary Card` or Lapis's
  *    `IsSentenceCard`)
- * The currently-mapped source is highlighted (accent background +
- * bold title + trailing checkmark).
+ *
+ * Each row shows the source name on top and a per-source description
+ * with a formatting example as the subtitle, so users mapping fields
+ * can see at a glance what PT will write into the target field. The
+ * currently-mapped source is highlighted (accent background + bold
+ * title + trailing checkmark).
  *
  * Tapping any row dismisses the picker and invokes [onPicked] with the
  * selected source. Tapping back without picking is a no-op (the
@@ -122,19 +127,37 @@ class AnkiContentSourcePickerDialog : DialogFragment() {
     ): View {
         val ctx = requireContext()
         val isSelected = source == current
-        // language_list_row gives us the title + trailing slot + correct
-        // ripple-on-foreground. Reuses the same row component the
-        // language picker / deck picker use so the visual rhythm stays
-        // consistent across all picker surfaces.
+        // anki_card_type_picker_row gives us the title + subtitle slots
+        // and a trailing check icon — same two-line shape the Card Type
+        // picker uses one screen up the stack, so the visual rhythm
+        // carries through. The subtitle shows each source's description
+        // + example so users mapping a field don't have to guess what
+        // PT will write into it.
         val view = LayoutInflater.from(ctx)
-            .inflate(R.layout.language_list_row, container, false)
-        val titleTv = view.findViewById<TextView>(R.id.tvRowTitle)
+            .inflate(R.layout.anki_card_type_picker_row, container, false)
+        val titleTv    = view.findViewById<TextView>(R.id.tvRowTitle)
+        val subtitleTv = view.findViewById<TextView>(R.id.tvRowSubtitle)
+        val check      = view.findViewById<ImageView>(R.id.ivSelectedCheck)
+
         titleTv.text = ctx.getString(source.labelRes)
+        // Descriptions include literal `<b>` markup to show what the
+        // example will look like on the card. HtmlCompat renders those
+        // inline rather than dumping the raw tags as text.
+        subtitleTv.text = HtmlCompat.fromHtml(
+            ctx.getString(source.descriptionRes),
+            HtmlCompat.FROM_HTML_MODE_LEGACY,
+        )
+        // The card-type picker constrains the subtitle to 2 lines for
+        // long field lists; descriptions here can run a bit longer
+        // (especially the furigana variants with bracket examples).
+        // Let them wrap freely.
+        subtitleTv.maxLines = Int.MAX_VALUE
+        subtitleTv.ellipsize = null
+
         if (source == ContentSource.NONE) {
             // Match the "Empty" label styling on the mapping screen —
-            // italic + hint color — so the visual identity of NONE is
-            // consistent whether the user sees it as a row value on the
-            // mapping screen or as an option here.
+            // italic + hint color — so NONE reads consistently whether
+            // it's a row value on the mapping screen or an option here.
             titleTv.setTypeface(null, Typeface.ITALIC)
             if (!isSelected) {
                 titleTv.setTextColor(ctx.themeColor(R.attr.ptTextHint))
@@ -142,17 +165,11 @@ class AnkiContentSourcePickerDialog : DialogFragment() {
         } else {
             titleTv.setTypeface(null, if (isSelected) Typeface.BOLD else Typeface.NORMAL)
         }
-        // Checkmark in the language_list_row's repurposed trailing slot.
-        val trailing = view.findViewById<android.widget.FrameLayout>(R.id.btnDelete)
-        val trailingIcon = view.findViewById<ImageView>(R.id.ivDeleteIcon)
+
         if (isSelected) {
-            trailing.visibility = View.VISIBLE
-            trailingIcon.setImageResource(R.drawable.ic_check)
-            trailingIcon.imageTintList =
+            check.visibility = View.VISIBLE
+            check.imageTintList =
                 android.content.res.ColorStateList.valueOf(ctx.themeColor(R.attr.ptAccent))
-            trailing.isClickable = false
-            trailing.isFocusable = false
-            trailing.foreground = null
             view.background = ctx.pickerSelectedRowBackground(topCornerRadius, bottomCornerRadius)
         }
         view.setOnClickListener {

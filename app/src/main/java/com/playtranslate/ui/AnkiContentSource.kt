@@ -19,42 +19,64 @@ import com.playtranslate.R
  */
 enum class ContentSource(
     @StringRes val labelRes: Int,
+    @StringRes val descriptionRes: Int,
     val kind: Kind = Kind.CONTENT,
 ) {
-    NONE                 (R.string.anki_content_none),
+    NONE                 (R.string.anki_content_none,
+                          R.string.anki_content_none_desc),
     // EXPRESSION is the plain headword text (no brackets). It maps to
     // template fields rendered raw via `{{Expression}}` /
     // `{{TargetWord}}` etc — e.g. Lapis's vocab-card FRONT, which has
     // no `{{furigana:}}` filter and would otherwise display literal
     // `[reading]` markup. EXPRESSION_FURIGANA below carries the
     // bracketed variant for furigana-filtered fields.
-    EXPRESSION           (R.string.anki_content_expression),
-    EXPRESSION_FURIGANA  (R.string.anki_content_expression_furigana),
-    READING              (R.string.anki_content_reading),
+    EXPRESSION           (R.string.anki_content_expression,
+                          R.string.anki_content_expression_desc),
+    EXPRESSION_FURIGANA  (R.string.anki_content_expression_furigana,
+                          R.string.anki_content_expression_furigana_desc),
+    READING              (R.string.anki_content_reading,
+                          R.string.anki_content_reading_desc),
     // SENTENCE is the plain sentence text with `<b>` around each
     // highlighted-word surface. For template fields rendered raw via
     // `{{Sentence}}` — JPMN renders the Sentence field that way on
     // every card type — putting bracketed content there shows literal
     // `[reading]` markup. SENTENCE_FURIGANA below carries the
     // bracketed + `<wbr>` variant for furigana-filtered fields.
-    SENTENCE             (R.string.anki_content_sentence),
-    SENTENCE_FURIGANA    (R.string.anki_content_sentence_furigana),
-    SENTENCE_TRANSLATION (R.string.anki_content_sentence_translation),
-    DEFINITION           (R.string.anki_content_definition),
-    EXAMPLE_SENTENCES    (R.string.anki_content_examples),
-    PICTURE              (R.string.anki_content_picture),
-    FREQUENCY            (R.string.anki_content_frequency),
-    PART_OF_SPEECH       (R.string.anki_content_part_of_speech),
-    WORDS_TABLE          (R.string.anki_content_words_table),
+    SENTENCE             (R.string.anki_content_sentence,
+                          R.string.anki_content_sentence_desc),
+    SENTENCE_FURIGANA    (R.string.anki_content_sentence_furigana,
+                          R.string.anki_content_sentence_furigana_desc),
+    SENTENCE_TRANSLATION (R.string.anki_content_sentence_translation,
+                          R.string.anki_content_sentence_translation_desc),
+    DEFINITION           (R.string.anki_content_definition,
+                          R.string.anki_content_definition_desc),
+    EXAMPLE_SENTENCES    (R.string.anki_content_examples,
+                          R.string.anki_content_examples_desc),
+    PICTURE              (R.string.anki_content_picture,
+                          R.string.anki_content_picture_desc),
+    FREQUENCY            (R.string.anki_content_frequency,
+                          R.string.anki_content_frequency_desc),
+    PART_OF_SPEECH       (R.string.anki_content_part_of_speech,
+                          R.string.anki_content_part_of_speech_desc),
+    WORDS_TABLE          (R.string.anki_content_words_table,
+                          R.string.anki_content_words_table_desc),
 
     // Card-type state flags. Each emits literal "x" when its mode
     // condition fires (computed inside AnkiCardOutputBuilder), empty
     // string otherwise. Lets users opt their template's "Is*Card"
     // fields into PT's mode signal without writing template logic.
-    VOCABULARY_CARD_FLAG        (R.string.anki_content_flag_vocabulary,        Kind.FLAG),
-    SENTENCE_CARD_FLAG          (R.string.anki_content_flag_sentence,          Kind.FLAG),
-    TARGETED_SENTENCE_CARD_FLAG (R.string.anki_content_flag_targeted_sentence, Kind.FLAG),
-    ALWAYS_ON_MARKER            (R.string.anki_content_flag_always_on,         Kind.FLAG);
+    VOCABULARY_CARD_FLAG        (R.string.anki_content_flag_vocabulary,
+                                 R.string.anki_content_flag_vocabulary_desc,
+                                 Kind.FLAG),
+    SENTENCE_CARD_FLAG          (R.string.anki_content_flag_sentence,
+                                 R.string.anki_content_flag_sentence_desc,
+                                 Kind.FLAG),
+    TARGETED_SENTENCE_CARD_FLAG (R.string.anki_content_flag_targeted_sentence,
+                                 R.string.anki_content_flag_targeted_sentence_desc,
+                                 Kind.FLAG),
+    ALWAYS_ON_MARKER            (R.string.anki_content_flag_always_on,
+                                 R.string.anki_content_flag_always_on_desc,
+                                 Kind.FLAG);
 
     /** Two visual groups for the source picker:
      *  - CONTENT: substantive content sources
