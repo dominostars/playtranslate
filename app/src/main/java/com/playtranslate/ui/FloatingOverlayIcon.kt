@@ -207,6 +207,18 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     private val screenW: Int get() = queryScreenSize().x
     private val screenH: Int get() = queryScreenSize().y
 
+    /** Display-cutout safe insets in the icon's coordinate space. The icon's
+     *  window has [FLAG_LAYOUT_NO_LIMITS] so its origin is at the absolute
+     *  display origin (not the cutout-safe origin); on devices with a notch
+     *  this means snapping x=0 lands the icon behind the cutout. Edge-snap
+     *  code consults these insets so "Edge.LEFT" means "left of the safe
+     *  area" instead of "left of the display". */
+    private fun cutoutSafeInsetX(): Pair<Int, Int> {
+        val wm = overlayContext.getSystemService(WindowManager::class.java) ?: return 0 to 0
+        val cutout = wm.currentWindowMetrics.windowInsets.displayCutout ?: return 0 to 0
+        return cutout.safeInsetLeft to cutout.safeInsetRight
+    }
+
     private var velocityTracker: VelocityTracker? = null
     private var downRawX = 0f
     private var downRawY = 0f
@@ -505,7 +517,8 @@ class FloatingOverlayIcon(context: Context) : View(context) {
             else -> Edge.RIGHT
         }
 
-        val edgeCx = if (edge == Edge.LEFT) 0 else screenW
+        val (cutLeft, cutRight) = cutoutSafeInsetX()
+        val edgeCx = if (edge == Edge.LEFT) cutLeft else screenW - cutRight
         val targetX = edgeCx - viewHalf
 
         val targetCy: Int = if (hasFling && abs(xVel) > 1f) {
@@ -560,7 +573,8 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         currentEdge = edge
         val f = if (fraction in 0f..1f) fraction else 0.5f
         val p = params ?: return
-        p.x = if (edge == Edge.LEFT) -viewHalf else screenW - viewHalf
+        val (cutLeft, cutRight) = cutoutSafeInsetX()
+        p.x = if (edge == Edge.LEFT) cutLeft - viewHalf else screenW - cutRight - viewHalf
         val cy = (minCy + f * (maxCy - minCy)).toInt().coerceIn(minCy, maxCy)
         p.y = cy - viewHalf
     }

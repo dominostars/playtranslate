@@ -22,6 +22,7 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnLayout
 import com.playtranslate.ui.DimController
 import com.playtranslate.ui.OverlayAlert
 import com.playtranslate.ui.DragLookupController
@@ -330,13 +331,49 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         params: WindowManager.LayoutParams,
         displayId: Int,
     ): Boolean {
+        applyFullScreenOverlayDefaults(params)
         return try {
             wm.addView(view, params)
             overlayWindows += OverlayHandle(view, wm, params, displayId)
+            logOverlayGeometry(view, params, displayId)
             true
         } catch (e: Exception) {
             Log.w(TAG, "addOverlayWindow failed: ${e.message}")
             false
+        }
+    }
+
+    // One-shot diagnostic: verifies whether MATCH_PARENT overlay windows actually
+    // cover the full display. Investigating bonelag PR #9 — "OCR boxes pushed
+    // down" symptom is consistent with view origin != display origin or view
+    // dims != display dims. Grep with: adb logcat -s PlayTranslateA11y | grep Geometry
+    private fun logOverlayGeometry(
+        view: View,
+        params: WindowManager.LayoutParams,
+        displayId: Int,
+    ) {
+        val fullScreenParams =
+            params.width == WindowManager.LayoutParams.MATCH_PARENT &&
+                params.height == WindowManager.LayoutParams.MATCH_PARENT
+        if (!fullScreenParams) return
+        view.doOnLayout {
+            val display = getSystemService(DisplayManager::class.java)?.getDisplay(displayId)
+            val ds = Point().also { if (display != null) @Suppress("DEPRECATION") display.getRealSize(it) }
+            val loc = IntArray(2)
+            view.getLocationOnScreen(loc)
+            val name = view.javaClass.simpleName.ifBlank { "anon-View@${view.hashCode().toString(16)}" }
+            val flagBits = listOfNotNull(
+                "NO_LIMITS".takeIf { params.flags and WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS != 0 },
+                "IN_SCREEN".takeIf { params.flags and WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN != 0 },
+                "NOT_TOUCHABLE".takeIf { params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE != 0 },
+            ).joinToString("|").ifEmpty { "none" }
+            val matches = view.width == ds.x && view.height == ds.y && loc[0] == 0 && loc[1] == 0
+            Log.i(
+                TAG,
+                "[Geometry] $name displayId=$displayId display=${ds.x}x${ds.y} " +
+                    "view=${view.width}x${view.height} origin=(${loc[0]},${loc[1]}) " +
+                    "matchesDisplay=$matches flags=$flagBits"
+            )
         }
     }
 
@@ -2031,7 +2068,34 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             displayId: Int,
         ): Boolean {
             instance?.let { return it.addOverlayWindow(view, wm, params, displayId) }
+            applyFullScreenOverlayDefaults(params)
             return try { wm.addView(view, params); true } catch (_: Exception) { false }
+        }
+
+        /**
+         * Defensive defaults for accessibility overlays that request the full
+         * display via MATCH_PARENT × MATCH_PARENT. Sets [FLAG_LAYOUT_NO_LIMITS]
+         * so the window isn't inset by system bars, and
+         * [LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS] so it isn't inset by display
+         * cutouts in portrait. Without these, a notch device reports a smaller
+         * view than the display, which silently miscalibrates OCR-box overlay
+         * coordinates (boxes drawn lower/right than the underlying text).
+         *
+         * Idempotent. Honors callers that explicitly set a non-DEFAULT
+         * cutout mode — only the DEFAULT case is upgraded.
+         */
+        private fun applyFullScreenOverlayDefaults(params: WindowManager.LayoutParams) {
+            val fullScreen =
+                params.width == WindowManager.LayoutParams.MATCH_PARENT &&
+                    params.height == WindowManager.LayoutParams.MATCH_PARENT
+            if (!fullScreen) return
+            params.flags = params.flags or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            if (params.layoutInDisplayCutoutMode ==
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+            ) {
+                params.layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            }
         }
 
         fun removeOverlay(view: View, wm: WindowManager) {
