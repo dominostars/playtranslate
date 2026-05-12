@@ -1123,8 +1123,8 @@ class MainActivity :
                 }
             }
         }
-        svc.degradedState.observe(this) { degraded ->
-            onDegradedStateChanged(degraded)
+        svc.degradationState.observe(this) { kind ->
+            onDegradedStateChanged(kind != com.playtranslate.ui.DegradedWarningKind.None)
         }
         svc.liveModeState.observe(this) { isLive -> onLiveModeChanged(isLive) }
         svc.activeRegionLiveData.observe(this) { _ ->

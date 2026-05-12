@@ -1504,7 +1504,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             when (hintKind) { HintTextKind.PINYIN -> "Pinyin"; else -> "Furigana" }
         } else null
         menu.isLiveMode = CaptureService.instance?.isLive == true
-        menu.showDegradedWarning = CaptureService.instance?.degradedState?.value == true
+        menu.degradedWarningKind =
+            CaptureService.instance?.degradationState?.value
+                ?: com.playtranslate.ui.DegradedWarningKind.None
         menu.onHideIcon = {
             dismissFloatingMenu()
             disable(this, "menu_turn_off")

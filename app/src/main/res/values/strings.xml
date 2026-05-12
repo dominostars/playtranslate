@@ -114,6 +114,7 @@
     <string name="hint_deepl_key">Paste your DeepL API key here</string>
     <string name="note_mlkit_no_internet">⚠ No internet connection — showing offline translation (lower quality).</string>
     <string name="note_mlkit_service_unavailable">⚠ Translation service unavailable — showing offline translation (lower quality).</string>
+    <string name="note_low_memory_fallback">⚠ Low memory — showing offline translation (lower quality).</string>
 
     <!-- Section headers -->
     <string name="section_original">Original</string>
@@ -373,4 +374,18 @@
     <string name="llm_low_memory_recheck">Check memory again</string>
     <string name="llm_low_memory_delete">Delete model</string>
     <string name="llm_low_memory_cancel">Cancel</string>
+
+    <!-- Warning-tone status line shown on a TG / Qwen row when its most
+         recent translate() threw a transient low-memory exception and the
+         waterfall fell through to another backend. Cleared by the next
+         successful translation on this backend. -->
+    <string name="llm_status_low_memory_badge">Low memory — translations using fallback</string>
+
+    <!-- Floating-icon menu warning pill. Two strings cover the same pill
+         depending on cause: network/service degradation falls back to ML
+         Kit (offline label); a TG/Qwen displacement caused by transient
+         memory pressure shows the low-memory label even when the chain
+         also bottomed out at ML Kit (memory is the actionable cause). -->
+    <string name="degraded_warning_offline">  Offline — translation quality is reduced</string>
+    <string name="degraded_warning_low_memory">  Low memory — translation quality is reduced</string>
 </resources>

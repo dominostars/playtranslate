@@ -24,6 +24,12 @@ import com.playtranslate.R
 import com.playtranslate.RegionEntry
 import com.playtranslate.themeColor
 
+/** Reason the floating-icon menu's warning pill is shown. None hides the
+ *  pill; the other two pick the corresponding label string. Set by the
+ *  accessibility service from CaptureService's (degraded, displaced)
+ *  state at menu build time. */
+enum class DegradedWarningKind { None, Offline, LowMemory }
+
 /**
  * Full-screen overlay that dims the screen and shows a small popup menu
  * next to the floating icon. Tapping outside the menu dismisses it.
@@ -69,10 +75,27 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             updateLiveButton()
         }
 
-    var showDegradedWarning: Boolean = false
+    /** Kind of warning to show on the bottom-center pill.
+     *  [DegradedWarningKind.None] hides the pill;
+     *  [DegradedWarningKind.Offline] / [DegradedWarningKind.LowMemory] show
+     *  it with the appropriate label. Set by the accessibility service at
+     *  menu build time based on the current
+     *  [com.playtranslate.CaptureService] state. */
+    var degradedWarningKind: DegradedWarningKind = DegradedWarningKind.None
         set(value) {
             field = value
-            degradedWarningView?.visibility = if (value) View.VISIBLE else View.GONE
+            when (value) {
+                DegradedWarningKind.None ->
+                    degradedWarningView?.visibility = View.GONE
+                DegradedWarningKind.Offline -> {
+                    degradedWarningLabel?.setText(R.string.degraded_warning_offline)
+                    degradedWarningView?.visibility = View.VISIBLE
+                }
+                DegradedWarningKind.LowMemory -> {
+                    degradedWarningLabel?.setText(R.string.degraded_warning_low_memory)
+                    degradedWarningView?.visibility = View.VISIBLE
+                }
+            }
         }
 
     private val dimPaint = Paint().apply {
@@ -118,6 +141,10 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
 
     private var clearRegionButton: View? = null
     private var degradedWarningView: View? = null
+    /** TextView inside [degradedWarningView] holding the pill's label.
+     *  Stored so [degradedWarningKind]'s setter can rewrite it on-the-fly
+     *  instead of teardown/rebuild. Set during inflation. */
+    private var degradedWarningLabel: TextView? = null
 
     private val menuCard: LinearLayout
     private val settingsBtn: View
@@ -346,10 +373,13 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 setTextColor(context.themeColor(R.attr.ptWarning))
             }
             val label = TextView(context).apply {
-                text = "  Offline — translation quality is reduced"
+                // Initial text is a safe default — overwritten by
+                // [degradedWarningKind]'s setter before the pill is shown.
+                setText(R.string.degraded_warning_offline)
                 setTextColor(Color.WHITE)
                 textSize = 12f
             }
+            degradedWarningLabel = label
             addView(icon)
             addView(label)
         }

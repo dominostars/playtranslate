@@ -51,13 +51,30 @@ abstract class OnDeviceLlmBackend(
 
     final override val requiresInternet: Boolean = false
     // false matches the abstraction (users opt into TG/Qwen; they aren't
-    // "degraded"). Known side effect: when an on-device LLM produces a
-    // translation because an online backend transiently failed, the result
-    // gets cached and outlasts the recovery — see the "Note discipline"
-    // comment in CaptureService.translateGroupsSeparately. A clean fix
-    // would split the cache-suppression and "⚠ Offline" semantics of this
-    // flag; not worth the plumbing for the small staleness window today.
+    // "degraded"). When an on-device LLM produces a translation because an
+    // online backend transiently failed, the result gets cached and
+    // outlasts the recovery — narrow staleness window we accept. The
+    // inverse case (LLM displaced by transient memory, fallback returns a
+    // result) is handled separately via WaterfallResult.displacedLlmId →
+    // CaptureService.translateGroupsSeparately cache-skip.
     final override val isDegradedFallback: Boolean = false
+
+    /** Timestamp (ms since epoch) of the most recent
+     *  [com.playtranslate.translation.translategemma.TranslateGemmaTransientException]
+     *  this backend threw, set by the registry's catch via [noteTransientFailure]
+     *  and cleared by the next successful [translate]. When non-null, the
+     *  [status] getter replaces the "Requires X GB memory" info line with a
+     *  warning-tone "Low memory" badge so users opening Settings see why
+     *  their preferred backend isn't being used right now. */
+    @Volatile private var lastTransientFailureMs: Long? = null
+
+    /** Called by [com.playtranslate.translation.TranslationBackendRegistry]
+     *  when the waterfall catches a transient memory exception from this
+     *  backend and falls through. Stamps [lastTransientFailureMs] so the
+     *  Settings row reflects the displacement on its next refresh. */
+    fun noteTransientFailure() {
+        lastTransientFailureMs = System.currentTimeMillis()
+    }
 
     final override fun isUsable(source: String, target: String): Boolean {
         // Hardware gate is the cheapest check and a hard prerequisite — a
@@ -119,8 +136,8 @@ abstract class OnDeviceLlmBackend(
      */
     protected open fun supportsPair(source: String, target: String): Boolean = true
 
-    override suspend fun translate(text: String, source: String, target: String): String =
-        LlamaTranslator.getInstance(context).translate(
+    override suspend fun translate(text: String, source: String, target: String): String {
+        val result = LlamaTranslator.getInstance(context).translate(
             text = text,
             source = source,
             target = target,
@@ -128,6 +145,13 @@ abstract class OnDeviceLlmBackend(
             promptStyle = promptStyle,
             availMemFloorBytes = availMemFloorBytes,
         )
+        // A successful translate means memory pressure relaxed enough for the
+        // backend to run; drop any stale "Low memory" badge. If the call
+        // throws (low-memory or otherwise), this line is skipped and the
+        // registry's catch will re-stamp lastTransientFailureMs.
+        lastTransientFailureMs = null
+        return result
+    }
 
     override fun close() {
         // The LlamaTranslator singleton outlives any individual backend; closing
@@ -172,6 +196,15 @@ abstract class OnDeviceLlmBackend(
                     BackendStatus.Info(
                         context.getString(statusStringIds.disabled, sizeStr),
                         Tone.Neutral,
+                    )
+                lastTransientFailureMs != null ->
+                    // Displaced by transient low memory on a recent translate.
+                    // Cleared by the next successful translate() on this
+                    // backend, so the badge naturally hides once memory frees
+                    // up enough for the backend to run again.
+                    BackendStatus.Info(
+                        context.getString(R.string.llm_status_low_memory_badge),
+                        Tone.Warning,
                     )
                 else ->
                     BackendStatus.Info(
