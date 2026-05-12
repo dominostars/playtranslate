@@ -176,17 +176,23 @@ internal fun buildSigmoidLut(k: Float): IntArray {
     }
 }
 
-/** Applies [lut] to every pixel of an already-grayscale [bitmap] in place. */
+/** Applies [lut] to every pixel of an already-grayscale [bitmap] in place.
+ *  Streams one row at a time so peak scratch is `w·4` bytes instead of a
+ *  full-frame `IntArray(w·h)` — keeps the pipeline at ~1× the bitmap during
+ *  this pass instead of 2×. The transform is point-wise so single-row
+ *  granularity is safe. */
 internal fun applyGrayLut(bitmap: Bitmap, lut: IntArray) {
     val w = bitmap.width
     val h = bitmap.height
-    val pixels = IntArray(w * h)
-    bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
-    for (i in pixels.indices) {
-        val p = pixels[i]
-        val a = (p ushr 24) and 0xff
-        val v = lut[(p ushr 16) and 0xff]
-        pixels[i] = (a shl 24) or (v shl 16) or (v shl 8) or v
+    val row = IntArray(w)
+    for (y in 0 until h) {
+        bitmap.getPixels(row, 0, w, 0, y, w, 1)
+        for (i in 0 until w) {
+            val p = row[i]
+            val a = (p ushr 24) and 0xff
+            val v = lut[(p ushr 16) and 0xff]
+            row[i] = (a shl 24) or (v shl 16) or (v shl 8) or v
+        }
+        bitmap.setPixels(row, 0, w, 0, y, w, 1)
     }
-    bitmap.setPixels(pixels, 0, w, 0, 0, w, h)
 }
