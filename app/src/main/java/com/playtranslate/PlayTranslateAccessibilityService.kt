@@ -2001,8 +2001,21 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         @Volatile
         var instance: PlayTranslateAccessibilityService? = null
 
+        /** True only when the service has bound to this process — i.e. methods
+         *  on [instance] will actually do something. Distinct from [isEnabled]:
+         *  the user can have the service enabled in system Settings while
+         *  Android has not yet bound it to our process (cold start, post-unbind
+         *  rebinding). Action gates that need a working service (capture,
+         *  drag mode, region edits) must use this; display-state gates
+         *  ("does the user have permission") should use [isEnabled]. */
         val isConnected: Boolean get() = instance != null
 
+        /** Whether the user has enabled this app's accessibility service in
+         *  system Settings. Fast-paths to `instance != null` once the service
+         *  has bound to our process; falls back to the authoritative system
+         *  setting otherwise, so a cold-started activity (or the QS tile in a
+         *  fresh process) doesn't see a stale "disabled" state during the
+         *  window before `onServiceConnected` fires. */
         fun isEnabled(ctx: Context): Boolean {
             if (instance != null) return true
             val enabled = Settings.Secure.getString(

@@ -978,7 +978,11 @@ class MainActivity :
         ft.commitAllowingStateLoss()
     }
 
-    /** True when the user has the accessibility service enabled. */
+    /** True when the user has the accessibility service enabled in system
+     *  Settings. Reads through `isEnabled(ctx)` so the action button doesn't
+     *  flicker dim → enabled when the service binds shortly after a cold
+     *  start — taps during the brief unbound window are absorbed by the
+     *  three-way decision in [withAccessibility] rather than gated here. */
     private val isCaptureReady: Boolean
         get() = PlayTranslateAccessibilityService.isEnabled(this)
 
@@ -1227,12 +1231,20 @@ class MainActivity :
     // ── Accessibility service flow ─────────────────────────────────────────
 
     private fun withAccessibility(action: () -> Unit) {
-        if (PlayTranslateAccessibilityService.isEnabled(this)) {
-            ensureConfigured()
-            action()
-            return
+        when {
+            PlayTranslateAccessibilityService.isConnected -> {
+                ensureConfigured()
+                action()
+            }
+            // Enabled in Settings but Android hasn't bound the service to our
+            // process yet (cold-start window, or post-unbind rebinding). Silent
+            // no-op — the next tap will catch the bound state. Crucially, we
+            // do NOT fall through to showAccessibilityDialog() here: the user
+            // has already granted accessibility, prompting again is the bug
+            // this routing exists to prevent.
+            PlayTranslateAccessibilityService.isEnabled(this) -> {}
+            else -> showAccessibilityDialog()
         }
-        showAccessibilityDialog()
     }
 
     private fun ensureConfigured() {
@@ -1924,8 +1936,13 @@ class MainActivity :
         dismissDropdown()
         inDragMode = false
         if (selectedRegionIdx == -1) {
-            if (!PlayTranslateAccessibilityService.isEnabled(this)) {
-                AlertDialog.Builder(this)
+            when {
+                PlayTranslateAccessibilityService.isConnected ->
+                    openAddCustomRegionFromDropdown()
+                // Binding window — silent no-op; don't re-prompt for a
+                // permission the user has already granted.
+                PlayTranslateAccessibilityService.isEnabled(this) -> {}
+                else -> AlertDialog.Builder(this)
                     .setTitle(R.string.custom_region_a11y_required_title)
                     .setMessage(R.string.custom_region_a11y_required_message)
                     .setPositiveButton(R.string.btn_open_a11y_settings) { _, _ ->
@@ -1933,9 +1950,7 @@ class MainActivity :
                     }
                     .setNegativeButton(android.R.string.cancel, null)
                     .show()
-                return
             }
-            openAddCustomRegionFromDropdown()
             return
         }
         val changedSavedRegion = dropdownHighlightedRow != dropdownRegionOrder.lastIndex

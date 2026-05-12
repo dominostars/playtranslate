@@ -133,10 +133,12 @@ class RegionPickerSheet : DialogFragment() {
 
         view.findViewById<View>(R.id.btnAddRegion).setOnClickListener {
             if (isEditMode) exitEditMode()
-            if (PlayTranslateAccessibilityService.isEnabled(requireContext())) {
-                openAddCustomSheet()
-            } else {
-                showCustomRegionA11yDialog()
+            when {
+                PlayTranslateAccessibilityService.isConnected -> openAddCustomSheet()
+                // Binding window — silent no-op; don't re-prompt for a
+                // permission the user has already granted.
+                PlayTranslateAccessibilityService.isEnabled(requireContext()) -> {}
+                else -> showCustomRegionA11yDialog()
             }
         }
 

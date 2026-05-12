@@ -34,29 +34,36 @@ class PlayTranslateTileService : TileService() {
     override fun onClick() {
         super.onClick()
         val a11y = PlayTranslateAccessibilityService.instance
-        if (a11y == null) {
-            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            if (Build.VERSION.SDK_INT >= 34) {
-                val pi = PendingIntent.getActivity(
-                    this, 0, intent, PendingIntent.FLAG_IMMUTABLE
-                )
-                startActivityAndCollapse(pi)
-            } else {
-                @Suppress("DEPRECATION")
-                startActivityAndCollapse(intent)
+        when {
+            a11y != null -> {
+                val prefs = Prefs(this)
+                if (prefs.showOverlayIcon) {
+                    PlayTranslateAccessibilityService.disable(this, "tile_turn_off")
+                } else {
+                    prefs.showOverlayIcon = true
+                    a11y.reconcileFloatingIcons()
+                    TileSync.refresh(this)
+                }
+                renderState()
             }
-            return
+            // Enabled in Settings but Android hasn't bound the service to our
+            // process yet. Drop the tap rather than redirect to accessibility
+            // settings — the user already granted, and the rebind is imminent.
+            PlayTranslateAccessibilityService.isEnabled(this) -> {}
+            else -> {
+                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (Build.VERSION.SDK_INT >= 34) {
+                    val pi = PendingIntent.getActivity(
+                        this, 0, intent, PendingIntent.FLAG_IMMUTABLE
+                    )
+                    startActivityAndCollapse(pi)
+                } else {
+                    @Suppress("DEPRECATION")
+                    startActivityAndCollapse(intent)
+                }
+            }
         }
-        val prefs = Prefs(this)
-        if (prefs.showOverlayIcon) {
-            PlayTranslateAccessibilityService.disable(this, "tile_turn_off")
-        } else {
-            prefs.showOverlayIcon = true
-            a11y.reconcileFloatingIcons()
-            TileSync.refresh(this)
-        }
-        renderState()
     }
 
     private fun renderState() {
