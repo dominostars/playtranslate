@@ -94,10 +94,26 @@ suspend fun Fragment.dispatchSendToAnki(
         pickedId == -1L -> ModelTarget.Legacy
         else -> {
             val models = withContext(Dispatchers.IO) { anki.getModels() }
+            // Empty list always means transient query/permission
+            // failure: a working AnkiDroid install ships built-in
+            // Basic + Cloze note types, so a real install never has
+            // zero models. Abort rather than treating it as "model
+            // deleted" — that would destructively reset prefs and
+            // silently insert into the v004 legacy template, leaving
+            // the user with a card in the wrong place under a
+            // "success" toast. The healing pass at
+            // AnkiUiHelper.applyHealing applies the same guard.
+            if (models.isEmpty()) {
+                Toast.makeText(ctx, R.string.anki_models_unavailable,
+                    Toast.LENGTH_LONG).show()
+                return AnkiSendResult.Failed
+            }
             val picked = models.firstOrNull { it.id == pickedId }
             if (picked == null) {
                 // Card type was deleted/renamed away in AnkiDroid since
-                // the user picked it. Revert to default and notify.
+                // the user picked it. Safe to reset prefs because we
+                // already know `models` is non-empty (the genuine
+                // "model is gone" signal).
                 prefs.ankiModelId = -1L
                 prefs.ankiModelName = ""
                 Toast.makeText(ctx, R.string.anki_card_type_stale_fallback,
