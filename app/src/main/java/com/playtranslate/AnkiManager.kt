@@ -234,12 +234,35 @@ class AnkiManager(private val context: Context) {
         }
         return try {
             val noteUri = context.contentResolver.insert(NOTE_URI, cv) ?: return false
-            val cardUri = Uri.withAppendedPath(noteUri, "cards/0")
+            // Move every generated card to the user's selected deck.
+            // One note can generate multiple cards via a note type's
+            // card templates (e.g. "Basic (and reversed card)" → ord=0
+            // forward + ord=1 reverse). The insert-side `did` is
+            // ignored by AnkiDroid 2.23.x, and conditional templates
+            // mean we can't hardcode an ord list — query the cards
+            // URI to see exactly which ones the model emitted, then
+            // update each. Individual update failures are logged but
+            // don't fail the send; ord=0 succeeding is the common
+            // case and matches the previous behavior.
+            val cardsUri = Uri.withAppendedPath(noteUri, "cards")
             val cardValues = ContentValues().apply { put("deck_id", deckId) }
             try {
-                context.contentResolver.update(cardUri, cardValues, null, null)
+                context.contentResolver.query(cardsUri, arrayOf("ord"), null, null, null)
+                    ?.use { cursor ->
+                        val ordCol = cursor.getColumnIndex("ord")
+                        if (ordCol < 0) return@use
+                        while (cursor.moveToNext()) {
+                            val ord = cursor.getInt(ordCol)
+                            val cardUri = Uri.withAppendedPath(noteUri, "cards/$ord")
+                            try {
+                                context.contentResolver.update(cardUri, cardValues, null, null)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "card deck update failed for ord=$ord: ${e.message}", e)
+                            }
+                        }
+                    }
             } catch (e: Exception) {
-                Log.e(TAG, "card deck update failed: ${e.message}", e)
+                Log.e(TAG, "cards enumeration failed: ${e.message}", e)
             }
             true
         } catch (e: Exception) {
