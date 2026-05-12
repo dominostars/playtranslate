@@ -980,7 +980,7 @@ class MainActivity :
 
     /** True when the user has the accessibility service enabled. */
     private val isCaptureReady: Boolean
-        get() = PlayTranslateAccessibilityService.isEnabled
+        get() = PlayTranslateAccessibilityService.isEnabled(this)
 
     /** Dims the action button when no capture method is available. */
     private fun updateActionButtonState() {
@@ -1227,7 +1227,7 @@ class MainActivity :
     // ── Accessibility service flow ─────────────────────────────────────────
 
     private fun withAccessibility(action: () -> Unit) {
-        if (PlayTranslateAccessibilityService.isEnabled) {
+        if (PlayTranslateAccessibilityService.isEnabled(this)) {
             ensureConfigured()
             action()
             return
@@ -1460,7 +1460,7 @@ class MainActivity :
         val notifGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
-        val a11yEnabled = PlayTranslateAccessibilityService.isEnabled
+        val a11yEnabled = PlayTranslateAccessibilityService.isEnabled(this)
         // Use the viewport predicate (not hasMultipleDisplays) so split-screen
         // users don't fall into the forced non-dismissible settings sheet
         // below. The sheet exists because in pure single-screen fullscreen
@@ -1924,7 +1924,7 @@ class MainActivity :
         dismissDropdown()
         inDragMode = false
         if (selectedRegionIdx == -1) {
-            if (!PlayTranslateAccessibilityService.isEnabled) {
+            if (!PlayTranslateAccessibilityService.isEnabled(this)) {
                 AlertDialog.Builder(this)
                     .setTitle(R.string.custom_region_a11y_required_title)
                     .setMessage(R.string.custom_region_a11y_required_message)

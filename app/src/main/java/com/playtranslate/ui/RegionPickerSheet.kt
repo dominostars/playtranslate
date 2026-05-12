@@ -122,7 +122,7 @@ class RegionPickerSheet : DialogFragment() {
         setupDisplaySegmentedControl()
 
         val noPreviewNotice = view.findViewById<View>(R.id.noPreviewNotice)
-        if (PlayTranslateAccessibilityService.isEnabled) {
+        if (PlayTranslateAccessibilityService.isEnabled(requireContext())) {
             noPreviewNotice.visibility = View.GONE
         } else {
             noPreviewNotice.visibility = View.VISIBLE
@@ -133,7 +133,7 @@ class RegionPickerSheet : DialogFragment() {
 
         view.findViewById<View>(R.id.btnAddRegion).setOnClickListener {
             if (isEditMode) exitEditMode()
-            if (PlayTranslateAccessibilityService.isEnabled) {
+            if (PlayTranslateAccessibilityService.isEnabled(requireContext())) {
                 openAddCustomSheet()
             } else {
                 showCustomRegionA11yDialog()

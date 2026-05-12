@@ -322,10 +322,10 @@ class SettingsRenderer(
         subtitleOverlay.setTextColor(ctx.themeColor(R.attr.ptText))
 
         switchOverlayIcon.isChecked =
-            prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled
+            prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled(ctx)
 
         switchOverlayIcon.setOnCheckedChangeListener { _, checked ->
-            if (checked && !PlayTranslateAccessibilityService.isEnabled) {
+            if (checked && !PlayTranslateAccessibilityService.isEnabled(ctx)) {
                 switchOverlayIcon.isChecked = false
                 AlertDialog.Builder(ctx)
                     .setTitle(R.string.overlay_icon_a11y_required_title)
@@ -365,7 +365,7 @@ class SettingsRenderer(
     }
 
     private fun updateCompactIconVisibility() {
-        val showCompact = prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled
+        val showCompact = prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled(ctx)
         rowCompactIcon.visibility = if (showCompact) View.VISIBLE else View.GONE
         dividerCompactIcon.visibility = if (showCompact) View.VISIBLE else View.GONE
     }
@@ -376,7 +376,7 @@ class SettingsRenderer(
      *  dual-screen uses warning (the app works but the floating helper is
      *  missing). On = neutral card styling. */
     private fun refreshOnScreenControlsTint(isSingle: Boolean) {
-        val enabled = prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled
+        val enabled = prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled(ctx)
         val baseCard = ctx.themeColor(R.attr.ptCard)
         val baseStroke = compositeOver(ctx.themeColor(R.attr.ptDivider), baseCard)
         // Canonical theme-driven switch tints — same resources the
@@ -1700,7 +1700,7 @@ class SettingsRenderer(
 
     fun refreshOverlayIconSwitch() {
         switchOverlayIcon.isChecked =
-            prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled
+            prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled(ctx)
         updateCompactIconVisibility()
     }
 

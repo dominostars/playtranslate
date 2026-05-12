@@ -61,7 +61,7 @@ class PlayTranslateTileService : TileService() {
 
     private fun renderState() {
         val tile = qsTile ?: return
-        val a11yEnabled = PlayTranslateAccessibilityService.isEnabled
+        val a11yEnabled = PlayTranslateAccessibilityService.isEnabled(this)
         val showing = Prefs(this).showOverlayIcon
         tile.state = if (a11yEnabled && showing) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
         tile.subtitle = if (!a11yEnabled) getString(R.string.tile_subtitle_a11y_required) else null

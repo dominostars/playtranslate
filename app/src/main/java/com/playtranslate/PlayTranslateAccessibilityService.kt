@@ -2,9 +2,11 @@ package com.playtranslate
 
 import android.accessibilityservice.AccessibilityService
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.provider.Settings
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.graphics.Point
@@ -1999,7 +2001,19 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         @Volatile
         var instance: PlayTranslateAccessibilityService? = null
 
-        val isEnabled: Boolean get() = instance != null
+        val isConnected: Boolean get() = instance != null
+
+        fun isEnabled(ctx: Context): Boolean {
+            if (instance != null) return true
+            val enabled = Settings.Secure.getString(
+                ctx.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: return false
+            val component = ComponentName(ctx, PlayTranslateAccessibilityService::class.java)
+            val full = component.flattenToString()
+            val short = component.flattenToShortString()
+            return enabled.split(':').any { it.equals(full, ignoreCase = true) || it.equals(short, ignoreCase = true) }
+        }
 
         /** Single source of truth for "PlayTranslate is going inactive". Writes
          *  the pref, stops live mode if running, hides the floating icon, and
