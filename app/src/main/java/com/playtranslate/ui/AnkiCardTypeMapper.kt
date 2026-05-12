@@ -33,10 +33,17 @@ object AnkiCardTypeMapper {
      * exactly one of the two flag fields is non-empty per send.
      */
     private val LAPIS_DEFAULTS: Map<String, ContentSource> = mapOf(
+        // SENTENCE / EXPRESSION already carry Anki-native furigana
+        // brackets, so Lapis's SentenceFurigana / ExpressionFurigana
+        // fields and its plain Sentence / Expression fields receive
+        // the same payload — both render correctly via Lapis's
+        // `{{furigana:}}`-filtered templates.
         "Expression"            to ContentSource.EXPRESSION,
+        "ExpressionFurigana"    to ContentSource.EXPRESSION,
         "ExpressionReading"     to ContentSource.READING,
         "MainDefinition"        to ContentSource.DEFINITION,
         "Sentence"              to ContentSource.SENTENCE,
+        "SentenceFurigana"      to ContentSource.SENTENCE,
         "Picture"               to ContentSource.PICTURE,
         "Frequency"             to ContentSource.FREQUENCY,
         "IsWordAndSentenceCard" to ContentSource.VOCABULARY_CARD_FLAG,

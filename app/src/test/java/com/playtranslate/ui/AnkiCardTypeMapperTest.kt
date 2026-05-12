@@ -65,25 +65,30 @@ class AnkiCardTypeMapperTest {
     @Test fun `Lapis canonical name picks Lapis defaults`() {
         val m = model("Lapis", LAPIS_FIELDS)
         val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
-        assertEquals(ContentSource.EXPRESSION,             mapping["Expression"])
-        assertEquals(ContentSource.READING,                mapping["ExpressionReading"])
-        assertEquals(ContentSource.DEFINITION,             mapping["MainDefinition"])
-        assertEquals(ContentSource.SENTENCE,               mapping["Sentence"])
-        assertEquals(ContentSource.PICTURE,                mapping["Picture"])
-        assertEquals(ContentSource.FREQUENCY,              mapping["Frequency"])
+        assertEquals(ContentSource.EXPRESSION,               mapping["Expression"])
+        assertEquals(ContentSource.READING,                  mapping["ExpressionReading"])
+        assertEquals(ContentSource.DEFINITION,               mapping["MainDefinition"])
+        assertEquals(ContentSource.SENTENCE,                 mapping["Sentence"])
+        assertEquals(ContentSource.PICTURE,                  mapping["Picture"])
+        assertEquals(ContentSource.FREQUENCY,                mapping["Frequency"])
+        // Lapis's bracketed-furigana fields and its plain
+        // Sentence/Expression fields receive identical payloads now
+        // that SENTENCE / EXPRESSION already carry Anki-native
+        // furigana brackets. Lapis's `{{furigana:}}` filter renders
+        // both correctly.
+        assertEquals(ContentSource.SENTENCE,                 mapping["SentenceFurigana"])
+        assertEquals(ContentSource.EXPRESSION,               mapping["ExpressionFurigana"])
         // New flag wiring: word-mode and sentence-mode variants get
         // their own Lapis variant flags. Lapis allows only one selector
         // at a time, which the mode-aware flag values enforce
         // (exactly one of vocabularyCardFlag / sentenceCardFlag is
         // non-empty per send).
-        assertEquals(ContentSource.VOCABULARY_CARD_FLAG,   mapping["IsWordAndSentenceCard"])
-        assertEquals(ContentSource.SENTENCE_CARD_FLAG,     mapping["IsSentenceCard"])
-        // Bracketed-furigana, audio, alternative-definition slots, the
-        // OTHER state flags (IsClickCard / IsAudioCard), pitch — none
-        // of which we produce or want to auto-populate — stay null
-        // (treated as ContentSource.NONE by the dialog).
-        assertEquals(null, mapping["ExpressionFurigana"])
-        assertEquals(null, mapping["SentenceFurigana"])
+        assertEquals(ContentSource.VOCABULARY_CARD_FLAG,     mapping["IsWordAndSentenceCard"])
+        assertEquals(ContentSource.SENTENCE_CARD_FLAG,       mapping["IsSentenceCard"])
+        // Audio, alternative-definition slots, the OTHER state flags
+        // (IsClickCard / IsAudioCard), pitch — none of which we produce
+        // or want to auto-populate — stay null (treated as
+        // ContentSource.NONE by the dialog).
         assertEquals(null, mapping["ExpressionAudio"])
         assertEquals(null, mapping["SentenceAudio"])
         assertEquals(null, mapping["Glossary"])
@@ -162,6 +167,10 @@ class AnkiCardTypeMapperTest {
     @Test fun `Migaku canonical name picks Migaku defaults`() {
         val m = model("Migaku Japanese", MIGAKU_FIELDS)
         val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
+        // SENTENCE / EXPRESSION already carry furigana brackets, so
+        // Migaku's Sentence / Target Word fields receive the bracketed
+        // payload and Migaku's `{{furigana:}}`-filtered template
+        // renders ruby.
         assertEquals(ContentSource.SENTENCE,             mapping["Sentence"])
         assertEquals(ContentSource.SENTENCE_TRANSLATION, mapping["Translation"])
         assertEquals(ContentSource.EXPRESSION,           mapping["Target Word"])
@@ -202,7 +211,6 @@ class AnkiCardTypeMapperTest {
         // and silently mis-fill).
         val m = model("Migaku Lapis Hybrid", MIGAKU_FIELDS)
         val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
-        // Sentence field gets SENTENCE (Migaku), not anything else.
         assertEquals(ContentSource.SENTENCE, mapping["Sentence"])
     }
 

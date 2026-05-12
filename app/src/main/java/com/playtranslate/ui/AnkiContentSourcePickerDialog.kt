@@ -21,7 +21,11 @@ import com.playtranslate.themeColor
  * content fills that field. Same grouped-card surface as
  * [AnkiCardTypePickerDialog], split into two sections by
  * [ContentSource.Kind]:
- *  - CONTENT (NONE + the substantive content sources)
+ *  - CONTENT (NONE + the substantive content sources, including the
+ *    Sentence/Expression furigana-bracket variants — those appear
+ *    adjacent to their plain counterparts so users see "Sentence" and
+ *    "Sentence with furigana (Migaku)" as a contiguous group instead
+ *    of scattered across the picker)
  *  - CARD TYPE FLAG (mode-aware "x"/"" markers for Mustache section
  *    gates like Migaku's `Is Vocabulary Card` or Lapis's
  *    `IsSentenceCard`)

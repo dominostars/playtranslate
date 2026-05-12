@@ -108,11 +108,12 @@ object Deinflector {
 
     // ── Furigana tokenization ─────────────────────────────────────────────
 
-    /** A Kuromoji token with its hiragana reading. */
+    /** A Kuromoji token with its hiragana reading and base (dictionary) form. */
     data class ReadingToken(
         val surface: String,
         val reading: String?,
-        val hasKanji: Boolean
+        val hasKanji: Boolean,
+        val baseForm: String? = null,
     )
 
     /** A segment from compound furigana splitting. */
@@ -131,7 +132,8 @@ object Deinflector {
             val reading = t.reading.takeIf { !it.isNullOrEmpty() && it != "*" }
                 ?.let { katakanaToHiragana(it) }
             val hasKanji = t.surface.any(::isKanji)
-            ReadingToken(t.surface, reading, hasKanji)
+            val baseForm = t.baseForm.takeIf { !it.isNullOrEmpty() && it != "*" }
+            ReadingToken(t.surface, reading, hasKanji, baseForm)
         }
 
     /**

@@ -139,4 +139,102 @@ class SentenceAnkiHtmlBuilderTest {
         assertFalse(result.contains("\n"))
         assertFalse(result.contains("<br>"))
     }
+
+    // ── SENTENCE furigana brackets ───────────────────────────────────────
+    // `kanji[reading]` per kanji block; kana stays bare. Anki's
+    // `{{furigana:Field}}` filter strips brackets and renders ruby.
+
+    @Test fun `Sentence furigana isolates kanji from its okurigana`() {
+        // Tap on 聞 should show just き (the kanji's reading), not きい.
+        // Each kanji bracket is wrapped in `<wbr>` separators —
+        // invisible word-break opportunities that (a) Anki's furigana
+        // regex (` ?([^ >]+?)\[(.+?)\]`) can't span across because of
+        // the `>` in the tag, and (b) Migaku's DOM-walking parser
+        // should treat as word boundaries. Net effect: each kanji is
+        // its own ruby base AND its own Migaku word, with no visible
+        // whitespace in the rendered card.
+        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            "聞いた", sourceLangId = SourceLangId.JA
+        )
+        assertEquals("聞[き]<wbr>いた", result)
+    }
+
+    @Test fun `Sentence furigana isolates each kanji in compound verbs`() {
+        // 取り出す: per-kanji split with both kanji blocks bordered by
+        // `<wbr>` so each tap-popup surfaces just one kanji's reading.
+        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            "取り出す", sourceLangId = SourceLangId.JA
+        )
+        assertEquals("取[と]<wbr>り<wbr>出[だ]<wbr>す", result)
+    }
+
+    @Test fun `Sentence furigana isolates kanji word from following particle`() {
+        // Regression: tapping 友達 in 友達に聞いた used to show ともだちに.
+        // The `<wbr>` after each kanji bracket gives Migaku's parser
+        // a word boundary so に doesn't get pulled into 友達's popup.
+        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            "友達に聞いた", sourceLangId = SourceLangId.JA
+        )
+        assertEquals("友達[ともだち]<wbr>に<wbr>聞[き]<wbr>いた", result)
+    }
+
+    @Test fun `Sentence furigana isolates kanji from trailing kana plus non-CJK suffix`() {
+        // Regression: 今度はC was popping up こんどはC because Migaku
+        // merged everything from `今度[こんど]` to the next whitespace
+        // into one word. The `<wbr>` after the bracket isolates 今度.
+        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            "今度はC", sourceLangId = SourceLangId.JA
+        )
+        assertEquals("今度[こんど]<wbr>はC", result)
+    }
+
+    @Test fun `Expression furigana isolates each kanji in compound headword`() {
+        // Both kanji blocks in 取り出す render as their own bracket-
+        // words separated by `<wbr>` so tapping 取 → と, tapping 出 →
+        // だ. The internal kana (り, す) sits as plain text outside
+        // any word.
+        val result = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
+            word = "取り出す", reading = "とりだす", sourceLangId = SourceLangId.JA,
+        )
+        assertEquals("取[と]<wbr>り<wbr>出[だ]<wbr>す", result)
+    }
+
+    @Test fun `Sentence furigana leaves non-JA text untouched`() {
+        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            "今天", sourceLangId = SourceLangId.ZH
+        )
+        assertEquals("今天", result)
+    }
+
+    @Test fun `Sentence furigana leaves pure-kana words bare`() {
+        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            "ありがとう", sourceLangId = SourceLangId.JA
+        )
+        assertFalse("No brackets expected for pure-kana", result.contains("["))
+    }
+
+    // ── EXPRESSION furigana brackets (word-mode) ────────────────────────
+
+    @Test fun `Expression furigana isolates kanji from okurigana`() {
+        val result = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
+            word = "聞く", reading = "きく", sourceLangId = SourceLangId.JA,
+        )
+        // Tap on 聞 shows just き — the okurigana く sits outside the
+        // bracket-word, separated by `<wbr>`.
+        assertEquals("聞[き]<wbr>く", result)
+    }
+
+    @Test fun `Expression furigana passes pure-kana headwords through unchanged`() {
+        val result = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
+            word = "ありがとう", reading = "ありがとう", sourceLangId = SourceLangId.JA,
+        )
+        assertEquals("ありがとう", result)
+    }
+
+    @Test fun `Expression furigana falls through to bare word when reading empty`() {
+        val result = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
+            word = "聞く", reading = "", sourceLangId = SourceLangId.JA,
+        )
+        assertEquals("聞く", result)
+    }
 }

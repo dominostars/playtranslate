@@ -258,7 +258,8 @@ class WordAnkiReviewSheet : DialogFragment() {
                     // capture it from the surrounding scope, so the
                     // screenshot's removed state actually wins.
                     sendWordToAnki(word, reading, pos,
-                        fallbackDefinition, freqScore, deckId, currentScreenshotPath)
+                        fallbackDefinition, freqScore, deckId, currentScreenshotPath,
+                        sourceLangId)
                 }
                 btn.isEnabled = true
             }
@@ -1155,7 +1156,8 @@ class WordAnkiReviewSheet : DialogFragment() {
 
     private suspend fun sendWordToAnki(
         word: String, reading: String, pos: String, fallbackDefinition: String,
-        freqScore: Int, deckId: Long, screenshotPath: String?
+        freqScore: Int, deckId: Long, screenshotPath: String?,
+        sourceLangId: SourceLangId,
     ) {
         val result = dispatchSendToAnki(
             deckId = deckId,
@@ -1175,6 +1177,7 @@ class WordAnkiReviewSheet : DialogFragment() {
                     freqScore = freqScore,
                     imageFilename = imageFilename,
                     examplesHtml = buildExamplesHtml(inlineStyler),
+                    sourceLangId = sourceLangId,
                 )
             },
         )

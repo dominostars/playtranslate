@@ -52,11 +52,18 @@ object AnkiCardOutputBuilder {
         val firstHighlighted = cardData.words.firstOrNull {
             it.word in cardData.selectedWords
         }
-        // EXPRESSION: prefer the first highlighted word; fall back to the
-        // whole sentence so the field is non-empty (matters when a model
-        // uses sortf=0 and EXPRESSION lands at the sort slot).
-        val expression = firstHighlighted?.word
-            ?: cardData.source.replace(Regex("[\\n\\r]+"), " ").trim()
+        // EXPRESSION: highlighted word's headword folded with its
+        // dict-reading into Anki-native furigana brackets when
+        // applicable (JA). Falls back to the whole sentence as plain
+        // text when nothing is highlighted — the field must be
+        // non-empty in case a model uses sortf=0 and EXPRESSION lands
+        // at the sort slot.
+        val expression = firstHighlighted?.let {
+            SentenceAnkiHtmlBuilder.buildExpressionFurigana(
+                word = it.word, reading = it.reading,
+                sourceLangId = cardData.sourceLangId,
+            )
+        } ?: cardData.source.replace(Regex("[\\n\\r]+"), " ").trim()
         val reading = firstHighlighted?.reading.orEmpty()
         // DEFINITION: empty when nothing's highlighted. assembleNote's
         // sentence-mode fold (not yet implemented for this flow; see
@@ -69,10 +76,14 @@ object AnkiCardOutputBuilder {
         val frequency = firstHighlighted?.let {
             SentenceAnkiHtmlBuilder.starsString(it.freqScore)
         }.orEmpty()
-        val sentenceHtml = wrapHighlighted(
+        // SENTENCE always carries Anki-native furigana brackets — see
+        // SentenceAnkiHtmlBuilder.buildSentenceFurigana. Templates with
+        // a `{{furigana:Sentence}}` filter render ruby; templates that
+        // bind `{{Sentence}}` bare show literal brackets (accepted
+        // tradeoff for picker simplicity, one SENTENCE source).
+        val sentenceHtml = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
             text = cardData.source,
-            highlighted = cardData.selectedWords,
-            words = cardData.words,
+            sourceLangId = cardData.sourceLangId,
         )
         val translationHtml = cardData.target.replace(Regex("[\\n\\r]+"), "<br>")
         val sortedWords = if (cardData.selectedWords.isNotEmpty()) {
@@ -126,8 +137,15 @@ object AnkiCardOutputBuilder {
         freqScore: Int,
         imageFilename: String?,
         examplesHtml: String = "",
+        sourceLangId: com.playtranslate.language.SourceLangId =
+            com.playtranslate.language.SourceLangId.JA,
     ): CardOutputs = CardOutputs(
-        expression = word,
+        // EXPRESSION: per-kanji furigana brackets so templates with a
+        // `{{furigana:Expression}}` (or equivalent) filter render
+        // ruby. Falls through to the bare word for non-JA langs.
+        expression = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
+            word = word, reading = reading, sourceLangId = sourceLangId,
+        ),
         reading = reading,
         sentence = "",
         sentenceTranslation = "",
@@ -147,73 +165,4 @@ object AnkiCardOutputBuilder {
         alwaysOnMarker = "x",
     )
 
-    /**
-     * Wraps any highlighted word occurrences in [text] with `<b>…</b>`.
-     * Plain text in / plain HTML out — no `<ruby>`, no JavaScript, no
-     * bracketed-furigana markup. Templates that want furigana on the
-     * Sentence field rely on Anki's `{{furigana:Sentence}}` filter
-     * against a separately-mapped bracketed-format field, which is out
-     * of scope for v1.
-     *
-     * Matches against the SURFACE form of each highlighted word, not
-     * its dictionary form, so conjugated verbs/adjectives bold
-     * correctly. The user looked up 倒れる but the sentence contains
-     * 倒れている; we want the latter wrapped. PT's tokeniser already
-     * records each word's surface form in [WordEntry.surfaceForm] when
-     * the sentence is analysed — we just look it up here and match
-     * surfaces literally. Falls back to the dictionary form when
-     * surfaceForm is missing (rare; happens for manually-typed words).
-     *
-     * Longer surfaces are matched first so that "猫" doesn't steal a
-     * match from "黒猫" when both are highlighted.
-     */
-    private fun wrapHighlighted(
-        text: String,
-        highlighted: Set<String>,
-        words: List<SentenceAnkiHtmlBuilder.WordEntry>,
-    ): String {
-        if (highlighted.isEmpty()) {
-            return text.replace(Regex("[\\n\\r]+"), "<br>")
-        }
-        // Resolve each highlighted dictionary form to its surface form.
-        // Multiple WordEntries may share a dictionary form (rare); we
-        // collect ALL their surfaces so every occurrence gets bolded.
-        // Falls back to the dictionary form itself when no surface was
-        // recorded.
-        val targets = buildSet {
-            highlighted.forEach { dict ->
-                if (dict.isEmpty()) return@forEach
-                val surfaces = words.asSequence()
-                    .filter { it.word == dict && it.surfaceForm.isNotEmpty() }
-                    .map { it.surfaceForm }
-                    .toList()
-                if (surfaces.isEmpty()) {
-                    add(dict)
-                } else {
-                    addAll(surfaces)
-                }
-            }
-        }.toList().sortedByDescending { it.length }
-
-        val sb = StringBuilder()
-        var i = 0
-        while (i < text.length) {
-            val c = text[i]
-            if (c == '\n' || c == '\r') {
-                sb.append("<br>")
-                i++
-                while (i < text.length && (text[i] == '\n' || text[i] == '\r')) i++
-                continue
-            }
-            val hit = targets.firstOrNull { text.startsWith(it, i) }
-            if (hit != null) {
-                sb.append("<b>").append(hit).append("</b>")
-                i += hit.length
-            } else {
-                sb.append(c)
-                i++
-            }
-        }
-        return sb.toString()
-    }
 }

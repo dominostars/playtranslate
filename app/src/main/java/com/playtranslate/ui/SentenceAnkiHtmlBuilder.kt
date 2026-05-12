@@ -1,7 +1,21 @@
 package com.playtranslate.ui
 
+import android.util.Log
 import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.language.SourceLangId
+
+private const val TAG = "SentenceFurigana"
+
+/**
+ * Word-break-opportunity element used as an invisible separator between
+ * each kanji bracket and its neighbouring kana. Anki's furigana regex
+ * (` ?([^ >]+?)\[(.+?)\]`) can't span across `<wbr>` because the `>` is
+ * excluded from `[^ >]`. Browsers render the element as zero-width
+ * whitespace so the card has no visible inter-word spaces. Migaku's
+ * `support.html` parser is expected (but not yet verified on a real
+ * card) to treat `<wbr>` as a DOM-level word boundary.
+ */
+private const val WBR = "<wbr>"
 
 /**
  * Shared HTML builder for sentence-mode Anki cards.
@@ -187,6 +201,163 @@ object SentenceAnkiHtmlBuilder {
     }
 
     fun starsString(score: Int) = "\u2605".repeat(score)
+
+    /**
+     * Emits the SENTENCE field value: Anki-native furigana brackets
+     * (`kanji[reading]`) for Japanese with each kanji bracket
+     * **isolated by `<wbr>` separators**. Plain text passthrough for
+     * everything else.
+     *
+     * The goal is to match the semantics of PT's existing furigana
+     * display (DictionaryManager.tokenizeForFurigana / FuriganaSpan
+     * in TranslationResultFragment): furigana floats above ONLY the
+     * kanji surface, never the okurigana. Tap \u805e in \u805e\u3044\u305f \u2192 see \u304d
+     * (not \u304d\u3044, not \u304d\u3044\u305f).
+     *
+     * **Why `<wbr>` is the right separator.** Two downstream
+     * consumers each need a boundary signal between bracket-words
+     * and the kana that follows, and they need it in formats that
+     * don't show up as visible whitespace in the rendered card:
+     *
+     *  1. **Anki's `{{furigana:}}` filter** regex
+     *     ` ?([^ >]+?)\[(.+?)\]` reads everything before `[` (except
+     *     space and `>`) as the ruby base. `<wbr>` works as an
+     *     anchor because the trailing `>` in the tag is excluded
+     *     from the `[^ >]` character class \u2014 the regex can't span
+     *     across a `<wbr>` into the next bracket's base. So inserting
+     *     `<wbr>` between bracket-words gives each kanji its own
+     *     correct ruby base without inserting a visible space.
+     *
+     *  2. **Migaku's `support.html` parser** treats everything from
+     *     a kanji bracket until the next whitespace as the "word",
+     *     and surfaces `reading + word_post` in its tap-popup.
+     *     `<wbr>` is a standard HTML word-break-opportunity element;
+     *     if Migaku's parser is DOM-aware it treats `<wbr>` as a
+     *     word boundary. (If Migaku uses a `\s` raw-text regex
+     *     instead, `<wbr>` is literal text and this won't fix
+     *     Migaku's popup \u2014 to be verified on the user's device.)
+     *
+     * `<wbr>` renders as zero-width in HTML, so the rendered card
+     * has natural Japanese text with no visible inter-word spaces \u2014
+     * works cleanly on Lapis, JPMN, custom templates, and Migaku
+     * alike (assuming Migaku's DOM-awareness pans out).
+     *
+     * Examples:
+     *  - \u805e\u3044\u305f       \u2192 `\u805e[\u304d]<wbr>\u3044\u305f`
+     *  - \u53cb\u9054\u306b\u805e\u3044\u305f \u2192 `\u53cb\u9054[\u3068\u3082\u3060\u3061]<wbr>\u306b<wbr>\u805e[\u304d]<wbr>\u3044\u305f`
+     *  - \u4eca\u5ea6\u306fC      \u2192 `\u4eca\u5ea6[\u3053\u3093\u3069]<wbr>\u306fC`
+     *  - \u53d6\u308a\u51fa\u3059     \u2192 `\u53d6[\u3068]<wbr>\u308a<wbr>\u51fa[\u3060]<wbr>\u3059`
+     *
+     * Non-Japanese languages: plain text passthrough (newlines \u2192
+     * `<br>`). ZH pinyin annotation would need a different
+     * per-character source (follow-up).
+     */
+    fun buildSentenceFurigana(
+        text: String,
+        sourceLangId: SourceLangId = SourceLangId.JA,
+    ): String {
+        if (sourceLangId != SourceLangId.JA) return plainBody(text)
+        val sb = StringBuilder()
+        for (token in Deinflector.tokenizeWithReadings(text)) {
+            emitFuriganaToken(sb, token)
+        }
+        val out = stripBoundarySeparators(sb.toString())
+        Log.d(TAG, "buildSentenceFurigana: in='$text' out='$out'")
+        return out
+    }
+
+    private fun emitFuriganaToken(sb: StringBuilder, token: Deinflector.ReadingToken) {
+        val surface = token.surface
+        val reading = token.reading
+        if (!token.hasKanji || reading.isNullOrEmpty()) {
+            // Pure-kana / non-CJK tokens emit as plain text. No
+            // surrounding separators \u2014 Migaku doesn't tap-popup
+            // non-bracket text, so there's no reason to give them
+            // word boundaries.
+            appendPlain(sb, surface)
+            return
+        }
+        for (part in Deinflector.splitFurigana(surface, reading)) {
+            val r = part.reading
+            if (r != null) {
+                // `<wbr>kanji[reading]<wbr>` \u2014 leading `<wbr>` anchors
+                // Anki's regex (the `>` in the tag is excluded from
+                // its base-text class so the regex can't span back
+                // into preceding kana), trailing `<wbr>` isolates the
+                // bracket-word from any following kana so Migaku's
+                // word_post stays empty. See KDoc for full rationale.
+                sb.append(WBR).append(part.text).append('[').append(r).append(']').append(WBR)
+            } else {
+                appendPlain(sb, part.text)
+            }
+        }
+    }
+
+    /**
+     * Emits the EXPRESSION field value for word-mode (single-word)
+     * sends: per-kanji furigana brackets with the same `<wbr>`
+     * isolation rule as [buildSentenceFurigana]. The caller already
+     * knows the headword's dictionary form + reading so we skip
+     * Kuromoji and per-kanji-split via [Deinflector.splitFurigana].
+     *
+     * Examples:
+     *  - \u805e\u304f     \u2192 `\u805e[\u304d]<wbr>\u304f`
+     *  - \u53d6\u308a\u51fa\u3059 \u2192 `\u53d6[\u3068]<wbr>\u308a<wbr>\u51fa[\u3060]<wbr>\u3059`
+     */
+    fun buildExpressionFurigana(
+        word: String,
+        reading: String,
+        sourceLangId: SourceLangId = SourceLangId.JA,
+    ): String {
+        if (sourceLangId != SourceLangId.JA || reading.isEmpty()) return word
+        if (!word.any(::isKanjiChar)) return word
+        val sb = StringBuilder()
+        for (part in Deinflector.splitFurigana(word, reading)) {
+            val r = part.reading
+            if (r != null) sb.append(WBR).append(part.text).append('[').append(r).append(']').append(WBR)
+            else sb.append(part.text)
+        }
+        val out = stripBoundarySeparators(sb.toString())
+        Log.d(TAG, "buildExpressionFurigana: word='$word' reading='$reading' out='$out'")
+        return out
+    }
+
+    /**
+     * Removes a leading or trailing `<wbr>` from the field-level
+     * output. A boundary `<wbr>` does no work \u2014 there's no preceding
+     * or following content for it to separate \u2014 and the slight
+     * payload bloat is unhelpful.
+     */
+    private fun stripBoundarySeparators(s: String): String {
+        var result = s
+        if (result.startsWith(WBR)) result = result.substring(WBR.length)
+        if (result.endsWith(WBR)) result = result.substring(0, result.length - WBR.length)
+        return result
+    }
+
+    private fun isKanjiChar(c: Char): Boolean =
+        c in '\u4e00'..'\u9fff' || c in '\u3400'..'\u4dbf'
+
+    private fun plainBody(text: String): String {
+        val sb = StringBuilder()
+        appendPlain(sb, text)
+        return sb.toString()
+    }
+
+    private fun appendPlain(sb: StringBuilder, text: String) {
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            if (c == '\n' || c == '\r') {
+                sb.append("<br>")
+                i++
+                while (i < text.length && (text[i] == '\n' || text[i] == '\r')) i++
+            } else {
+                sb.append(c)
+                i++
+            }
+        }
+    }
 
     /**
      * Builds the per-word HTML table used at the bottom of the legacy

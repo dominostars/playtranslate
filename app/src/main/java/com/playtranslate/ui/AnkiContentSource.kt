@@ -22,6 +22,12 @@ enum class ContentSource(
     val kind: Kind = Kind.CONTENT,
 ) {
     NONE                 (R.string.anki_content_none),
+    // SENTENCE and EXPRESSION always carry Anki-native furigana
+    // brackets (`kanji[reading]`) for JA. The bracketed format is the
+    // common denominator across Migaku, JPMN, Lapis, and any template
+    // using Anki's built-in `{{furigana:Field}}` filter. Templates
+    // that bind `{{Sentence}}` bare show literal brackets — accepted
+    // tradeoff for picker simplicity (one source per concept).
     EXPRESSION           (R.string.anki_content_expression),
     READING              (R.string.anki_content_reading),
     SENTENCE             (R.string.anki_content_sentence),
@@ -42,8 +48,10 @@ enum class ContentSource(
     TARGETED_SENTENCE_CARD_FLAG (R.string.anki_content_flag_targeted_sentence, Kind.FLAG),
     ALWAYS_ON_MARKER            (R.string.anki_content_flag_always_on,         Kind.FLAG);
 
-    /** Two visual groups for the source picker: substantive content
-     *  vs. card-type state flags whose value is "x" / empty. */
+    /** Two visual groups for the source picker:
+     *  - CONTENT: substantive content sources
+     *  - FLAG: card-type state markers whose value is "x" / empty
+     */
     enum class Kind { CONTENT, FLAG }
 }
 
