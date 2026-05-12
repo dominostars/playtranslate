@@ -457,6 +457,26 @@ object OverlayToolkit {
     )
 
     /**
+     * Compute the OCR input crop bounds for a raw screenshot. Single source of
+     * truth for the status-bar clamp — both [runOcrPipeline] (production) and
+     * [PlayTranslateAccessibilityService.runDebugCapture] (debug overlay) call
+     * this so they exclude the same pixel rows from ML Kit. Callers do their
+     * own [Bitmap.createBitmap] afterward to keep recycle ownership local.
+     */
+    fun computeOcrCrop(
+        rawWidth: Int,
+        rawHeight: Int,
+        activeRegion: RegionEntry,
+        statusBarHeight: Int,
+    ): Rect {
+        val top    = maxOf((rawHeight * activeRegion.top).toInt(), statusBarHeight)
+        val left   = (rawWidth  * activeRegion.left).toInt()
+        val bottom = (rawHeight * activeRegion.bottom).toInt()
+        val right  = (rawWidth  * activeRegion.right).toInt()
+        return Rect(left, top, right, bottom)
+    }
+
+    /**
      * Crop to active region, blackout floating icon, run OCR, filter source-lang chars.
      * Returns null if no text detected. Does NOT do dedup, translation, or display.
      */
@@ -469,20 +489,20 @@ object OverlayToolkit {
         iconRect: Rect?,
         compactIcon: Boolean
     ): OcrPipelineResult? {
-        val top    = maxOf((raw.height * activeRegion.top).toInt(), statusBarHeight)
-        val left   = (raw.width  * activeRegion.left).toInt()
-        val bottom = (raw.height * activeRegion.bottom).toInt()
-        val right  = (raw.width  * activeRegion.right).toInt()
-        val needsCrop = top > 0 || left > 0 || bottom < raw.height || right < raw.width
+        val crop = computeOcrCrop(raw.width, raw.height, activeRegion, statusBarHeight)
+        val needsCrop = crop.top > 0 || crop.left > 0 || crop.bottom < raw.height || crop.right < raw.width
         val bitmap = if (needsCrop)
-            Bitmap.createBitmap(raw, left, top, (right - left).coerceAtLeast(1), (bottom - top).coerceAtLeast(1))
+            Bitmap.createBitmap(raw, crop.left, crop.top, (crop.right - crop.left).coerceAtLeast(1), (crop.bottom - crop.top).coerceAtLeast(1))
         else raw
 
         val ocrResult: OcrManager.OcrResult?
         try {
-            val ocrBitmap = blackoutFloatingIcon(bitmap, left, top, iconRect, compactIcon)
-            ocrResult = ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
-            if (ocrBitmap !== raw && ocrBitmap !== bitmap) ocrBitmap.recycle()
+            val ocrBitmap = blackoutFloatingIcon(bitmap, crop.left, crop.top, iconRect, compactIcon)
+            try {
+                ocrResult = ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
+            } finally {
+                if (ocrBitmap !== raw && ocrBitmap !== bitmap) ocrBitmap.recycle()
+            }
         } finally {
             // Always clean up the crop (NOT raw — caller manages that)
             if (bitmap !== raw && !bitmap.isRecycled) bitmap.recycle()
@@ -493,7 +513,7 @@ object OverlayToolkit {
         val dedupKey = ocrResult.fullText.filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
         if (dedupKey.isEmpty()) return null
 
-        return OcrPipelineResult(ocrResult, dedupKey, left, top, raw.width, raw.height)
+        return OcrPipelineResult(ocrResult, dedupKey, crop.left, crop.top, raw.width, raw.height)
     }
 
     /**
