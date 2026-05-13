@@ -1726,6 +1726,17 @@ class CaptureService : Service() {
                 }.awaitAll()
             }
 
+            // Set the icon/menu state ONCE from the worst outcome in the
+            // batch. Each child's `translate` no longer touches the global
+            // state, so a clean group that happens to finish after a
+            // displaced sibling can't clear the warning. A fully-cached
+            // batch (outcomes empty) deliberately doesn't update state —
+            // matches the pre-refactor behavior where cache hits left the
+            // previous state in place.
+            val aggregateKind = outcomes.maxByOrNull { it.kind.severity() }?.kind
+                ?: DegradedWarningKind.None
+            setDegraded(aggregateKind)
+
             uncached.zip(outcomes).forEach { (indexedKey, outcome) ->
                 // Cache write policy: skip when an on-device LLM was displaced
                 // by transient low memory (outcome.displacedLlmId != null).
@@ -1759,6 +1770,7 @@ class CaptureService : Service() {
     /** On-demand translation for a single text string (used by edit overlay, drag-sentence, etc.). */
     suspend fun translateOnce(text: String): Pair<String, String?> {
         val outcome = translate(text, snapshotTranslationTarget())
+        setDegraded(outcome.kind)
         return outcome.text to outcome.note
     }
 
@@ -1782,16 +1794,26 @@ class CaptureService : Service() {
      * cache slot on recovery.
      */
     /** Internal translation outcome. Carries the user-visible (text, note)
-     *  pair plus the [WaterfallResult.displacedLlmId] cache-skip signal. The
-     *  signal is internal to this service — public methods ([translateOnce],
-     *  [translateGroupsSeparately]) flatten back to `(text, note)` so callers
-     *  outside the cache layer don't grow a dependency on the registry's
-     *  displacement type. */
+     *  pair plus the [WaterfallResult.displacedLlmId] cache-skip signal and
+     *  the per-call [kind] used to aggregate degradation state across the
+     *  groups in a batch. The signal is internal to this service — public
+     *  methods ([translateOnce], [translateGroupsSeparately]) flatten back
+     *  to `(text, note)` so callers outside the cache layer don't grow a
+     *  dependency on the registry's displacement type. */
     private data class TranslateOutcome(
         val text: String,
         val note: String?,
+        val kind: DegradedWarningKind,
         val displacedLlmId: com.playtranslate.translation.BackendId?,
     )
+
+    /** Order DegradedWarningKind by severity so a batch's worst outcome
+     *  drives the icon/menu state, regardless of completion order. */
+    private fun DegradedWarningKind.severity(): Int = when (this) {
+        DegradedWarningKind.None -> 0
+        DegradedWarningKind.Offline -> 1
+        DegradedWarningKind.LowMemory -> 2
+    }
 
     private suspend fun translate(text: String, target: TranslationTarget): TranslateOutcome {
         // OCR-only bypass: when source and target language are the same, skip
@@ -1800,30 +1822,29 @@ class CaptureService : Service() {
         // every translateOnce caller: edit overlay, drag-sentence, sentence
         // tab) flows through here. The earlier bypass in
         // translateGroupsSeparately is a redundant early-return for the
-        // group/cache path. Clear degraded state too — bypass means we aren't
-        // going through a backend, so any stale "Offline"/"degraded" badge
-        // from a prior fallback should drop.
+        // group/cache path.
         if (target.source == target.target) {
-            setDegraded(false)
-            return TranslateOutcome(text, null, null)
+            return TranslateOutcome(text, null, DegradedWarningKind.None, null)
         }
 
         ensureLanguageManagersFor(target)
         val result = TranslationBackendRegistry.translate(text, target.source, target.target)
-        // Single source of truth for "what kind of degradation, if any, did
-        // this translation suffer?" — drives icon color, menu pill label,
-        // and inline note. Displacement that bottomed out at ML Kit is the
+        // Per-group kind. Displacement that bottomed out at ML Kit is the
         // LowMemory kind; ML Kit chosen for network/service reasons is
         // Offline. Displacement that stayed in the offline tier (Qwen
         // picked up after TG) is None — the result is high-quality offline
         // output, so we don't visually flag it; the Settings row's
-        // per-backend "Low memory" badge carries that signal on its own.
+        // live availMem check carries that signal on its own.
+        //
+        // We do NOT call setDegraded here — that would let one group's
+        // outcome clobber a sibling group's worse outcome in a batched
+        // translation. Aggregation happens once per batch in
+        // [translateGroupsSeparately] / per call in [translateOnce].
         val kind = when {
             !result.isDegraded -> DegradedWarningKind.None
             result.displacedLlmId != null -> DegradedWarningKind.LowMemory
             else -> DegradedWarningKind.Offline
         }
-        setDegraded(kind)
         // The inline note adds one more bit of detail that the icon doesn't
         // need — when the cause is "Offline", distinguish network-not-
         // present from service-unavailable. Both surface as the Offline
@@ -1836,7 +1857,7 @@ class CaptureService : Service() {
                 if (isNetworkAvailable()) getString(R.string.note_mlkit_service_unavailable)
                 else getString(R.string.note_mlkit_no_internet)
         }
-        return TranslateOutcome(result.text, note, result.displacedLlmId)
+        return TranslateOutcome(result.text, note, kind, result.displacedLlmId)
     }
 
     /**

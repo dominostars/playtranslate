@@ -120,13 +120,10 @@ object TranslationBackendRegistry {
                 throw e
             } catch (e: Exception) {
                 if (e is TranslateGemmaTransientException && backend is OnDeviceLlmBackend) {
-                    // Stamp the badge field so the Settings row reflects the
-                    // displacement on its next status refresh. Only record the
-                    // *first* displaced id in this WaterfallResult — multiple
-                    // on-device LLMs failing in the same call is rare and
-                    // "TG was displaced" is the more useful signal than "Qwen
-                    // was also displaced after TG."
-                    backend.noteTransientFailure()
+                    // Record the *first* displaced LLM in this call so the
+                    // caller can skip caching the fallback's output. Multi-
+                    // LLM displacement in the same call is rare; the first
+                    // one is the most useful signal.
                     if (displacedLlmId == null) displacedLlmId = backend.id
                 }
                 Log.w(TAG, "Backend ${backend.id} failed (${e.javaClass.simpleName}: ${e.message}), falling back")
