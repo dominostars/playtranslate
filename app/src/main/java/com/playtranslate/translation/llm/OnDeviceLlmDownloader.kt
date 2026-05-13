@@ -12,6 +12,8 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import kotlin.coroutines.coroutineContext
 
@@ -20,11 +22,18 @@ import kotlin.coroutines.coroutineContext
  *
  * Pipeline:
  *  1. Pre-flight checks (RAM / free storage) — surfaced as [Outcome.Refused].
- *  2. Streamed download via [LanguagePackDownloader] (resumable — the partial
- *     file persists across cancel-by-dismiss; only [deletePartial] removes it).
- *  3. Streaming SHA-256 over the file. On hash mismatch: delete and report failure.
- *  4. On success: caller flips the per-backend `enabled` pref. We just emit
- *     [Outcome.Success].
+ *  2. Streamed download via [LanguagePackDownloader] into [ModelHelper.partialFile]
+ *     (resumable — the partial persists across cancel-by-dismiss; only
+ *     [deletePartial] removes it).
+ *  3. Streaming SHA-256 over the partial. On hash mismatch: delete and report failure.
+ *  4. Atomic replace `<file>.partial` → `<file>` (`Files.move` with `ATOMIC_MOVE` +
+ *     `REPLACE_EXISTING`). Only after this rename does [ModelHelper.isInstalled]
+ *     return true — a kill between byte-complete and SHA-complete leaves the
+ *     unverified bytes at `.partial` where they can't be mistaken for an
+ *     install. `REPLACE_EXISTING` also makes future in-place catalog upgrades
+ *     safe: the previous install keeps serving translations until the new
+ *     artifact verifies, then is swapped out in a single rename syscall.
+ *  5. Caller flips the per-backend `enabled` pref. We just emit [Outcome.Success].
  *
  * Lifted from the previous TG-specific `TranslateGemmaDownloader`; parameterized
  * via [modelHelper] and [totalMemFloorBytes] so siblings (Qwen, ...) reuse the
@@ -82,15 +91,16 @@ class OnDeviceLlmDownloader(
         // Metered-network is a *warning* the caller surfaces BEFORE calling run().
         // We don't gate here — the caller is responsible for prompting the user.
 
-        val destination = modelHelper.file(context)
+        val finalFile = modelHelper.file(context)
+        val partial = modelHelper.partialFile(context)
         Log.i(
             TAG,
-            "Starting download: $url -> ${destination.absolutePath} (expected $expectedSize bytes)",
+            "Starting download: $url -> ${partial.absolutePath} (expected $expectedSize bytes)",
         )
 
         // -- Download --------------------------------------------------------------
         try {
-            httpDownloader.download(url, destination) { p ->
+            httpDownloader.download(url, partial) { p ->
                 val total = if (p.totalBytes > 0) p.totalBytes else expectedSize
                 onProgress(Progress.Downloading(p.bytesReceived, total))
             }
@@ -109,29 +119,53 @@ class OnDeviceLlmDownloader(
         coroutineContext.ensureActive()
         onProgress(Progress.Verifying)
 
-        val actualSize = destination.length()
+        val actualSize = partial.length()
         if (actualSize != expectedSize) {
-            destination.delete()
+            partial.delete()
             return@withContext Outcome.Failed(
                 "Size mismatch (got $actualSize, expected $expectedSize)",
             )
         }
 
-        val actualSha = computeSha256(destination)
+        val actualSha = computeSha256(partial)
         if (!actualSha.equals(expectedSha, ignoreCase = true)) {
-            destination.delete()
+            partial.delete()
             return@withContext Outcome.Failed(
                 "SHA-256 mismatch (got $actualSha, expected $expectedSha)",
             )
         }
 
-        Log.i(TAG, "Download + verify succeeded: ${destination.absolutePath}")
+        // -- Commit ----------------------------------------------------------------
+        // Atomic replace: rename(2) either succeeds atomically or leaves both
+        // paths untouched. REPLACE_EXISTING covers in-place model upgrades
+        // (catalog ships v2 at the same filename). On failure, the verified
+        // partial is preserved for a retry AND any previous install at
+        // finalFile keeps serving — no path where we delete one and fail to
+        // land the other. Both paths are under noBackupFilesDir (same FS), so
+        // ATOMIC_MOVE is honored by ext4/f2fs without falling back.
+        try {
+            Files.move(
+                partial.toPath(),
+                finalFile.toPath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING,
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to commit verified model to ${finalFile.absolutePath}", e)
+            return@withContext Outcome.Failed(
+                "Failed to commit verified model to ${finalFile.absolutePath}: " +
+                    (e.message ?: e.javaClass.simpleName),
+                e,
+            )
+        }
+
+        Log.i(TAG, "Download + verify succeeded: ${finalFile.absolutePath}")
         Outcome.Success
     }
 
     /** Delete any partial file. Use on explicit user cancel (not on transient failure). */
     fun deletePartial() {
-        val f = modelHelper.file(context)
+        val f = modelHelper.partialFile(context)
         if (f.exists()) {
             val ok = f.delete()
             Log.i(TAG, "Deleted partial file: ${f.absolutePath} ok=$ok")
@@ -162,8 +196,8 @@ class OnDeviceLlmDownloader(
         // A naive expectedSize-sized check would falsely refuse the resume
         // attempt — user's 1 GB partial of a 2 GB GGUF would need only ~1 GB
         // more free, but the old check demanded ~2 GB.
-        val destination = modelHelper.file(context)
-        val alreadyOnDisk = if (destination.exists()) destination.length() else 0L
+        val partial = modelHelper.partialFile(context)
+        val alreadyOnDisk = if (partial.exists()) partial.length() else 0L
         val remainingBytes = (expectedSize - alreadyOnDisk).coerceAtLeast(0L)
         // 5% headroom for filesystem overhead, plus a 100 MB minimum so a tiny
         // remaining-bytes value still has reasonable elbow room for verification

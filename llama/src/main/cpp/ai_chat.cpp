@@ -650,8 +650,22 @@ Java_com_arm_aichat_internal_InferenceEngineImpl_generateNextToken(
     // Populate the batch with new token, then decode
     common_batch_clear(g_batch);
     common_batch_add(g_batch, new_token_id, current_position, {0}, true);
-    if (llama_decode(g_context, g_batch) != 0) {
-        LOGe("%s: llama_decode() failed for generated token", __func__);
+    const int decode_result = llama_decode(g_context, g_batch);
+    if (decode_result != 0) {
+        // Surface the failure to Kotlin as a thrown RuntimeException so the
+        // generation Flow rejects instead of completing silently. Returning
+        // nullptr alone is the EOG/stop-position signal; conflating it with
+        // decode failure would let the engine fall back to ModelReady and
+        // cache a truncated translation. Mirrors the int!=0 -> throw pattern
+        // used by processSystemPrompt / nativeProcessRawSuffix on the Kotlin side.
+        LOGe("%s: llama_decode() failed for generated token: %d", __func__, decode_result);
+        jclass runtimeException = env->FindClass("java/lang/RuntimeException");
+        if (runtimeException != nullptr) {
+            char msg[96];
+            snprintf(msg, sizeof(msg),
+                     "llama_decode() failed during generation: %d", decode_result);
+            env->ThrowNew(runtimeException, msg);
+        }
         return nullptr;
     }
 

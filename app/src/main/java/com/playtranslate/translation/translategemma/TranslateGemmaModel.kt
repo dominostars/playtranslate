@@ -16,8 +16,10 @@ import java.io.File
  * catalog so app updates can change the model version, mirror URL, or hashes
  * without code edits.
  *
- * The on-disk file is the source of truth for "is the model installed?" — we
- * deliberately don't track this in prefs so the file can be deleted out-of-band
+ * The verified on-disk file is the source of truth for "is the model installed?"
+ * — the downloader only places it at [file] after SHA-256 has matched the
+ * catalog (in-flight bytes live at [partialFile] until then). We deliberately
+ * don't track install state in prefs so the file can be deleted out-of-band
  * (cache-clearing utilities, manual /data inspection, etc.) without leaving the
  * UI in an inconsistent state.
  */
@@ -28,11 +30,14 @@ object TranslateGemmaModel : ModelHelper {
     override fun catalogEntry(ctx: Context): CatalogEntry? =
         LanguagePackCatalogLoader.entryForKey(ctx, catalogKey)
 
-    /** Absolute path where the GGUF lives. Auto-creates the parent dir. */
+    /** Absolute path where the verified GGUF lives. Auto-creates the parent dir. */
     override fun file(ctx: Context): File =
         File(ctx.noBackupFilesDir, "models/$FILENAME").also { it.parentFile?.mkdirs() }
 
-    /** True when the GGUF exists on disk and matches the catalog's expected size. */
+    /** True when the verified GGUF exists on disk and matches the catalog's
+     *  expected size. Because the downloader only renames into place after
+     *  SHA-256 passes, presence at expected size is sufficient proof of
+     *  integrity — there is no separate "verified" sentinel. */
     override fun isInstalled(ctx: Context): Boolean {
         val entry = catalogEntry(ctx) ?: return false
         val f = file(ctx)
@@ -45,10 +50,11 @@ object TranslateGemmaModel : ModelHelper {
     /** Human-readable size like "2.19 GB" — uses [humanSize] format. */
     override fun humanSize(ctx: Context): String = humanSize(expectedSize(ctx))
 
-    /** Best-effort delete. Returns true if the file no longer exists after the call. */
+    /** Best-effort delete of both the verified file and any leftover partial.
+     *  Returns true if neither file remains after the call. */
     override fun delete(ctx: Context): Boolean {
-        val f = file(ctx)
-        if (!f.exists()) return true
-        return f.delete()
+        val finalGone = file(ctx).let { if (!it.exists()) true else it.delete() }
+        val partialGone = partialFile(ctx).let { if (!it.exists()) true else it.delete() }
+        return finalGone && partialGone
     }
 }

@@ -40,8 +40,8 @@ object QwenModel : ModelHelper {
     override fun humanSize(ctx: Context): String = humanSize(expectedSize(ctx))
 
     override fun delete(ctx: Context): Boolean {
-        val f = file(ctx)
-        if (!f.exists()) return true
-        return f.delete()
+        val finalGone = file(ctx).let { if (!it.exists()) true else it.delete() }
+        val partialGone = partialFile(ctx).let { if (!it.exists()) true else it.delete() }
+        return finalGone && partialGone
     }
 }
