@@ -34,7 +34,7 @@ object AnkiCardOutputBuilder {
      */
     private fun pictureHtml(imageFilename: String?): String =
         if (imageFilename.isNullOrEmpty()) ""
-        else "<img src=\"$imageFilename\" style=\"max-width:100%;\">"
+        else "<img src=\"${htmlEscape(imageFilename)}\" style=\"max-width:100%;\">"
 
     /**
      * Builds outputs from a sentence sheet's current state. The caller
@@ -60,8 +60,10 @@ object AnkiCardOutputBuilder {
         // Falls back to the whole sentence when nothing is highlighted
         // so the field is non-empty (matters when a model uses
         // sortf=0 and EXPRESSION lands at the sort slot).
-        val expression = firstHighlighted?.word
-            ?: cardData.source.replace(Regex("[\\n\\r]+"), " ").trim()
+        val expression = htmlEscape(
+            firstHighlighted?.word
+                ?: cardData.source.replace(Regex("[\\n\\r]+"), " ").trim()
+        )
         // EXPRESSION_FURIGANA: per-kanji bracketed headword for fields
         // wrapped with `{{furigana:}}` (Lapis ExpressionFurigana,
         // Migaku Target Word, etc.). Empty when nothing is highlighted.
@@ -71,15 +73,16 @@ object AnkiCardOutputBuilder {
                 sourceLangId = cardData.sourceLangId,
             )
         }.orEmpty()
-        val reading = firstHighlighted?.reading.orEmpty()
+        val reading = htmlEscape(firstHighlighted?.reading.orEmpty())
         // DEFINITION: empty when nothing's highlighted. assembleNote's
         // sentence-mode fold (not yet implemented for this flow; see
         // plan §3 — left explicit "" so the WORDS_TABLE is what a user
         // would map their main definition field to instead).
         val definition = firstHighlighted?.meaning?.let { m ->
             m.lines().filter { it.isNotBlank() }
-                .joinToString("<br>") { it.trimStart() }
+                .joinToString("<br>") { htmlEscape(it.trimStart()) }
         }.orEmpty()
+        // starsString emits only ★ glyphs — safe by construction.
         val frequency = firstHighlighted?.let {
             SentenceAnkiHtmlBuilder.starsString(it.freqScore)
         }.orEmpty()
@@ -104,7 +107,7 @@ object AnkiCardOutputBuilder {
             highlightedWords = cardData.selectedWords,
             sourceLangId = cardData.sourceLangId,
         )
-        val translationHtml = cardData.target.replace(Regex("[\\n\\r]+"), "<br>")
+        val translationHtml = htmlEscape(cardData.target).replace(Regex("[\\n\\r]+"), "<br>")
         val sortedWords = if (cardData.selectedWords.isNotEmpty()) {
             cardData.words.sortedByDescending { it.word in cardData.selectedWords }
         } else cardData.words
@@ -163,22 +166,23 @@ object AnkiCardOutputBuilder {
     ): CardOutputs = CardOutputs(
         // EXPRESSION: plain headword text — for fields rendered raw
         // via `{{Expression}}` (Lapis vocab-card front, Hint, etc.).
-        expression = word,
+        expression = htmlEscape(word),
         // EXPRESSION_FURIGANA: per-kanji bracketed headword for fields
         // wrapped with `{{furigana:}}` (Lapis ExpressionFurigana,
         // Migaku Target Word, etc.).
         expressionFurigana = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
             word = word, reading = reading, sourceLangId = sourceLangId,
         ),
-        reading = reading,
+        reading = htmlEscape(reading),
         sentence = "",
         sentenceFurigana = "",
         sentenceTranslation = "",
         picture = pictureHtml(imageFilename),
         definition = definitionHtml,
         examples = examplesHtml,
+        // starsString emits only ★ glyphs — safe.
         frequency = SentenceAnkiHtmlBuilder.starsString(freqScore),
-        partOfSpeech = pos,
+        partOfSpeech = htmlEscape(pos),
         wordsTable = "",
         // Flag values for word-mode sends: VOCABULARY_CARD_FLAG fires
         // (Migaku/Lapis vocab-variant signal); sentence flags stay

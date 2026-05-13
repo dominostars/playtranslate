@@ -113,12 +113,12 @@ object SentenceAnkiHtmlBuilder {
             append("<div class=\"gl-back\">")
             if (imageFilename != null) {
                 append("<div style=\"text-align:center;margin:12px 0;\">")
-                append("<img src=\"$imageFilename\" style=\"max-width:100%;border-radius:6px;\">")
+                append("<img src=\"${htmlEscape(imageFilename)}\" style=\"max-width:100%;border-radius:6px;\">")
                 append("</div>")
             }
             append("<div style=\"text-align:center;font-size:1.5em;margin:12px 4px;line-height:2.2em;\">$furigana</div>")
             append("<div class=\"gl-secondary\" style=\"text-align:center;font-size:1.2em;margin:12px 4px;\">")
-            append(english.replace(Regex("[\\n\\r]+"), "<br>"))
+            append(htmlEscape(english).replace(Regex("[\\n\\r]+"), "<br>"))
             append("</div>")
             if (wordsHtml.isNotEmpty()) {
                 append("<hr>")
@@ -133,7 +133,16 @@ object SentenceAnkiHtmlBuilder {
         newlineAsBr: Boolean, highlightedWords: Set<String> = emptySet(),
         sourceLangId: SourceLangId = SourceLangId.JA
     ): String {
-        if (wordMap.isEmpty()) return text
+        if (wordMap.isEmpty()) {
+            // Even with no annotations, the output flows into Anki card
+            // markup — characters from the source text must be escaped.
+            val sb = StringBuilder(text.length)
+            for (c in text) {
+                if (c == '\n') sb.append(if (newlineAsBr) "<br>" else " ")
+                else sb.appendEscaped(c)
+            }
+            return sb.toString()
+        }
         val sortedWords = wordMap.entries
             .filter { it.key.isNotEmpty() }
             .sortedByDescending { it.key.length }
@@ -155,9 +164,10 @@ object SentenceAnkiHtmlBuilder {
                 if (isBold) sb.append("<span style=\"font-weight:800;\">")
                 val hasCjk = w.any { it in '\u4e00'..'\u9fff' || it in '\u3400'..'\u4dbf' }
                 if (useRuby && hasCjk && r.isNotEmpty() && r != w) {
-                    sb.append("<ruby>$w<rt>$r</rt></ruby>")
+                    sb.append("<ruby>").append(htmlEscape(w))
+                        .append("<rt>").append(htmlEscape(r)).append("</rt></ruby>")
                 } else {
-                    sb.append(w)
+                    sb.append(htmlEscape(w))
                 }
                 if (isBold) sb.append("</span>")
                 i += w.length
@@ -181,9 +191,10 @@ object SentenceAnkiHtmlBuilder {
                             val subHasCjk = sub.any { it in '\u4e00'..'\u9fff' || it in '\u3400'..'\u4dbf' }
                             if (isBold) sb.append("<span style=\"font-weight:800;\">")
                             if (subHasCjk && r.isNotEmpty() && r != sub) {
-                                sb.append("<ruby>$sub<rt>$r</rt></ruby>")
+                                sb.append("<ruby>").append(htmlEscape(sub))
+                                    .append("<rt>").append(htmlEscape(r)).append("</rt></ruby>")
                             } else {
-                                sb.append(sub)
+                                sb.append(htmlEscape(sub))
                             }
                             if (isBold) sb.append("</span>")
                             i = end
@@ -194,7 +205,7 @@ object SentenceAnkiHtmlBuilder {
                     if (deinflected) continue
                 }
             }
-            sb.append(c)
+            sb.appendEscaped(c)
             i++
         }
         return sb.toString()
@@ -236,10 +247,10 @@ object SentenceAnkiHtmlBuilder {
             }
             val hit = targets.firstOrNull { text.startsWith(it, i) }
             if (hit != null) {
-                sb.append("<b>").append(hit).append("</b>")
+                sb.append("<b>").append(htmlEscape(hit)).append("</b>")
                 i += hit.length
             } else {
-                sb.append(c)
+                sb.appendEscaped(c)
                 i++
             }
         }
@@ -405,7 +416,7 @@ object SentenceAnkiHtmlBuilder {
             while (j < text.length && (text[j] == '\n' || text[j] == '\r')) j++
             return j
         }
-        sb.append(c)
+        sb.appendEscaped(c)
         return i + 1
     }
 
@@ -442,7 +453,8 @@ object SentenceAnkiHtmlBuilder {
         for (part in Deinflector.splitFurigana(surface, reading)) {
             val r = part.reading
             if (r != null) {
-                sb.append(WBR).append(part.text).append('[').append(r).append(']').append(WBR)
+                sb.append(WBR).append(htmlEscape(part.text))
+                    .append('[').append(htmlEscape(r)).append(']').append(WBR)
             } else {
                 appendPlain(sb, part.text)
             }
@@ -474,7 +486,8 @@ object SentenceAnkiHtmlBuilder {
         val syllables = reading.trim().split(Regex("\\s+"))
         val hanziCount = word.count(::isKanjiChar)
         if (hanziCount != syllables.size) {
-            sb.append(WBR).append(word).append('[').append(reading).append(']').append(WBR)
+            sb.append(WBR).append(htmlEscape(word))
+                .append('[').append(htmlEscape(reading)).append(']').append(WBR)
             return
         }
         var si = 0
@@ -486,11 +499,12 @@ object SentenceAnkiHtmlBuilder {
         for (c in word) {
             if (isKanjiChar(c)) {
                 if (!prevWasBracket) sb.append(WBR)
-                sb.append(c).append('[').append(syllables[si]).append(']').append(WBR)
+                sb.appendEscaped(c).append('[')
+                    .append(htmlEscape(syllables[si])).append(']').append(WBR)
                 si++
                 prevWasBracket = true
             } else {
-                sb.append(c)
+                sb.appendEscaped(c)
                 prevWasBracket = false
             }
         }
@@ -536,11 +550,11 @@ object SentenceAnkiHtmlBuilder {
         reading: String,
         sourceLangId: SourceLangId = SourceLangId.JA,
     ): String {
-        if (reading.isEmpty()) return word
+        if (reading.isEmpty()) return htmlEscape(word)
         val isJa = sourceLangId == SourceLangId.JA
         val isZh = sourceLangId == SourceLangId.ZH || sourceLangId == SourceLangId.ZH_HANT
-        if (!isJa && !isZh) return word
-        if (!word.any(::isKanjiChar)) return word
+        if (!isJa && !isZh) return htmlEscape(word)
+        if (!word.any(::isKanjiChar)) return htmlEscape(word)
         val sb = StringBuilder()
         if (isJa) emitFuriganaParts(sb, word, reading)
         else emitPinyinParts(sb, word, reading)
@@ -580,7 +594,7 @@ object SentenceAnkiHtmlBuilder {
                 i++
                 while (i < text.length && (text[i] == '\n' || text[i] == '\r')) i++
             } else {
-                sb.append(c)
+                sb.appendEscaped(c)
                 i++
             }
         }
@@ -604,26 +618,31 @@ object SentenceAnkiHtmlBuilder {
         val sb = StringBuilder()
         words.forEach { entry ->
             val isHighlighted = entry.word in highlightedWords
+            val safeWord = htmlEscape(entry.word)
             if (isHighlighted) {
                 sb.append("<div ${styler("gl-hl-bg", "margin-bottom:14px;border-radius:6px;padding:8px 10px;")}>")
-                sb.append("<div ${styler("gl-hl", "")}><b>${entry.word}</b></div>")
+                sb.append("<div ${styler("gl-hl", "")}><b>").append(safeWord).append("</b></div>")
             } else {
                 sb.append("<div ${styler(null, "margin-bottom:14px;")}>")
-                sb.append("<div><b>${entry.word}</b></div>")
+                sb.append("<div><b>").append(safeWord).append("</b></div>")
             }
             if (entry.reading.isNotEmpty() || entry.freqScore > 0) {
                 sb.append("<div ${styler(null, "font-size:0.85em;")}>")
                 if (entry.reading.isNotEmpty()) {
-                    sb.append("<span ${styler("gl-hint", "")}>${entry.reading}</span>")
+                    sb.append("<span ${styler("gl-hint", "")}>")
+                        .append(htmlEscape(entry.reading)).append("</span>")
                 }
                 if (entry.freqScore > 0) {
+                    // starsString emits only the ★ glyph repeated, so it's
+                    // HTML-safe by construction.
                     sb.append(" <span ${styler(null, "color:#606060;")}>${starsString(entry.freqScore)}</span>")
                 }
                 sb.append("</div>")
             }
             val extra = if (isHighlighted) "margin-left:10px;font-weight:bold;" else "margin-left:10px;"
             entry.meaning.split("\n").filter { it.isNotBlank() }.forEach { line ->
-                sb.append("<div ${styler("gl-secondary", extra)}>$line</div>")
+                sb.append("<div ${styler("gl-secondary", extra)}>")
+                    .append(htmlEscape(line)).append("</div>")
             }
             sb.append("</div>")
         }

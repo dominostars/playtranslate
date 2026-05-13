@@ -1197,7 +1197,9 @@ class WordAnkiReviewSheet : DialogFragment() {
         append("<style>")
         append("body{margin:0;padding:0;}")
         append("</style>")
-        append("<div class=\"gl-front\" style=\"text-align:center;font-size:2.2em;padding:32px 16px;\">$word</div>")
+        append("<div class=\"gl-front\" style=\"text-align:center;font-size:2.2em;padding:32px 16px;\">")
+        append(htmlEscape(word))
+        append("</div>")
     }
 
     /**
@@ -1228,17 +1230,26 @@ class WordAnkiReviewSheet : DialogFragment() {
         append("<div class=\"gl-back\">")
         if (imageFilename != null) {
             append("<div style=\"text-align:center;margin:12px 0;\">")
-            append("<img src=\"$imageFilename\" style=\"max-width:100%;border-radius:6px;\">")
+            append("<img src=\"")
+            append(htmlEscape(imageFilename))
+            append("\" style=\"max-width:100%;border-radius:6px;\">")
             append("</div>")
         }
-        append("<div style=\"text-align:center;font-size:1.8em;padding:12px 4px;\">$word</div>")
+        append("<div style=\"text-align:center;font-size:1.8em;padding:12px 4px;\">")
+        append(htmlEscape(word))
+        append("</div>")
         if (reading.isNotEmpty()) {
-            append("<div style=\"text-align:center;font-size:1.1em;color:#888;\">$reading</div>")
+            append("<div style=\"text-align:center;font-size:1.1em;color:#888;\">")
+            append(htmlEscape(reading))
+            append("</div>")
         }
         if (pos.isNotEmpty()) {
-            append("<div style=\"text-align:center;font-size:0.85em;color:#888;\">$pos</div>")
+            append("<div style=\"text-align:center;font-size:0.85em;color:#888;\">")
+            append(htmlEscape(pos))
+            append("</div>")
         }
         if (freqScore > 0) {
+            // starsString emits only ★ glyphs — safe.
             val stars = SentenceAnkiHtmlBuilder.starsString(freqScore)
             append("<div style=\"text-align:center;font-size:0.9em;color:#888;margin-top:4px;\">$stars</div>")
         }
@@ -1253,7 +1264,7 @@ class WordAnkiReviewSheet : DialogFragment() {
             appendMoreExamplesHtml(classStyler)
         } else {
             val defHtml = fallbackDefinition.lines().filter { it.isNotBlank() }
-                .joinToString("<br>") { it.trimStart() }
+                .joinToString("<br>") { htmlEscape(it.trimStart()) }
             append("<div style=\"font-size:1.1em;margin:12px 4px;\">$defHtml</div>")
         }
         append("</div>")
@@ -1303,7 +1314,7 @@ class WordAnkiReviewSheet : DialogFragment() {
             sb.appendMoreExamplesHtml(styler)
         } else if (fallback.isNotBlank()) {
             val defHtml = fallback.lines().filter { it.isNotBlank() }
-                .joinToString("<br>") { it.trimStart() }
+                .joinToString("<br>") { htmlEscape(it.trimStart()) }
             sb.append("<div ${styler("gl-gloss", "")}>$defHtml</div>")
         }
         return sb.toString()
@@ -1334,7 +1345,7 @@ class WordAnkiReviewSheet : DialogFragment() {
                 .filter { (idx, _) -> idx !in removedSenses }
             if (visibleTarget.isEmpty()) {
                 val defHtml = fallback.lines().filter { it.isNotBlank() }
-                    .joinToString("<br>") { it.trimStart() }
+                    .joinToString("<br>") { htmlEscape(it.trimStart()) }
                 append("<div style=\"font-size:1.1em;margin:12px 4px;\">$defHtml</div>")
                 return
             }
@@ -1386,7 +1397,7 @@ class WordAnkiReviewSheet : DialogFragment() {
             // the last visible sense, but defensive: emit the fallback
             // so the card never goes empty.
             val defHtml = fallback.lines().filter { it.isNotBlank() }
-                .joinToString("<br>") { it.trimStart() }
+                .joinToString("<br>") { htmlEscape(it.trimStart()) }
             append("<div style=\"font-size:1.1em;margin:12px 4px;\">$defHtml</div>")
             return
         }
@@ -1449,12 +1460,6 @@ class WordAnkiReviewSheet : DialogFragment() {
             append("</div>")
         }
     }
-
-    private fun htmlEscape(s: String): String = s
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace("\"", "&quot;")
 
     // ── Send: sentence mode ──────────────────────────────────────────────────
 

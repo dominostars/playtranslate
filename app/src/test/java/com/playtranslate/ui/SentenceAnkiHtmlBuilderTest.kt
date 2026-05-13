@@ -473,6 +473,120 @@ class SentenceAnkiHtmlBuilderTest {
         )
     }
 
+    // ── HTML escaping (injection regression) ─────────────────────────────
+    // Translation backends (especially the on-device LLM) and OCR'd
+    // source text can contain `<`, `>`, `&`, or quote characters. These
+    // tests pin the contract that every external string flowing into
+    // card HTML — translation, source, dictionary glosses, headwords,
+    // readings — is escaped before interpolation. Without escaping,
+    // AnkiDroid's WebView renders `<script>` payloads live in custom
+    // note templates.
+
+    @Test fun `annotateText escapes HTML metacharacters in source text`() {
+        val result = SentenceAnkiHtmlBuilder.annotateText(
+            "a<b>c", wordMap = emptyMap(),
+            newlineAsBr = false, sourceLangId = SourceLangId.EN,
+        )
+        assertEquals("a&lt;b&gt;c", result)
+    }
+
+    @Test fun `annotateText escapes metacharacters inside a matched word's surface`() {
+        val result = SentenceAnkiHtmlBuilder.annotateText(
+            "<x>", mapOf("<x>" to ""),
+            newlineAsBr = false, sourceLangId = SourceLangId.EN,
+        )
+        assertEquals("&lt;x&gt;", result)
+    }
+
+    @Test fun `annotateText escapes metacharacters inside a ruby reading`() {
+        // Reading content is interpolated into <rt>; an unescaped `<` in
+        // reading content could break out of the ruby and inject markup.
+        val result = SentenceAnkiHtmlBuilder.annotateText(
+            "今天", mapOf("今天" to "j<n"),
+            newlineAsBr = false, sourceLangId = SourceLangId.ZH,
+        )
+        assertEquals("<ruby>今天<rt>j&lt;n</rt></ruby>", result)
+    }
+
+    @Test fun `buildSentencePlain escapes HTML metacharacters in non-highlighted text`() {
+        val result = SentenceAnkiHtmlBuilder.buildSentencePlain(
+            text = "a<script>b", words = emptyList(), highlightedWords = emptySet(),
+        )
+        assertEquals("a&lt;script&gt;b", result)
+    }
+
+    @Test fun `buildSentencePlain escapes metacharacters inside a highlighted bold span`() {
+        val result = SentenceAnkiHtmlBuilder.buildSentencePlain(
+            text = "<x>", words = emptyList(), highlightedWords = setOf("<x>"),
+        )
+        assertEquals("<b>&lt;x&gt;</b>", result)
+    }
+
+    @Test fun `buildSentenceFurigana escapes metacharacters in non-bracket characters`() {
+        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            "a<b>c", sourceLangId = SourceLangId.JA,
+        )
+        assertEquals("a&lt;b&gt;c", result)
+    }
+
+    @Test fun `buildExpressionFurigana escapes metacharacters in plain headword`() {
+        // Empty reading → bare word; must still escape.
+        val result = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
+            word = "<x>", reading = "", sourceLangId = SourceLangId.JA,
+        )
+        assertEquals("&lt;x&gt;", result)
+    }
+
+    @Test fun `buildExpressionFurigana escapes non-kanji headword on the EN path`() {
+        // Non-JA/ZH source — buildExpressionFurigana returns the word verbatim;
+        // must still escape.
+        val result = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
+            word = "<script>", reading = "irrelevant", sourceLangId = SourceLangId.EN,
+        )
+        assertEquals("&lt;script&gt;", result)
+    }
+
+    @Test fun `buildBackHtml escapes HTML metacharacters in translation text`() {
+        val result = SentenceAnkiHtmlBuilder.buildBackHtml(
+            japanese = "x", english = "Hello <script>alert(1)</script>",
+            words = emptyList(), imageFilename = null,
+            sourceLangId = SourceLangId.EN,
+        )
+        assertFalse(
+            "Raw <script> must not appear in card HTML: $result",
+            result.contains("<script>"),
+        )
+        assertTrue(result.contains("&lt;script&gt;"))
+    }
+
+    @Test fun `buildBackHtml escapes HTML metacharacters in image filename`() {
+        val result = SentenceAnkiHtmlBuilder.buildBackHtml(
+            japanese = "x", english = "y", words = emptyList(),
+            imageFilename = "a\"b.jpg", sourceLangId = SourceLangId.EN,
+        )
+        // Bare " inside src=" would close the attribute early; must escape.
+        assertFalse(result.contains("src=\"a\"b.jpg\""))
+        assertTrue(result.contains("src=\"a&quot;b.jpg\""))
+    }
+
+    @Test fun `buildWordsHtmlWith escapes HTML metacharacters in entry fields`() {
+        val entries = listOf(
+            SentenceAnkiHtmlBuilder.WordEntry(
+                word = "<x>", reading = "<r>", meaning = "<m>", freqScore = 0,
+            ),
+        )
+        val result = SentenceAnkiHtmlBuilder.buildWordsHtmlWith(
+            entries, highlightedWords = emptySet(), styler = inlineStyler,
+        )
+        assertTrue(result.contains("&lt;x&gt;"))
+        assertTrue(result.contains("&lt;r&gt;"))
+        assertTrue(result.contains("&lt;m&gt;"))
+        assertFalse(
+            "Raw < must not appear in word table HTML: $result",
+            result.contains("<x>") || result.contains("<r>") || result.contains("<m>"),
+        )
+    }
+
     @Test fun `ZH sentence furigana picks longest matching word at each position`() {
         // Defensive: if both 小心地 (3-char adverb) and 小心 (2-char
         // adjective) happen to be in the WordEntry list, longest-first

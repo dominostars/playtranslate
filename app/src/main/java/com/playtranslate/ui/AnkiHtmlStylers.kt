@@ -75,6 +75,35 @@ internal val inlineStyler: HtmlStyler = { cls, extra ->
  * alpha) match the v004 dark-mode palette closely enough for visual
  * continuity.
  */
+/**
+ * Escapes HTML metacharacters before interpolating external strings
+ * (translation backend output, OCR'd source text, dictionary glosses,
+ * user-entered fallback definitions) into Anki card markup. AnkiDroid
+ * renders fields in a WebView; without escaping, a `<` arriving from
+ * any of those sources can break layout or execute JS in custom note
+ * templates.
+ *
+ * Do NOT call on strings that are HTML by construction — the output of
+ * `annotateText`, `buildSentencePlain`, `buildSentenceFurigana`,
+ * `buildExpressionFurigana`, and `buildWordsHtmlWith` already escapes
+ * its inputs and emits safe markup around them.
+ */
+internal fun htmlEscape(s: String): String {
+    if (s.isEmpty()) return s
+    val sb = StringBuilder(s.length)
+    for (c in s) sb.appendEscaped(c)
+    return sb.toString()
+}
+
+internal fun StringBuilder.appendEscaped(c: Char): StringBuilder = when (c) {
+    '&' -> append("&amp;")
+    '<' -> append("&lt;")
+    '>' -> append("&gt;")
+    '"' -> append("&quot;")
+    '\'' -> append("&#39;")
+    else -> append(c)
+}
+
 internal val INLINE_STYLES: Map<String, String> = mapOf(
     // Per-sense layout
     "gl-sense"     to "margin:14px 4px;",
