@@ -286,7 +286,10 @@ class SentenceAnkiHtmlBuilderTest {
         assertEquals("取[と]<wbr>り<wbr>出[だ]<wbr>す", result)
     }
 
-    @Test fun `Sentence furigana leaves non-JA text untouched`() {
+    @Test fun `Sentence furigana ZH with empty words list passes hanzi through plain`() {
+        // Defensive: if no WordEntry list is supplied, the ZH path
+        // can't annotate anything and just emits source-canonical
+        // hanzi. Matches buildSentencePlain semantics.
         val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
             "今天", sourceLangId = SourceLangId.ZH
         )
@@ -323,5 +326,164 @@ class SentenceAnkiHtmlBuilderTest {
             word = "聞く", reading = "", sourceLangId = SourceLangId.JA,
         )
         assertEquals("聞く", result)
+    }
+
+    // ── ZH EXPRESSION furigana brackets (per-hanzi pinyin) ───────────────
+    // Mirror of the JA tests above for the Chinese path. CC-CEDICT
+    // readings arrive as whitespace-separated tone-marked pinyin
+    // (`ChineseDictionaryManager` normalises via PinyinFormatter), so a
+    // direct zip with hanzi positions is the natural alignment.
+
+    @Test fun `ZH expression furigana aligns pinyin per hanzi`() {
+        // 今天 + "jīn tiān" — clean 2-hanzi-2-syllable alignment. Adjacent
+        // hanzi share a single boundary `<wbr>` rather than emitting a
+        // doubled `<wbr><wbr>` between them.
+        val result = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
+            word = "今天", reading = "jīn tiān", sourceLangId = SourceLangId.ZH,
+        )
+        assertEquals("今[jīn]<wbr>天[tiān]", result)
+    }
+
+    @Test fun `ZH_HANT expression furigana also annotates`() {
+        // Traditional Chinese routes through the same emitter as
+        // simplified — the SourceLangId branch covers both.
+        val result = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
+            word = "今天", reading = "jīn tiān", sourceLangId = SourceLangId.ZH_HANT,
+        )
+        assertEquals("今[jīn]<wbr>天[tiān]", result)
+    }
+
+    @Test fun `ZH expression furigana falls through to bare word when reading empty`() {
+        val result = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
+            word = "今天", reading = "", sourceLangId = SourceLangId.ZH,
+        )
+        assertEquals("今天", result)
+    }
+
+    @Test fun `ZH expression furigana falls back to per-word bracket on syllable count mismatch`() {
+        // 好玩儿 is érhuà — 3 hanzi but CC-CEDICT gives 2 syllables
+        // ("hǎo wánr"). Per-character alignment isn't possible, so emit
+        // a single bracket spanning the whole word. Anki's
+        // `{{furigana:}}` filter still renders it — just as one ruby
+        // block instead of per-hanzi.
+        val result = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
+            word = "好玩儿", reading = "hǎo wánr", sourceLangId = SourceLangId.ZH,
+        )
+        assertEquals("好玩儿[hǎo wánr]", result)
+    }
+
+    @Test fun `ZH expression furigana passes non-hanzi headwords through unchanged`() {
+        val result = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
+            word = "hello", reading = "hello", sourceLangId = SourceLangId.ZH,
+        )
+        assertEquals("hello", result)
+    }
+
+    // ── ZH SENTENCE furigana brackets ────────────────────────────────────
+
+    @Test fun `ZH sentence furigana annotates each matched word`() {
+        // Greedy-longest-prefix walk over the WordEntry list: at i=0
+        // matches 今天; at i=2 matches 天气. Between the two emits we
+        // get a doubled `<wbr><wbr>` (each emit's leading + trailing)
+        // — functionally identical to single, just slightly noisy in
+        // raw HTML. Acceptable; matches the JA convention.
+        val words = listOf(
+            SentenceAnkiHtmlBuilder.WordEntry(word = "今天", reading = "jīn tiān", meaning = "today"),
+            SentenceAnkiHtmlBuilder.WordEntry(word = "天气", reading = "tiān qì", meaning = "weather"),
+        )
+        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            text = "今天天气", words = words, sourceLangId = SourceLangId.ZH,
+        )
+        assertEquals(
+            "今[jīn]<wbr>天[tiān]<wbr><wbr>天[tiān]<wbr>气[qì]",
+            result,
+        )
+    }
+
+    @Test fun `ZH sentence furigana wraps highlighted dict-form in bold`() {
+        val words = listOf(
+            SentenceAnkiHtmlBuilder.WordEntry(word = "今天", reading = "jīn tiān", meaning = "today"),
+            SentenceAnkiHtmlBuilder.WordEntry(word = "天气", reading = "tiān qì", meaning = "weather"),
+        )
+        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            text = "今天天气",
+            words = words,
+            highlightedWords = setOf("天气"),
+            sourceLangId = SourceLangId.ZH,
+        )
+        // `<b>` opens at the start of 天气, closes after 气. The
+        // bracket emit's leading `<wbr>` lands inside `<b>` — same
+        // shape as the JA bold test.
+        assertEquals(
+            "今[jīn]<wbr>天[tiān]<wbr><b><wbr>天[tiān]<wbr>气[qì]<wbr></b>",
+            result,
+        )
+    }
+
+    @Test fun `ZH sentence furigana passes punctuation through plain`() {
+        val words = listOf(
+            SentenceAnkiHtmlBuilder.WordEntry(word = "今天", reading = "jīn tiān", meaning = "today"),
+            SentenceAnkiHtmlBuilder.WordEntry(word = "你好", reading = "nǐ hǎo", meaning = "hello"),
+        )
+        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            text = "今天，你好。", words = words, sourceLangId = SourceLangId.ZH,
+        )
+        // Full-width punctuation (，。) emits character-by-character;
+        // it never matches a WordEntry so it stays bare.
+        assertEquals(
+            "今[jīn]<wbr>天[tiān]<wbr>，<wbr>你[nǐ]<wbr>好[hǎo]<wbr>。",
+            result,
+        )
+    }
+
+    @Test fun `ZH sentence furigana skips entries with empty reading`() {
+        // Defensive: a WordEntry with an empty reading isn't useful for
+        // annotation. The filter in buildSentenceFurigana drops it, so
+        // the hanzi pass through plain rather than getting a stray
+        // `[]` bracket.
+        val words = listOf(
+            SentenceAnkiHtmlBuilder.WordEntry(word = "今天", reading = "", meaning = "today"),
+        )
+        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            text = "今天", words = words, sourceLangId = SourceLangId.ZH,
+        )
+        assertEquals("今天", result)
+    }
+
+    @Test fun `ZH sentence furigana applies same reading at every occurrence of a surface`() {
+        // Pipeline invariant: WordEntries for ZH come from a Map keyed
+        // by surface (LastSentenceCache.lookupWords) and the lookup is
+        // surface-keyed without context (ChineseDictionaryManager.lookup).
+        // So a surface always resolves to one reading, and the walk's
+        // `firstOrNull` (offset-agnostic) is safe — both occurrences of
+        // 今天 in 今天今天 must get jīn tiān. This test locks in that
+        // invariant; if a future change introduces per-position
+        // readings (e.g., heteronym disambiguation), the walk needs an
+        // offset-indexed token list and this test will need a richer
+        // input model.
+        val words = listOf(
+            SentenceAnkiHtmlBuilder.WordEntry(word = "今天", reading = "jīn tiān", meaning = "today"),
+        )
+        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            text = "今天今天", words = words, sourceLangId = SourceLangId.ZH,
+        )
+        assertEquals(
+            "今[jīn]<wbr>天[tiān]<wbr><wbr>今[jīn]<wbr>天[tiān]",
+            result,
+        )
+    }
+
+    @Test fun `ZH sentence furigana picks longest matching word at each position`() {
+        // Defensive: if both 小心地 (3-char adverb) and 小心 (2-char
+        // adjective) happen to be in the WordEntry list, longest-first
+        // sort must win so 小心地 isn't truncated to 小心 + bare 地.
+        val words = listOf(
+            SentenceAnkiHtmlBuilder.WordEntry(word = "小心", reading = "xiǎo xīn", meaning = "careful"),
+            SentenceAnkiHtmlBuilder.WordEntry(word = "小心地", reading = "xiǎo xīn de", meaning = "carefully"),
+        )
+        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            text = "小心地", words = words, sourceLangId = SourceLangId.ZH,
+        )
+        assertEquals("小[xiǎo]<wbr>心[xīn]<wbr>地[de]", result)
     }
 }
