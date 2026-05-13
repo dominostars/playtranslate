@@ -402,9 +402,22 @@ if (GGML_CPU_ALL_VARIANTS)
             ggml_add_cpu_backend_variant(android_armv8.2_1    DOTPROD)
             ggml_add_cpu_backend_variant(android_armv8.2_2    DOTPROD FP16_VECTOR_ARITHMETIC)
             ggml_add_cpu_backend_variant(android_armv8.6_1    DOTPROD FP16_VECTOR_ARITHMETIC MATMUL_INT8)
-            ggml_add_cpu_backend_variant(android_armv9.0_1    DOTPROD MATMUL_INT8 FP16_VECTOR_ARITHMETIC SVE2)
-            ggml_add_cpu_backend_variant(android_armv9.2_1    DOTPROD MATMUL_INT8 FP16_VECTOR_ARITHMETIC SVE SME)
-            ggml_add_cpu_backend_variant(android_armv9.2_2    DOTPROD MATMUL_INT8 FP16_VECTOR_ARITHMETIC SVE SVE2 SME)
+            # PlayTranslate: armv9 (SVE2/SME) variants disabled 2026-05-14.
+            # vivo V2507A (iQOO Z10 Turbo Plus, Dimensity 9400+ / Cortex-X925,
+            # Android 16) loads android_armv9.0_1 at runtime and produces
+            # 256 tokens of "8888..." from Qwen 2.5 1.5B Q4_0; same APK + GGUF
+            # works on AYN Thor (SD 8 Gen 2 / Cortex-X3, loads armv8.6_1).
+            # KleidiAI is healthy on both (SME disabled, primary q4 = I8MM
+            # on iQOO), so the bug is in an SVE2-aware ggml inline kernel or
+            # the SVE2 path of CPU_REPACK. Disabling these variants forces
+            # SVE2-capable phones to fall back to android_armv8.6_1 (the same
+            # binary Thor uses), at a likely ~10-20% matmul slowdown vs a
+            # working SVE2 path. Re-enable individually after testing on a
+            # known-broken device (Dimensity 9400+ class). See
+            # memory/project_sme_armv9_2_bug.md for the full diagnostic trail.
+            # ggml_add_cpu_backend_variant(android_armv9.0_1    DOTPROD MATMUL_INT8 FP16_VECTOR_ARITHMETIC SVE2)
+            # ggml_add_cpu_backend_variant(android_armv9.2_1    DOTPROD MATMUL_INT8 FP16_VECTOR_ARITHMETIC SVE SME)
+            # ggml_add_cpu_backend_variant(android_armv9.2_2    DOTPROD MATMUL_INT8 FP16_VECTOR_ARITHMETIC SVE SVE2 SME)
         elseif (APPLE)
             ggml_add_cpu_backend_variant(apple_m1             DOTPROD)
             ggml_add_cpu_backend_variant(apple_m2_m3          DOTPROD MATMUL_INT8)
