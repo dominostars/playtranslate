@@ -32,10 +32,17 @@ data class DictionaryEntry(
  * is the pronunciation hint (hiragana for JA, pinyin for ZH, null for most
  * others). Either field may be null: pure-kana Japanese entries have no
  * [written], and Latin entries generally have no [reading].
+ *
+ * [hasPriority] is true when the source dictionary marks this form as
+ * preferred/common. For JMdict this maps to `ke_pri` being non-empty
+ * (ichi1/news1/nf01-48/etc.); other engines leave it false. The signal
+ * disambiguates entries like 決まる where one minor sense carries `uk`
+ * "usually kana" but the kanji form is the standard everyday spelling.
  */
 data class Headword(
     val written: String?,
-    val reading: String?
+    val reading: String?,
+    val hasPriority: Boolean = false,
 )
 
 data class Sense(
@@ -131,14 +138,28 @@ fun DictionaryEntry.headwordFor(query: String?): Headword? {
 }
 
 /**
- * True when any sense carries JMdict's "usually written using kana alone"
- * (uk) tag — surfaced as the friendly "Kana only" string by build_jmdict.py's
- * MISC_ABBREV map. UI surfaces use this to drop the kanji and present the
- * reading as the canonical headword.
+ * True when the entry's natural display is kana even though a kanji form
+ * exists. Requires BOTH:
+ *  1. At least one sense carries JMdict's "usually written using kana alone"
+ *     (uk) tag — surfaced as the friendly "Kana only" string by
+ *     build_jmdict.py's MISC_ABBREV map.
+ *  2. No kanji headword is marked as a priority/common form
+ *     ([Headword.hasPriority]). Entries like 決まる (sense 7's slang "to get
+ *     high" is uk-tagged but the kanji form 決まる carries ichi1+news1+nf14)
+ *     would mis-classify under the uk-tag check alone.
+ *
+ * For v1 packs (no `ke_pri` data, so `hasPriority` is always false), this
+ * degrades to the old uk-only behaviour — same misclassification as before,
+ * no crashes. v2+ packs get the tighter check.
  */
 val DictionaryEntry.isKanaOnly: Boolean
-    get() = senses.any { sense ->
-        sense.misc.any { it.equals("Kana only", ignoreCase = true) }
+    get() {
+        val hasUkSense = senses.any { sense ->
+            sense.misc.any { it.equals("Kana only", ignoreCase = true) }
+        }
+        if (!hasUkSense) return false
+        val anyPriorityKanji = headwords.any { it.written != null && it.hasPriority }
+        return !anyPriorityKanji
     }
 
 /**
@@ -157,18 +178,24 @@ data class HeadwordDisplay(val written: String, val reading: String?)
 
 /**
  * [surface] is the text the user actually saw — the OCR'd / clicked
- * source. When it matches one of the entry's kanji headwords, the
- * kana-only override is suppressed: the user engaged with the kanji
- * form (何故 in the wild), so the UI shows that with the kana as a
- * reading instead of collapsing to the bare kana (なぜ). Pass null
- * when no surface context is available (e.g. drag-flow lens fallbacks);
- * the override then fires as before.
+ * source. When it shares an ideographic character with one of the entry's
+ * kanji headwords, the kana-only override is suppressed: the user engaged
+ * with the kanji form (何故 in the wild), so the UI shows that with the
+ * kana as a reading instead of collapsing to the bare kana (なぜ). The
+ * check is char-level rather than exact-match so inflected verb / adjective
+ * surfaces (e.g. 決まっている for headword 決まる) still recognise that the
+ * source had kanji. Pass null when no surface context is available (e.g.
+ * drag-flow lens fallbacks); the override then fires as before.
  */
 fun DictionaryEntry.headwordDisplay(
     form: Headword?,
     surface: String? = null,
 ): HeadwordDisplay {
-    val surfaceIsKanji = surface != null && headwords.any { it.written == surface }
+    val surfaceIsKanji = surface != null && headwords.any { hw ->
+        hw.written?.any { c ->
+            Character.isIdeographic(c.code) && surface.contains(c)
+        } == true
+    }
     if (isKanaOnly && !surfaceIsKanji) {
         val kana = form?.reading?.takeIf { it.isNotBlank() }
             ?: headwords.firstNotNullOfOrNull { hw ->

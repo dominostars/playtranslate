@@ -83,6 +83,15 @@ class DictionaryManager private constructor(private val context: Context) {
     private val rankScoreSupport = WeakHashMap<SQLiteDatabase, Boolean>()
     private val rankScoreSupportLock = Any()
 
+    /** Per-handle capability cache for `headword.ke_pri`, parallel to
+     *  [rankScoreSupport]. Both columns were added together in the ja-v2
+     *  schema, but caching independently keeps each call site honest about
+     *  what it actually needs and survives any future divergence. When
+     *  ke_pri is absent (v1 packs), [buildEntry] leaves `Headword.hasPriority`
+     *  false — `isKanaOnly` then degrades to its uk-only behaviour. */
+    private val kePriSupport = WeakHashMap<SQLiteDatabase, Boolean>()
+    private val kePriSupportLock = Any()
+
     /** All access to [rankScoreSupport] — read AND write — happens inside
      *  the lock. WeakHashMap's `get` can internally expunge stale entries,
      *  so even reads mutate the structure; serializing every operation
@@ -94,6 +103,15 @@ class DictionaryManager private constructor(private val context: Context) {
             rankScoreSupport[db]?.let { return it }
             val supports = checkColumnExists(db, "reading", "rank_score")
             rankScoreSupport[db] = supports
+            return supports
+        }
+    }
+
+    private fun hasKePri(db: SQLiteDatabase): Boolean {
+        synchronized(kePriSupportLock) {
+            kePriSupport[db]?.let { return it }
+            val supports = checkColumnExists(db, "headword", "ke_pri")
+            kePriSupport[db] = supports
             return supports
         }
     }
@@ -511,11 +529,26 @@ class DictionaryManager private constructor(private val context: Context) {
             }
         }
 
-        val kanjiForms = mutableListOf<String>()
-        db.rawQuery(
-            "SELECT text FROM headword WHERE entry_id=? ORDER BY position",
-            arrayOf(idStr)
-        ).use { c -> while (c.moveToNext()) kanjiForms.add(c.getString(0)) }
+        // Kanji headwords. v2 packs carry `ke_pri` per form so we can mark
+        // common kanji forms as priority — the signal that lets `isKanaOnly`
+        // distinguish 決まる (priority kanji + minor uk sense → display kanji)
+        // from 何故 (no priority + uk sense → display kana). v1 packs lack the
+        // column; we degrade to "no priority known", which leaves `isKanaOnly`
+        // running its pre-v2 uk-only behaviour.
+        data class KanjiForm(val text: String, val hasPriority: Boolean)
+        val kanjiForms = mutableListOf<KanjiForm>()
+        val v2HeadwordSchema = hasKePri(db)
+        val kanjiSql = if (v2HeadwordSchema)
+            "SELECT text, ke_pri FROM headword WHERE entry_id=? ORDER BY position"
+        else
+            "SELECT text FROM headword WHERE entry_id=? ORDER BY position"
+        db.rawQuery(kanjiSql, arrayOf(idStr)).use { c ->
+            while (c.moveToNext()) {
+                val text = c.getString(0)
+                val hasPriority = v2HeadwordSchema && c.getString(1).orEmpty().isNotEmpty()
+                kanjiForms.add(KanjiForm(text, hasPriority))
+            }
+        }
 
         val readingForms = mutableListOf<String>()
         db.rawQuery(
@@ -525,7 +558,11 @@ class DictionaryManager private constructor(private val context: Context) {
 
         val headwords = if (kanjiForms.isNotEmpty()) {
             kanjiForms.mapIndexed { i, k ->
-                Headword(written = k, reading = readingForms.getOrNull(i) ?: readingForms.firstOrNull())
+                Headword(
+                    written = k.text,
+                    reading = readingForms.getOrNull(i) ?: readingForms.firstOrNull(),
+                    hasPriority = k.hasPriority,
+                )
             }
         } else {
             readingForms.map { Headword(written = null, reading = it) }
@@ -585,7 +622,7 @@ class DictionaryManager private constructor(private val context: Context) {
         if (senses.isEmpty()) return null
 
         return DictionaryEntry(
-            slug = kanjiForms.firstOrNull() ?: readingForms.firstOrNull() ?: idStr,
+            slug = kanjiForms.firstOrNull()?.text ?: readingForms.firstOrNull() ?: idStr,
             isCommon = isCommon,
             tags = emptyList(),
             jlpt = emptyList(),   // JMdict doesn't reliably carry JLPT levels
