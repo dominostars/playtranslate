@@ -561,6 +561,13 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("compact_overlay_icon", false)
         set(v) = sp.edit().putBoolean("compact_overlay_icon", v).apply()
 
+    /** Set to true once StatusBarManager.requestAddTileService reports the
+     *  PlayTranslate tile is added (or already added). Drives whether the
+     *  Settings "Add Quick Settings tile" row is offered. */
+    var quickTileAdded: Boolean
+        get() = sp.getBoolean("quick_tile_added", false)
+        set(v) = sp.edit().putBoolean("quick_tile_added", v).apply()
+
     /** Debug-only: forces isSingleScreen() to return true regardless of actual display count. */
     var debugForceSingleScreen: Boolean
         get() = sp.getBoolean(KEY_DEBUG_FORCE_SINGLE_SCREEN, false)

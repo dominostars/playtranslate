@@ -163,6 +163,9 @@ class SettingsRenderer(
     private val switchCompactIcon: MaterialSwitch = rowCompactIcon.findViewById(R.id.switchRowToggle)
     private val dividerCompactIcon: View = root.findViewById(R.id.dividerCompactIcon)
 
+    private val rowAddQuickTile: View = root.findViewById(R.id.rowAddQuickTile)
+    private val dividerAddQuickTile: View = root.findViewById(R.id.dividerAddQuickTile)
+
     private val overlayModeSection: View = root.findViewById(R.id.overlayModeSection)
     private val overlayModeToggleContainer: FrameLayout = root.findViewById(R.id.overlayModeToggleContainer)
 
@@ -377,14 +380,55 @@ class SettingsRenderer(
         }
         rowCompactIcon.setOnClickListener { switchCompactIcon.toggle() }
 
-        // Show compact row only when overlay icon is on
-        updateCompactIconVisibility()
+        setupAddQuickTileRow()
     }
 
-    private fun updateCompactIconVisibility() {
-        val showCompact = prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled(ctx)
-        rowCompactIcon.visibility = if (showCompact) View.VISIBLE else View.GONE
-        dividerCompactIcon.visibility = if (showCompact) View.VISIBLE else View.GONE
+    /** "Add Quick Settings tile" row — only present on API 33+ (where
+     *  [android.app.StatusBarManager.requestAddTileService] exists) and only
+     *  while the user hasn't already confirmed adding the tile (tracked in
+     *  [Prefs.quickTileAdded] from the request callback). Pre-Tiramisu and
+     *  post-add the row stays hidden, including its leading divider, so the
+     *  Minimize Icon row remains the last entry in the card. */
+    private fun setupAddQuickTileRow() {
+        val apiSupported = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU
+        val visible = apiSupported && !prefs.quickTileAdded
+        rowAddQuickTile.visibility = if (visible) View.VISIBLE else View.GONE
+        dividerAddQuickTile.visibility = if (visible) View.VISIBLE else View.GONE
+        if (!visible) return
+
+        rowAddQuickTile.findViewById<TextView>(R.id.tvRowTitle).text =
+            "Add Quick Settings tile"
+        val subtitle = rowAddQuickTile.findViewById<TextView>(R.id.tvRowSubtitle)
+        subtitle.text = "Toggle PlayTranslate from your status bar"
+        subtitle.visibility = View.VISIBLE
+        rowAddQuickTile.findViewById<ImageView>(R.id.ivRowIcon)
+            ?.setImageResource(R.drawable.ic_add)
+        rowAddQuickTile.setOnClickListener { requestAddQuickTile() }
+    }
+
+    @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.TIRAMISU)
+    private fun requestAddQuickTile() {
+        val statusBarManager = ctx.getSystemService(android.app.StatusBarManager::class.java)
+            ?: return
+        val component = android.content.ComponentName(ctx, PlayTranslateTileService::class.java)
+        val icon = android.graphics.drawable.Icon.createWithResource(ctx, R.drawable.ic_qs_tile)
+        val label = ctx.getString(R.string.tile_label)
+        statusBarManager.requestAddTileService(
+            component,
+            label,
+            icon,
+            ContextCompat.getMainExecutor(ctx),
+        ) { result ->
+            when (result) {
+                android.app.StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED,
+                android.app.StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED -> {
+                    prefs.quickTileAdded = true
+                    setupAddQuickTileRow()
+                }
+                // TILE_NOT_ADDED / error codes: keep the row visible so the
+                // user can try again.
+            }
+        }
     }
 
     /** Tints the on-screen-controls card when the overlay switch is off so
@@ -1723,7 +1767,6 @@ class SettingsRenderer(
     fun refreshOverlayIconSwitch() {
         switchOverlayIcon.isChecked =
             prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled(ctx)
-        updateCompactIconVisibility()
     }
 
     fun refreshCompactIconSwitch() {
