@@ -529,36 +529,36 @@ class MagnifierLens(
         }
 
         // -----------------------------------------------------------------
-        // Body: existing definitions ScrollView, full card width.
+        // Body: definitions ScrollView, occupies the full card area.
+        //   - Top padding clears the pill so the first row doesn't start
+        //     under it. With `clipToPadding = false`, scrolling reveals
+        //     the content sliding under the pill (the pill is drawn on
+        //     top of the ScrollView in the FrameLayout z-order).
+        //   - Horizontal padding sits on the inner `definitionsContent`
+        //     so the scrolling surface itself extends to the card's
+        //     left and right edges, while the rows stay inset.
         // -----------------------------------------------------------------
+        private val bodyHPaddingPx = dp(18f)
+        private val bodyPillSidePadPx = dp(26f)
+        private val bodyOuterSidePadPx = dp(12f)
+        /** Tiny horizontal buffer between the scroll view and the card's
+         *  inner edges, so the rounded corners don't graze the scrollbar
+         *  / content edges. */
+        private val bodyEdgeBufferPx = dp(2f)
         private val definitionsContent = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
+            // Asymmetric horizontal padding: -6dp on the left, +2dp on
+            // the right, so the text sits optically centered against the
+            // right-side scrollbar gutter.
+            setPadding(bodyHPaddingPx - dp(6f), 0, bodyHPaddingPx + dp(2f), 0)
         }
         private val definitionsScroll = ScrollView(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { gravity = Gravity.CENTER_VERTICAL }
             isVerticalScrollBarEnabled = true
             isFillViewport = false
+            clipToPadding = false
+            // Default pad: pill is at the top, so the bigger pad is on top.
+            setPadding(0, bodyPillSidePadPx, 0, bodyOuterSidePadPx)
             addView(definitionsContent)
-        }
-        private val bodyPaddingTopUnflipped = dp(30f)
-        private val bodyPaddingTopFlipped = dp(12f)
-        private val bodyPaddingBottomUnflipped = dp(12f)
-        private val bodyPaddingBottomFlipped = dp(30f)
-        private val bodyPaddingHorizontal = dp(18f)
-        /** Card body container. Holds the definitions scroll; padding-top is
-         *  30dp by default so the pill overhanging from above doesn't
-         *  collide with the meta row. Flips when the lens flips. */
-        private val bodyPanel = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(
-                bodyPaddingHorizontal, bodyPaddingTopUnflipped,
-                bodyPaddingHorizontal, bodyPaddingBottomUnflipped,
-            )
-            addView(definitionsScroll)
             visibility = GONE
         }
 
@@ -589,7 +589,7 @@ class MagnifierLens(
             // default selector that a Material-themed context might apply
             // to focusable views.
             background = null
-            addView(bodyPanel)
+            addView(definitionsScroll)
             addView(leftChip)
             addView(rightChip)
             addView(pillView)
@@ -610,22 +610,23 @@ class MagnifierLens(
             )
         }
 
-        /** Recompute layout params for the body panel, pill, and chips based
-         *  on [lensFlipped]. The pill sits on the card edge opposite the
-         *  arrow, and the chips top-align (or bottom-align when flipped)
-         *  with the pill so they share its vertical band. */
+        /** Recompute layout params for the definitions scroll, pill, and
+         *  chips based on [lensFlipped]. The pill sits on the card edge
+         *  opposite the arrow; the chips share its vertical center; the
+         *  scroll's larger top/bottom pad always faces the pill so the
+         *  first content row clears it. */
         private fun updateChromeLayout() {
-            // Body panel — full card width, lensH tall, positioned at
-            // bodyTopOffset within the view. Padding flips so the pad that
-            // clears the pill is always on the pill side.
-            val topPad = if (lensFlipped) bodyPaddingTopFlipped else bodyPaddingTopUnflipped
-            val bottomPad = if (lensFlipped) bodyPaddingBottomFlipped else bodyPaddingBottomUnflipped
-            bodyPanel.setPadding(bodyPaddingHorizontal, topPad, bodyPaddingHorizontal, bottomPad)
-            bodyPanel.layoutParams = LayoutParams(
-                cardW, lensH,
+            // Scroll view occupies the full card region. Its top/bottom
+            // padding flips with the lens so the larger pad (which clears
+            // the pill) always faces the pill side.
+            val scrollTopPad = if (lensFlipped) bodyOuterSidePadPx else bodyPillSidePadPx
+            val scrollBottomPad = if (lensFlipped) bodyPillSidePadPx else bodyOuterSidePadPx
+            definitionsScroll.setPadding(0, scrollTopPad, 0, scrollBottomPad)
+            definitionsScroll.layoutParams = LayoutParams(
+                cardW - 2 * bodyEdgeBufferPx, lensH,
                 Gravity.START or Gravity.TOP,
             ).apply {
-                marginStart = chipHaloXPx
+                marginStart = chipHaloXPx + bodyEdgeBufferPx
                 topMargin = bodyTopOffset
             }
 
@@ -746,11 +747,11 @@ class MagnifierLens(
             if (reading.isEmpty() || word.isEmpty()) return
             // The pill can grow to (at most) the inside-the-card-padding
             // width minus a safety margin. We don't have an authoritative
-            // visual budget, so cap at cardW - 2 × bodyPaddingHorizontal to
-            // leave breathing room on each side; the chip's visible disks
-            // sit ~36dp inside the card edge on each side anyway, so the
-            // pill comfortably owns the middle.
-            val available = (cardW - 2 * bodyPaddingHorizontal).toFloat()
+            // visual budget, so cap at cardW - 2 × bodyHPaddingPx to leave
+            // breathing room on each side; the chip's visible disks sit
+            // ~36dp inside the card edge on each side anyway, so the pill
+            // comfortably owns the middle.
+            val available = (cardW - 2 * bodyHPaddingPx).toFloat()
             pillWordSizingPaint.textSize = pillWordSp * density
             val wordWidth = pillWordSizingPaint.measureText(word)
             val fixed = wordWidth +
@@ -774,7 +775,7 @@ class MagnifierLens(
             if (data == null) {
                 if (mode == Mode.ZOOM) return
                 mode = Mode.ZOOM
-                bodyPanel.visibility = GONE
+                definitionsScroll.visibility = GONE
                 leftChip.visibility = GONE
                 rightChip.visibility = GONE
                 invalidate()
@@ -784,7 +785,7 @@ class MagnifierLens(
             setLabel(data.word, data.reading)
             populateDefinitions(data, label)
             definitionsScroll.scrollTo(0, 0)
-            bodyPanel.visibility = VISIBLE
+            definitionsScroll.visibility = VISIBLE
             // Chip visibility is owned by [attachInteractiveListeners] —
             // they only appear once the lens becomes sticky.
             invalidate()
@@ -795,7 +796,7 @@ class MagnifierLens(
             setLabel(word, reading)
             populateLoading()
             definitionsScroll.scrollTo(0, 0)
-            bodyPanel.visibility = VISIBLE
+            definitionsScroll.visibility = VISIBLE
             invalidate()
         }
 
