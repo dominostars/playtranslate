@@ -1,8 +1,10 @@
 package com.playtranslate
 
 import android.graphics.Rect
+import com.playtranslate.OcrManager
 import com.playtranslate.OcrManager.Companion.groupBoxesOnePass
 import com.playtranslate.language.TextOrientation
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -254,5 +256,41 @@ class OcrGroupingTest {
             texts = listOf("body 1", "body 2", "sidebar", "body 3"),
         )
         assertEquals(withoutLog, withLog)
+    }
+
+    // ── wouldGroup: per-line normalization invariants ────────────────────
+
+    @Test
+    fun wouldGroup_horizontal_positiveRectSmallerThanLineCount_keepsSizeGuard() {
+        // Degenerate-looking input: positive height but smaller than the
+        // reported lineCount. Integer division would collapse per-line
+        // height to 0 and the `lo <= 0 → compatible` short-circuit in the
+        // block check would silently bypass the size-ratio guard. The
+        // coerce-to-1 invariant keeps the guard active so a tiny rect
+        // doesn't group with a much larger aligned neighbor.
+        val tiny = Rect(0, 0, 200, 3)        // h=3
+        val normal = Rect(0, 10, 200, 60)    // h=50, dy=7 from tiny.bottom
+        assertFalse(
+            "positive multi-line rect of height 3 must not group with a 50px neighbor",
+            OcrManager.wouldGroup(
+                tiny, normal, TextOrientation.HORIZONTAL,
+                aLineCount = 4, bLineCount = 1,
+            ),
+        )
+    }
+
+    @Test
+    fun wouldGroup_vertical_positiveRectSmallerThanLineCount_keepsSizeGuard() {
+        // Mirror of the horizontal case for vertical text (column-count
+        // normalization on the width axis).
+        val tiny = Rect(0, 0, 3, 200)        // w=3
+        val normal = Rect(10, 0, 60, 200)    // w=50, dx=7 from tiny.right
+        assertFalse(
+            "positive multi-column rect of width 3 must not group with a 50px neighbor",
+            OcrManager.wouldGroup(
+                tiny, normal, TextOrientation.VERTICAL,
+                aLineCount = 4, bLineCount = 1,
+            ),
+        )
     }
 }

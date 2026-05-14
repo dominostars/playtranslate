@@ -1,6 +1,7 @@
 package com.playtranslate
 
 import android.graphics.Rect
+import com.playtranslate.language.TextOrientation
 import com.playtranslate.ui.TranslationOverlayView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -39,11 +40,15 @@ class ClassificationTest {
         bounds: Rect,
         sourceText: String = "",
         dirty: Boolean = false,
+        lineCount: Int = 1,
+        orientation: TextOrientation = TextOrientation.HORIZONTAL,
     ) = TranslationOverlayView.TextBox(
         translatedText = "",
         bounds = bounds,
         sourceText = sourceText,
         dirty = dirty,
+        lineCount = lineCount,
+        orientation = orientation,
     )
 
     private fun ocrResult(
@@ -298,6 +303,122 @@ class ClassificationTest {
         assertEquals(2, result.farOcrGroups.size)
     }
 
+    @Test
+    fun classify_proximity_growthDirection_singleCachedMultiLineFresh_matchesAndSuppresses() {
+        // Cached single-line "「あらすじ" then fresh 2-line continuation
+        // revealed below. Per-line normalization applies (bLineCount >
+        // aLineCount), the size-ratio cap that would otherwise reject
+        // the pairing on stacked-line height falls away, and the cached
+        // box is stale-marked. The fresh group is intentionally NOT
+        // queued — in pinhole mode the cached region is bg-filled
+        // before OCR, so the fresh rect is only the new lines visible
+        // this cycle, not the full paragraph. Caching that partial as
+        // a replacement would then bg-fill it next cycle and prevent
+        // OCR from ever seeing the full paragraph. Suppression leaves
+        // the region unblocked next cycle so within-frame grouping can
+        // produce a single merged placeholder. See the "near existing
+        // overlay" rationale in classifyOcrResults.
+        val cachedBounds = Rect(0, 0, 200, 50)            // 1 line, h=50
+        val freshBounds = Rect(0, 60, 200, 185)           // 2 lines, h=125
+        val ocr = OcrManager.OcrResult(
+            fullText = "",
+            segments = emptyList(),
+            groupTexts = listOf("continuation"),
+            groupBounds = listOf(freshBounds),
+            groupLineCounts = listOf(2),
+        )
+        val result = classifyOcrResults(
+            ocrResult = ocr,
+            boxes = listOf(box(cachedBounds, sourceText = "「あらすじ", lineCount = 1)),
+            ocrBitmapRects = listOf(cachedBounds),
+            coords = identityCoords,
+        )
+        assertEquals(
+            "growth-direction paragraph reveal must stale the cached box",
+            setOf(0), result.staleOverlayIndices,
+        )
+        assertTrue(
+            "fresh group must be suppressed from far so next cycle can re-OCR the full paragraph",
+            result.farOcrGroups.isEmpty(),
+        )
+    }
+
+    @Test
+    fun classify_proximity_shrinkDirection_multiLineCachedSingleLineFresh_doesNotMatch() {
+        // Cached 3-line dialogue with an unrelated single-line label
+        // appearing just below it. Geometrically this is symmetric to the
+        // growth case (per-line heights match, alignment matches, small
+        // gap), but it is far more likely to be adjacent unrelated text
+        // than a one-line continuation of a cached multi-line paragraph
+        // — so the proximity check must fall back to raw heights here
+        // and reject. The ratio (150 vs 50 = 2.0) exceeds the 0.50
+        // cross-frame cap, leaving the cached translation visible and
+        // queuing the fresh text as its own far placeholder.
+        val cachedBounds = Rect(0, 0, 200, 150)           // 3 lines, h=150
+        val freshBounds = Rect(0, 160, 200, 210)          // 1 line, h=50
+        val ocr = OcrManager.OcrResult(
+            fullText = "",
+            segments = emptyList(),
+            groupTexts = listOf("unrelated label"),
+            groupBounds = listOf(freshBounds),
+            groupLineCounts = listOf(1),
+        )
+        val result = classifyOcrResults(
+            ocrResult = ocr,
+            boxes = listOf(box(cachedBounds, sourceText = "three line dialogue", lineCount = 3)),
+            ocrBitmapRects = listOf(cachedBounds),
+            coords = identityCoords,
+        )
+        assertTrue(
+            "shrink-direction adjacency must NOT stale the cached box",
+            result.staleOverlayIndices.isEmpty(),
+        )
+        assertEquals(
+            "fresh single-line must be queued as its own far placeholder",
+            1, result.farOcrGroups.size,
+        )
+        assertEquals("unrelated label", result.farOcrGroups[0].text)
+    }
+
+    @Test
+    fun classify_proximity_orientationMismatch_fallsBackToRawHeights() {
+        // A cached vertical 1-column box (think single tall glyph)
+        // paired with a fresh horizontal 3-row group whose per-row
+        // height coincidentally matches the cached glyph height would
+        // falsely match under per-line normalization — aH=50, bH=50,
+        // ratio 0 — because TextBox.lineCount is in the wrap-axis
+        // sense (columns for vertical) and would be interpreted as
+        // rows by wouldGroup's horizontal path. The orientation-match
+        // guard forces this case to raw heights (50 vs 150, ratio 2.0)
+        // so the size-ratio cap correctly rejects.
+        val cachedBounds = Rect(0, 0, 50, 50)              // Vertical 1-column, h=50
+        val freshBounds = Rect(0, 60, 100, 210)            // Horizontal 3-row, h=150
+        val ocr = OcrManager.OcrResult(
+            fullText = "",
+            segments = emptyList(),
+            groupTexts = listOf("unrelated horiz text"),
+            groupBounds = listOf(freshBounds),
+            groupLineCounts = listOf(3),
+        )
+        val result = classifyOcrResults(
+            ocrResult = ocr,
+            boxes = listOf(box(
+                cachedBounds, sourceText = "縦", lineCount = 1,
+                orientation = TextOrientation.VERTICAL,
+            )),
+            ocrBitmapRects = listOf(cachedBounds),
+            coords = identityCoords,
+        )
+        assertTrue(
+            "cross-orientation proximity must not match via per-line normalization",
+            result.staleOverlayIndices.isEmpty(),
+        )
+        assertEquals(
+            "fresh group falls through to far placeholder",
+            1, result.farOcrGroups.size,
+        )
+    }
+
     // ── classifyOcrResults: defensive index guards ───────────────────────
 
     @Test
@@ -361,6 +482,69 @@ class ClassificationTest {
             result.staleOverlayIndices.isEmpty(),
         )
         assertEquals(1, result.farOcrGroups.size)
+    }
+
+    @Test
+    fun classify_farCoalesce_orientationMismatch_doesNotMerge() {
+        // Two OCR groups in one pass: a vertical 1-column group and an
+        // adjacent horizontal 3-row group whose per-row width matches
+        // the vertical column width. Per-line normalization without an
+        // orientation guard would interpret the horizontal row count
+        // as a vertical column count and falsely coalesce them,
+        // producing a single FarGroup with VERTICAL orientation that
+        // would render the horizontal content along the wrong axis.
+        // The hard-skip in the coalesce predicate prevents this even
+        // before wouldGroup runs.
+        val verticalBounds = Rect(0, 0, 50, 200)        // 1-column, w=50
+        val horizontalBounds = Rect(60, 0, 210, 150)    // 3-row, w=150
+        val ocr = OcrManager.OcrResult(
+            fullText = "",
+            segments = emptyList(),
+            groupTexts = listOf("縦", "horiz lines"),
+            groupBounds = listOf(verticalBounds, horizontalBounds),
+            groupLineCounts = listOf(1, 3),
+            groupOrientations = listOf(TextOrientation.VERTICAL, TextOrientation.HORIZONTAL),
+        )
+        val result = classifyOcrResults(
+            ocrResult = ocr,
+            boxes = emptyList(),
+            ocrBitmapRects = emptyList(),
+            coords = identityCoords,
+        )
+        assertEquals(
+            "cross-orientation groups must not coalesce",
+            2, result.farOcrGroups.size,
+        )
+        assertEquals(TextOrientation.VERTICAL, result.farOcrGroups[0].orientation)
+        assertEquals(TextOrientation.HORIZONTAL, result.farOcrGroups[1].orientation)
+    }
+
+    // ── classifyOcrResults: far-group coalesce ───────────────────────────
+
+    @Test
+    fun classify_farCoalesce_inlineMergeThenBlock_lineCountTracksRowsNotMerges() {
+        // Regression: an inline-coalesced FarGroup must not inflate
+        // lineCount, otherwise the next block-coalesce attempt fails the
+        // per-line size-ratio gate in wouldGroup. Reproduces typewriter-
+        // style fragment splitting on one row followed by a real next-row
+        // continuation in the same OCR pass.
+        //
+        // Row 1 left half:  (0, 0, 100, 50)
+        // Row 1 right half: (110, 0, 200, 50)  — inline-coalesces with left
+        // Row 2:            (0, 60, 200, 110)  — block-coalesces onto row 1
+        val result = classifyOcrResults(
+            ocrResult = ocrResult(
+                "A" to Rect(0, 0, 100, 50),
+                "B" to Rect(110, 0, 200, 50),
+                "C" to Rect(0, 60, 200, 110),
+            ),
+            boxes = emptyList(),
+            ocrBitmapRects = emptyList(),
+            coords = identityCoords,
+        )
+        assertEquals(1, result.farOcrGroups.size)
+        assertEquals("A B C", result.farOcrGroups[0].text)
+        assertEquals(2, result.farOcrGroups[0].lineCount)
     }
 
     // ── classifyOcrResults: mixed end-to-end ─────────────────────────────
@@ -476,6 +660,31 @@ class ClassificationTest {
         )
         assertEquals(
             "box 1 has no bitmapRect, cascade must silently skip it",
+            setOf(0), result,
+        )
+    }
+
+    @Test
+    fun cascade_multiLineStaleAndSingleLineNeighbor_doesNotAbsorb() {
+        // A stale 3-line cached box and an adjacent single-line cached
+        // box of the same font with a small vertical gap must NOT
+        // cascade. They were already kept apart by within-frame
+        // grouping, so cascade has no fresh-OCR replacement evidence
+        // and absorbing the neighbor would remove a still-valid
+        // translation. The raw-height ratio (~2.0 here) is the
+        // implicit guard — per-line normalization would tear it down.
+        val staleBounds = Rect(0, 0, 200, 150)        // 3 lines, h=150
+        val neighborBounds = Rect(0, 160, 200, 210)   // 1 line, h=50, dy=10
+        val result = cascadeStaleRemovals(
+            initialStale = setOf(0),
+            boxes = listOf(
+                box(staleBounds, lineCount = 3),
+                box(neighborBounds, lineCount = 1),
+            ),
+            ocrBitmapRects = listOf(staleBounds, neighborBounds),
+        )
+        assertEquals(
+            "multi-line stale must not absorb separate single-line neighbor",
             setOf(0), result,
         )
     }

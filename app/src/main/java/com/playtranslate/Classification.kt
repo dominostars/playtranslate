@@ -143,6 +143,7 @@ fun classifyOcrResults(
         val ocrFullRect = coords.ocrToBitmap(ocrBound)
         var nearExisting = false
         val orient = ocrResult.groupOrientations.getOrElse(ocrIdx) { TextOrientation.HORIZONTAL }
+        val ocrLineCount = ocrResult.groupLineCounts.getOrElse(ocrIdx) { 1 }
         for (boxIdx in boxes.indices) {
             if (boxIdx >= ocrBitmapRects.size) continue
             if (boxes[boxIdx].dirty) continue
@@ -151,38 +152,121 @@ fun classifyOcrResults(
             // state against a fresh OCR rect. Substantial overlap is evidence
             // the two represent the same on-screen region (typewriter reveal,
             // partial occlusion) even when heights diverge.
-            if (OcrManager.wouldGroup(
-                    ocrBitmapRects[boxIdx], ocrFullRect, orient,
+            //
+            // Per-line normalization applies asymmetrically — only when the
+            // fresh side has *more* lines than the cached side (paragraph
+            // growth: cached single line + freshly-revealed multi-line
+            // continuation). The reverse (cached multi-line + adjacent
+            // fresh single-line) is geometrically identical to the legit
+            // case but is far more likely to be unrelated text below the
+            // cached paragraph than a one-line continuation of it. In
+            // pinhole mode the cached region is filled with bg before OCR,
+            // so fresh text relative to a cached paragraph is almost always
+            // *new lines being revealed*, not fewer lines becoming
+            // adjacent. Falling back to raw heights for the shrink
+            // direction preserves pre-fix behavior there (the cached
+            // translation stays, the new adjacent text gets its own
+            // placeholder via the far path).
+            val boxRect = ocrBitmapRects[boxIdx]
+            val boxLineCount = boxes[boxIdx].lineCount
+            // Per-line normalization only applies when orientations agree
+            // — TextBox.lineCount is in the wrap-axis sense (rows for
+            // horizontal, columns for vertical), so feeding a vertical
+            // cached column-count into wouldGroup's horizontal path (or
+            // vice versa) would normalize along the wrong axis. Falling
+            // back to raw heights is safe: cross-orientation rect shapes
+            // are geometrically dissimilar enough that the size-ratio
+            // gate rejects on raw dimensions almost always.
+            //
+            // Strict `>` is deliberate — equal line counts (2-line cached
+            // ↔ 2-line fresh, e.g. an in-place paragraph update) take the
+            // raw path, which gives looser vgap/align thresholds (raw
+            // refH = full extent vs per-line refH = half) and absorbs
+            // small bbox drift across cycles without splitting.
+            val orientMatch = boxes[boxIdx].orientation == orient
+            val growthDirection = orientMatch && ocrLineCount > boxLineCount
+            val aLn = if (growthDirection) boxLineCount else 1
+            val bLn = if (growthDirection) ocrLineCount else 1
+            val matched = OcrManager.wouldGroup(
+                boxRect, ocrFullRect, orient,
+                mode = OcrManager.Companion.GroupingMode.CROSS_FRAME_SAME_REGION,
+                aLineCount = aLn,
+                bLineCount = bLn,
+            )
+            if (OcrManager.instance.debugLogGroupingEnabled) {
+                val decision = OcrManager.groupDecision(
+                    boxRect, ocrFullRect, orient,
                     mode = OcrManager.Companion.GroupingMode.CROSS_FRAME_SAME_REGION,
-                )) {
+                    aLineCount = aLn,
+                    bLineCount = bLn,
+                )
+                val verdict = if (matched) "MATCH" else "MISS"
+                val boxSnippet = boxes[boxIdx].sourceText.take(24).replace('\n', ' ')
+                val ocrSnippet = ocrText.take(24).replace('\n', ' ')
+                android.util.Log.d(
+                    "DetectionLog",
+                    "[xf:${orient.name[0]}] $verdict box[$boxIdx]=${OcrManager.rectStr(boxRect)} " +
+                        "\"$boxSnippet\" ocr[$ocrIdx]=${OcrManager.rectStr(ocrFullRect)} " +
+                        "\"$ocrSnippet\" :: ${decision.reason}"
+                )
+            }
+            if (matched) {
                 nearExisting = true
                 staleOverlayIndices.add(boxIdx)
             }
         }
 
         // 3. Far: brand-new text with no nearby existing overlay.
+        //    Proximity-matched groups are intentionally NOT queued here
+        //    — in pinhole mode the cached region is bg-filled before
+        //    OCR, so a fresh OCR rect represents only the new content
+        //    visible this cycle, not the full paragraph. Queuing that
+        //    partial as a replacement would cache an incomplete
+        //    placeholder; the next cycle would then bg-fill the partial
+        //    region too, so OCR could never see the full content
+        //    afterwards. Suppressing the enqueue (with the cached box
+        //    staled) leaves the region unblocked next cycle, where OCR
+        //    sees the full paragraph and within-frame grouping merges
+        //    it into one placeholder. One blank-flicker cycle is the
+        //    cost of converging to the correct merged translation.
+        //
         //    But: if this group would naturally OCR-group with an
-        //    already-queued far entry, coalesce into it instead of queueing
-        //    a separate placeholder. This handles typewriter-style updates
-        //    where OCR splits "Begin typewriter text end typewriter text"
-        //    into two groups: the first content-matches the cached box and
-        //    queues a same-position far placeholder; the second has no
-        //    near-existing neighbor (the cached box was just removed via
-        //    contentMatchRemovals and is skipped above), so it'd otherwise
-        //    render as a separate fragment. Coalescing yields one merged
-        //    placeholder spanning both, matching what a single un-split
-        //    OCR group would have produced.
+        //    already-queued far entry, coalesce into it instead of
+        //    queueing a separate placeholder. This handles typewriter-
+        //    style updates where OCR splits "Begin typewriter text end
+        //    typewriter text" into two groups: the first content-matches
+        //    the cached box and queues a same-position far placeholder;
+        //    the second has no near-existing neighbor (the cached box
+        //    was just removed via contentMatchRemovals and is skipped
+        //    above), so it'd otherwise render as a separate fragment.
+        //    Coalescing yields one merged placeholder spanning both,
+        //    matching what a single un-split OCR group would have
+        //    produced.
         //
         //    The proximity test reuses the same wouldGroup heuristic OCR
-        //    uses for its own intra-frame grouping, applied to bitmap-space
-        //    rects. Distant text (separate paragraphs / unrelated regions)
-        //    fails wouldGroup and stays as separate far entries.
+        //    uses for its own intra-frame grouping, applied to bitmap-
+        //    space rects. Distant text (separate paragraphs / unrelated
+        //    regions) fails wouldGroup and stays as separate far entries.
         if (!nearExisting) {
-            val lc = ocrResult.groupLineCounts.getOrElse(ocrIdx) { 1 }
+            val lc = ocrLineCount
             val align = ocrResult.groupAlignments.getOrElse(ocrIdx) { TextAlignment.LEFT }
             val coalesceIdx = farOcrGroups.indexOfFirst { existing ->
+                // Hard-skip cross-orientation candidates. Unlike the
+                // proximity path (which falls back to raw heights on
+                // orientation mismatch and merely risks a recoverable
+                // stale-mark), a successful coalesce permanently merges
+                // two rects into a single FarGroup with one orientation
+                // field — half the merged content would then render
+                // along the wrong axis. Coalesce is the call site where
+                // the orientation choice has rendering side-effects, so
+                // the more conservative gate is appropriate here.
+                if (existing.orientation != orient) return@indexOfFirst false
                 val existingBitmapRect = coords.ocrToBitmap(existing.bounds)
-                OcrManager.wouldGroup(existingBitmapRect, ocrFullRect, existing.orientation)
+                OcrManager.wouldGroup(
+                    existingBitmapRect, ocrFullRect, existing.orientation,
+                    aLineCount = existing.lineCount,
+                    bLineCount = lc,
+                )
             }
             if (coalesceIdx >= 0) {
                 val existing = farOcrGroups[coalesceIdx]
@@ -191,6 +275,30 @@ fun classifyOcrResults(
                 // are not the same paragraph — drop to LEFT unless both already
                 // agreed on CENTER, so we never falsely center a mixed merge.
                 val mergedAlign = if (existing.alignment == align) align else TextAlignment.LEFT
+                // Inline merges (same row for horizontal, same column for
+                // vertical) don't add a new line — they widen an existing
+                // one. Mirror wouldGroup's sameLine/sameColumn check via
+                // center-axis overlap. Summing unconditionally would
+                // over-state lineCount, and downstream code (proximity
+                // wouldGroup's per-line normalization, placeholder rendering)
+                // would then under-scale per-line dimension and reject
+                // legitimate continuations.
+                val isInlineMerge = if (existing.orientation == TextOrientation.VERTICAL) {
+                    val aCx = (existing.bounds.left + existing.bounds.right) / 2
+                    val bCx = (ocrBound.left + ocrBound.right) / 2
+                    bCx in existing.bounds.left..existing.bounds.right ||
+                        aCx in ocrBound.left..ocrBound.right
+                } else {
+                    val aCy = (existing.bounds.top + existing.bounds.bottom) / 2
+                    val bCy = (ocrBound.top + ocrBound.bottom) / 2
+                    bCy in existing.bounds.top..existing.bounds.bottom ||
+                        aCy in ocrBound.top..ocrBound.bottom
+                }
+                val mergedLineCount = if (isInlineMerge) {
+                    maxOf(existing.lineCount, lc)
+                } else {
+                    existing.lineCount + lc
+                }
                 farOcrGroups[coalesceIdx] = FarGroup(
                     text = existing.text + separator + ocrText,
                     bounds = Rect(
@@ -199,7 +307,7 @@ fun classifyOcrResults(
                         maxOf(existing.bounds.right, ocrBound.right),
                         maxOf(existing.bounds.bottom, ocrBound.bottom),
                     ),
-                    lineCount = existing.lineCount + lc,
+                    lineCount = mergedLineCount,
                     orientation = existing.orientation,
                     alignment = mergedAlign,
                 )
@@ -248,6 +356,13 @@ fun cascadeStaleRemovals(
             for (removeIdx in cascadedRemovals.toSet()) {
                 if (removeIdx >= ocrBitmapRects.size) continue
                 val orient = boxes[removeIdx].orientation
+                // Deliberately *no* aLineCount / bLineCount here. Cascade
+                // compares two cached-overlay rects that the within-frame
+                // grouper already chose to keep separate. Per-line
+                // normalization would make a stale multi-line box absorb
+                // an unrelated single-line neighbor of the same font with
+                // a small gap — a false positive with no replacement
+                // evidence, since neither rect comes from fresh OCR.
                 if (OcrManager.wouldGroup(ocrBitmapRects[removeIdx], ocrBitmapRects[i], orient)) {
                     cascadedRemovals.add(i)
                     expanded = true
