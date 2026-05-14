@@ -899,7 +899,7 @@ class SettingsRenderer(
             BackendQuality.Bad    -> ctx.getString(R.string.tr_service_quality_bad)    to Tone.Danger
             BackendQuality.Okay   -> ctx.getString(R.string.tr_service_quality_okay)   to null
             BackendQuality.Good   -> ctx.getString(R.string.tr_service_quality_good)   to null
-            BackendQuality.Better -> ctx.getString(R.string.tr_service_quality_better) to Tone.Accent
+            BackendQuality.Better -> ctx.getString(R.string.tr_service_quality_better) to null
         }
         appendMaybeColored(builder, qualityText, qualityTone)
 
@@ -908,7 +908,7 @@ class SettingsRenderer(
             val (speedText, speedTone) = when (speed) {
                 BackendSpeed.VerySlow -> ctx.getString(R.string.tr_service_speed_very_slow) to Tone.Danger
                 BackendSpeed.Slow     -> ctx.getString(R.string.tr_service_speed_slow)      to Tone.Warning
-                BackendSpeed.Fast     -> ctx.getString(R.string.tr_service_speed_fast)      to Tone.Accent
+                BackendSpeed.Fast     -> ctx.getString(R.string.tr_service_speed_fast)      to null
             }
             appendMaybeColored(builder, speedText, speedTone)
         }

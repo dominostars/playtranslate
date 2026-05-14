@@ -111,6 +111,7 @@
     <string name="lang_section_update_packs_title">Update language packs</string>
     <string name="settings_display_hint">Select the display that shows the game. Usually Display 0 is the main/top screen.</string>
     <string name="settings_no_displays_found">No displays found</string>
+    <string name="settings_capture_display_footer">Select one or more screens. The screen you\'re viewing PlayTranslate on is skipped.</string>
     <string name="hint_deepl_key">Paste your DeepL API key here</string>
     <string name="note_mlkit_no_internet">⚠ No internet connection — showing offline translation (lower quality).</string>
     <string name="note_mlkit_service_unavailable">⚠ Translation service unavailable — showing offline translation (lower quality).</string>

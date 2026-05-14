@@ -73,7 +73,7 @@ class DeepLBackend(
         get() {
             val key = keyProvider()
             if (key.isNullOrBlank()) {
-                return BackendStatus.Info("API Key Required (Free option)", Tone.Warning)
+                return BackendStatus.Info("API Key Required (Free option)", Tone.Neutral)
             }
             // Surface the cached fetch result regardless of [enabledProvider]
             // so the user sees their DeepL quota even when the toggle is
