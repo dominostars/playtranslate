@@ -110,9 +110,9 @@ class MagnifierLens(
      *  the chip's hit halo can extend the full 48dp without clipping. */
     private val chipHaloXPx = dp(4f)
     /** Pixels reserved above (or below, when flipped) the card so the chip's
-     *  48dp hit halo can render fully. Chip overhangs more than the pill
-     *  (pillHeight/2 + chipHaloPad = 28dp > pillHeight/2 = 20dp). */
-    private val pillChipOverhangPx = pillHeightPx / 2 + chipHaloPadPx
+     *  48dp hit halo can render fully. The chip is vertically centered on
+     *  the card's edge — half its height (24dp) overhangs the card. */
+    private val pillChipOverhangPx = chipHitSizePx / 2
 
     /** Window's total height: card body + arrow strip + pill/chip overhang. */
     private val totalH = lensH + arrowSizePx + pillChipOverhangPx
@@ -256,7 +256,6 @@ class MagnifierLens(
             pillHeightPx = pillHeightPx,
             chipVisDiameterPx = chipVisDiameterPx,
             chipHitSizePx = chipHitSizePx,
-            chipHaloPadPx = chipHaloPadPx,
             density = density,
             onOpenTap = { onOpenTap?.invoke() },
         )
@@ -304,7 +303,6 @@ class MagnifierLens(
         private val pillHeightPx: Int,
         private val chipVisDiameterPx: Int,
         private val chipHitSizePx: Int,
-        private val chipHaloPadPx: Int,
         private val density: Float,
         private val onOpenTap: () -> Unit,
     ) : FrameLayout(ctx) {
@@ -378,17 +376,6 @@ class MagnifierLens(
             style = Paint.Style.FILL
         }
         private val arrowPath = Path()
-        // Inset drop-shadow recesses the zoom under the card border, same
-        // technique as before. BlurMaskFilter requires LAYER_TYPE_SOFTWARE
-        // on the host view (set in init).
-        private val insetShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(45, 0, 0, 0)
-            style = Paint.Style.STROKE
-            strokeWidth = density * 14f
-            maskFilter = BlurMaskFilter(density * 8f, BlurMaskFilter.Blur.NORMAL)
-        }
-        private val insetShadowRect = RectF()
-        private val insetShadowInset = density * 4f
         private val crosshairPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = accentColor
             style = Paint.Style.STROKE
@@ -396,6 +383,38 @@ class MagnifierLens(
             strokeCap = Paint.Cap.ROUND
         }
         private val crosshairHalfLen = density * 6f
+
+        /** Soft inner shadow that recesses the zoom under the card border.
+         *  Pre-rendered into a software-allocated ARGB bitmap because the
+         *  BlurMaskFilter only produces its blur on a software canvas — by
+         *  baking the shadow once here, the host view can stay on the
+         *  default (hardware-accelerated) layer pipeline, which was the
+         *  source of the lightly-translucent ghost that previously
+         *  followed the lens during drag. */
+        private val insetShadowBitmap: Bitmap = run {
+            val bitmap = Bitmap.createBitmap(cardW, lensH, Bitmap.Config.ARGB_8888)
+            val bmCanvas = Canvas(bitmap)
+            val shadowClip = Path().apply {
+                addRoundRect(
+                    0f, 0f, cardW.toFloat(), lensH.toFloat(),
+                    cardCornerR, cardCornerR, Path.Direction.CW,
+                )
+            }
+            bmCanvas.clipPath(shadowClip)
+            val inset = density * 4f
+            val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.argb(45, 0, 0, 0)
+                style = Paint.Style.STROKE
+                strokeWidth = density * 14f
+                maskFilter = BlurMaskFilter(density * 8f, BlurMaskFilter.Blur.NORMAL)
+            }
+            bmCanvas.drawRoundRect(
+                inset, inset, cardW - inset, lensH - inset,
+                cardCornerR - inset, cardCornerR - inset,
+                shadowPaint,
+            )
+            bitmap
+        }
 
         // -----------------------------------------------------------------
         // Pill: word | reading > (chevron)
@@ -556,17 +575,20 @@ class MagnifierLens(
         private var sourceScreenH = 0
 
         init {
-            setLayerType(LAYER_TYPE_SOFTWARE, null)
             setWillNotDraw(false)
             isFocusable = true
             isFocusableInTouchMode = true
-            // Card chrome is painted on canvas; chip / pill / body are child
-            // views. The child views all fit inside the view's bounds (the
-            // view already reserves pillChipOverhangPx top/bottom and
-            // chipHaloXPx left/right), so clipChildren=false isn't strictly
-            // required, but we leave it disabled to avoid surprises if the
-            // accent text picks up a marginally taller font.
-            clipChildren = false
+            // Disable the default focus highlight — the framework otherwise
+            // paints a translucent rectangle over the entire focusable view
+            // when it gains focus (e.g. when [attachInteractiveListeners]
+            // calls requestFocus), which reads as a screen-shaped darkening
+            // over the lens area.
+            defaultFocusHighlightEnabled = false
+            // No background — only the rounded card region painted in
+            // onDraw should be opaque. Explicit to defend against any
+            // default selector that a Material-themed context might apply
+            // to focusable views.
+            background = null
             addView(bodyPanel)
             addView(leftChip)
             addView(rightChip)
@@ -614,17 +636,10 @@ class MagnifierLens(
                 Gravity.CENTER_HORIZONTAL or Gravity.TOP,
             ).apply { topMargin = pillTopMargin }
 
-            // Chips — flank the pill. When not flipped, the visible disk
-            // TOP aligns with the pill top. When flipped, the visible disk
-            // BOTTOM aligns with the pill bottom. The chip button is
-            // chipHaloPadPx wider on every side than the visible disk, so
-            // it overhangs the pill's vertical band by chipHaloPad on the
-            // outward side.
-            val chipTopMargin = if (lensFlipped) {
-                pillAnchorY + pillHeightPx / 2 + chipHaloPadPx - chipHitSizePx
-            } else {
-                pillAnchorY - pillHeightPx / 2 - chipHaloPadPx
-            }
+            // Chips — vertically centered on the pill's vertical center
+            // (which is the card edge the pill is anchored to). Same
+            // formula in both flip states.
+            val chipTopMargin = pillAnchorY - chipHitSizePx / 2
             leftChip.layoutParams = LayoutParams(
                 chipHitSizePx, chipHitSizePx,
                 Gravity.START or Gravity.TOP,
@@ -926,23 +941,20 @@ class MagnifierLens(
             canvas.drawRoundRect(cardRect, cardCornerR, cardCornerR, cardBgPaint)
 
             if (mode == Mode.ZOOM) {
-                val w = cardW.toFloat()
-                val h = lensH.toFloat()
                 canvas.save()
                 canvas.clipPath(clipPath)
                 canvas.translate(cardLeftInView.toFloat(), bodyTopOffset.toFloat())
-                drawZoom(canvas, w, h)
-                insetShadowRect.set(
-                    insetShadowInset, insetShadowInset,
-                    w - insetShadowInset, h - insetShadowInset,
-                )
-                canvas.drawRoundRect(
-                    insetShadowRect,
-                    cardCornerR - insetShadowInset,
-                    cardCornerR - insetShadowInset,
-                    insetShadowPaint,
-                )
+                drawZoom(canvas, cardW.toFloat(), lensH.toFloat())
                 canvas.restore()
+                // The inset shadow bitmap is already pre-clipped to the
+                // rounded card shape; transparent pixels outside the
+                // rounded edges composite as transparent.
+                canvas.drawBitmap(
+                    insetShadowBitmap,
+                    cardLeftInView.toFloat(),
+                    bodyTopOffset.toFloat(),
+                    null,
+                )
             }
 
             val inset = cardBorderPx / 2f
