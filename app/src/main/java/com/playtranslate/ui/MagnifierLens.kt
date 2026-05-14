@@ -889,8 +889,12 @@ class MagnifierLens(
                 })
             }
 
+            var previousPos: String? = null
             data.senses.forEachIndexed { i, sense ->
-                if (sense.pos.isNotBlank()) {
+                // Group consecutive same-POS senses under a single header.
+                // A new POS header is emitted only when the POS actually
+                // changes (or is the first non-blank POS seen).
+                if (sense.pos.isNotBlank() && sense.pos != previousPos) {
                     definitionsContent.addView(TextView(ctx).apply {
                         text = sense.pos
                         setTextColor(panelSecondaryText)
@@ -898,6 +902,7 @@ class MagnifierLens(
                         typeface = Typeface.DEFAULT_BOLD
                         if (i > 0) setPadding(0, dp(6f), 0, 0)
                     })
+                    previousPos = sense.pos
                 }
                 definitionsContent.addView(TextView(ctx).apply {
                     text = "${i + 1}. ${sense.definition}"
