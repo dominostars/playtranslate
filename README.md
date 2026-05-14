@@ -8,19 +8,19 @@ To report issues, receive support, or make requests, please join the [Discord se
 
 ## Features
 
-- **One-tap Translation** — Capture the game screen and translate Japanese text with one tap
-- **Auto Translation Mode** — Automatically translates as dialogue changes, no tapping required
-- **Word lookup** — Hover the floating lens over any word for immediate dictionary definitionss
-- **Furigana/Pinyin Mode** — Show reading hints above characters in real time
-- **Hotkey hold-to-preview** — Configure a physical key to hold-to-preview translations or furigana, great for handhelds with dedicated buttons
-- **Dual Screen & Split Screen** — Works across both screens on dual-display devices like the Ayn Thor, or in Android split-screen alongside windowed games
-- **Capture regions** — Crop to just the dialogue box, subtitles, or any custom area
-- **Anki export** — Save sentences to AnkiDroid with the original text, translation, word list, target words, and a screenshot
-- **Offline** — OCR and translation work without an internet connection
+- **One-tap Translation**: Capture the game screen and translate Japanese text with one tap
+- **Auto Translation Mode**: Automatically translates as dialogue changes, no tapping required
+- **Word lookup**: Hover the floating lens over any word for immediate dictionary definitionss
+- **Furigana/Pinyin Mode**: Show reading hints above characters in real time
+- **Hotkey hold-to-preview**: Configure a physical key to hold-to-preview translations or furigana, great for handhelds with dedicated buttons
+- **Dual Screen & Split Screen**: Works across both screens on dual-display devices like the Ayn Thor, or in Android split-screen alongside windowed games
+- **Capture regions**: Crop to just the dialogue box, subtitles, or any custom area
+- **Anki export**: Save sentences to AnkiDroid with the original text, translation, word list, target words, and a screenshot. Card type selection with presets for popular decks.
+- **Offline**: OCR and translation work without an internet connection, with optional on-device translation models
 
 ## How to Use
 
-1. [Download the latest release by clicking here](../../releases/download/v2.0.0/PlayTranslate-2.0.0.apk)
+1. [Download the latest release by clicking here](../../releases/download/v2.1.0/PlayTranslate-2.1.0.apk)
 2. On your Android, enable **Settings → Security → Install unknown apps** for your file manager or browser
 3. Open the APK and tap Install
 4. On first launch, follow the onboarding steps to grant the necessary permissions
@@ -39,7 +39,7 @@ Install the APK, then re-enable Play Protect afterward to keep scanning your oth
 
 ### Can't enable accessibility?
 
-Some Android OEMs block sideloaded apps from receiving accessibility permissions by default — the toggle in Settings is grayed out or shows a "Restricted setting" message. To unblock it:
+Some Android OEMs block sideloaded apps from receiving accessibility permissions by default. The toggle in Settings is grayed out or shows a "Restricted setting" message. To unblock it:
 
 1. Open **Settings → Apps → PlayTranslate**
 2. Tap the **⋮** menu (top right)
@@ -160,22 +160,30 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 
 ### Libraries and services
 
-- [ML Kit](https://developers.google.com/ml-kit) — on-device OCR and translation
-- [Kuromoji](https://github.com/atilika/kuromoji) — Japanese morphological analysis
-- [HanLP](https://github.com/hankcs/HanLP) — Chinese word segmentation
-- [KOMORAN](https://github.com/shineware/KOMORAN) — Korean morphological analysis
-- [Snowball stemmers](https://snowballstem.org/) via [Apache Lucene](https://lucene.apache.org/) — Latin/European stemming
-- [Lingva](https://github.com/thedaviddelta/lingva-translate) — online translation
-- [AnkiDroid](https://github.com/ankidroid/Anki-Android) — flashcard integration
+- [ML Kit](https://developers.google.com/ml-kit): on-device OCR and translation
+- [Kuromoji](https://github.com/atilika/kuromoji): Japanese morphological analysis
+- [HanLP](https://github.com/hankcs/HanLP): Chinese word segmentation
+- [KOMORAN](https://github.com/shineware/KOMORAN): Korean morphological analysis
+- [Snowball stemmers](https://snowballstem.org/) via [Apache Lucene](https://lucene.apache.org/): Latin/European stemming
+- [Lingva](https://github.com/thedaviddelta/lingva-translate): online translation
+- [AnkiDroid](https://github.com/ankidroid/Anki-Android): flashcard integration
+- [llama.cpp](https://github.com/ggerganov/llama.cpp): on-device LLM inference engine (MIT)
+- Arm AI Chat: Android wrapper around llama.cpp
+- [OpenCL Headers](https://github.com/KhronosGroup/OpenCL-Headers) and [ICD Loader](https://github.com/KhronosGroup/OpenCL-ICD-Loader): GPU backend (Apache 2.0)
+
+### (Optional) Downloadable Offline Models
+
+- TranslateGemma 4B (Google): translation-tuned Gemma 3, downloadable as an optional offline pack (Gemma terms of use)
+- Qwen 2.5 1.5B Instruct (Alibaba): downloadable as an optional offline pack (Apache 2.0)
 
 ### Linguistic data
 
-- [JMdict](https://www.edrdg.org/jmdict/j_jmdict.html) and [KANJIDIC2](https://www.edrdg.org/kanjidic/kanjidic2.html) — Japanese dictionary and kanji data (EDRDG licence)
-- [CC-CEDICT](https://cc-cedict.org/wiki/) — Chinese-English dictionary (CC BY-SA 4.0)
-- [Wiktionary](https://en.wiktionary.org/) via [kaikki.org](https://kaikki.org/) — multilingual dictionary entries (CC BY-SA)
-- [Tatoeba](https://tatoeba.org/) — example sentences (CC BY 2.0)
-- [PanLex](https://panlex.org/) — multilingual translation pairs (CC0)
-- [wordfreq](https://github.com/rspeer/wordfreq) — word frequency data
+- [JMdict](https://www.edrdg.org/jmdict/j_jmdict.html) and [KANJIDIC2](https://www.edrdg.org/kanjidic/kanjidic2.html): Japanese dictionary and kanji data (EDRDG licence)
+- [CC-CEDICT](https://cc-cedict.org/wiki/): Chinese-English dictionary (CC BY-SA 4.0)
+- [Wiktionary](https://en.wiktionary.org/) via [kaikki.org](https://kaikki.org/): multilingual dictionary entries (CC BY-SA)
+- [Tatoeba](https://tatoeba.org/): example sentences (CC BY 2.0)
+- [PanLex](https://panlex.org/): multilingual translation pairs (CC0)
+- [wordfreq](https://github.com/rspeer/wordfreq): word frequency data
 
 ## License
 
