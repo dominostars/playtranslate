@@ -459,6 +459,14 @@ object OverlayToolkit {
     /**
      * Crop to active region, blackout floating icon, run OCR, filter source-lang chars.
      * Returns null if no text detected. Does NOT do dedup, translation, or display.
+     *
+     * [seedWriter], when non-null, is invoked after [OcrManager.recognise] with
+     * the bitmap that was actually fed to OCR and the result (possibly null) —
+     * before the bitmap is recycled. Used to wire [OcrSeedWriter] into the
+     * pinhole / live OCR path so we can capture the exact filled bitmap a
+     * failing repro produced, including the "recognise returned null" case
+     * that wouldn't otherwise be recoverable from a manual capture (manual
+     * capture operates on the raw screen with no overlay fills applied).
      */
     suspend fun runOcrPipeline(
         raw: Bitmap,
@@ -467,7 +475,8 @@ object OverlayToolkit {
         ocrManager: OcrManager,
         statusBarHeight: Int,
         iconRect: Rect?,
-        compactIcon: Boolean
+        compactIcon: Boolean,
+        seedWriter: ((Bitmap, OcrManager.OcrResult?) -> Unit)? = null
     ): OcrPipelineResult? {
         val top    = maxOf((raw.height * activeRegion.top).toInt(), statusBarHeight)
         val left   = (raw.width  * activeRegion.left).toInt()
@@ -482,6 +491,7 @@ object OverlayToolkit {
         try {
             val ocrBitmap = blackoutFloatingIcon(bitmap, left, top, iconRect, compactIcon)
             ocrResult = ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
+            seedWriter?.invoke(ocrBitmap, ocrResult)
             if (ocrBitmap !== raw && ocrBitmap !== bitmap) ocrBitmap.recycle()
         } finally {
             // Always clean up the crop (NOT raw — caller manages that)

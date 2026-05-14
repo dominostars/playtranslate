@@ -26,7 +26,7 @@ object OcrSeedWriter {
     private const val TAG = "OcrSeedWriter"
     private const val DIR_NAME = "ocr_seeds"
 
-    fun writeSeed(context: Context, bitmap: Bitmap, ocrResult: OcrManager.OcrResult) {
+    fun writeSeed(context: Context, bitmap: Bitmap, ocrResult: OcrManager.OcrResult?) {
         try {
             val dir = File(context.getExternalFilesDir(null), DIR_NAME)
             if (!dir.exists() && !dir.mkdirs()) {
@@ -38,16 +38,19 @@ object OcrSeedWriter {
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
             }
             File(dir, "$ts.txt").writeText(transcript(ocrResult))
-            Log.d(TAG, "Wrote seed $ts (${ocrResult.lineBoxes.size} lines)")
+            Log.d(TAG, "Wrote seed $ts (${ocrResult?.lineBoxes?.size ?: 0} lines)")
         } catch (t: Throwable) {
             Log.w(TAG, "writeSeed failed", t)
         }
     }
 
     /** One [OcrManager.LineBox.text] per output line, in iteration order. Falls
-     *  back to [OcrManager.OcrResult.fullText] if lineBoxes is empty (which
-     *  shouldn't happen in practice but keeps the seed non-empty in edge cases). */
-    private fun transcript(ocrResult: OcrManager.OcrResult): String {
+     *  back to [OcrManager.OcrResult.fullText] if lineBoxes is empty. When
+     *  [ocrResult] is null (recognise returned no text), writes a marker so the
+     *  seed is distinguishable from a legitimate empty-text case during golden-
+     *  set curation. */
+    private fun transcript(ocrResult: OcrManager.OcrResult?): String {
+        if (ocrResult == null) return "(no text detected — recognise returned null)"
         val fromLines = ocrResult.lineBoxes.joinToString("\n") { it.text }
         return if (fromLines.isNotBlank()) fromLines else ocrResult.fullText
     }

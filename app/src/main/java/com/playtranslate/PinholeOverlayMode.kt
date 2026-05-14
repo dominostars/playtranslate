@@ -281,7 +281,7 @@ class PinholeOverlayMode(
             val ocrImage: Bitmap
             if (hasOverlays()) {
                 ocrImage = raw.copy(raw.config, true)
-                fillOverlayRegions(ocrImage, coords)
+                fillOverlayRegions(ocrImage, bitmapRects)
             } else {
                 ocrImage = raw
             }
@@ -609,20 +609,41 @@ class PinholeOverlayMode(
     // ── Detection Helpers ───────────────────────────────────────────────
 
     /** Fill non-dirty overlay regions in a mutable bitmap with their background
-     *  color. Uses [coords] to convert each cached box's OCR-crop-space bounds
-     *  to bitmap pixel coordinates. */
-    private fun fillOverlayRegions(bitmap: Bitmap, coords: FrameCoordinates) {
+     *  color. Uses the actual rendered child rects ([bitmapRects], from
+     *  [com.playtranslate.ui.TranslationOverlayView.getChildScreenRects]) so the
+     *  fill matches what the user sees on screen.
+     *
+     *  Earlier versions computed the fill from each box's stored `bounds` +
+     *  a fixed padding. That diverged from the rendered extent whenever
+     *  [com.playtranslate.ui.TranslationOverlayView.rebuildChildren]'s
+     *  overlap-resolution pass shrank a child's rect (e.g. when a wide
+     *  multi-line cached overlay had a slight x-overlap with a small
+     *  adjacent-row indicator). The bounds-based fill then covered an area
+     *  where nothing was rendered on screen, so an exposed game-text line
+     *  inside the cached box's bounds was visible to the user but obscured
+     *  from ML Kit. Using the rendered rects keeps the two views aligned.
+     *
+     *  [bitmapRects] is in cleanBoxes order (the non-dirty subset of
+     *  cachedBoxes, in cachedBoxes' original order — see runCycle step 9).
+     *  Index alignment via sequential walk over non-dirty boxes. */
+    private fun fillOverlayRegions(bitmap: Bitmap, bitmapRects: List<Rect>) {
         val boxes = cachedBoxes ?: return
-        val fillPadding = OverlayToolkit.FILL_PADDING
+        // Small anti-aliasing buffer beyond the rendered overlay's edge, so
+        // ML Kit doesn't read AA fringe pixels as glyph fragments. Kept tiny
+        // (3 px) so adjacent text lines outside the rendered overlay aren't
+        // accidentally obscured — see PinholeOverlayMode fillOverlayRegions kdoc.
+        val aaBuffer = 3
         val paint = android.graphics.Paint()
         val canvas = Canvas(bitmap)
+        var rectIdx = 0
         for (box in boxes) {
             if (box.dirty) continue
-            val bitmapBounds = coords.ocrToBitmap(box.bounds)
-            val l = (bitmapBounds.left - fillPadding).coerceAtLeast(0)
-            val t = (bitmapBounds.top - fillPadding).coerceAtLeast(0)
-            val r = (bitmapBounds.right + fillPadding).coerceAtMost(bitmap.width)
-            val b = (bitmapBounds.bottom + fillPadding).coerceAtMost(bitmap.height)
+            val rect = bitmapRects.getOrNull(rectIdx) ?: break
+            rectIdx++
+            val l = (rect.left - aaBuffer).coerceAtLeast(0)
+            val t = (rect.top - aaBuffer).coerceAtLeast(0)
+            val r = (rect.right + aaBuffer).coerceAtMost(bitmap.width)
+            val b = (rect.bottom + aaBuffer).coerceAtMost(bitmap.height)
             paint.color = box.bgColor or 0xFF000000.toInt()
             canvas.drawRect(l.toFloat(), t.toFloat(), r.toFloat(), b.toFloat(), paint)
         }

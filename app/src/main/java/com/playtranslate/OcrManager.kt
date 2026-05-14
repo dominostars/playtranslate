@@ -974,7 +974,21 @@ class OcrManager private constructor() {
                 val dx = if (a.right <= b.left) b.left - a.right
                          else if (b.right <= a.left) a.left - b.right
                          else 0
-                if (dx < (refH * 1.5f).toInt()) return true
+                if (dx < (refH * 1.5f).toInt()) {
+                    // Heights must be similar — inline is for same-line
+                    // text continuation, not for a small fresh fragment
+                    // whose centerY happens to fall inside a tall
+                    // multi-line cached box's full y range. Without this,
+                    // any tiny OCR fragment adjacent to a multi-line
+                    // overlay inline-matches it on dx alone and stales
+                    // the legitimate cached translation. Uses the same
+                    // size-ratio cap the block check below already
+                    // applies, so a true same-line continuation (same
+                    // font, same height) still matches.
+                    val lo = minOf(aH, bH)
+                    val hi = maxOf(aH, bH)
+                    if (lo <= 0 || (hi - lo).toDouble() / lo <= sizeRatioCap(mode)) return true
+                }
             }
 
             val dy = if (a.bottom <= b.top) b.top - a.bottom
@@ -1019,7 +1033,16 @@ class OcrManager private constructor() {
                 val dy = if (a.bottom <= b.top) b.top - a.bottom
                          else if (b.bottom <= a.top) a.top - b.bottom
                          else 0
-                if (dy < (refW * 1.5f).toInt()) return true
+                if (dy < (refW * 1.5f).toInt()) {
+                    // Widths must be similar (vertical's height-ratio analogue) —
+                    // see horizontal wouldGroup for rationale. Without this, a
+                    // narrow fresh column fragment whose centerX falls inside a
+                    // wide multi-column cached box's x range inline-matches on
+                    // dy alone and stales the cached translation.
+                    val lo = minOf(aW, bW)
+                    val hi = maxOf(aW, bW)
+                    if (lo <= 0 || (hi - lo).toDouble() / lo <= sizeRatioCap(mode)) return true
+                }
             }
 
             val dx = if (a.left <= b.right && b.right <= a.right) 0
@@ -1098,7 +1121,10 @@ class OcrManager private constructor() {
                      else 0
             val inlineGapThreshold = (refH * 1.5f).toInt()
             val lnStr = if (aLn > 1 || bLn > 1) " ln=$aLn/$bLn" else ""
-            if (sameLine && dx < inlineGapThreshold) {
+            val inlineLo = minOf(aH, bH)
+            val inlineHi = maxOf(aH, bH)
+            val inlineHeightOk = inlineLo <= 0 || (inlineHi - inlineLo).toDouble() / inlineLo <= sizeRatioCap(mode)
+            if (sameLine && dx < inlineGapThreshold && inlineHeightOk) {
                 return GroupDecision.Grouped("inline (dx=$dx < ${inlineGapThreshold}px, refH=$refH$lnStr)")
             }
 
@@ -1188,7 +1214,10 @@ class OcrManager private constructor() {
                      else 0
             val inlineGapThreshold = (refW * 1.5f).toInt()
             val lnStr = if (aLn > 1 || bLn > 1) " ln=$aLn/$bLn" else ""
-            if (sameColumn && dy < inlineGapThreshold) {
+            val inlineLo = minOf(aW, bW)
+            val inlineHi = maxOf(aW, bW)
+            val inlineWidthOk = inlineLo <= 0 || (inlineHi - inlineLo).toDouble() / inlineLo <= sizeRatioCap(mode)
+            if (sameColumn && dy < inlineGapThreshold && inlineWidthOk) {
                 return GroupDecision.Grouped("inline (dy=$dy < ${inlineGapThreshold}px, refW=$refW$lnStr)")
             }
 

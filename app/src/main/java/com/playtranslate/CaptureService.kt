@@ -667,7 +667,7 @@ class CaptureService : Service() {
             val ocrResult = try {
                 state.value = CaptureState.InProgress(getString(R.string.status_ocr))
                 val result = ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
-                if (result != null && BuildConfig.DEBUG && Prefs(this@CaptureService).debugSaveOcrSeed) {
+                if (BuildConfig.DEBUG && Prefs(this@CaptureService).debugSaveOcrSeed) {
                     OcrSeedWriter.writeSeed(this@CaptureService, ocrBitmap, result)
                 }
                 result
@@ -1389,6 +1389,11 @@ class CaptureService : Service() {
      *  rect to black out) is resolved for [displayId] — the pipeline has no
      *  notion of a "primary" display. Caller still owns [raw]. */
     internal suspend fun runOcr(raw: Bitmap, displayId: Int): OverlayToolkit.OcrPipelineResult? {
+        val prefs = Prefs(this)
+        val seedWriter: ((Bitmap, OcrManager.OcrResult?) -> Unit)? =
+            if (BuildConfig.DEBUG && prefs.debugSaveOcrSeed) {
+                { bitmap, result -> OcrSeedWriter.writeSeed(this, bitmap, result) }
+            } else null
         return OverlayToolkit.runOcrPipeline(
             raw,
             activeRegionForDisplay(displayId),
@@ -1396,7 +1401,8 @@ class CaptureService : Service() {
             ocrManager,
             getStatusBarHeightForDisplay(displayId),
             PlayTranslateAccessibilityService.instance?.getFloatingIconRect(displayId),
-            Prefs(this).compactOverlayIcon
+            prefs.compactOverlayIcon,
+            seedWriter = seedWriter
         )
     }
 
@@ -1596,7 +1602,7 @@ class CaptureService : Service() {
             val ocrBitmap = blackoutFloatingIcon(bitmap, displayId, left, top)
             val ocrResult = try {
                 val result = ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
-                if (result != null && BuildConfig.DEBUG && Prefs(this@CaptureService).debugSaveOcrSeed) {
+                if (BuildConfig.DEBUG && Prefs(this@CaptureService).debugSaveOcrSeed) {
                     OcrSeedWriter.writeSeed(this@CaptureService, ocrBitmap, result)
                 }
                 result
