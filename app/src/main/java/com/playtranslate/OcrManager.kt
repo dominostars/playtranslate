@@ -716,23 +716,33 @@ class OcrManager private constructor() {
 
         /**
          * Which question is the caller asking? Two semantically distinct uses
-         * of "do these rects belong together," each needing a different rule
-         * for the intersection short-circuit.
+         * of "do these rects belong together," each tuned for its own question.
          *
          * [SAME_PASS_LAYOUT] — clustering rects produced by a single OCR pass
          * into paragraphs. ML Kit per-line detection has already separated
          * these as distinct lines, so any pixel intersection is incidental
          * (ascender/descender slivers, glyph-box padding) and is NOT evidence
          * of grouping. Decisions rest on inline (same-line gap) and block
-         * (next-line + alignment + height-match) checks alone.
+         * (next-line + alignment + height-match) checks alone, with the
+         * strict block-axis thresholds (`blockGapMultiplier`=0.8,
+         * `sizeRatioCap`=0.30) that keep typographically distinct elements
+         * (headings vs body, captions vs body) from collapsing into one
+         * paragraph.
          *
          * [CROSS_FRAME_SAME_REGION] — matching a fresh OCR rect against a rect
          * from a previous frame's overlay state, to decide if they represent
          * the same on-screen region. Stable regions may shift a few pixels or
          * be partially occluded between frames, so substantial rect overlap
-         * is evidence of same-region identity even when heights diverge.
-         * Sliver-only overlaps still fall through to the layout checks — see
-         * [hasSubstantialOverlap].
+         * is evidence of same-region identity even when heights diverge —
+         * see [hasSubstantialOverlap]. Sliver-only overlaps fall through to
+         * the layout checks, which run with looser thresholds
+         * (`blockGapMultiplier`=0.9, `sizeRatioCap`=0.50) — body paragraphs
+         * whose wraps differ in glyph-tight bbox height across cycles
+         * (hiragana-dominant trailing line vs kanji-dominant body line,
+         * digit-only short last line, etc.) shouldn't get split back apart
+         * across cycles when they grouped fine within a frame. The 0.50
+         * height cap still cleanly rejects heading-scale (≥1.5×) elements,
+         * which is the real "different element" guard the gate is here for.
          */
         enum class GroupingMode { SAME_PASS_LAYOUT, CROSS_FRAME_SAME_REGION }
 
@@ -861,6 +871,29 @@ class OcrManager private constructor() {
         }
 
         /**
+         * Block-axis gap multiplier used by the block check in [wouldGroup] /
+         * [groupDecision]. Cross-frame is looser (0.9× vs 0.8×) because it's
+         * asking "is this fresh OCR in the same on-screen region as a prior-
+         * frame overlay?" — body paragraphs with generous leading and short
+         * trailing lines sit right at the 0.8× cliff and shouldn't get split
+         * back apart across cycles when they grouped fine within a frame.
+         */
+        private fun blockGapMultiplier(mode: GroupingMode): Float =
+            if (mode == GroupingMode.CROSS_FRAME_SAME_REGION) 0.9f else 0.8f
+
+        /**
+         * Cap on `(hi - lo) / lo` for the inline-axis size ratio (height for
+         * horizontal text, width for vertical). Cross-frame uses 0.50 vs
+         * 0.30 same-pass to absorb ML Kit's glyph-tight bbox variance —
+         * hiragana-dominant body wraps can be 30–40% shorter than kanji-
+         * dominant lines of the same paragraph. The 0.50 ceiling still
+         * cleanly rejects heading-scale (≥1.5×) elements, which is the
+         * real "different element" guard the gate is here for.
+         */
+        private fun sizeRatioCap(mode: GroupingMode): Double =
+            if (mode == GroupingMode.CROSS_FRAME_SAME_REGION) 0.50 else 0.30
+
+        /**
          * Would two rects be grouped as the same text block?
          * Up to three checks: intersection (cross-frame only), inline (same
          * line/column), block (next line/column in paragraph with alignment).
@@ -917,7 +950,7 @@ class OcrManager private constructor() {
             val dy = if (a.bottom <= b.top) b.top - a.bottom
                      else if (b.bottom <= a.top) a.top - b.bottom
                      else 0
-            if (dy < (refH * 0.8f).toInt()) {
+            if (dy < (refH * blockGapMultiplier(mode)).toInt()) {
                 val alignTolerance = (refH * 0.5f).toInt()
                 val aLeft = aAlignLeft ?: a.left
                 val bLeft = bAlignLeft ?: b.left
@@ -926,7 +959,7 @@ class OcrManager private constructor() {
                 if (leftAligned || centerAligned) {
                     val lo = minOf(a.height(), b.height())
                     val hi = maxOf(a.height(), b.height())
-                    if (lo <= 0 || (hi - lo).toDouble() / lo <= 0.30) return true
+                    if (lo <= 0 || (hi - lo).toDouble() / lo <= sizeRatioCap(mode)) return true
                 }
             }
             return false
@@ -950,14 +983,14 @@ class OcrManager private constructor() {
                      else if (b.left <= a.right && a.right <= b.right) 0
                      else if (a.right <= b.left) b.left - a.right
                      else a.left - b.right
-            if (dx < (refW * 0.8f).toInt()) {
+            if (dx < (refW * blockGapMultiplier(mode)).toInt()) {
                 val alignTolerance = (refW * 0.5f).toInt()
                 val topAligned = kotlin.math.abs(a.top - b.top) <= alignTolerance
                 val centerAligned = kotlin.math.abs(a.centerY() - b.centerY()) <= alignTolerance
                 if (topAligned || centerAligned) {
                     val lo = minOf(a.width(), b.width())
                     val hi = maxOf(a.width(), b.width())
-                    if (lo <= 0 || (hi - lo).toDouble() / lo <= 0.30) return true
+                    if (lo <= 0 || (hi - lo).toDouble() / lo <= sizeRatioCap(mode)) return true
                 }
             }
             return false
@@ -1016,7 +1049,8 @@ class OcrManager private constructor() {
             val dy = if (a.bottom <= b.top) b.top - a.bottom
                      else if (b.bottom <= a.top) a.top - b.bottom
                      else 0
-            val vgapThreshold = (refH * 0.8f).toInt()
+            val vgapThreshold = (refH * blockGapMultiplier(mode)).toInt()
+            val heightCap = sizeRatioCap(mode)
             val alignTolerance = (refH * 0.5f).toInt()
             val aLeft = aAlignLeft ?: a.left
             val bLeft = bAlignLeft ?: b.left
@@ -1037,7 +1071,7 @@ class OcrManager private constructor() {
             val leftAligned = leftDiff <= alignTolerance
             val centerAligned = centerDiff <= alignTolerance
             val alignOk = leftAligned || centerAligned
-            val heightOk = lo <= 0 || heightRatio <= 0.30
+            val heightOk = lo <= 0 || heightRatio <= heightCap
 
             if (vgapOk && alignOk && heightOk) {
                 val which = when {
@@ -1054,7 +1088,7 @@ class OcrManager private constructor() {
             val fails = buildList {
                 if (!vgapOk) add("vgap dy=$dy ≥ ${vgapThreshold}px")
                 if (!alignOk) add("align: $leftStr centerΔ=$centerDiff > tol=${alignTolerance}px")
-                if (!heightOk) add("height: lo=$lo hi=$hi ratio=${"%.2f".format(heightRatio)} > 0.30")
+                if (!heightOk) add("height: lo=$lo hi=$hi ratio=${"%.2f".format(heightRatio)} > ${"%.2f".format(heightCap)}")
                 if (sameLine && dx >= inlineGapThreshold) add("inline gap dx=$dx ≥ ${inlineGapThreshold}px")
             }
             return GroupDecision.NotGrouped(
@@ -1092,7 +1126,8 @@ class OcrManager private constructor() {
                      else if (b.left <= a.right && a.right <= b.right) 0
                      else if (a.right <= b.left) b.left - a.right
                      else a.left - b.right
-            val hgapThreshold = (refW * 0.8f).toInt()
+            val hgapThreshold = (refW * blockGapMultiplier(mode)).toInt()
+            val widthCap = sizeRatioCap(mode)
             val alignTolerance = (refW * 0.5f).toInt()
             val topDiff = kotlin.math.abs(a.top - b.top)
             val centerDiff = kotlin.math.abs(a.centerY() - b.centerY())
@@ -1106,7 +1141,7 @@ class OcrManager private constructor() {
             val topAligned = topDiff <= alignTolerance
             val centerAligned = centerDiff <= alignTolerance
             val alignOk = topAligned || centerAligned
-            val widthOk = lo <= 0 || widthRatio <= 0.30
+            val widthOk = lo <= 0 || widthRatio <= widthCap
 
             if (hgapOk && alignOk && widthOk) {
                 val which = when {
@@ -1123,7 +1158,7 @@ class OcrManager private constructor() {
             val fails = buildList {
                 if (!hgapOk) add("hgap dx=$dx ≥ ${hgapThreshold}px")
                 if (!alignOk) add("align: topΔ=$topDiff centerΔ=$centerDiff > tol=${alignTolerance}px")
-                if (!widthOk) add("width: lo=$lo hi=$hi ratio=${"%.2f".format(widthRatio)} > 0.30")
+                if (!widthOk) add("width: lo=$lo hi=$hi ratio=${"%.2f".format(widthRatio)} > ${"%.2f".format(widthCap)}")
                 if (sameColumn && dy >= inlineGapThreshold) add("inline gap dy=$dy ≥ ${inlineGapThreshold}px")
             }
             return GroupDecision.NotGrouped(

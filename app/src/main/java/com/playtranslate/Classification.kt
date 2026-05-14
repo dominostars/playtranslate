@@ -142,11 +142,11 @@ fun classifyOcrResults(
         // 2. Proximity check: near existing overlay → stale.
         val ocrFullRect = coords.ocrToBitmap(ocrBound)
         var nearExisting = false
+        val orient = ocrResult.groupOrientations.getOrElse(ocrIdx) { TextOrientation.HORIZONTAL }
         for (boxIdx in boxes.indices) {
             if (boxIdx >= ocrBitmapRects.size) continue
             if (boxes[boxIdx].dirty) continue
             if (boxIdx in contentMatchRemovals) continue
-            val orient = ocrResult.groupOrientations.getOrElse(ocrIdx) { TextOrientation.HORIZONTAL }
             // CROSS_FRAME_SAME_REGION: comparing a rect from the prior overlay
             // state against a fresh OCR rect. Substantial overlap is evidence
             // the two represent the same on-screen region (typewriter reveal,
@@ -179,7 +179,6 @@ fun classifyOcrResults(
         //    fails wouldGroup and stays as separate far entries.
         if (!nearExisting) {
             val lc = ocrResult.groupLineCounts.getOrElse(ocrIdx) { 1 }
-            val orient = ocrResult.groupOrientations.getOrElse(ocrIdx) { TextOrientation.HORIZONTAL }
             val align = ocrResult.groupAlignments.getOrElse(ocrIdx) { TextAlignment.LEFT }
             val coalesceIdx = farOcrGroups.indexOfFirst { existing ->
                 val existingBitmapRect = coords.ocrToBitmap(existing.bounds)

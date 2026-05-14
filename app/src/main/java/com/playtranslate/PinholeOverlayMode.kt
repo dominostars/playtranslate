@@ -147,8 +147,9 @@ class PinholeOverlayMode(
     /** True only when cached boxes are actually rendered on screen. An external
      *  hideTranslationOverlay (e.g. holdCancel) can null the overlay windows
      *  without clearing cachedBoxes — in that state this returns false so
-     *  fillOverlayRegions, updateCleanRef, and the isFirstCapture branch all
-     *  skip correctly. */
+     *  fillOverlayRegions and the isFirstCapture branch skip correctly.
+     *  (Step 4's cleanRef reconcile uses bitmapRects directly, not this,
+     *  because the visible-children signal is what cleanRef actually tracks.) */
     private fun hasOverlays(): Boolean =
         cachedBoxes != null &&
         a11y.translationOverlayForDisplay(displayId) != null
@@ -251,8 +252,28 @@ class PinholeOverlayMode(
 
             // 3. Dirty view stays visible until after OCR results
 
-            // 4. Update clean ref: patch non-overlay pixels from raw
-            if (hasOverlays()) {
+            // 4. Reconcile cleanRef against the visible overlay state.
+            //    Single site of truth for the cleanRef-tracks-overlays
+            //    invariant. bitmapRects is the canonical signal: it's
+            //    the clean view's children at step 2 capture time, i.e.
+            //    exactly what raw shows and what updateCleanRef operates
+            //    on. This cuts cleanly through every odd state —
+            //      • all-dirty (boxes live on the dirty view) → empty
+            //      • external-hide (overlay view nulled) → empty
+            //      • prior cycle did pinhole-REMOVE-all → empty
+            //      • normal stable overlays → non-empty positions
+            //    Empty branch drops any stale ref so the next cycle's
+            //    step 11 can seed a fresh baseline from a pure-game raw.
+            //    Non-empty branch maintains the existing ref; if it's
+            //    somehow null here (external-hide-then-restore between
+            //    cycles), pinhole detection skips for one cycle and step
+            //    11 re-seeds when overlays re-place. The wholesale state
+            //    resets (resetState / dim change / crop change) still
+            //    null cleanRef inline because they bypass this cycle.
+            if (bitmapRects.isEmpty()) {
+                cleanRefBitmap?.recycle()
+                cleanRefBitmap = null
+            } else {
                 cleanRefBitmap?.let { updateCleanRef(raw, it, bitmapRects) }
             }
 
@@ -479,8 +500,15 @@ class PinholeOverlayMode(
                 // for genuinely-unchanged content.
             }
 
-            // 11. Set cleanRef if missing (first capture, or cleared by mid-cycle refresh)
-            if (cleanRefBitmap == null) {
+            // 11. Seed cleanRef if missing AND we'll actually use it this
+            //     cycle (about to place placeholders, or step 10 just
+            //     re-showed surviving cleanBoxes after an external hide).
+            //     Reaching here with cleanRef null means step 4 dropped it
+            //     (bitmapRects was empty at step 2), so raw is pre-overlay
+            //     game pixels — a valid baseline. The gate avoids one
+            //     full-bitmap copy per idle cycle where the view is empty
+            //     and there's nothing to place.
+            if (cleanRefBitmap == null && (farOcrGroups.isNotEmpty() || cleanBoxes.isNotEmpty())) {
                 cleanRefBitmap = raw.copy(raw.config, true)
             }
 
@@ -754,6 +782,10 @@ class PinholeOverlayMode(
      * via [FrameCoordinates.viewListToBitmap]). The caller is responsible for
      * the view-to-bitmap conversion so this function doesn't need to know
      * about the view at all.
+     *
+     * Step 4 only calls this on the non-empty bitmapRects branch, so
+     * [bitmapRects] is non-empty in practice. The early return is a
+     * defensive no-op.
      */
     private fun updateCleanRef(raw: Bitmap, ref: Bitmap, bitmapRects: List<Rect>) {
         if (bitmapRects.isEmpty()) return
