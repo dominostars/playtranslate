@@ -217,7 +217,10 @@ class FloatingOverlayIcon(context: Context) : View(context) {
      *  code consults these insets so "Edge.LEFT" means "left of the safe
      *  area" instead of "left of the display". */
     private fun cutoutSafeInsetX(): Pair<Int, Int> {
-        val wm = overlayContext.getSystemService(WindowManager::class.java) ?: return 0 to 0
+        val wc = context.createWindowContext(
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, null
+        )
+        val wm = wc.getSystemService(WindowManager::class.java) ?: return 0 to 0
         val cutout = wm.currentWindowMetrics.windowInsets.displayCutout ?: return 0 to 0
         return cutout.safeInsetLeft to cutout.safeInsetRight
     }
