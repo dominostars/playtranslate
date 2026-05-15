@@ -387,7 +387,7 @@ class MagnifierLens(
         // triangle reads as a contiguous extension of the card. No
         // outline on the arrow — the card border stops at the
         // attachment.
-        private val chipBgColor = withAlpha(ctx.themeColor(R.attr.ptSurface), 217)  // 0.85
+        private val chipBgColor = withAlpha(ctx.themeColor(R.attr.ptSurface), 240)  // 0.94
         private val chipBorderColor = withAlpha(ctx.themeColor(R.attr.ptText), 56)  // 0.22
         private val chipIconColor = withAlpha(ctx.themeColor(R.attr.ptText), 209)  // 0.82
         // Pill ink alphas mirror the spec (1.0 / 0.22 / 0.72 / 0.5) applied
@@ -553,6 +553,9 @@ class MagnifierLens(
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 setColor(accentColor)
+                // Hairline outline matching the card border so the pill
+                // reads as part of the same family.
+                setStroke(density.toInt().coerceAtLeast(1), cardBorderColor)
                 // 99dp in spec; equivalent to "fully rounded capsule" — i.e.
                 // corner radius >= half the pill height.
                 cornerRadius = pillHeightPx / 2f
@@ -1059,7 +1062,7 @@ class MagnifierLens(
 
         /** Gap between the chip's visible disk and the pill's outer edge
          *  in the resting (post-reveal) layout. */
-        private val chipPillGapPx = dp(12f)
+        private val chipPillGapPx = dp(14f)
 
         /** Lay the chips at their final positions — visible disks
          *  [chipPillGapPx] away from the pill's left and right edges —
