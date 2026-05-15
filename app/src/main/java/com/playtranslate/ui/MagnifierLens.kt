@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
@@ -470,9 +471,41 @@ class MagnifierLens(
         private val pillDividerHeight = dp(22f)
         private val pillChevronSize = dp(13f)
         private val pillChevronMarginStart = dp(4f)
+        private val pillPlaceholderIconSize = dp(22f)
+        private val pillPlaceholderGap = dp(8f)
+        private val pillPlaceholderText = "Find a word"
         private val pillWordSp = 24f
         private val pillReadingMaxSp = 14f
         private val pillReadingMinSp = 11f
+        /** Placeholder icon shown when the finger isn't over a token. */
+        private val pillPlaceholderIconView = ImageView(ctx).apply {
+            val d = AppCompatResources.getDrawable(ctx, R.drawable.ic_lens_search)?.mutate()
+            if (d != null) {
+                DrawableCompat.setTint(d, pillInkColor)
+                setImageDrawable(d)
+            }
+            val params = LinearLayout.LayoutParams(pillPlaceholderIconSize, pillPlaceholderIconSize)
+            // Pull the placeholder icon + label 8dp left of the leading
+            // padding so the icon's left edge optically aligns with the
+            // word-state's leading edge. The pill turns off
+            // clipToPadding so this negative inset is honored (otherwise
+            // the icon would be cut off at the padding boundary).
+            params.marginStart = -dp(8f)
+            params.marginEnd = pillPlaceholderGap
+            layoutParams = params
+            visibility = GONE
+        }
+        /** Placeholder label paired with [pillPlaceholderIconView]. */
+        private val pillPlaceholderTextView = TextView(ctx).apply {
+            text = pillPlaceholderText
+            setTextColor(pillInkColor)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, pillReadingMaxSp)
+            typeface = Typeface.DEFAULT_BOLD
+            includeFontPadding = false
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            visibility = GONE
+        }
         private val pillWordView = TextView(ctx).apply {
             setTextColor(pillInkColor)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, pillWordSp)
@@ -512,6 +545,10 @@ class MagnifierLens(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(pillPaddingLead, 0, pillPaddingTrail, 0)
+            // Allow the placeholder icon's negative marginStart to draw
+            // into the leading padding area instead of being clipped at
+            // the padding boundary.
+            clipToPadding = false
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 setColor(accentColor)
@@ -519,10 +556,17 @@ class MagnifierLens(
                 // corner radius >= half the pill height.
                 cornerRadius = pillHeightPx / 2f
             }
+            // Placeholder children added first so they pack to the leading
+            // edge when shown; they're GONE in word state, leaving the
+            // word/divider/reading/chevron to take their place.
+            addView(pillPlaceholderIconView)
+            addView(pillPlaceholderTextView)
             addView(pillWordView)
             addView(pillDividerView)
             addView(pillReadingView)
             addView(pillChevronView)
+            // Pill is hidden until [setLabel] applies a state (placeholder
+            // or word) on the controller's first label call after show().
             visibility = GONE
         }
         // Manual sizing for the reading: shrink 1sp at a time down to 11sp
@@ -729,6 +773,15 @@ class MagnifierLens(
             return handled
         }
 
+        override fun onDetachedFromWindow() {
+            super.onDetachedFromWindow()
+            // The lens window was just torn down. Cancel any in-flight
+            // pill-width animation so its end-listener can't fire a
+            // layout call on the now-detached view.
+            pillAnimator?.cancel()
+            pillAnimator = null
+        }
+
         private fun isTapEligible(x: Float, y: Float): Boolean {
             // Arrow strip: opposite side from the pill/chip chrome.
             val arrowTop = if (lensFlipped) 0f else cardBottomInView.toFloat()
@@ -772,16 +825,108 @@ class MagnifierLens(
             invalidate()
         }
 
+        private enum class PillState { None, Placeholder, Word }
+        private var pillState: PillState = PillState.None
+        /** Last (word, reading) the pill was rendered with. Used so that
+         *  a redundant setLabel call (same content) is a no-op, while
+         *  any actual content change — across words OR across state —
+         *  drives the width animation. */
+        private var pillWord: String = ""
+        private var pillReading: String = ""
+        private var pillAnimator: ValueAnimator? = null
+
         fun setLabel(word: String?, reading: String?) {
             val w = word?.takeIf { it.isNotEmpty() }
             val r = reading?.takeIf { it.isNotEmpty() }
-            pillWordView.text = w.orEmpty()
-            pillReadingView.text = r.orEmpty()
-            val showReading = r != null
-            pillDividerView.visibility = if (showReading) VISIBLE else GONE
-            pillReadingView.visibility = if (showReading) VISIBLE else GONE
-            fitPillReadingSize(w.orEmpty(), r.orEmpty())
-            pillView.visibility = if (w == null) GONE else VISIBLE
+            val newState = if (w == null) PillState.Placeholder else PillState.Word
+            val newWord = w.orEmpty()
+            val newReading = r.orEmpty()
+            val showReading = r != null && newState == PillState.Word
+
+            if (newState == pillState && newWord == pillWord && newReading == pillReading) {
+                return
+            }
+
+            val prevState = pillState
+            pillState = newState
+            pillWord = newWord
+            pillReading = newReading
+
+            // Push the new content into the views before measuring the
+            // pill's natural width — the new word's text width is what
+            // we're animating toward.
+            pillWordView.text = newWord
+            pillReadingView.text = newReading
+            fitPillReadingSize(newWord, newReading)
+
+            if (prevState == PillState.None) {
+                // First state assignment after show()/teardown rebuild —
+                // just snap, no animation.
+                applyPillStateVisibility(newState, showReading)
+                pillView.visibility = VISIBLE
+            } else {
+                animatePillStateTransition(newState, showReading)
+            }
+        }
+
+        /** Toggle child visibility for the requested state without
+         *  touching the pill's own width or animator. */
+        private fun applyPillStateVisibility(state: PillState, showReading: Boolean) {
+            val placeholderVisible = state == PillState.Placeholder
+            val wordVisible = state == PillState.Word
+            pillPlaceholderIconView.visibility = if (placeholderVisible) VISIBLE else GONE
+            pillPlaceholderTextView.visibility = if (placeholderVisible) VISIBLE else GONE
+            pillWordView.visibility = if (wordVisible) VISIBLE else GONE
+            pillDividerView.visibility = if (wordVisible && showReading) VISIBLE else GONE
+            pillReadingView.visibility = if (wordVisible && showReading) VISIBLE else GONE
+            pillChevronView.visibility = if (wordVisible) VISIBLE else GONE
+        }
+
+        /** Animate the pill's width from its current measured width to the
+         *  natural width of [newState]'s children. Children are switched
+         *  to the new state's visibility immediately; the pill's clip
+         *  reveals (or hides) them as it grows (or shrinks). */
+        private fun animatePillStateTransition(newState: PillState, showReading: Boolean) {
+            pillAnimator?.cancel()
+            val oldWidth = if (pillView.width > 0) pillView.width else measurePillNaturalWidth()
+            applyPillStateVisibility(newState, showReading)
+            val newWidth = measurePillNaturalWidth()
+            pillView.visibility = VISIBLE
+            val params = pillView.layoutParams
+            params.width = oldWidth
+            pillView.layoutParams = params
+            pillAnimator = ValueAnimator.ofInt(oldWidth, newWidth).apply {
+                duration = 180L
+                interpolator = android.view.animation.DecelerateInterpolator()
+                addUpdateListener { anim ->
+                    val w = anim.animatedValue as Int
+                    val lp = pillView.layoutParams
+                    lp.width = w
+                    pillView.layoutParams = lp
+                }
+                addListener(object : android.animation.AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: android.animation.Animator) {
+                        // Restore WRAP_CONTENT so subsequent content
+                        // changes within the same state can resize the
+                        // pill naturally.
+                        val lp = pillView.layoutParams
+                        lp.width = LinearLayout.LayoutParams.WRAP_CONTENT
+                        pillView.layoutParams = lp
+                    }
+                })
+                start()
+            }
+        }
+
+        /** Measure the pill's natural (WRAP_CONTENT) width with the
+         *  current child visibilities + content, height pinned at the
+         *  fixed pill height. */
+        private fun measurePillNaturalWidth(): Int {
+            pillView.measure(
+                MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
+                MeasureSpec.makeMeasureSpec(pillHeightPx, MeasureSpec.EXACTLY),
+            )
+            return pillView.measuredWidth
         }
 
         /** Shrink the reading text 1sp at a time down to 11sp until the
