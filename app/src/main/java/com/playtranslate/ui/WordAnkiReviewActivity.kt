@@ -3,11 +3,9 @@ package com.playtranslate.ui
 import android.content.DialogInterface
 import android.os.Bundle
 import android.view.WindowManager
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
-import com.playtranslate.R
 import com.playtranslate.language.SourceLangId
 
 /**
@@ -44,17 +42,14 @@ class WordAnkiReviewActivity : AppCompatActivity() {
             ?: Prefs(applicationContext).sourceLangId
 
         if (!AnkiManager(this).hasPermission()) {
-            AlertDialog.Builder(this)
-                .setTitle(R.string.anki_permission_rationale_title)
-                .setMessage(R.string.anki_permission_rationale_message)
-                .setPositiveButton(R.string.btn_continue) { _, _ ->
-                    androidx.core.app.ActivityCompat.requestPermissions(
-                        this, arrayOf(AnkiManager.PERMISSION), 0
-                    )
-                }
-                .setNegativeButton(android.R.string.cancel) { _, _ -> finish() }
-                .setOnCancelListener { finish() }
-                .show()
+            showAnkiPermissionRationaleDialog(
+                activity = this,
+                onCancel = { finish() },
+            ) {
+                androidx.core.app.ActivityCompat.requestPermissions(
+                    this, arrayOf(AnkiManager.PERMISSION), 0
+                )
+            }
             return
         }
 

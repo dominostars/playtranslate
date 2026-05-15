@@ -13,7 +13,6 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
 import androidx.core.widget.NestedScrollView
 import com.google.android.material.card.MaterialCardView
 import com.playtranslate.themeColor
@@ -265,7 +264,7 @@ class WordDetailBottomSheet : DialogFragment() {
             btnAddAnki.visibility = View.VISIBLE
             btnAddAnki.setOnClickListener {
                 if (!ankiManager.isAnkiDroidInstalled()) {
-                    showAnkiNotInstalledDialog(requireContext())
+                    showAnkiNotInstalledDialog(requireActivity())
                 } else {
                     openWordAnkiReview(word, primary, screenshotPath, defResult)
                 }
@@ -339,17 +338,12 @@ class WordDetailBottomSheet : DialogFragment() {
 
     private fun openWordAnkiReview(word: String, entry: DictionaryEntry, screenshotPath: String?, defResult: DefinitionResult?) {
         if (!AnkiManager(requireContext()).hasPermission()) {
-            AlertDialog.Builder(requireContext())
-                .setTitle(R.string.anki_permission_rationale_title)
-                .setMessage(R.string.anki_permission_rationale_message)
-                .setPositiveButton(R.string.btn_continue) { _, _ ->
-                    androidx.core.app.ActivityCompat.requestPermissions(
-                        requireActivity(),
-                        arrayOf(AnkiManager.PERMISSION), 0
-                    )
-                }
-                .setNegativeButton(android.R.string.cancel, null)
-                .show()
+            showAnkiPermissionRationaleDialog(requireActivity()) {
+                androidx.core.app.ActivityCompat.requestPermissions(
+                    requireActivity(),
+                    arrayOf(AnkiManager.PERMISSION), 0
+                )
+            }
             return
         }
 

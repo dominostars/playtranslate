@@ -15,7 +15,6 @@ import android.text.StaticLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -455,22 +454,17 @@ class TranslationResultFragment : Fragment() {
     private fun onAnkiClicked() {
         host?.onInteraction()
         val result = (vm.result.value as? ResultState.Ready)?.result ?: return
-        val ctx = context ?: return
-        val ankiManager = AnkiManager(ctx)
+        val activity = activity ?: return
+        val ankiManager = AnkiManager(activity)
         val wordResults = (vm.wordLookups.value as? WordLookupsState.Settled)
             ?.rows?.toLegacyMap() ?: emptyMap()
         when {
             !ankiManager.isAnkiDroidInstalled() ->
-                showAnkiNotInstalledDialog(ctx)
+                showAnkiNotInstalledDialog(activity)
             !ankiManager.hasPermission() ->
-                AlertDialog.Builder(ctx)
-                    .setTitle(R.string.anki_permission_rationale_title)
-                    .setMessage(R.string.anki_permission_rationale_message)
-                    .setPositiveButton(R.string.btn_continue) { _, _ ->
-                        host?.getAnkiPermissionLauncher()?.launch(AnkiManager.PERMISSION)
-                    }
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .show()
+                showAnkiPermissionRationaleDialog(activity) {
+                    host?.getAnkiPermissionLauncher()?.launch(AnkiManager.PERMISSION)
+                }
             else ->
                 AnkiReviewBottomSheet.newInstance(
                     getDisplayedOriginalText(), result.translatedText, wordResults,

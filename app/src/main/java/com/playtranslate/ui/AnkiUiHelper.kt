@@ -1,21 +1,17 @@
 package com.playtranslate.ui
 
-import android.app.Dialog
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
 import com.playtranslate.themeColor
 import android.graphics.Typeface
-import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowManager
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
-import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.Spinner
@@ -471,102 +467,54 @@ fun buildAnkiModeToggle(
 }
 
 /**
- * Shows a styled dialog explaining what AnkiDroid is and offering to open the Play Store listing.
- * Matches the visual style of the FloatingIconMenu confirmation dialog.
+ * Styled "AnkiDroid not installed" alert offering to open the Play Store
+ * listing. Uses [OverlayAlert] for visual consistency with the rest of
+ * the app's confirmation dialogs.
  */
-fun showAnkiNotInstalledDialog(context: Context) {
-    val density = context.resources.displayMetrics.density
-    fun dp(v: Int) = (v * density).toInt()
-    fun dpf(v: Int) = v * density
-
-    val dialog = Dialog(context)
-    dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-
-    val card = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        background = GradientDrawable().apply {
-            setColor(context.themeColor(R.attr.ptElevated))
-            cornerRadius = dpf(16)
+fun showAnkiNotInstalledDialog(activity: Activity) {
+    OverlayAlert.Builder(activity)
+        .setTitle(activity.getString(R.string.anki_not_installed_title))
+        .setMessage(activity.getString(R.string.anki_not_installed_message))
+        .addButton(
+            activity.getString(R.string.anki_not_installed_get),
+            activity.themeColor(R.attr.ptWarning),
+            activity.themeColor(R.attr.ptAccentOn),
+        ) {
+            val intent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse(activity.getString(R.string.anki_play_store_url)),
+            )
+            activity.startActivity(intent)
         }
-        elevation = dpf(12)
-        gravity = Gravity.CENTER_HORIZONTAL
-        setPadding(dp(24), dp(24), dp(24), dp(16))
-    }
+        .addCancelButton(activity.getString(android.R.string.cancel))
+        .showInActivity(activity)
+}
 
-    // Title
-    card.addView(TextView(context).apply {
-        text = context.getString(R.string.anki_not_installed_title)
-        setTextColor(context.themeColor(R.attr.ptText))
-        textSize = 17f
-        gravity = Gravity.CENTER
-        setTypeface(null, Typeface.BOLD)
-        layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply {
-            gravity = Gravity.CENTER_HORIZONTAL
-            bottomMargin = dp(8)
+/**
+ * Styled "AnkiDroid permission needed" rationale alert. [onContinue]
+ * fires when the user taps Continue — the permission request itself is
+ * caller-driven (Fragments use a result launcher, standalone Activities
+ * use [androidx.core.app.ActivityCompat.requestPermissions]). [onCancel]
+ * fires on cancel-button tap AND scrim tap; use it for surfaces like
+ * [WordAnkiReviewActivity] where dismissing without granting should
+ * finish the host.
+ */
+fun showAnkiPermissionRationaleDialog(
+    activity: Activity,
+    onCancel: (() -> Unit)? = null,
+    onContinue: () -> Unit,
+) {
+    OverlayAlert.Builder(activity)
+        .setTitle(activity.getString(R.string.anki_permission_rationale_title))
+        .setMessage(activity.getString(R.string.anki_permission_rationale_message))
+        .addButton(
+            activity.getString(R.string.btn_continue),
+            activity.themeColor(R.attr.ptAccent),
+            activity.themeColor(R.attr.ptAccentOn),
+        ) {
+            onContinue()
         }
-    })
-
-    // Subtitle
-    card.addView(TextView(context).apply {
-        text = context.getString(R.string.anki_not_installed_message)
-        setTextColor(context.themeColor(R.attr.ptTextMuted))
-        textSize = 13f
-        gravity = Gravity.CENTER
-        layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply {
-            gravity = Gravity.CENTER_HORIZONTAL
-            bottomMargin = dp(20)
-        }
-    })
-
-    val hPad = dp(20)
-    val vPad = dp(10)
-    val btnLp = LinearLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT,
-        ViewGroup.LayoutParams.WRAP_CONTENT
-    )
-
-    // "Get AnkiDroid" button
-    card.addView(Button(context).apply {
-        text = context.getString(R.string.anki_not_installed_get)
-        setTextColor(context.themeColor(R.attr.ptAccentOn))
-        textSize = 14f
-        background = GradientDrawable().apply {
-            setColor(context.themeColor(R.attr.ptWarning))
-            cornerRadius = dpf(8)
-        }
-        isAllCaps = false
-        setPadding(hPad, vPad, hPad, vPad)
-        layoutParams = LinearLayout.LayoutParams(btnLp).apply {
-            bottomMargin = dp(8)
-        }
-        setOnClickListener {
-            dialog.dismiss()
-            val intent = Intent(Intent.ACTION_VIEW,
-                Uri.parse(context.getString(R.string.anki_play_store_url)))
-            context.startActivity(intent)
-        }
-    })
-
-    // Cancel button
-    card.addView(Button(context).apply {
-        text = context.getString(android.R.string.cancel)
-        setTextColor(context.themeColor(R.attr.ptTextMuted))
-        textSize = 14f
-        setBackgroundColor(Color.TRANSPARENT)
-        isAllCaps = false
-        setPadding(hPad, vPad, hPad, vPad)
-        layoutParams = LinearLayout.LayoutParams(btnLp)
-        setOnClickListener { dialog.dismiss() }
-    })
-
-    dialog.setContentView(card)
-    dialog.window?.setLayout(dp(280), ViewGroup.LayoutParams.WRAP_CONTENT)
-    dialog.show()
+        .addCancelButton(activity.getString(android.R.string.cancel), onCancel)
+        .showInActivity(activity)
 }
 
