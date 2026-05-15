@@ -24,7 +24,6 @@ import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.headwordDisplay
-import com.playtranslate.tts.TtsEngine
 import kotlinx.coroutines.*
 import java.io.File
 import kotlin.math.abs
@@ -62,9 +61,8 @@ class DragLookupController(
     private var ocrLines: List<OcrManager.OcrLine>? = null
     private var ocrJob: Job? = null
     private var lookupJob: Job? = null
-    /** In-flight [speakLensWord] coroutine — guards against overlapping taps
-     *  and is cancelled when the lens dismisses. */
-    private var speakJob: Job? = null
+    /** Wires the lens Speak chip to the TTS engine. Created in [init]. */
+    private var speakChip: LensSpeakChip? = null
     private var lastWord: String? = null
     /** Current dictionary entry shown in the popup. */
     private var currentEntry: DictionaryEntry? = null
@@ -149,9 +147,15 @@ class DragLookupController(
         // handled inside [WordAnkiReviewActivity] itself.
         magnifier.onAnkiTap = { openAnkiReviewForLens() }
         // Speak chip → pronounce the looked-up headword via the system TTS
-        // engine. The chip is only visible when a voice is available, so the
-        // tap path doesn't re-check availability.
-        magnifier.onSpeakTap = { speakLensWord() }
+        // engine. LensSpeakChip installs the lens's onSpeakTap handler and
+        // owns the speak coroutine + alert routing.
+        speakChip = LensSpeakChip(
+            magnifier,
+            scope,
+            TtsAlertTarget.Overlay(magnifier.rawCtx, magnifier.wm, displayId),
+        ) {
+            lastWord?.let { LensSpeakChip.Request(it, Prefs(popup.ctx).sourceLangId) }
+        }
         // Lens dismissal post-drag fires [onSettled] so the service can
         // restore region indicator + live mode. If a new drag starts and
         // tears down a sticky lens, dragInProgress is true at that moment
@@ -162,8 +166,7 @@ class DragLookupController(
             currentEntry = null
             // Cancel a pending speak and stop any in-progress speech when
             // the lens goes away.
-            speakJob?.cancel()
-            TtsEngine.stop()
+            speakChip?.release()
             if (!dragInProgress) onSettled?.invoke()
         }
     }
@@ -1343,33 +1346,6 @@ class DragLookupController(
             service.startActivity(intent, opts)
         } else {
             service.startActivity(intent)
-        }
-    }
-
-    /** Speak the looked-up headword via the system TTS engine. The engine is
-     *  initialised lazily on first use; if no engine is installed, or it has
-     *  no voice for the source language, an explanatory [OverlayAlert] is
-     *  shown instead of failing silently. Overlapping taps are ignored. */
-    private fun speakLensWord() {
-        if (speakJob?.isActive == true) return
-        val word = lastWord ?: return
-        val lang = Prefs(popup.ctx).sourceLangId
-        speakJob = scope.launch {
-            val result = TtsEngine.speak(popup.ctx, word, lang)
-            withContext(Dispatchers.Main) {
-                when (result) {
-                    TtsEngine.SpeakResult.Spoken -> { /* audio playing */ }
-                    TtsEngine.SpeakResult.NoEngine ->
-                        showTtsNoEngineDialog(magnifier.rawCtx, magnifier.wm, displayId) {
-                            magnifier.dismiss()
-                        }
-                    is TtsEngine.SpeakResult.LanguageUnsupported ->
-                        showTtsLanguageUnsupportedDialog(
-                            magnifier.rawCtx, magnifier.wm, displayId,
-                            lang, result.engineLabel,
-                        )
-                }
-            }
         }
     }
 

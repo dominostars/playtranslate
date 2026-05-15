@@ -746,7 +746,23 @@ class TranslationResultFragment : Fragment() {
                         host?.onInteraction()
                         launchWordAnki(activity, word, popupReading, displayEntry)
                     }
-                    onDismiss = { setWordHighlight(null) }
+                    // onDismiss is the single funnel for every teardown path
+                    // (tap-outside, LensSpeakChip's no-engine action,
+                    // dismissWordPopup), so speak-chip + lens cleanup lives
+                    // here, not only in dismissWordPopup.
+                    onDismiss = {
+                        setWordHighlight(null)
+                        wordSpeakChip?.release()
+                        wordSpeakChip = null
+                        wordLens = null
+                    }
+                }
+                wordSpeakChip = wordLens?.let { lens ->
+                    LensSpeakChip(
+                        lens,
+                        viewLifecycleOwner.lifecycleScope,
+                        TtsAlertTarget.InActivity(activity),
+                    ) { LensSpeakChip.Request(word, prefs.sourceLangId) }
                 }
                 setWordHighlight(span.first)
                 wordLens?.show(
@@ -761,10 +777,12 @@ class TranslationResultFragment : Fragment() {
     }
 
     private var wordLens: MagnifierLens? = null
+    private var wordSpeakChip: LensSpeakChip? = null
 
     private fun dismissWordPopup() {
+        // dismiss() fires the lens's onDismiss, which releases the speak chip
+        // and clears wordLens / wordSpeakChip.
         wordLens?.dismiss()
-        wordLens = null
     }
 
     /**

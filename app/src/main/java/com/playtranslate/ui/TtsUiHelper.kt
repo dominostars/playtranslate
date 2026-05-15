@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -16,38 +17,51 @@ private const val TAG = "TtsUiHelper"
 private const val GOOGLE_TTS_PACKAGE = "com.google.android.tts"
 
 /**
+ * Where a TTS alert should be presented. The drag-lookup lens runs as an
+ * accessibility overlay; the in-app lens (e.g. the translation result screen)
+ * runs inside an Activity. [context] also serves engine and Prefs lookups.
+ */
+sealed interface TtsAlertTarget {
+    val context: Context
+
+    /** An accessibility-overlay surface (the drag-lookup lens). */
+    data class Overlay(
+        override val context: Context,
+        val wm: WindowManager,
+        val displayId: Int,
+    ) : TtsAlertTarget
+
+    /** An Activity-hosted surface (the in-app lens). */
+    data class InActivity(val activity: Activity) : TtsAlertTarget {
+        override val context: Context get() = activity
+    }
+}
+
+/**
  * "No Text-to-Speech" alert, shown when no TTS engine is active.
  *
  * Offers both recovery paths, because the app can't tell them apart: a
  * disabled engine exposes no bindable service, so "no active engine" looks
  * identical whether an engine is installed-but-disabled or not installed at
  * all.
- *  - Get Google TTS — install an engine when the device has none (the system
- *    TTS settings screen itself has no way to add one).
+ *  - Get Google TTS — install an engine when the device has none.
  *  - Open TTS settings — enable an engine that is installed but disabled.
  *
  * [onActionSelected] runs when the user picks either action (not on cancel) —
  * the caller uses it to dismiss the lookup surface, since both actions send
  * the user out to another app.
- *
- * Accessibility-overlay variant — for the drag-lookup lens.
  */
-fun showTtsNoEngineDialog(
-    context: Context,
-    wm: WindowManager,
-    displayId: Int,
-    onActionSelected: () -> Unit,
-) {
-    val themed = overlayThemedContext(context)
-    OverlayAlert.Builder(context, wm, displayId)
-        .hideIcon()
-        .setTitle("No Text-to-Speech")
-        .setMessage(
+fun showTtsNoEngineDialog(target: TtsAlertTarget, onActionSelected: () -> Unit) {
+    val themed = overlayThemedContext(target.context)
+    showTtsAlert(target) {
+        hideIcon()
+        setTitle("No Text-to-Speech")
+        setMessage(
             "No text-to-speech engine is available to read words aloud. " +
                 "Install one — or, if your device already has an engine, " +
                 "enable it in Android's settings."
         )
-        .addButton(
+        addButton(
             "Get Google TTS",
             themed.themeColor(R.attr.ptAccent),
             themed.themeColor(R.attr.ptAccentOn),
@@ -55,7 +69,7 @@ fun showTtsNoEngineDialog(
             openPlayStore(themed, GOOGLE_TTS_PACKAGE)
             onActionSelected()
         }
-        .addButton(
+        addButton(
             "Open TTS settings",
             themed.themeColor(R.attr.ptDivider),
             themed.themeColor(R.attr.ptAccent),
@@ -63,8 +77,8 @@ fun showTtsNoEngineDialog(
             openTtsSettings(themed)
             onActionSelected()
         }
-        .addCancelButton("Not now")
-        .show()
+        addCancelButton("Not now")
+    }
 }
 
 /**
@@ -72,9 +86,7 @@ fun showTtsNoEngineDialog(
  * for [lang]. [engineLabel] names the active engine when known.
  */
 fun showTtsLanguageUnsupportedDialog(
-    context: Context,
-    wm: WindowManager,
-    displayId: Int,
+    target: TtsAlertTarget,
     lang: SourceLangId,
     engineLabel: String?,
 ) {
@@ -84,17 +96,35 @@ fun showTtsLanguageUnsupportedDialog(
     } else {
         "The active text-to-speech engine doesn't support $langName."
     }
-    val themed = overlayThemedContext(context)
-    OverlayAlert.Builder(context, wm, displayId)
-        .hideIcon()
-        .setTitle("Language Not Supported")
-        .setMessage(message)
-        .addButton(
+    val themed = overlayThemedContext(target.context)
+    showTtsAlert(target) {
+        hideIcon()
+        setTitle("Language Not Supported")
+        setMessage(message)
+        addButton(
             "OK",
             themed.themeColor(R.attr.ptAccent),
             themed.themeColor(R.attr.ptAccentOn),
         ) { }
-        .show()
+    }
+}
+
+/** Build an [OverlayAlert] for [target], apply [configure], and show it on
+ *  the matching surface — an accessibility overlay or an Activity. */
+private fun showTtsAlert(
+    target: TtsAlertTarget,
+    configure: OverlayAlert.Builder.() -> Unit,
+) {
+    when (target) {
+        is TtsAlertTarget.Overlay ->
+            OverlayAlert.Builder(target.context, target.wm, target.displayId)
+                .apply(configure)
+                .show()
+        is TtsAlertTarget.InActivity ->
+            OverlayAlert.Builder(target.activity)
+                .apply(configure)
+                .showInActivity(target.activity)
+    }
 }
 
 /** Open the system Text-to-speech settings screen, falling back to the
