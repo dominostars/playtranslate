@@ -30,9 +30,12 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.graphics.drawable.DrawableCompat
-import com.playtranslate.OverlayColors
 import com.playtranslate.PlayTranslateAccessibilityService
+import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.isEffectivelyDark
+import com.playtranslate.overlayThemedContext
+import com.playtranslate.themeColor
 
 /**
  * Floating magnifier lens shown while the user drags on a JP/ZH/Latin token
@@ -72,7 +75,7 @@ import com.playtranslate.R
  *    the card are non-interactive.
  */
 class MagnifierLens(
-    private val ctx: Context,
+    private val rawCtx: Context,
     private val wm: WindowManager,
     private val displayId: Int,
 ) {
@@ -85,7 +88,7 @@ class MagnifierLens(
         val isCommon: Boolean,
     )
 
-    private val density = ctx.resources.displayMetrics.density
+    private val density = rawCtx.resources.displayMetrics.density
     private fun dp(v: Float) = (v * density).toInt()
 
     private val lensH = dp(120f)
@@ -123,6 +126,15 @@ class MagnifierLens(
 
     private var lensView: LensView? = null
     private var params: WindowManager.LayoutParams? = null
+    /** Snapshot of (isDark, accentColorRes) at the time the cached
+     *  [lensView] was built. Compared against the live prefs on every
+     *  [show]: when the user changes the theme the cached window is no
+     *  longer correct, so we tear it down silently and let
+     *  [ensureWindow] rebuild against fresh attrs. */
+    private var cachedThemeKey: Pair<Boolean, Int>? = null
+
+    private fun currentThemeKey(): Pair<Boolean, Int> =
+        isEffectivelyDark(rawCtx) to Prefs(rawCtx).accent.color
 
     /** Most recent finger x from [show]. Used by [makeInteractive] to align
      *  the sticky-mode arrow horizontally with the release position. */
@@ -195,6 +207,17 @@ class MagnifierLens(
         (screenW * 0.85f).toInt().coerceAtMost(dp(380f))
 
     fun show(fingerX: Int, fingerY: Int, screenW: Int, screenH: Int) {
+        // If the user changed the theme (mode or accent) between drags,
+        // the cached LensView still carries the old colors. Tear it down
+        // silently so ensureWindow rebuilds with the new attrs. Silent =
+        // does NOT fire onDismiss (the user didn't dismiss; we're just
+        // reconfiguring under the hood).
+        val themeKey = currentThemeKey()
+        if (lensView != null && cachedThemeKey != themeKey) {
+            removeOverlayInternal()
+        }
+        cachedThemeKey = themeKey
+
         val cardW = cardWidth(screenW)
         val viewW = cardW + 2 * chipHaloXPx
         ensureWindow(cardW, viewW)
@@ -234,17 +257,32 @@ class MagnifierLens(
     }
 
     fun dismiss() {
+        if (lensView == null) return
+        removeOverlayInternal()
+        onDismiss?.invoke()
+    }
+
+    /** Remove the overlay + reset state WITHOUT firing onDismiss. Used by
+     *  the dismiss() user path (which then fires the callback) and by
+     *  the theme-change rebuild in [show] (which must not look like a
+     *  user-initiated dismissal). */
+    private fun removeOverlayInternal() {
         val view = lensView ?: return
         lensView = null
         params = null
         PlayTranslateAccessibilityService.removeOverlay(view, wm)
-        onDismiss?.invoke()
     }
 
     private fun ensureWindow(cardW: Int, viewW: Int) {
         if (lensView != null) return
+        // Build the themed context fresh on each window construction so
+        // it reflects the user's current mode + accent. Caching this at
+        // MagnifierLens construction is what caused the lens to ignore
+        // theme changes — the floating-icon menu sidesteps the same
+        // issue by being reconstructed every time it's shown.
+        val themedCtx = overlayThemedContext(rawCtx)
         val view = LensView(
-            ctx = ctx,
+            ctx = themedCtx,
             cardW = cardW,
             viewW = viewW,
             lensH = lensH,
@@ -307,6 +345,11 @@ class MagnifierLens(
         private val onOpenTap: () -> Unit,
     ) : FrameLayout(ctx) {
         private fun dp(v: Float): Int = (density * v).toInt()
+        /** Replace the alpha byte of [color] with [alpha] (0..255). Used to
+         *  layer the spec's design alphas onto themed RGB tokens — e.g.
+         *  the card border is the theme's primary-text color at 16%. */
+        private fun withAlpha(color: Int, alpha: Int): Int =
+            (color and 0x00FFFFFF) or ((alpha and 0xFF) shl 24)
         private val cardBorderPx = density * 1f
 
         private enum class Mode { ZOOM, DEFINITIONS, LOADING }
@@ -327,35 +370,36 @@ class MagnifierLens(
         private var arrowVisible = false
         private var arrowOffsetX = 0
 
-        // Pill background tracks the user's selected accent so the lens
-        // respects theming. The dark card chrome (BWI_PANEL #15181B, the
-        // 1dp white-16% border, the brand arrow color #8B3F2D) is fixed
-        // per the hifi spec — these are coral-paired chrome colors, not
-        // user-tunable theme tokens.
-        private val accentColor = OverlayColors.accent(ctx)
-        private val accentOnColor = OverlayColors.accentOn(ctx)
-        private val cardBgColor = Color.parseColor("#15181B")
-        private val cardBorderColor = Color.argb(41, 255, 255, 255)
-        private val arrowColor = Color.parseColor("#8B3F2D")
-        private val chipBgColor = Color.argb(217, 21, 24, 27)
-        private val chipBorderColor = Color.argb(56, 255, 255, 255)
-        private val chipIconColor = Color.argb(209, 245, 235, 225)
+        // Every color comes from the theme stack (resolved through the
+        // ContextThemeWrapper [MagnifierLens] built around the raw service
+        // context). The design's hex tokens — BWI_PANEL #15181B, the
+        // white-16% border, the brand #8B3F2D arrow — are the dark theme
+        // pt_* palette in disguise; using R.attr.pt* keeps the lens
+        // tracking the user's mode + accent instead of pinning to coral.
+        private val accentColor = ctx.themeColor(R.attr.ptAccent)
+        private val accentOnColor = ctx.themeColor(R.attr.ptAccentOn)
+        private val cardBgColor = ctx.themeColor(R.attr.ptSurface)
+        private val cardBorderColor = ctx.themeColor(R.attr.ptOutline)
+        // Sticky-mode arrow's fill matches the card panel so the
+        // triangle reads as a contiguous extension of the card. No
+        // outline on the arrow — the card border stops at the
+        // attachment.
+        private val chipBgColor = withAlpha(ctx.themeColor(R.attr.ptSurface), 217)  // 0.85
+        private val chipBorderColor = withAlpha(ctx.themeColor(R.attr.ptText), 56)  // 0.22
+        private val chipIconColor = withAlpha(ctx.themeColor(R.attr.ptText), 209)  // 0.82
         // Pill ink alphas mirror the spec (1.0 / 0.22 / 0.72 / 0.5) applied
-        // over [accentOnColor]. accentOn is the app's contrast-paired text
-        // color for the selected accent — using it (rather than the spec's
-        // hardcoded #1a0c08) means a non-coral accent still gets readable
-        // ink on its pill.
+        // over the accent-paired ink color so a non-coral accent still
+        // gets readable ink on its pill.
         private val pillInkColor = accentOnColor
-        private val pillInkDivider = (accentOnColor and 0x00FFFFFF) or (0x38 shl 24)
-        private val pillInkReading = (accentOnColor and 0x00FFFFFF) or (0xB8 shl 24)
-        private val pillInkChevron = (accentOnColor and 0x00FFFFFF) or (0x80 shl 24)
-        // Body content uses the existing overlay tokens (unchanged from
-        // the prior left-panel layout) so the dictionary rows match the
-        // rest of the app.
-        private val panelPrimaryText = OverlayColors.text(ctx)
-        private val panelSecondaryText = OverlayColors.textMuted(ctx)
-        private val panelBadgeBg = OverlayColors.surface(ctx)
-        private val panelWarnColor = Color.parseColor("#D4A017")
+        private val pillInkDivider = withAlpha(accentOnColor, 0x38)
+        private val pillInkReading = withAlpha(accentOnColor, 0xB8)
+        private val pillInkChevron = withAlpha(accentOnColor, 0x80)
+        private val panelPrimaryText = ctx.themeColor(R.attr.ptText)
+        private val panelSecondaryText = ctx.themeColor(R.attr.ptTextMuted)
+        // Badge uses ptCard (one step lighter than the lens panel's
+        // ptSurface) so it visibly separates from the body behind it.
+        private val panelBadgeBg = ctx.themeColor(R.attr.ptCard)
+        private val panelWarnColor = ctx.themeColor(R.attr.ptWarning)
 
         private val cardBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = cardBgColor
@@ -371,8 +415,8 @@ class MagnifierLens(
             style = Paint.Style.FILL
         }
         private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-        private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = arrowColor
+        private val arrowFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = cardBgColor
             style = Paint.Style.FILL
         }
         private val arrowPath = Path()
@@ -422,7 +466,7 @@ class MagnifierLens(
         private val pillPaddingLead = dp(18f)
         private val pillPaddingTrail = dp(14f)
         private val pillGap = dp(12f)
-        private val pillDividerWidth = density.toInt().coerceAtLeast(1)
+        private val pillDividerWidth = dp(2f)
         private val pillDividerHeight = dp(22f)
         private val pillChevronSize = dp(13f)
         private val pillChevronMarginStart = dp(4f)
@@ -449,7 +493,7 @@ class MagnifierLens(
         private val pillReadingView = TextView(ctx).apply {
             setTextColor(pillInkReading)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, pillReadingMaxSp)
-            typeface = Typeface.DEFAULT
+            typeface = Typeface.DEFAULT_BOLD
             includeFontPadding = false
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
@@ -489,7 +533,9 @@ class MagnifierLens(
             typeface = Typeface.DEFAULT_BOLD
             letterSpacing = 0.0125f
         }
-        private val pillReadingSizingPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val pillReadingSizingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = Typeface.DEFAULT_BOLD
+        }
 
         // -----------------------------------------------------------------
         // Chips: Speak (left), Anki (right). No-op for this commit.
@@ -1017,7 +1063,7 @@ class MagnifierLens(
                 arrowPath.lineTo(cx, tipY)
             }
             arrowPath.close()
-            canvas.drawPath(arrowPath, arrowPaint)
+            canvas.drawPath(arrowPath, arrowFillPaint)
         }
 
         private fun drawZoom(canvas: Canvas, w: Float, h: Float) {

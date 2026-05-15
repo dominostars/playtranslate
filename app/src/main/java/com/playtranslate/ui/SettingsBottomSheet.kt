@@ -581,7 +581,6 @@ class SettingsBottomSheet : DialogFragment() {
             return
         }
 
-        val oc = com.playtranslate.OverlayColors
         val needStr = formatGb(backend.availMemFloorBytes)
         val freeStr = formatGb(mi.availMem)
         val builder = OverlayAlert.Builder(ctx)
@@ -591,7 +590,7 @@ class SettingsBottomSheet : DialogFragment() {
                 modelDisplayName, needStr, freeStr,
             ))
             .hideIcon()
-            .addButton(getString(R.string.llm_low_memory_recheck), oc.accent(ctx)) {
+            .addButton(getString(R.string.llm_low_memory_recheck), ctx.themeColor(R.attr.ptAccent)) {
                 // Recurse: re-reads availMem and either proceeds (if memory
                 // freed in the meantime) or shows the alert again. The prior
                 // OverlayAlert has already dismissed by the time onClick fires
@@ -607,7 +606,7 @@ class SettingsBottomSheet : DialogFragment() {
             // pt_*_text_on_accent nor card maps cleanly here.
             builder.addButton(
                 getString(R.string.llm_low_memory_delete),
-                oc.danger(ctx),
+                ctx.themeColor(R.attr.ptDanger),
                 android.graphics.Color.WHITE,
             ) {
                 onDelete()
@@ -855,18 +854,17 @@ class SettingsBottomSheet : DialogFragment() {
     private fun showTranslateGemmaDisableDialog() {
         val ctx = context ?: return
         val activity = activity ?: return
-        val oc = com.playtranslate.OverlayColors
         val sizeStr = com.playtranslate.translation.translategemma
             .TranslateGemmaModel.humanSize(ctx)
         OverlayAlert.Builder(ctx)
             .setTitle(getString(R.string.translategemma_disable_title))
             .setMessage(getString(R.string.translategemma_disable_message, sizeStr))
             .hideIcon()
-            .addButton(getString(R.string.translategemma_disable_keep), oc.accent(ctx)) {
+            .addButton(getString(R.string.translategemma_disable_keep), ctx.themeColor(R.attr.ptAccent)) {
                 // File kept; only the toggle flips. SP listener picks up the change.
                 Prefs(ctx).translateGemmaEnabled = false
             }
-            .addButton(getString(R.string.translategemma_disable_delete), oc.divider(ctx), oc.danger(ctx)) {
+            .addButton(getString(R.string.translategemma_disable_delete), ctx.themeColor(R.attr.ptDivider), ctx.themeColor(R.attr.ptDanger)) {
                 Prefs(ctx).translateGemmaEnabled = false
                 com.playtranslate.translation.translategemma
                     .TranslateGemmaModel.delete(ctx)
@@ -1048,16 +1046,15 @@ class SettingsBottomSheet : DialogFragment() {
     private fun showQwenDisableDialog() {
         val ctx = context ?: return
         val activity = activity ?: return
-        val oc = com.playtranslate.OverlayColors
         val sizeStr = com.playtranslate.translation.qwen.QwenModel.humanSize(ctx)
         OverlayAlert.Builder(ctx)
             .setTitle(getString(R.string.qwen_disable_title))
             .setMessage(getString(R.string.qwen_disable_message, sizeStr))
             .hideIcon()
-            .addButton(getString(R.string.qwen_disable_keep), oc.accent(ctx)) {
+            .addButton(getString(R.string.qwen_disable_keep), ctx.themeColor(R.attr.ptAccent)) {
                 Prefs(ctx).qwenEnabled = false
             }
-            .addButton(getString(R.string.qwen_disable_delete), oc.divider(ctx), oc.danger(ctx)) {
+            .addButton(getString(R.string.qwen_disable_delete), ctx.themeColor(R.attr.ptDivider), ctx.themeColor(R.attr.ptDanger)) {
                 Prefs(ctx).qwenEnabled = false
                 com.playtranslate.translation.qwen.QwenModel.delete(ctx)
                 // See translategemma_disable_delete branch above for why we

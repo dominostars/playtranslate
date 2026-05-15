@@ -7,6 +7,9 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.view.MotionEvent
 import android.view.View
+import com.playtranslate.R
+import com.playtranslate.overlayThemedContext
+import com.playtranslate.themeColor
 import kotlin.math.abs
 
 /**
@@ -30,8 +33,12 @@ class RegionDragView(context: Context) : View(context) {
 
     private val density get() = resources.displayMetrics.density
 
-    private val accentColor: Int = com.playtranslate.OverlayColors.accent(context)
-    private val dividerColor: Int = com.playtranslate.OverlayColors.divider(context)
+    // View(context) constructor stores the raw service context; theme
+    // attrs aren't bound on it. Wrap it to resolve pt* tokens the same
+    // way activities do.
+    private val themedContext = overlayThemedContext(context)
+    private val accentColor: Int = themedContext.themeColor(R.attr.ptAccent)
+    private val dividerColor: Int = themedContext.themeColor(R.attr.ptDivider)
 
     private val darkPaint = Paint().apply {
         color = Color.argb(200, 0, 0, 0)

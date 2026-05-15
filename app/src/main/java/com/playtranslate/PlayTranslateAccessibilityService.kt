@@ -464,8 +464,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val dp = ctx.resources.displayMetrics.density
         val displayLabel = region.label
 
-        val accentColor = OverlayColors.accent(this)
-        val bgColor = OverlayColors.bg(this)
+        val themed = overlayThemedContext(this)
+        val accentColor = themed.themeColor(R.attr.ptAccent)
+        val bgColor = themed.themeColor(R.attr.ptBg)
 
         val view = object : View(ctx) {
             // Mutable so the persistent indicator can swap regions in place without
@@ -1702,6 +1703,10 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     private fun showHideConfirmAlert(display: android.view.Display) {
         val displayCtx = createDisplayContext(display)
         val overlayWm = displayCtx.getSystemService(WindowManager::class.java) ?: return
+        val themed = overlayThemedContext(displayCtx)
+        val accentColor = themed.themeColor(R.attr.ptAccent)
+        val dividerColor = themed.themeColor(R.attr.ptDivider)
+        val dangerColor = themed.themeColor(R.attr.ptDanger)
         val appName = getString(R.string.app_name)
         val prefs = Prefs(this)
         val alreadyCompact = prefs.compactOverlayIcon
@@ -1712,13 +1717,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             builder.setTitle("Disable $appName?")
                 .setMessage("Re-enable in $appName app")
             if (!alreadyCompact) {
-                builder.addButton("Minimize Icon", OverlayColors.accent(this)) {
+                builder.addButton("Minimize Icon", accentColor) {
                     prefs.compactOverlayIcon = true
                     hideFloatingIcon("confirm_minimize_single")
                     reconcileFloatingIcons()
                 }
             }
-            builder.addButton("Turn Off", OverlayColors.divider(this), OverlayColors.danger(this)) {
+            builder.addButton("Turn Off", dividerColor, dangerColor) {
                     disable(this, "confirm_turn_off_single")
                 }
                 .addCancelButton()
@@ -1726,18 +1731,18 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             builder.setTitle("Hide $appName game screen controls?")
             if (!alreadyCompact) {
                 builder.setMessage("\u201CMinimize Icon\u201D shrinks the floating icon. \u201CTurn Off\u201D disables it until re-enabled in settings.")
-                    .addButton("Minimize Icon", OverlayColors.accent(this)) {
+                    .addButton("Minimize Icon", accentColor) {
                         prefs.compactOverlayIcon = true
                         hideFloatingIcon("confirm_minimize_multi")
                         reconcileFloatingIcons()
                     }
             } else {
                 builder.setMessage("\u201CHide for Now\u201D brings it back next time you open $appName. \u201CTurn Off\u201D disables it until re-enabled in settings.")
-                    .addButton("Hide for Now", OverlayColors.accent(this)) {
+                    .addButton("Hide for Now", accentColor) {
                         hideFloatingIcon("confirm_hide_for_now")
                     }
             }
-            builder.addButton("Turn Off", OverlayColors.divider(this), OverlayColors.danger(this)) {
+            builder.addButton("Turn Off", dividerColor, dangerColor) {
                     disable(this, "confirm_turn_off_multi")
                 }
                 .addCancelButton()
@@ -1786,12 +1791,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val barPad = (12 * dp).toInt()
         val gap = (16 * dp).toInt()
 
-        val surfaceColor = OverlayColors.surface(this)
-        val cardColor = OverlayColors.card(this)
-        val dividerColor = OverlayColors.divider(this)
-        val accentColorBtn = OverlayColors.accent(this)
-        val accentOnColor = OverlayColors.accentOn(this)
-        val textColor = OverlayColors.text(this)
+        val themed = overlayThemedContext(ctx)
+        val surfaceColor = themed.themeColor(R.attr.ptSurface)
+        val cardColor = themed.themeColor(R.attr.ptCard)
+        val dividerColor = themed.themeColor(R.attr.ptDivider)
+        val accentColorBtn = themed.themeColor(R.attr.ptAccent)
+        val accentOnColor = themed.themeColor(R.attr.ptAccentOn)
+        val textColor = themed.themeColor(R.attr.ptText)
         val surfaceAlpha = android.graphics.Color.argb(230,
             android.graphics.Color.red(surfaceColor),
             android.graphics.Color.green(surfaceColor),

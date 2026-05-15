@@ -6,9 +6,6 @@ import android.content.res.Configuration
 import android.content.res.Resources
 import android.graphics.Color
 import androidx.annotation.AttrRes
-import androidx.annotation.ColorRes
-import androidx.core.content.ContextCompat
-import com.playtranslate.ui.AccentColor
 import com.playtranslate.ui.ThemeMode
 
 /** Resolves a theme colour attribute to an ARGB int. */
@@ -53,6 +50,20 @@ fun applyAccentOverlay(theme: Resources.Theme, context: Context) {
     theme.applyStyle(Prefs(context).accent.overlay, true)
 }
 
+/**
+ * Wraps [context] in a [android.view.ContextThemeWrapper] with the resolved
+ * light/dark base theme and the user's accent overlay applied. Use this for
+ * overlay surfaces (accessibility-service windows, floating widgets) so
+ * `themeColor(R.attr.pt*)` lookups resolve correctly the same way they do
+ * inside the main Activity. Idempotent: wrapping an already-themed context
+ * just rewraps and re-applies the overlay.
+ */
+fun overlayThemedContext(context: Context): Context {
+    val wrapper = android.view.ContextThemeWrapper(context, baseActivityTheme(context))
+    applyAccentOverlay(wrapper.theme, context)
+    return wrapper
+}
+
 /** Returns the correct full-screen-dialog base theme for the user's current
  *  light/dark resolution. Callers must additionally call [applyAccentOverlay]
  *  on the dialog's theme in `onCreateDialog` to pick up the accent. */
@@ -87,31 +98,3 @@ fun compositeOver(fg: Int, bg: Int): Int {
     )
 }
 
-/**
- * Resolves a color for use in overlay contexts (accessibility service, floating windows)
- * where the Activity theme isn't available. Looks up the user's mode + accent from
- * [Prefs] and returns the matching color resource.
- */
-object OverlayColors {
-    private fun isDark(ctx: Context) = isEffectivelyDark(ctx)
-
-    private fun accentRes(ctx: Context): Int = Prefs(ctx).accent.color
-
-    fun accent(ctx: Context): Int = ContextCompat.getColor(ctx, accentRes(ctx))
-    fun accentOn(ctx: Context): Int = ContextCompat.getColor(ctx,
-        if (isDark(ctx)) R.color.pt_dark_text_on_accent else R.color.pt_light_text_on_accent)
-    fun bg(ctx: Context): Int = ContextCompat.getColor(ctx,
-        if (isDark(ctx)) R.color.pt_dark_bg else R.color.pt_light_bg)
-    fun surface(ctx: Context): Int = ContextCompat.getColor(ctx,
-        if (isDark(ctx)) R.color.pt_dark_surface else R.color.pt_light_surface)
-    fun card(ctx: Context): Int = ContextCompat.getColor(ctx,
-        if (isDark(ctx)) R.color.pt_dark_card else R.color.pt_light_card)
-    fun text(ctx: Context): Int = ContextCompat.getColor(ctx,
-        if (isDark(ctx)) R.color.pt_dark_text else R.color.pt_light_text)
-    fun textMuted(ctx: Context): Int = ContextCompat.getColor(ctx,
-        if (isDark(ctx)) R.color.pt_dark_text_muted else R.color.pt_light_text_muted)
-    fun divider(ctx: Context): Int = ContextCompat.getColor(ctx,
-        if (isDark(ctx)) R.color.pt_dark_divider else R.color.pt_light_divider)
-    fun danger(ctx: Context): Int = ContextCompat.getColor(ctx,
-        if (isDark(ctx)) R.color.pt_dark_danger else R.color.pt_light_danger)
-}

@@ -15,6 +15,9 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import com.playtranslate.R
+import com.playtranslate.overlayThemedContext
+import com.playtranslate.themeColor
 
 /**
  * Reusable progress popup that mirrors [OverlayAlert]'s visual treatment
@@ -28,14 +31,16 @@ import android.widget.TextView
  * stream updates from a coroutine.
  */
 class OverlayProgress private constructor(
-    private val context: Context,
+    rawContext: Context,
     private val title: String,
     private val initialMessage: String,
     private val initialProgress: Int,
     private val cancelLabel: String,
     private val onCancel: () -> Unit,
 ) {
-    class Builder(private val context: Context) {
+    private val context: Context = overlayThemedContext(rawContext)
+    class Builder(rawContext: Context) {
+        private val context: Context = overlayThemedContext(rawContext)
         private var title = ""
         private var initialMessage = ""
         private var initialProgress = 0
@@ -105,7 +110,6 @@ class OverlayProgress private constructor(
 
     private fun buildScrim(): FrameLayout {
         val dp = context.resources.displayMetrics.density
-        val oc = com.playtranslate.OverlayColors
 
         // Full-screen scrim. NOT dismissable on tap — downloads must be
         // cancelled explicitly so a stray tap can't abort a 2 GB transfer.
@@ -117,8 +121,8 @@ class OverlayProgress private constructor(
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
-                setColor(oc.surface(context))
-                setStroke((1 * dp).toInt(), oc.divider(context))
+                setColor(context.themeColor(R.attr.ptSurface))
+                setStroke((1 * dp).toInt(), context.themeColor(R.attr.ptDivider))
                 cornerRadius = 16 * dp
             }
             setPadding((24 * dp).toInt(), (24 * dp).toInt(), (24 * dp).toInt(), (16 * dp).toInt())
@@ -131,7 +135,7 @@ class OverlayProgress private constructor(
         if (title.isNotEmpty()) {
             card.addView(TextView(context).apply {
                 text = title
-                setTextColor(oc.text(context))
+                setTextColor(context.themeColor(R.attr.ptText))
                 textSize = 17f
                 gravity = Gravity.CENTER
                 setTypeface(null, Typeface.BOLD)
@@ -147,7 +151,7 @@ class OverlayProgress private constructor(
 
         statusView = TextView(context).apply {
             text = initialMessage
-            setTextColor(oc.textMuted(context))
+            setTextColor(context.themeColor(R.attr.ptTextMuted))
             textSize = 13f
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
@@ -162,7 +166,7 @@ class OverlayProgress private constructor(
         progressView = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
             progress = initialProgress
-            progressTintList = ColorStateList.valueOf(oc.accent(context))
+            progressTintList = ColorStateList.valueOf(context.themeColor(R.attr.ptAccent))
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -177,12 +181,12 @@ class OverlayProgress private constructor(
         val vPad = (10 * dp).toInt()
         cancelButton = Button(context).apply {
             text = cancelLabel
-            setTextColor(oc.text(context))
+            setTextColor(context.themeColor(R.attr.ptText))
             textSize = 14f
             isAllCaps = false
             setPadding(hPad, vPad, hPad, vPad)
             background = GradientDrawable().apply {
-                setColor(oc.divider(context))
+                setColor(context.themeColor(R.attr.ptDivider))
                 cornerRadius = 8 * dp
             }
             layoutParams = LinearLayout.LayoutParams(

@@ -18,6 +18,8 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.R
+import com.playtranslate.overlayThemedContext
+import com.playtranslate.themeColor
 
 /**
  * A reusable alert dialog that can be attached either to a WindowManager
@@ -26,13 +28,14 @@ import com.playtranslate.R
  * confirmation dialog.
  */
 class OverlayAlert private constructor(
-    private val context: Context,
+    rawContext: Context,
     private val title: String,
     private val message: String?,
     private val buttons: List<ButtonConfig>,
     private val showIcon: Boolean,
     private val onCancel: (() -> Unit)?,
 ) {
+    private val context: Context = overlayThemedContext(rawContext)
 
     data class ButtonConfig(
         val label: String,
@@ -41,7 +44,8 @@ class OverlayAlert private constructor(
         val onClick: () -> Unit,
     )
 
-    class Builder(private val context: Context) {
+    class Builder(rawContext: Context) {
+        private val context: Context = overlayThemedContext(rawContext)
         private var title = ""
         private var message: String? = null
         private val buttons = mutableListOf<ButtonConfig>()
@@ -68,7 +72,7 @@ class OverlayAlert private constructor(
          *  confirms). */
         fun hideIcon() = apply { this.showIcon = false }
 
-        fun addButton(label: String, color: Int, textColor: Int = com.playtranslate.OverlayColors.card(context), onClick: () -> Unit) = apply {
+        fun addButton(label: String, color: Int, textColor: Int = context.themeColor(R.attr.ptCard), onClick: () -> Unit) = apply {
             buttons.add(ButtonConfig(label, color, textColor, onClick))
         }
 
@@ -82,8 +86,8 @@ class OverlayAlert private constructor(
             onCancel = onClick
             buttons.add(ButtonConfig(
                 label,
-                com.playtranslate.OverlayColors.divider(context),
-                com.playtranslate.OverlayColors.text(context),
+                context.themeColor(R.attr.ptDivider),
+                context.themeColor(R.attr.ptText),
                 onClick = { onClick?.invoke() },
             ))
         }
@@ -125,12 +129,11 @@ class OverlayAlert private constructor(
         }
 
         // Dialog card
-        val oc = com.playtranslate.OverlayColors
         val dialog = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
-                setColor(oc.surface(context))
-                setStroke((1 * dp).toInt(), oc.divider(context))
+                setColor(context.themeColor(R.attr.ptSurface))
+                setStroke((1 * dp).toInt(), context.themeColor(R.attr.ptDivider))
                 cornerRadius = 16 * dp
             }
             setPadding((24 * dp).toInt(), (24 * dp).toInt(), (24 * dp).toInt(), (16 * dp).toInt())
@@ -173,7 +176,7 @@ class OverlayAlert private constructor(
         // Title
         dialog.addView(TextView(context).apply {
             text = title
-            setTextColor(oc.text(context))
+            setTextColor(context.themeColor(R.attr.ptText))
             textSize = 17f
             gravity = Gravity.CENTER
             setTypeface(null, android.graphics.Typeface.BOLD)
@@ -190,7 +193,7 @@ class OverlayAlert private constructor(
         if (message != null) {
             dialog.addView(TextView(context).apply {
                 text = message
-                setTextColor(oc.textMuted(context))
+                setTextColor(context.themeColor(R.attr.ptTextMuted))
                 textSize = 13f
                 gravity = Gravity.CENTER
                 layoutParams = LinearLayout.LayoutParams(
