@@ -139,6 +139,11 @@ class DragLookupController(
         // single- or dual-screen mode, so the user lands on a consistent
         // surface with the switch available.
         magnifier.onOpenTap = { openSentenceInApp() }
+        // Anki chip → standard "Add to Anki" review flow. Gates on
+        // AnkiDroid being installed via an overlay alert (the service
+        // context has no Activity to attach to); permission gating is
+        // handled inside [WordAnkiReviewActivity] itself.
+        magnifier.onAnkiTap = { openAnkiReviewForLens() }
         // Lens dismissal post-drag fires [onSettled] so the service can
         // restore region indicator + live mode. If a new drag starts and
         // tears down a sticky lens, dragInProgress is true at that moment
@@ -1319,6 +1324,75 @@ class DragLookupController(
         // wrong on dual-screen setups where the user just tapped the floating
         // icon on a non-default display. Force the launch onto the icon's
         // display in that case.
+        if (!MainActivity.isInForeground) {
+            val opts = android.app.ActivityOptions.makeBasic()
+                .setLaunchDisplayId(displayId)
+                .toBundle()
+            service.startActivity(intent, opts)
+        } else {
+            service.startActivity(intent)
+        }
+    }
+
+    /**
+     * Launches [WordAnkiReviewActivity] with the lens's current word
+     * context. Snapshots state before dismissing the lens (onDismiss
+     * nulls lastWord / currentEntry, so reads after dismiss would lose
+     * the data). Gates on AnkiDroid being installed; permission gating
+     * is handled by the activity itself when it opens.
+     */
+    private fun openAnkiReviewForLens() {
+        val service = PlayTranslateAccessibilityService.instance ?: return
+        val word = lastWord ?: return
+        val entry = currentEntry ?: return
+
+        val ankiManager = AnkiManager(service)
+        if (!ankiManager.isAnkiDroidInstalled()) {
+            // Service context — no Activity to attach to, so route the
+            // alert through the accessibility-overlay path on the lens's
+            // display.
+            showAnkiNotInstalledDialog(magnifier.rawCtx, magnifier.wm, displayId)
+            return
+        }
+
+        val primaryHeadword = entry.headwords.firstOrNull()
+        val reading = primaryHeadword?.reading
+            ?.takeIf { it != primaryHeadword.written } ?: ""
+        val pos = entry.senses.firstOrNull()?.partsOfSpeech
+            ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
+        val nonEmptySenses = entry.senses.filter { it.targetDefinitions.isNotEmpty() }
+        val definition = nonEmptySenses.mapIndexed { i, sense ->
+            val prefix = if (nonEmptySenses.size > 1) "${i + 1}. " else ""
+            prefix + sense.targetDefinitions.joinToString("; ")
+        }.joinToString("\n")
+        val sentence = currentSentence
+        val sentenceTranslation = LastSentenceCache
+            .takeIf { it.original == sentence }?.translation
+        val capturedScreenshot = screenshotPath
+        val sourceLangCode = Prefs(service).sourceLangId.code
+
+        service.cancelLivePauseObligation()
+        magnifier.dismiss()
+
+        val intent = Intent(service, WordAnkiReviewActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            putExtra(WordAnkiReviewActivity.EXTRA_WORD, word)
+            putExtra(WordAnkiReviewActivity.EXTRA_READING, reading)
+            putExtra(WordAnkiReviewActivity.EXTRA_POS, pos)
+            putExtra(WordAnkiReviewActivity.EXTRA_DEFINITION, definition)
+            putExtra(WordAnkiReviewActivity.EXTRA_FREQ_SCORE, entry.freqScore)
+            capturedScreenshot?.let {
+                putExtra(WordAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, it)
+            }
+            sentence?.let {
+                putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_ORIGINAL, it)
+            }
+            sentenceTranslation?.let {
+                putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_TRANSLATION, it)
+            }
+            putExtra(WordAnkiReviewActivity.EXTRA_SOURCE_LANG, sourceLangCode)
+        }
+
         if (!MainActivity.isInForeground) {
             val opts = android.app.ActivityOptions.makeBasic()
                 .setLaunchDisplayId(displayId)

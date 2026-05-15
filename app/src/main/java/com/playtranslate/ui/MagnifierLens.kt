@@ -76,8 +76,8 @@ import com.playtranslate.themeColor
  *    the card are non-interactive.
  */
 class MagnifierLens(
-    private val rawCtx: Context,
-    private val wm: WindowManager,
+    internal val rawCtx: Context,
+    internal val wm: WindowManager,
     private val displayId: Int,
 ) {
     /** Definitions payload for the lens body. Mirrors the popup's fields. */
@@ -146,6 +146,8 @@ class MagnifierLens(
     var onDismiss: (() -> Unit)? = null
     /** Fires when the card or pill is tapped in sticky mode. */
     var onOpenTap: (() -> Unit)? = null
+    /** Fires when the right chip (Anki) is tapped in sticky mode. */
+    var onAnkiTap: (() -> Unit)? = null
 
     val isInteractive: Boolean get() = lensView?.isInteractive == true
 
@@ -298,6 +300,7 @@ class MagnifierLens(
             chipHaloPadPx = chipHaloPadPx,
             density = density,
             onOpenTap = { onOpenTap?.invoke() },
+            onAnkiTap = { onAnkiTap?.invoke() },
         )
         val lp = WindowManager.LayoutParams(
             viewW, totalH,
@@ -346,6 +349,7 @@ class MagnifierLens(
         private val chipHaloPadPx: Int,
         private val density: Float,
         private val onOpenTap: () -> Unit,
+        private val onAnkiTap: () -> Unit,
     ) : FrameLayout(ctx) {
         private fun dp(v: Float): Int = (density * v).toInt()
         /** Replace the alpha byte of [color] with [alpha] (0..255). Used to
@@ -586,15 +590,17 @@ class MagnifierLens(
         }
 
         // -----------------------------------------------------------------
-        // Chips: Speak (left), Anki (right). No-op for this commit.
+        // Chips: Speak (left, still a no-op), Anki (right) routes through
+        // the lens's [onAnkiTap] callback — wired in [DragLookupController]
+        // to the standard "Add to Anki" review flow.
         // -----------------------------------------------------------------
-        private val leftChip = makeChip(R.drawable.ic_lens_speak)
-        private val rightChip = makeChip(R.drawable.ic_card_stack)
+        private val leftChip = makeChip(R.drawable.ic_lens_speak, onClick = { /* TODO: Speak */ })
+        private val rightChip = makeChip(R.drawable.ic_card_stack, onClick = { onAnkiTap() })
 
-        private fun makeChip(iconRes: Int): FrameLayout {
+        private fun makeChip(iconRes: Int, onClick: () -> Unit): FrameLayout {
             val chip = FrameLayout(context).apply {
                 isClickable = true
-                setOnClickListener { /* no-op — wired in a follow-up commit */ }
+                setOnClickListener { onClick() }
                 visibility = GONE
             }
             val disk = View(context).apply {

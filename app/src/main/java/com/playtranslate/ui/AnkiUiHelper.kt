@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -10,6 +11,7 @@ import android.net.Uri
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.FrameLayout
@@ -466,28 +468,72 @@ fun buildAnkiModeToggle(
     }
 }
 
+/** Configures [builder] with the "AnkiDroid not installed" copy + actions.
+ *  Caller picks the show path: [OverlayAlert.Builder.showInActivity] for an
+ *  Activity, [OverlayAlert.Builder.show] for an accessibility overlay. The
+ *  Play Store intent always carries [Intent.FLAG_ACTIVITY_NEW_TASK] so the
+ *  same body works from a service-context (overlay path). */
+private fun configureAnkiNotInstalled(
+    context: Context,
+    builder: OverlayAlert.Builder,
+): OverlayAlert.Builder {
+    // Attr lookups (ptAccent / ptAccentOn) need a themed context. The
+    // Activity path is already themed, but the accessibility-overlay
+    // path passes the raw display context — wrap defensively so both
+    // paths resolve the same.
+    val themed = overlayThemedContext(context)
+    return builder
+        .hideIcon()
+        .setTitle(themed.getString(R.string.anki_not_installed_title))
+        .setMessage(themed.getString(R.string.anki_not_installed_message))
+        .addButton(
+            themed.getString(R.string.anki_not_installed_get),
+            themed.themeColor(R.attr.ptAccent),
+            themed.themeColor(R.attr.ptAccentOn),
+        ) {
+            val intent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse(themed.getString(R.string.anki_play_store_url)),
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            themed.startActivity(intent)
+        }
+        .addCancelButton(themed.getString(android.R.string.cancel))
+}
+
+private fun configureAnkiPermissionRationale(
+    context: Context,
+    builder: OverlayAlert.Builder,
+    onCancel: (() -> Unit)?,
+    onContinue: () -> Unit,
+): OverlayAlert.Builder {
+    val themed = overlayThemedContext(context)
+    return builder
+        .hideIcon()
+        .setTitle(themed.getString(R.string.anki_permission_rationale_title))
+        .setMessage(themed.getString(R.string.anki_permission_rationale_message))
+        .addButton(
+            themed.getString(R.string.btn_continue),
+            themed.themeColor(R.attr.ptAccent),
+            themed.themeColor(R.attr.ptAccentOn),
+        ) { onContinue() }
+        .addCancelButton(themed.getString(android.R.string.cancel), onCancel)
+}
+
 /**
  * Styled "AnkiDroid not installed" alert offering to open the Play Store
  * listing. Uses [OverlayAlert] for visual consistency with the rest of
  * the app's confirmation dialogs.
  */
 fun showAnkiNotInstalledDialog(activity: Activity) {
-    OverlayAlert.Builder(activity)
-        .setTitle(activity.getString(R.string.anki_not_installed_title))
-        .setMessage(activity.getString(R.string.anki_not_installed_message))
-        .addButton(
-            activity.getString(R.string.anki_not_installed_get),
-            activity.themeColor(R.attr.ptWarning),
-            activity.themeColor(R.attr.ptAccentOn),
-        ) {
-            val intent = Intent(
-                Intent.ACTION_VIEW,
-                Uri.parse(activity.getString(R.string.anki_play_store_url)),
-            )
-            activity.startActivity(intent)
-        }
-        .addCancelButton(activity.getString(android.R.string.cancel))
+    configureAnkiNotInstalled(activity, OverlayAlert.Builder(activity))
         .showInActivity(activity)
+}
+
+/** Accessibility-overlay variant — for surfaces that aren't an Activity
+ *  (e.g. the drag-lookup lens shown by [PlayTranslateAccessibilityService]). */
+fun showAnkiNotInstalledDialog(context: Context, wm: WindowManager, displayId: Int) {
+    configureAnkiNotInstalled(context, OverlayAlert.Builder(context, wm, displayId))
+        .show()
 }
 
 /**
@@ -504,17 +550,21 @@ fun showAnkiPermissionRationaleDialog(
     onCancel: (() -> Unit)? = null,
     onContinue: () -> Unit,
 ) {
-    OverlayAlert.Builder(activity)
-        .setTitle(activity.getString(R.string.anki_permission_rationale_title))
-        .setMessage(activity.getString(R.string.anki_permission_rationale_message))
-        .addButton(
-            activity.getString(R.string.btn_continue),
-            activity.themeColor(R.attr.ptAccent),
-            activity.themeColor(R.attr.ptAccentOn),
-        ) {
-            onContinue()
-        }
-        .addCancelButton(activity.getString(android.R.string.cancel), onCancel)
-        .showInActivity(activity)
+    configureAnkiPermissionRationale(
+        activity, OverlayAlert.Builder(activity), onCancel, onContinue,
+    ).showInActivity(activity)
+}
+
+/** Accessibility-overlay variant — see the Activity overload above. */
+fun showAnkiPermissionRationaleDialog(
+    context: Context,
+    wm: WindowManager,
+    displayId: Int,
+    onCancel: (() -> Unit)? = null,
+    onContinue: () -> Unit,
+) {
+    configureAnkiPermissionRationale(
+        context, OverlayAlert.Builder(context, wm, displayId), onCancel, onContinue,
+    ).show()
 }
 
