@@ -440,9 +440,11 @@ class MagnifierLens(
         private val cardBgColor = ctx.themeColor(R.attr.ptSurface)
         private val cardBorderColor = ctx.themeColor(R.attr.ptOutline)
         // Sticky-mode arrow's fill matches the card panel so the
-        // triangle reads as a contiguous extension of the card. No
-        // outline on the arrow — the card border stops at the
-        // attachment.
+        // triangle reads as a contiguous extension of the card. The
+        // two slanted edges are stroked with the same card border so
+        // the outline wraps the arrow continuously with the panel.
+        // The base is left unstroked — it sits on the card edge and
+        // the card border carries through underneath.
         private val chipBgColor = withAlpha(ctx.themeColor(R.attr.ptSurface), 240)  // 0.94
         private val chipBorderColor = withAlpha(ctx.themeColor(R.attr.ptText), 56)  // 0.22
         private val chipIconColor = withAlpha(ctx.themeColor(R.attr.ptText), 209)  // 0.82
@@ -693,9 +695,10 @@ class MagnifierLens(
         private val bodyHPaddingPx = dp(18f)
         private val bodyPillSidePadPx = dp(26f)
         private val bodyOuterSidePadPx = dp(12f)
-        /** Tiny horizontal buffer between the scroll view and the card's
-         *  inner edges, so the rounded corners don't graze the scrollbar
-         *  / content edges. */
+        /** Tiny buffer between the scroll view and the card's inner
+         *  edges on all four sides, so the rounded corners don't graze
+         *  the scrollbar / content edges, and scrolled glyphs clip
+         *  short of the 1dp card border instead of overdrawing it. */
         private val bodyEdgeBufferPx = dp(2f)
         private val definitionsContent = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -707,6 +710,13 @@ class MagnifierLens(
         private val definitionsScroll = ScrollView(ctx).apply {
             isVerticalScrollBarEnabled = true
             isFillViewport = false
+            // clipToPadding stays false so scrolled rows fill the body
+            // edge to edge rather than stopping at the padding strip.
+            // Text is kept off the card border a different way: the
+            // scroll view's layout bounds are inset by [bodyEdgeBufferPx]
+            // on every side (see [updateChromeLayout]), so glyphs clip a
+            // hair short of the 1dp border instead of overdrawing it and
+            // leaving white pixel fragments along the bottom edge.
             clipToPadding = false
             // Default pad: pill is at the top, so the bigger pad is on top.
             setPadding(0, bodyPillSidePadPx, 0, bodyOuterSidePadPx)
@@ -768,18 +778,20 @@ class MagnifierLens(
          *  scroll's larger top/bottom pad always faces the pill so the
          *  first content row clears it. */
         private fun updateChromeLayout() {
-            // Scroll view occupies the full card region. Its top/bottom
-            // padding flips with the lens so the larger pad (which clears
-            // the pill) always faces the pill side.
+            // Scroll view occupies the card region inset by
+            // [bodyEdgeBufferPx] on every side — the inset keeps
+            // scrolled glyphs off the 1dp card border. Its top/bottom
+            // padding flips with the lens so the larger pad (which
+            // clears the pill) always faces the pill side.
             val scrollTopPad = if (lensFlipped) bodyOuterSidePadPx else bodyPillSidePadPx
             val scrollBottomPad = if (lensFlipped) bodyPillSidePadPx else bodyOuterSidePadPx
             definitionsScroll.setPadding(0, scrollTopPad, 0, scrollBottomPad)
             definitionsScroll.layoutParams = LayoutParams(
-                cardW - 2 * bodyEdgeBufferPx, lensH,
+                cardW - 2 * bodyEdgeBufferPx, lensH - 2 * bodyEdgeBufferPx,
                 Gravity.START or Gravity.TOP,
             ).apply {
                 marginStart = chipHaloXPx + bodyEdgeBufferPx
-                topMargin = bodyTopOffset
+                topMargin = bodyTopOffset + bodyEdgeBufferPx
             }
 
             // Pill — centered on pillAnchorY (= card top or card bottom).
@@ -1349,23 +1361,31 @@ class MagnifierLens(
         }
 
         private fun drawArrow(canvas: Canvas) {
-            arrowPath.reset()
             val cx = arrowOffsetX.toFloat()
             val halfBase = arrowSizePx.toFloat()
+            val baseY: Float
+            val tipY: Float
             if (lensFlipped) {
-                val baseY = arrowSizePx.toFloat()
-                arrowPath.moveTo(cx - halfBase, baseY)
-                arrowPath.lineTo(cx + halfBase, baseY)
-                arrowPath.lineTo(cx, 0f)
+                baseY = arrowSizePx.toFloat()
+                tipY = 0f
             } else {
-                val baseY = cardBottomInView.toFloat()
-                val tipY = baseY + arrowSizePx
-                arrowPath.moveTo(cx - halfBase, baseY)
-                arrowPath.lineTo(cx + halfBase, baseY)
-                arrowPath.lineTo(cx, tipY)
+                baseY = cardBottomInView.toFloat()
+                tipY = baseY + arrowSizePx
             }
+            arrowPath.reset()
+            arrowPath.moveTo(cx - halfBase, baseY)
+            arrowPath.lineTo(cx + halfBase, baseY)
+            arrowPath.lineTo(cx, tipY)
             arrowPath.close()
             canvas.drawPath(arrowPath, arrowFillPaint)
+
+            // Stroke only the two slanted edges; the base sits on the
+            // card edge and the card border draws through underneath.
+            arrowPath.reset()
+            arrowPath.moveTo(cx - halfBase, baseY)
+            arrowPath.lineTo(cx, tipY)
+            arrowPath.lineTo(cx + halfBase, baseY)
+            canvas.drawPath(arrowPath, cardBorderPaint)
         }
 
         private fun drawZoom(canvas: Canvas, w: Float, h: Float) {
