@@ -1109,7 +1109,16 @@ class MagnifierLens(
             val ctx = context
             definitionsContent.removeAllViews()
 
-            if (data.isCommon || data.freqScore > 0) {
+            // If every non-blank POS across the senses is the same, the
+            // body grouping collapses to a single section — and a single
+            // section header is just a louder version of the same info
+            // the meta row already carries. Promote it into the meta row
+            // alongside the stars and skip the in-body header.
+            val distinctPos = data.senses.map { it.pos.trim() }.filter { it.isNotEmpty() }.distinct()
+            val singlePos = distinctPos.singleOrNull()
+            val hasMetaContent = data.isCommon || data.freqScore > 0 || singlePos != null
+
+            if (hasMetaContent) {
                 val metaRow = LinearLayout(ctx).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
@@ -1136,6 +1145,19 @@ class MagnifierLens(
                         if (data.isCommon) setPadding(dp(6f), 0, 0, 0)
                     })
                 }
+                if (singlePos != null) {
+                    metaRow.addView(TextView(ctx).apply {
+                        text = singlePos
+                        setTextColor(panelSecondaryText)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                        typeface = Typeface.DEFAULT_BOLD
+                        // Leading gap only when something else precedes
+                        // (badge or stars). Otherwise the POS opens the row.
+                        if (data.isCommon || data.freqScore > 0) {
+                            setPadding(dp(8f), 0, 0, 0)
+                        }
+                    })
+                }
                 definitionsContent.addView(metaRow)
             }
 
@@ -1153,8 +1175,13 @@ class MagnifierLens(
             data.senses.forEachIndexed { i, sense ->
                 // Group consecutive same-POS senses under a single header.
                 // A new POS header is emitted only when the POS actually
-                // changes (or is the first non-blank POS seen).
-                if (sense.pos.isNotBlank() && sense.pos != previousPos) {
+                // changes (or is the first non-blank POS seen). Suppressed
+                // entirely when the meta row already carries the POS
+                // (singlePos != null).
+                if (singlePos == null &&
+                    sense.pos.isNotBlank() &&
+                    sense.pos != previousPos
+                ) {
                     definitionsContent.addView(TextView(ctx).apply {
                         text = sense.pos
                         setTextColor(panelSecondaryText)
