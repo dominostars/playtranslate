@@ -148,6 +148,8 @@ class MagnifierLens(
     var onOpenTap: (() -> Unit)? = null
     /** Fires when the right chip (Anki) is tapped in sticky mode. */
     var onAnkiTap: (() -> Unit)? = null
+    /** Fires when the left chip (Speak) is tapped in sticky mode. */
+    var onSpeakTap: (() -> Unit)? = null
 
     /** Use TYPE_APPLICATION_PANEL + a direct WindowManager attach instead of
      *  TYPE_ACCESSIBILITY_OVERLAY routed through the accessibility service.
@@ -344,6 +346,7 @@ class MagnifierLens(
             density = density,
             onOpenTap = { onOpenTap?.invoke() },
             onAnkiTap = { onAnkiTap?.invoke() },
+            onSpeakTap = { onSpeakTap?.invoke() },
         )
         val windowType = if (useActivityWindow)
             WindowManager.LayoutParams.TYPE_APPLICATION_PANEL
@@ -402,6 +405,7 @@ class MagnifierLens(
         private val density: Float,
         private val onOpenTap: () -> Unit,
         private val onAnkiTap: () -> Unit,
+        private val onSpeakTap: () -> Unit,
     ) : FrameLayout(ctx) {
         private fun dp(v: Float): Int = (density * v).toInt()
         /** Replace the alpha byte of [color] with [alpha] (0..255). Used to
@@ -644,11 +648,10 @@ class MagnifierLens(
         }
 
         // -----------------------------------------------------------------
-        // Chips: Speak (left, still a no-op), Anki (right) routes through
-        // the lens's [onAnkiTap] callback — wired in [DragLookupController]
-        // to the standard "Add to Anki" review flow.
+        // Chips: Speak (left) and Anki (right) route through the lens's
+        // [onSpeakTap] / [onAnkiTap] callbacks — wired in [DragLookupController].
         // -----------------------------------------------------------------
-        private val leftChip = makeChip(R.drawable.ic_lens_speak, onClick = { /* TODO: Speak */ })
+        private val leftChip = makeChip(R.drawable.ic_lens_speak, onClick = { onSpeakTap() })
         private val rightChip = makeChip(R.drawable.ic_card_stack, onClick = { onAnkiTap() })
 
         private fun makeChip(iconRes: Int, onClick: () -> Unit): FrameLayout {

@@ -13,6 +13,12 @@
 
     <queries>
         <package android:name="com.ichi2.anki" />
+        <!-- TextToSpeech engine services. Without this, API 30+ package
+             visibility hides TTS engines from the app, and TextToSpeech
+             reports no engine even when one is installed and active. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
     </queries>
 
     <application
