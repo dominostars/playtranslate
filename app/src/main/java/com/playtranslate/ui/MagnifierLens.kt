@@ -149,6 +149,14 @@ class MagnifierLens(
     /** Fires when the right chip (Anki) is tapped in sticky mode. */
     var onAnkiTap: (() -> Unit)? = null
 
+    /** Use TYPE_APPLICATION_PANEL + a direct WindowManager attach instead of
+     *  TYPE_ACCESSIBILITY_OVERLAY routed through the accessibility service.
+     *  Set before [show] for in-activity callers (e.g. the translation result
+     *  screen's tap-a-word surface), where there's no accessibility overlay
+     *  channel to ride on and the lens just needs to attach to the activity
+     *  window like any other in-app panel. Mirrors [WordLookupPopup.useActivityWindow]. */
+    var useActivityWindow = false
+
     val isInteractive: Boolean get() = lensView?.isInteractive == true
 
     fun setBitmap(bitmap: Bitmap?) {
@@ -209,7 +217,30 @@ class MagnifierLens(
     private fun cardWidth(screenW: Int): Int =
         (screenW * 0.85f).toInt().coerceAtMost(dp(380f))
 
-    fun show(fingerX: Int, fingerY: Int, screenW: Int, screenH: Int) {
+    /**
+     * Position and show the lens.
+     *
+     * [fingerY] is the anchor's TOP edge in screen coords. [anchorHeight] is
+     * the anchor's height — for the drag flow the anchor is a finger point so
+     * 0 is right, but for tap-on-a-word callers the anchor is a line of text
+     * with a real height, and the lens needs that to land cleanly below the
+     * line in the flipped case (otherwise "below" means below the line's top,
+     * which lands on the line itself).
+     *
+     * Flip decision: prefer above when the lens fits, fall back to below
+     * otherwise. In drag mode we tolerate a small overhang past the screen
+     * top because the user's finger is on-screen and they can see what
+     * happens; in activity-window mode there's a status bar to worry about,
+     * so we require the lens window — including the pill/chip overhang —
+     * to fully fit before staying above.
+     */
+    fun show(
+        fingerX: Int,
+        fingerY: Int,
+        screenW: Int,
+        screenH: Int,
+        anchorHeight: Int = 0,
+    ) {
         // If the user changed the theme (mode or accent) between drags,
         // the cached LensView still carries the old colors. Tear it down
         // silently so ensureWindow rebuilds with the new attrs. Silent =
@@ -228,7 +259,14 @@ class MagnifierLens(
         val p = params ?: return
 
         val aboveY = fingerY - verticalMarginPx - lensH
-        val flipped = aboveY < -topOverhangTolerancePx
+        // Activity-window callers (tap-on-word in the result screen) need the
+        // pill/chip overhang to fully clear the screen top — there's a status
+        // bar in the way. Drag callers can tolerate a small overhang past the
+        // screen top (the user is actively pointing at the screen and the
+        // chip's exact position isn't load-bearing).
+        val flipThreshold =
+            if (useActivityWindow) pillChipOverhangPx else -topOverhangTolerancePx
+        val flipped = aboveY < flipThreshold
         view.setSourcePoint(fingerX.toFloat(), fingerY.toFloat(), screenW, screenH)
         view.setLensFlipped(flipped)
         view.visibility = View.VISIBLE
@@ -243,7 +281,8 @@ class MagnifierLens(
         val lensBodyY = if (!flipped) {
             aboveY
         } else {
-            (fingerY + verticalMarginPx).coerceAtMost((screenH - lensH).coerceAtLeast(0))
+            (fingerY + anchorHeight + verticalMarginPx)
+                .coerceAtMost((screenH - lensH).coerceAtLeast(0))
         }
         val y = lensBodyY - bodyTopOffsetInView
         if (p.x != x || p.y != y) {
@@ -273,7 +312,11 @@ class MagnifierLens(
         val view = lensView ?: return
         lensView = null
         params = null
-        PlayTranslateAccessibilityService.removeOverlay(view, wm)
+        if (useActivityWindow) {
+            try { wm.removeView(view) } catch (_: Exception) {}
+        } else {
+            PlayTranslateAccessibilityService.removeOverlay(view, wm)
+        }
     }
 
     private fun ensureWindow(cardW: Int, viewW: Int) {
@@ -302,9 +345,13 @@ class MagnifierLens(
             onOpenTap = { onOpenTap?.invoke() },
             onAnkiTap = { onAnkiTap?.invoke() },
         )
+        val windowType = if (useActivityWindow)
+            WindowManager.LayoutParams.TYPE_APPLICATION_PANEL
+        else
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
         val lp = WindowManager.LayoutParams(
             viewW, totalH,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            windowType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
@@ -315,7 +362,12 @@ class MagnifierLens(
             x = 0
             y = 0
         }
-        if (!PlayTranslateAccessibilityService.addOverlay(view, wm, lp, displayId)) return
+        val attached = if (useActivityWindow) {
+            try { wm.addView(view, lp); true } catch (_: Exception) { false }
+        } else {
+            PlayTranslateAccessibilityService.addOverlay(view, wm, lp, displayId)
+        }
+        if (!attached) return
         lensView = view
         params = lp
     }

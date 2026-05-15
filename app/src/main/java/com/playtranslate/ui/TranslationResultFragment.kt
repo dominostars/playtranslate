@@ -1,6 +1,8 @@
 package com.playtranslate.ui
 
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.util.TypedValue
@@ -449,6 +451,54 @@ class TranslationResultFragment : Fragment() {
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
     }
 
+    /** Lens Anki chip handler — adds the tapped word (not the sentence)
+     *  to Anki. Mirrors [DragLookupController.openAnkiReviewForLens]:
+     *  installation gate here, permission gate inside the activity.
+     *  Sentence context comes from the current VM result so the card
+     *  carries the source sentence + translation + screenshot. */
+    private fun launchWordAnki(
+        activity: Activity,
+        word: String,
+        reading: String?,
+        entry: com.playtranslate.model.DictionaryEntry?,
+    ) {
+        val ankiManager = AnkiManager(activity)
+        if (!ankiManager.isAnkiDroidInstalled()) {
+            showAnkiNotInstalledDialog(activity)
+            return
+        }
+        val pos = entry?.senses?.firstOrNull()?.partsOfSpeech
+            ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
+        val nonEmptySenses = entry?.senses
+            ?.filter { it.targetDefinitions.isNotEmpty() }
+            ?: emptyList()
+        val definition = nonEmptySenses.mapIndexed { i, sense ->
+            val prefix = if (nonEmptySenses.size > 1) "${i + 1}. " else ""
+            prefix + sense.targetDefinitions.joinToString("; ")
+        }.joinToString("\n")
+        val ready = (vm.result.value as? ResultState.Ready)?.result
+        val readingForExtra = reading?.takeIf { it != word } ?: ""
+        dismissWordPopup()
+        val intent = Intent(activity, WordAnkiReviewActivity::class.java).apply {
+            putExtra(WordAnkiReviewActivity.EXTRA_WORD, word)
+            putExtra(WordAnkiReviewActivity.EXTRA_READING, readingForExtra)
+            putExtra(WordAnkiReviewActivity.EXTRA_POS, pos)
+            putExtra(WordAnkiReviewActivity.EXTRA_DEFINITION, definition)
+            putExtra(WordAnkiReviewActivity.EXTRA_FREQ_SCORE, entry?.freqScore ?: 0)
+            ready?.screenshotPath?.let {
+                putExtra(WordAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, it)
+            }
+            ready?.originalText?.let {
+                putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_ORIGINAL, it)
+            }
+            ready?.translatedText?.let {
+                putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_TRANSLATION, it)
+            }
+            putExtra(WordAnkiReviewActivity.EXTRA_SOURCE_LANG, prefs.sourceLangId.code)
+        }
+        activity.startActivity(intent)
+    }
+
     /** Anki button tap handler — view-side dialog work, kept fragment-
      *  internal. Reads sentence + word data from VM state. */
     private fun onAnkiClicked() {
@@ -651,45 +701,70 @@ class TranslationResultFragment : Fragment() {
                 val loc = IntArray(2)
                 tvOriginal.getLocationOnScreen(loc)
                 val screenX = loc[0] + wordCenterX
-                val screenY = loc[1] + lineTop
 
                 val dm = resources.displayMetrics
+                // Anchor on the tapped line's top edge — paired with
+                // [anchorHeight] = lineH, the lens lands cleanly above
+                // the line when there's room and cleanly below the
+                // line when it has to flip. Passing center + height=0
+                // (the drag-flow default) lands the flipped lens on
+                // top of the line itself.
+                val anchorY = loc[1] + lineTop
                 dismissWordPopup()
-                wordPopup = WordLookupPopup(activity, activity.windowManager).apply {
+                val canOpen = entry != null
+                val displayEntry = entry
+                val lensData = MagnifierLens.LensDefinitionData(
+                    word = word,
+                    reading = popupReading?.takeIf { it != word },
+                    senses = senses,
+                    freqScore = freqScore,
+                    isCommon = isCommon,
+                )
+                wordLens = MagnifierLens(
+                    activity,
+                    activity.windowManager,
+                    android.view.Display.DEFAULT_DISPLAY,
+                ).apply {
                     useActivityWindow = true
-                    verticalMarginDp = 5
-                    // Open-in-app would just re-run the same failing lookup,
-                    // so suppress the button when we're in the fallback path.
-                    showOpenButton = entry != null
-                    onOpenTap = {
-                        dismissWordPopup()
+                    if (canOpen) {
+                        onOpenTap = {
+                            dismissWordPopup()
+                            host?.onInteraction()
+                            val ready = (vm.result.value as? ResultState.Ready)?.result
+                            val wr = (vm.wordLookups.value as? WordLookupsState.Settled)
+                                ?.rows?.toLegacyMap() ?: emptyMap()
+                            host?.onWordTapped(
+                                word, popupReading,
+                                ready?.screenshotPath,
+                                ready?.originalText,
+                                ready?.translatedText,
+                                wr,
+                            )
+                        }
+                    }
+                    onAnkiTap = {
                         host?.onInteraction()
-                        val ready = (vm.result.value as? ResultState.Ready)?.result
-                        val wr = (vm.wordLookups.value as? WordLookupsState.Settled)
-                            ?.rows?.toLegacyMap() ?: emptyMap()
-                        host?.onWordTapped(
-                            word, popupReading,
-                            ready?.screenshotPath,
-                            ready?.originalText,
-                            ready?.translatedText,
-                            wr,
-                        )
+                        launchWordAnki(activity, word, popupReading, displayEntry)
                     }
                     onDismiss = { setWordHighlight(null) }
                 }
                 setWordHighlight(span.first)
-                wordPopup?.show(word, popupReading, senses, freqScore,
-                    isCommon, screenX, screenY, dm.widthPixels, dm.heightPixels,
-                    anchorHeight = lineH, label = popupLabel)
+                wordLens?.show(
+                    screenX, anchorY,
+                    dm.widthPixels, dm.heightPixels,
+                    anchorHeight = lineH,
+                )
+                wordLens?.setDefinitions(lensData, popupLabel)
+                wordLens?.makeInteractive()
             } catch (_: Exception) {}
         }
     }
 
-    private var wordPopup: WordLookupPopup? = null
+    private var wordLens: MagnifierLens? = null
 
     private fun dismissWordPopup() {
-        wordPopup?.dismiss()
-        wordPopup = null
+        wordLens?.dismiss()
+        wordLens = null
     }
 
     /**
