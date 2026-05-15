@@ -105,8 +105,8 @@ class MagnifierLens(
     /** Pill is 40dp tall, centered on the card's top edge so half overhangs
      *  above the card. */
     private val pillHeightPx = dp(40f)
-    private val chipVisDiameterPx = dp(32f)
-    private val chipHitSizePx = dp(48f)
+    private val chipVisDiameterPx = dp(36f)
+    private val chipHitSizePx = dp(52f)
     /** Distance from the chip hit-button edge to the visible disk edge. */
     private val chipHaloPadPx = (chipHitSizePx - chipVisDiameterPx) / 2
     /** Visible chip disk insets 4dp from the card horizontal edge. The host
@@ -295,6 +295,7 @@ class MagnifierLens(
             pillHeightPx = pillHeightPx,
             chipVisDiameterPx = chipVisDiameterPx,
             chipHitSizePx = chipHitSizePx,
+            chipHaloPadPx = chipHaloPadPx,
             density = density,
             onOpenTap = { onOpenTap?.invoke() },
         )
@@ -342,6 +343,7 @@ class MagnifierLens(
         private val pillHeightPx: Int,
         private val chipVisDiameterPx: Int,
         private val chipHitSizePx: Int,
+        private val chipHaloPadPx: Int,
         private val density: Float,
         private val onOpenTap: () -> Unit,
     ) : FrameLayout(ctx) {
@@ -1017,11 +1019,11 @@ class MagnifierLens(
             isInteractive = true
             // Chips become visible only in the sticky state (per the
             // design — they're quick actions for a settled lookup, not
-            // drag-time UI).
-            if (mode == Mode.DEFINITIONS) {
-                leftChip.visibility = VISIBLE
-                rightChip.visibility = VISIBLE
-            }
+            // drag-time UI). Reveal is deferred until the pill's
+            // width animation (placeholder → word) completes, so the
+            // chips' "under-pill" start position is actually under the
+            // pill at its final word-state width.
+            if (mode == Mode.DEFINITIONS) scheduleChipReveal()
         }
 
         fun detachInteractiveListeners() {
@@ -1029,8 +1031,76 @@ class MagnifierLens(
             setOnGenericMotionListener(null)
             clearFocus()
             isInteractive = false
+            leftChip.animate().cancel()
+            rightChip.animate().cancel()
+            leftChip.translationX = 0f
+            rightChip.translationX = 0f
             leftChip.visibility = GONE
             rightChip.visibility = GONE
+        }
+
+        /** Run [revealChips] now if no pill width animation is in flight;
+         *  otherwise wait for the pill animator to end and run it then.
+         *  This ensures the chips' "under-pill" start position is at the
+         *  pill's settled word-state width, not at a mid-animation width
+         *  (which would leave the chips visibly exposed). */
+        private fun scheduleChipReveal() {
+            val anim = pillAnimator
+            if (anim == null || !anim.isRunning) {
+                revealChips()
+                return
+            }
+            anim.addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    animation.removeListener(this)
+                    if (isInteractive) revealChips()
+                }
+            })
+        }
+
+        /** Gap between the chip's visible disk and the pill's outer edge
+         *  in the resting (post-reveal) layout. */
+        private val chipPillGapPx = dp(12f)
+
+        /** Lay the chips at their final positions — visible disks
+         *  [chipPillGapPx] away from the pill's left and right edges —
+         *  then translate them back inward so they sit under the pill,
+         *  set visibility, and animate translationX back to 0 so they
+         *  slide out from under the pill to their resting places. */
+        private fun revealChips() {
+            val pillNaturalWidth = measurePillNaturalWidth()
+            val pillLeft = (viewW - pillNaturalWidth) / 2
+            val pillRight = pillLeft + pillNaturalWidth
+            val chipTopMargin = pillAnchorY - chipHitSizePx / 2
+
+            leftChip.layoutParams = LayoutParams(
+                chipHitSizePx, chipHitSizePx,
+                Gravity.START or Gravity.TOP,
+            ).apply {
+                marginStart = pillLeft - chipVisDiameterPx - chipHaloPadPx - chipPillGapPx
+                topMargin = chipTopMargin
+            }
+            rightChip.layoutParams = LayoutParams(
+                chipHitSizePx, chipHitSizePx,
+                Gravity.END or Gravity.TOP,
+            ).apply {
+                marginEnd = (viewW - pillRight) - chipVisDiameterPx - chipHaloPadPx - chipPillGapPx
+                topMargin = chipTopMargin
+            }
+
+            leftChip.animate().cancel()
+            rightChip.animate().cancel()
+            // Initial offset accounts for both the chip's visible
+            // diameter AND the resting gap, so the disk is fully tucked
+            // under the pill at t=0 regardless of the gap.
+            val initialOffset = (chipVisDiameterPx + chipPillGapPx).toFloat()
+            leftChip.translationX = initialOffset
+            rightChip.translationX = -initialOffset
+            leftChip.visibility = VISIBLE
+            rightChip.visibility = VISIBLE
+            val interp = android.view.animation.DecelerateInterpolator()
+            leftChip.animate().translationX(0f).setDuration(220L).setInterpolator(interp).start()
+            rightChip.animate().translationX(0f).setDuration(220L).setInterpolator(interp).start()
         }
 
         private fun populateDefinitions(
