@@ -396,7 +396,6 @@ class MagnifierLens(
         private val pillInkColor = accentOnColor
         private val pillInkDivider = withAlpha(accentOnColor, 0x38)
         private val pillInkReading = withAlpha(accentOnColor, 0xB8)
-        private val pillInkChevron = withAlpha(accentOnColor, 0x80)
         private val panelPrimaryText = ctx.themeColor(R.attr.ptText)
         private val panelSecondaryText = ctx.themeColor(R.attr.ptTextMuted)
         // Badge uses ptCard (one step lighter than the lens panel's
@@ -536,7 +535,7 @@ class MagnifierLens(
         private val pillChevronView = ImageView(ctx).apply {
             val d = AppCompatResources.getDrawable(ctx, R.drawable.ic_lens_chevron)?.mutate()
             if (d != null) {
-                DrawableCompat.setTint(d, pillInkChevron)
+                DrawableCompat.setTint(d, pillInkColor)
                 setImageDrawable(d)
             }
             val params = LinearLayout.LayoutParams(pillChevronSize, pillChevronSize)
