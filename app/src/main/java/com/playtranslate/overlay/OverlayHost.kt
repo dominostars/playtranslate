@@ -178,11 +178,15 @@ class OverlayHost(
 
         /**
          * Defensive defaults for full-display (MATCH_PARENT × MATCH_PARENT)
-         * overlays. Sets `FLAG_LAYOUT_NO_LIMITS` so the window isn't inset by
-         * system bars, and `LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS` so it isn't
-         * inset by display cutouts in portrait. Without these, a notch device
-         * reports a smaller view than the display, silently miscalibrating
-         * OCR-box overlay coordinates.
+         * overlays — they must cover the whole display so OCR-box coordinates,
+         * which are in capture-bitmap pixels, map 1:1 onto the overlay.
+         *
+         * `fitInsetsTypes = 0` is what actually makes the window span the full
+         * display: a non-focusable TYPE_APPLICATION_OVERLAY (the translation
+         * overlay) is otherwise laid out inside the system-bar insets — shorter
+         * than the capture — which vertically compresses every box.
+         * `FLAG_LAYOUT_NO_LIMITS` alone does not prevent that;
+         * `LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS` covers the display cutout.
          *
          * Idempotent. Honors callers that explicitly set a non-DEFAULT cutout
          * mode — only the DEFAULT case is upgraded.
@@ -193,6 +197,7 @@ class OverlayHost(
                     params.height == WindowManager.LayoutParams.MATCH_PARENT
             if (!fullScreen) return
             params.flags = params.flags or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            params.fitInsetsTypes = 0
             if (params.layoutInDisplayCutoutMode ==
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
             ) {
