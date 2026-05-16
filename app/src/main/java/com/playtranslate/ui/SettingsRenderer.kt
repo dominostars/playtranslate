@@ -57,6 +57,7 @@ import com.playtranslate.translation.TranslationBackendRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import com.playtranslate.tts.TtsEngine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -87,6 +88,10 @@ class SettingsRenderer(
         fun requestAnkiPermission()
         fun openLanguageSetup(mode: String)
         fun openDeepLSettings()
+        /** Tap on the TTS "Voice" cell — open the per-language voice picker. */
+        fun openTtsVoicePicker()
+        /** Tap on the TTS no-engine cell — show the "No Text-to-Speech" alert. */
+        fun openTtsSetup()
         fun showHotkeyDialog(title: String?, onSet: (List<Int>) -> Unit, onCancel: () -> Unit)
         fun showAnkiDeckPicker(onDeckSelected: () -> Unit)
         fun showAnkiCardTypePicker(onPicked: () -> Unit)
@@ -212,6 +217,7 @@ class SettingsRenderer(
         setupCaptureDisplaySection()
         setupTranslationServiceSection()
         setupAnkiSection()
+        refreshTtsSection()
         setupAppearanceSection()
         setupSupportSection()
         setupDebugSection()
@@ -229,6 +235,7 @@ class SettingsRenderer(
         setGroupHeader(R.id.headerOnlineTranslations, "ONLINE TRANSLATIONS")
         setGroupHeader(R.id.headerOfflineTranslations, "OFFLINE TRANSLATIONS")
         setGroupHeader(R.id.headerAnki, "ANKI")
+        setGroupHeader(R.id.headerTextToSpeech, "TEXT-TO-SPEECH")
         setGroupHeader(R.id.headerAppearance, "APPEARANCE")
         setGroupHeader(R.id.headerSupport, "SUPPORT")
         setGroupHeader(R.id.headerDebug, "DEBUG")
@@ -288,6 +295,44 @@ class SettingsRenderer(
                 callbacks.onUpdateLanguagePacksTapped(stalePacks)
             }
             applyUpdatePacksWarningTint()
+        }
+    }
+
+    // ── Text-to-Speech section ────────────────────────────────────────────
+
+    /** (Re)resolve TTS engine availability and populate the section: a "Voice"
+     *  value-cell when an engine is usable, otherwise a cell that opens the
+     *  "No Text-to-Speech" alert. The section stays hidden until the async
+     *  check resolves (no empty-card flash). Also called from onResume so a
+     *  voice picked in the detail screen — or a game-language change — shows. */
+    fun refreshTtsSection() {
+        val section = root.findViewById<View>(R.id.ttsSection) ?: return
+        val rowNoEngine = root.findViewById<View>(R.id.rowTtsNoEngine)
+        val rowVoice = root.findViewById<View>(R.id.rowTtsVoice)
+        lifecycleScope.launch {
+            val lang = prefs.sourceLangId
+            if (TtsEngine.isEngineAvailable(ctx)) {
+                val voices = TtsEngine.voicesFor(ctx, lang)
+                val savedName = prefs.ttsVoiceName(lang)
+                val idx = if (savedName == null) -1
+                          else voices.indexOfFirst { it.name == savedName }
+                rowVoice.findViewById<TextView>(R.id.tvRowTitle).text = "Voice"
+                rowVoice.findViewById<TextView>(R.id.tvRowValue).text =
+                    if (idx >= 0) "Voice ${idx + 1}" else "Default"
+                rowVoice.setOnClickListener { callbacks.openTtsVoicePicker() }
+                rowVoice.visibility = View.VISIBLE
+                rowNoEngine.visibility = View.GONE
+            } else {
+                rowNoEngine.findViewById<TextView>(R.id.tvRowTitle).text =
+                    "Set up Text-to-Speech"
+                val sub = rowNoEngine.findViewById<TextView>(R.id.tvRowSubtitle)
+                sub.text = "No speech engine is available. Tap to add one."
+                sub.visibility = View.VISIBLE
+                rowNoEngine.setOnClickListener { callbacks.openTtsSetup() }
+                rowNoEngine.visibility = View.VISIBLE
+                rowVoice.visibility = View.GONE
+            }
+            section.visibility = View.VISIBLE
         }
     }
 

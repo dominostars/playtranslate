@@ -73,6 +73,13 @@
             android:parentActivityName=".MainActivity"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- Per-language Text-to-Speech voice picker (launched from Settings → Text-to-Speech). -->
+        <activity
+            android:name=".ui.TtsVoiceActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.PlayTranslate" />
+
 <!-- Foreground service that owns the OCR + translation pipeline. -->
         <service
             android:name=".CaptureService"

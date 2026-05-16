@@ -2,6 +2,8 @@ package com.playtranslate.tts
 
 import android.content.Context
 import android.speech.tts.TextToSpeech
+import android.speech.tts.Voice
+import com.playtranslate.Prefs
 import com.playtranslate.language.SourceLangId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -58,18 +60,20 @@ object TtsEngine {
     /**
      * Speak [text] in [lang], or report why it couldn't. Reuses the cached
      * engine; rebuilds only on the first call, after an engine switch, or to
-     * confirm a "language unsupported" result against a fresh engine.
+     * confirm a "can't serve this" result against a fresh engine. Prefers the
+     * user's saved voice for [lang] when one is set.
      */
     suspend fun speak(context: Context, text: String, lang: SourceLangId): SpeakResult =
         lock.withLock {
+            val savedVoiceName = Prefs(context).ttsVoiceName(lang)
             var engine = currentEngine(context) ?: return@withLock SpeakResult.NoEngine
-            if (!isLanguageSupported(engine, lang)) {
-                // "Unsupported" is ambiguous: the engine genuinely lacks the
-                // language, or the cached binding is dead and can't answer.
+            if (!prepareEngine(engine, lang, savedVoiceName)) {
+                // "Can't serve this" is ambiguous: the engine genuinely lacks
+                // the language, or the cached binding is dead and can't answer.
                 // Rebuild once and re-ask — a fresh binding is authoritative.
                 discardEngine()
                 engine = currentEngine(context) ?: return@withLock SpeakResult.NoEngine
-                if (!isLanguageSupported(engine, lang)) {
+                if (!prepareEngine(engine, lang, savedVoiceName)) {
                     return@withLock SpeakResult.LanguageUnsupported(activeEngineLabel(engine))
                 }
             }
@@ -82,6 +86,50 @@ object TtsEngine {
         tts?.stop()
     }
 
+    /** Whether a usable TTS engine can be bound right now. */
+    suspend fun isEngineAvailable(context: Context): Boolean =
+        lock.withLock { currentEngine(context) != null }
+
+    /** The voices the active engine offers for [lang]. For Chinese — where the
+     *  source language fixes a script but engine voices are region-tagged —
+     *  the script-appropriate regions are floated to the top (Traditional →
+     *  TW/HK/MO, Simplified → CN/SG); within that, ordered best-quality-first.
+     *  Empty when no engine is available. */
+    suspend fun voicesFor(context: Context, lang: SourceLangId): List<Voice> =
+        lock.withLock {
+            val engine = currentEngine(context) ?: return@withLock emptyList()
+            val voices = engine.voices ?: return@withLock emptyList()
+            // The source language fixes a script; engine voices are tagged by
+            // region. Float the script's regions first so the natural pick
+            // sits on top. Empty (a no-op) for single-locale languages.
+            val preferredRegions: Set<String> = when {
+                lang.locale.language != "zh" -> emptySet()
+                lang.locale.script == "Hant" -> setOf("TW", "HK", "MO")
+                else -> setOf("CN", "SG")
+            }
+            voices
+                .filter { it.locale.language == lang.locale.language }
+                .sortedWith(
+                    compareByDescending<Voice> { it.locale.country in preferredRegions }
+                        .thenByDescending { it.quality }
+                        .thenBy { it.name },
+                )
+        }
+
+    /** Speak a short in-language sample with [voice] — the voice picker's
+     *  audition. A null [voice] auditions the language's default voice.
+     *  Best-effort; no-op when no engine is available. */
+    suspend fun previewVoice(context: Context, voice: Voice?, lang: SourceLangId) {
+        lock.withLock {
+            val engine = currentEngine(context) ?: return@withLock
+            if (voice != null) engine.voice = voice else engine.setLanguage(lang.locale)
+            engine.speak(
+                lang.displayName(lang.locale),
+                TextToSpeech.QUEUE_FLUSH, null, "pt-tts-preview",
+            )
+        }
+    }
+
     /** Select [lang] on [engine] and report whether it can serve it.
      *  `setLanguage` both selects the locale and returns the availability
      *  code, so it is the authoritative check. */
@@ -92,6 +140,31 @@ object TtsEngine {
             TextToSpeech.LANG_COUNTRY_VAR_AVAILABLE -> true
             else -> false
         }
+
+    /** Ready [engine] to speak [lang] and report whether it can.
+     *
+     *  The saved voice ([savedVoiceName], a [Voice] name) is tried first: it
+     *  was chosen from the engine's own enumerated voices, so its presence in
+     *  [TextToSpeech.getVoices] means the engine can speak it. That is
+     *  authoritative even when [isLanguageSupported]'s `setLanguage` rejects a
+     *  bare script-only locale (e.g. `zh-Hant`, which carries no region for the
+     *  engine to resolve). Only when there is no usable saved voice does the
+     *  `setLanguage` check decide — selecting the language's default voice as
+     *  its side effect. */
+    private fun prepareEngine(
+        engine: TextToSpeech,
+        lang: SourceLangId,
+        savedVoiceName: String?,
+    ): Boolean {
+        if (savedVoiceName != null) {
+            val voice = engine.voices?.firstOrNull { it.name == savedVoiceName }
+            if (voice != null) {
+                engine.voice = voice
+                return true
+            }
+        }
+        return isLanguageSupported(engine, lang)
+    }
 
     /**
      * The engine to speak with: the cached one when the live system default

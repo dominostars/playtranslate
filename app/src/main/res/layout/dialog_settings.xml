@@ -560,6 +560,46 @@
             </com.google.android.material.card.MaterialCardView>
 
             <!-- ══════════════════════════════════════════════════════ -->
+            <!-- TEXT-TO-SPEECH                                        -->
+            <!-- ══════════════════════════════════════════════════════ -->
+
+            <LinearLayout
+                android:id="@+id/ttsSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <include layout="@layout/settings_group_header"
+                    android:id="@+id/headerTextToSpeech" />
+
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:cardBackgroundColor="?attr/ptCard"
+                    app:cardCornerRadius="@dimen/pt_radius"
+                    app:cardElevation="0dp"
+                    app:strokeColor="?attr/ptDivider"
+                    app:strokeWidth="1dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <include layout="@layout/settings_row_link"
+                            android:id="@+id/rowTtsNoEngine"
+                            android:visibility="gone" />
+
+                        <include layout="@layout/settings_row_value"
+                            android:id="@+id/rowTtsVoice"
+                            android:visibility="gone" />
+
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+
+            <!-- ══════════════════════════════════════════════════════ -->
             <!-- APPEARANCE                                            -->
             <!-- ══════════════════════════════════════════════════════ -->
 

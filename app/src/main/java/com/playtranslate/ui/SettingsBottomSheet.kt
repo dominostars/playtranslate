@@ -105,6 +105,7 @@ class SettingsBottomSheet : DialogFragment() {
         renderer?.refreshAnkiSection()
         renderer?.refreshOverlayIconSwitch()
         renderer?.refreshAutoModeToggle()
+        renderer?.refreshTtsSection()
         // Pick up backend toggle changes made while we were paused —
         // DeepLSettingsActivity flips deeplEnabled while the prefs listener
         // is unregistered, so onResume is the catch-up point.
@@ -258,6 +259,13 @@ class SettingsBottomSheet : DialogFragment() {
                 }
                 override fun openDeepLSettings() {
                     startActivity(android.content.Intent(requireContext(), DeepLSettingsActivity::class.java))
+                }
+                override fun openTtsVoicePicker() {
+                    startActivity(android.content.Intent(requireContext(), TtsVoiceActivity::class.java))
+                }
+                override fun openTtsSetup() {
+                    val act = activity ?: return
+                    showTtsNoEngineDialog(TtsAlertTarget.InActivity(act)) { }
                 }
                 override fun startTranslateGemmaDownload() {
                     showTranslateGemmaDownloadDialog()

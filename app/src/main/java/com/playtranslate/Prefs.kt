@@ -101,6 +101,19 @@ class Prefs(context: Context) {
             return resolved ?: SourceLangId.JA
         }
 
+    /** The user's preferred TTS voice for [lang], by [android.speech.tts.Voice]
+     *  name, or null to use the engine default. Voices are stored per language
+     *  because a voice is locale-specific. */
+    fun ttsVoiceName(lang: SourceLangId): String? =
+        sp.getString("tts_voice_${lang.code}", null)
+
+    fun setTtsVoiceName(lang: SourceLangId, voiceName: String?) {
+        sp.edit().apply {
+            if (voiceName == null) remove("tts_voice_${lang.code}")
+            else putString("tts_voice_${lang.code}", voiceName)
+        }.apply()
+    }
+
     /**
      * Set of displays the user has selected to translate. Insertion order
      * is preserved (LinkedHashSet) so "primary" disambiguators (hotkey
