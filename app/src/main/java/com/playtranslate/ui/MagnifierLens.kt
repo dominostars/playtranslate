@@ -178,6 +178,11 @@ class MagnifierLens(
         lensView?.setLoading(word, reading)
     }
 
+    /** Show or hide the loading spinner on the Speak chip. */
+    fun setSpeakChipLoading(loading: Boolean) {
+        lensView?.setSpeakChipLoading(loading)
+    }
+
     fun makeInteractive() {
         val view = lensView ?: return
         val p = params ?: return
@@ -651,10 +656,24 @@ class MagnifierLens(
         // Chips: Speak (left) and Anki (right) route through the lens's
         // [onSpeakTap] / [onAnkiTap] callbacks — wired in [DragLookupController].
         // -----------------------------------------------------------------
-        private val leftChip = makeChip(R.drawable.ic_lens_speak, onClick = { onSpeakTap() })
-        private val rightChip = makeChip(R.drawable.ic_card_stack, onClick = { onAnkiTap() })
+        // Speak chip's loading spinner — swapped in for the icon while a TTS
+        // request is in flight (see [setSpeakChipLoading]).
+        private val leftChipSpinner = ProgressBar(
+            context, null, android.R.attr.progressBarStyleSmall,
+        ).apply {
+            isIndeterminate = true
+            indeterminateTintList = ColorStateList.valueOf(chipIconColor)
+            layoutParams = LayoutParams(dp(16f), dp(16f), Gravity.CENTER)
+            visibility = GONE
+        }
+        private val leftChipIcon = makeChipIcon(R.drawable.ic_lens_speak)
+        private val leftChip = makeChip({ onSpeakTap() }, leftChipIcon, leftChipSpinner)
+        private val rightChip = makeChip({ onAnkiTap() }, makeChipIcon(R.drawable.ic_card_stack))
 
-        private fun makeChip(iconRes: Int, onClick: () -> Unit): FrameLayout {
+        /** Build a chip: a clickable disk with [content] views centered on it.
+         *  Content (icon, optional spinner) is supplied so the caller can keep
+         *  references for state swaps. */
+        private fun makeChip(onClick: () -> Unit, vararg content: View): FrameLayout {
             val chip = FrameLayout(context).apply {
                 isClickable = true
                 setOnClickListener { onClick() }
@@ -671,18 +690,26 @@ class MagnifierLens(
                     Gravity.CENTER,
                 )
             }
-            val icon = ImageView(context).apply {
-                val d = AppCompatResources.getDrawable(context, iconRes)?.mutate()
-                if (d != null) {
-                    DrawableCompat.setTint(d, chipIconColor)
-                    setImageDrawable(d)
-                }
-                scaleType = ImageView.ScaleType.CENTER_INSIDE
-                layoutParams = LayoutParams(dp(16f), dp(16f), Gravity.CENTER)
-            }
             chip.addView(disk)
-            chip.addView(icon)
+            content.forEach { chip.addView(it) }
             return chip
+        }
+
+        private fun makeChipIcon(iconRes: Int): ImageView = ImageView(context).apply {
+            val d = AppCompatResources.getDrawable(context, iconRes)?.mutate()
+            if (d != null) {
+                DrawableCompat.setTint(d, chipIconColor)
+                setImageDrawable(d)
+            }
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            layoutParams = LayoutParams(dp(16f), dp(16f), Gravity.CENTER)
+        }
+
+        /** Swap the Speak chip between its icon and a loading spinner, shown
+         *  while a TTS request is in flight. */
+        fun setSpeakChipLoading(loading: Boolean) {
+            leftChipIcon.visibility = if (loading) GONE else VISIBLE
+            leftChipSpinner.visibility = if (loading) VISIBLE else GONE
         }
 
         // -----------------------------------------------------------------
