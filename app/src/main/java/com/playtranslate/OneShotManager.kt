@@ -129,8 +129,7 @@ class OneShotManager(private val service: CaptureService) {
 
             // 4. Save screenshot for Anki — per-display filename so a
             //    concurrent live cycle on another display can't clobber it.
-            val screenshotPath = PlayTranslateAccessibilityService.instance
-                ?.screenshotManager?.saveToCache(raw, displayId)
+            val screenshotPath = service.captureSaveToCache(raw, displayId)
 
             // 5. Build boxes via processor (factory decides furigana vs translation)
             val processor = createProcessor(cycle.forceMode)

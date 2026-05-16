@@ -12,6 +12,7 @@ import android.util.Log
 import android.util.TypedValue
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
+import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.MainActivity
 import com.playtranslate.OcrManager
 import com.playtranslate.PlayTranslateAccessibilityService
@@ -871,7 +872,7 @@ class DragLookupController(
         Log.d(TAG, "Taking screenshot for full-screen OCR...")
 
         val bitmap = withTimeoutOrNull(3000L) {
-            service.screenshotManager?.requestClean(displayId)
+            CaptureBackendResolver.active().captureSource?.requestClean(displayId)
         }
         if (bitmap == null) {
             Log.w(TAG, "Screenshot failed or timed out")

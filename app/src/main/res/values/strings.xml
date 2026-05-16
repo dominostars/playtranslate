@@ -116,6 +116,7 @@
     <string name="note_mlkit_no_internet">⚠ No internet connection — showing offline translation (lower quality).</string>
     <string name="note_mlkit_service_unavailable">⚠ Translation service unavailable — showing offline translation (lower quality).</string>
     <string name="note_low_memory_fallback">⚠ Low memory — showing offline translation (lower quality).</string>
+    <string name="error_live_mode_unsupported_backend">Live mode isn\'t available with the current screen-capture method.</string>
 
     <!-- Section headers -->
     <string name="section_original">Original</string>

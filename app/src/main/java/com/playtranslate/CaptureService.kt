@@ -46,6 +46,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import android.hardware.display.DisplayManager
+import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.translation.TranslationBackendRegistry
@@ -648,8 +649,7 @@ class CaptureService : Service() {
         var bitmap: Bitmap = raw
         try {
             state.value = CaptureState.InProgress(getString(R.string.status_capturing))
-            val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
-            val screenshotPath = mgr?.saveToCache(raw, displayId)
+            val screenshotPath = captureSaveToCache(raw, displayId)
 
             val region = activeRegionForDisplay(displayId)
             val statusBarHeight = getStatusBarHeightForDisplay(displayId)
@@ -810,6 +810,12 @@ class CaptureService : Service() {
     }
 
     fun startLive() {
+        if (!CaptureBackendResolver.active().supportsLiveMode) {
+            val msg = getString(R.string.error_live_mode_unsupported_backend)
+            emitError(msg)
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+            return
+        }
         oneShotCaptureJob?.cancel()
         // Reset the panel to Searching so the activity sees an
         // immediate transition into live mode (rather than a stale
@@ -1480,13 +1486,13 @@ class CaptureService : Service() {
         a11y.showTranslationOverlay(display, boxes, cropLeft, cropTop, screenshotW, screenshotH, pinholeMode)
     }
 
-    /**
-     * Captures a clean screenshot via [ScreenshotManager].
-     */
-    internal suspend fun captureScreen(displayId: Int): Bitmap? {
-        val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
-        return mgr?.requestClean(displayId)
-    }
+    /** Capture a clean screenshot via the active capture backend. */
+    internal suspend fun captureScreen(displayId: Int): Bitmap? =
+        CaptureBackendResolver.active().captureSource?.requestClean(displayId)
+
+    /** Persist [raw] to the screenshot cache via the active capture backend. */
+    internal fun captureSaveToCache(raw: Bitmap, displayId: Int): String? =
+        CaptureBackendResolver.active().captureSource?.saveToCache(raw, displayId)
 
     /**
      * @param preCaptured If non-null, use this bitmap instead of taking a new
@@ -1586,8 +1592,7 @@ class CaptureService : Service() {
         onScreenshotTaken?.invoke()
         var bitmap: Bitmap? = raw
         try {
-            val screenshotPath = PlayTranslateAccessibilityService.instance
-                ?.screenshotManager?.saveToCache(raw, displayId)
+            val screenshotPath = captureSaveToCache(raw, displayId)
 
             val region = activeRegionForDisplay(displayId)
             val statusBarHeight = getStatusBarHeightForDisplay(displayId)
