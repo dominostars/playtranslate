@@ -14,6 +14,8 @@ import androidx.lifecycle.MutableLiveData
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.view.WindowManager
 import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
@@ -47,7 +49,10 @@ import java.util.Date
 import java.util.Locale
 import android.hardware.display.DisplayManager
 import com.playtranslate.capture.CaptureBackendResolver
+import com.playtranslate.capture.MediaProjectionCaptureSource
+import com.playtranslate.capture.MediaProjectionController
 import com.playtranslate.dictionary.DictionaryManager
+import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.ui.DegradedWarningKind
@@ -337,7 +342,7 @@ class CaptureService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i(TAG, "onStartCommand action=${intent?.action}")
         // Android requires startForeground() within 5s of startForegroundService()
-        startForeground(NOTIF_ID, buildNotification())
+        enterForeground()
         // Immediately evaluate — may stopForeground if no game-screen presence yet
         updateForegroundState()
         return START_STICKY
@@ -744,6 +749,30 @@ class CaptureService : Service() {
 
     private val oneShotManager = OneShotManager(this)
     private var oneShotCaptureJob: Job? = null
+
+    // ── MediaProjection backend state ─────────────────────────────────────
+    //
+    // Lazily created; untouched until the MediaProjection backend is the
+    // active one. MediaProjectionCaptureBackend forwards to these, just as
+    // the accessibility backend forwards to the accessibility service.
+
+    /** Owns the MediaProjection session (consent, VirtualDisplay, ImageReader). */
+    internal val mediaProjectionController by lazy { MediaProjectionController(this) }
+
+    /** One-shot clean-capture source backed by [mediaProjectionController]. */
+    internal val mediaProjectionCaptureSource by lazy {
+        MediaProjectionCaptureSource(mediaProjectionController)
+    }
+
+    /** Overlay-window host for MediaProjection mode (TYPE_APPLICATION_OVERLAY). */
+    internal val mediaProjectionOverlayHost by lazy {
+        OverlayHost(this, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+    }
+
+    /** True once the foreground service has been promoted to include the
+     *  mediaProjection type. Never downgraded afterwards — the platform kills
+     *  the projection if the type is dropped. */
+    private var mediaProjectionFgsActive = false
 
     /**
      * Listens for capture displays going away (external monitor unplugged,
@@ -1945,9 +1974,34 @@ class CaptureService : Service() {
         }
 
         if (iconShowing || isLive) {
-            startForeground(NOTIF_ID, buildNotification())
+            enterForeground()
         } else {
             stopForeground(STOP_FOREGROUND_REMOVE)
+        }
+    }
+
+    /** Promote the foreground service to include the mediaProjection type.
+     *  MUST run before MediaProjectionManager.getMediaProjection() on API
+     *  34+. Idempotent. */
+    internal fun ensureMediaProjectionForegroundType() {
+        if (mediaProjectionFgsActive) return
+        mediaProjectionFgsActive = true
+        enterForeground()
+    }
+
+    /** startForeground with the correct service type(s). Once
+     *  [ensureMediaProjectionForegroundType] has run, the mediaProjection type
+     *  is always included so a later onStartCommand / updateForegroundState
+     *  can't downgrade it (which would make the platform kill the projection). */
+    private fun enterForeground() {
+        if (mediaProjectionFgsActive) {
+            startForeground(
+                NOTIF_ID, buildNotification(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
+            )
+        } else {
+            startForeground(NOTIF_ID, buildNotification())
         }
     }
 
