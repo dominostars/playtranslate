@@ -1,8 +1,10 @@
 package com.playtranslate.ui
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.Log
 import android.util.TypedValue
@@ -10,9 +12,12 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.widget.NestedScrollView
 import com.google.android.material.card.MaterialCardView
 import com.playtranslate.themeColor
@@ -39,7 +44,9 @@ import com.playtranslate.model.HanziDetail
 import com.playtranslate.model.KanjiDetail
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.unambiguousFallbackPos
+import com.playtranslate.tts.TtsEngine
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
@@ -111,6 +118,8 @@ class WordDetailBottomSheet : DialogFragment() {
     ): View = inflater.inflate(R.layout.bottom_sheet_word_detail, container, false)
 
     override fun onDestroyView() {
+        speakJob?.cancel()
+        TtsEngine.stop()
         moreExamplesGroup = null
         moreExamplesBody = null
         bigHeadwordView = null
@@ -193,17 +202,17 @@ class WordDetailBottomSheet : DialogFragment() {
             ).apply {
                 marginStart = dp(4)
                 topMargin = dp(12)
-                bottomMargin = dp(8)
+                bottomMargin = dp(2)
             }
             content.addView(tvHeadword, 0)
         } else {
             // Reserve detailContent paddingTop equal to the overlay's
-            // measured height + 8dp gap, so the reading/badges/definitions
+            // measured height + 2dp gap, so the reading/badges/definitions
             // sit just below the headword regardless of whether it wraps to
             // multiple lines. setText triggers requestLayout which fires
             // this listener, so the padding tracks text changes.
             tvHeadword.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                val target = (tvHeadword.bottom - toolbarSlotPx) + dp(8)
+                val target = (tvHeadword.bottom - toolbarSlotPx) + dp(2)
                 if (content.paddingTop != target && target > 0) {
                     content.setPadding(
                         content.paddingStart,
@@ -437,6 +446,10 @@ class WordDetailBottomSheet : DialogFragment() {
      *  down into the toolbar's empty left slot as the user scrolls. */
     private var bigHeadwordView: TextView? = null
 
+    /** In-flight TTS request from the header speak chip — cancelled when the
+     *  view is torn down so a tapped pronunciation doesn't outlive the sheet. */
+    private var speakJob: Job? = null
+
     private suspend fun buildContent(
         content: LinearLayout,
         entries: List<DictionaryEntry>,
@@ -658,16 +671,17 @@ class WordDetailBottomSheet : DialogFragment() {
     // ── Section builders ──────────────────────────────────────────────────
 
     /**
-     * Reading + badge row that lives in the scroll content beneath the
-     * overlay headword. The overlay TextView itself is set up in
-     * [onViewCreated] (typeface, pivot, scroll listener); here we just
-     * rewrite its text to the canonical headword from the resolved
-     * entry and emit the reading + Common pill + stars row.
+     * Reading + speak chip + badge block that lives in the scroll content
+     * beneath the overlay headword. The overlay TextView itself is set up
+     * in [onViewCreated] (typeface, pivot, scroll listener); here we just
+     * rewrite its text to the canonical headword from the resolved entry
+     * and emit the reading line (with its speak chip) plus the Common pill
+     * and stars badge row.
      */
     private fun addHeaderBlock(
         parent: LinearLayout,
         entry: DictionaryEntry,
-        @Suppress("UNUSED_PARAMETER") sourceLangId: SourceLangId,
+        sourceLangId: SourceLangId,
         queriedWord: String,
     ) {
         val ctx = requireContext()
@@ -687,21 +701,32 @@ class WordDetailBottomSheet : DialogFragment() {
 
         val isCommon = entry.isCommon == true
         val freqStars = entry.freqScore.coerceIn(0, 5)
-        if (reading == null && !isCommon && freqStars == 0) return
 
         val block = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(4), 0, dp(4), dp(12))
+            setPadding(dp(4), 0, dp(4), dp(8))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
 
+        // Reading line with the speak chip placed just after the reading.
+        // The row is emitted even without a reading — the chip speaks the
+        // word regardless of script — leaving the chip flush left in that
+        // case.
+        val readingRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
         if (reading != null) {
-            block.addView(TextView(ctx).apply {
+            readingRow.addView(TextView(ctx).apply {
                 text = reading
-                textSize = 16f
+                textSize = 18f
                 setTextColor(ctx.themeColor(R.attr.ptTextMuted))
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -709,6 +734,8 @@ class WordDetailBottomSheet : DialogFragment() {
                 )
             })
         }
+        readingRow.addView(buildSpeakChip(written, sourceLangId, leading = reading == null))
+        block.addView(readingRow)
 
         if (isCommon || freqStars > 0) {
             val badgeRow = LinearLayout(ctx).apply {
@@ -717,7 +744,7 @@ class WordDetailBottomSheet : DialogFragment() {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).also { it.topMargin = if (reading != null) dp(12) else 0 }
+                ).also { it.topMargin = dp(8) }
             }
             if (isCommon) {
                 badgeRow.addView(buildCommonPill())
@@ -729,6 +756,88 @@ class WordDetailBottomSheet : DialogFragment() {
         }
 
         parent.addView(block)
+    }
+
+    /**
+     * Speak chip for the header reading row. Tapping it reads [word] aloud
+     * through [TtsEngine], swapping the icon for an indeterminate spinner
+     * while the request is in flight. A bordered circle roughly the height
+     * of the reading line sits inside a larger 44dp tap target.
+     *
+     * When [leading] — the chip starts the row, with no reading before it —
+     * the circle is pinned to the start edge so it lines up under the
+     * headword; otherwise it is centred in the tap target and offset a
+     * little past the reading.
+     */
+    private fun buildSpeakChip(word: String, lang: SourceLangId, leading: Boolean): View {
+        val ctx = requireContext()
+        val muted = ctx.themeColor(R.attr.ptTextMuted)
+        val tint = ColorStateList.valueOf(muted)
+        val icon = ImageView(ctx).apply {
+            setImageResource(R.drawable.ic_lens_speak)
+            imageTintList = tint
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            layoutParams = FrameLayout.LayoutParams(dp(16), dp(16), Gravity.CENTER)
+        }
+        val spinner = ProgressBar(ctx, null, android.R.attr.progressBarStyleSmall).apply {
+            isIndeterminate = true
+            indeterminateTintList = tint
+            layoutParams = FrameLayout.LayoutParams(dp(16), dp(16), Gravity.CENTER)
+            visibility = View.GONE
+        }
+        // The icon/spinner ride inside the bordered circle, centred, so they
+        // follow it when the circle shifts within the tap area.
+        val circle = FrameLayout(ctx).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.TRANSPARENT)
+                setStroke(dp(1).coerceAtLeast(1), muted)
+            }
+            layoutParams = FrameLayout.LayoutParams(
+                dp(30), dp(30),
+                if (leading) Gravity.START or Gravity.CENTER_VERTICAL else Gravity.CENTER,
+            )
+            addView(icon)
+            addView(spinner)
+        }
+        val rippleBg = TypedValue().also {
+            ctx.theme.resolveAttribute(
+                android.R.attr.selectableItemBackgroundBorderless, it, true,
+            )
+        }.resourceId
+        return FrameLayout(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply {
+                // No leading inset when the chip starts the row, so the circle
+                // lands flush under the headword.
+                marginStart = if (leading) 0 else dp(8)
+            }
+            isClickable = true
+            setBackgroundResource(rippleBg)
+            contentDescription = "Read word aloud"
+            addView(circle)
+            setOnClickListener {
+                if (speakJob?.isActive == true) return@setOnClickListener
+                speakJob = viewLifecycleOwner.lifecycleScope.launch {
+                    icon.visibility = View.GONE
+                    spinner.visibility = View.VISIBLE
+                    try {
+                        val failure: String? = when (TtsEngine.speak(ctx, word, lang)) {
+                            TtsEngine.SpeakResult.Spoken -> null
+                            TtsEngine.SpeakResult.NoEngine ->
+                                "No text-to-speech engine is available"
+                            is TtsEngine.SpeakResult.LanguageUnsupported ->
+                                "Text-to-speech isn't available for ${lang.displayName()}"
+                        }
+                        if (failure != null) {
+                            Toast.makeText(ctx, failure, Toast.LENGTH_SHORT).show()
+                        }
+                    } finally {
+                        icon.visibility = View.VISIBLE
+                        spinner.visibility = View.GONE
+                    }
+                }
+            }
+        }
     }
 
     private fun buildCommonPill(): TextView {
