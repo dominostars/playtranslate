@@ -87,9 +87,9 @@
 
                 <ImageButton
                     android:id="@+id/btnCopyTranslation"
-                    android:layout_width="32dp"
+                    android:layout_width="36dp"
                     android:layout_height="32dp"
-                    android:layout_marginEnd="12dp"
+                    android:layout_marginEnd="16dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Copy translation"
                     android:src="@drawable/ic_copy"
@@ -97,7 +97,7 @@
 
                 <ImageButton
                     android:id="@+id/btnToggleTranslation"
-                    android:layout_width="32dp"
+                    android:layout_width="36dp"
                     android:layout_height="32dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Toggle translation visibility"
@@ -168,19 +168,29 @@
 
                 <ImageButton
                     android:id="@+id/btnToggleFurigana"
-                    android:layout_width="32dp"
+                    android:layout_width="36dp"
                     android:layout_height="32dp"
-                    android:layout_marginEnd="12dp"
+                    android:layout_marginEnd="16dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Toggle inline furigana"
                     android:src="@drawable/ic_furigana"
                     app:tint="?attr/ptTextMuted" />
 
                 <ImageButton
-                    android:id="@+id/btnEditOriginal"
-                    android:layout_width="32dp"
+                    android:id="@+id/btnSpeakOriginal"
+                    android:layout_width="36dp"
                     android:layout_height="32dp"
-                    android:layout_marginEnd="12dp"
+                    android:layout_marginEnd="16dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Read original text aloud"
+                    android:src="@drawable/ic_lens_speak"
+                    app:tint="?attr/ptTextMuted" />
+
+                <ImageButton
+                    android:id="@+id/btnEditOriginal"
+                    android:layout_width="36dp"
+                    android:layout_height="32dp"
+                    android:layout_marginEnd="16dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Edit original text"
                     android:src="@drawable/ic_edit"
@@ -188,9 +198,9 @@
 
                 <ImageButton
                     android:id="@+id/btnCopyOriginal"
-                    android:layout_width="32dp"
+                    android:layout_width="36dp"
                     android:layout_height="32dp"
-                    android:layout_marginEnd="12dp"
+                    android:layout_marginEnd="16dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Copy original"
                     android:src="@drawable/ic_copy"
@@ -198,7 +208,7 @@
 
                 <ImageButton
                     android:id="@+id/btnToggleOriginal"
-                    android:layout_width="32dp"
+                    android:layout_width="36dp"
                     android:layout_height="32dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Toggle original visibility"
@@ -260,7 +270,7 @@
 
                 <ImageButton
                     android:id="@+id/btnToggleWords"
-                    android:layout_width="32dp"
+                    android:layout_width="36dp"
                     android:layout_height="32dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Toggle words visibility"

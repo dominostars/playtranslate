@@ -2,6 +2,7 @@ package com.playtranslate.tts
 
 import android.content.Context
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import com.playtranslate.Prefs
 import com.playtranslate.language.SourceLangId
@@ -57,29 +58,99 @@ object TtsEngine {
      *  default still equals this. */
     private var cachedEnginePackage: String? = null
 
+    /** Monotonic source of unique utterance ids. A fresh id per [speak] lets
+     *  [utteranceListener] tell this call's utterance apart from a prior one
+     *  being flushed by its QUEUE_FLUSH. Mutated only under [lock]. */
+    private var utteranceCounter = 0
+
+    /** The caller awaiting its utterance's completion. Written only under
+     *  [lock] — by [speak] and [discardEngine]; [utteranceListener] only reads
+     *  it, on the engine's callback thread. A finished awaiter left in the slot
+     *  is harmless: ids are unique and completing it again is a no-op. */
+    @Volatile private var pending: PendingSpeech? = null
+
+    /** An awaited utterance: the id it was queued under, paired with the
+     *  deferred to complete once it reaches a terminal state. */
+    private class PendingSpeech(
+        val utteranceId: String,
+        val done: CompletableDeferred<Unit>,
+    )
+
+    /** Engine-wide progress listener, installed once per engine build by
+     *  [currentEngine]. Completes the [pending] awaiter when ITS utterance
+     *  finishes, errors, or is stopped/flushed; callbacks for any other id
+     *  (e.g. a prior utterance discarded by a new QUEUE_FLUSH) are ignored so
+     *  the wait can't end early. */
+    private val utteranceListener = object : UtteranceProgressListener() {
+        override fun onStart(utteranceId: String?) {}
+        override fun onDone(utteranceId: String?) { settle(utteranceId) }
+        @Suppress("OVERRIDE_DEPRECATION")
+        override fun onError(utteranceId: String?) { settle(utteranceId) }
+        override fun onStop(utteranceId: String?, interrupted: Boolean) {
+            settle(utteranceId)
+        }
+
+        private fun settle(utteranceId: String?) {
+            val awaited = pending ?: return
+            if (awaited.utteranceId == utteranceId) awaited.done.complete(Unit)
+        }
+    }
+
     /**
      * Speak [text] in [lang], or report why it couldn't. Reuses the cached
      * engine; rebuilds only on the first call, after an engine switch, or to
      * confirm a "can't serve this" result against a fresh engine. Prefers the
      * user's saved voice for [lang] when one is set.
+     *
+     * With [awaitCompletion] set, suspends until the utterance finishes,
+     * errors, or is interrupted (by [stop] or a later speak) before returning;
+     * otherwise returns once the utterance is queued. A non-[SpeakResult.Spoken]
+     * outcome is returned without waiting either way.
      */
-    suspend fun speak(context: Context, text: String, lang: SourceLangId): SpeakResult =
-        lock.withLock {
+    suspend fun speak(
+        context: Context,
+        text: String,
+        lang: SourceLangId,
+        awaitCompletion: Boolean = false,
+    ): SpeakResult {
+        val completion: CompletableDeferred<Unit>? = lock.withLock {
             val savedVoiceName = Prefs(context).ttsVoiceName(lang)
-            var engine = currentEngine(context) ?: return@withLock SpeakResult.NoEngine
+            var engine = currentEngine(context) ?: return SpeakResult.NoEngine
             if (!prepareEngine(engine, lang, savedVoiceName)) {
                 // "Can't serve this" is ambiguous: the engine genuinely lacks
                 // the language, or the cached binding is dead and can't answer.
                 // Rebuild once and re-ask — a fresh binding is authoritative.
                 discardEngine()
-                engine = currentEngine(context) ?: return@withLock SpeakResult.NoEngine
+                engine = currentEngine(context) ?: return SpeakResult.NoEngine
                 if (!prepareEngine(engine, lang, savedVoiceName)) {
-                    return@withLock SpeakResult.LanguageUnsupported(activeEngineLabel(engine))
+                    return SpeakResult.LanguageUnsupported(activeEngineLabel(engine))
                 }
             }
-            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "pt-tts")
-            SpeakResult.Spoken
+            val utteranceId = "pt-tts-${++utteranceCounter}"
+            // Every speak() flushes the queue, so a prior utterance — and any
+            // caller awaiting it — is finished the moment this one is enqueued.
+            // Settle that awaiter now: once [pending] is overwritten below, the
+            // listener's id check would no longer match its terminal callback.
+            pending?.done?.complete(Unit)
+            val done = if (awaitCompletion) {
+                CompletableDeferred<Unit>().also { pending = PendingSpeech(utteranceId, it) }
+            } else {
+                pending = null
+                null
+            }
+            val queued = engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+            // A rejected enqueue — e.g. text over getMaxSpeechInputLength() —
+            // fires no progress callback; settle the awaiter here so it can't
+            // hang on an utterance that will never run. The rejection is not
+            // surfaced as a distinct result (speak() still returns Spoken):
+            // an OCR'd screen of game text never approaches that length.
+            if (done != null && queued == TextToSpeech.ERROR) done.complete(Unit)
+            done
         }
+        // Awaited outside the lock — a long utterance must not block other calls.
+        completion?.await()
+        return SpeakResult.Spoken
+    }
 
     /** Stop any in-progress utterance. */
     fun stop() {
@@ -200,6 +271,8 @@ object TtsEngine {
             return null
         }
         cachedEnginePackage = engine.defaultEngine
+        // Routes utterance completion back to an awaiting speak() caller.
+        engine.setOnUtteranceProgressListener(utteranceListener)
         return engine
     }
 
@@ -208,6 +281,10 @@ object TtsEngine {
         tts?.shutdown()
         tts = null
         cachedEnginePackage = null
+        // A shut-down engine delivers no further utterance callbacks; settle
+        // any awaiter now so it can't hang waiting for one.
+        pending?.done?.complete(Unit)
+        pending = null
     }
 
     /** Human-readable name of the active (default) engine, or null if it

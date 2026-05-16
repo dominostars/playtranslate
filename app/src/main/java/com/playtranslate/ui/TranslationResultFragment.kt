@@ -110,6 +110,7 @@ class TranslationResultFragment : Fragment() {
     private lateinit var btnCopyOriginal: ImageButton
     private lateinit var btnCopyTranslation: ImageButton
     private lateinit var btnEditOriginal: ImageButton
+    private lateinit var btnSpeakOriginal: ImageButton
     private lateinit var btnToggleTranslation: ImageButton
     private lateinit var btnToggleOriginal: ImageButton
     private lateinit var btnToggleFurigana: ImageButton
@@ -133,6 +134,11 @@ class TranslationResultFragment : Fragment() {
      *  text (which has OCR newlines). */
     private var wordSpans = mutableListOf<Triple<IntRange, String, String>>()
     private var furiganaPopup: PopupWindow? = null
+
+    /** Drives the original-text speak button — TTS playback plus the icon
+     *  highlight. Created per view in [setupButtons], released in
+     *  [onDestroyView]. */
+    private var speakButton: OriginalSpeakButton? = null
 
     /** Char range currently highlighted with the accent background while a
      *  word-lookup popup is active. Tracked separately from the span object
@@ -189,6 +195,8 @@ class TranslationResultFragment : Fragment() {
     override fun onDestroyView() {
         dismissFurigana()
         dismissWordPopup()
+        speakButton?.release()
+        speakButton = null
         super.onDestroyView()
     }
 
@@ -206,6 +214,7 @@ class TranslationResultFragment : Fragment() {
         btnCopyOriginal      = view.findViewById(R.id.btnCopyOriginal)
         btnCopyTranslation   = view.findViewById(R.id.btnCopyTranslation)
         btnEditOriginal      = view.findViewById(R.id.btnEditOriginal)
+        btnSpeakOriginal     = view.findViewById(R.id.btnSpeakOriginal)
         btnToggleTranslation = view.findViewById(R.id.btnToggleTranslation)
         btnToggleOriginal    = view.findViewById(R.id.btnToggleOriginal)
         btnToggleFurigana    = view.findViewById(R.id.btnToggleFurigana)
@@ -261,6 +270,15 @@ class TranslationResultFragment : Fragment() {
         btnResultAnki.setOnClickListener {
             onAnkiClicked()
         }
+        speakButton = OriginalSpeakButton(
+            btnSpeakOriginal,
+            viewLifecycleOwner.lifecycleScope,
+            TtsAlertTarget.InActivity(requireActivity()),
+        ) {
+            val text = getDisplayedOriginalText()
+            if (text.isBlank()) null
+            else OriginalSpeakButton.Request(text, prefs.sourceLangId)
+        }
     }
 
     private fun applyTranslationVisibility() {
@@ -275,6 +293,7 @@ class TranslationResultFragment : Fragment() {
         cardOriginal.visibility = if (hidden) View.GONE else View.VISIBLE
         btnCopyOriginal.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
         btnEditOriginal.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
+        btnSpeakOriginal.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
         val hasHintText = hintKind != HintTextKind.NONE
         btnToggleFurigana.visibility = if (hidden || !hasHintText) View.GONE else View.VISIBLE
