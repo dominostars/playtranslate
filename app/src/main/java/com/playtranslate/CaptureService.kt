@@ -356,6 +356,14 @@ class CaptureService : Service() {
 
     override fun onDestroy() {
         Log.w(TAG, "onDestroy")
+        // Release the MediaProjection session (projection / VirtualDisplay /
+        // ImageReader) before the service goes away — the controller owns
+        // those native resources and nothing else releases them. Gated on the
+        // FGS-promotion flag, which ensureProjection() sets before it builds
+        // the projection: when it's true the `by lazy` controller has already
+        // been initialized, so this never force-creates the backend just to
+        // tear it down.
+        if (mediaProjectionFgsActive) mediaProjectionController.destroy()
         instance = null
         stopLive()
         serviceScope.cancel()

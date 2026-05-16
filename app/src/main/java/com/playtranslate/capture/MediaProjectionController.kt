@@ -78,8 +78,9 @@ class MediaProjectionController(private val service: CaptureService) {
      */
     suspend fun captureFrame(displayId: Int): Bitmap? {
         if (!ensureProjection()) return null
-        val reader = ensureVirtualDisplay(displayId) ?: return null
-        return acquireBitmap(reader)
+        val (w, h) = nativeSize(displayId) ?: return null
+        val reader = ensureVirtualDisplay(w, h) ?: return null
+        return acquireBitmap(reader, w, h)
     }
 
     private suspend fun ensureProjection(): Boolean {
@@ -113,9 +114,8 @@ class MediaProjectionController(private val service: CaptureService) {
         return gate.await()
     }
 
-    private fun ensureVirtualDisplay(displayId: Int): ImageReader? {
+    private fun ensureVirtualDisplay(w: Int, h: Int): ImageReader? {
         val proj = projection ?: return null
-        val (w, h) = nativeSize(displayId) ?: return null
         imageReader?.let { if (readerW == w && readerH == h) return it }
         // First use, or resolution changed (rotation / reconfig) — rebuild.
         virtualDisplay?.release()
@@ -148,19 +148,19 @@ class MediaProjectionController(private val service: CaptureService) {
         else minOf(pw, ph) to maxOf(pw, ph)
     }
 
-    private suspend fun acquireBitmap(reader: ImageReader): Bitmap? {
+    private suspend fun acquireBitmap(reader: ImageReader, width: Int, height: Int): Bitmap? {
         // The overlay-blanking + vsync wait already happened in the caller.
         // Give the virtual-display → ImageReader pipeline a few frames to
         // deliver the post-blank frame, then take the latest. The exact
         // frame-freshness discipline is a known device-testing tuning point.
         delay(64)
-        var image = reader.acquireLatestImage()
+        var image = acquireLatest(reader)
         if (image == null) {
             delay(48)
-            image = reader.acquireLatestImage() ?: return null
+            image = acquireLatest(reader) ?: return null
         }
         return try {
-            withContext(Dispatchers.Default) { imageToBitmap(image, readerW, readerH) }
+            withContext(Dispatchers.Default) { imageToBitmap(image, width, height) }
         } catch (e: Exception) {
             Log.e(TAG, "imageToBitmap failed: ${e.message}")
             null
@@ -168,6 +168,22 @@ class MediaProjectionController(private val service: CaptureService) {
             image.close()
         }
     }
+
+    /** [ImageReader.acquireLatestImage] that returns null instead of throwing
+     *  when the reader has already been closed. teardown() — a projection
+     *  revoke, or CaptureService.onDestroy — can close the reader while a
+     *  capture is suspended mid-[acquireBitmap]; a closed reader has no frame
+     *  to deliver, so the capture fails into the normal null path. Catches
+     *  IllegalStateException only (the documented closed/maxImages signal);
+     *  acquireLatestImage is not a suspend call, so this can't swallow a
+     *  CancellationException. */
+    private fun acquireLatest(reader: ImageReader): Image? =
+        try {
+            reader.acquireLatestImage()
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "capture reader closed mid-acquire: ${e.message}")
+            null
+        }
 
     private fun imageToBitmap(image: Image, width: Int, height: Int): Bitmap {
         val plane = image.planes[0]

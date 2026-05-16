@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.view.Choreographer
 import com.playtranslate.CaptureService
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.resume
 
 /**
@@ -16,12 +18,19 @@ class MediaProjectionCaptureSource(
     private val controller: MediaProjectionController,
 ) : CaptureSource {
 
-    override suspend fun requestClean(displayId: Int): Bitmap? {
+    /** Serializes the whole clean-capture path. MediaProjection has no
+     *  platform rate limit, and the controller's VirtualDisplay / ImageReader
+     *  are shared mutable state, so overlapping captures (one-shot, region
+     *  select, and drag lookup all hit the active capture source on their own
+     *  coroutines) must not interleave — mirrors ScreenshotManager.captureMutex. */
+    private val captureMutex = Mutex()
+
+    override suspend fun requestClean(displayId: Int): Bitmap? = captureMutex.withLock {
         // Blank this backend's overlays so they don't appear in the mirror,
         // wait for the compositor to flush, capture, then restore.
         val host = CaptureBackendResolver.active().overlayHost
         val state = host?.prepareForCleanCapture(displayId)
-        return try {
+        try {
             waitVsync(2)
             controller.captureFrame(displayId)
         } finally {
