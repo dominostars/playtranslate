@@ -22,7 +22,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.graphics.drawable.DrawableCompat
-import com.playtranslate.PlayTranslateAccessibilityService
+import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.R
 
 /**
@@ -37,6 +37,9 @@ class WordLookupPopup(
      *  during clean captures of that display. Set to [Display.DEFAULT_DISPLAY]
      *  for activity-window callers (the registry doesn't track those). */
     private val displayId: Int = android.view.Display.DEFAULT_DISPLAY,
+    /** Overlay host to add the popup window through. Null = attach directly to
+     *  the activity window (TYPE_APPLICATION_PANEL) for in-app callers. */
+    private val overlayHost: OverlayHost? = null,
 ) {
     private var popupView: View? = null
     var onDismiss: (() -> Unit)? = null
@@ -51,8 +54,9 @@ class WordLookupPopup(
     /** Whether to show the "open in app" button (set before first show). */
     var showOpenButton = false
 
-    /** Use TYPE_APPLICATION_PANEL instead of TYPE_ACCESSIBILITY_OVERLAY (for in-app use). */
-    var useActivityWindow = false
+    /** True when there's no [overlayHost] — attach directly to the activity
+     *  window (TYPE_APPLICATION_PANEL) instead of through a backend host. */
+    private val useActivityWindow: Boolean get() = overlayHost == null
 
     /** Vertical gap between finger position and popup edge (dp). Default 40. */
     var verticalMarginDp = 40
@@ -205,12 +209,12 @@ class WordLookupPopup(
             this.y = y
         }
 
-        if (useActivityWindow) {
-            try { wm.addView(container, popupParams) } catch (_: Exception) { return false }
-        } else {
-            // Accessibility-overlay flavor: register so it gets blanked
+        if (overlayHost != null) {
+            // Backend overlay host — registers the window so it's blanked
             // alongside the icon/magnifier during clean screenshots.
-            if (!PlayTranslateAccessibilityService.addOverlay(container, wm, popupParams, displayId)) return false
+            if (!overlayHost.addOverlayWindow(container, wm, popupParams, displayId)) return false
+        } else {
+            try { wm.addView(container, popupParams) } catch (_: Exception) { return false }
         }
         // Request window focus so onGenericMotionListener receives joystick
         // events (the previous architecture got focus via the backdrop).
@@ -222,10 +226,10 @@ class WordLookupPopup(
     fun dismiss() {
         val view = popupView
         if (view != null) {
-            if (useActivityWindow) {
-                try { wm.removeView(view) } catch (_: Exception) {}
+            if (overlayHost != null) {
+                overlayHost.removeOverlayWindow(view)
             } else {
-                PlayTranslateAccessibilityService.removeOverlay(view, wm)
+                try { wm.removeView(view) } catch (_: Exception) {}
             }
         }
         popupView = null

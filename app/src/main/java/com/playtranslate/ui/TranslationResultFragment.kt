@@ -744,7 +744,6 @@ class TranslationResultFragment : Fragment() {
                     activity.windowManager,
                     android.view.Display.DEFAULT_DISPLAY,
                 ).apply {
-                    useActivityWindow = true
                     if (canOpen) {
                         onOpenTap = {
                             dismissWordPopup()

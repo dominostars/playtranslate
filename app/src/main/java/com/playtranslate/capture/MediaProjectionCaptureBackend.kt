@@ -1,6 +1,7 @@
 package com.playtranslate.capture
 
 import com.playtranslate.CaptureService
+import com.playtranslate.OverlayUiController
 import com.playtranslate.overlay.OverlayHost
 
 /**
@@ -16,6 +17,9 @@ object MediaProjectionCaptureBackend : CaptureBackend {
 
     override val overlayHost: OverlayHost?
         get() = CaptureService.instance?.mediaProjectionOverlayHost
+
+    override val overlayUi: OverlayUiController?
+        get() = CaptureService.instance?.mediaProjectionOverlayUi
 
     override val supportsLiveMode: Boolean get() = false
 }

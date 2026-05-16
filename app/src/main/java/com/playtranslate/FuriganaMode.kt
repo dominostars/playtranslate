@@ -1,5 +1,7 @@
 package com.playtranslate
 
+import com.playtranslate.capture.CaptureBackendResolver
+
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Rect
@@ -107,7 +109,7 @@ class FuriganaMode(
         scope.cancel()
         a11y.stopInputMonitoring(displayId)
         a11y.screenshotManager?.stopLoop(displayId)
-        a11y.hideTranslationOverlayForDisplay(displayId)
+        CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
     }
 
     override fun refresh() {
@@ -137,7 +139,7 @@ class FuriganaMode(
         cleanProcessingJob?.cancel()
         rawOcrJob?.cancel()
         mgr.stopLoop(displayId)
-        a11y.hideTranslationOverlayForDisplay(displayId)
+        CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
         clearState()
         restartJob?.cancel()
         restartJob = scope.launch {
@@ -248,7 +250,7 @@ class FuriganaMode(
 
         val ref = cleanRefBitmap
         val boxes = cachedFuriganaBoxes
-        val overlayView = a11y.translationOverlayForDisplay(displayId)
+        val overlayView = CaptureBackendResolver.activeOverlayUi?.translationOverlayForDisplay(displayId)
         val screenRects = overlayView?.getChildScreenRects() ?: emptyList()
 
         if (ref == null || boxes.isNullOrEmpty()) {
@@ -268,7 +270,7 @@ class FuriganaMode(
                 // Too long without a rendered overlay — force recovery
                 emptyRectsStallCount = 0
                 clearState()
-                a11y.hideTranslationOverlayForDisplay(displayId)
+                CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
                 a11y.screenshotManager?.requestCleanCapture(displayId)
             }
             return
@@ -281,7 +283,7 @@ class FuriganaMode(
         // fresh clean capture to rebuild from scratch.
         if (bitmap.width != ref.width || bitmap.height != ref.height) {
             clearState()
-            a11y.hideTranslationOverlayForDisplay(displayId)
+            CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
             a11y.screenshotManager?.requestCleanCapture(displayId)
             bitmap.recycle()
             return
@@ -377,7 +379,7 @@ class FuriganaMode(
                         lastOcrText = null
 
                         if (cachedFuriganaBoxes == null) {
-                            a11y.hideTranslationOverlayForDisplay(displayId)
+                            CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
                         }
 
                         a11y.screenshotManager?.requestCleanCapture(displayId)

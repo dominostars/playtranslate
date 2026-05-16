@@ -41,7 +41,7 @@ class PlayTranslateTileService : TileService() {
                     PlayTranslateAccessibilityService.disable(this, "tile_turn_off")
                 } else {
                     prefs.showOverlayIcon = true
-                    a11y.reconcileFloatingIcons()
+                    com.playtranslate.capture.CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
                     TileSync.refresh(this)
                 }
                 renderState()

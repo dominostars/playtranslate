@@ -1,5 +1,7 @@
 package com.playtranslate
 
+import com.playtranslate.capture.CaptureBackendResolver
+
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -114,7 +116,7 @@ class PinholeOverlayMode(
         resetState()
 
         a11y.stopInputMonitoring(displayId)
-        a11y.hideTranslationOverlayForDisplay(displayId)
+        CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
     }
 
     override fun refresh() {
@@ -128,7 +130,7 @@ class PinholeOverlayMode(
     }
 
     private fun onButtonDown() {
-        a11y.hideTranslationOverlayForDisplay(displayId)
+        CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
         resetState()
         scheduleNextCycle(Prefs(service).captureIntervalMs)
     }
@@ -152,14 +154,14 @@ class PinholeOverlayMode(
      *  because the visible-children signal is what cleanRef actually tracks.) */
     private fun hasOverlays(): Boolean =
         cachedBoxes != null &&
-        a11y.translationOverlayForDisplay(displayId) != null
+        CaptureBackendResolver.activeOverlayUi?.translationOverlayForDisplay(displayId) != null
 
     /** Run one capture-detect-translate cycle. Returns the delay (ms) before the next cycle. */
     private suspend fun runCycle(): Long {
         val prefs = Prefs(service)
         if (service.holdActive) return 100L
         val mgr = a11y.screenshotManager ?: return prefs.captureIntervalMs
-        val dirtyView = a11y.dirtyOverlayForDisplay(displayId)
+        val dirtyView = CaptureBackendResolver.activeOverlayUi?.dirtyOverlayForDisplay(displayId)
         val hasDirty = cachedBoxes?.any { it.dirty } == true
         cycleNum++
         val debug = prefs.debugLiveMode
@@ -203,7 +205,7 @@ class PinholeOverlayMode(
                 cleanRefBitmap = null
                 overlayBitmap?.recycle()
                 overlayBitmap = null
-                a11y.hideTranslationOverlayForDisplay(displayId)
+                CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
                 return prefs.captureIntervalMs
             }
 
@@ -213,7 +215,7 @@ class PinholeOverlayMode(
             // reference short-circuit and bitmapRects share instances with
             // rects. See FrameCoordinates KDoc for details on the coordinate
             // spaces and why non-identity is fail-closed below.
-            val overlayView = a11y.translationOverlayForDisplay(displayId)
+            val overlayView = CaptureBackendResolver.activeOverlayUi?.translationOverlayForDisplay(displayId)
             val rects = overlayView?.getChildScreenRects() ?: emptyList()
             val coords = FrameCoordinates(
                 bitmapWidth = raw.width,
@@ -333,7 +335,7 @@ class PinholeOverlayMode(
                     cleanRefBitmap = null
                     overlayBitmap?.recycle()
                     overlayBitmap = null
-                    a11y.hideTranslationOverlayForDisplay(displayId)
+                    CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
                     return prefs.captureIntervalMs
                 }
             }
@@ -483,7 +485,7 @@ class PinholeOverlayMode(
                     //
                     // Dirty boxes (when present) live on the dirtyView — we
                     // never need to set them back into the clean view here.
-                    a11y.translationOverlayForDisplay(displayId)?.setBoxes(
+                    CaptureBackendResolver.activeOverlayUi?.translationOverlayForDisplay(displayId)?.setBoxes(
                         emptyList(), cropLeft, cropTop, screenshotW, screenshotH
                     )
                 }
@@ -582,7 +584,7 @@ class PinholeOverlayMode(
         // renderToOffscreen returns an empty/stale bitmap and pinhole detection
         // over-flags REMOVE for every box on the next cycle. Poll up to ~133ms
         // and fall through if it never settles.
-        val view = a11y.translationOverlayForDisplay(displayId)
+        val view = CaptureBackendResolver.activeOverlayUi?.translationOverlayForDisplay(displayId)
         var waited = 0
         if (view != null) {
             while (waited < 8 && !view.areChildrenLaidOut()) {

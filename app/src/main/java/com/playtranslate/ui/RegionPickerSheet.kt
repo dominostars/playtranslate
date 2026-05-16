@@ -1,6 +1,7 @@
 package com.playtranslate.ui
 
 import android.annotation.SuppressLint
+import com.playtranslate.capture.CaptureBackendResolver
 import android.content.DialogInterface
 import android.os.Bundle
 import android.view.Display
@@ -198,7 +199,7 @@ class RegionPickerSheet : DialogFragment() {
         // React to live mode changes while the sheet is visible
         com.playtranslate.CaptureService.instance?.liveModeState?.observe(viewLifecycleOwner) { live ->
             if (live) {
-                PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+                CaptureBackendResolver.activeOverlayUi?.hideRegionOverlay()
             } else {
                 showSelectedOverlay()
             }
@@ -212,7 +213,7 @@ class RegionPickerSheet : DialogFragment() {
 
     /** App went to background — kill the overlay immediately so it doesn't get stuck. */
     override fun onStop() {
-        PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+        CaptureBackendResolver.activeOverlayUi?.hideRegionOverlay()
         displayListener?.let {
             val dm = requireContext().getSystemService(android.content.Context.DISPLAY_SERVICE)
                 as android.hardware.display.DisplayManager
@@ -224,7 +225,7 @@ class RegionPickerSheet : DialogFragment() {
     }
 
     override fun onDismiss(dialog: DialogInterface) {
-        PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+        CaptureBackendResolver.activeOverlayUi?.hideRegionOverlay()
         super.onDismiss(dialog)
     }
 
@@ -294,7 +295,7 @@ class RegionPickerSheet : DialogFragment() {
         if (newId == activeDisplayId) return
         // Drop the preview on the old display before drawing on the new
         // one so the picker's accessibility-overlay rect doesn't linger.
-        PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+        CaptureBackendResolver.activeOverlayUi?.hideRegionOverlay()
         activeDisplayId = newId
         selectedId = prefs.selectedRegionIdForDisplay(activeDisplayId)
             .ifEmpty { workingList.firstOrNull()?.id ?: "" }
@@ -309,7 +310,7 @@ class RegionPickerSheet : DialogFragment() {
     private fun onSelectedDisplayUnplugged(removedId: Int) {
         val remaining = selectedDisplayIds.filterNot { it == removedId }
         if (remaining.isEmpty()) {
-            PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+            CaptureBackendResolver.activeOverlayUi?.hideRegionOverlay()
             if (showsDialog) dismissAllowingStateLoss()
             else onClose?.invoke()
             return
@@ -406,7 +407,7 @@ class RegionPickerSheet : DialogFragment() {
     private fun openEditSheet(index: Int) {
         if (childFragmentManager.findFragmentByTag(AddCustomRegionSheet.TAG) != null) return
         val entry = workingList.getOrNull(index) ?: return
-        PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+        CaptureBackendResolver.activeOverlayUi?.hideRegionOverlay()
         AddCustomRegionSheet().also { sheet ->
             sheet.gameDisplay = gameDisplay
             sheet.initRegion(entry, index)
@@ -417,7 +418,7 @@ class RegionPickerSheet : DialogFragment() {
                 showSelectedOverlay()
             }
             sheet.onTranslateOnce = { region ->
-                PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+                CaptureBackendResolver.activeOverlayUi?.hideRegionOverlay()
                 if (showsDialog) dismissAllowingStateLoss()
                 onTranslateOnce?.invoke(region, activeDisplayId)
             }
@@ -435,12 +436,12 @@ class RegionPickerSheet : DialogFragment() {
 
     private fun openAddCustomSheet() {
         if (childFragmentManager.findFragmentByTag(AddCustomRegionSheet.TAG) != null) return
-        PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+        CaptureBackendResolver.activeOverlayUi?.hideRegionOverlay()
         AddCustomRegionSheet().also { sheet ->
             sheet.gameDisplay = gameDisplay
             sheet.onRegionAdded = { newEntry ->
                 prefs.setSelectedRegionIdForDisplay(activeDisplayId, newEntry.id)
-                PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+                CaptureBackendResolver.activeOverlayUi?.hideRegionOverlay()
                 onSaved?.invoke()
                 if (showsDialog) dismissAllowingStateLoss()
             }
@@ -454,7 +455,7 @@ class RegionPickerSheet : DialogFragment() {
                 }
             }
             sheet.onTranslateOnce = { region ->
-                PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+                CaptureBackendResolver.activeOverlayUi?.hideRegionOverlay()
                 if (showsDialog) dismissAllowingStateLoss()
                 onTranslateOnce?.invoke(region, activeDisplayId)
             }
@@ -478,10 +479,10 @@ class RegionPickerSheet : DialogFragment() {
     private fun showSelectedOverlay() {
         if (isLive) return
         // Don't re-show the picker overlay while the region drag editor is active
-        if (PlayTranslateAccessibilityService.instance?.isRegionEditorActive == true) return
+        if (CaptureBackendResolver.activeOverlayUi?.isRegionEditorActive == true) return
         val display = gameDisplay ?: return
         val e = workingList.find { it.id == selectedId } ?: workingList.firstOrNull() ?: return
-        PlayTranslateAccessibilityService.instance?.showRegionOverlay(display, e)
+        CaptureBackendResolver.activeOverlayUi?.showRegionOverlay(display, e)
     }
 
     // ── RecyclerView Adapter ──────────────────────────────────────────────
@@ -604,7 +605,7 @@ class RegionPickerSheet : DialogFragment() {
                     selectedId = e.id
                     prefs.setSelectedRegionIdForDisplay(activeDisplayId, e.id)
                     if (!isLive) {
-                        gameDisplay?.let { d -> PlayTranslateAccessibilityService.instance?.showRegionOverlay(d, e) }
+                        gameDisplay?.let { d -> CaptureBackendResolver.activeOverlayUi?.showRegionOverlay(d, e) }
                     }
                     onSaved?.invoke()
                     submitList()

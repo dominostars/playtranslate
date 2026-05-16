@@ -1,5 +1,7 @@
 package com.playtranslate
 
+import com.playtranslate.capture.CaptureBackendResolver
+
 import android.Manifest
 import com.playtranslate.applyTheme
 import com.playtranslate.themeColor
@@ -177,13 +179,13 @@ class MainActivity :
         override fun onDisplayAdded(displayId: Int) { runOnUiThread {
             if (!isFinishing) {
                 checkOnboardingState()
-                PlayTranslateAccessibilityService.instance?.reconcileFloatingIcons()
+                CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
             }
         } }
         override fun onDisplayRemoved(displayId: Int) { runOnUiThread {
             if (!isFinishing) {
                 checkOnboardingState()
-                PlayTranslateAccessibilityService.instance?.reconcileFloatingIcons()
+                CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
             }
         } }
         override fun onDisplayChanged(displayId: Int) {}
@@ -457,7 +459,7 @@ class MainActivity :
         // needed. (The old re-wire was a band-aid for
         // TranslationResultActivity nulling shared callback fields,
         // which it no longer does.)
-        PlayTranslateAccessibilityService.instance?.reconcileFloatingIcons()
+        CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
         checkOnboardingState()
         maybeCheckForUpdates()
         if (onboardingContainer.visibility == View.VISIBLE) return
@@ -683,9 +685,9 @@ class MainActivity :
     }
 
     private fun doStartLive() {
-        val a11y = PlayTranslateAccessibilityService.instance
-        val hadPopup = a11y?.isAnyDragLookupPopupShowing == true
-        a11y?.dismissAllDragLookupPopups()
+        val ui = CaptureBackendResolver.activeOverlayUi
+        val hadPopup = ui?.isAnyDragLookupPopupShowing == true
+        ui?.dismissAllDragLookupPopups()
         ensureConfigured()
         if (hadPopup) {
             window.decorView.postDelayed({ captureService?.startLive() }, 100)
@@ -919,7 +921,7 @@ class MainActivity :
                 // configureService() writes display/region; language managers
                 // self-heal via ensureLanguageManagersFor.
                 configureService()
-                PlayTranslateAccessibilityService.instance?.reconcileFloatingIcons()
+                CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
                 if (wasLive) {
                     captureService?.stopLive()
                     withAccessibility { doStartLive() }
@@ -956,7 +958,7 @@ class MainActivity :
                 // configureService() writes display/region; language managers
                 // self-heal via ensureLanguageManagersFor.
                 configureService()
-                PlayTranslateAccessibilityService.instance?.reconcileFloatingIcons()
+                CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
                 if (wasLive) {
                     captureService?.stopLive()
                     withAccessibility { doStartLive() }
@@ -1017,7 +1019,7 @@ class MainActivity :
      * LiveData.observe.
      */
     private fun onDegradedStateChanged(degraded: Boolean) {
-        PlayTranslateAccessibilityService.instance?.setIconsDegraded(degraded)
+        CaptureBackendResolver.activeOverlayUi?.setIconsDegraded(degraded)
     }
 
     /** Subscribe to the service's outbound event flows. Called once per
@@ -1118,7 +1120,7 @@ class MainActivity :
                 }
                 launch {
                     svc.holdLoading.collect { loading ->
-                        PlayTranslateAccessibilityService.instance?.setIconsLoading(loading)
+                        CaptureBackendResolver.activeOverlayUi?.setIconsLoading(loading)
                     }
                 }
             }
@@ -1291,7 +1293,7 @@ class MainActivity :
         // side effect of configureSaved → ensureLanguageManagersFor.
         configureService()
         updateRegionButton()
-        PlayTranslateAccessibilityService.instance?.reconcileFloatingIcons()
+        CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
         if (LanguagePackStore.isInstalled(applicationContext, prefs.sourceLangId)) {
             lifecycleScope.launch(Dispatchers.IO) {
                 preloadEngineAndRecover(prefs.sourceLangId)
@@ -1889,7 +1891,7 @@ class MainActivity :
         dropdownHighlightListener = { rowIdx ->
             val regionIdx = dropdownRegionOrder[rowIdx]
             if (regionIdx >= 0 && previewDisplay != null) {
-                PlayTranslateAccessibilityService.instance?.showRegionOverlay(previewDisplay, dropdownRegions[regionIdx])
+                CaptureBackendResolver.activeOverlayUi?.showRegionOverlay(previewDisplay, dropdownRegions[regionIdx])
             }
         }
         dropdownCommitAction = { commitRegionDropdownSelection() }
@@ -1911,7 +1913,7 @@ class MainActivity :
 
         if (previewDisplay != null) {
             val entry = regions[currentIndex]
-            PlayTranslateAccessibilityService.instance?.showRegionOverlay(previewDisplay, entry)
+            CaptureBackendResolver.activeOverlayUi?.showRegionOverlay(previewDisplay, entry)
         }
     }
 
@@ -1995,7 +1997,7 @@ class MainActivity :
     private fun openAddCustomRegionFromDropdown(
         targetIds: List<Int> = dropdownTargetDisplayIds(),
     ) {
-        PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+        CaptureBackendResolver.activeOverlayUi?.hideRegionOverlay()
         if (targetIds.isEmpty()) return
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         // The drag overlay is single-display; render it on the first target
@@ -2056,7 +2058,7 @@ class MainActivity :
         dropdownRows = emptyList()
         dropdownCommitAction = null
         dropdownHighlightListener = null
-        PlayTranslateAccessibilityService.instance?.hideRegionOverlay()
+        CaptureBackendResolver.activeOverlayUi?.hideRegionOverlay()
     }
 
     private fun buildDropdownRow(label: String, highlighted: Boolean, isAddNew: Boolean = false): LinearLayout {

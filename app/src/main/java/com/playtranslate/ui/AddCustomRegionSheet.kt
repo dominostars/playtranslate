@@ -10,6 +10,7 @@ import android.widget.Button
 import android.widget.EditText
 import androidx.fragment.app.DialogFragment
 import com.playtranslate.PlayTranslateAccessibilityService
+import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.Prefs
 import com.playtranslate.RegionEntry
 import com.playtranslate.R
@@ -86,7 +87,7 @@ class AddCustomRegionSheet : DialogFragment() {
         }
 
         gameDisplay?.let { display ->
-            PlayTranslateAccessibilityService.instance?.showRegionDragOverlay(
+            CaptureBackendResolver.activeOverlayUi?.showRegionDragOverlay(
                 display, RegionEntry("", topFraction, bottomFraction, leftFraction, rightFraction)
             ) { region ->
                 topFraction    = region.top
@@ -112,31 +113,31 @@ class AddCustomRegionSheet : DialogFragment() {
                 prefs.setRegionList(list)
                 onRegionAdded?.invoke(newEntry)
             }
-            PlayTranslateAccessibilityService.instance?.hideRegionDragOverlay()
+            CaptureBackendResolver.activeOverlayUi?.hideRegionDragOverlay()
             dismiss()
         }
 
         btnTranslateOnce.setOnClickListener {
             translateOnceRequested = true
-            PlayTranslateAccessibilityService.instance?.hideRegionDragOverlay()
+            CaptureBackendResolver.activeOverlayUi?.hideRegionDragOverlay()
             dismiss()
         }
 
         btnClose.setOnClickListener {
-            PlayTranslateAccessibilityService.instance?.hideRegionDragOverlay()
+            CaptureBackendResolver.activeOverlayUi?.hideRegionDragOverlay()
             dismiss()
         }
     }
 
     /** App went to background — kill the overlay immediately so it doesn't get stuck. */
     override fun onStop() {
-        PlayTranslateAccessibilityService.instance?.hideRegionDragOverlay()
+        CaptureBackendResolver.activeOverlayUi?.hideRegionDragOverlay()
         super.onStop()
         dismissAllowingStateLoss()
     }
 
     override fun onDismiss(dialog: DialogInterface) {
-        PlayTranslateAccessibilityService.instance?.hideRegionDragOverlay()
+        CaptureBackendResolver.activeOverlayUi?.hideRegionDragOverlay()
         if (translateOnceRequested) {
             onTranslateOnce?.invoke(RegionEntry(translateOnceLabel, topFraction, bottomFraction, leftFraction, rightFraction))
         } else {

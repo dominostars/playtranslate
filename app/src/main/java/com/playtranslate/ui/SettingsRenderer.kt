@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
 import com.playtranslate.capturableDisplays
+import com.playtranslate.capture.CaptureBackendResolver
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
@@ -404,7 +405,7 @@ class SettingsRenderer(
             }
             if (checked) {
                 prefs.showOverlayIcon = true
-                PlayTranslateAccessibilityService.instance?.reconcileFloatingIcons()
+                CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
                 PlayTranslateTileService.TileSync.refresh(ctx)
             } else {
                 PlayTranslateAccessibilityService.disable(ctx, "settings_toggle_off")
@@ -419,9 +420,9 @@ class SettingsRenderer(
         switchCompactIcon.isChecked = prefs.compactOverlayIcon
         switchCompactIcon.setOnCheckedChangeListener { _, checked ->
             prefs.compactOverlayIcon = checked
-            val a11y = PlayTranslateAccessibilityService.instance
-            a11y?.hideFloatingIcon("settings_compact_recreate")
-            a11y?.reconcileFloatingIcons()
+            val ui = CaptureBackendResolver.activeOverlayUi
+            ui?.hideFloatingIcon("settings_compact_recreate")
+            ui?.reconcileFloatingIcons()
         }
         rowCompactIcon.setOnClickListener { switchCompactIcon.toggle() }
 
@@ -1727,6 +1728,25 @@ class SettingsRenderer(
             callbacks.onScreenModeChanged()
         }
         rowForceSingleScreen.setOnClickListener { switchForceSingle.toggle() }
+
+        // Use MediaProjection capture backend
+        val rowMpBackend = root.findViewById<View>(R.id.rowMpBackend)
+        val switchMpBackend = rowMpBackend.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        rowMpBackend.findViewById<TextView>(R.id.tvRowTitle).text = "Use MediaProjection capture"
+        switchMpBackend.isChecked = prefs.captureBackendMediaProjection
+        switchMpBackend.setOnCheckedChangeListener { _, checked ->
+            prefs.captureBackendMediaProjection = checked
+            if (checked && !android.provider.Settings.canDrawOverlays(root.context)) {
+                root.context.startActivity(
+                    Intent(
+                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        android.net.Uri.parse("package:" + root.context.packageName),
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }
+            CaptureBackendResolver.reresolve(root.context)
+        }
+        rowMpBackend.setOnClickListener { switchMpBackend.toggle() }
 
         // Show OCR boxes
         val rowShowOcrBoxes = root.findViewById<View>(R.id.rowShowOcrBoxes)

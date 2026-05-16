@@ -31,7 +31,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.graphics.drawable.DrawableCompat
-import com.playtranslate.PlayTranslateAccessibilityService
+import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.isEffectivelyDark
@@ -79,6 +79,7 @@ class MagnifierLens(
     internal val rawCtx: Context,
     internal val wm: WindowManager,
     private val displayId: Int,
+    private val overlayHost: OverlayHost? = null,
 ) {
     /** Definitions payload for the lens body. Mirrors the popup's fields. */
     data class LensDefinitionData(
@@ -151,13 +152,10 @@ class MagnifierLens(
     /** Fires when the left chip (Speak) is tapped in sticky mode. */
     var onSpeakTap: (() -> Unit)? = null
 
-    /** Use TYPE_APPLICATION_PANEL + a direct WindowManager attach instead of
-     *  TYPE_ACCESSIBILITY_OVERLAY routed through the accessibility service.
-     *  Set before [show] for in-activity callers (e.g. the translation result
-     *  screen's tap-a-word surface), where there's no accessibility overlay
-     *  channel to ride on and the lens just needs to attach to the activity
-     *  window like any other in-app panel. Mirrors [WordLookupPopup.useActivityWindow]. */
-    var useActivityWindow = false
+    /** True when there's no [overlayHost] — the lens attaches directly to the
+     *  activity window (TYPE_APPLICATION_PANEL) instead of going through a
+     *  backend overlay host. Used by the in-app tap-a-word surface. */
+    private val useActivityWindow: Boolean get() = overlayHost == null
 
     val isInteractive: Boolean get() = lensView?.isInteractive == true
 
@@ -319,10 +317,10 @@ class MagnifierLens(
         val view = lensView ?: return
         lensView = null
         params = null
-        if (useActivityWindow) {
-            try { wm.removeView(view) } catch (_: Exception) {}
+        if (overlayHost != null) {
+            overlayHost.removeOverlayWindow(view)
         } else {
-            PlayTranslateAccessibilityService.removeOverlay(view, wm)
+            try { wm.removeView(view) } catch (_: Exception) {}
         }
     }
 
@@ -370,10 +368,10 @@ class MagnifierLens(
             x = 0
             y = 0
         }
-        val attached = if (useActivityWindow) {
-            try { wm.addView(view, lp); true } catch (_: Exception) { false }
+        val attached = if (overlayHost != null) {
+            overlayHost.addOverlayWindow(view, wm, lp, displayId)
         } else {
-            PlayTranslateAccessibilityService.addOverlay(view, wm, lp, displayId)
+            try { wm.addView(view, lp); true } catch (_: Exception) { false }
         }
         if (!attached) return
         lensView = view

@@ -1,5 +1,6 @@
 package com.playtranslate.capture
 
+import com.playtranslate.OverlayUiController
 import com.playtranslate.overlay.OverlayHost
 
 /**
@@ -22,6 +23,10 @@ interface CaptureBackend {
 
     /** Overlay-window host for this backend, or null while not ready. */
     val overlayHost: OverlayHost?
+
+    /** Game-screen overlay UI (floating icon, menu, translation overlay,
+     *  region UI) for this backend, or null while not ready. */
+    val overlayUi: OverlayUiController?
 
     /** Whether this backend can drive the continuous capture loop that live
      *  mode depends on. */

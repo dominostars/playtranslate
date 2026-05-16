@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Application
 import android.content.ComponentCallbacks2
 import android.os.Bundle
+import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.diagnostics.CrashHandler
 import com.playtranslate.translation.DeepLBackend
 import com.playtranslate.translation.LingvaBackend
@@ -39,6 +40,8 @@ class PlayTranslateApplication : Application() {
         // section, so there'd be no way to turn it back off.
         if (BuildConfig.DEBUG) {
             OcrManager.instance.debugLogGroupingEnabled = Prefs(this).debugLogGrouping
+            // Pick up a persisted DEBUG MediaProjection-backend toggle.
+            CaptureBackendResolver.reresolve(this)
         }
         // Build the translation-backend registry once at process start.
         // Backends are stateless or hold pooled HTTP clients that should

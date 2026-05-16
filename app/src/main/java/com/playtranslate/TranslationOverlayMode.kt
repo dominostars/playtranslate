@@ -1,6 +1,7 @@
 package com.playtranslate
 
 import android.graphics.Bitmap
+import com.playtranslate.capture.CaptureBackendResolver
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -104,7 +105,7 @@ class TranslationOverlayMode(
         scope.cancel()
         PlayTranslateAccessibilityService.instance?.screenshotManager?.stopLoop(displayId)
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring(displayId)
-        PlayTranslateAccessibilityService.instance?.hideTranslationOverlayForDisplay(displayId)
+        CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
         service.setDegraded(false)
     }
 
@@ -316,7 +317,7 @@ class TranslationOverlayMode(
                 stabilizationFrameCount = 0
                 lastOcrText = null
                 cachedOverlayBoxes = null
-                PlayTranslateAccessibilityService.instance?.hideTranslationOverlayForDisplay(displayId)
+                CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
                 return
             }
 
@@ -343,7 +344,7 @@ class TranslationOverlayMode(
                     if (remainingBoxes.isNotEmpty()) {
                         service.showLiveOverlay(remainingBoxes, cropLeft, cropTop, screenshotW, screenshotH, displayId = displayId)
                     } else {
-                        PlayTranslateAccessibilityService.instance?.hideTranslationOverlayForDisplay(displayId)
+                        CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
                     }
 
                     forceCheckC = true
@@ -487,7 +488,7 @@ class TranslationOverlayMode(
         cachedOverlayBoxes = null
         lastOcrText = null
         clearDetectionState()
-        PlayTranslateAccessibilityService.instance?.hideTranslationOverlayForDisplay(displayId)
+        CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
 
         interactionDebounceJob?.cancel()
         interactionDebounceJob = scope.launch {
@@ -645,7 +646,7 @@ class TranslationOverlayMode(
                 if (remaining.isNotEmpty()) {
                     service.showLiveOverlay(remaining, cropLeft, cropTop, screenshotW, screenshotH, displayId = displayId)
                 } else {
-                    PlayTranslateAccessibilityService.instance?.hideTranslationOverlayForDisplay(displayId)
+                    CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
                 }
                 PlayTranslateAccessibilityService.instance?.screenshotManager?.requestCleanCapture(displayId)
                 return true

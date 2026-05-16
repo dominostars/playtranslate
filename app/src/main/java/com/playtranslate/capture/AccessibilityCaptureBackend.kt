@@ -1,5 +1,6 @@
 package com.playtranslate.capture
 
+import com.playtranslate.OverlayUiController
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.overlay.OverlayHost
 
@@ -18,6 +19,9 @@ object AccessibilityCaptureBackend : CaptureBackend {
 
     override val overlayHost: OverlayHost?
         get() = PlayTranslateAccessibilityService.instance?.overlayHost
+
+    override val overlayUi: OverlayUiController?
+        get() = PlayTranslateAccessibilityService.instance?.overlayUiController
 
     override val supportsLiveMode: Boolean get() = true
 }

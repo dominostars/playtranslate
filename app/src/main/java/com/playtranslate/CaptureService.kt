@@ -322,9 +322,9 @@ class CaptureService : Service() {
      *  PlayTranslateAccessibilityService.installFloatingIconForDisplay /
      *  hideFloatingIconForDisplay). */
     fun syncIconState() {
-        val a11y = PlayTranslateAccessibilityService.instance ?: return
-        a11y.setIconsLiveMode(isLive)
-        a11y.setIconsDegraded(translationDegraded)
+        val ui = CaptureBackendResolver.activeOverlayUi ?: return
+        ui.setIconsLiveMode(isLive)
+        ui.setIconsDegraded(translationDegraded)
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -351,7 +351,7 @@ class CaptureService : Service() {
     override fun onTaskRemoved(rootIntent: Intent?) {
         Log.w(TAG, "onTaskRemoved")
         super.onTaskRemoved(rootIntent)
-        PlayTranslateAccessibilityService.instance?.hideFloatingIcon("task_removed")
+        CaptureBackendResolver.activeOverlayUi?.hideFloatingIcon("task_removed")
     }
 
     override fun onDestroy() {
@@ -421,9 +421,9 @@ class CaptureService : Service() {
      *  scopes are now aligned). */
     private fun afterRegionChange(changedDisplayIds: Set<Int>) {
         recalcActiveRegionLiveData()
-        val a11y = PlayTranslateAccessibilityService.instance
-        a11y?.hideRegionIndicator()
-        for (id in changedDisplayIds) a11y?.hideTranslationOverlayForDisplay(id)
+        val ui = CaptureBackendResolver.activeOverlayUi
+        ui?.hideRegionIndicator()
+        for (id in changedDisplayIds) ui?.hideTranslationOverlayForDisplay(id)
         oneShotCaptureJob?.cancel()
         oneShotManager.cancel()
         if (isLive) {
@@ -453,8 +453,8 @@ class CaptureService : Service() {
         // overlay on a now-deselected display would otherwise stay
         // painted on a screen the app no longer captures.
         val removedIds = gameDisplayIds - displayIds
-        val a11y = PlayTranslateAccessibilityService.instance
-        for (id in removedIds) a11y?.hideTranslationOverlayForDisplay(id)
+        val ui = CaptureBackendResolver.activeOverlayUi
+        for (id in removedIds) ui?.hideTranslationOverlayForDisplay(id)
 
         gameDisplayIds   = displayIds
         // Track the user's intent for the primary so the in-app UI focuses
@@ -767,6 +767,11 @@ class CaptureService : Service() {
     /** Overlay-window host for MediaProjection mode (TYPE_APPLICATION_OVERLAY). */
     internal val mediaProjectionOverlayHost by lazy {
         OverlayHost(this, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+    }
+
+    /** Game-screen overlay UI for MediaProjection mode. */
+    internal val mediaProjectionOverlayUi by lazy {
+        OverlayUiController(this, mediaProjectionOverlayHost)
     }
 
     /** True once the foreground service has been promoted to include the
@@ -1169,7 +1174,7 @@ class CaptureService : Service() {
         //   teardown via the canonical mutator, this fan-out should be removable.
         PlayTranslateAccessibilityService.instance?.screenshotManager?.stopAllLoops()
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
-        PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+        CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlay()
         // Don't reset _panelState here — let the last live result
         // linger so a STOP→START reattach still shows it. The VM's
         // identity dedup keeps the replay from re-running lookups.
@@ -1226,7 +1231,7 @@ class CaptureService : Service() {
             // own result on its own display.
             PlayTranslateAccessibilityService.instance
                 ?.screenshotManager?.stopAllLoops()
-            PlayTranslateAccessibilityService.instance
+            CaptureBackendResolver.activeOverlayUi
                 ?.hideTranslationOverlay()
         }
         oneShotManager.runHoldOverlay(
@@ -1305,7 +1310,7 @@ class CaptureService : Service() {
         val isFurigana = liveModes.values.any { it.flavor == OverlayFlavor.FURIGANA }
         if (isLive && !isFurigana && !isInAppOnly) {
             holdActive = true
-            PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+            CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlay()
             return
         }
         _holdLoading.value = true
@@ -1333,7 +1338,7 @@ class CaptureService : Service() {
             // targets (fires even when multi-display + everything
             // skip-eligible would otherwise no-op the capture path).
             holdActive = true
-            PlayTranslateAccessibilityService.instance?.hideTranslationOverlay()
+            CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlay()
             return
         }
         val targets = oneShotFanoutDisplayIds()
@@ -1413,10 +1418,10 @@ class CaptureService : Service() {
     /** Flash the region indicator on [displayId] using that display's
      *  active region. Called by per-display modes after their own captures. */
     internal fun flashRegionIndicator(displayId: Int) {
-        val a11y = PlayTranslateAccessibilityService.instance ?: return
+        val ui = CaptureBackendResolver.activeOverlayUi ?: return
         val dm = getSystemService(DisplayManager::class.java)
         val display = dm.getDisplay(displayId) ?: return
-        a11y.showRegionIndicator(display, activeRegionForDisplay(displayId))
+        ui.showRegionIndicator(display, activeRegionForDisplay(displayId))
     }
 
     /** Run the shared OCR pipeline on a frame captured from [displayId].
@@ -1435,7 +1440,7 @@ class CaptureService : Service() {
             sourceLang,
             ocrManager,
             getStatusBarHeightForDisplay(displayId),
-            PlayTranslateAccessibilityService.instance?.getFloatingIconRect(displayId),
+            CaptureBackendResolver.activeOverlayUi?.getFloatingIconRect(displayId),
             prefs.compactOverlayIcon,
             seedWriter = seedWriter
         )
@@ -1479,7 +1484,7 @@ class CaptureService : Service() {
      *  for it. The overlay teardown is per-display so a no-text outcome
      *  on display B doesn't take display A's still-valid overlay with it. */
     internal fun handleNoTextDetected(displayId: Int) {
-        PlayTranslateAccessibilityService.instance?.hideTranslationOverlayForDisplay(displayId)
+        CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
         emitLiveNoText()
     }
 
@@ -1489,7 +1494,7 @@ class CaptureService : Service() {
         toRemove: List<TranslationOverlayView.TextBox>,
         displayId: Int = primaryGameDisplayId(),
     ) {
-        PlayTranslateAccessibilityService.instance?.removeOverlayBoxes(toRemove, displayId)
+        CaptureBackendResolver.activeOverlayUi?.removeOverlayBoxes(toRemove, displayId)
     }
 
     /**
@@ -1506,13 +1511,13 @@ class CaptureService : Service() {
         displayId: Int = primaryGameDisplayId(),
     ) {
         if (!force && holdActive) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: holdActive=true"); return }
-        val a11y = PlayTranslateAccessibilityService.instance
-        if (a11y == null) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: a11y=null"); return }
+        val ui = CaptureBackendResolver.activeOverlayUi
+        if (ui == null) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: overlayUi=null"); return }
         val dm = getSystemService(DisplayManager::class.java)
         val display = dm.getDisplay(displayId)
         if (display == null) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: display=null for id=$displayId"); return }
         Log.d("FuriganaDbg", "showLiveOverlay: ${boxes.size} boxes, crop=($cropLeft,$cropTop), screen=${screenshotW}x$screenshotH on display $displayId")
-        a11y.showTranslationOverlay(display, boxes, cropLeft, cropTop, screenshotW, screenshotH, pinholeMode)
+        ui.showTranslationOverlay(display, boxes, cropLeft, cropTop, screenshotW, screenshotH, pinholeMode)
     }
 
     /** Capture a clean screenshot via the active capture backend. */
@@ -1562,7 +1567,7 @@ class CaptureService : Service() {
         cropTop: Int = 0,
     ): Bitmap =
         OverlayToolkit.blackoutFloatingIcon(bitmap, cropLeft, cropTop,
-            PlayTranslateAccessibilityService.instance?.getFloatingIconRect(displayId),
+            CaptureBackendResolver.activeOverlayUi?.getFloatingIconRect(displayId),
             Prefs(this).compactOverlayIcon)
 
     fun resetConfiguration() {
@@ -1950,7 +1955,7 @@ class CaptureService : Service() {
      *    hideFloatingIconForDisplay (every per-display add/remove)
      */
     fun updateForegroundState() {
-        val iconShowing = PlayTranslateAccessibilityService.instance?.hasAnyFloatingIcon == true
+        val iconShowing = CaptureBackendResolver.activeOverlayUi?.hasAnyFloatingIcon == true
 
         // Stop live mode if the user can no longer see or manage it.
         if (isLive) {

@@ -15,7 +15,6 @@ import com.playtranslate.CaptureService
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.MainActivity
 import com.playtranslate.OcrManager
-import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.Prefs
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
@@ -39,6 +38,7 @@ import kotlin.math.abs
  * Finger position is checked against cached OCR bounding boxes — essentially free.
  */
 class DragLookupController(
+    private val context: Context,
     private val displayId: Int,
     private val popup: WordLookupPopup,
     private val magnifier: MagnifierLens
@@ -578,7 +578,7 @@ class DragLookupController(
      *  silently, the loop would run to completion, and the assignment at
      *  the end would clobber the next drag's reset. */
     private suspend fun pretokenizeLines(lines: List<OcrManager.OcrLine>) {
-        val service = PlayTranslateAccessibilityService.instance ?: return
+        val service = context
         val engine = SourceLanguageEngines.get(service, Prefs(service).sourceLangId)
         val cache = mutableMapOf<String, List<LabelToken>>()
 
@@ -868,7 +868,7 @@ class DragLookupController(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private suspend fun captureAndOcr() {
-        val service = PlayTranslateAccessibilityService.instance ?: return
+        val service = context
         Log.d(TAG, "Taking screenshot for full-screen OCR...")
 
         val bitmap = withTimeoutOrNull(3000L) {
@@ -938,7 +938,7 @@ class DragLookupController(
         val charExtent = lineExtent / lineText.length
 
         // Tokenize the line (surface spans for position mapping, lookup forms for dictionary)
-        val service = PlayTranslateAccessibilityService.instance ?: return null
+        val service = context
         val engine = SourceLanguageEngines.get(service, Prefs(service).sourceLangId)
         val tokenResults = engine.tokenize(lineText)
 
@@ -1264,7 +1264,7 @@ class DragLookupController(
         val cache = LastSentenceCache
         // Skip if the cache already has results for this exact sentence
         if (cache.original == sentence && cache.wordResults != null) return
-        val service = PlayTranslateAccessibilityService.instance ?: return
+        val service = context
         wordLookupJob?.cancel()
         wordLookupJob = scope.launch {
             val results = LastSentenceCache.lookupWords(service, sentence)
@@ -1279,7 +1279,7 @@ class DragLookupController(
 
     private fun openSentenceInApp() {
         val sentence = currentSentence ?: return
-        val service = PlayTranslateAccessibilityService.instance ?: return
+        val service = context
         // Capture word context BEFORE magnifier.dismiss() — the lens's
         // onDismiss handler nulls lastWord and currentEntry, so any read
         // after dismiss returns null and the intent loses EXTRA_DRAG_WORD,
@@ -1304,7 +1304,7 @@ class DragLookupController(
         // path can't drift from the routing logic in resumeLiveMode and
         // friends. Dual-screen with the in-app panel visible leaves
         // auto-resume intact since TRA lands separately from live mode.
-        service.cancelLivePauseObligation()
+        CaptureBackendResolver.activeOverlayUi?.cancelLivePauseObligation()
         // Tear down the lens (sticky drag-flow surface) before launching
         // the activity. Lens dismiss → onDismiss → onSettled, which is
         // what the service expects post-drag.
@@ -1358,7 +1358,7 @@ class DragLookupController(
      * is handled by the activity itself when it opens.
      */
     private fun openAnkiReviewForLens() {
-        val service = PlayTranslateAccessibilityService.instance ?: return
+        val service = context
         val word = lastWord ?: return
         val entry = currentEntry ?: return
 
@@ -1387,7 +1387,7 @@ class DragLookupController(
         val capturedScreenshot = screenshotPath
         val sourceLangCode = Prefs(service).sourceLangId.code
 
-        service.cancelLivePauseObligation()
+        CaptureBackendResolver.activeOverlayUi?.cancelLivePauseObligation()
         magnifier.dismiss()
 
         val intent = Intent(service, WordAnkiReviewActivity::class.java).apply {
@@ -1420,7 +1420,7 @@ class DragLookupController(
     }
 
     private fun sendLineToMainApp(lineText: String) {
-        val service = PlayTranslateAccessibilityService.instance ?: return
+        val service = context
         if (Prefs.isSingleScreen(service)) return  // only in dual-screen mode
         if (!MainActivity.isInForeground) return    // don't foreground the app
         val intent = Intent(service, MainActivity::class.java).apply {
@@ -1433,7 +1433,7 @@ class DragLookupController(
     }
 
     private fun saveScreenshot(bitmap: Bitmap): String? {
-        val service = PlayTranslateAccessibilityService.instance ?: return null
+        val service = context
         return try {
             val dir = File(service.cacheDir, "screenshots").apply { mkdirs() }
             val file = File(dir, "drag.jpg")

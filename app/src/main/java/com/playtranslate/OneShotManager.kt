@@ -1,6 +1,7 @@
 package com.playtranslate
 
 import android.graphics.Bitmap
+import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.language.SourceLanguageEngines
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -80,7 +81,7 @@ class OneShotManager(private val service: CaptureService) {
         val targets = activeJobs.keys.toList()
         activeJobs.values.forEach { it.cancel() }
         activeJobs.clear()
-        val a11y = PlayTranslateAccessibilityService.instance ?: return
+        val a11y = CaptureBackendResolver.activeOverlayUi ?: return
         for (id in targets) a11y.hideTranslationOverlayForDisplay(id)
     }
 
@@ -94,7 +95,7 @@ class OneShotManager(private val service: CaptureService) {
         val toHide = activeJobs.keys - newTargets
         activeJobs.values.forEach { it.cancel() }
         activeJobs.clear()
-        val a11y = PlayTranslateAccessibilityService.instance ?: return
+        val a11y = CaptureBackendResolver.activeOverlayUi ?: return
         for (id in toHide) a11y.hideTranslationOverlayForDisplay(id)
     }
 
@@ -175,7 +176,7 @@ class OneShotManager(private val service: CaptureService) {
     }
 
     private fun showNoTextPill(displayId: Int) {
-        val a11y = PlayTranslateAccessibilityService.instance
+        val a11y = CaptureBackendResolver.activeOverlayUi
         val dm = service.getSystemService(android.hardware.display.DisplayManager::class.java)
         val display = dm?.getDisplay(displayId)
         if (a11y != null && display != null) {

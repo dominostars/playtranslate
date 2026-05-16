@@ -722,6 +722,11 @@
                         <include layout="@layout/settings_row_divider" />
 
                         <include layout="@layout/settings_row_switch"
+                            android:id="@+id/rowMpBackend" />
+
+                        <include layout="@layout/settings_row_divider" />
+
+                        <include layout="@layout/settings_row_switch"
                             android:id="@+id/rowShowOcrBoxes" />
 
                         <include layout="@layout/settings_row_divider" />
