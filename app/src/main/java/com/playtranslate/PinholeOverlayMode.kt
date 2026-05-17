@@ -149,7 +149,7 @@ class PinholeOverlayMode(
      *  because the visible-children signal is what cleanRef actually tracks.) */
     private fun hasOverlays(): Boolean =
         cachedBoxes != null &&
-        CaptureBackendResolver.activeOverlayUi?.translationOverlayForDisplay(displayId) != null
+        CaptureBackendResolver.activeOverlayUi?.hasTranslationOverlay(displayId) == true
 
     /** Run one capture-detect-translate cycle. Returns the delay (ms) before the next cycle. */
     private suspend fun runCycle(): Long {
@@ -210,13 +210,14 @@ class PinholeOverlayMode(
             // reference short-circuit and bitmapRects share instances with
             // rects. See FrameCoordinates KDoc for details on the coordinate
             // spaces and why non-identity is fail-closed below.
-            val overlayView = CaptureBackendResolver.activeOverlayUi?.translationOverlayForDisplay(displayId)
-            val rects = overlayView?.getChildScreenRects() ?: emptyList()
+            val ui = CaptureBackendResolver.activeOverlayUi
+            val rects = ui?.boxScreenRects(displayId) ?: emptyList()
+            val overlayDisplaySize = ui?.translationOverlayDisplaySize(displayId)
             val coords = FrameCoordinates(
                 bitmapWidth = raw.width,
                 bitmapHeight = raw.height,
-                viewWidth = overlayView?.width ?: 0,
-                viewHeight = overlayView?.height ?: 0,
+                viewWidth = overlayDisplaySize?.x ?: 0,
+                viewHeight = overlayDisplaySize?.y ?: 0,
                 cropLeft = cropLeft,
                 cropTop = cropTop,
             )
@@ -357,8 +358,8 @@ class PinholeOverlayMode(
                 val classifyCoords = FrameCoordinates(
                     bitmapWidth = raw.width,
                     bitmapHeight = raw.height,
-                    viewWidth = overlayView?.width ?: 0,
-                    viewHeight = overlayView?.height ?: 0,
+                    viewWidth = overlayDisplaySize?.x ?: 0,
+                    viewHeight = overlayDisplaySize?.y ?: 0,
                     cropLeft = pipeCropLeft,
                     cropTop = pipeCropTop,
                 )
@@ -480,9 +481,7 @@ class PinholeOverlayMode(
                     //
                     // Dirty boxes (when present) live on the dirtyView — we
                     // never need to set them back into the clean view here.
-                    CaptureBackendResolver.activeOverlayUi?.translationOverlayForDisplay(displayId)?.setBoxes(
-                        emptyList(), cropLeft, cropTop, screenshotW, screenshotH
-                    )
+                    CaptureBackendResolver.activeOverlayUi?.clearTranslationBoxes(displayId)
                 }
                 // else: farOcrGroups is non-empty — the path below will call
                 // setBoxes(merged) which is the actual swap. Calling
@@ -579,24 +578,21 @@ class PinholeOverlayMode(
         // renderToOffscreen returns an empty/stale bitmap and pinhole detection
         // over-flags REMOVE for every box on the next cycle. Poll up to ~133ms
         // and fall through if it never settles.
-        val view = CaptureBackendResolver.activeOverlayUi?.translationOverlayForDisplay(displayId)
+        val ui = CaptureBackendResolver.activeOverlayUi
         var waited = 0
-        if (view != null) {
-            while (waited < 8 && !view.areChildrenLaidOut()) {
-                waitVsync(1)
-                waited++
-            }
-            if (waited >= 8) Log.w("PinholeOverlayMode", "renderToOffscreen: layout never settled after 8 vsyncs on display $displayId")
-        } else {
-            waitVsync(2)
+        while (waited < 8 && ui?.areTranslationBoxesLaidOut(displayId) != true) {
+            waitVsync(1)
+            waited++
         }
+        if (waited >= 8) Log.w("PinholeOverlayMode", "renderToOffscreen: layout never settled after 8 vsyncs on display $displayId")
         overlayBitmap?.recycle()
-        overlayBitmap = view?.renderToOffscreen()
+        overlayBitmap = ui?.renderTranslationOverlayOffscreen(displayId)
         if (Prefs(service).debugLiveMode) {
             val ob = overlayBitmap
+            val size = ui?.translationOverlayDisplaySize(displayId)
             DetectionLog.log(
                 "D$displayId c$cycleNum renderOffscreen: settled=${waited}vsync " +
-                    "viewDims=${view?.width ?: -1}x${view?.height ?: -1} " +
+                    "displayDims=${size?.x ?: -1}x${size?.y ?: -1} " +
                     "bitmapDims=${ob?.width ?: -1}x${ob?.height ?: -1} " +
                     "boxCount=${boxes.size}"
             )
@@ -753,7 +749,7 @@ class PinholeOverlayMode(
 
         for (py in 0 until regionH) {
             for (px in 0 until regionW) {
-                if (!isPinholePosition(left + px, top + py, spacing)) continue
+                if (!isPinholePosition(px, py, spacing)) continue
                 totalPinholes++
 
                 val refPx = refPixels[py * regionW + px]

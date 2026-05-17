@@ -3,8 +3,11 @@ package com.playtranslate
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.PixelFormat
 import android.graphics.Point
+import android.graphics.Rect
+import android.graphics.RectF
 import android.hardware.display.DisplayManager
 import android.os.Handler
 import android.os.Looper
@@ -17,12 +20,14 @@ import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.overlay.OverlayHost
+import com.playtranslate.ui.BoxOverlayView
 import com.playtranslate.ui.DimController
 import com.playtranslate.ui.DragLookupController
 import com.playtranslate.ui.FloatingIconMenu
 import com.playtranslate.ui.FloatingOverlayIcon
 import com.playtranslate.ui.MagnifierLens
 import com.playtranslate.ui.OverlayAlert
+import com.playtranslate.ui.OverlayLayout
 import com.playtranslate.ui.RegionDragView
 import com.playtranslate.ui.TextBox
 import com.playtranslate.ui.TranslationOverlayView
@@ -96,25 +101,104 @@ class OverlayUiController(
     val isAnyDragLookupPopupShowing: Boolean
         get() = iconHandles.values.any { it.dragController.isPopupShowing }
 
-    // ── Live translation overlay registry ────────────────────────────────
+    // ── Translation overlay registry ─────────────────────────────────────
 
-    private data class TranslationOverlayHandle(
-        val main: TranslationOverlayView,
-        val dirty: TranslationOverlayView,
+    /**
+     * Furigana overlays render on a single full-screen [TranslationOverlayView]
+     * (one window per display). Translation overlays — live pinhole and
+     * one-shot — render each box as its own [BoxOverlayView] window (see
+     * [TranslationOverlayGroup]) so the windows can be individually touchable
+     * on the MediaProjection backend and escape Android's anti-tapjacking
+     * opacity cap. A display has one or the other, never both.
+     */
+    private val furiganaOverlays: MutableMap<Int, TranslationOverlayView> = mutableMapOf()
+
+    /** One translation box rendered as its own overlay window. */
+    private class BoxWindow(
+        val view: BoxOverlayView,
+        val params: WindowManager.LayoutParams,
+        var box: TextBox,
     )
 
-    private val translationOverlayHandles: MutableMap<Int, TranslationOverlayHandle> = mutableMapOf()
+    /** All windows backing one display's per-box translation overlay: the
+     *  per-box [BoxWindow]s plus (until the dirty overlay is folded in) the
+     *  single full-screen dirty view. */
+    private class TranslationOverlayGroup(
+        val wm: WindowManager,
+        val themedCtx: Context,
+        val pinholeMode: Boolean,
+        val displayW: Int,
+        val displayH: Int,
+        val boxWindows: MutableList<BoxWindow> = mutableListOf(),
+        var dirtyView: TranslationOverlayView? = null,
+        var cropLeft: Int = 0,
+        var cropTop: Int = 0,
+        var screenshotW: Int = 1,
+        var screenshotH: Int = 1,
+    )
 
-    /** Live translation overlay for [displayId], or null. */
+    private val translationOverlayGroups: MutableMap<Int, TranslationOverlayGroup> = mutableMapOf()
+
+    /** Furigana overlay view for [displayId], or null. */
     fun translationOverlayForDisplay(displayId: Int): TranslationOverlayView? =
-        translationOverlayHandles[displayId]?.main
+        furiganaOverlays[displayId]
 
-    /** Persistent dirty overlay for [displayId], or null. */
+    /** Persistent dirty overlay for [displayId]'s per-box translation overlay. */
     fun dirtyOverlayForDisplay(displayId: Int): TranslationOverlayView? =
-        translationOverlayHandles[displayId]?.dirty
+        translationOverlayGroups[displayId]?.dirtyView
 
-    /** True iff any display has a live translation overlay registered. */
-    val hasAnyTranslationOverlay: Boolean get() = translationOverlayHandles.isNotEmpty()
+    /** True iff [displayId] has a per-box translation overlay group. */
+    fun hasTranslationOverlay(displayId: Int): Boolean =
+        translationOverlayGroups.containsKey(displayId)
+
+    /** True iff any display has a translation or furigana overlay registered. */
+    val hasAnyTranslationOverlay: Boolean
+        get() = furiganaOverlays.isNotEmpty() || translationOverlayGroups.isNotEmpty()
+
+    /** Screen rects of [displayId]'s per-box translation windows, in box order. */
+    fun boxScreenRects(displayId: Int): List<Rect> {
+        val group = translationOverlayGroups[displayId] ?: return emptyList()
+        val loc = IntArray(2)
+        return group.boxWindows.map { bw ->
+            bw.view.getLocationOnScreen(loc)
+            Rect(loc[0], loc[1], loc[0] + bw.view.width, loc[1] + bw.view.height)
+        }
+    }
+
+    /** Display size of [displayId]'s translation overlay group, or null. */
+    fun translationOverlayDisplaySize(displayId: Int): Point? {
+        val group = translationOverlayGroups[displayId] ?: return null
+        return Point(group.displayW, group.displayH)
+    }
+
+    /** True once every per-box window on [displayId] is laid out — pinhole
+     *  detection must defer its offscreen render until then. */
+    fun areTranslationBoxesLaidOut(displayId: Int): Boolean {
+        val group = translationOverlayGroups[displayId] ?: return false
+        if (group.boxWindows.isEmpty()) return true
+        return group.boxWindows.all { it.view.isBoxLaidOut() }
+    }
+
+    /**
+     * Composite every per-box window's rendered content (no pinholes) onto one
+     * display-sized bitmap, each box at its on-screen position — the
+     * "overlay_rendered" reference [PinholeOverlayMode.checkPinholes] needs.
+     * The caller owns the returned bitmap.
+     */
+    fun renderTranslationOverlayOffscreen(displayId: Int): Bitmap? {
+        val group = translationOverlayGroups[displayId] ?: return null
+        if (group.displayW <= 0 || group.displayH <= 0) return null
+        val bitmap = Bitmap.createBitmap(group.displayW, group.displayH, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val loc = IntArray(2)
+        for (bw in group.boxWindows) {
+            val boxBitmap = bw.view.renderToOffscreen() ?: continue
+            bw.view.getLocationOnScreen(loc)
+            canvas.drawBitmap(boxBitmap, loc[0].toFloat(), loc[1].toFloat(), null)
+            boxBitmap.recycle()
+        }
+        return bitmap
+    }
 
     // ── Overlay-specific mutable state ───────────────────────────────────
 
@@ -493,8 +577,13 @@ class OverlayUiController(
         return RegionEntry("", v.topFraction, v.bottomFraction, v.leftFraction, v.rightFraction)
     }
 
-    // ── Live translation overlay ─────────────────────────────────────────
+    // ── Translation overlay ──────────────────────────────────────────────
 
+    /**
+     * Show (or update) the translation/furigana overlay for [display].
+     * Furigana boxes render on a single full-screen view; translation boxes
+     * render one [BoxOverlayView] window each.
+     */
     fun showTranslationOverlay(
         display: Display,
         boxes: List<TextBox>,
@@ -505,11 +594,24 @@ class OverlayUiController(
         // Overlay is appearing — dismiss loading spinner across all icons.
         setIconsLoading(false)
 
+        val isFurigana = boxes.isNotEmpty() && boxes.all { it.isFurigana }
+        if (isFurigana) {
+            showFuriganaOverlay(display, boxes, cropLeft, cropTop, screenshotW, screenshotH)
+        } else {
+            showBoxOverlay(display, boxes, cropLeft, cropTop, screenshotW, screenshotH, pinholeMode)
+        }
+    }
+
+    /** Furigana single-window path — one full-screen [TranslationOverlayView]. */
+    private fun showFuriganaOverlay(
+        display: Display,
+        boxes: List<TextBox>,
+        cropLeft: Int, cropTop: Int,
+        screenshotW: Int, screenshotH: Int,
+    ) {
         val displayId = display.displayId
-        // Reuse existing view only if it's on the same display AND was
-        // constructed with the same pinhole mode; otherwise recreate.
-        val existing = translationOverlayHandles[displayId]?.main
-        if (existing != null && existing.pinholeMode == pinholeMode) {
+        val existing = furiganaOverlays[displayId]
+        if (existing != null) {
             existing.setBoxes(boxes, cropLeft, cropTop, screenshotW, screenshotH)
             return
         }
@@ -517,7 +619,7 @@ class OverlayUiController(
         val displayCtx = context.createDisplayContext(display)
         val themedCtx = android.view.ContextThemeWrapper(displayCtx, android.R.style.Theme_DeviceDefault)
         val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
-        val view = TranslationOverlayView(themedCtx, pinholeMode = pinholeMode).apply {
+        val view = TranslationOverlayView(themedCtx, pinholeMode = false).apply {
             setBoxes(boxes, cropLeft, cropTop, screenshotW, screenshotH)
         }
         val params = WindowManager.LayoutParams(
@@ -529,47 +631,175 @@ class OverlayUiController(
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply { windowAnimations = 0 }
-        overlayHost.addOverlayWindow(view, wm, params, displayId)
+        if (overlayHost.addOverlayWindow(view, wm, params, displayId)) {
+            furiganaOverlays[displayId] = view
+        }
+    }
 
-        // Create persistent dirty overlay window (always present, empty when not dirty).
-        val dirtyView = TranslationOverlayView(themedCtx, pinholeMode = true)
-        val dirtyParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
+    /** Per-box translation path — one [BoxOverlayView] window per box. */
+    private fun showBoxOverlay(
+        display: Display,
+        boxes: List<TextBox>,
+        cropLeft: Int, cropTop: Int,
+        screenshotW: Int, screenshotH: Int,
+        pinholeMode: Boolean,
+    ) {
+        val displayId = display.displayId
+        val existing = translationOverlayGroups[displayId]
+        if (existing != null && existing.pinholeMode == pinholeMode) {
+            if (syncBoxWindows(existing, displayId, boxes, cropLeft, cropTop, screenshotW, screenshotH)) {
+                bringFloatingIconsToFront(displayId)
+            }
+            return
+        }
+        hideTranslationOverlayForDisplay(displayId)
+        val displayCtx = context.createDisplayContext(display)
+        val themedCtx = android.view.ContextThemeWrapper(displayCtx, android.R.style.Theme_DeviceDefault)
+        val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
+        val size = getDisplaySize(display)
+        val group = TranslationOverlayGroup(
+            wm = wm, themedCtx = themedCtx, pinholeMode = pinholeMode,
+            displayW = size.x, displayH = size.y,
+        )
+        translationOverlayGroups[displayId] = group
+
+        // Live pinhole translation needs the dirty overlay window; one-shot
+        // translation (pinholeMode = false) does not.
+        if (pinholeMode) {
+            val dirtyView = TranslationOverlayView(themedCtx, pinholeMode = true)
+            val dirtyParams = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT
+            ).apply { windowAnimations = 0 }
+            if (overlayHost.addOverlayWindow(dirtyView, wm, dirtyParams, displayId)) {
+                group.dirtyView = dirtyView
+            }
+        }
+
+        syncBoxWindows(group, displayId, boxes, cropLeft, cropTop, screenshotW, screenshotH)
+        bringFloatingIconsToFront(displayId)
+    }
+
+    /**
+     * Reconcile [group]'s per-box windows against [boxes]. Returns true if the
+     * windows were rebuilt (so the caller re-raises the floating icon). Stable
+     * content — fuzzy-equal boxes, unchanged crop/screenshot — is a no-op,
+     * preserving the "zero rebuilds for unchanged content" property pinhole
+     * detection relies on.
+     */
+    private fun syncBoxWindows(
+        group: TranslationOverlayGroup,
+        displayId: Int,
+        boxes: List<TextBox>,
+        cropLeft: Int, cropTop: Int,
+        screenshotW: Int, screenshotH: Int,
+    ): Boolean {
+        val current = group.boxWindows.map { it.box }
+        val cropSame = group.cropLeft == cropLeft && group.cropTop == cropTop &&
+            group.screenshotW == screenshotW && group.screenshotH == screenshotH
+        if (cropSame && (current == boxes || OverlayLayout.boxesMatchFuzzy(current, boxes))) {
+            return false
+        }
+        group.cropLeft = cropLeft
+        group.cropTop = cropTop
+        group.screenshotW = screenshotW
+        group.screenshotH = screenshotH
+
+        // The box set genuinely changed (stable content returned above) —
+        // rebuild every box window.
+        for (bw in group.boxWindows) overlayHost.removeOverlayWindow(bw.view)
+        group.boxWindows.clear()
+        if (group.displayW <= 0 || group.displayH <= 0) return true
+
+        val density = group.themedCtx.resources.displayMetrics.density
+        val rects = OverlayLayout.resolveScreenRects(
+            boxes, cropLeft, cropTop, screenshotW, screenshotH,
+            group.displayW, group.displayH, density,
+        )
+        for ((box, rect) in boxes.zip(rects)) {
+            addBoxWindow(group, displayId, box, rect)
+        }
+        return true
+    }
+
+    /** Create and register one per-box overlay window. */
+    private fun addBoxWindow(
+        group: TranslationOverlayGroup,
+        displayId: Int,
+        box: TextBox,
+        rect: RectF,
+    ) {
+        val w = rect.width().toInt().coerceAtLeast(1)
+        val h = rect.height().toInt().coerceAtLeast(1)
+        val view = BoxOverlayView(group.themedCtx, pinholeMode = group.pinholeMode).apply {
+            setBox(box)
+        }
+        // MediaProjection box windows are touchable so they escape Android's
+        // anti-tapjacking opacity cap; accessibility windows stay non-touchable
+        // (passthrough preserved — cap-exempt by window type).
+        var flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+        if (overlayHost.windowType != WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY) {
+            flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        }
+        val params = WindowManager.LayoutParams(
+            w, h,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            flags,
             PixelFormat.TRANSLUCENT
-        ).apply { windowAnimations = 0 }
-        overlayHost.addOverlayWindow(dirtyView, wm, dirtyParams, displayId)
-
-        translationOverlayHandles[displayId] = TranslationOverlayHandle(view, dirtyView)
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = rect.left.toInt()
+            y = rect.top.toInt()
+            fitInsetsTypes = 0
+            windowAnimations = 0
+        }
+        if (overlayHost.addOverlayWindow(view, group.wm, params, displayId)) {
+            group.boxWindows.add(BoxWindow(view, params, box))
+        }
     }
 
-    /** Tear down a single display's translation + dirty overlay pair.
-     *  Idempotent. */
+    /**
+     * Remove every per-box window from [displayId]'s translation group but keep
+     * the group (and its dirty view) alive — used when pinhole detection clears
+     * stale clean boxes with no replacement coming.
+     */
+    fun clearTranslationBoxes(displayId: Int) {
+        val group = translationOverlayGroups[displayId] ?: return
+        for (bw in group.boxWindows) overlayHost.removeOverlayWindow(bw.view)
+        group.boxWindows.clear()
+    }
+
+    /** Tear down a display's translation or furigana overlay. Idempotent. */
     fun hideTranslationOverlayForDisplay(displayId: Int) {
-        val handle = translationOverlayHandles.remove(displayId) ?: return
-        overlayHost.removeOverlayWindow(handle.main)
-        overlayHost.removeOverlayWindow(handle.dirty)
+        furiganaOverlays.remove(displayId)?.let { overlayHost.removeOverlayWindow(it) }
+        translationOverlayGroups.remove(displayId)?.let { group ->
+            for (bw in group.boxWindows) overlayHost.removeOverlayWindow(bw.view)
+            group.dirtyView?.let { overlayHost.removeOverlayWindow(it) }
+        }
     }
 
-    /** Tear down translation overlays across every display. */
+    /** Tear down translation/furigana overlays across every display. */
     fun hideTranslationOverlay() {
-        if (translationOverlayHandles.isEmpty()) return
-        val ids = translationOverlayHandles.keys.toList()
+        val ids = (furiganaOverlays.keys + translationOverlayGroups.keys).toSet().toList()
         for (id in ids) hideTranslationOverlayForDisplay(id)
     }
 
-    /** Remove specific overlay boxes from [displayId]'s overlay without
-     *  rebuilding the entire view. */
+    /** Remove specific furigana boxes without rebuilding the whole overlay.
+     *  Furigana-only — the per-box translation path reconciles via syncBoxWindows. */
     fun removeOverlayBoxes(
         toRemove: List<TextBox>,
         displayId: Int = CaptureService.instance?.primaryGameDisplayId()
             ?: android.view.Display.DEFAULT_DISPLAY,
     ) {
-        translationOverlayHandles[displayId]?.main?.removeBoxesByContent(toRemove)
+        furiganaOverlays[displayId]?.removeBoxesByContent(toRemove)
     }
 
     // ── Floating icon ────────────────────────────────────────────────────

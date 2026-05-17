@@ -101,4 +101,24 @@ internal object OverlayLayout {
 
         return finalRects
     }
+
+    /** Fuzzy comparison: same content, bounds within [tolerance] px. Absorbs
+     *  OCR jitter so stable on-screen text doesn't trigger an overlay rebuild. */
+    fun boxesMatchFuzzy(a: List<TextBox>, b: List<TextBox>, tolerance: Int = 20): Boolean {
+        if (a.size != b.size) return false
+        for (i in a.indices) {
+            val ba = a[i]; val bb = b[i]
+            if (ba.translatedText != bb.translatedText) return false
+            if (ba.isFurigana != bb.isFurigana) return false
+            if (ba.sourceText != bb.sourceText) return false
+            if (ba.orientation != bb.orientation) return false
+            if (ba.alignment != bb.alignment) return false
+            val ra = ba.bounds; val rb = bb.bounds
+            if (Math.abs(ra.left - rb.left) > tolerance ||
+                Math.abs(ra.top - rb.top) > tolerance ||
+                Math.abs(ra.right - rb.right) > tolerance ||
+                Math.abs(ra.bottom - rb.bottom) > tolerance) return false
+        }
+        return true
+    }
 }

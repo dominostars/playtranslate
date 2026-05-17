@@ -24,7 +24,7 @@ import androidx.core.view.doOnLayout
  */
 class OverlayHost(
     private val context: Context,
-    private val windowType: Int,
+    val windowType: Int,
 ) {
 
     /** Registered overlay window. The stored handle keeps the wm + params so
