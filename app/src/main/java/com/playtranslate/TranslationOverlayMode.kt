@@ -8,7 +8,7 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.util.Log
 import com.playtranslate.model.TranslationResult
-import com.playtranslate.ui.TranslationOverlayView
+import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -53,7 +53,7 @@ class TranslationOverlayMode(
     // ── Mode-owned state ──────────────────────────────────────────────────
 
     // Overlay caches
-    private var cachedOverlayBoxes: List<TranslationOverlayView.TextBox>? = null
+    private var cachedOverlayBoxes: List<TextBox>? = null
     private var lastOcrText: String? = null
     private var cachedOcrResult: OcrManager.OcrResult? = null
     private var cropLeft = 0
@@ -69,7 +69,7 @@ class TranslationOverlayMode(
     private var detectionNonOverlayPositions: List<Pair<Int, Int>> = emptyList()
     private var detectionOverlaySamples: List<OverlaySampleData> = emptyList()
     private var detectionOverlayBoxes: List<Rect> = emptyList()
-    private var detectionOverlayTextBoxes: List<TranslationOverlayView.TextBox> = emptyList()
+    private var detectionOverlayTextBoxes: List<TextBox> = emptyList()
     private var detectionPrevNonOverlay: IntArray? = null
     private var detectionHasPrev = false
     private var stabilizationFrameCount = 0
@@ -203,7 +203,7 @@ class TranslationOverlayMode(
                 val lineCount = liveGroupLineCounts.getOrElse(idx) { 1 }
                 val orient = ocrResult.groupOrientations.getOrElse(idx) { com.playtranslate.language.TextOrientation.HORIZONTAL }
                 val align = ocrResult.groupAlignments.getOrElse(idx) { com.playtranslate.language.TextAlignment.LEFT }
-                TranslationOverlayView.TextBox("", bounds, bgColor, textColor, lineCount, orientation = orient, alignment = align)
+                TextBox("", bounds, bgColor, textColor, lineCount, orientation = orient, alignment = align)
             }
             service.showLiveOverlay(placeholderBoxes, left, top, raw.width, raw.height, displayId = displayId)
 
@@ -409,7 +409,7 @@ class TranslationOverlayMode(
     private fun setupDetection(
         cleanRef: Bitmap,
         fullDisplayBoxes: List<Rect>,
-        textBoxes: List<TranslationOverlayView.TextBox>
+        textBoxes: List<TextBox>
     ) {
         val region = service.activeRegionForDisplay(displayId)
         val regionTop = (cleanRef.height * region.top).toInt()
@@ -675,7 +675,7 @@ class TranslationOverlayMode(
                     val (bg, tc) = colors.getOrElse(idx) { Pair(android.graphics.Color.argb(200,0,0,0), android.graphics.Color.WHITE) }
                     val orient = newGroupOrientations.getOrElse(idx) { com.playtranslate.language.TextOrientation.HORIZONTAL }
                     val align = newGroupAlignments.getOrElse(idx) { com.playtranslate.language.TextAlignment.LEFT }
-                    TranslationOverlayView.TextBox(perGroup[idx].first, newGroupBounds[idx], bg, tc, orientation = orient, alignment = align)
+                    TextBox(perGroup[idx].first, newGroupBounds[idx], bg, tc, orientation = orient, alignment = align)
                 }
             } else emptyList()
 

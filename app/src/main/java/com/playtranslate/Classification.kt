@@ -3,7 +3,7 @@ package com.playtranslate
 import android.graphics.Rect
 import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
-import com.playtranslate.ui.TranslationOverlayView
+import com.playtranslate.ui.TextBox
 
 /**
  * OCR-to-overlay classification for live pinhole mode.
@@ -103,7 +103,7 @@ data class ClassificationResult(
  */
 fun classifyOcrResults(
     ocrResult: OcrManager.OcrResult,
-    boxes: List<TranslationOverlayView.TextBox>,
+    boxes: List<TextBox>,
     ocrBitmapRects: List<Rect>,
     coords: FrameCoordinates,
 ): ClassificationResult {
@@ -342,7 +342,7 @@ fun classifyOcrResults(
  */
 fun cascadeStaleRemovals(
     initialStale: Set<Int>,
-    boxes: List<TranslationOverlayView.TextBox>,
+    boxes: List<TextBox>,
     ocrBitmapRects: List<Rect>,
 ): Set<Int> {
     val cascadedRemovals = initialStale.toMutableSet()

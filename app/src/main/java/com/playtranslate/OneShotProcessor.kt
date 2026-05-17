@@ -3,7 +3,7 @@ package com.playtranslate
 import android.graphics.Bitmap
 import android.text.TextPaint
 import com.playtranslate.language.SourceLanguageEngine
-import com.playtranslate.ui.TranslationOverlayView
+import com.playtranslate.ui.TextBox
 
 /**
  * Builds overlay boxes from a single OCR result.
@@ -16,8 +16,8 @@ interface OneShotProcessor {
         raw: Bitmap,
         cropLeft: Int, cropTop: Int,
         screenshotW: Int, screenshotH: Int,
-        showOverlay: (List<TranslationOverlayView.TextBox>) -> Unit
-    ): List<TranslationOverlayView.TextBox>
+        showOverlay: (List<TextBox>) -> Unit
+    ): List<TextBox>
 }
 
 /** Builds furigana/pinyin reading boxes. Instant — no network, no shimmer. */
@@ -30,8 +30,8 @@ class FuriganaOneShotProcessor(
         raw: Bitmap,
         cropLeft: Int, cropTop: Int,
         screenshotW: Int, screenshotH: Int,
-        showOverlay: (List<TranslationOverlayView.TextBox>) -> Unit
-    ): List<TranslationOverlayView.TextBox> {
+        showOverlay: (List<TextBox>) -> Unit
+    ): List<TextBox> {
         return OverlayToolkit.buildFuriganaBoxes(ocrResult, engine, furiganaPaint)
     }
 }
@@ -45,8 +45,8 @@ class TranslationOneShotProcessor(
         raw: Bitmap,
         cropLeft: Int, cropTop: Int,
         screenshotW: Int, screenshotH: Int,
-        showOverlay: (List<TranslationOverlayView.TextBox>) -> Unit
-    ): List<TranslationOverlayView.TextBox> {
+        showOverlay: (List<TextBox>) -> Unit
+    ): List<TextBox> {
         // Color sample from scaled reference
         val colorScale = 4
         val colorRef = Bitmap.createScaledBitmap(
@@ -69,7 +69,7 @@ class TranslationOneShotProcessor(
             val lineCount = ocrResult.groupLineCounts.getOrElse(idx) { 1 }
             val orient = ocrResult.groupOrientations.getOrElse(idx) { com.playtranslate.language.TextOrientation.HORIZONTAL }
             val align = ocrResult.groupAlignments.getOrElse(idx) { com.playtranslate.language.TextAlignment.LEFT }
-            TranslationOverlayView.TextBox("", bounds, bgColor, textColor, lineCount, orientation = orient, alignment = align)
+            TextBox("", bounds, bgColor, textColor, lineCount, orientation = orient, alignment = align)
         }
         showOverlay(placeholders)
 

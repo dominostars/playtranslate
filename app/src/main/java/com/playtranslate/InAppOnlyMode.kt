@@ -1,6 +1,6 @@
 package com.playtranslate
 
-import com.playtranslate.ui.TranslationOverlayView
+import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -29,7 +29,7 @@ class InAppOnlyMode(
 
     // ── Mode-owned state ──────────────────────────────────────────────────
 
-    private var cachedOverlayBoxes: List<TranslationOverlayView.TextBox>? = null
+    private var cachedOverlayBoxes: List<TextBox>? = null
     private var lastOcrText: String? = null
     private var cropLeft = 0
     private var cropTop = 0
@@ -100,6 +100,6 @@ class InAppOnlyMode(
         screenshotW = pipeline.screenshotW
         screenshotH = pipeline.screenshotH
         cachedOverlayBoxes = pipeline.groupBounds.zip(pipeline.groupTranslations)
-            .map { (bounds, text) -> TranslationOverlayView.TextBox(text, bounds) }
+            .map { (bounds, text) -> TextBox(text, bounds) }
     }
 }

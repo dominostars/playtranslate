@@ -8,7 +8,7 @@ import android.graphics.Canvas
 import android.graphics.Rect
 import android.graphics.RectF
 import com.playtranslate.language.SourceLanguageEngines
-import com.playtranslate.ui.TranslationOverlayView
+import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -62,7 +62,7 @@ class FuriganaMode(
     // ── Mode-owned state ──────────────────────────────────────────────────
 
     private var furiganaGroups: List<OverlayToolkit.FuriganaGroup> = emptyList()
-    private var cachedFuriganaBoxes: List<TranslationOverlayView.TextBox>? = null
+    private var cachedFuriganaBoxes: List<TextBox>? = null
     private var cleanRefBitmap: Bitmap? = null
     private var lastOcrText: String? = null
     private var cropLeft = 0

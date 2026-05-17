@@ -24,6 +24,7 @@ import com.playtranslate.ui.FloatingOverlayIcon
 import com.playtranslate.ui.MagnifierLens
 import com.playtranslate.ui.OverlayAlert
 import com.playtranslate.ui.RegionDragView
+import com.playtranslate.ui.TextBox
 import com.playtranslate.ui.TranslationOverlayView
 import com.playtranslate.ui.WordLookupPopup
 import kotlinx.coroutines.CoroutineScope
@@ -496,7 +497,7 @@ class OverlayUiController(
 
     fun showTranslationOverlay(
         display: Display,
-        boxes: List<TranslationOverlayView.TextBox>,
+        boxes: List<TextBox>,
         cropLeft: Int, cropTop: Int,
         screenshotW: Int, screenshotH: Int,
         pinholeMode: Boolean = false
@@ -564,7 +565,7 @@ class OverlayUiController(
     /** Remove specific overlay boxes from [displayId]'s overlay without
      *  rebuilding the entire view. */
     fun removeOverlayBoxes(
-        toRemove: List<TranslationOverlayView.TextBox>,
+        toRemove: List<TextBox>,
         displayId: Int = CaptureService.instance?.primaryGameDisplayId()
             ?: android.view.Display.DEFAULT_DISPLAY,
     ) {

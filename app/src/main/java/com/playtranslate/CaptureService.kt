@@ -56,7 +56,7 @@ import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.ui.DegradedWarningKind
-import com.playtranslate.ui.TranslationOverlayView
+import com.playtranslate.ui.TextBox
 
 private const val TAG = "CaptureService"
 private const val NOTIF_ID = 1001
@@ -1506,7 +1506,7 @@ class CaptureService : Service() {
     /** Remove specific overlay boxes without rebuilding the entire view.
      *  [displayId] defaults to [primaryGameDisplayId] for legacy callers. */
     internal fun removeOverlayBoxes(
-        toRemove: List<TranslationOverlayView.TextBox>,
+        toRemove: List<TextBox>,
         displayId: Int = primaryGameDisplayId(),
     ) {
         CaptureBackendResolver.activeOverlayUi?.removeOverlayBoxes(toRemove, displayId)
@@ -1518,7 +1518,7 @@ class CaptureService : Service() {
      * modes pass their own displayId).
      */
     internal fun showLiveOverlay(
-        boxes: List<TranslationOverlayView.TextBox>,
+        boxes: List<TextBox>,
         cropLeft: Int, cropTop: Int,
         screenshotW: Int, screenshotH: Int,
         force: Boolean = false,

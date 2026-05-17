@@ -2,7 +2,7 @@ package com.playtranslate
 
 import android.graphics.Rect
 import com.playtranslate.language.TextOrientation
-import com.playtranslate.ui.TranslationOverlayView
+import com.playtranslate.ui.TextBox
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -42,7 +42,7 @@ class ClassificationTest {
         dirty: Boolean = false,
         lineCount: Int = 1,
         orientation: TextOrientation = TextOrientation.HORIZONTAL,
-    ) = TranslationOverlayView.TextBox(
+    ) = TextBox(
         translatedText = "",
         bounds = bounds,
         sourceText = sourceText,

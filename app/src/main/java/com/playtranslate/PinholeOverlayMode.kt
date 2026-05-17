@@ -11,7 +11,7 @@ import android.view.Choreographer
 import android.view.View
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
-import com.playtranslate.ui.TranslationOverlayView
+import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -53,7 +53,7 @@ class PinholeOverlayMode(
     private var currentJob: Job? = null
 
     // State
-    private var cachedBoxes: List<TranslationOverlayView.TextBox>? = null
+    private var cachedBoxes: List<TextBox>? = null
     private var cleanRefBitmap: Bitmap? = null
     private var overlayBitmap: Bitmap? = null
     private var cropLeft = 0
@@ -569,7 +569,7 @@ class PinholeOverlayMode(
      *  `pinholeMode` parameter, which eliminates the ordering/timing race
      *  between flipping a mutable flag and [TranslationOverlayView.rebuildChildren]. */
     private suspend fun showOverlayAndCapture(
-        boxes: List<TranslationOverlayView.TextBox>,
+        boxes: List<TextBox>,
         left: Int, top: Int, sw: Int, sh: Int
     ) {
         service.showLiveOverlay(boxes, left, top, sw, sh, pinholeMode = true, displayId = displayId)
@@ -891,7 +891,7 @@ class PinholeOverlayMode(
         raw: Bitmap, left: Int, top: Int,
         orientations: List<com.playtranslate.language.TextOrientation> = emptyList(),
         alignments: List<com.playtranslate.language.TextAlignment> = emptyList()
-    ): List<TranslationOverlayView.TextBox> {
+    ): List<TextBox> {
         val colorScale = 4
         val colorRef = Bitmap.createScaledBitmap(raw, raw.width / colorScale, raw.height / colorScale, false)
         val colors: List<Pair<Int, Int>>
@@ -904,15 +904,15 @@ class PinholeOverlayMode(
             val (bg, tc) = colors.getOrElse(idx) { Pair(Color.argb(224, 0, 0, 0), Color.WHITE) }
             val orient = orientations.getOrElse(idx) { com.playtranslate.language.TextOrientation.HORIZONTAL }
             val align = alignments.getOrElse(idx) { com.playtranslate.language.TextAlignment.LEFT }
-            TranslationOverlayView.TextBox("", rect, bg, tc, lineCounts.getOrElse(idx) { 1 },
+            TextBox("", rect, bg, tc, lineCounts.getOrElse(idx) { 1 },
                 sourceText = texts.getOrElse(idx) { "" }, orientation = orient, alignment = align)
         }
     }
 
     /** Translate texts and return placeholders with filled translatedText. */
     private suspend fun translatePlaceholders(
-        placeholders: List<TranslationOverlayView.TextBox>, texts: List<String>
-    ): List<TranslationOverlayView.TextBox> {
+        placeholders: List<TextBox>, texts: List<String>
+    ): List<TextBox> {
         val uncachedIndices = mutableListOf<Int>()
         val uncachedTexts = mutableListOf<String>()
         val translations = Array(texts.size) { "" }

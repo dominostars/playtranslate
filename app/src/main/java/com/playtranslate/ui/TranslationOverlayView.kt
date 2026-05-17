@@ -56,34 +56,10 @@ class TranslationOverlayView(
         clipToPadding = false
     }
 
-    data class TextBox(
-        val translatedText: String,
-        /** Bounding box in original bitmap pixel coordinates. */
-        val bounds: Rect,
-        /** Average color of the game content behind this box (ARGB). */
-        val bgColor: Int = Color.argb(200, 0, 0, 0),
-        /** Text color — estimated from game text or chosen for contrast. */
-        val textColor: Int = Color.WHITE,
-        /** Number of OCR lines in this group (for skeleton placeholders). */
-        val lineCount: Int = 1,
-        /** True for furigana readings (smaller text, pill background). */
-        val isFurigana: Boolean = false,
-        /** Marked when pinhole detection finds a minor change under this overlay. */
-        val dirty: Boolean = false,
-        /** Original OCR source text this overlay translates. Used for content-based matching. */
-        val sourceText: String = "",
-        /** Text orientation — vertical boxes render with 90° CW rotated text. */
-        val orientation: TextOrientation = TextOrientation.HORIZONTAL,
-        /** Block alignment for horizontal boxes — drives skeleton bar placement
-         *  and translated-text gravity. Ignored for vertical boxes. */
-        val alignment: TextAlignment = TextAlignment.LEFT
-    )
-
     private val dp = context.resources.displayMetrics.density
 
     private val minTextSizeSp = 6
     private val maxTextSizeSp = 200
-    private val boxPadding = 6f * dp
     /** Small inset so text doesn't touch the edges of the background. */
     private val textMargin = (3f * dp).toInt()
     private val skeletonBarHeight = (8f * dp).toInt()
@@ -93,8 +69,6 @@ class TranslationOverlayView(
     private var boxes: List<TextBox> = emptyList()
     private var cropOffsetX = 0
     private var cropOffsetY = 0
-    private var displayScaleX = 1f
-    private var displayScaleY = 1f
     private var screenshotW = 1
     private var screenshotH = 1
 
@@ -127,7 +101,6 @@ class TranslationOverlayView(
         this.screenshotW = screenshotW
         this.screenshotH = screenshotH
         if (width > 0 && height > 0) {
-            updateScales()
             rebuildChildren()
         }
     }
@@ -168,7 +141,6 @@ class TranslationOverlayView(
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        updateScales()
         pinholeMaskBitmap?.recycle()
         pinholeMaskBitmap = if (w > 0 && h > 0) createPinholeMask(w, h) else null
         post { rebuildChildren() }
@@ -194,19 +166,6 @@ class TranslationOverlayView(
         canvas.restoreToCount(layer)
     }
 
-    private fun updateScales() {
-        displayScaleX = width.toFloat() / screenshotW
-        displayScaleY = height.toFloat() / screenshotH
-    }
-
-    private fun mapRect(r: Rect): RectF {
-        val left   = (r.left   + cropOffsetX) * displayScaleX
-        val top    = (r.top    + cropOffsetY) * displayScaleY
-        val right  = (r.right  + cropOffsetX) * displayScaleX
-        val bottom = (r.bottom + cropOffsetY) * displayScaleY
-        return RectF(left, top, right, bottom)
-    }
-
     private fun rebuildChildren() {
         shimmerAnimator?.cancel()
         shimmerAnimator = null
@@ -221,63 +180,9 @@ class TranslationOverlayView(
             }
         }
 
-        val displayW = width.toFloat()
-        val displayH = height.toFloat()
-
-        // Map OCR bounds to screen coordinates
-        val screenRects = boxes.map { box ->
-            val r = mapRect(box.bounds)
-            if (box.isFurigana) {
-                // Furigana: exact position, no padding or overlap adjustment
-                RectF(r.left, r.top, r.right, r.bottom)
-            } else {
-                RectF(
-                    (r.left - boxPadding).coerceAtLeast(0f),
-                    (r.top - boxPadding).coerceAtLeast(0f),
-                    (r.right + boxPadding).coerceAtMost(displayW),
-                    (r.bottom + boxPadding).coerceAtMost(displayH)
-                )
-            }
-        }
-
-        // Resolve vertical overlaps for non-furigana horizontal boxes
-        val finalRects = screenRects.map { RectF(it) }
-        val hBoxIndices = boxes.indices.filter {
-            !boxes[it].isFurigana && boxes[it].orientation != TextOrientation.VERTICAL
-        }.sortedBy { finalRects[it].top }
-        for (a in hBoxIndices.indices) {
-            for (b in a + 1 until hBoxIndices.size) {
-                val i = hBoxIndices[a]
-                val j = hBoxIndices[b]
-                val ri = finalRects[i]
-                val rj = finalRects[j]
-                if (ri.bottom > rj.top && ri.left < rj.right && ri.right > rj.left) {
-                    val mid = (ri.bottom + rj.top) / 2f
-                    ri.bottom = mid
-                    rj.top = mid
-                }
-            }
-        }
-
-        // Resolve horizontal overlaps for non-furigana vertical boxes
-        // (adjacent columns whose overlay boxes overlap on the X axis).
-        // Sort by right edge descending (right-to-left reading order).
-        val vBoxIndices = boxes.indices.filter {
-            !boxes[it].isFurigana && boxes[it].orientation == TextOrientation.VERTICAL
-        }.sortedByDescending { finalRects[it].right }
-        for (a in vBoxIndices.indices) {
-            for (b in a + 1 until vBoxIndices.size) {
-                val i = vBoxIndices[a]
-                val j = vBoxIndices[b]
-                val ri = finalRects[i]
-                val rj = finalRects[j]
-                if (ri.left < rj.right && ri.top < rj.bottom && ri.bottom > rj.top) {
-                    val mid = (ri.left + rj.right) / 2f
-                    ri.left = mid
-                    rj.right = mid
-                }
-            }
-        }
+        val finalRects = OverlayLayout.resolveScreenRects(
+            boxes, cropOffsetX, cropOffsetY, screenshotW, screenshotH, width, height, dp
+        )
 
         val hasPlaceholders = boxes.any { it.translatedText.isEmpty() }
 
@@ -574,26 +479,6 @@ class TranslationOverlayView(
                 }
             }
             start()
-        }
-    }
-
-    /** TextView that draws a stroke outline behind the text for readability without a background. */
-    private class OutlinedTextView(context: android.content.Context) : TextView(context) {
-        var outlineColor: Int = Color.argb(220, 34, 34, 34)
-        var outlineWidth: Float = 0f
-
-        override fun onDraw(canvas: Canvas) {
-            if (outlineWidth > 0f) {
-                val savedColor = currentTextColor
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = outlineWidth
-                paint.strokeJoin = Paint.Join.ROUND
-                setTextColor(outlineColor)
-                super.onDraw(canvas)
-                paint.style = Paint.Style.FILL
-                setTextColor(savedColor)
-            }
-            super.onDraw(canvas)
         }
     }
 }

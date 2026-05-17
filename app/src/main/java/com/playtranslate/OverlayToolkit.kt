@@ -8,7 +8,7 @@ import android.graphics.Rect
 import android.text.TextPaint
 import com.playtranslate.language.HintTextAnnotation
 import com.playtranslate.language.SourceLanguageEngine
-import com.playtranslate.ui.TranslationOverlayView
+import com.playtranslate.ui.TextBox
 
 /**
  * Pure, stateless functions for building overlay boxes, sampling colors, and
@@ -118,7 +118,7 @@ object OverlayToolkit {
     data class FuriganaGroup(
         val groupText: String,
         val groupBounds: Rect,
-        val boxes: List<TranslationOverlayView.TextBox>
+        val boxes: List<TextBox>
     )
 
     /**
@@ -137,12 +137,12 @@ object OverlayToolkit {
             val lines = ocrResult.lineBoxes.filter { it.groupIndex == groupIdx }
             if (lines.isEmpty()) continue
 
-            val groupBoxes = mutableListOf<TranslationOverlayView.TextBox>()
+            val groupBoxes = mutableListOf<TextBox>()
             for (line in lines) {
                 val isVertical = line.orientation == com.playtranslate.language.TextOrientation.VERTICAL
                 if (line.text.isEmpty()) continue
                 val annotations = engine.annotateForHintText(line.text)
-                val lineBoxes = mutableListOf<TranslationOverlayView.TextBox>()
+                val lineBoxes = mutableListOf<TextBox>()
 
                 if (line.symbols.isNotEmpty()) {
                     for (ann in annotations) {
@@ -170,7 +170,7 @@ object OverlayToolkit {
                                 first.bounds.top
                             )
                         }
-                        lineBoxes += TranslationOverlayView.TextBox(
+                        lineBoxes += TextBox(
                             translatedText = ann.hintText,
                             bounds = bounds,
                             lineCount = 1,
@@ -191,7 +191,7 @@ object OverlayToolkit {
                             val top = lineTop + (ann.baseStart * charHeight).toInt()
                             val bottom = lineTop + (ann.baseEnd * charHeight).toInt()
                             val furiganaWidth = (line.bounds.width() * 0.75f).toInt().coerceAtLeast(1)
-                            lineBoxes += TranslationOverlayView.TextBox(
+                            lineBoxes += TextBox(
                                 translatedText = ann.hintText,
                                 bounds = Rect(
                                     line.bounds.right,
@@ -236,7 +236,7 @@ object OverlayToolkit {
                                 right,
                                 line.bounds.top
                             )
-                            lineBoxes += TranslationOverlayView.TextBox(
+                            lineBoxes += TextBox(
                                 translatedText = ann.hintText,
                                 bounds = furiganaBounds,
                                 lineCount = 1,
@@ -265,7 +265,7 @@ object OverlayToolkit {
         ocrResult: OcrManager.OcrResult,
         engine: SourceLanguageEngine,
         furiganaPaint: TextPaint
-    ): List<TranslationOverlayView.TextBox> =
+    ): List<TextBox> =
         buildFuriganaBoxesByGroup(ocrResult, engine, furiganaPaint).flatMap { it.boxes }
 
     /** Check if two OCR groups match (same text at same approximate location). */
@@ -293,23 +293,23 @@ object OverlayToolkit {
      * along the Y axis (top-to-bottom) instead of the X axis.
      */
     private fun mergeOverlappingFurigana(
-        boxes: List<TranslationOverlayView.TextBox>,
+        boxes: List<TextBox>,
         furiganaPaint: TextPaint,
         vertical: Boolean = false
-    ): List<TranslationOverlayView.TextBox> {
+    ): List<TextBox> {
         if (boxes.size <= 1) return boxes
 
         if (vertical) {
             // Vertical: furigana boxes are stacked top-to-bottom to the right of the column.
             // Merge boxes that overlap on the Y axis.
             val sorted = boxes.sortedBy { it.bounds.top }
-            val merged = mutableListOf<TranslationOverlayView.TextBox>()
+            val merged = mutableListOf<TextBox>()
             var current = sorted[0]
             var currentBottom = estimateFuriganaBottom(current, furiganaPaint)
             for (i in 1 until sorted.size) {
                 val next = sorted[i]
                 if (next.bounds.top < currentBottom) {
-                    current = TranslationOverlayView.TextBox(
+                    current = TextBox(
                         translatedText = current.translatedText + next.translatedText,
                         bounds = Rect(
                             minOf(current.bounds.left, next.bounds.left),
@@ -334,13 +334,13 @@ object OverlayToolkit {
 
         // Horizontal: merge along the X axis (existing behavior)
         val sorted = boxes.sortedBy { it.bounds.left }
-        val merged = mutableListOf<TranslationOverlayView.TextBox>()
+        val merged = mutableListOf<TextBox>()
         var current = sorted[0]
         var currentRight = estimateFuriganaRight(current, furiganaPaint)
         for (i in 1 until sorted.size) {
             val next = sorted[i]
             if (next.bounds.left < currentRight) {
-                current = TranslationOverlayView.TextBox(
+                current = TextBox(
                     translatedText = current.translatedText + next.translatedText,
                     bounds = Rect(
                         current.bounds.left,
@@ -366,7 +366,7 @@ object OverlayToolkit {
      * Estimate the right edge of a furigana label as it would be rendered.
      * The text is rendered at 0.7× the box height, positioned from box.left.
      */
-    private fun estimateFuriganaRight(box: TranslationOverlayView.TextBox, paint: TextPaint): Int {
+    private fun estimateFuriganaRight(box: TextBox, paint: TextPaint): Int {
         val textSizePx = (box.bounds.height() * 0.7f).coerceAtLeast(4f)
         val savedSize = paint.textSize
         paint.textSize = textSizePx
@@ -376,7 +376,7 @@ object OverlayToolkit {
     }
 
     /** Estimate the bottom edge of a vertical furigana label (text rendered top-to-bottom). */
-    private fun estimateFuriganaBottom(box: TranslationOverlayView.TextBox, paint: TextPaint): Int {
+    private fun estimateFuriganaBottom(box: TextBox, paint: TextPaint): Int {
         // Each character stacks vertically; estimate total height from char count × char width
         val textSizePx = (box.bounds.width() * 0.7f).coerceAtLeast(4f)
         val charHeight = textSizePx * 1.2f  // line spacing factor
