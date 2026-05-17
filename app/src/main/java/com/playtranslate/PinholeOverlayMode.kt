@@ -8,7 +8,6 @@ import android.graphics.Color
 import android.graphics.Rect
 import android.util.Log
 import android.view.Choreographer
-import android.view.View
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.ui.TextBox
@@ -21,7 +20,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 
 /**
@@ -660,22 +658,22 @@ class PinholeOverlayMode(
      * 50/50 blend of the clean game background (cleanRef) and the solid
      * overlay rendering (overlayBitmap). That's true because:
      *
-     *   1. [TranslationOverlayView.createPinholeMask] generates a mask with
-     *      alpha [PinholeCalibration.MASK_ALPHA] (50%) at sparse pinhole
-     *      positions spaced [PinholeCalibration.PINHOLE_SPACING] apart, 0
-     *      elsewhere.
-     *   2. [TranslationOverlayView.dispatchDraw] composites that mask via
-     *      DST_OUT on the rendered children, punching 50% holes at the mask
-     *      positions and leaving non-pinhole positions fully opaque.
+     *   1. [com.playtranslate.ui.BoxOverlayView.createPinholeMask] generates
+     *      a mask with alpha [PinholeCalibration.MASK_ALPHA] (50%) at sparse
+     *      pinhole positions spaced [PinholeCalibration.PINHOLE_SPACING]
+     *      apart, 0 elsewhere.
+     *   2. [com.playtranslate.ui.BoxOverlayView.dispatchDraw] composites that
+     *      mask via DST_OUT on the rendered box, punching 50% holes at the
+     *      mask positions and leaving non-pinhole positions fully opaque.
      *   3. The final on-screen pixel at a pinhole is therefore
      *      50% overlay + 50% game.
      *
-     * The sampling loop iterates every pixel in the region and skips non-
-     * pinhole positions via [isPinholePosition], which uses BITMAP
-     * coordinates with a fixed spacing. The mask is generated at VIEW
-     * coordinates with the same spacing. **At identity scale the two
-     * coordinate systems are identical**, so the sampler hits real pinhole
-     * positions.
+     * The sampling loop iterates every pixel in the box region and skips
+     * non-pinhole positions via [isPinholePosition] using **box-local**
+     * coordinates (the px/py offset within the box rect). Each box is its
+     * own [com.playtranslate.ui.BoxOverlayView] window whose mask is
+     * generated from that view's own (0,0), so the box-local grid lines up
+     * with the box's actual on-screen holes.
      *
      * ## Why this breaks at non-identity scale
      *
@@ -726,7 +724,8 @@ class PinholeOverlayMode(
         val refPixels = IntArray(regionW * regionH)
         cleanRef.getPixels(refPixels, 0, regionW, left, top, regionW, regionH)
 
-        // Overlay bitmap is in view coordinates (same as screen coordinates for full-screen overlay)
+        // overlayBitmap is the display-sized composite of every clean box
+        // window's content (no pinholes) — slice it by the same rect as raw.
         val ovLeft = left.coerceIn(0, overlay.width)
         val ovTop = top.coerceIn(0, overlay.height)
         val ovRight = right.coerceIn(0, overlay.width)
