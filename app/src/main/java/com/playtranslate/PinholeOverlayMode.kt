@@ -156,24 +156,21 @@ class PinholeOverlayMode(
         val prefs = Prefs(service)
         if (service.holdActive) return 100L
         val mgr = CaptureBackendResolver.activeLiveCaptureSource ?: return prefs.captureIntervalMs
-        val dirtyView = CaptureBackendResolver.activeOverlayUi?.dirtyOverlayForDisplay(displayId)
         val hasDirty = cachedBoxes?.any { it.dirty } == true
         cycleNum++
         val debug = prefs.debugLiveMode
 
-        // 1. Hide dirty overlay window before capture (hardware layer alpha + frame commit sync)
-        if (hasDirty && dirtyView != null) {
-            val committed = hideAndAwaitCommit(dirtyView)
-            if (!committed) {
-                // View detached or timed out — skip this capture
-                return prefs.captureIntervalMs
-            }
+        // 1. Blank the dirty-flagged box windows before capture so raw shows
+        //    clean game pixels under them — window-alpha blank + a 2-vsync
+        //    wait, the mechanism OverlayHost.prepareForCleanCapture relies on.
+        if (hasDirty) {
+            CaptureBackendResolver.activeOverlayUi?.setDirtyBoxesHidden(displayId, true)
             waitVsync(2)
         }
 
-        // 2. Capture — restore dirty window in callback (before bitmap copy)
+        // 2. Capture — restore the dirty box windows in the callback.
         val raw = mgr.requestRaw(displayId) {
-            if (hasDirty) dirtyView?.alpha = 1f
+            if (hasDirty) CaptureBackendResolver.activeOverlayUi?.setDirtyBoxesHidden(displayId, false)
         }
 
         if (raw == null) {
@@ -297,9 +294,9 @@ class PinholeOverlayMode(
             // showLiveOverlay will never render.
             if (service.holdActive) return 100L
 
-            // After OCR, clear dirty state — dirty overlays have been captured and evaluated
+            // After OCR, drop dirty boxes from the cache — they have been
+            // captured and will be re-detected as new text below.
             cachedBoxes = cachedBoxes?.filter { !it.dirty }?.ifEmpty { null }
-            dirtyView?.setBoxes(emptyList(), cropLeft, cropTop, screenshotW, screenshotH)
 
             // No text on screen and no overlays → nothing to do
             if (pipeline == null && !hasOverlays()) {
@@ -464,13 +461,12 @@ class PinholeOverlayMode(
                 }
             }
 
-            // 10. Apply to views — single commit point
-            dirtyView?.setBoxes(dirtyBoxes, cropLeft, cropTop, screenshotW, screenshotH)
-
+            // 10. Apply to the box windows — single commit point. Dirty boxes
+            //     ride along as box windows; step 1 blanks them before capture.
             if (anyChanged) {
                 anyRemoved = allRemovals.isNotEmpty()
-                if (cleanBoxes.isNotEmpty()) {
-                    showOverlayAndCapture(cleanBoxes, cropLeft, cropTop, screenshotW, screenshotH)
+                if (nextBoxes.isNotEmpty()) {
+                    showOverlayAndCapture(nextBoxes, cropLeft, cropTop, screenshotW, screenshotH)
                 } else if (farOcrGroups.isEmpty()) {
                     // No clean boxes AND no replacement coming — clear the
                     // clean window so stale boxes don't linger. setBoxes
@@ -528,8 +524,6 @@ class PinholeOverlayMode(
                     val merged = currentClean + partial
                     cachedBoxes = merged
                     showOverlayAndCapture(merged, cropLeft, cropTop, screenshotW, screenshotH)
-                    // Dirty window cleared — clean window now has replacements
-                    dirtyView?.setBoxes(emptyList(), cropLeft, cropTop, screenshotW, screenshotH)
 
                     if (anyUncached) {
                         val translated = translatePlaceholders(placeholders, farTexts)
@@ -937,35 +931,6 @@ class PinholeOverlayMode(
 
     // ── Utility ─────────────────────────────────────────────────────────
 
-
-    /**
-     * Hide the dirty overlay via alpha and wait for the RenderThread to commit
-     * the transparent frame to SurfaceFlinger.
-     *
-     * Forces a view invalidation after setting alpha=0 so the VTO callback
-     * actually fires (hardware layer alpha changes skip performTraversals,
-     * but registerFrameCommitCallback requires a full traversal pass).
-     *
-     * Returns true if the frame was committed, false on timeout or detach.
-     */
-    private suspend fun hideAndAwaitCommit(dirtyView: View): Boolean {
-        return withTimeoutOrNull(200L) {
-            suspendCancellableCoroutine { cont ->
-                dirtyView.alpha = 0f
-                dirtyView.invalidate() // Force traversal so VTO callback fires
-
-                val vto = dirtyView.viewTreeObserver
-                if (!vto.isAlive || !dirtyView.isAttachedToWindow) {
-                    cont.resume(false)
-                    return@suspendCancellableCoroutine
-                }
-
-                vto.registerFrameCommitCallback {
-                    if (cont.isActive) cont.resume(true)
-                }
-            }
-        } ?: false
-    }
 
     private suspend fun waitVsync(frames: Int) {
         repeat(frames) {

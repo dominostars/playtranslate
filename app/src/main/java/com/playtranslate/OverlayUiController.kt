@@ -120,9 +120,10 @@ class OverlayUiController(
         var box: TextBox,
     )
 
-    /** All windows backing one display's per-box translation overlay: the
-     *  per-box [BoxWindow]s plus (until the dirty overlay is folded in) the
-     *  single full-screen dirty view. */
+    /** All per-box windows backing one display's translation overlay. A box
+     *  flagged [TextBox.dirty] is still a [BoxWindow]; pinhole detection blanks
+     *  it (window alpha) before a raw capture rather than hosting it in a
+     *  separate window. */
     private class TranslationOverlayGroup(
         val wm: WindowManager,
         val themedCtx: Context,
@@ -130,7 +131,6 @@ class OverlayUiController(
         val displayW: Int,
         val displayH: Int,
         val boxWindows: MutableList<BoxWindow> = mutableListOf(),
-        var dirtyView: TranslationOverlayView? = null,
         var cropLeft: Int = 0,
         var cropTop: Int = 0,
         var screenshotW: Int = 1,
@@ -143,10 +143,6 @@ class OverlayUiController(
     fun translationOverlayForDisplay(displayId: Int): TranslationOverlayView? =
         furiganaOverlays[displayId]
 
-    /** Persistent dirty overlay for [displayId]'s per-box translation overlay. */
-    fun dirtyOverlayForDisplay(displayId: Int): TranslationOverlayView? =
-        translationOverlayGroups[displayId]?.dirtyView
-
     /** True iff [displayId] has a per-box translation overlay group. */
     fun hasTranslationOverlay(displayId: Int): Boolean =
         translationOverlayGroups.containsKey(displayId)
@@ -155,11 +151,12 @@ class OverlayUiController(
     val hasAnyTranslationOverlay: Boolean
         get() = furiganaOverlays.isNotEmpty() || translationOverlayGroups.isNotEmpty()
 
-    /** Screen rects of [displayId]'s per-box translation windows, in box order. */
+    /** Screen rects of [displayId]'s clean (non-dirty) per-box translation
+     *  windows, in box order — pinhole detection runs only on clean boxes. */
     fun boxScreenRects(displayId: Int): List<Rect> {
         val group = translationOverlayGroups[displayId] ?: return emptyList()
         val loc = IntArray(2)
-        return group.boxWindows.map { bw ->
+        return group.boxWindows.filter { !it.box.dirty }.map { bw ->
             bw.view.getLocationOnScreen(loc)
             Rect(loc[0], loc[1], loc[0] + bw.view.width, loc[1] + bw.view.height)
         }
@@ -192,6 +189,7 @@ class OverlayUiController(
         val canvas = Canvas(bitmap)
         val loc = IntArray(2)
         for (bw in group.boxWindows) {
+            if (bw.box.dirty) continue
             val boxBitmap = bw.view.renderToOffscreen() ?: continue
             bw.view.getLocationOnScreen(loc)
             canvas.drawBitmap(boxBitmap, loc[0].toFloat(), loc[1].toFloat(), null)
@@ -662,25 +660,6 @@ class OverlayUiController(
             displayW = size.x, displayH = size.y,
         )
         translationOverlayGroups[displayId] = group
-
-        // Live pinhole translation needs the dirty overlay window; one-shot
-        // translation (pinholeMode = false) does not.
-        if (pinholeMode) {
-            val dirtyView = TranslationOverlayView(themedCtx, pinholeMode = true)
-            val dirtyParams = WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                PixelFormat.TRANSLUCENT
-            ).apply { windowAnimations = 0 }
-            if (overlayHost.addOverlayWindow(dirtyView, wm, dirtyParams, displayId)) {
-                group.dirtyView = dirtyView
-            }
-        }
-
         syncBoxWindows(group, displayId, boxes, cropLeft, cropTop, screenshotW, screenshotH)
         bringFloatingIconsToFront(displayId)
     }
@@ -703,6 +682,11 @@ class OverlayUiController(
         val cropSame = group.cropLeft == cropLeft && group.cropTop == cropTop &&
             group.screenshotW == screenshotW && group.screenshotH == screenshotH
         if (cropSame && (current == boxes || OverlayLayout.boxesMatchFuzzy(current, boxes))) {
+            // Visual content is stable — leave the windows. But refresh each
+            // BoxWindow.box so metadata-only changes (the dirty flag) register.
+            if (current != boxes && group.boxWindows.size == boxes.size) {
+                group.boxWindows.forEachIndexed { i, bw -> bw.box = boxes[i] }
+            }
             return false
         }
         group.cropLeft = cropLeft
@@ -778,12 +762,27 @@ class OverlayUiController(
         group.boxWindows.clear()
     }
 
+    /**
+     * Blank (or restore) [displayId]'s dirty-flagged box windows via window
+     * alpha. Pinhole detection hides dirty boxes from a raw capture so the
+     * frame shows clean game pixels under them.
+     */
+    fun setDirtyBoxesHidden(displayId: Int, hidden: Boolean) {
+        val group = translationOverlayGroups[displayId] ?: return
+        val alpha = if (hidden) 0f else 1f
+        for (bw in group.boxWindows) {
+            if (!bw.box.dirty) continue
+            if (bw.params.alpha == alpha) continue
+            bw.params.alpha = alpha
+            try { group.wm.updateViewLayout(bw.view, bw.params) } catch (_: Exception) {}
+        }
+    }
+
     /** Tear down a display's translation or furigana overlay. Idempotent. */
     fun hideTranslationOverlayForDisplay(displayId: Int) {
         furiganaOverlays.remove(displayId)?.let { overlayHost.removeOverlayWindow(it) }
         translationOverlayGroups.remove(displayId)?.let { group ->
             for (bw in group.boxWindows) overlayHost.removeOverlayWindow(bw.view)
-            group.dirtyView?.let { overlayHost.removeOverlayWindow(it) }
         }
     }
 
