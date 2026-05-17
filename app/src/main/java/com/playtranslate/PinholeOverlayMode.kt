@@ -82,7 +82,7 @@ class PinholeOverlayMode(
 
     override fun start() {
         currentJob?.cancel()
-        a11y?.startInputMonitoring(displayId) { onButtonDown() }
+        a11y?.startInputMonitoring(displayId) { dismiss() }
         scheduleNextCycle()
     }
 
@@ -93,7 +93,7 @@ class PinholeOverlayMode(
                 val nextDelay = runCycle()
                 scheduleNextCycle(nextDelay)
             } catch (e: CancellationException) {
-                // Normal cancellation (stop/refresh/onButtonDown) — propagate.
+                // Normal cancellation (stop/refresh/dismiss) — propagate.
                 throw e
             } catch (e: Exception) {
                 // Unexpected throw (display went away, WindowManager token
@@ -124,7 +124,7 @@ class PinholeOverlayMode(
         return CachedOverlayState(boxes, cropLeft, cropTop, screenshotW, screenshotH)
     }
 
-    private fun onButtonDown() {
+    override fun dismiss() {
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
         resetState()
         scheduleNextCycle(Prefs(service).captureIntervalMs)

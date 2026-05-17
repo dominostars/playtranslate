@@ -98,7 +98,7 @@ class FuriganaMode(
             DetectionLog.log("ERROR: no live capture source, can't start furigana loop")
             return
         }
-        a11y?.startInputMonitoring(displayId) { onButtonDown() }
+        a11y?.startInputMonitoring(displayId) { dismiss() }
         DetectionLog.log("Starting furigana loop on display $displayId")
         startLoop(source)
     }
@@ -136,7 +136,7 @@ class FuriganaMode(
         )
     }
 
-    private fun onButtonDown() {
+    override fun dismiss() {
         val source = CaptureBackendResolver.activeLiveCaptureSource ?: return
         cleanProcessingJob?.cancel()
         rawOcrJob?.cancel()
@@ -152,7 +152,7 @@ class FuriganaMode(
             // is now in progress — hotkeyHoldEnd's refresh() will restart the
             // loop cleanly on release.
             if (service.holdActive) {
-                DetectionLog.log("onButtonDown restart skipped (holdActive)")
+                DetectionLog.log("dismiss restart skipped (holdActive)")
                 return@launch
             }
             startLoop(source)

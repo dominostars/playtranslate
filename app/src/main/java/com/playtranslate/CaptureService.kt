@@ -1206,6 +1206,21 @@ class CaptureService : Service() {
         liveModes.values.forEach { it.refresh() }
     }
 
+    /**
+     * Box-tap dismiss: clear [displayId]'s translation overlay and reset its
+     * live-mode detection so the next capture re-baselines from a clean frame.
+     * Falls back to hiding the overlay when no live mode owns the display
+     * (e.g. a one-shot translation overlay).
+     */
+    fun dismissLiveOverlay(displayId: Int) {
+        val mode = liveModes[displayId]
+        if (mode != null) {
+            mode.dismiss()
+        } else {
+            CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
+        }
+    }
+
     /** One-shot: capture, OCR, translate, show overlay (not live mode). */
 
     /** True while a hold gesture or modal UI is active — suppresses overlay display in live mode. */

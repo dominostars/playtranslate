@@ -738,6 +738,7 @@ class OverlayUiController(
         val h = rect.height().toInt().coerceAtLeast(1)
         val view = BoxOverlayView(group.themedCtx, pinholeMode = group.pinholeMode).apply {
             setBox(box)
+            onTap = { CaptureService.instance?.dismissLiveOverlay(displayId) }
         }
         // MediaProjection box windows are touchable so they escape Android's
         // anti-tapjacking opacity cap; accessibility windows stay non-touchable

@@ -41,9 +41,15 @@ class BoxOverlayView(
     val pinholeMode: Boolean = false,
 ) : FrameLayout(context) {
 
+    /** Invoked when this box window is tapped. Touchable windows only — i.e.
+     *  the MediaProjection backend; accessibility box windows are
+     *  FLAG_NOT_TOUCHABLE so this never fires there. */
+    var onTap: (() -> Unit)? = null
+
     init {
         clipChildren = false
         clipToPadding = false
+        setOnClickListener { onTap?.invoke() }
     }
 
     private val dp = context.resources.displayMetrics.density
