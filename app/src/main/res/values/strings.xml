@@ -117,6 +117,7 @@
     <string name="note_mlkit_service_unavailable">⚠ Translation service unavailable — showing offline translation (lower quality).</string>
     <string name="note_low_memory_fallback">⚠ Low memory — showing offline translation (lower quality).</string>
     <string name="error_live_mode_unsupported_backend">Live mode isn\'t available with the current screen-capture method.</string>
+    <string name="error_screen_capture_denied">Live mode stopped — screen capture permission was denied.</string>
 
     <!-- Section headers -->
     <string name="section_original">Original</string>

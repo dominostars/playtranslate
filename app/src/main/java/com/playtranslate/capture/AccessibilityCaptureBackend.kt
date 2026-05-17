@@ -24,4 +24,6 @@ object AccessibilityCaptureBackend : CaptureBackend {
         get() = PlayTranslateAccessibilityService.instance?.overlayUiController
 
     override val supportsLiveMode: Boolean get() = true
+
+    override val requiresAccessibilityService: Boolean get() = true
 }

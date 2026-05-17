@@ -36,6 +36,11 @@ interface CaptureSource {
  * so live-mode callers never branch on the backend themselves.
  */
 interface LiveCaptureSource : CaptureSource {
+    /** Minimum interval the capture loop must respect. The accessibility
+     *  backend enforces the platform `takeScreenshot` rate limit; the
+     *  MediaProjection backend has no platform limit and uses a small floor. */
+    val minCaptureIntervalMs: Long
+
     suspend fun requestRaw(displayId: Int, onCaptured: (() -> Unit)? = null): Bitmap?
     fun startLoop(
         displayId: Int,

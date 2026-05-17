@@ -29,6 +29,12 @@ object CaptureBackendResolver {
     val activeOverlayUi: OverlayUiController?
         get() = active().overlayUi
 
+    /** Convenience: the active backend's [LiveCaptureSource], or null when the
+     *  backend can't drive live mode / isn't ready. Live-mode drivers route
+     *  capture through this. */
+    val activeLiveCaptureSource: LiveCaptureSource?
+        get() = active().liveCaptureSource
+
     /**
      * Re-read the DEBUG MediaProjection-backend pref and swap backends if it
      * changed. Called at app start and whenever the debug toggle flips. Stops

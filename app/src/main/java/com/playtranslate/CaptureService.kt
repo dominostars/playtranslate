@@ -940,10 +940,15 @@ class CaptureService : Service() {
         val prefs = Prefs(this)
         val flavor = desiredFlavor(prefs)
 
-        // IN_APP_ONLY is a single-display path by design. Collapse the
-        // target so callers don't have to know about the rule.
-        val actualTarget = if (flavor == OverlayFlavor.IN_APP_ONLY && target.isNotEmpty()) {
-            setOf(target.first())
+        // IN_APP_ONLY is single-display by design; the MediaProjection backend
+        // mirrors a single display so it is too. Collapse the target so callers
+        // don't have to know about either rule, preferring the primary display
+        // for a deterministic pick (target is a Set — first() is order-dependent).
+        val singleDisplay = flavor == OverlayFlavor.IN_APP_ONLY ||
+            !CaptureBackendResolver.active().requiresAccessibilityService
+        val actualTarget = if (singleDisplay && target.isNotEmpty()) {
+            val primary = primaryGameDisplayId()
+            setOf(if (primary in target) primary else target.first())
         } else target
 
         // Snapshot — diff sets are computed against an immutable copy so
@@ -958,12 +963,14 @@ class CaptureService : Service() {
         val structuralChange = toStop.isNotEmpty() || toRebuild.isNotEmpty() || toAdd.isNotEmpty()
         if (!structuralChange) return false
 
-        // Construct new instances first so that an a11y-missing failure
-        // aborts before we tear down the existing modes (overlay flavors
-        // need PlayTranslateAccessibilityService.instance; InAppOnly does
-        // not). Matches the original startLive guard at lines 763-772.
+        // Construct new instances first so a missing-prerequisite failure
+        // aborts before we tear down the existing modes. The overlay flavors
+        // need the accessibility service ONLY on the accessibility backend —
+        // under MediaProjection they construct with a null a11y and route
+        // capture through CaptureBackendResolver. InAppOnly never needs it.
         val a11y = PlayTranslateAccessibilityService.instance
         val needsA11y = flavor != OverlayFlavor.IN_APP_ONLY &&
+            CaptureBackendResolver.active().requiresAccessibilityService &&
             (toRebuild.isNotEmpty() || toAdd.isNotEmpty())
         if (needsA11y && a11y == null) {
             Log.w(TAG, "setLiveDisplays: accessibility service not connected; cannot start $flavor. Aborting.")
@@ -973,8 +980,8 @@ class CaptureService : Service() {
         val newInstances: Map<Int, LiveMode> = (toAdd + toRebuild).associateWith { id ->
             when (flavor) {
                 OverlayFlavor.IN_APP_ONLY -> InAppOnlyMode(this, id)
-                OverlayFlavor.FURIGANA -> FuriganaMode(this, a11y!!, id)
-                OverlayFlavor.TRANSLATION -> PinholeOverlayMode(this, a11y!!, id)
+                OverlayFlavor.FURIGANA -> FuriganaMode(this, a11y, id)
+                OverlayFlavor.TRANSLATION -> PinholeOverlayMode(this, a11y, id)
             }
         }
 
@@ -1180,7 +1187,7 @@ class CaptureService : Service() {
         // calls have caught misbehaving modes that left state behind.
         // TODO(P1): with setLiveDisplays(emptySet()) guaranteeing per-mode
         //   teardown via the canonical mutator, this fan-out should be removable.
-        PlayTranslateAccessibilityService.instance?.screenshotManager?.stopAllLoops()
+        CaptureBackendResolver.active().liveCaptureSource?.stopAllLoops()
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlay()
         // Don't reset _panelState here — let the last live result

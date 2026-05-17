@@ -36,19 +36,14 @@ import kotlin.coroutines.resume
  */
 /**
  * @param service the enclosing capture service (for state access and coordinator calls)
- * @param a11y the accessibility service instance, captured at mode construction time.
- *   Previously fetched via [PlayTranslateAccessibilityService.instance] scattered
- *   throughout this class; now injected so the dependency is explicit and the
- *   mode is unit-testable with a mocked service. If the accessibility service is
- *   torn down mid-session the cached reference becomes stale, but every internal
- *   field access we do through it (`screenshotManager`, `translationOverlayView`,
- *   etc.) is already nullable and null-checked inline, so stale references
- *   degrade gracefully to the same "nothing happens" behavior the pre-injection
- *   `instance?.` pattern produced.
+ * @param a11y the accessibility service instance, or null under the MediaProjection
+ *   backend (which has no accessibility service). Used only for input monitoring,
+ *   which has no MediaProjection equivalent and degrades to a no-op when null.
+ *   Capture is routed through [CaptureBackendResolver], not through `a11y`.
  */
 class PinholeOverlayMode(
     private val service: CaptureService,
-    private val a11y: PlayTranslateAccessibilityService,
+    private val a11y: PlayTranslateAccessibilityService?,
     private val displayId: Int,
 ) : LiveMode {
 
@@ -87,7 +82,7 @@ class PinholeOverlayMode(
 
     override fun start() {
         currentJob?.cancel()
-        a11y.startInputMonitoring(displayId) { onButtonDown() }
+        a11y?.startInputMonitoring(displayId) { onButtonDown() }
         scheduleNextCycle()
     }
 
@@ -115,7 +110,7 @@ class PinholeOverlayMode(
         scope.cancel()
         resetState()
 
-        a11y.stopInputMonitoring(displayId)
+        a11y?.stopInputMonitoring(displayId)
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
     }
 
@@ -160,7 +155,7 @@ class PinholeOverlayMode(
     private suspend fun runCycle(): Long {
         val prefs = Prefs(service)
         if (service.holdActive) return 100L
-        val mgr = a11y.screenshotManager ?: return prefs.captureIntervalMs
+        val mgr = CaptureBackendResolver.activeLiveCaptureSource ?: return prefs.captureIntervalMs
         val dirtyView = CaptureBackendResolver.activeOverlayUi?.dirtyOverlayForDisplay(displayId)
         val hasDirty = cachedBoxes?.any { it.dirty } == true
         cycleNum++
@@ -474,7 +469,7 @@ class PinholeOverlayMode(
             if (anyChanged) {
                 anyRemoved = allRemovals.isNotEmpty()
                 if (cleanBoxes.isNotEmpty()) {
-                    showOverlayAndCapture(a11y, cleanBoxes, cropLeft, cropTop, screenshotW, screenshotH)
+                    showOverlayAndCapture(cleanBoxes, cropLeft, cropTop, screenshotW, screenshotH)
                 } else if (farOcrGroups.isEmpty()) {
                     // No clean boxes AND no replacement coming — clear the
                     // clean window so stale boxes don't linger. setBoxes
@@ -533,7 +528,7 @@ class PinholeOverlayMode(
                     val currentClean = (cachedBoxes ?: emptyList()).filter { !it.dirty }
                     val merged = currentClean + partial
                     cachedBoxes = merged
-                    showOverlayAndCapture(a11y, merged, cropLeft, cropTop, screenshotW, screenshotH)
+                    showOverlayAndCapture(merged, cropLeft, cropTop, screenshotW, screenshotH)
                     // Dirty window cleared — clean window now has replacements
                     dirtyView?.setBoxes(emptyList(), cropLeft, cropTop, screenshotW, screenshotH)
 
@@ -542,7 +537,7 @@ class PinholeOverlayMode(
                         val existing = cachedBoxes?.dropLast(placeholders.size) ?: emptyList()
                         val mergedFinal = existing + translated
                         cachedBoxes = mergedFinal
-                        showOverlayAndCapture(a11y, mergedFinal, cropLeft, cropTop, screenshotW, screenshotH)
+                        showOverlayAndCapture(mergedFinal, cropLeft, cropTop, screenshotW, screenshotH)
                     }
 
                 }
@@ -559,7 +554,7 @@ class PinholeOverlayMode(
             }
 
             // 14. Timing
-            return if (anyRemoved) mgr.MIN_SCREENSHOT_INTERVAL_MS else prefs.captureIntervalMs
+            return if (anyRemoved) mgr.minCaptureIntervalMs else prefs.captureIntervalMs
         } finally {
             if (!raw.isRecycled) raw.recycle()
         }
@@ -574,7 +569,7 @@ class PinholeOverlayMode(
      *  `pinholeMode` parameter, which eliminates the ordering/timing race
      *  between flipping a mutable flag and [TranslationOverlayView.rebuildChildren]. */
     private suspend fun showOverlayAndCapture(
-        a11y: PlayTranslateAccessibilityService, boxes: List<TranslationOverlayView.TextBox>,
+        boxes: List<TranslationOverlayView.TextBox>,
         left: Int, top: Int, sw: Int, sh: Int
     ) {
         service.showLiveOverlay(boxes, left, top, sw, sh, pinholeMode = true, displayId = displayId)
