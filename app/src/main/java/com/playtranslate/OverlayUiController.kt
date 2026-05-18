@@ -665,11 +665,13 @@ class OverlayUiController(
     }
 
     /**
-     * Reconcile [group]'s per-box windows against [boxes]. Returns true if the
-     * windows were rebuilt (so the caller re-raises the floating icon). Stable
-     * content — fuzzy-equal boxes, unchanged crop/screenshot — is a no-op,
-     * preserving the "zero rebuilds for unchanged content" property pinhole
-     * detection relies on.
+     * Reconcile [group]'s per-box windows against [boxes] in place: a window
+     * whose box still matches (same source text, orientation, ~same bounds) is
+     * reused — repositioned/retexted, never recreated — so a change to one box
+     * leaves every other box's window untouched. New boxes get a window; gone
+     * boxes lose theirs. Stable content (fuzzy-equal boxes, unchanged crop /
+     * screenshot) is a no-op. Returns true if a new window was added, so the
+     * caller can re-raise the floating icon above it.
      */
     private fun syncBoxWindows(
         group: TranslationOverlayGroup,
@@ -694,30 +696,95 @@ class OverlayUiController(
         group.screenshotW = screenshotW
         group.screenshotH = screenshotH
 
-        // The box set genuinely changed (stable content returned above) —
-        // rebuild every box window.
-        for (bw in group.boxWindows) overlayHost.removeOverlayWindow(bw.view)
-        group.boxWindows.clear()
-        if (group.displayW <= 0 || group.displayH <= 0) return true
-
-        val density = group.themedCtx.resources.displayMetrics.density
-        val rects = OverlayLayout.resolveScreenRects(
-            boxes, cropLeft, cropTop, screenshotW, screenshotH,
-            group.displayW, group.displayH, density,
-        )
-        for ((box, rect) in boxes.zip(rects)) {
-            addBoxWindow(group, displayId, box, rect)
+        val rects = if (group.displayW > 0 && group.displayH > 0) {
+            OverlayLayout.resolveScreenRects(
+                boxes, cropLeft, cropTop, screenshotW, screenshotH,
+                group.displayW, group.displayH,
+                group.themedCtx.resources.displayMetrics.density,
+            )
+        } else {
+            emptyList()
         }
-        return true
+
+        // Per-box reconcile: reuse a window whose box still matches; create a
+        // window for a genuinely new box; drop a window whose box is gone. A
+        // change to one box must not churn the rest — that wholesale churn is
+        // what made a single oscillating box reload the whole overlay.
+        val unused = group.boxWindows.toMutableList()
+        val next = ArrayList<BoxWindow>(boxes.size)
+        var addedAny = false
+        for (i in boxes.indices) {
+            val box = boxes[i]
+            val rect = rects.getOrNull(i) ?: continue
+            val match = unused.firstOrNull { boxWindowMatches(it.box, box) }
+            if (match != null) {
+                unused.remove(match)
+                reuseBoxWindow(group, match, box, rect)
+                next.add(match)
+            } else {
+                val created = addBoxWindow(group, displayId, box, rect)
+                if (created != null) {
+                    next.add(created)
+                    addedAny = true
+                }
+            }
+        }
+        for (bw in unused) overlayHost.removeOverlayWindow(bw.view)
+        group.boxWindows.clear()
+        group.boxWindows.addAll(next)
+        return addedAny
     }
 
-    /** Create and register one per-box overlay window. */
+    /** Two boxes are "the same box" — a window reusable across a sync — when
+     *  they share source text, orientation and furigana flag, and their OCR
+     *  bounds agree within a tolerance (absorbs OCR jitter). */
+    private fun boxWindowMatches(a: TextBox, b: TextBox): Boolean {
+        if (a.isFurigana != b.isFurigana) return false
+        if (a.orientation != b.orientation) return false
+        if (a.sourceText != b.sourceText) return false
+        val tol = 20
+        return Math.abs(a.bounds.left - b.bounds.left) <= tol &&
+            Math.abs(a.bounds.top - b.bounds.top) <= tol &&
+            Math.abs(a.bounds.right - b.bounds.right) <= tol &&
+            Math.abs(a.bounds.bottom - b.bounds.bottom) <= tol
+    }
+
+    /** Reuse an existing box window for [box]: re-render its content if the
+     *  content changed, reposition/resize its window if the rect changed. */
+    private fun reuseBoxWindow(
+        group: TranslationOverlayGroup,
+        bw: BoxWindow,
+        box: TextBox,
+        rect: RectF,
+    ) {
+        val contentChanged = bw.box.translatedText != box.translatedText ||
+            bw.box.bgColor != box.bgColor ||
+            bw.box.textColor != box.textColor ||
+            bw.box.lineCount != box.lineCount
+        bw.box = box
+        val x = rect.left.toInt()
+        val y = rect.top.toInt()
+        val w = rect.width().toInt().coerceAtLeast(1)
+        val h = rect.height().toInt().coerceAtLeast(1)
+        val moved = bw.params.x != x || bw.params.y != y ||
+            bw.params.width != w || bw.params.height != h
+        if (contentChanged) bw.view.setBox(box)
+        if (moved) {
+            bw.params.x = x
+            bw.params.y = y
+            bw.params.width = w
+            bw.params.height = h
+            try { group.wm.updateViewLayout(bw.view, bw.params) } catch (_: Exception) {}
+        }
+    }
+
+    /** Create and register one per-box overlay window. Returns null on failure. */
     private fun addBoxWindow(
         group: TranslationOverlayGroup,
         displayId: Int,
         box: TextBox,
         rect: RectF,
-    ) {
+    ): BoxWindow? {
         val w = rect.width().toInt().coerceAtLeast(1)
         val h = rect.height().toInt().coerceAtLeast(1)
         val view = BoxOverlayView(group.themedCtx, pinholeMode = group.pinholeMode).apply {
@@ -746,8 +813,10 @@ class OverlayUiController(
             fitInsetsTypes = 0
             windowAnimations = 0
         }
-        if (overlayHost.addOverlayWindow(view, group.wm, params, displayId)) {
-            group.boxWindows.add(BoxWindow(view, params, box))
+        return if (overlayHost.addOverlayWindow(view, group.wm, params, displayId)) {
+            BoxWindow(view, params, box)
+        } else {
+            null
         }
     }
 
