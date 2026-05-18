@@ -201,13 +201,25 @@ class MagnifierLens(
         view.setArrowVisible(true, arrowRelX)
     }
 
+    /** Window flags for the lens in its non-interactive (zoom) state. On the
+     *  MediaProjection backend the window must stay touchable: a non-touchable
+     *  TYPE_APPLICATION_OVERLAY is opacity-capped by the anti-tapjacking rule
+     *  and renders washed out. The drag gesture is owned by the floating
+     *  icon's window, so a touchable lens window does not steal it. */
+    private fun zoomWindowFlags(): Int {
+        var flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+        if (overlayHost?.windowType != WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY) {
+            flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        }
+        return flags
+    }
+
     fun resetToZoom() {
         val view = lensView ?: return
         val p = params ?: return
-        p.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+        p.flags = zoomWindowFlags()
         try { wm.updateViewLayout(view, p) } catch (_: Exception) {}
         view.detachInteractiveListeners()
         view.setDefinitions(null, null)
@@ -358,10 +370,7 @@ class MagnifierLens(
         val lp = WindowManager.LayoutParams(
             viewW, totalH,
             windowType,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            zoomWindowFlags(),
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
