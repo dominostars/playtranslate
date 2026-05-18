@@ -307,6 +307,9 @@ class SettingsBottomSheet : DialogFragment() {
                 ) {
                     this@SettingsBottomSheet.showAccessibilityRequiredAlert(requirement)
                 }
+                override fun requestMediaProjectionControls() {
+                    this@SettingsBottomSheet.requestMediaProjectionControls()
+                }
                 override fun showAnkiDeckPicker(onDeckSelected: () -> Unit) {
                     val picker = AnkiDeckPickerDialog.newInstance()
                     picker.onDeckSelected = onDeckSelected
@@ -1116,6 +1119,29 @@ class SettingsBottomSheet : DialogFragment() {
             }
             .addCancelButton(getString(android.R.string.cancel))
             .showInActivity(activity)
+    }
+
+    // ── MediaProjection controls ─────────────────────────────────────────
+
+    /** MediaProjection-backend "turn on game screen controls": prompt for the
+     *  screen-record consent and, on grant, flip showOverlayIcon on and
+     *  reconcile the floating icons. Runs on the Activity scope so the consent
+     *  round-trip survives a Settings dismiss; the switch refresh is null-safe
+     *  for that case. */
+    private fun requestMediaProjectionControls() {
+        val activity = activity as? androidx.appcompat.app.AppCompatActivity ?: return
+        activity.lifecycleScope.launch {
+            val controller =
+                com.playtranslate.CaptureService.instance?.mediaProjectionController
+            val granted = controller?.ensureConsent() ?: false
+            if (granted) {
+                Prefs(activity).showOverlayIcon = true
+                com.playtranslate.capture.CaptureBackendResolver
+                    .activeOverlayUi?.reconcileFloatingIcons()
+                com.playtranslate.PlayTranslateTileService.TileSync.refresh(activity)
+            }
+            renderer?.refreshOverlayIconSwitch()
+        }
     }
 
     // ── Companion ───────────────────────────────────────────────────────

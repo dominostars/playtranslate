@@ -777,9 +777,13 @@ class CaptureService : Service() {
         OverlayHost(this, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
     }
 
-    /** Game-screen overlay UI for MediaProjection mode. */
+    /** Game-screen overlay UI for MediaProjection mode. Its floating controls
+     *  stay hidden until MediaProjection consent is granted — see
+     *  [OverlayUiController]'s canShowControls gate. */
     internal val mediaProjectionOverlayUi by lazy {
-        OverlayUiController(this, mediaProjectionOverlayHost)
+        OverlayUiController(this, mediaProjectionOverlayHost) {
+            mediaProjectionController.hasConsent
+        }
     }
 
     /** True once the foreground service has been promoted to include the

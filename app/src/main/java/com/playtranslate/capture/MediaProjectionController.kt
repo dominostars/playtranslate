@@ -71,6 +71,17 @@ class MediaProjectionController(private val service: CaptureService) {
     }
 
     /**
+     * Ensure a MediaProjection consent token is held, prompting the user via
+     * [MediaProjectionConsentActivity] when it isn't. Returns true once consent
+     * is granted. Safe to call with consent already held — returns true with no
+     * prompt; concurrent callers share the single in-flight dialog.
+     */
+    suspend fun ensureConsent(): Boolean {
+        if (hasConsent) return true
+        return requestConsent()
+    }
+
+    /**
      * Capture one clean frame of the projected display at its native
      * resolution. Lazily establishes consent + projection + virtual display.
      * Returns null on denied consent or any failure. Call on the main thread —
@@ -85,7 +96,7 @@ class MediaProjectionController(private val service: CaptureService) {
 
     private suspend fun ensureProjection(): Boolean {
         if (projection != null) return true
-        if (!hasConsent && !requestConsent()) return false
+        if (!ensureConsent()) return false
         // API 34+: the foreground service must already carry the
         // mediaProjection type before getMediaProjection() is called.
         service.ensureMediaProjectionForegroundType()

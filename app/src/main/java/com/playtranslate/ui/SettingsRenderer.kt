@@ -103,6 +103,11 @@ class SettingsRenderer(
          *  accessibility service enabled. The accent button opens
          *  Accessibility Settings; the cancel button just dismisses. */
         fun showAccessibilityRequiredAlert(requirement: AccessibilityRequirement)
+
+        /** MediaProjection backend: prompt for the screen-record consent and,
+         *  on grant, bring up the floating game-screen controls. Refreshes the
+         *  overlay-icon switch when the flow settles so it mirrors the result. */
+        fun requestMediaProjectionControls()
         fun showAnkiDeckPicker(onDeckSelected: () -> Unit)
         fun showAnkiCardTypePicker(onPicked: () -> Unit)
         fun showAnkiCardTypeMapping(onSaved: () -> Unit)
@@ -396,12 +401,25 @@ class SettingsRenderer(
         subtitleOverlay.visibility = View.VISIBLE
         subtitleOverlay.setTextColor(ctx.themeColor(R.attr.ptText))
 
-        switchOverlayIcon.isChecked =
-            prefs.showOverlayIcon && overlayIconHostable()
-
         switchOverlayIcon.setOnCheckedChangeListener { _, checked ->
-            if (checked && !overlayIconHostable()) {
-                switchOverlayIcon.isChecked = false
+            // Programmatic syncs (syncOverlayIconSwitch) must not run the
+            // user-action side effects below — above all the MediaProjection
+            // consent prompt.
+            if (syncingOverlayIconSwitch) return@setOnCheckedChangeListener
+            if (!checked) {
+                PlayTranslateAccessibilityService.disable(ctx, "settings_toggle_off")
+                refreshOnScreenControlsTint(isSingle)
+                return@setOnCheckedChangeListener
+            }
+            if (!CaptureBackendResolver.active().requiresAccessibilityService) {
+                // MediaProjection backend: prompt for screen-record consent;
+                // the controls come up only on grant. The callback refreshes
+                // this switch + the card tint once the flow settles.
+                callbacks.requestMediaProjectionControls()
+                return@setOnCheckedChangeListener
+            }
+            if (!overlayIconHostable()) {
+                syncOverlayIconSwitch()  // revert the optimistic flip
                 AlertDialog.Builder(ctx)
                     .setTitle(R.string.overlay_icon_a11y_required_title)
                     .setMessage(R.string.overlay_icon_a11y_required_message)
@@ -412,16 +430,13 @@ class SettingsRenderer(
                     .show()
                 return@setOnCheckedChangeListener
             }
-            if (checked) {
-                prefs.showOverlayIcon = true
-                CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
-                PlayTranslateTileService.TileSync.refresh(ctx)
-            } else {
-                PlayTranslateAccessibilityService.disable(ctx, "settings_toggle_off")
-            }
+            prefs.showOverlayIcon = true
+            CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
+            PlayTranslateTileService.TileSync.refresh(ctx)
             refreshOnScreenControlsTint(isSingle)
         }
         rowOverlayIcon.setOnClickListener { switchOverlayIcon.toggle() }
+        syncOverlayIconSwitch()
         refreshOnScreenControlsTint(isSingle)
 
         // -- Compact icon row --
@@ -492,7 +507,7 @@ class SettingsRenderer(
      *  dual-screen uses warning (the app works but the floating helper is
      *  missing). On = neutral card styling. */
     private fun refreshOnScreenControlsTint(isSingle: Boolean) {
-        val enabled = prefs.showOverlayIcon && overlayIconHostable()
+        val enabled = overlayIconSwitchOn()
         val baseCard = ctx.themeColor(R.attr.ptCard)
         val baseStroke = compositeOver(ctx.themeColor(R.attr.ptDivider), baseCard)
         // Canonical theme-driven switch tints — same resources the
@@ -1871,9 +1886,37 @@ class SettingsRenderer(
         !CaptureBackendResolver.active().requiresAccessibilityService ||
             PlayTranslateAccessibilityService.isEnabled(ctx)
 
-    fun refreshOverlayIconSwitch() {
-        switchOverlayIcon.isChecked =
+    /** Whether the overlay-icon switch should currently read as ON. The
+     *  MediaProjection backend pairs the persisted [Prefs.showOverlayIcon]
+     *  with live screen-record consent — consent doesn't survive a process
+     *  restart, so the pref alone would read ON when no controls can show.
+     *  This is the exact pair [OverlayUiController.reconcileFloatingIcons]
+     *  gates the MediaProjection icons on, so the switch can't drift from
+     *  them on icon-removal timing. The accessibility backend keeps using the
+     *  pref gated on the service. */
+    private fun overlayIconSwitchOn(): Boolean =
+        if (CaptureBackendResolver.active().requiresAccessibilityService)
             prefs.showOverlayIcon && overlayIconHostable()
+        else
+            prefs.showOverlayIcon &&
+                CaptureService.instance?.mediaProjectionController?.hasConsent == true
+
+    /** True while [syncOverlayIconSwitch] writes [switchOverlayIcon], so the
+     *  change listener — which carries user-action side effects, including the
+     *  MediaProjection consent prompt — skips our own programmatic write. */
+    private var syncingOverlayIconSwitch = false
+
+    /** Push the computed [overlayIconSwitchOn] state into the switch without
+     *  tripping its change listener. */
+    private fun syncOverlayIconSwitch() {
+        syncingOverlayIconSwitch = true
+        switchOverlayIcon.isChecked = overlayIconSwitchOn()
+        syncingOverlayIconSwitch = false
+    }
+
+    fun refreshOverlayIconSwitch() {
+        syncOverlayIconSwitch()
+        refreshOnScreenControlsTint(Prefs.isSingleScreen(ctx))
     }
 
     fun refreshCompactIconSwitch() {

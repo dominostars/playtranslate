@@ -58,6 +58,12 @@ private const val TAG = "OverlayUiController"
 class OverlayUiController(
     private val context: Context,
     private val overlayHost: OverlayHost,
+    /** Gate for whether the floating controls may be shown right now. The
+     *  MediaProjection controller withholds them until screen-record consent
+     *  is granted — they can't drive a capture without it, and that consent
+     *  doesn't survive a process restart. The accessibility controller is
+     *  always ready, so it keeps the default. */
+    private val canShowControls: () -> Boolean = { true },
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -882,6 +888,12 @@ class OverlayUiController(
         val prefs = Prefs(context)
         if (!prefs.showOverlayIcon) {
             hideFloatingIcon("pref_disabled")
+            return
+        }
+        if (!canShowControls()) {
+            // MediaProjection backend without screen-record consent — the
+            // floating controls can't drive a capture, so withhold them.
+            hideFloatingIcon("controls_gated")
             return
         }
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
