@@ -10,10 +10,12 @@ import android.graphics.Paint
 import android.graphics.Point
 import android.graphics.Rect
 import android.graphics.RectF
+import android.util.Log
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
 import android.view.WindowManager
+import android.view.WindowMetrics
 import android.view.animation.DecelerateInterpolator
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.R
@@ -190,21 +192,35 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     var displayId: Int = android.view.Display.DEFAULT_DISPLAY
     var params: WindowManager.LayoutParams? = null
 
-    /** Reads via a freshly-created WindowContext's
-     *  [WindowManager.currentWindowMetrics]. Must be fresh per call: rotation
-     *  diagnostics on this device showed a cached WindowContext occasionally
-     *  reporting the previous orientation's bounds inside
+    /** Current [WindowMetrics] for this icon's display via a freshly-created
+     *  WindowContext, or `null` if the query fails. Must be fresh per call:
+     *  rotation diagnostics on this device showed a cached WindowContext
+     *  occasionally reporting the previous orientation's bounds inside
      *  [android.hardware.display.DisplayManager.DisplayListener.onDisplayChanged],
      *  while a freshly-created one returned the post-rotation bounds. The
      *  fresh-context binder cost is small and only paid on rotation,
-     *  drag-end, and install — not a hot path. */
+     *  drag-end, and install — not a hot path.
+     *
+     *  TYPE_APPLICATION_OVERLAY (not TYPE_ACCESSIBILITY_OVERLAY): the latter
+     *  throws SecurityException from createWindowContext on Android 11 / API 30.
+     *  The catch is a safety net for OEM / future-OS variance — callers fall
+     *  back to coarser metrics instead of crashing the accessibility service. */
+    private fun currentWindowMetricsOrNull(): WindowMetrics? = try {
+        context.createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
+            .getSystemService(WindowManager::class.java)
+            ?.currentWindowMetrics
+    } catch (e: RuntimeException) {
+        Log.w("FloatingOverlayIcon", "windowMetrics query failed; using fallback metrics", e)
+        null
+    }
+
+    /** Full pixel size of this icon's display in its current rotation. Falls
+     *  back to the display context's [android.util.DisplayMetrics] if the
+     *  window-metrics query fails. */
     private fun queryScreenSize(): Point {
-        val wc = context.createWindowContext(
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, null
-        )
-        val wm = wc.getSystemService(WindowManager::class.java) ?: return Point()
-        val bounds = wm.currentWindowMetrics.bounds
-        return Point(bounds.width(), bounds.height())
+        currentWindowMetricsOrNull()?.bounds?.let { return Point(it.width(), it.height()) }
+        val dm = resources.displayMetrics
+        return Point(dm.widthPixels, dm.heightPixels)
     }
 
     private val screenW: Int get() = queryScreenSize().x
@@ -217,11 +233,7 @@ class FloatingOverlayIcon(context: Context) : View(context) {
      *  code consults these insets so "Edge.LEFT" means "left of the safe
      *  area" instead of "left of the display". */
     private fun cutoutSafeInsetX(): Pair<Int, Int> {
-        val wc = context.createWindowContext(
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, null
-        )
-        val wm = wc.getSystemService(WindowManager::class.java) ?: return 0 to 0
-        val cutout = wm.currentWindowMetrics.windowInsets.displayCutout ?: return 0 to 0
+        val cutout = currentWindowMetricsOrNull()?.windowInsets?.displayCutout ?: return 0 to 0
         return cutout.safeInsetLeft to cutout.safeInsetRight
     }
 

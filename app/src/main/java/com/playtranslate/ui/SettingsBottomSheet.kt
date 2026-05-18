@@ -510,10 +510,17 @@ class SettingsBottomSheet : DialogFragment() {
         val w = decorView.width.takeIf { it > 0 } ?: run { onReady(null); return }
         val h = decorView.height.takeIf { it > 0 } ?: run { onReady(null); return }
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        PixelCopy.request(activity.window, bmp, { result ->
-            if (result == PixelCopy.SUCCESS) onReady(scaleThumbnail(bmp))
-            else { bmp.recycle(); onReady(null) }
-        }, Handler(Looper.getMainLooper()))
+        try {
+            PixelCopy.request(activity.window, bmp, { result ->
+                if (result == PixelCopy.SUCCESS) onReady(scaleThumbnail(bmp))
+                else { bmp.recycle(); onReady(null) }
+            }, Handler(Looper.getMainLooper()))
+        } catch (e: IllegalArgumentException) {
+            // PixelCopy throws when the window has no backing surface yet —
+            // e.g. capture requested mid-resume, before the first frame.
+            bmp.recycle()
+            onReady(null)
+        }
     }
 
     // ── TranslateGemma flow ─────────────────────────────────────────────
