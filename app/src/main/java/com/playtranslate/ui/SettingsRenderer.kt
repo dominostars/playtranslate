@@ -65,6 +65,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/** Which accessibility-gated Settings action raised the "accessibility
+ *  required" alert — selects the alert's explanatory copy. */
+enum class AccessibilityRequirement { MULTI_DISPLAY, HOTKEY }
+
 /**
  * Wires every settings row in dialog_settings.xml to prefs / callbacks.
  *
@@ -94,6 +98,11 @@ class SettingsRenderer(
         /** Tap on the TTS no-engine cell — show the "No Text-to-Speech" alert. */
         fun openTtsSetup()
         fun showHotkeyDialog(title: String?, onSet: (List<Int>) -> Unit, onCancel: () -> Unit)
+
+        /** Show an OverlayAlert explaining that [requirement] needs the
+         *  accessibility service enabled. The accent button opens
+         *  Accessibility Settings; the cancel button just dismisses. */
+        fun showAccessibilityRequiredAlert(requirement: AccessibilityRequirement)
         fun showAnkiDeckPicker(onDeckSelected: () -> Unit)
         fun showAnkiCardTypePicker(onPicked: () -> Unit)
         fun showAnkiCardTypeMapping(onSaved: () -> Unit)
@@ -714,6 +723,14 @@ class SettingsRenderer(
 
         switch.setOnCheckedChangeListener { _, checked ->
             if (checked) {
+                // Hotkeys are detected via AccessibilityService.onKeyEvent —
+                // the setup dialog can't capture keystrokes without the
+                // service bound. Revert the optimistic flip and explain.
+                if (!PlayTranslateAccessibilityService.isEnabled(ctx)) {
+                    switch.isChecked = false
+                    callbacks.showAccessibilityRequiredAlert(AccessibilityRequirement.HOTKEY)
+                    return@setOnCheckedChangeListener
+                }
                 callbacks.showHotkeyDialog(
                     dialogTitle,
                     onSet = { keyCodes ->
@@ -765,6 +782,10 @@ class SettingsRenderer(
             })
             return
         }
+        // Multi-display capture runs through the accessibility service's
+        // screenshot path; without it the picker locks to the first display
+        // (see buildDisplayRow).
+        val a11yEnabled = PlayTranslateAccessibilityService.isEnabled(ctx)
         displayList.forEachIndexed { idx, display ->
             if (idx > 0) {
                 llDisplayOptions.addView(
@@ -774,7 +795,7 @@ class SettingsRenderer(
             }
             val isFirst = idx == 0
             val isLast = idx == displayList.size - 1
-            llDisplayOptions.addView(buildDisplayRow(display, prefs, isFirst, isLast))
+            llDisplayOptions.addView(buildDisplayRow(display, prefs, isFirst, isLast, a11yEnabled))
         }
     }
 
@@ -783,10 +804,14 @@ class SettingsRenderer(
         prefs: Prefs,
         isFirst: Boolean,
         isLast: Boolean,
+        a11yEnabled: Boolean,
     ): View {
         val dp = ctx.resources.displayMetrics.density
-        val selectedIds = prefs.captureDisplayIds
-        val isSelected = display.displayId in selectedIds
+        // Without the accessibility service the picker can't switch displays,
+        // so it always renders the first display as the (locked) selection
+        // regardless of the persisted multi-display set.
+        val isSelected =
+            if (a11yEnabled) display.displayId in prefs.captureDisplayIds else isFirst
         // 10dp buffer on top, bottom, and left of the thumbnail; right side
         // gets the standard row padding so the checkmark sits in the usual
         // place. Row height = thumbH + 10×2 = 66dp, matching the toggle and
@@ -869,6 +894,16 @@ class SettingsRenderer(
             })
         }
         row.setOnClickListener {
+            if (!a11yEnabled) {
+                // Locked to the first display — tapping any other row explains
+                // that switching displays needs the accessibility service.
+                if (!isFirst) {
+                    callbacks.showAccessibilityRequiredAlert(
+                        AccessibilityRequirement.MULTI_DISPLAY
+                    )
+                }
+                return@setOnClickListener
+            }
             val current = prefs.captureDisplayIds
             val targetId = display.displayId
             val next = if (targetId in current) {

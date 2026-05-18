@@ -145,6 +145,11 @@
     <string name="overlay_icon_a11y_required_title">Accessibility required</string>
     <string name="overlay_icon_a11y_required_message">The floating overlay icon requires the Accessibility permission to draw on the game screen.\n\nGo to Settings → Accessibility → Installed apps → PlayTranslate → Enable.</string>
 
+    <!-- Accessibility-required alert (capture-display picker, hotkey setup) -->
+    <string name="a11y_required_alert_title">Accessibility required</string>
+    <string name="a11y_required_displays_message">Changing screens or translating multiple screens at once requires the Accessibility permission. It lets PlayTranslate capture any display, not just the main one.</string>
+    <string name="a11y_required_hotkey_message">Setting hotkeys requires the Accessibility permission. It lets PlayTranslate detect the keys you press while gaming.</string>
+
     <!-- Single-screen mode -->
     <string name="onboarding_a11y_single_title">Enable Accessibility</string>
     <string name="onboarding_a11y_single_body"><b>PlayTranslate</b> needs the Accessibility permission to work on single-screen devices.\n\nWith it, <b>PlayTranslate</b> can:\n• Capture the game screen without leaving your app\n• Show translated text as an overlay over your game\n• Look up words by dragging over game text\n• Display game screen controls\n\nIt does not read UI content, monitor input, or access personal data.</string>

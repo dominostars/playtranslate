@@ -104,6 +104,10 @@ class SettingsBottomSheet : DialogFragment() {
         super.onResume()
         renderer?.refreshAnkiSection()
         renderer?.refreshOverlayIconSwitch()
+        // Display picker locks to the first display while the a11y service is
+        // off (see SettingsRenderer.buildDisplayRow); rebuild on resume so it
+        // unlocks the moment the user returns from Accessibility Settings.
+        renderer?.refreshDisplayRows(Prefs(requireContext()))
         renderer?.refreshAutoModeToggle()
         renderer?.refreshTtsSection()
         // Pick up backend toggle changes made while we were paused —
@@ -297,6 +301,11 @@ class SettingsBottomSheet : DialogFragment() {
                     dialog.onHotkeySet = onSet
                     dialog.onCancelled = onCancel
                     dialog.show(childFragmentManager, "hotkey_setup")
+                }
+                override fun showAccessibilityRequiredAlert(
+                    requirement: AccessibilityRequirement
+                ) {
+                    this@SettingsBottomSheet.showAccessibilityRequiredAlert(requirement)
                 }
                 override fun showAnkiDeckPicker(onDeckSelected: () -> Unit) {
                     val picker = AnkiDeckPickerDialog.newInstance()
@@ -1074,6 +1083,38 @@ class SettingsBottomSheet : DialogFragment() {
                 renderer?.refreshAllBackendStatuses()
             }
             .addCancelButton { renderer?.refreshQwenSwitch() }
+            .showInActivity(activity)
+    }
+
+    // ── Accessibility-required alert ─────────────────────────────────────
+
+    /** OverlayAlert shown when the user attempts an accessibility-gated
+     *  Settings action — switching capture displays or setting a hotkey —
+     *  while the service is disabled. The accent button opens Accessibility
+     *  Settings; the cancel button just dismisses. Icon-less, matching the
+     *  TG / Qwen confirmation dialogs. */
+    private fun showAccessibilityRequiredAlert(requirement: AccessibilityRequirement) {
+        val ctx = context ?: return
+        val activity = activity ?: return
+        val message = when (requirement) {
+            AccessibilityRequirement.MULTI_DISPLAY ->
+                getString(R.string.a11y_required_displays_message)
+            AccessibilityRequirement.HOTKEY ->
+                getString(R.string.a11y_required_hotkey_message)
+        }
+        OverlayAlert.Builder(ctx)
+            .hideIcon()
+            .setTitle(getString(R.string.a11y_required_alert_title))
+            .setMessage(message)
+            .addButton(
+                getString(R.string.btn_open_a11y_settings),
+                ctx.themeColor(R.attr.ptAccent),
+                ctx.themeColor(R.attr.ptAccentOn),
+            ) {
+                startActivity(android.content.Intent(
+                    android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
+            .addCancelButton(getString(android.R.string.cancel))
             .showInActivity(activity)
     }
 

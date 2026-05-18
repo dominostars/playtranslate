@@ -466,7 +466,7 @@ class MainActivity :
         if (isSingleScreen()) return
         initLiveHintText()
         updateRegionButton()
-        updateActionButtonState()
+        updateCaptureReadyStatus()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -980,18 +980,20 @@ class MainActivity :
         ft.commitAllowingStateLoss()
     }
 
-    /** True when the user has the accessibility service enabled in system
-     *  Settings. Reads through `isEnabled(ctx)` so the action button doesn't
-     *  flicker dim → enabled when the service binds shortly after a cold
-     *  start — taps during the brief unbound window are absorbed by the
-     *  three-way decision in [withAccessibility] rather than gated here. */
+    /** True when the accessibility service is enabled in system Settings.
+     *  Reads through `isEnabled(ctx)` rather than the bound-instance check
+     *  so the capture-readiness status doesn't flicker needed → idle while
+     *  the service binds shortly after a cold start — taps during the brief
+     *  unbound window are absorbed by the three-way decision in
+     *  [withAccessibility] rather than gated here. */
     private val isCaptureReady: Boolean
         get() = PlayTranslateAccessibilityService.isEnabled(this)
 
-    /** Dims the action button when no capture method is available. */
-    private fun updateActionButtonState() {
+    /** Reconciles the result-area status line with capture readiness: shows
+     *  the "enable accessibility" prompt while the accessibility service is
+     *  disabled, and clears it once the service is enabled. */
+    private fun updateCaptureReadyStatus() {
         val ready = isCaptureReady
-        btnTranslate.alpha = if (ready) 1f else 0.45f
         val current = resultVm.result.value as? com.playtranslate.ui.ResultState.Status ?: return
         if (!ready) {
             resultVm.showStatus(getString(R.string.status_accessibility_needed), showHint = false)
