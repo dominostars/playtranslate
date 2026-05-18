@@ -17,7 +17,7 @@ enum class BackendQuality { Bad, Okay, Good, Better }
  *  row's line-1 subtitle alongside [BackendQuality]. Online backends
  *  leave [TranslationBackend.speed] null — their perceived speed is
  *  network-bound, not a useful comparison axis. */
-enum class BackendSpeed { VerySlow, Slow, Fast }
+enum class BackendSpeed { VerySlow, QuiteSlow, Slow, Fast }
 
 /**
  * A pluggable translation source. Implementations are pair-agnostic

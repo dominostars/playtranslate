@@ -360,6 +360,27 @@
     <string name="qwen_metered_warning_message">Qwen 2.5 1.5B is %1$s. Continue on cellular?</string>
     <string name="qwen_download_paused">Download paused. Reopen Settings to resume.</string>
 
+    <string name="hymt_display_name">Hy-MT1.5 1.8B</string>
+    <string name="hymt_status_not_downloaded">Requires %1$s memory, %2$s on disk</string>
+    <string name="hymt_status_downloaded_disabled">Downloaded but disabled (%1$s on disk)</string>
+    <string name="hymt_status_ready">Requires %1$s memory, %2$s on disk</string>
+    <string name="hymt_status_downloading">Downloading… %1$s of %2$s</string>
+    <string name="hymt_status_verifying">Verifying download…</string>
+    <string name="hymt_status_loading_model">Loading model…</string>
+    <string name="hymt_disable_title">Disable HyMT?</string>
+    <string name="hymt_disable_message">The %1$s model is downloaded. You can keep it for later or delete it to free up space.</string>
+    <string name="hymt_disable_keep">Disable only</string>
+    <string name="hymt_disable_delete">Delete model</string>
+    <string name="hymt_disable_cancel">Cancel</string>
+    <string name="hymt_download_failed">Download failed: %1$s</string>
+    <string name="hymt_insufficient_memory">This device doesn\'t have enough memory to run HyMT.</string>
+    <string name="hymt_insufficient_storage">Not enough free storage. HyMT needs %1$s free.</string>
+    <string name="hymt_metered_warning_title">Download on cellular?</string>
+    <string name="hymt_metered_warning_message">Hy-MT1.5 1.8B is %1$s. Continue on cellular?</string>
+    <string name="hymt_download_paused">Download paused. Reopen Settings to resume.</string>
+
+    <string name="tr_service_speed_quite_slow">Quite slow</string>
+
     <!-- Status line shown on a TG / Qwen row when the device's hardware can't
          run on-device LLMs. The row stays visible (so the user understands
          which feature is disabled and why) but the toggle switch is hidden

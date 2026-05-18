@@ -9,6 +9,7 @@ import com.playtranslate.translation.DeepLBackend
 import com.playtranslate.translation.LingvaBackend
 import com.playtranslate.translation.MlKitBackend
 import com.playtranslate.translation.QwenBackend
+import com.playtranslate.translation.HyMtBackend
 import com.playtranslate.translation.TranslateGemmaBackend
 import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.translation.translategemma.LlamaTranslator
@@ -59,6 +60,10 @@ class PlayTranslateApplication : Application() {
                 QwenBackend(
                     context         = this,
                     enabledProvider = { Prefs(this).qwenEnabled },
+                ),
+                HyMtBackend(
+                    context         = this,
+                    enabledProvider = { Prefs(this).hyMtEnabled },
                 ),
                 MlKitBackend(),
             )

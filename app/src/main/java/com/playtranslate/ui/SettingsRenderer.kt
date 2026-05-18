@@ -134,6 +134,10 @@ class SettingsRenderer(
          *  call [SettingsRenderer.refreshQwenSwitch] to revert the switch. */
         fun showQwenDisableDialog()
 
+        fun startHyMtDownload()
+        fun enableInstalledHyMt()
+        fun showHyMtDisableDialog()
+
         /** Tap on the "Update language packs" row in the Language section.
          *  Implementer instantiates [com.playtranslate.language.PackUpgradeOrchestrator]
          *  and calls `upgradeAll(stalePacks)`. On completion, calls
@@ -848,6 +852,7 @@ class SettingsRenderer(
     private val rowBackendTranslategemma: View = root.findViewById(R.id.rowBackendTranslategemma)
     private val rowBackendQwen: View = root.findViewById(R.id.rowBackendQwen)
     private val dividerBackendQwen: View = root.findViewById(R.id.dividerBackendQwen)
+    private val rowBackendHyMt: View = root.findViewById(R.id.rowBackendHyMt)
     private val rowBackendMlkit: View = root.findViewById(R.id.rowBackendMlkit)
 
     /** Per-backend in-flight `refreshStatus` job, keyed by [BackendId]. Used
@@ -871,6 +876,7 @@ class SettingsRenderer(
         wireDeeplBackendRow()
         wireTranslateGemmaBackendRow()
         wireQwenBackendRow()
+        wireHyMtBackendRow()
 
         // Compose line 1 for each backend from its metadata
         // (requiresInternet + quality), styled with mixed-color spans.
@@ -907,6 +913,7 @@ class SettingsRenderer(
             builder.append(" · ")
             val (speedText, speedTone) = when (speed) {
                 BackendSpeed.VerySlow -> ctx.getString(R.string.tr_service_speed_very_slow) to Tone.Danger
+                BackendSpeed.QuiteSlow -> ctx.getString(R.string.tr_service_speed_quite_slow) to Tone.Warning
                 BackendSpeed.Slow     -> ctx.getString(R.string.tr_service_speed_slow)      to Tone.Warning
                 BackendSpeed.Fast     -> ctx.getString(R.string.tr_service_speed_fast)      to null
             }
@@ -971,6 +978,12 @@ class SettingsRenderer(
         }
     }
 
+    fun refreshHyMtSwitch() {
+        rowBackendHyMt.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
+            it.isChecked = prefs.hyMtEnabled
+        }
+    }
+
     /** Re-render every backend row's secondary subtitle line and kick off
      *  an async [TranslationBackend.refreshStatus] for each. Called on
      *  initial bind, on Settings resume (after [DeepLSettingsActivity]
@@ -999,6 +1012,7 @@ class SettingsRenderer(
         "lingva"          -> rowBackendLingva
         "translategemma"  -> rowBackendTranslategemma
         "qwen"            -> rowBackendQwen
+        "hymt"            -> rowBackendHyMt
         "mlkit"           -> rowBackendMlkit
         else              -> null
     }
@@ -1166,6 +1180,36 @@ class SettingsRenderer(
                     callbacks.enableInstalledQwen()
                 } else {
                     callbacks.startQwenDownload()
+                }
+            }
+        }
+    }
+
+    private fun wireHyMtBackendRow() {
+        rowBackendHyMt.findViewById<TextView>(R.id.tvRowTitle).text =
+            ctx.getString(R.string.hymt_display_name)
+
+        val backend = com.playtranslate.translation.TranslationBackendRegistry
+            .byId("hymt") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+        if (backend != null && configureIncompatibleHardwareRow(rowBackendHyMt, backend)) {
+            return
+        }
+
+        val switch = rowBackendHyMt.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        switch.isChecked = prefs.hyMtEnabled
+
+        rowBackendHyMt.setOnClickListener {
+            if (prefs.hyMtEnabled) {
+                switch.isChecked = false
+                callbacks.showHyMtDisableDialog()
+            } else {
+                val installed = com.playtranslate.translation.hymt
+                    .HyMtModel.isInstalled(ctx)
+                if (installed) {
+                    switch.isChecked = true
+                    callbacks.enableInstalledHyMt()
+                } else {
+                    callbacks.startHyMtDownload()
                 }
             }
         }

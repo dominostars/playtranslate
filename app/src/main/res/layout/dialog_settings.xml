@@ -471,6 +471,11 @@
                     <include layout="@layout/settings_row_divider" />
 
                     <include layout="@layout/settings_row_backend"
+                        android:id="@+id/rowBackendHyMt" />
+
+                    <include layout="@layout/settings_row_divider" />
+
+                    <include layout="@layout/settings_row_backend"
                         android:id="@+id/rowBackendMlkit" />
 
                     <TextView

@@ -112,6 +112,7 @@ class SettingsBottomSheet : DialogFragment() {
         renderer?.refreshLingvaBackendSwitch()
         renderer?.refreshTranslategemmaSwitch()
         renderer?.refreshQwenSwitch()
+        renderer?.refreshHyMtSwitch()
         // Always re-render every backend's status line on resume — picks
         // up new DeepL keys, freshly toggled state, and triggers a usage
         // re-fetch (the call doesn't consume DeepL characters).
@@ -154,6 +155,12 @@ class SettingsBottomSheet : DialogFragment() {
                     com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
                     maybeUnloadOnDeviceLlmIfBothDisabled(ctx)
                 }
+                Prefs.KEY_HYMT_ENABLED -> {
+                    renderer?.refreshHyMtSwitch()
+                    renderer?.refreshAllBackendStatuses()
+                    com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
+                    maybeUnloadOnDeviceLlmIfBothDisabled(ctx)
+                }
             }
         }
         sp.registerOnSharedPreferenceChangeListener(prefsListener)
@@ -168,7 +175,7 @@ class SettingsBottomSheet : DialogFragment() {
      *  any in-flight translation triggered just before the toggle changed. */
     private fun maybeUnloadOnDeviceLlmIfBothDisabled(ctx: Context) {
         val prefs = Prefs(ctx)
-        if (!prefs.translateGemmaEnabled && !prefs.qwenEnabled) {
+        if (!prefs.translateGemmaEnabled && !prefs.qwenEnabled && !prefs.hyMtEnabled) {
             viewLifecycleOwner.lifecycleScope.launch {
                 com.playtranslate.translation.translategemma.LlamaTranslator
                     .getInstance(ctx).unloadModel()
@@ -276,6 +283,15 @@ class SettingsBottomSheet : DialogFragment() {
                 }
                 override fun showQwenDisableDialog() {
                     this@SettingsBottomSheet.showQwenDisableDialog()
+                }
+                override fun startHyMtDownload() {
+                    showHyMtDownloadDialog()
+                }
+                override fun enableInstalledHyMt() {
+                    this@SettingsBottomSheet.enableInstalledHyMt()
+                }
+                override fun showHyMtDisableDialog() {
+                    this@SettingsBottomSheet.showHyMtDisableDialog()
                 }
                 override fun onUpdateLanguagePacksTapped(
                     stalePacks: List<com.playtranslate.language.StalePack>
@@ -1069,6 +1085,197 @@ class SettingsBottomSheet : DialogFragment() {
                 renderer?.refreshAllBackendStatuses()
             }
             .addCancelButton { renderer?.refreshQwenSwitch() }
+            .showInActivity(activity)
+    }
+
+    // ── HyMT flow ───────────────────────────────────────────────────────
+
+    private var hymtDownloadJob: kotlinx.coroutines.Job? = null
+
+    private fun showHyMtDownloadDialog() {
+        val ctx = context ?: return
+        val backend = com.playtranslate.translation.TranslationBackendRegistry
+            .byId("hymt") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+            ?: return
+        val downloader = com.playtranslate.translation.llm.OnDeviceLlmDownloader(
+            context = ctx,
+            modelHelper = com.playtranslate.translation.hymt.HyMtModel,
+            totalMemFloorBytes = backend.totalMemFloorBytes,
+        )
+
+        checkAvailMemAndProceed(
+            backend = backend,
+            modelDisplayName = getString(R.string.hymt_display_name),
+            onProceed = { showHyMtDownloadDialogPostGate(ctx, downloader) },
+        )
+    }
+
+    private fun showHyMtDownloadDialogPostGate(
+        ctx: Context,
+        downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
+    ) {
+        if (downloader.isCurrentNetworkMetered()) {
+            val sizeStr = com.playtranslate.translation.hymt.HyMtModel.humanSize(ctx)
+            androidx.appcompat.app.AlertDialog.Builder(ctx)
+                .setTitle(R.string.hymt_metered_warning_title)
+                .setMessage(getString(R.string.hymt_metered_warning_message, sizeStr))
+                .setPositiveButton(android.R.string.ok) { _, _ ->
+                    runHyMtDownload(ctx, downloader)
+                }
+                .setNegativeButton(android.R.string.cancel) { _, _ -> }
+                .show()
+            return
+        }
+        runHyMtDownload(ctx, downloader)
+    }
+
+    private fun runHyMtDownload(
+        ctx: Context,
+        downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
+    ) {
+        val activity = activity ?: return
+        val sizeStr = com.playtranslate.translation.hymt.HyMtModel.humanSize(ctx)
+
+        var dialog: OverlayProgress? = null
+        dialog = OverlayProgress.Builder(ctx)
+            .setTitle(getString(R.string.hymt_display_name))
+            .setMessage(getString(R.string.hymt_status_downloading, "0 B", sizeStr))
+            .setProgress(0)
+            .setOnCancel {
+                hymtDownloadJob?.cancel()
+                downloader.deletePartial()
+                renderer?.refreshAllBackendStatuses()
+            }
+            .showInActivity(activity)
+
+        hymtDownloadJob = viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val outcome = downloader.run { progress ->
+                    requireActivity().runOnUiThread {
+                        when (progress) {
+                            is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Downloading -> {
+                                val recv = com.playtranslate.translation.llm
+                                    .humanSize(progress.received)
+                                val total = com.playtranslate.translation.llm
+                                    .humanSize(progress.total)
+                                dialog?.setMessage(getString(
+                                    R.string.hymt_status_downloading,
+                                    recv, total,
+                                ))
+                                if (progress.total > 0) {
+                                    dialog?.setProgress(
+                                        ((progress.received * 100) / progress.total).toInt()
+                                    )
+                                }
+                            }
+                            is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Verifying -> {
+                                dialog?.setMessage(getString(R.string.hymt_status_verifying))
+                                dialog?.setProgress(100)
+                            }
+                        }
+                    }
+                }
+                if (!isAdded) return@launch
+                requireActivity().runOnUiThread {
+                    dialog?.dismiss()
+                    when (outcome) {
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Success -> {
+                            Prefs(ctx).hyMtEnabled = true
+                        }
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Refused -> {
+                            android.widget.Toast.makeText(
+                                ctx, outcome.reason, android.widget.Toast.LENGTH_LONG
+                            ).show()
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Failed -> {
+                            android.widget.Toast.makeText(
+                                ctx,
+                                getString(R.string.hymt_download_failed, outcome.reason),
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Cancelled -> {
+                            android.widget.Toast.makeText(
+                                ctx, R.string.hymt_download_paused,
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (isAdded) {
+                    requireActivity().runOnUiThread {
+                        dialog?.dismiss()
+                        android.widget.Toast.makeText(
+                            ctx,
+                            getString(R.string.hymt_download_failed,
+                                e.message ?: e.javaClass.simpleName),
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                        renderer?.refreshAllBackendStatuses()
+                    }
+                }
+            } finally {
+                dialog?.dismiss()
+            }
+        }
+    }
+
+    private fun enableInstalledHyMt() {
+        val ctx = context ?: return
+        val backend = com.playtranslate.translation.TranslationBackendRegistry
+            .byId("hymt") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+            ?: return
+        checkAvailMemAndProceed(
+            backend = backend,
+            modelDisplayName = getString(R.string.hymt_display_name),
+            onProceed = { Prefs(ctx).hyMtEnabled = true },
+            allowDelete = true,
+            onDelete = {
+                com.playtranslate.translation.hymt.HyMtModel.delete(ctx)
+                viewLifecycleOwner.lifecycleScope.launch {
+                    com.playtranslate.translation.translategemma.LlamaTranslator
+                        .getInstance(ctx).unloadModel()
+                }
+                renderer?.refreshAllBackendStatuses()
+            },
+            onCancel = { renderer?.refreshHyMtSwitch() },
+        )
+    }
+
+    private fun showHyMtDisableDialog() {
+        val ctx = context ?: return
+        val activity = activity ?: return
+        val oc = com.playtranslate.OverlayColors
+        val sizeStr = com.playtranslate.translation.hymt.HyMtModel.humanSize(ctx)
+        OverlayAlert.Builder(ctx)
+            .setTitle(getString(R.string.hymt_disable_title))
+            .setMessage(getString(R.string.hymt_disable_message, sizeStr))
+            .hideIcon()
+            .addButton(getString(R.string.hymt_disable_keep), oc.accent(ctx)) {
+                Prefs(ctx).hyMtEnabled = false
+            }
+            .addButton(getString(R.string.hymt_disable_delete), oc.divider(ctx), oc.danger(ctx)) {
+                Prefs(ctx).hyMtEnabled = false
+                com.playtranslate.translation.hymt.HyMtModel.delete(ctx)
+                viewLifecycleOwner.lifecycleScope.launch {
+                    com.playtranslate.translation.translategemma.LlamaTranslator
+                        .getInstance(ctx).unloadModel()
+                }
+                renderer?.refreshAllBackendStatuses()
+            }
+            .addCancelButton { renderer?.refreshHyMtSwitch() }
             .showInActivity(activity)
     }
 

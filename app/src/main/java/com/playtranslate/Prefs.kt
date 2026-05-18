@@ -290,6 +290,10 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_QWEN_ENABLED, false)
         set(v) = sp.edit().putBoolean(KEY_QWEN_ENABLED, v).apply()
 
+    var hyMtEnabled: Boolean
+        get() = sp.getBoolean(KEY_HYMT_ENABLED, false)
+        set(v) = sp.edit().putBoolean(KEY_HYMT_ENABLED, v).apply()
+
     var ankiDeckId: Long
         get() = sp.getLong(KEY_ANKI_DECK_ID, -1L)
         set(v) = sp.edit().putLong(KEY_ANKI_DECK_ID, v).apply()
@@ -699,6 +703,7 @@ class Prefs(context: Context) {
         const val KEY_LINGVA_ENABLED         = "lingva_enabled"
         const val KEY_TRANSLATEGEMMA_ENABLED = "translategemma_enabled"
         const val KEY_QWEN_ENABLED           = "qwen_enabled"
+        const val KEY_HYMT_ENABLED           = "hymt_enabled"
         private const val KEY_LEGACY_THEME_INDEX    = "theme_index"
         private const val KEY_THEME_MODE            = "theme_mode"
         private const val KEY_ACCENT_NAME           = "accent_name"

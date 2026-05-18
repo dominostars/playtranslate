@@ -37,6 +37,24 @@
         }
       ]
     },
+    "engine-hymt-1-5b": {
+      "display": "Hy-MT 1.5 1.8B",
+      "type": "engine",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "additiveFromVersion": 1,
+      "size": 600000000,
+      "url": "https://huggingface.co/AngelSlim/Hy-MT1.5-1.8B-2bit-GGUF/resolve/main/Hy-MT1.5-1.8B-2bit.gguf",
+      "sha256": "2603ca8063c77328b544f8f6414b398d95893deafb60a9c1f11c2d2af4a20bfe",
+      "licenses": [
+        {
+          "component": "Hy-MT 1.5 1.8B",
+          "license": "Apache-2.0",
+          "attribution": "© AngelSlim. Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0."
+        }
+      ]
+    },
     "ja": {
       "display": "Japanese",
       "script": "CJK_JAPANESE",
