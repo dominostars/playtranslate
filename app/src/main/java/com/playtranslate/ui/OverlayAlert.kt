@@ -18,14 +18,15 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.R
+import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
 
 /**
  * A reusable alert dialog that can be attached either to a WindowManager
- * (as a TYPE_ACCESSIBILITY_OVERLAY from an accessibility service) or to an
- * Activity's decorView. Matches the visual style of the floating icon hide
- * confirmation dialog.
+ * (as an overlay window — see [Builder.setOverlayHost]) or to an Activity's
+ * decorView. Matches the visual style of the floating icon hide confirmation
+ * dialog.
  */
 class OverlayAlert private constructor(
     rawContext: Context,
@@ -63,9 +64,17 @@ class OverlayAlert private constructor(
         /** Set by the (context, wm, displayId) constructor for the
          *  accessibility-overlay path. Unused on the activity path. */
         private var displayId: Int = android.view.Display.DEFAULT_DISPLAY
+        private var overlayHost: OverlayHost? = null
 
         fun setTitle(title: String) = apply { this.title = title }
         fun setMessage(message: String) = apply { this.message = message }
+
+        /** Route the alert window through [host] so it carries the active
+         *  capture backend's window type. Required on the MediaProjection
+         *  backend: its CaptureService cannot add a TYPE_ACCESSIBILITY_OVERLAY,
+         *  so without a host [show] would fail to display anything. Absent a
+         *  host, [show] falls back to the accessibility-service overlay path. */
+        fun setOverlayHost(host: OverlayHost) = apply { this.overlayHost = host }
 
         /** Suppresses the circular app-icon header above the title. Use for
          *  utility popups where branding is noise (e.g. settings-scoped
@@ -92,12 +101,14 @@ class OverlayAlert private constructor(
             ))
         }
 
-        /** Shows via WindowManager as an accessibility overlay. */
+        /** Shows the alert as an overlay window — through [setOverlayHost]'s
+         *  host when set, else the accessibility-service overlay path. */
         fun show(): OverlayAlert {
             val alert = OverlayAlert(context, title, message, buttons, showIcon, onCancel)
-            alert.showAsAccessibilityOverlay(
+            alert.showAsOverlay(
                 wm ?: error("OverlayAlert.Builder.show() requires a WindowManager"),
                 displayId,
+                overlayHost,
             )
             return alert
         }
@@ -261,7 +272,7 @@ class OverlayAlert private constructor(
         return scrimView
     }
 
-    private fun showAsAccessibilityOverlay(wm: WindowManager, displayId: Int) {
+    private fun showAsOverlay(wm: WindowManager, displayId: Int, overlayHost: OverlayHost?) {
         val scrimView = buildScrim()
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -270,9 +281,19 @@ class OverlayAlert private constructor(
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
-        if (!PlayTranslateAccessibilityService.addOverlay(scrimView, wm, params, displayId)) return
+        // OverlayHost stamps params.type with the active backend's window
+        // type; without one, fall back to the accessibility-service path.
+        val added = if (overlayHost != null) {
+            overlayHost.addOverlayWindow(scrimView, wm, params, displayId)
+        } else {
+            PlayTranslateAccessibilityService.addOverlay(scrimView, wm, params, displayId)
+        }
+        if (!added) return
         scrim = scrimView
-        dismissAction = { PlayTranslateAccessibilityService.removeOverlay(scrimView, wm) }
+        dismissAction = {
+            if (overlayHost != null) overlayHost.removeOverlayWindow(scrimView)
+            else PlayTranslateAccessibilityService.removeOverlay(scrimView, wm)
+        }
     }
 
     private fun showInActivity(activity: Activity) {

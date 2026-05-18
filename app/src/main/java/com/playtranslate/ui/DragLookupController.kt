@@ -13,6 +13,7 @@ import android.util.TypedValue
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.capture.CaptureBackendResolver
+import com.playtranslate.displaySizePx
 import com.playtranslate.MainActivity
 import com.playtranslate.OcrManager
 import com.playtranslate.Prefs
@@ -297,12 +298,7 @@ class DragLookupController(
         }
     }
 
-    private fun queryScreenSize(): Point {
-        val wm = popup.ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
-            ?: return Point()
-        val bounds = wm.currentWindowMetrics.bounds
-        return Point(bounds.width(), bounds.height())
-    }
+    private fun queryScreenSize(): Point = popup.ctx.displaySizePx()
 
     // ── Public API (called from FloatingOverlayIcon callbacks) ───────────
 

@@ -388,10 +388,10 @@ class SettingsRenderer(
         subtitleOverlay.setTextColor(ctx.themeColor(R.attr.ptText))
 
         switchOverlayIcon.isChecked =
-            prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled(ctx)
+            prefs.showOverlayIcon && overlayIconHostable()
 
         switchOverlayIcon.setOnCheckedChangeListener { _, checked ->
-            if (checked && !PlayTranslateAccessibilityService.isEnabled(ctx)) {
+            if (checked && !overlayIconHostable()) {
                 switchOverlayIcon.isChecked = false
                 AlertDialog.Builder(ctx)
                     .setTitle(R.string.overlay_icon_a11y_required_title)
@@ -483,7 +483,7 @@ class SettingsRenderer(
      *  dual-screen uses warning (the app works but the floating helper is
      *  missing). On = neutral card styling. */
     private fun refreshOnScreenControlsTint(isSingle: Boolean) {
-        val enabled = prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled(ctx)
+        val enabled = prefs.showOverlayIcon && overlayIconHostable()
         val baseCard = ctx.themeColor(R.attr.ptCard)
         val baseStroke = compositeOver(ctx.themeColor(R.attr.ptDivider), baseCard)
         // Canonical theme-driven switch tints — same resources the
@@ -1829,9 +1829,16 @@ class SettingsRenderer(
         rowTargetLang.findViewById<TextView>(R.id.tvRowValue).text = resolveTargetName()
     }
 
+    /** True when the floating icon can be hosted without first prompting for
+     *  the accessibility service: the active capture backend either doesn't
+     *  need that service (MediaProjection) or it is already enabled. */
+    private fun overlayIconHostable(): Boolean =
+        !CaptureBackendResolver.active().requiresAccessibilityService ||
+            PlayTranslateAccessibilityService.isEnabled(ctx)
+
     fun refreshOverlayIconSwitch() {
         switchOverlayIcon.isChecked =
-            prefs.showOverlayIcon && PlayTranslateAccessibilityService.isEnabled(ctx)
+            prefs.showOverlayIcon && overlayIconHostable()
     }
 
     fun refreshCompactIconSwitch() {

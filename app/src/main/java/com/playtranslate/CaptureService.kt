@@ -1943,10 +1943,7 @@ class CaptureService : Service() {
         val dm = getSystemService(android.hardware.display.DisplayManager::class.java) ?: return 0
         val display = dm.getDisplay(displayId) ?: return 0
         return try {
-            val displayContext = createDisplayContext(display)
-            val wm = displayContext.getSystemService(android.view.WindowManager::class.java) ?: return 0
-            wm.currentWindowMetrics.windowInsets
-                .getInsets(android.view.WindowInsets.Type.statusBars()).top
+            createDisplayContext(display).statusBarHeightPx()
         } catch (_: Exception) { 0 }
     }
 

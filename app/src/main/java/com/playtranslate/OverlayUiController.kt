@@ -1246,6 +1246,7 @@ class OverlayUiController(
         val alreadyCompact = prefs.compactOverlayIcon
 
         val builder = OverlayAlert.Builder(displayCtx, overlayWm, display.displayId)
+            .setOverlayHost(overlayHost)
 
         if (!Prefs.hasMultipleDisplays(context)) {
             builder.setTitle("Disable $appName?")
@@ -1548,12 +1549,9 @@ class OverlayUiController(
         return dm.getDisplay(primaryId) ?: displays.firstOrNull()
     }
 
-    @Suppress("DEPRECATION")
-    private fun getDisplaySize(display: Display): Point {
-        val size = Point()
-        display.getRealSize(size)
-        return size
-    }
+    /** Full pixel size of [display]. */
+    private fun getDisplaySize(display: Display): Point =
+        context.createDisplayContext(display).displaySizePx()
 
     /** Hide every overlay this controller owns, keeping the controller
      *  reusable (scope intact). Used when the active backend is swapped. */

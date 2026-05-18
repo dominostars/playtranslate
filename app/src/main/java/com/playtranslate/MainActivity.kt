@@ -1234,6 +1234,12 @@ class MainActivity :
 
     private fun withAccessibility(action: () -> Unit) {
         when {
+            // The active capture backend (MediaProjection) doesn't depend on
+            // the accessibility service — run directly without gating on it.
+            !CaptureBackendResolver.active().requiresAccessibilityService -> {
+                ensureConfigured()
+                action()
+            }
             PlayTranslateAccessibilityService.isConnected -> {
                 ensureConfigured()
                 action()
@@ -1474,7 +1480,11 @@ class MainActivity :
         val notifGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
-        val a11yEnabled = PlayTranslateAccessibilityService.isEnabled(this)
+        // The accessibility onboarding page only needs to be forced when the
+        // active capture backend depends on the accessibility service. The
+        // MediaProjection backend does not, so an approved MP setup skips it.
+        val captureReady = PlayTranslateAccessibilityService.isEnabled(this) ||
+            !CaptureBackendResolver.active().requiresAccessibilityService
         // Use the viewport predicate (not hasMultipleDisplays) so split-screen
         // users don't fall into the forced non-dismissible settings sheet
         // below. The sheet exists because in pure single-screen fullscreen
@@ -1490,7 +1500,7 @@ class MainActivity :
         }
 
         if (singleScreen) {
-            if (!a11yEnabled) {
+            if (!captureReady) {
                 existingSheet?.dismissAllowingStateLoss()
                 showOnboardingPage(pageA11ySingle)
                 return
@@ -1509,7 +1519,7 @@ class MainActivity :
             existingSheet.dismissAllowingStateLoss()
         }
 
-        if (a11yEnabled) {
+        if (captureReady) {
             onboardingContainer.visibility = View.GONE
             return
         }

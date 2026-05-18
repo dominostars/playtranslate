@@ -7,6 +7,7 @@ import android.util.Log
 import android.view.View
 import android.view.WindowManager
 import androidx.core.view.doOnLayout
+import com.playtranslate.displaySizePx
 
 /**
  * Owns every overlay window the app paints on a game display — the registry,
@@ -91,7 +92,9 @@ class OverlayHost(
         if (!fullScreenParams) return
         view.doOnLayout {
             val display = context.getSystemService(DisplayManager::class.java)?.getDisplay(displayId)
-            val ds = Point().also { if (display != null) @Suppress("DEPRECATION") display.getRealSize(it) }
+            val ds = if (display != null)
+                context.createDisplayContext(display).displaySizePx()
+            else Point()
             val loc = IntArray(2)
             view.getLocationOnScreen(loc)
             val name = view.javaClass.simpleName.ifBlank { "anon-View@${view.hashCode().toString(16)}" }

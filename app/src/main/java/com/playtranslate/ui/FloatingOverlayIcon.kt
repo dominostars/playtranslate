@@ -17,6 +17,8 @@ import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.R
+import com.playtranslate.displaySizePx
+import com.playtranslate.displayWindowMetrics
 import kotlin.math.abs
 
 /**
@@ -190,22 +192,7 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     var displayId: Int = android.view.Display.DEFAULT_DISPLAY
     var params: WindowManager.LayoutParams? = null
 
-    /** Reads via a freshly-created WindowContext's
-     *  [WindowManager.currentWindowMetrics]. Must be fresh per call: rotation
-     *  diagnostics on this device showed a cached WindowContext occasionally
-     *  reporting the previous orientation's bounds inside
-     *  [android.hardware.display.DisplayManager.DisplayListener.onDisplayChanged],
-     *  while a freshly-created one returned the post-rotation bounds. The
-     *  fresh-context binder cost is small and only paid on rotation,
-     *  drag-end, and install — not a hot path. */
-    private fun queryScreenSize(): Point {
-        val wc = context.createWindowContext(
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, null
-        )
-        val wm = wc.getSystemService(WindowManager::class.java) ?: return Point()
-        val bounds = wm.currentWindowMetrics.bounds
-        return Point(bounds.width(), bounds.height())
-    }
+    private fun queryScreenSize(): Point = context.displaySizePx()
 
     private val screenW: Int get() = queryScreenSize().x
     private val screenH: Int get() = queryScreenSize().y
@@ -217,11 +204,8 @@ class FloatingOverlayIcon(context: Context) : View(context) {
      *  code consults these insets so "Edge.LEFT" means "left of the safe
      *  area" instead of "left of the display". */
     private fun cutoutSafeInsetX(): Pair<Int, Int> {
-        val wc = context.createWindowContext(
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, null
-        )
-        val wm = wc.getSystemService(WindowManager::class.java) ?: return 0 to 0
-        val cutout = wm.currentWindowMetrics.windowInsets.displayCutout ?: return 0 to 0
+        val cutout = context.displayWindowMetrics()?.windowInsets?.displayCutout
+            ?: return 0 to 0
         return cutout.safeInsetLeft to cutout.safeInsetRight
     }
 
