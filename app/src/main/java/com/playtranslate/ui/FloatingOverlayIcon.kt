@@ -17,6 +17,7 @@ import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.R
+import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.displaySizePx
 import com.playtranslate.displayWindowMetrics
 import kotlin.math.abs
@@ -122,11 +123,17 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         }
         val spinY = p.y + (viewSizePx - totalSize) / 2
 
+        // On the MediaProjection backend the spinner must stay touchable: a
+        // non-touchable TYPE_APPLICATION_OVERLAY is opacity-capped. The icon's
+        // window owns the hold gesture, so a touchable spinner steals nothing.
+        var flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        if (overlayHost?.windowType != WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY) {
+            flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        }
         val lp = WindowManager.LayoutParams(
             totalSize, totalSize,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            flags,
             android.graphics.PixelFormat.TRANSLUCENT
         ).apply {
             x = spinX
@@ -134,7 +141,10 @@ class FloatingOverlayIcon(context: Context) : View(context) {
             gravity = android.view.Gravity.TOP or android.view.Gravity.LEFT
         }
 
-        if (!PlayTranslateAccessibilityService.addOverlay(spinner, wm, lp, displayId)) return
+        val host = overlayHost
+        val added = if (host != null) host.addOverlayWindow(spinner, wm, lp, displayId)
+            else PlayTranslateAccessibilityService.addOverlay(spinner, wm, lp, displayId)
+        if (!added) return
         spinnerView = spinner
         spinnerWm = wm
     }
@@ -143,7 +153,9 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         val view = spinnerView
         val w = spinnerWm
         if (view != null && w != null) {
-            PlayTranslateAccessibilityService.removeOverlay(view, w)
+            val host = overlayHost
+            if (host != null) host.removeOverlayWindow(view)
+            else PlayTranslateAccessibilityService.removeOverlay(view, w)
         }
         spinnerView = null
         spinnerWm = null
@@ -191,6 +203,11 @@ class FloatingOverlayIcon(context: Context) : View(context) {
      *  blanking scopes correctly. */
     var displayId: Int = android.view.Display.DEFAULT_DISPLAY
     var params: WindowManager.LayoutParams? = null
+    /** Active capture backend's overlay host, used to attach the loading
+     *  spinner sub-window with the right window type. Null falls back to the
+     *  accessibility-service path (which fails on the MediaProjection
+     *  backend, where no accessibility service is connected). */
+    var overlayHost: OverlayHost? = null
 
     private fun queryScreenSize(): Point = context.displaySizePx()
 
@@ -228,6 +245,13 @@ class FloatingOverlayIcon(context: Context) : View(context) {
      *  blanks the icon's window during capture, so we can flip the visuals
      *  immediately without contaminating the captured pixels. */
     var inDragMode = false
+        private set
+    /** True while the user's finger is on the icon — ACTION_DOWN until
+     *  ACTION_UP/ACTION_CANCEL. The z-order re-raise (remove + re-add of this
+     *  window) must skip an icon with an active gesture: destroying the
+     *  window mid-gesture drops the in-flight touch stream, so the finger-lift
+     *  never reaches onTouchEvent and onHoldEnd/onDragEnd never fire. */
+    var hasActiveGesture = false
         private set
     /** Whether onDragStart has already been called for this gesture. */
     private var dragStartFired = false
@@ -379,6 +403,7 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                 lastYVel = 0f
                 dragStartFired = false
                 holdFired = false
+                hasActiveGesture = true
                 postDelayed(holdRunnable, holdDelayMs)
                 return true
             }
@@ -425,6 +450,7 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                 return true
             }
             MotionEvent.ACTION_UP -> {
+                hasActiveGesture = false
                 velocityTracker?.addMovement(event)
                 velocityTracker?.computeCurrentVelocity(1000)
                 lastXVel = velocityTracker?.xVelocity ?: lastXVel
@@ -468,6 +494,7 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
+                hasActiveGesture = false
                 velocityTracker?.recycle()
                 velocityTracker = null
                 removeCallbacks(holdRunnable)

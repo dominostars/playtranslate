@@ -932,6 +932,7 @@ class OverlayUiController(
         val icon = FloatingOverlayIcon(displayCtx).apply {
             this.wm = wm
             this.displayId = displayId
+            this.overlayHost = this@OverlayUiController.overlayHost
             compactMode = prefs.compactOverlayIcon
         }
 
@@ -1053,7 +1054,12 @@ class OverlayUiController(
             iconHandles.entries.toList()
         }
         for ((id, handle) in targets) {
-            if (handle.icon.inDragMode) continue
+            // Never remove+re-add an icon the user is currently touching:
+            // destroying its window mid-gesture drops the touch stream, so the
+            // finger-lift never fires onHoldEnd/onDragEnd and the held overlay
+            // is never torn down. The re-raise resumes on the next overlay
+            // update once the gesture ends.
+            if (handle.icon.hasActiveGesture) continue
             val params = handle.icon.params ?: continue
             overlayHost.removeOverlayWindow(handle.icon)
             overlayHost.addOverlayWindow(handle.icon, handle.wm, params, id)
