@@ -49,6 +49,7 @@ import java.util.Date
 import java.util.Locale
 import android.hardware.display.DisplayManager
 import com.playtranslate.capture.CaptureBackendResolver
+import com.playtranslate.capture.CaptureLifecycle
 import com.playtranslate.capture.MediaProjectionCaptureSource
 import com.playtranslate.capture.MediaProjectionController
 import com.playtranslate.dictionary.DictionaryManager
@@ -345,6 +346,11 @@ class CaptureService : Service() {
         enterForeground()
         // Immediately evaluate — may stopForeground if no game-screen presence yet
         updateForegroundState()
+        if (intent?.action == ACTION_MP_ACTIVATE) {
+            // QS tile "Start PlayTranslate" in MediaProjection mode — routed
+            // through the service so it works even from a cold start.
+            serviceScope.launch { CaptureLifecycle.activateMediaProjection() }
+        }
         return START_STICKY
     }
 
@@ -1572,6 +1578,11 @@ class CaptureService : Service() {
         @Volatile
         var instance: CaptureService? = null
             private set
+
+        /** Action for an [onStartCommand] intent meaning "obtain MediaProjection
+         *  consent and bring the controls up" — sent by the Quick Settings tile,
+         *  which can't assume the service is already alive. */
+        const val ACTION_MP_ACTIVATE = "com.playtranslate.action.MP_ACTIVATE"
 
         /** Empty-id, full-screen region used as the initial saved/active value
          *  before [configureSaved] runs and as the defensive fallback in

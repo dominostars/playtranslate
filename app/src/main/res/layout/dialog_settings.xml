@@ -64,6 +64,20 @@
             android:paddingTop="4dp"
             android:paddingBottom="20dp">
 
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCaptureLifecycle"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="4dp"
+                android:textAllCaps="false"
+                android:textSize="15sp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                app:cornerRadius="@dimen/pt_radius"
+                android:visibility="gone" />
+
             <!-- ══════════════════════════════════════════════════════ -->
             <!-- LANGUAGE                                              -->
             <!-- ══════════════════════════════════════════════════════ -->
@@ -136,8 +150,60 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
 
-                    <include layout="@layout/settings_row_switch"
-                        android:id="@+id/rowOverlayIcon" />
+                    <!-- Game screen controls: a toggle on dual-screen; an
+                         informational cell with a docked icon preview on
+                         single-screen (rebuilt inline from settings_row_switch
+                         so the preview slot can be injected). -->
+                    <LinearLayout
+                        android:id="@+id/rowOverlayIcon"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/pt_row_min_height"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:paddingHorizontal="@dimen/pt_row_h_padding"
+                        android:paddingVertical="9dp"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:layout_marginEnd="16dp">
+
+                            <TextView
+                                android:id="@+id/tvRowTitle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                style="@style/Text.PT.RowTitle" />
+
+                            <TextView
+                                android:id="@+id/tvRowSubtitle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:visibility="gone"
+                                style="@style/Text.PT.RowSubtitle" />
+                        </LinearLayout>
+
+                        <FrameLayout
+                            android:id="@+id/overlayIconPreviewSlot"
+                            android:layout_width="40dp"
+                            android:layout_height="80dp"
+                            android:visibility="gone" />
+
+                        <com.google.android.material.materialswitch.MaterialSwitch
+                            android:id="@+id/switchRowToggle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:clickable="false"
+                            android:focusable="false"
+                            app:materialThemeOverlay="@style/Widget.PlayTranslate.MaterialSwitch" />
+
+                    </LinearLayout>
 
                     <View
                         android:id="@+id/dividerCompactIcon"

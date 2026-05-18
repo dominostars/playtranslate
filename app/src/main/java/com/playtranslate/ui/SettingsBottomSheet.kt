@@ -95,6 +95,7 @@ class SettingsBottomSheet : DialogFragment() {
             dm?.unregisterDisplayListener(it)
         }
         displayListener = null
+        renderer?.destroyOverlayIconPreview()
         renderer = null
         currentView = null
         super.onDestroyView()
@@ -480,6 +481,9 @@ class SettingsBottomSheet : DialogFragment() {
                     "(a child DialogFragment was shown earlier this session)")
             return
         }
+        // Recycle the outgoing renderer's preview bitmap — reinflate builds a
+        // fresh renderer + preview without going through onDestroyView.
+        renderer?.destroyOverlayIconPreview()
         val index = parent.indexOfChild(old)
         parent.removeView(old)
         val newView = LayoutInflater.from(requireActivity())
@@ -1130,18 +1134,48 @@ class SettingsBottomSheet : DialogFragment() {
      *  for that case. */
     private fun requestMediaProjectionControls() {
         val activity = activity as? androidx.appcompat.app.AppCompatActivity ?: return
+        if (!android.provider.Settings.canDrawOverlays(activity)) {
+            // The MediaProjection floating controls are TYPE_APPLICATION_OVERLAY
+            // windows — without "Display over other apps" they silently fail to
+            // add. Route the user to grant it; they re-tap Start afterwards.
+            showOverlayPermissionAlert(activity)
+            return
+        }
         activity.lifecycleScope.launch {
             val controller =
                 com.playtranslate.CaptureService.instance?.mediaProjectionController
             val granted = controller?.ensureConsent() ?: false
             if (granted) {
-                Prefs(activity).showOverlayIcon = true
+                // Don't force showOverlayIcon — it's the independent toggle.
                 com.playtranslate.capture.CaptureBackendResolver
                     .activeOverlayUi?.reconcileFloatingIcons()
                 com.playtranslate.PlayTranslateTileService.TileSync.refresh(activity)
             }
             renderer?.refreshOverlayIconSwitch()
         }
+    }
+
+    /** Routes the user to grant "Display over other apps" — required for the
+     *  MediaProjection floating controls (TYPE_APPLICATION_OVERLAY windows). */
+    private fun showOverlayPermissionAlert(activity: androidx.appcompat.app.AppCompatActivity) {
+        OverlayAlert.Builder(activity)
+            .hideIcon()
+            .setTitle(getString(R.string.mp_overlay_permission_title))
+            .setMessage(getString(R.string.mp_overlay_permission_message))
+            .addButton(
+                getString(R.string.mp_overlay_permission_button),
+                activity.themeColor(R.attr.ptAccent),
+                activity.themeColor(R.attr.ptAccentOn),
+            ) {
+                activity.startActivity(
+                    android.content.Intent(
+                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        android.net.Uri.parse("package:" + activity.packageName),
+                    )
+                )
+            }
+            .addCancelButton(getString(android.R.string.cancel))
+            .showInActivity(activity)
     }
 
     // ── Companion ───────────────────────────────────────────────────────

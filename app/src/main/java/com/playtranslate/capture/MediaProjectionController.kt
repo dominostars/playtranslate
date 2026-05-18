@@ -15,6 +15,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.Surface
 import com.playtranslate.CaptureService
+import com.playtranslate.PlayTranslateTileService
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -111,7 +112,7 @@ class MediaProjectionController(private val service: CaptureService) {
         }
         // The callback must be registered before createVirtualDisplay.
         proj.registerCallback(object : MediaProjection.Callback() {
-            override fun onStop() { teardown() }
+            override fun onStop() { onProjectionRevoked() }
         }, mainHandler)
         projection = proj
         return true
@@ -223,6 +224,17 @@ class MediaProjectionController(private val service: CaptureService) {
         // next capture must re-prompt for consent.
         resultCode = Activity.RESULT_CANCELED
         resultData = null
+    }
+
+    /** The projection was stopped by the system or the user (a revoke / sleep
+     *  teardown — not our own [destroy]). Tear the session down, then drop the
+     *  now-ungated floating controls and refresh the QS tile so the UI catches
+     *  up with the lost consent. Runs on [mainHandler] (the callback thread),
+     *  so the main-thread-only reconcile is safe. */
+    private fun onProjectionRevoked() {
+        teardown()
+        CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
+        PlayTranslateTileService.TileSync.refresh(service.applicationContext)
     }
 
     /** Release the projection and virtual display. */

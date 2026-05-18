@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.res.ColorStateList
 import com.playtranslate.capturableDisplays
 import com.playtranslate.capture.CaptureBackendResolver
+import com.playtranslate.capture.CaptureLifecycle
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
@@ -178,6 +179,10 @@ class SettingsRenderer(
     private val cardOnScreenControls: MaterialCardView = root.findViewById(R.id.cardOnScreenControls)
     private val rowOverlayIcon: View = root.findViewById(R.id.rowOverlayIcon)
     private val switchOverlayIcon: MaterialSwitch = rowOverlayIcon.findViewById(R.id.switchRowToggle)
+    private val overlayIconPreviewSlot: FrameLayout = rowOverlayIcon.findViewById(R.id.overlayIconPreviewSlot)
+    private var overlayIconPreview: FloatingOverlayIcon? = null
+
+    private val btnCaptureLifecycle: MaterialButton = root.findViewById(R.id.btnCaptureLifecycle)
 
     private val rowCompactIcon: View = root.findViewById(R.id.rowCompactIcon)
     private val switchCompactIcon: MaterialSwitch = rowCompactIcon.findViewById(R.id.switchRowToggle)
@@ -225,6 +230,7 @@ class SettingsRenderer(
 
     fun bind() {
         setupGroupHeaders()
+        setupCaptureLifecycleButton()
         setupLanguageSection()
         setupOnScreenControls()
         setupAutoTranslateSection()
@@ -388,11 +394,9 @@ class SettingsRenderer(
     private fun setupOnScreenControls() {
         val isSingle = Prefs.isSingleScreen(ctx)
 
-        // -- Overlay icon row --
-        rowOverlayIcon.findViewById<TextView>(R.id.tvRowTitle).setText(
-            if (isSingle) R.string.settings_show_overlay_icon_single
-            else R.string.settings_show_overlay_icon
-        )
+        // -- Game screen controls row --
+        rowOverlayIcon.findViewById<TextView>(R.id.tvRowTitle)
+            .setText(R.string.settings_show_overlay_icon)
         val subtitleOverlay = rowOverlayIcon.findViewById<TextView>(R.id.tvRowSubtitle)
         subtitleOverlay.setText(
             if (isSingle) R.string.settings_overlay_icon_hint_single
@@ -401,49 +405,41 @@ class SettingsRenderer(
         subtitleOverlay.visibility = View.VISIBLE
         subtitleOverlay.setTextColor(ctx.themeColor(R.attr.ptText))
 
-        switchOverlayIcon.setOnCheckedChangeListener { _, checked ->
-            // Programmatic syncs (syncOverlayIconSwitch) must not run the
-            // user-action side effects below — above all the MediaProjection
-            // consent prompt.
-            if (syncingOverlayIconSwitch) return@setOnCheckedChangeListener
-            if (!checked) {
-                PlayTranslateAccessibilityService.disable(ctx, "settings_toggle_off")
-                refreshOnScreenControlsTint(isSingle)
-                return@setOnCheckedChangeListener
+        if (isSingle) {
+            // Single-screen: no toggle — the floating icon always shows while
+            // active. The row is an informational cell with a docked preview.
+            switchOverlayIcon.visibility = View.GONE
+            overlayIconPreviewSlot.visibility = View.VISIBLE
+            buildOverlayIconPreview()
+            rowOverlayIcon.setOnClickListener(null)
+            rowOverlayIcon.isClickable = false
+            rowOverlayIcon.foreground = null
+        } else {
+            // Dual-screen: the toggle is the "show the floating icon"
+            // preference — a plain pref, fully independent of whether
+            // PlayTranslate is active. It never prompts for consent or
+            // accessibility (the Start button owns activation) and stays
+            // enabled at all times.
+            switchOverlayIcon.visibility = View.VISIBLE
+            overlayIconPreviewSlot.visibility = View.GONE
+            switchOverlayIcon.setOnCheckedChangeListener { _, checked ->
+                if (syncingOverlayIconSwitch) return@setOnCheckedChangeListener
+                prefs.showOverlayIcon = checked
+                CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
+                PlayTranslateTileService.TileSync.refresh(ctx)
+                refreshOnScreenControlsTint()
             }
-            if (!CaptureBackendResolver.active().requiresAccessibilityService) {
-                // MediaProjection backend: prompt for screen-record consent;
-                // the controls come up only on grant. The callback refreshes
-                // this switch + the card tint once the flow settles.
-                callbacks.requestMediaProjectionControls()
-                return@setOnCheckedChangeListener
-            }
-            if (!overlayIconHostable()) {
-                syncOverlayIconSwitch()  // revert the optimistic flip
-                AlertDialog.Builder(ctx)
-                    .setTitle(R.string.overlay_icon_a11y_required_title)
-                    .setMessage(R.string.overlay_icon_a11y_required_message)
-                    .setPositiveButton(R.string.btn_open_a11y_settings) { _, _ ->
-                        ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                    }
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .show()
-                return@setOnCheckedChangeListener
-            }
-            prefs.showOverlayIcon = true
-            CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
-            PlayTranslateTileService.TileSync.refresh(ctx)
-            refreshOnScreenControlsTint(isSingle)
+            rowOverlayIcon.setOnClickListener { switchOverlayIcon.toggle() }
+            syncOverlayIconSwitch()
         }
-        rowOverlayIcon.setOnClickListener { switchOverlayIcon.toggle() }
-        syncOverlayIconSwitch()
-        refreshOnScreenControlsTint(isSingle)
+        refreshOnScreenControlsTint()
 
         // -- Compact icon row --
         rowCompactIcon.findViewById<TextView>(R.id.tvRowTitle).text = "Minimize icon"
         switchCompactIcon.isChecked = prefs.compactOverlayIcon
         switchCompactIcon.setOnCheckedChangeListener { _, checked ->
             prefs.compactOverlayIcon = checked
+            overlayIconPreview?.compactMode = checked
             val ui = CaptureBackendResolver.activeOverlayUi
             ui?.hideFloatingIcon("settings_compact_recreate")
             ui?.reconcileFloatingIcons()
@@ -501,13 +497,15 @@ class SettingsRenderer(
         }
     }
 
-    /** Tints the on-screen-controls card when the overlay switch is off so
-     *  the card flags itself as needing attention. Single-screen mode uses
-     *  danger (PlayTranslate can't function there without the switch on);
-     *  dual-screen uses warning (the app works but the floating helper is
-     *  missing). On = neutral card styling. */
-    private fun refreshOnScreenControlsTint(isSingle: Boolean) {
-        val enabled = overlayIconSwitchOn()
+    /** Tints the on-screen-controls card with the warning color when the
+     *  dual-screen "Game screen controls" toggle is off while active —
+     *  flagging that the floating helper is missing. Single-screen has no
+     *  toggle, so its card is purely informational and never tinted.
+     *  Off-warning = warning styling; otherwise neutral. */
+    private fun refreshOnScreenControlsTint() {
+        // Single-screen has no toggle to be "off"; only dual-screen warns
+        // when the "Game screen controls" preference is off.
+        val warn = !Prefs.isSingleScreen(ctx) && !prefs.showOverlayIcon
         val baseCard = ctx.themeColor(R.attr.ptCard)
         val baseStroke = compositeOver(ctx.themeColor(R.attr.ptDivider), baseCard)
         // Canonical theme-driven switch tints — same resources the
@@ -516,7 +514,7 @@ class SettingsRenderer(
         val themeTrackTint = ContextCompat.getColorStateList(ctx, R.color.switch_track)
         val themeTrackDecorationTint =
             ContextCompat.getColorStateList(ctx, R.color.switch_track_decoration)
-        if (enabled) {
+        if (!warn) {
             cardOnScreenControls.setCardBackgroundColor(baseCard)
             cardOnScreenControls.strokeColor = baseStroke
             switchOverlayIcon.thumbTintList = themeThumbTint
@@ -524,8 +522,7 @@ class SettingsRenderer(
             switchOverlayIcon.trackDecorationTintList = themeTrackDecorationTint
             return
         }
-        val attentionAttr = if (isSingle) R.attr.ptDanger else R.attr.ptWarning
-        val attention = ctx.themeColor(attentionAttr)
+        val attention = ctx.themeColor(R.attr.ptWarning)
         cardOnScreenControls.setCardBackgroundColor(blendColors(attention, baseCard, 0.20f))
         // Border uses the attention color at full strength so the card reads
         // clearly as needing action, even on themes where the 20% fill blend
@@ -553,6 +550,100 @@ class SettingsRenderer(
         // Track outline (visible only when unchecked) picks up the full
         // attention color to match the card border.
         switchOverlayIcon.trackDecorationTintList = ColorStateList.valueOf(attention)
+    }
+
+    // ── Start / Stop PlayTranslate ───────────────────────────────────────
+
+    private fun setupCaptureLifecycleButton() {
+        btnCaptureLifecycle.setOnClickListener {
+            when {
+                CaptureLifecycle.isActive(ctx) -> {
+                    CaptureLifecycle.deactivate(ctx)
+                    refreshCaptureLifecycleButton()
+                    refreshOverlayIconSwitch()
+                }
+                !CaptureBackendResolver.active().requiresAccessibilityService ->
+                    // MediaProjection — the consent flow is Activity-scoped;
+                    // the callback refreshes this button once it settles.
+                    callbacks.requestMediaProjectionControls()
+                CaptureLifecycle.activateAccessibility(ctx) -> {
+                    refreshCaptureLifecycleButton()
+                    refreshOverlayIconSwitch()
+                }
+                else -> showOverlayIconA11yAlert()
+            }
+        }
+        refreshCaptureLifecycleButton()
+    }
+
+    /** Show / hide + style the Start / Stop button against the current
+     *  [CaptureLifecycle] state. Hidden on the accessibility backend in
+     *  dual-screen, where "active" is always true. */
+    fun refreshCaptureLifecycleButton() {
+        if (!CaptureLifecycle.hasActivateControl(ctx)) {
+            btnCaptureLifecycle.visibility = View.GONE
+            return
+        }
+        btnCaptureLifecycle.visibility = View.VISIBLE
+        val active = CaptureLifecycle.isActive(ctx)
+        btnCaptureLifecycle.setText(
+            if (active) R.string.capture_lifecycle_stop
+            else R.string.capture_lifecycle_start
+        )
+        if (active) {
+            // Outlined — the system is running.
+            btnCaptureLifecycle.backgroundTintList =
+                ColorStateList.valueOf(Color.TRANSPARENT)
+            btnCaptureLifecycle.setTextColor(ctx.themeColor(R.attr.ptText))
+            btnCaptureLifecycle.strokeColor =
+                ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextMuted))
+            btnCaptureLifecycle.strokeWidth =
+                (1 * ctx.resources.displayMetrics.density).toInt()
+        } else {
+            // Filled accent — the prominent call to action.
+            btnCaptureLifecycle.backgroundTintList =
+                ColorStateList.valueOf(ctx.themeColor(R.attr.ptAccent))
+            btnCaptureLifecycle.setTextColor(ctx.themeColor(R.attr.ptAccentOn))
+            btnCaptureLifecycle.strokeWidth = 0
+        }
+    }
+
+    /** The accessibility-required dialog for the floating icon — shared by the
+     *  dual-screen toggle and the accessibility-backend Start path. */
+    private fun showOverlayIconA11yAlert() {
+        AlertDialog.Builder(ctx)
+            .setTitle(R.string.overlay_icon_a11y_required_title)
+            .setMessage(R.string.overlay_icon_a11y_required_message)
+            .setPositiveButton(R.string.btn_open_a11y_settings) { _, _ ->
+                ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    /** Build (or rebuild) the single-screen floating-icon preview. The icon
+     *  view draws a full circle; the 40dp-wide slot clips it to the left half
+     *  so it reads as the edge-docked icon. Compact mode narrows the visible
+     *  slice automatically. Non-interactive — never hosted as a window. */
+    private fun buildOverlayIconPreview() {
+        destroyOverlayIconPreview()
+        overlayIconPreviewSlot.removeAllViews()
+        val preview = FloatingOverlayIcon(ctx).apply {
+            isClickable = false
+            isFocusable = false
+            compactMode = prefs.compactOverlayIcon
+        }
+        overlayIconPreviewSlot.addView(
+            preview,
+            FrameLayout.LayoutParams(preview.viewSizePx, preview.viewSizePx),
+        )
+        overlayIconPreview = preview
+    }
+
+    /** Recycle the preview's bitmap. Call before the renderer is discarded. */
+    fun destroyOverlayIconPreview() {
+        overlayIconPreview?.destroy()
+        overlayIconPreview = null
     }
 
     // ── Auto-translate section ───────────────────────────────────────────
@@ -1879,48 +1970,30 @@ class SettingsRenderer(
         rowTargetLang.findViewById<TextView>(R.id.tvRowValue).text = resolveTargetName()
     }
 
-    /** True when the floating icon can be hosted without first prompting for
-     *  the accessibility service: the active capture backend either doesn't
-     *  need that service (MediaProjection) or it is already enabled. */
-    private fun overlayIconHostable(): Boolean =
-        !CaptureBackendResolver.active().requiresAccessibilityService ||
-            PlayTranslateAccessibilityService.isEnabled(ctx)
-
-    /** Whether the overlay-icon switch should currently read as ON. The
-     *  MediaProjection backend pairs the persisted [Prefs.showOverlayIcon]
-     *  with live screen-record consent — consent doesn't survive a process
-     *  restart, so the pref alone would read ON when no controls can show.
-     *  This is the exact pair [OverlayUiController.reconcileFloatingIcons]
-     *  gates the MediaProjection icons on, so the switch can't drift from
-     *  them on icon-removal timing. The accessibility backend keeps using the
-     *  pref gated on the service. */
-    private fun overlayIconSwitchOn(): Boolean =
-        if (CaptureBackendResolver.active().requiresAccessibilityService)
-            prefs.showOverlayIcon && overlayIconHostable()
-        else
-            prefs.showOverlayIcon &&
-                CaptureService.instance?.mediaProjectionController?.hasConsent == true
-
     /** True while [syncOverlayIconSwitch] writes [switchOverlayIcon], so the
-     *  change listener — which carries user-action side effects, including the
-     *  MediaProjection consent prompt — skips our own programmatic write. */
+     *  change listener — which carries user-action side effects — skips our
+     *  own programmatic write. */
     private var syncingOverlayIconSwitch = false
 
-    /** Push the computed [overlayIconSwitchOn] state into the switch without
-     *  tripping its change listener. */
+    /** Push the [Prefs.showOverlayIcon] preference into the dual-screen switch
+     *  without tripping its change listener. "Game screen controls" is a plain
+     *  preference — independent of whether PlayTranslate is active. Visually a
+     *  no-op on single-screen, where the switch is GONE. */
     private fun syncOverlayIconSwitch() {
         syncingOverlayIconSwitch = true
-        switchOverlayIcon.isChecked = overlayIconSwitchOn()
+        switchOverlayIcon.isChecked = prefs.showOverlayIcon
         syncingOverlayIconSwitch = false
     }
 
     fun refreshOverlayIconSwitch() {
         syncOverlayIconSwitch()
-        refreshOnScreenControlsTint(Prefs.isSingleScreen(ctx))
+        refreshOnScreenControlsTint()
+        refreshCaptureLifecycleButton()
     }
 
     fun refreshCompactIconSwitch() {
         switchCompactIcon.isChecked = prefs.compactOverlayIcon
+        overlayIconPreview?.compactMode = prefs.compactOverlayIcon
     }
 
     fun refreshAutoModeToggle() {

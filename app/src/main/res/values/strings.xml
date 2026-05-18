@@ -139,7 +139,15 @@
 
     <!-- Overlay icon -->
     <string name="settings_show_overlay_icon">Game screen controls</string>
-    <string name="settings_show_overlay_icon_single">Enable PlayTranslate</string>
+
+    <!-- Start / Stop PlayTranslate button (capture lifecycle) -->
+    <string name="capture_lifecycle_start">Start PlayTranslate</string>
+    <string name="capture_lifecycle_stop">Stop PlayTranslate</string>
+
+    <!-- MediaProjection floating-controls overlay permission -->
+    <string name="mp_overlay_permission_title">Display over other apps</string>
+    <string name="mp_overlay_permission_message">PlayTranslate needs permission to display over other apps so the floating game-screen controls can show on top of your game.</string>
+    <string name="mp_overlay_permission_button">Open settings</string>
     <string name="settings_overlay_icon_hint_dual">• Drag — Look up words by dragging over game text\n• Hold — Preview translations\n• Tap — Open quick menu</string>
     <string name="settings_overlay_icon_hint_single">• Drag — Look up words by dragging over game text\n• Hold — Preview translations\n• Tap — Open quick menu</string>
     <string name="overlay_icon_a11y_required_title">Accessibility required</string>
