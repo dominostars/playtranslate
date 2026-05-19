@@ -1277,7 +1277,12 @@ class MainActivity :
             // KEY_DISPLAY_IDS from the legacy KEY_DISPLAY_ID before this
             // gate ever runs.
             if (!prefs.hasDisplaySelection) {
-                prefs.captureDisplayIds = setOf(findGameDisplayId())
+                // Narrow the auto-detected display to what the active backend
+                // can capture — MediaProjection only ever mirrors the default
+                // display, so seeding it with a secondary one would be stale
+                // from the start.
+                prefs.captureDisplayIds = CaptureBackendResolver.active()
+                    .capturableDisplays(setOf(findGameDisplayId()))
             }
             configureService()
         }
