@@ -1463,6 +1463,9 @@ class MainActivity :
     private fun isSingleScreen(): Boolean = Prefs.isSingleScreen(this)
 
     private fun checkOnboardingState() {
+        // Re-derive the capture backend from current permissions first — a
+        // grant made in system Settings only reaches us on resume.
+        CaptureBackendResolver.reresolve(this)
         val prefs = Prefs(this)
         val sourceInstalled = LanguagePackStore.isInstalled(this, prefs.sourceLangId)
         val languageConfigured = sourceInstalled && prefs.hasTargetLangBeenSet

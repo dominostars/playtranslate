@@ -1,9 +1,10 @@
 package com.playtranslate.capture
 
 import android.content.Context
+import android.provider.Settings
 import com.playtranslate.CaptureService
 import com.playtranslate.OverlayUiController
-import com.playtranslate.Prefs
+import com.playtranslate.PlayTranslateAccessibilityService
 
 /**
  * The single place that decides which [CaptureBackend] is active. Consumers
@@ -11,9 +12,9 @@ import com.playtranslate.Prefs
  * and [activeOverlayUi] and never read the backend preference themselves — so
  * the MediaProjection-vs-accessibility split stays contained here.
  *
- * The active backend is swapped only by [reresolve], which reads the DEBUG
- * `captureBackendMediaProjection` pref. [active] reads a cached flag, so it
- * stays cheap on the hot path.
+ * The active backend is swapped only by [reresolve], which derives it from the
+ * granted permissions. [active] reads a cached flag, so it stays cheap on the
+ * hot path.
  */
 object CaptureBackendResolver {
 
@@ -36,13 +37,21 @@ object CaptureBackendResolver {
         get() = active().liveCaptureSource
 
     /**
-     * Re-read the DEBUG MediaProjection-backend pref and swap backends if it
-     * changed. Called at app start and whenever the debug toggle flips. Stops
-     * live mode and hides the outgoing backend's overlays before the swap,
-     * then brings up the incoming backend's floating icon(s).
+     * Re-derive the active backend from the granted permissions and swap if it
+     * changed: the accessibility service being enabled selects the
+     * accessibility backend; otherwise "display over other apps" being granted
+     * selects MediaProjection; with neither, the accessibility backend stands
+     * (onboarding asks for a permission). Called at app start and from
+     * MainActivity.checkOnboardingState so a permission granted in system
+     * Settings is picked up on the next resume. Stops live mode and hides the
+     * outgoing backend's overlays before the swap, then brings up the incoming
+     * backend's floating icon(s).
      */
     fun reresolve(context: Context) {
-        val want = Prefs(context).captureBackendMediaProjection
+        // Accessibility takes precedence: when its service is enabled, use it
+        // even if "display over other apps" is also granted.
+        val want = !PlayTranslateAccessibilityService.isEnabled(context) &&
+            Settings.canDrawOverlays(context)
         if (want == useMediaProjection) return
         CaptureService.instance?.let { if (it.isLive) it.stopLive() }
         active().overlayUi?.hideAll()

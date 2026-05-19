@@ -40,9 +40,10 @@ class PlayTranslateApplication : Application() {
         // section, so there'd be no way to turn it back off.
         if (BuildConfig.DEBUG) {
             OcrManager.instance.debugLogGroupingEnabled = Prefs(this).debugLogGrouping
-            // Pick up a persisted DEBUG MediaProjection-backend toggle.
-            CaptureBackendResolver.reresolve(this)
         }
+        // Derive the capture backend from the granted permissions (the
+        // accessibility service vs "display over other apps").
+        CaptureBackendResolver.reresolve(this)
         // Build the translation-backend registry once at process start.
         // Backends are stateless or hold pooled HTTP clients that should
         // outlive a single CaptureService instance. The DeepL key is read

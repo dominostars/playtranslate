@@ -1870,25 +1870,6 @@ class SettingsRenderer(
         }
         rowForceSingleScreen.setOnClickListener { switchForceSingle.toggle() }
 
-        // Use MediaProjection capture backend
-        val rowMpBackend = root.findViewById<View>(R.id.rowMpBackend)
-        val switchMpBackend = rowMpBackend.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-        rowMpBackend.findViewById<TextView>(R.id.tvRowTitle).text = "Use MediaProjection capture"
-        switchMpBackend.isChecked = prefs.captureBackendMediaProjection
-        switchMpBackend.setOnCheckedChangeListener { _, checked ->
-            prefs.captureBackendMediaProjection = checked
-            if (checked && !android.provider.Settings.canDrawOverlays(root.context)) {
-                root.context.startActivity(
-                    Intent(
-                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        android.net.Uri.parse("package:" + root.context.packageName),
-                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                )
-            }
-            CaptureBackendResolver.reresolve(root.context)
-        }
-        rowMpBackend.setOnClickListener { switchMpBackend.toggle() }
-
         // Show OCR boxes
         val rowShowOcrBoxes = root.findViewById<View>(R.id.rowShowOcrBoxes)
         val switchOcrBoxes = rowShowOcrBoxes.findViewById<MaterialSwitch>(R.id.switchRowToggle)
