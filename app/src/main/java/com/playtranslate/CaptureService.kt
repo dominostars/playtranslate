@@ -2038,18 +2038,39 @@ class CaptureService : Service() {
 
     /** startForeground with the correct service type(s). Once
      *  [ensureMediaProjectionForegroundType] has run, the mediaProjection type
-     *  is always included so a later onStartCommand / updateForegroundState
-     *  can't downgrade it (which would make the platform kill the projection). */
+     *  is included so a later onStartCommand / updateForegroundState doesn't
+     *  downgrade a live projection (which the platform would kill). The catch
+     *  below handles the platform rejecting the type after the token lapses. */
     private fun enterForeground() {
         if (mediaProjectionFgsActive) {
-            startForeground(
-                NOTIF_ID, buildNotification(),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
-            )
-        } else {
-            startForeground(NOTIF_ID, buildNotification())
+            try {
+                startForeground(
+                    NOTIF_ID, buildNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
+                )
+                return
+            } catch (e: Exception) {
+                // The mediaProjection FGS type is only valid while a live
+                // screen-record token is held. The token can lapse out from
+                // under us — single-use on API 34+, or the system stopping the
+                // projection — before mediaProjectionFgsActive is cleared, and
+                // the platform then rejects this start with a SecurityException.
+                // Drop the stale promotion and fall through to SPECIAL_USE so
+                // the service still reaches the foreground.
+                Log.w(TAG, "enterForeground: mediaProjection FGS type rejected, " +
+                    "falling back to SPECIAL_USE — ${e.message}")
+                mediaProjectionFgsActive = false
+            }
         }
+        // SPECIAL_USE only. The 2-arg startForeground would apply every
+        // manifest-declared type — including mediaProjection, which API 34+
+        // rejects with a SecurityException until a projection token is held
+        // (ensureMediaProjectionForegroundType promotes to it after consent).
+        startForeground(
+            NOTIF_ID, buildNotification(),
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+        )
     }
 
     private fun createNotificationChannel() {
