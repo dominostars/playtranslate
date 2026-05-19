@@ -17,6 +17,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import com.playtranslate.capture.CaptureBackendResolver
+import com.playtranslate.capture.CaptureLifecycle
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.overlay.OverlayHost
@@ -1145,6 +1146,8 @@ class OverlayUiController(
         applyAccentOverlay(themedCtx.theme, context)
         val menu = FloatingIconMenu(themedCtx)
         menu.isSingleScreen = Prefs.isSingleScreen(context)
+        menu.exitFlow = !CaptureBackendResolver.active().requiresAccessibilityService ||
+            Prefs.isSingleScreen(context)
 
         // Suppress live captures while menu is open.
         CaptureService.instance?.holdActive = true
@@ -1283,18 +1286,25 @@ class OverlayUiController(
         val builder = OverlayAlert.Builder(displayCtx, overlayWm, display.displayId)
             .setOverlayHost(overlayHost)
 
-        if (!Prefs.hasMultipleDisplays(context)) {
-            builder.setTitle("Disable $appName?")
-                .setMessage("Re-enable in $appName app")
+        // MediaProjection mode, or single-screen: the icon's "Exit" reads as
+        // stopping PlayTranslate (re-started from the app), so the confirm is
+        // a Stop — equivalent to the Settings Start/Stop button. Only
+        // accessibility + dual-screen keeps the older hide/minimize wording.
+        val exitFlow = !CaptureBackendResolver.active().requiresAccessibilityService ||
+            Prefs.isSingleScreen(context)
+
+        if (exitFlow) {
+            builder.setTitle("Stop $appName?")
+                .setMessage("Re-start in $appName app")
             if (!alreadyCompact) {
                 builder.addButton("Minimize Icon", accentColor) {
                     prefs.compactOverlayIcon = true
-                    hideFloatingIcon("confirm_minimize_single")
+                    hideFloatingIcon("confirm_minimize_exit")
                     reconcileFloatingIcons()
                 }
             }
-            builder.addButton("Turn Off", dividerColor, dangerColor) {
-                    PlayTranslateAccessibilityService.disable(context, "confirm_turn_off_single")
+            builder.addButton("Stop", dividerColor, dangerColor) {
+                    CaptureLifecycle.deactivate(context)
                 }
                 .addCancelButton()
         } else {

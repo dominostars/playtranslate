@@ -63,6 +63,17 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     var onSettings: (() -> Unit)? = null
     var isSingleScreen: Boolean = false
 
+    /** True in MediaProjection mode or single-screen — the hide control then
+     *  reads "Exit" and confirms a Stop. Set by showFloatingMenu. */
+    var exitFlow: Boolean = false
+        set(value) {
+            field = value
+            hideLabel.text = if (value) "Exit" else "Hide"
+            hideIcon.setImageResource(
+                if (value) R.drawable.ic_mode_off_on else R.drawable.ic_exit_to_app
+            )
+        }
+
     /** Current active capture region as fractional coordinates (top, bottom, left, right).
      *  null or (0,1,0,1) means full screen — no region highlight shown. */
     var activeRegion: RegionEntry? = null
@@ -154,6 +165,8 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private lateinit var liveIcon: TextView
     private lateinit var liveLabel: TextView
     private lateinit var liveBtn: FrameLayout
+    private lateinit var hideIcon: ImageView
+    private lateinit var hideLabel: TextView
 
     // ── Drag state ────────────────────────────────────────────────────────
     private var isDragging = false
@@ -297,7 +310,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             }
             setOnClickListener { onCloseRequested?.invoke() }
         }
-        val hideIcon = ImageView(context).apply {
+        hideIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_exit_to_app)
             imageTintList = android.content.res.ColorStateList.valueOf(textColor)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
@@ -307,7 +320,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         ))
-        val hideLabel = TextView(context).apply {
+        hideLabel = TextView(context).apply {
             text = "Hide"
             setTextColor(textColor)
             textSize = 9f
