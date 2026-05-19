@@ -1871,7 +1871,11 @@ class MainActivity :
      *  — the first entry is treated as the "primary" preview target since
      *  the region indicator is single-display. */
     private fun dropdownTargetDisplayIds(): List<Int> {
-        val all = prefs.captureDisplayIds.toList()
+        // Only displays the active backend can capture — MediaProjection
+        // collapses this to the default display, so the dropdown never
+        // applies a region to a screen it can't drive.
+        val all = CaptureBackendResolver.active()
+            .capturableDisplays(prefs.captureDisplayIds).toList()
         val filtered = all.filter { it != MainActivity.foregroundDisplayId }
         return filtered.ifEmpty { all }
     }

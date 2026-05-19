@@ -123,11 +123,16 @@ class MediaProjectionController(private val service: CaptureService) {
             mgr.getMediaProjection(resultCode, data)
         } catch (e: Exception) {
             Log.e(TAG, "getMediaProjection failed: ${e.message}")
+            // The held consent token couldn't be turned into a session and is
+            // now useless. Drop it (and refresh the UI) so the next capture
+            // re-prompts, instead of looping forever on a dead token that
+            // still reads as hasConsent == true.
+            onProjectionLost()
             return false
         }
         // The callback must be registered before createVirtualDisplay.
         proj.registerCallback(object : MediaProjection.Callback() {
-            override fun onStop() { onProjectionRevoked() }
+            override fun onStop() { onProjectionLost() }
         }, mainHandler)
         projection = proj
         return true
@@ -246,12 +251,14 @@ class MediaProjectionController(private val service: CaptureService) {
         if (hadConsent) teardownListeners.toList().forEach { it() }
     }
 
-    /** The projection was stopped by the system or the user (a revoke / sleep
-     *  teardown — not our own [destroy]). Tear the session down, then drop the
-     *  now-ungated floating controls and refresh the QS tile so the UI catches
-     *  up with the lost consent. Runs on [mainHandler] (the callback thread),
-     *  so the main-thread-only reconcile is safe. */
-    private fun onProjectionRevoked() {
+    /** The projection is gone — stopped by the system or the user (a revoke /
+     *  sleep teardown), or [getMediaProjection] failed to turn a held consent
+     *  token into a session. Not our own [destroy]. Tear the session down,
+     *  drop the now-ungated floating controls, and refresh the QS tile so the
+     *  UI catches up with the lost consent. Always invoked on the main thread
+     *  (the projection callback posts to [mainHandler]; the failure path is the
+     *  capture path), so the main-thread-only reconcile is safe. */
+    private fun onProjectionLost() {
         teardown()
         CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
         PlayTranslateTileService.TileSync.refresh(service.applicationContext)

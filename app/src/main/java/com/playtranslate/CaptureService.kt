@@ -958,21 +958,24 @@ class CaptureService : Service() {
         val prefs = Prefs(this)
         val flavor = desiredFlavor(prefs)
 
-        // The MediaProjection backend can only mirror the default display, so
-        // its live target is pinned there — capturing any other display is
-        // impossible (see MediaProjectionController.projectedDisplayId). If the
-        // default display isn't a live target, MediaProjection runs no live
-        // mode rather than silently capturing the wrong screen.
+        // The displays to actually run live mode on: what the active backend
+        // can capture — MediaProjection collapses to the default display (see
+        // CaptureBackend.capturableDisplays), the accessibility backend keeps
+        // the whole set — minus any currently off / app-occluded. Resolving
+        // capturableDisplays first, rather than intersecting the incoming
+        // target, keeps MediaProjection pinned to the default display even
+        // when the persisted selection names a different one.
+        val capturable = CaptureBackendResolver.active()
+            .capturableDisplays(target)
+            .filterNot { shouldSkipDisplay(it) }
+            .toSet()
         // IN_APP_ONLY is single-display by design — collapse to the primary
-        // (target is a Set, so first() is order-dependent; prefer the primary).
-        val actualTarget = when {
-            !CaptureBackendResolver.active().requiresAccessibilityService ->
-                target intersect setOf(android.view.Display.DEFAULT_DISPLAY)
-            flavor == OverlayFlavor.IN_APP_ONLY && target.isNotEmpty() -> {
-                val primary = primaryGameDisplayId()
-                setOf(if (primary in target) primary else target.first())
-            }
-            else -> target
+        // (capturable is a Set, so first() is order-dependent; prefer the primary).
+        val actualTarget = if (flavor == OverlayFlavor.IN_APP_ONLY && capturable.isNotEmpty()) {
+            val primary = primaryGameDisplayId()
+            setOf(if (primary in capturable) primary else capturable.first())
+        } else {
+            capturable
         }
 
         // Snapshot — diff sets are computed against an immutable copy so

@@ -27,6 +27,9 @@ object AccessibilityCaptureBackend : CaptureBackend {
 
     override val requiresAccessibilityService: Boolean get() = true
 
+    /** `takeScreenshot` can target any display, so the selection stands. */
+    override fun capturableDisplays(selected: Set<Int>): Set<Int> = selected
+
     override fun startInputMonitoring(displayId: Int, onGameInput: () -> Unit) {
         PlayTranslateAccessibilityService.instance
             ?.startInputMonitoring(displayId, onGameInput)

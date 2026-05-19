@@ -915,7 +915,10 @@ class OverlayUiController(
             return
         }
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-        val target = prefs.captureDisplayIds
+        // Constrain to displays the active backend can actually capture —
+        // MediaProjection collapses this to the default display, so the icon
+        // never lands on a screen it can't drive.
+        val target = CaptureBackendResolver.active().capturableDisplays(prefs.captureDisplayIds)
 
         // Snapshot before mutating — tear down icons no longer needed.
         val staleIds = iconHandles.keys.filter { id ->

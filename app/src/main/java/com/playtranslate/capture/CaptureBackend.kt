@@ -44,6 +44,15 @@ interface CaptureBackend {
     val requiresAccessibilityService: Boolean
 
     /**
+     * Of the user-selected [selected] displays, the ones this backend can
+     * actually capture. The accessibility backend captures any display and
+     * returns [selected] unchanged; MediaProjection can only mirror the
+     * default display, so it returns just that — capture, overlays, the
+     * floating icon, and regions must all stay on it.
+     */
+    fun capturableDisplays(selected: Set<Int>): Set<Int>
+
+    /**
      * Watch for user interaction with the game screen on [displayId], running
      * [onGameInput] on each event. The accessibility backend reports gamepad
      * keys and outside-touch; MediaProjection reports outside-touch only.

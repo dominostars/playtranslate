@@ -95,11 +95,14 @@ class RegionPickerSheet : DialogFragment() {
         workingList = prefs.getRegionList().toMutableList()
 
         // Resolve the user's selected-for-capture displays (Settings → display
-        // picker writes [Prefs.captureDisplayIds]). Filter out stale ids the
-        // system can no longer resolve so a hot-unplugged-but-persisted entry
-        // doesn't leave the segmented control with a dead segment.
+        // picker writes [Prefs.captureDisplayIds]), narrowed to what the active
+        // backend can actually capture — MediaProjection collapses this to the
+        // default display. Then filter out stale ids the system can no longer
+        // resolve so a hot-unplugged-but-persisted entry doesn't leave the
+        // segmented control with a dead segment.
         val dm = displayManager()
-        selectedDisplayIds = prefs.captureDisplayIds
+        selectedDisplayIds = CaptureBackendResolver.active()
+            .capturableDisplays(prefs.captureDisplayIds)
             .filter { dm?.getDisplay(it) != null }
             .ifEmpty { listOf(Display.DEFAULT_DISPLAY) }
 

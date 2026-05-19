@@ -1,5 +1,6 @@
 package com.playtranslate.capture
 
+import android.view.Display
 import com.playtranslate.CaptureService
 import com.playtranslate.OverlayUiController
 import com.playtranslate.overlay.OverlayHost
@@ -24,6 +25,14 @@ object MediaProjectionCaptureBackend : CaptureBackend {
     override val supportsLiveMode: Boolean get() = true
 
     override val requiresAccessibilityService: Boolean get() = false
+
+    /** MediaProjection mirrors only the default display (see
+     *  [MediaProjectionController.projectedDisplayId]) — it resolves to that
+     *  display regardless of [selected], which has no meaning on this backend
+     *  (the picker is gated; a persisted multi-display selection is a stale
+     *  accessibility-mode artifact). */
+    override fun capturableDisplays(selected: Set<Int>): Set<Int> =
+        setOf(Display.DEFAULT_DISPLAY)
 
     override fun startInputMonitoring(displayId: Int, onGameInput: () -> Unit) {
         overlayHost?.addTouchSentinel(displayId, onGameInput)
