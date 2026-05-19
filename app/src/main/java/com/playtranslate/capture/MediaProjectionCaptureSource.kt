@@ -51,7 +51,7 @@ class MediaProjectionCaptureSource(
             // captureFrame returns the finished bitmap — so fire onCaptured
             // right after it returns. Looser timing than the accessibility
             // path, but acceptable: the callback only restores overlay alpha.
-            controller.captureFrame(displayId).also {
+            captureProjectedFrame(displayId).also {
                 onCaptured?.invoke()
                 // PinholeOverlayMode drives its own cycle via requestRaw (not
                 // startLoop), so the loop's consent guard wouldn't cover it.
@@ -72,7 +72,7 @@ class MediaProjectionCaptureSource(
         val state = host?.prepareForCleanCapture(displayId)
         return try {
             waitVsync(2)
-            controller.captureFrame(displayId)
+            captureProjectedFrame(displayId)
         } finally {
             if (host != null && state != null) host.restoreAfterCapture(state)
         }
@@ -124,7 +124,7 @@ class MediaProjectionCaptureSource(
                 if (isClean) loop.cleanRequested = false
                 val bitmap = captureMutex.withLock {
                     if (isClean) cleanCapture(displayId)
-                    else controller.captureFrame(displayId)
+                    else captureProjectedFrame(displayId)
                 }
 
                 when {
@@ -167,6 +167,20 @@ class MediaProjectionCaptureSource(
         get() = loops.values.any { it.job?.isActive == true }
 
     // ── Internal ─────────────────────────────────────────────────────────
+
+    /** [MediaProjectionController.captureFrame], guarded. MediaProjection can
+     *  only mirror its projected display, so a capture requested for any other
+     *  display is an upstream routing bug — log it loudly. The frame still
+     *  comes from the projected display regardless. */
+    private suspend fun captureProjectedFrame(requestedDisplayId: Int): Bitmap? {
+        if (requestedDisplayId != controller.projectedDisplayId) {
+            DetectionLog.log(
+                "MP: WARNING — capture requested for display $requestedDisplayId; " +
+                    "MediaProjection only mirrors display ${controller.projectedDisplayId}"
+            )
+        }
+        return controller.captureFrame()
+    }
 
     /** Loop poll interval — the user's pref, floored at [MIN_LOOP_INTERVAL_MS].
      *  No platform rate limit applies (unlike AccessibilityService). */

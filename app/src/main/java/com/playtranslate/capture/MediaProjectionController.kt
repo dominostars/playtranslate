@@ -13,6 +13,7 @@ import android.media.projection.MediaProjectionManager
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.Display
 import android.view.Surface
 import com.playtranslate.CaptureService
 import com.playtranslate.PlayTranslateTileService
@@ -34,10 +35,10 @@ private const val TAG = "MediaProjectionCtl"
  * warm for the process lifetime — MediaProjection tokens can't be persisted,
  * so a process restart (or a user revoke) needs fresh consent.
  *
- * MediaProjection captures the display the projection was authorized for
- * (typically the default display); it can't target an arbitrary displayId the
- * way the accessibility backend's `takeScreenshot` can. [captureFrame] thus
- * captures the projected display regardless of [displayId].
+ * MediaProjection captures the display the projection was authorized for —
+ * always the default display ([projectedDisplayId]); it can't target an
+ * arbitrary display the way the accessibility backend's `takeScreenshot` can.
+ * [captureFrame] always captures [projectedDisplayId].
  */
 class MediaProjectionController(private val service: CaptureService) {
 
@@ -57,6 +58,12 @@ class MediaProjectionController(private val service: CaptureService) {
 
     /** True once the user has granted a token still valid for this process. */
     val hasConsent: Boolean get() = resultData != null
+
+    /** The display this backend can capture. MediaProjection's
+     *  `createScreenCaptureIntent()` only ever projects the default display,
+     *  so capture, OCR, and overlays under this backend all stay on it — there
+     *  is no API to mirror a secondary display. */
+    val projectedDisplayId: Int = Display.DEFAULT_DISPLAY
 
     /** Observers notified right after a teardown drops the held consent. The
      *  Settings sheet registers one to refresh its Turn On/Off buttons —
@@ -91,14 +98,14 @@ class MediaProjectionController(private val service: CaptureService) {
     }
 
     /**
-     * Capture one clean frame of the projected display at its native
-     * resolution. Lazily establishes consent + projection + virtual display.
-     * Returns null on denied consent or any failure. Call on the main thread —
-     * the heavy pixel copy is moved off it internally.
+     * Capture one clean frame of the projected display ([projectedDisplayId])
+     * at its native resolution. Lazily establishes consent + projection +
+     * virtual display. Returns null on denied consent or any failure. Call on
+     * the main thread — the heavy pixel copy is moved off it internally.
      */
-    suspend fun captureFrame(displayId: Int): Bitmap? {
+    suspend fun captureFrame(): Bitmap? {
         if (!ensureProjection()) return null
-        val (w, h) = nativeSize(displayId) ?: return null
+        val (w, h) = nativeSize(projectedDisplayId) ?: return null
         val reader = ensureVirtualDisplay(w, h) ?: return null
         return acquireBitmap(reader, w, h)
     }

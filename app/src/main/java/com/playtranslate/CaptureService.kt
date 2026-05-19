@@ -145,11 +145,19 @@ class CaptureService : Service() {
      * falls back to the first id in [gameDisplayIds] (insertion order
      * is stable thanks to LinkedHashSet); finally [Display.DEFAULT_DISPLAY]
      * if the set is empty.
+     *
+     * On the MediaProjection backend this is always [Display.DEFAULT_DISPLAY] —
+     * MediaProjection can only mirror that display, so it is the only one the
+     * app can capture, OCR, or overlay there.
      */
-    fun primaryGameDisplayId(): Int =
-        lastInteractedDisplayId
+    fun primaryGameDisplayId(): Int {
+        if (!CaptureBackendResolver.active().requiresAccessibilityService) {
+            return android.view.Display.DEFAULT_DISPLAY
+        }
+        return lastInteractedDisplayId
             ?: gameDisplayIds.firstOrNull()
             ?: android.view.Display.DEFAULT_DISPLAY
+    }
     /** Always returns the current source-language translation code from Prefs.
      *  Single source of truth for the language pair — callers don't need to
      *  notify the service when prefs change; [ensureLanguageManagersFor]
@@ -950,16 +958,22 @@ class CaptureService : Service() {
         val prefs = Prefs(this)
         val flavor = desiredFlavor(prefs)
 
-        // IN_APP_ONLY is single-display by design; the MediaProjection backend
-        // mirrors a single display so it is too. Collapse the target so callers
-        // don't have to know about either rule, preferring the primary display
-        // for a deterministic pick (target is a Set — first() is order-dependent).
-        val singleDisplay = flavor == OverlayFlavor.IN_APP_ONLY ||
-            !CaptureBackendResolver.active().requiresAccessibilityService
-        val actualTarget = if (singleDisplay && target.isNotEmpty()) {
-            val primary = primaryGameDisplayId()
-            setOf(if (primary in target) primary else target.first())
-        } else target
+        // The MediaProjection backend can only mirror the default display, so
+        // its live target is pinned there — capturing any other display is
+        // impossible (see MediaProjectionController.projectedDisplayId). If the
+        // default display isn't a live target, MediaProjection runs no live
+        // mode rather than silently capturing the wrong screen.
+        // IN_APP_ONLY is single-display by design — collapse to the primary
+        // (target is a Set, so first() is order-dependent; prefer the primary).
+        val actualTarget = when {
+            !CaptureBackendResolver.active().requiresAccessibilityService ->
+                target intersect setOf(android.view.Display.DEFAULT_DISPLAY)
+            flavor == OverlayFlavor.IN_APP_ONLY && target.isNotEmpty() -> {
+                val primary = primaryGameDisplayId()
+                setOf(if (primary in target) primary else target.first())
+            }
+            else -> target
+        }
 
         // Snapshot — diff sets are computed against an immutable copy so
         // subsequent mutation of [liveModes] can't perturb them.
