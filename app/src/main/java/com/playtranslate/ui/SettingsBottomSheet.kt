@@ -53,6 +53,14 @@ class SettingsBottomSheet : DialogFragment() {
     private var displayListener: DisplayManager.DisplayListener? = null
     private var lastDisplayIds: Set<Int> = emptySet()
 
+    /** The live MediaProjection session this sheet holds a teardown listener
+     *  on while resumed (kept so onPause unregisters from the same one).
+     *  MediaProjection "active" is held consent, not a pref the
+     *  SharedPreferences listener observes — so the Start/Stop buttons are
+     *  refreshed from this teardown callback instead. */
+    private var teardownController: com.playtranslate.capture.MediaProjectionController? = null
+    private val onProjectionTeardown: () -> Unit = { renderer?.refreshOverlayIconSwitch() }
+
     private val requestAnkiPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -103,6 +111,13 @@ class SettingsBottomSheet : DialogFragment() {
 
     override fun onResume() {
         super.onResume()
+        // Observe MediaProjection teardown so the Start/Stop buttons refresh
+        // when capture is stopped from outside Settings (e.g. the floating-
+        // icon menu's "Stop"). Released again in onPause.
+        teardownController =
+            com.playtranslate.CaptureService.instance?.mediaProjectionController?.also {
+                it.addTeardownListener(onProjectionTeardown)
+            }
         renderer?.startCaptureButtonShimmer()
         renderer?.refreshAnkiSection()
         renderer?.refreshOverlayIconSwitch()
@@ -189,6 +204,8 @@ class SettingsBottomSheet : DialogFragment() {
 
     override fun onPause() {
         super.onPause()
+        teardownController?.removeTeardownListener(onProjectionTeardown)
+        teardownController = null
         renderer?.stopCaptureButtonShimmer()
         val ctx = context ?: return
         val sp = ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)

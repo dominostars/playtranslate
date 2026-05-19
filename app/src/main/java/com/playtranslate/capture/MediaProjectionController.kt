@@ -58,6 +58,14 @@ class MediaProjectionController(private val service: CaptureService) {
     /** True once the user has granted a token still valid for this process. */
     val hasConsent: Boolean get() = resultData != null
 
+    /** Observers notified right after a teardown drops the held consent. The
+     *  Settings sheet registers one to refresh its Start/Stop buttons —
+     *  MediaProjection "active" is held consent, not a pref it could watch. */
+    private val teardownListeners = mutableListOf<() -> Unit>()
+
+    fun addTeardownListener(listener: () -> Unit) { teardownListeners += listener }
+    fun removeTeardownListener(listener: () -> Unit) { teardownListeners -= listener }
+
     /** Delivered by [MediaProjectionConsentActivity]. Completes any pending
      *  [consentGate] so suspended [captureFrame] calls resume. */
     fun onConsentResult(resultCode: Int, data: Intent?) {
@@ -212,6 +220,7 @@ class MediaProjectionController(private val service: CaptureService) {
     }
 
     private fun teardown() {
+        val hadConsent = resultData != null
         virtualDisplay?.release()
         virtualDisplay = null
         imageReader?.close()
@@ -224,6 +233,10 @@ class MediaProjectionController(private val service: CaptureService) {
         // next capture must re-prompt for consent.
         resultCode = Activity.RESULT_CANCELED
         resultData = null
+        // Notify observers once consent is actually gone (resultData cleared),
+        // so a listener that re-reads hasConsent sees false. Snapshot the list
+        // — a listener may unregister itself as it runs.
+        if (hadConsent) teardownListeners.toList().forEach { it() }
     }
 
     /** The projection was stopped by the system or the user (a revoke / sleep
