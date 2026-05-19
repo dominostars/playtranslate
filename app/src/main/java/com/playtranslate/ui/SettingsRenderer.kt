@@ -11,6 +11,8 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.text.Editable
 import android.text.SpannableStringBuilder
@@ -182,7 +184,9 @@ class SettingsRenderer(
     private val overlayIconPreviewSlot: FrameLayout = rowOverlayIcon.findViewById(R.id.overlayIconPreviewSlot)
     private var overlayIconPreview: FloatingOverlayIcon? = null
 
-    private val btnCaptureLifecycle: MaterialButton = root.findViewById(R.id.btnCaptureLifecycle)
+    private val btnCaptureLifecycle: ShimmerButton = root.findViewById(R.id.btnCaptureLifecycle)
+    private val btnCaptureLifecycleLarge: ShimmerButton =
+        root.findViewById(R.id.btnCaptureLifecycleLarge)
 
     private val rowCompactIcon: View = root.findViewById(R.id.rowCompactIcon)
     private val switchCompactIcon: MaterialSwitch = rowCompactIcon.findViewById(R.id.switchRowToggle)
@@ -555,7 +559,7 @@ class SettingsRenderer(
     // ── Start / Stop PlayTranslate ───────────────────────────────────────
 
     private fun setupCaptureLifecycleButton() {
-        btnCaptureLifecycle.setOnClickListener {
+        val onClick = View.OnClickListener {
             when {
                 CaptureLifecycle.isActive(ctx) -> {
                     CaptureLifecycle.deactivate(ctx)
@@ -564,7 +568,7 @@ class SettingsRenderer(
                 }
                 !CaptureBackendResolver.active().requiresAccessibilityService ->
                     // MediaProjection — the consent flow is Activity-scoped;
-                    // the callback refreshes this button once it settles.
+                    // the callback refreshes the buttons once it settles.
                     callbacks.requestMediaProjectionControls()
                 CaptureLifecycle.activateAccessibility(ctx) -> {
                     refreshCaptureLifecycleButton()
@@ -573,39 +577,98 @@ class SettingsRenderer(
                 else -> showOverlayIconA11yAlert()
             }
         }
+        btnCaptureLifecycle.setOnClickListener(onClick)
+        btnCaptureLifecycleLarge.setOnClickListener(onClick)
+
+        // The big in-content button cross-fades into the nav-bar button as
+        // the user scrolls: the big one rides the scroll up while shrinking
+        // and fading out, the nav-bar one fades in.
+        settingsScrollView.setOnScrollChangeListener(
+            androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
+                updateCaptureButtonCrossfade(scrollY)
+            }
+        )
         refreshCaptureLifecycleButton()
     }
 
-    /** Show / hide + style the Start / Stop button against the current
-     *  [CaptureLifecycle] state. Hidden on the accessibility backend in
-     *  dual-screen, where "active" is always true. */
+    /** Show / hide + style both Start / Stop buttons — the big in-content one
+     *  and the nav-bar one — against the current [CaptureLifecycle] state.
+     *  Both are hidden on the accessibility backend in dual-screen, where
+     *  "active" is always true and there is nothing to start. */
     fun refreshCaptureLifecycleButton() {
-        if (!CaptureLifecycle.hasActivateControl(ctx)) {
-            btnCaptureLifecycle.visibility = View.GONE
-            return
-        }
-        btnCaptureLifecycle.visibility = View.VISIBLE
+        val visibility =
+            if (CaptureLifecycle.hasActivateControl(ctx)) View.VISIBLE else View.GONE
+        btnCaptureLifecycle.visibility = visibility
+        btnCaptureLifecycleLarge.visibility = visibility
+        if (visibility != View.VISIBLE) return
         val active = CaptureLifecycle.isActive(ctx)
-        btnCaptureLifecycle.setText(
+        styleCaptureButton(btnCaptureLifecycle, active)
+        styleCaptureButton(btnCaptureLifecycleLarge, active)
+        // A refresh can land while the list is already scrolled — re-apply
+        // the cross-fade for the current offset.
+        updateCaptureButtonCrossfade(settingsScrollView.scrollY)
+    }
+
+    /** Filled-accent ("Start") / outlined ("Stop") styling for one button. */
+    private fun styleCaptureButton(btn: MaterialButton, active: Boolean) {
+        btn.setText(
             if (active) R.string.capture_lifecycle_stop
             else R.string.capture_lifecycle_start
         )
         if (active) {
             // Outlined — the system is running.
-            btnCaptureLifecycle.backgroundTintList =
-                ColorStateList.valueOf(Color.TRANSPARENT)
-            btnCaptureLifecycle.setTextColor(ctx.themeColor(R.attr.ptText))
-            btnCaptureLifecycle.strokeColor =
-                ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextMuted))
-            btnCaptureLifecycle.strokeWidth =
-                (1 * ctx.resources.displayMetrics.density).toInt()
+            btn.backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
+            btn.setTextColor(ctx.themeColor(R.attr.ptText))
+            btn.iconTint = ColorStateList.valueOf(ctx.themeColor(R.attr.ptText))
+            btn.strokeColor = ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextMuted))
+            btn.strokeWidth = (1 * ctx.resources.displayMetrics.density).toInt()
         } else {
             // Filled accent — the prominent call to action.
-            btnCaptureLifecycle.backgroundTintList =
-                ColorStateList.valueOf(ctx.themeColor(R.attr.ptAccent))
-            btnCaptureLifecycle.setTextColor(ctx.themeColor(R.attr.ptAccentOn))
-            btnCaptureLifecycle.strokeWidth = 0
+            btn.backgroundTintList = ColorStateList.valueOf(ctx.themeColor(R.attr.ptAccent))
+            btn.setTextColor(ctx.themeColor(R.attr.ptAccentOn))
+            btn.iconTint = ColorStateList.valueOf(ctx.themeColor(R.attr.ptAccentOn))
+            btn.strokeWidth = 0
         }
+    }
+
+    /** Cross-fade the big in-content button and the nav-bar button from
+     *  scroll position: fraction 0 (top) shows only the big button, 1 only
+     *  the nav-bar one. The big one also shrinks slightly as it goes. */
+    private fun updateCaptureButtonCrossfade(scrollY: Int) {
+        val distance = 72f * ctx.resources.displayMetrics.density
+        val t = (scrollY / distance).coerceIn(0f, 1f)
+        btnCaptureLifecycleLarge.alpha = 1f - t
+        val scale = 1f - 0.12f * t
+        btnCaptureLifecycleLarge.scaleX = scale
+        btnCaptureLifecycleLarge.scaleY = scale
+        btnCaptureLifecycle.alpha = t
+    }
+
+    // ── Start/Stop attention shimmer ─────────────────────────────────────
+    // A brief light sweep every few seconds draws the eye to the control,
+    // whichever form is currently on screen. Started / stopped with the
+    // settings screen's resume / pause (see SettingsBottomSheet).
+
+    private val shimmerHandler = Handler(Looper.getMainLooper())
+    private val shimmerRunnable = object : Runnable {
+        override fun run() {
+            if (CaptureLifecycle.hasActivateControl(ctx)) {
+                btnCaptureLifecycle.shimmer()
+                btnCaptureLifecycleLarge.shimmer()
+            }
+            shimmerHandler.postDelayed(this, 5_000L)
+        }
+    }
+
+    /** Begin the periodic attention shimmer on the Start / Stop control. */
+    fun startCaptureButtonShimmer() {
+        shimmerHandler.removeCallbacks(shimmerRunnable)
+        shimmerHandler.postDelayed(shimmerRunnable, 5_000L)
+    }
+
+    /** Stop the periodic shimmer — call when the settings screen pauses. */
+    fun stopCaptureButtonShimmer() {
+        shimmerHandler.removeCallbacks(shimmerRunnable)
     }
 
     /** The accessibility-required dialog for the floating icon — shared by the

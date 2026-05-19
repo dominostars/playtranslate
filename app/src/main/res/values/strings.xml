@@ -141,8 +141,8 @@
     <string name="settings_show_overlay_icon">Game screen controls</string>
 
     <!-- Start / Stop PlayTranslate button (capture lifecycle) -->
-    <string name="capture_lifecycle_start">Start PlayTranslate</string>
-    <string name="capture_lifecycle_stop">Stop PlayTranslate</string>
+    <string name="capture_lifecycle_start">Start</string>
+    <string name="capture_lifecycle_stop">Stop</string>
 
     <!-- MediaProjection floating-controls overlay permission -->
     <string name="mp_overlay_permission_title">Display over other apps</string>

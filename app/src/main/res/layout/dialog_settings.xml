@@ -6,22 +6,24 @@
     android:layout_height="match_parent"
     android:background="?attr/ptBg">
 
-    <!-- Toolbar (shown only in dialog mode).
-         liftOnScroll replaces the old static divider: a subtle surface-tint
-         shadow appears when content scrolls under the toolbar. -->
+    <!-- Toolbar. The AppBarLayout stays present; visibility is driven by
+         toggling the inner MaterialToolbar (settingsToolbarInner) — setting
+         the AppBarLayout itself GONE leaves the CoordinatorLayout's scroll
+         child offset by the toolbar's stale measured height. liftOnScroll
+         adds a surface-tint shadow when content scrolls under it. -->
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/settingsToolbar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="?attr/ptBg"
         app:liftOnScroll="true"
-        app:liftOnScrollTargetViewId="@id/settingsScrollView"
-        android:visibility="gone">
+        app:liftOnScrollTargetViewId="@id/settingsScrollView">
 
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/settingsToolbarInner"
             android:layout_width="match_parent"
             android:layout_height="56dp"
+            android:visibility="gone"
             app:titleTextColor="?attr/ptText">
 
             <TextView
@@ -46,6 +48,29 @@
                 android:minHeight="0dp"
                 android:padding="0dp" />
 
+            <com.playtranslate.ui.ShimmerButton
+                android:id="@+id/btnCaptureLifecycle"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_gravity="end|center_vertical"
+                android:layout_marginEnd="8dp"
+                android:textAllCaps="false"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="14dp"
+                app:icon="@drawable/ic_mode_off_on"
+                app:iconSize="20dp"
+                app:iconPadding="4dp"
+                app:iconGravity="textStart"
+                app:cornerRadius="@dimen/pt_radius"
+                android:visibility="gone" />
+
         </com.google.android.material.appbar.MaterialToolbar>
     </com.google.android.material.appbar.AppBarLayout>
 
@@ -64,17 +89,23 @@
             android:paddingTop="4dp"
             android:paddingBottom="20dp">
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnCaptureLifecycle"
+            <!-- Start / Stop control, big form. Cross-fades into the nav-bar
+                 ShimmerButton as the user scrolls (see SettingsRenderer). -->
+            <com.playtranslate.ui.ShimmerButton
+                android:id="@+id/btnCaptureLifecycleLarge"
                 style="@style/Widget.Material3.Button.OutlinedButton"
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
                 android:layout_marginTop="8dp"
                 android:layout_marginBottom="4dp"
                 android:textAllCaps="false"
-                android:textSize="15sp"
+                android:textSize="16sp"
+                android:textStyle="bold"
                 android:insetTop="0dp"
                 android:insetBottom="0dp"
+                app:icon="@drawable/ic_mode_off_on"
+                app:iconSize="20dp"
+                app:iconGravity="textStart"
                 app:cornerRadius="@dimen/pt_radius"
                 android:visibility="gone" />
 

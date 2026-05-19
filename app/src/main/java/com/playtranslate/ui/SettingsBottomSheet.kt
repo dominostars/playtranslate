@@ -103,8 +103,13 @@ class SettingsBottomSheet : DialogFragment() {
 
     override fun onResume() {
         super.onResume()
+        renderer?.startCaptureButtonShimmer()
         renderer?.refreshAnkiSection()
         renderer?.refreshOverlayIconSwitch()
+        // The toolbar hosts the Start/Stop button on the MediaProjection
+        // backend — re-check its visibility in case the accessibility grant
+        // changed while we were away (same catch-up reason as the rows here).
+        view?.let { refreshToolbarVisibility(it) }
         // Display picker locks to the first display while the a11y service is
         // off (see SettingsRenderer.buildDisplayRow); rebuild on resume so it
         // unlocks the moment the user returns from Accessibility Settings.
@@ -184,6 +189,7 @@ class SettingsBottomSheet : DialogFragment() {
 
     override fun onPause() {
         super.onPause()
+        renderer?.stopCaptureButtonShimmer()
         val ctx = context ?: return
         val sp = ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
         prefsListener?.let { sp.unregisterOnSharedPreferenceChangeListener(it) }
@@ -192,22 +198,39 @@ class SettingsBottomSheet : DialogFragment() {
 
     // ── View setup ──────────────────────────────────────────────────────
 
+    /** Show the toolbar in dialog mode (single-screen), and in inline mode
+     *  (dual-screen) only when the accessibility service is off — the
+     *  MediaProjection backend then needs the Start/Stop control the toolbar
+     *  hosts. With accessibility on, dual-screen capture is always running, so
+     *  there is nothing to start. Re-checked on resume since the grant can
+     *  change while the user is away in system settings.
+     *
+     *  Toggles the inner MaterialToolbar, not the AppBarLayout: a GONE
+     *  AppBarLayout keeps its stale measured height, so the CoordinatorLayout
+     *  leaves the scroll child offset by a phantom toolbar until the view is
+     *  rebuilt. The AppBarLayout (wrap_content) collapses to 0 on its own once
+     *  its only child is hidden. */
+    private fun refreshToolbarVisibility(root: View) {
+        val show = showsDialog ||
+            !PlayTranslateAccessibilityService.isEnabled(requireContext())
+        root.findViewById<View>(R.id.settingsToolbarInner).visibility =
+            if (show) View.VISIBLE else View.GONE
+    }
+
     private fun setupViews(view: View) {
         val hideDismiss = arguments?.getBoolean(ARG_HIDE_DISMISS, false) ?: false
         val isDialog = showsDialog
         val prefs = Prefs(requireContext())
 
-        // Toolbar (dialog mode only). Dialog mode is only entered from the
-        // single-screen onboarding/main path (MainActivity.checkOnboardingState),
-        // so the toolbar appears only in single-screen mode and the title is
-        // the app name. Dual-screen flows use inline mode where the toolbar
-        // stays GONE per its XML default.
-        if (isDialog) {
-            view.findViewById<View>(R.id.settingsToolbar).visibility = View.VISIBLE
-            view.findViewById<android.widget.TextView>(R.id.tvSettingsTitle)
-                .text = getString(R.string.app_name)
-            val closeBtn = view.findViewById<View>(R.id.btnCloseSettings)
-            if (hideDismiss) {
+        // Toolbar contents — mode-constant, configured once here. The title is
+        // always the app name; the close button only makes sense in dialog
+        // mode (inline mode is embedded in MainActivity, nothing to dismiss).
+        view.findViewById<android.widget.TextView>(R.id.tvSettingsTitle)
+            .text = getString(R.string.app_name)
+        val closeBtn = view.findViewById<View>(R.id.btnCloseSettings)
+        when {
+            !isDialog -> closeBtn.visibility = View.GONE
+            hideDismiss -> {
                 closeBtn.visibility = View.GONE
                 dialog?.setOnKeyListener { _, keyCode, event ->
                     if (keyCode == android.view.KeyEvent.KEYCODE_BACK &&
@@ -216,10 +239,10 @@ class SettingsBottomSheet : DialogFragment() {
                         true
                     } else false
                 }
-            } else {
-                closeBtn.setOnClickListener { dismiss() }
             }
+            else -> closeBtn.setOnClickListener { dismiss() }
         }
+        refreshToolbarVisibility(view)
 
         // Scroll position restore after theme change
         val settingsScrollView = view.findViewById<NestedScrollView>(R.id.settingsScrollView)
