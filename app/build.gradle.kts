@@ -17,8 +17,8 @@ android {
         applicationId = "com.playtranslate"
         minSdk = 30
         targetSdk = 34
-        versionCode = 7
-        versionName = "2.1.0"
+        versionCode = 8
+        versionName = "2.1.0-hotfix1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
