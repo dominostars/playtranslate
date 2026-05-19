@@ -26,4 +26,13 @@ object AccessibilityCaptureBackend : CaptureBackend {
     override val supportsLiveMode: Boolean get() = true
 
     override val requiresAccessibilityService: Boolean get() = true
+
+    override fun startInputMonitoring(displayId: Int, onGameInput: () -> Unit) {
+        PlayTranslateAccessibilityService.instance
+            ?.startInputMonitoring(displayId, onGameInput)
+    }
+
+    override fun stopInputMonitoring(displayId: Int) {
+        PlayTranslateAccessibilityService.instance?.stopInputMonitoring(displayId)
+    }
 }

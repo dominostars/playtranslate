@@ -34,14 +34,9 @@ import kotlin.coroutines.resume
  */
 /**
  * @param service the enclosing capture service (for state access and coordinator calls)
- * @param a11y the accessibility service instance, or null under the MediaProjection
- *   backend (which has no accessibility service). Used only for input monitoring,
- *   which has no MediaProjection equivalent and degrades to a no-op when null.
- *   Capture is routed through [CaptureBackendResolver], not through `a11y`.
  */
 class PinholeOverlayMode(
     private val service: CaptureService,
-    private val a11y: PlayTranslateAccessibilityService?,
     private val displayId: Int,
 ) : LiveMode {
 
@@ -80,7 +75,7 @@ class PinholeOverlayMode(
 
     override fun start() {
         currentJob?.cancel()
-        a11y?.startInputMonitoring(displayId) { dismiss() }
+        CaptureBackendResolver.active().startInputMonitoring(displayId) { dismiss() }
         scheduleNextCycle()
     }
 
@@ -108,7 +103,7 @@ class PinholeOverlayMode(
         scope.cancel()
         resetState()
 
-        a11y?.stopInputMonitoring(displayId)
+        CaptureBackendResolver.active().stopInputMonitoring(displayId)
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
     }
 

@@ -38,7 +38,18 @@ interface CaptureBackend {
     val supportsLiveMode: Boolean
 
     /** Whether this backend depends on the accessibility service being
-     *  connected. The MediaProjection backend does not — its live modes
-     *  degrade input monitoring to a no-op rather than requiring the service. */
+     *  connected. The MediaProjection backend does not — it watches
+     *  outside-touch through its overlay host, forgoing only key-event
+     *  monitoring (which would need the service). */
     val requiresAccessibilityService: Boolean
+
+    /**
+     * Watch for user interaction with the game screen on [displayId], running
+     * [onGameInput] on each event. The accessibility backend reports gamepad
+     * keys and outside-touch; MediaProjection reports outside-touch only.
+     */
+    fun startInputMonitoring(displayId: Int, onGameInput: () -> Unit)
+
+    /** Stop the [startInputMonitoring] watch for [displayId]. */
+    fun stopInputMonitoring(displayId: Int)
 }

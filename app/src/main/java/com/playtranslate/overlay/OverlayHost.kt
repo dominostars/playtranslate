@@ -1,9 +1,12 @@
 package com.playtranslate.overlay
 
+import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.PixelFormat
 import android.graphics.Point
 import android.hardware.display.DisplayManager
 import android.util.Log
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import androidx.core.view.doOnLayout
@@ -40,6 +43,9 @@ class OverlayHost(
     )
 
     private val overlayWindows = mutableListOf<OverlayHandle>()
+
+    /** Per-display 1×1 touch sentinels — see [addTouchSentinel]. */
+    private val touchSentinels = mutableMapOf<Int, View>()
 
     /** Opaque snapshot returned by [prepareForCleanCapture]. */
     class OverlayState internal constructor(
@@ -125,6 +131,51 @@ class OverlayHost(
     }
 
     /**
+     * Add a 1×1 transparent watcher window on [displayId]. With
+     * FLAG_WATCH_OUTSIDE_TOUCH it receives an ACTION_OUTSIDE — running
+     * [onOutsideTouch] — for every touch elsewhere on the display, without
+     * consuming the event, so the game still gets normal input. The window
+     * carries [windowType], so this works on either backend. Idempotent per
+     * display.
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    fun addTouchSentinel(displayId: Int, onOutsideTouch: () -> Unit) {
+        if (displayId in touchSentinels) return
+        val display = context.getSystemService(DisplayManager::class.java)
+            ?.getDisplay(displayId) ?: return
+        val displayContext = context.createDisplayContext(display)
+        val wm = displayContext.getSystemService(WindowManager::class.java) ?: return
+        val view = View(displayContext)
+        view.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) onOutsideTouch()
+            false
+        }
+        val params = WindowManager.LayoutParams(
+            1, 1,
+            windowType,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+            PixelFormat.TRANSLUCENT,
+        )
+        if (addOverlayWindow(view, wm, params, displayId)) {
+            touchSentinels[displayId] = view
+        }
+    }
+
+    /** Remove [displayId]'s touch sentinel, if one is registered. */
+    fun removeTouchSentinel(displayId: Int) {
+        val view = touchSentinels.remove(displayId) ?: return
+        removeOverlayWindow(view)
+    }
+
+    /** Remove every touch sentinel — e.g. when live mode stops entirely. */
+    fun removeAllTouchSentinels() {
+        for (view in touchSentinels.values.toList()) removeOverlayWindow(view)
+        touchSentinels.clear()
+    }
+
+    /**
      * Hide every registered overlay on [displayId] so it doesn't appear in a
      * screenshot of that display. Overlays on other displays are left alone —
      * blanking them would flicker every cycle when N displays are captured in
@@ -171,6 +222,7 @@ class OverlayHost(
     fun removeAll() {
         val handles = overlayWindows.toList()
         overlayWindows.clear()
+        touchSentinels.clear()
         for (h in handles) {
             try { h.wm.removeView(h.view) } catch (_: Exception) {}
         }

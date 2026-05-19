@@ -18,7 +18,6 @@ import android.view.Display
 import android.view.Gravity
 import android.view.InputDevice
 import android.view.KeyEvent
-import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
@@ -64,12 +63,6 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
     private var debugOverlayView: OcrDebugOverlayView? = null
     private var debugOverlayWm: WindowManager? = null
-    /** Per-display touch sentinels. With multiple selected displays each
-     *  hosting a floating icon, each display needs its own sentinel — the
-     *  pre-P5 single-instance setup left only the first display's touches
-     *  detectable, so a touch on display B never reached
-     *  [lastInteractedDisplayId] tracking and B's hotkey routing was broken. */
-    private val touchSentinels: MutableMap<Int, View> = mutableMapOf()
     private val debugOcrManager get() = OcrManager.instance
     private val debugHandler = Handler(Looper.getMainLooper())
     private var debugRunning = false
@@ -383,7 +376,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      *  resets when the last listener goes away. */
     fun stopInputMonitoring(displayId: Int) {
         onGameInputs.remove(displayId)
-        removeTouchSentinelForDisplay(displayId)
+        overlayHost.removeTouchSentinel(displayId)
         if (onGameInputs.isEmpty()) {
             heldKeyCodes.clear()
             touchActive = false
@@ -397,67 +390,29 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         heldKeyCodes.clear()
         touchActive = false
         debugHandler.removeCallbacks(touchTimeoutRunnable)
-        removeTouchSentinel()
+        overlayHost.removeAllTouchSentinels()
     }
 
     // ── Touch sentinel ──────────────────────────────────────────────────
 
     /**
-     * A 1×1 transparent overlay on the game display. With FLAG_WATCH_OUTSIDE_TOUCH
-     * every touch elsewhere on the screen delivers ACTION_OUTSIDE without consuming
-     * the event, so the game still receives normal input.
+     * Host a touch sentinel for [displayId] — see [OverlayHost.addTouchSentinel].
+     * Its ACTION_OUTSIDE marks touch active, records the interacted display for
+     * hotkey routing, and dispatches to that display's input listener.
      */
-    @android.annotation.SuppressLint("ClickableViewAccessibility")
     private fun addTouchSentinel(displayId: Int) {
-        if (displayId in touchSentinels) return
-        val dm = getSystemService(DisplayManager::class.java)
-        val display = dm.getDisplay(displayId) ?: return
-        val ctx = createDisplayContext(display)
-        val wm = ctx.getSystemService(WindowManager::class.java) ?: return
-        val view = View(ctx).apply {
-            setOnTouchListener { _, event ->
-                if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) {
-                    // Mark touch as active. We can't detect touch-up from
-                    // the sentinel, so use a timeout to assume lift.
-                    touchActive = true
-                    // Track which display the user just touched so hotkey
-                    // routing lands on the right place (P5).
-                    CaptureService.instance?.lastInteractedDisplayId = displayId
-                    debugHandler.removeCallbacks(touchTimeoutRunnable)
-                    debugHandler.postDelayed(touchTimeoutRunnable, TOUCH_HOLD_TIMEOUT_MS)
-                    // Display-bound dispatch — only the touched display's
-                    // overlay should be invalidated. Other displays' overlays
-                    // stay put; their own scene-change detection covers any
-                    // independent updates.
-                    fireOnGameInputForDisplay(displayId)
-                }
-                false
-            }
+        overlayHost.addTouchSentinel(displayId) {
+            // We can't see touch-up from the sentinel, so a timeout assumes lift.
+            touchActive = true
+            // Track which display the user touched so hotkey routing lands on
+            // the right place (P5).
+            CaptureService.instance?.lastInteractedDisplayId = displayId
+            debugHandler.removeCallbacks(touchTimeoutRunnable)
+            debugHandler.postDelayed(touchTimeoutRunnable, TOUCH_HOLD_TIMEOUT_MS)
+            // Display-bound dispatch — only the touched display's overlay is
+            // invalidated; other displays keep their own scene detection.
+            fireOnGameInputForDisplay(displayId)
         }
-        val params = WindowManager.LayoutParams(
-            1, 1,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
-            PixelFormat.TRANSLUCENT
-        )
-        if (addOverlayWindow(view, wm, params, displayId)) {
-            touchSentinels[displayId] = view
-        }
-    }
-
-    /** Remove a single display's touch sentinel. */
-    private fun removeTouchSentinelForDisplay(displayId: Int) {
-        val view = touchSentinels.remove(displayId) ?: return
-        removeOverlayWindow(view)
-    }
-
-    /** Remove every touch sentinel. */
-    private fun removeTouchSentinel() {
-        if (touchSentinels.isEmpty()) return
-        val ids = touchSentinels.keys.toList()
-        for (id in ids) removeTouchSentinelForDisplay(id)
     }
 
 

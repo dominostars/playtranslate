@@ -24,4 +24,12 @@ object MediaProjectionCaptureBackend : CaptureBackend {
     override val supportsLiveMode: Boolean get() = true
 
     override val requiresAccessibilityService: Boolean get() = false
+
+    override fun startInputMonitoring(displayId: Int, onGameInput: () -> Unit) {
+        overlayHost?.addTouchSentinel(displayId, onGameInput)
+    }
+
+    override fun stopInputMonitoring(displayId: Int) {
+        overlayHost?.removeTouchSentinel(displayId)
+    }
 }

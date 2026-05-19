@@ -975,9 +975,9 @@ class CaptureService : Service() {
 
         // Construct new instances first so a missing-prerequisite failure
         // aborts before we tear down the existing modes. The overlay flavors
-        // need the accessibility service ONLY on the accessibility backend —
-        // under MediaProjection they construct with a null a11y and route
-        // capture through CaptureBackendResolver. InAppOnly never needs it.
+        // need the accessibility service ONLY on the accessibility backend,
+        // where they capture through it; under MediaProjection capture routes
+        // through CaptureBackendResolver. InAppOnly never needs it.
         val a11y = PlayTranslateAccessibilityService.instance
         val needsA11y = flavor != OverlayFlavor.IN_APP_ONLY &&
             CaptureBackendResolver.active().requiresAccessibilityService &&
@@ -990,8 +990,8 @@ class CaptureService : Service() {
         val newInstances: Map<Int, LiveMode> = (toAdd + toRebuild).associateWith { id ->
             when (flavor) {
                 OverlayFlavor.IN_APP_ONLY -> InAppOnlyMode(this, id)
-                OverlayFlavor.FURIGANA -> FuriganaMode(this, a11y, id)
-                OverlayFlavor.TRANSLATION -> PinholeOverlayMode(this, a11y, id)
+                OverlayFlavor.FURIGANA -> FuriganaMode(this, id)
+                OverlayFlavor.TRANSLATION -> PinholeOverlayMode(this, id)
             }
         }
 

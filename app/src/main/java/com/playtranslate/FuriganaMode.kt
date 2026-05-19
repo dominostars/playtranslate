@@ -41,14 +41,9 @@ private const val STALE_REF_REFRESH_FRAMES = 20
  */
 /**
  * @param service the enclosing capture service (for state access and coordinator calls)
- * @param a11y the accessibility service instance, or null under the MediaProjection
- *   backend (which has no accessibility service). Used only for input monitoring,
- *   which has no MediaProjection equivalent and degrades to a no-op when null.
- *   Capture is routed through [CaptureBackendResolver], not through `a11y`.
  */
 class FuriganaMode(
     private val service: CaptureService,
-    private val a11y: PlayTranslateAccessibilityService?,
     private val displayId: Int,
 ) : LiveMode {
 
@@ -98,7 +93,7 @@ class FuriganaMode(
             DetectionLog.log("ERROR: no live capture source, can't start furigana loop")
             return
         }
-        a11y?.startInputMonitoring(displayId) { dismiss() }
+        CaptureBackendResolver.active().startInputMonitoring(displayId) { dismiss() }
         DetectionLog.log("Starting furigana loop on display $displayId")
         startLoop(source)
     }
@@ -109,7 +104,7 @@ class FuriganaMode(
         restartJob?.cancel()
         clearState()
         scope.cancel()
-        a11y?.stopInputMonitoring(displayId)
+        CaptureBackendResolver.active().stopInputMonitoring(displayId)
         CaptureBackendResolver.activeLiveCaptureSource?.stopLoop(displayId)
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
     }
