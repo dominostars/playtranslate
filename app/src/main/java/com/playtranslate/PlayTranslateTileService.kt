@@ -91,10 +91,8 @@ class PlayTranslateTileService : TileService() {
     /** Open the system "Display over other apps" screen for PlayTranslate and
      *  collapse the shade. The MediaProjection floating controls need it. */
     private fun openOverlayPermissionSettings() {
-        val intent = Intent(
-            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-            android.net.Uri.parse("package:$packageName"),
-        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val intent = overlayPermissionSettingsIntent()
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (Build.VERSION.SDK_INT >= 34) {
             startActivityAndCollapse(
                 PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)

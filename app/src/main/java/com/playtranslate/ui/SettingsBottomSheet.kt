@@ -21,9 +21,11 @@ import kotlinx.coroutines.withContext
 import com.playtranslate.Prefs
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.capturableDisplays
+import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
 import com.playtranslate.fullScreenDialogTheme
+import com.playtranslate.overlayPermissionSettingsIntent
 import com.playtranslate.themeColor
 import kotlinx.coroutines.launch
 
@@ -456,11 +458,23 @@ class SettingsBottomSheet : DialogFragment() {
         }
         displayManager.registerDisplayListener(displayListener, null)
 
-        // Capture thumbnails asynchronously
+        // Capture thumbnails asynchronously. On the MediaProjection backend
+        // captureSource.requestClean() lazily launches the screen-record
+        // consent dialog, so the backend source is used only when capturing
+        // won't prompt; otherwise the own-display activity thumbnail is used,
+        // as on the null-source path below.
         val myDisplayId = requireActivity().display?.displayId ?: android.view.Display.DEFAULT_DISPLAY
+        val backend = CaptureBackendResolver.active()
+        val mgr = backend.captureSource?.takeIf { backend.canCaptureWithoutPrompting }
+        // Only the displays the backend can actually capture get a backend
+        // thumbnail — MediaProjection mirrors just the default display, so a
+        // requestClean for any other display would return the default
+        // display's pixels under the wrong row. Other rows get no thumbnail.
+        val capturable = backend.capturableDisplays(
+            displays.mapTo(mutableSetOf()) { it.displayId }
+        )
         displays.forEach { display ->
-            val mgr = PlayTranslateAccessibilityService.instance?.screenshotManager
-            if (mgr != null) {
+            if (mgr != null && display.displayId in capturable) {
                 viewLifecycleOwner.lifecycleScope.launch {
                     val bitmap = mgr.requestClean(display.displayId)
                     if (bitmap != null) {
@@ -1215,12 +1229,7 @@ class SettingsBottomSheet : DialogFragment() {
                 activity.themeColor(R.attr.ptAccent),
                 activity.themeColor(R.attr.ptAccentOn),
             ) {
-                activity.startActivity(
-                    android.content.Intent(
-                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        android.net.Uri.parse("package:" + activity.packageName),
-                    )
-                )
+                activity.startActivity(activity.overlayPermissionSettingsIntent())
             }
             .addCancelButton(getString(android.R.string.cancel))
             .showInActivity(activity)

@@ -574,8 +574,7 @@ class DragLookupController(
      *  silently, the loop would run to completion, and the assignment at
      *  the end would clobber the next drag's reset. */
     private suspend fun pretokenizeLines(lines: List<OcrManager.OcrLine>) {
-        val service = context
-        val engine = SourceLanguageEngines.get(service, Prefs(service).sourceLangId)
+        val engine = SourceLanguageEngines.get(context, Prefs(context).sourceLangId)
         val cache = mutableMapOf<String, List<LabelToken>>()
 
         // Phase 1: kuromoji-only pass.
@@ -864,7 +863,6 @@ class DragLookupController(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private suspend fun captureAndOcr() {
-        val service = context
         Log.d(TAG, "Taking screenshot for full-screen OCR...")
 
         val bitmap = withTimeoutOrNull(3000L) {
@@ -879,7 +877,7 @@ class DragLookupController(
         onScreenshotCaptured(bitmap, savedPath)
 
         val lines = withContext(Dispatchers.Default) {
-            ocrManager.recogniseWithPositions(bitmap, Prefs(service).sourceLang)
+            ocrManager.recogniseWithPositions(bitmap, Prefs(context).sourceLang)
         }
         if (lines == null) {
             Log.d(TAG, "No text found on screen")
@@ -934,8 +932,7 @@ class DragLookupController(
         val charExtent = lineExtent / lineText.length
 
         // Tokenize the line (surface spans for position mapping, lookup forms for dictionary)
-        val service = context
-        val engine = SourceLanguageEngines.get(service, Prefs(service).sourceLangId)
+        val engine = SourceLanguageEngines.get(context, Prefs(context).sourceLangId)
         val tokenResults = engine.tokenize(lineText)
 
         if (tokenResults.isEmpty()) return null
@@ -973,8 +970,8 @@ class DragLookupController(
         val lookupForm = matchedToken?.lookupForm ?: matchedSurface
 
         // Dictionary lookup using the base/dictionary form + reading hint
-        val prefs = Prefs(service)
-        val targetGlossDb = TargetGlossDatabaseProvider.get(service, prefs.targetLang)
+        val prefs = Prefs(context)
+        val targetGlossDb = TargetGlossDatabaseProvider.get(context, prefs.targetLang)
         val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
         val enToTarget = TranslationManagerProvider.getEnToTarget(prefs.targetLang)
         val resolver = DefinitionResolver(engine, targetGlossDb,
@@ -1260,10 +1257,9 @@ class DragLookupController(
         val cache = LastSentenceCache
         // Skip if the cache already has results for this exact sentence
         if (cache.original == sentence && cache.wordResults != null) return
-        val service = context
         wordLookupJob?.cancel()
         wordLookupJob = scope.launch {
-            val results = LastSentenceCache.lookupWords(service, sentence)
+            val results = LastSentenceCache.lookupWords(context, sentence)
             // Only write cache if this sentence is still current
             if (currentSentence == sentence) {
                 cache.original = sentence
@@ -1275,7 +1271,6 @@ class DragLookupController(
 
     private fun openSentenceInApp() {
         val sentence = currentSentence ?: return
-        val service = context
         // Capture word context BEFORE magnifier.dismiss() — the lens's
         // onDismiss handler nulls lastWord and currentEntry, so any read
         // after dismiss returns null and the intent loses EXTRA_DRAG_WORD,
@@ -1305,7 +1300,7 @@ class DragLookupController(
         // the activity. Lens dismiss → onDismiss → onSettled, which is
         // what the service expects post-drag.
         magnifier.dismiss()
-        val intent = Intent(service, TranslationResultActivity::class.java).apply {
+        val intent = Intent(context, TranslationResultActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
             putExtra(TranslationResultActivity.EXTRA_SENTENCE_TEXT, sentence)
             putExtra(TranslationResultActivity.EXTRA_SCREENSHOT_PATH, screenshotPath)
@@ -1340,9 +1335,9 @@ class DragLookupController(
             val opts = android.app.ActivityOptions.makeBasic()
                 .setLaunchDisplayId(displayId)
                 .toBundle()
-            service.startActivity(intent, opts)
+            context.startActivity(intent, opts)
         } else {
-            service.startActivity(intent)
+            context.startActivity(intent)
         }
     }
 
@@ -1354,11 +1349,10 @@ class DragLookupController(
      * is handled by the activity itself when it opens.
      */
     private fun openAnkiReviewForLens() {
-        val service = context
         val word = lastWord ?: return
         val entry = currentEntry ?: return
 
-        val ankiManager = AnkiManager(service)
+        val ankiManager = AnkiManager(context)
         if (!ankiManager.isAnkiDroidInstalled()) {
             // Service context — no Activity to attach to, so route the
             // alert through the accessibility-overlay path on the lens's
@@ -1381,12 +1375,12 @@ class DragLookupController(
         val sentenceTranslation = LastSentenceCache
             .takeIf { it.original == sentence }?.translation
         val capturedScreenshot = screenshotPath
-        val sourceLangCode = Prefs(service).sourceLangId.code
+        val sourceLangCode = Prefs(context).sourceLangId.code
 
         CaptureBackendResolver.activeOverlayUi?.cancelLivePauseObligation()
         magnifier.dismiss()
 
-        val intent = Intent(service, WordAnkiReviewActivity::class.java).apply {
+        val intent = Intent(context, WordAnkiReviewActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
             putExtra(WordAnkiReviewActivity.EXTRA_WORD, word)
             putExtra(WordAnkiReviewActivity.EXTRA_READING, reading)
@@ -1409,29 +1403,27 @@ class DragLookupController(
             val opts = android.app.ActivityOptions.makeBasic()
                 .setLaunchDisplayId(displayId)
                 .toBundle()
-            service.startActivity(intent, opts)
+            context.startActivity(intent, opts)
         } else {
-            service.startActivity(intent)
+            context.startActivity(intent)
         }
     }
 
     private fun sendLineToMainApp(lineText: String) {
-        val service = context
-        if (Prefs.isSingleScreen(service)) return  // only in dual-screen mode
+        if (Prefs.isSingleScreen(context)) return  // only in dual-screen mode
         if (!MainActivity.isInForeground) return    // don't foreground the app
-        val intent = Intent(service, MainActivity::class.java).apply {
+        val intent = Intent(context, MainActivity::class.java).apply {
             action = MainActivity.ACTION_DRAG_SENTENCE
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra(MainActivity.EXTRA_DRAG_LINE_TEXT, lineText)
             putExtra(MainActivity.EXTRA_DRAG_SCREENSHOT_PATH, screenshotPath)
         }
-        service.startActivity(intent)
+        context.startActivity(intent)
     }
 
     private fun saveScreenshot(bitmap: Bitmap): String? {
-        val service = context
         return try {
-            val dir = File(service.cacheDir, "screenshots").apply { mkdirs() }
+            val dir = File(context.cacheDir, "screenshots").apply { mkdirs() }
             val file = File(dir, "drag.jpg")
             file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
             file.absolutePath

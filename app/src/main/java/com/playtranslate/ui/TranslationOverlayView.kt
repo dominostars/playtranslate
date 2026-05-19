@@ -1,54 +1,28 @@
 package com.playtranslate.ui
 
-import android.animation.ValueAnimator
 import android.content.Context
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
 import android.graphics.Rect
-import android.graphics.RectF
 import android.graphics.Typeface
-import android.graphics.Bitmap
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffXfermode
-import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
 import android.view.Gravity
-import android.view.View
-import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
-import android.widget.TextView
 import androidx.core.view.doOnLayout
-import androidx.core.widget.TextViewCompat
-import com.playtranslate.PinholeCalibration
 import com.playtranslate.R
-import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
 
 /**
- * Transparent overlay that positions auto-sizing TextViews inside bounding
- * boxes on the game screen during live mode. Each box corresponds to an OCR
- * text group and is filled with a semi-transparent background so the
- * translated text is readable over game graphics. Font size auto-scales
- * via Android's built-in [TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration].
+ * Transparent overlay that positions outlined furigana TextViews above the
+ * base text on the game screen during live mode. Font size is fixed per box
+ * from the OCR bounds; vertical furigana stacks characters with newlines.
  *
- * When boxes have empty [TextBox.translatedText], skeleton placeholder lines
- * are shown with a pulsing animation until text arrives via a subsequent
- * [setBoxes] call.
- */
-/**
- * @param pinholeMode Fixed at construction. When true, [dispatchDraw] punches
- *   pinhole holes through all children and [rebuildChildren] forces child
- *   backgrounds to full opacity so [PinholeOverlayMode]'s change-detection
- *   math (`predicted = clean_ref * 0.5 + overlay_rendered * 0.5` at pinhole
- *   pixels) holds. Pinhole mode cannot be toggled on an existing view —
- *   creating a new view is required, which matches the lifecycle anyway
- *   since each `LiveMode` class tears down and recreates the overlay on
- *   start/stop.
+ * Furigana-only: every [TextBox] it receives has `isFurigana` set — its sole
+ * construction site is `OverlayUiController.showFuriganaOverlay`, reached only
+ * when `boxes.all { it.isFurigana }`. The per-box translation path uses
+ * `BoxOverlayView` windows instead.
  */
 class TranslationOverlayView(
     context: Context,
-    val pinholeMode: Boolean = false,
 ) : FrameLayout(context) {
 
     init {
@@ -58,28 +32,11 @@ class TranslationOverlayView(
 
     private val dp = context.resources.displayMetrics.density
 
-    private val minTextSizeSp = 6
-    private val maxTextSizeSp = 200
-    /** Small inset so text doesn't touch the edges of the background. */
-    private val textMargin = (3f * dp).toInt()
-    private val skeletonBarHeight = (8f * dp).toInt()
-    private val skeletonBarGap = (4f * dp).toInt()
-    private val skeletonCornerRadius = 3f * dp
-
     private var boxes: List<TextBox> = emptyList()
     private var cropOffsetX = 0
     private var cropOffsetY = 0
     private var screenshotW = 1
     private var screenshotH = 1
-
-    private var shimmerAnimator: ValueAnimator? = null
-
-    /** Cached full-view pinhole mask bitmap. Created on size change, recycled on detach. */
-    private var pinholeMaskBitmap: Bitmap? = null
-
-    private val dstOutPaint = Paint().apply {
-        xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
-    }
 
     fun setBoxes(
         boxes: List<TextBox>,
@@ -120,241 +77,67 @@ class TranslationOverlayView(
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        pinholeMaskBitmap?.recycle()
-        pinholeMaskBitmap = if (w > 0 && h > 0) createPinholeMask(w, h) else null
         post { rebuildChildren() }
     }
 
-    override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
-        shimmerAnimator?.cancel()
-        shimmerAnimator = null
-        pinholeMaskBitmap?.recycle()
-        pinholeMaskBitmap = null
-    }
-
-    override fun dispatchDraw(canvas: Canvas) {
-        val mask = pinholeMaskBitmap
-        if (!pinholeMode || mask == null) {
-            super.dispatchDraw(canvas)
-            return
-        }
-        val layer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
-        super.dispatchDraw(canvas)
-        canvas.drawBitmap(mask, 0f, 0f, dstOutPaint)
-        canvas.restoreToCount(layer)
-    }
-
     private fun rebuildChildren() {
-        shimmerAnimator?.cancel()
-        shimmerAnimator = null
-        skeletonBars.clear()
         removeAllViews()
         if (boxes.isEmpty()) return
-        val rebuildStart = System.currentTimeMillis()
-        val textBoxCount = boxes.count { !it.isFurigana && it.translatedText.isNotEmpty() }
-        if (textBoxCount > 0) {
-            doOnLayout {
-                android.util.Log.d("DetectionLog", "LAYOUT COMPLETE: ${System.currentTimeMillis() - rebuildStart}ms after rebuildChildren ($textBoxCount text boxes)")
-            }
-        }
 
         val finalRects = OverlayLayout.resolveScreenRects(
             boxes, cropOffsetX, cropOffsetY, screenshotW, screenshotH, width, height, dp
         )
 
-        val hasPlaceholders = boxes.any { it.translatedText.isEmpty() }
-
+        // Every box here is furigana (see the class KDoc).
         boxes.zip(finalRects).forEach { (box, rect) ->
-            if (box.isFurigana) {
-                val isVerticalFurigana = box.orientation == TextOrientation.VERTICAL
-                // Vertical furigana: size from box width; horizontal: from box height
-                val textSizePx = if (isVerticalFurigana) {
-                    (rect.width() * 0.7f).coerceAtLeast(4f)
-                } else {
-                    (rect.height() * 0.7f).coerceAtLeast(4f)
-                }
-                val strokeW = 3f * dp
-                val strokePad = (strokeW / 2f + 0.5f).toInt()
-                // Vertical: stack characters top-to-bottom with newlines
-                val displayText = if (isVerticalFurigana) {
-                    box.translatedText.toList().joinToString("\n")
-                } else {
-                    box.translatedText
-                }
-                val child = OutlinedTextView(context).apply {
-                    text = displayText
-                    setTextColor(Color.WHITE)
-                    outlineColor = Color.BLACK
-                    outlineWidth = strokeW
-                    typeface = Typeface.DEFAULT_BOLD
-                    includeFontPadding = false
-                    setShadowLayer(strokeW, 0f, 0f, Color.TRANSPARENT)
-                    setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
-                    if (isVerticalFurigana) {
-                        gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                        setPadding(strokePad, 0, strokePad, 0)
-                        setLineSpacing(0f, 0.8f)
-                    } else {
-                        setPadding(strokePad, strokePad, strokePad, strokePad)
-                    }
-                }
-                child.setTag(R.id.tag_bg_color, Color.BLACK)
-                addView(child, LayoutParams(
-                    LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
-                ))
-                // Position after measurement but before draw — no (0,0) flash
-                child.doOnLayout {
-                    if (isVerticalFurigana) {
-                        // Vertical: align to top of OCR box, no Y offset
-                        child.translationX = rect.left - strokePad
-                        child.translationY = rect.top
-                    } else {
-                        child.translationX = rect.left - strokePad
-                        child.translationY = (rect.bottom - child.measuredHeight).coerceAtLeast(0f)
-                    }
-                }
+            val isVerticalFurigana = box.orientation == TextOrientation.VERTICAL
+            // Vertical furigana: size from box width; horizontal: from box height
+            val textSizePx = if (isVerticalFurigana) {
+                (rect.width() * 0.7f).coerceAtLeast(4f)
             } else {
-                val rectW = rect.width().toInt().coerceAtLeast(1)
-                val rectH = rect.height().toInt().coerceAtLeast(1)
-                val isVertical = box.orientation == TextOrientation.VERTICAL
-
-                val child: View = if (box.translatedText.isEmpty()) {
-                    buildSkeletonView(rectW, rectH, box.lineCount, box.bgColor, box.textColor, box.alignment)
-                } else {
-                    OutlinedTextView(context).apply {
-                        text = box.translatedText
-                        setTextColor(box.textColor)
-                        outlineColor = box.textColor xor 0x00FFFFFF  // invert RGB, keep alpha
-                        outlineWidth = 1f * dp
-                        typeface = Typeface.DEFAULT_BOLD
-                        // Vertical text is rotated at the FrameLayout level —
-                        // horizontal alignment of the inner TextView still maps
-                        // to horizontal screen alignment after rotation, so we
-                        // only apply CENTER when the source group classified as
-                        // such. Vertical boxes always classify LEFT in OcrManager,
-                        // so no extra orientation gate is needed here.
-                        gravity = if (box.alignment == TextAlignment.CENTER)
-                            Gravity.CENTER
-                        else
-                            Gravity.CENTER_VERTICAL
-                        setPadding(textMargin, textMargin, textMargin, textMargin)
-                        // Pinholes need opaque bg (pinholes handle transparency).
-                        // Without pinholes, use native alpha (~224 = 88% opaque).
-                        setBackgroundColor(if (pinholeMode) box.bgColor or 0xFF000000.toInt() else box.bgColor)
-                        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-                            this, minTextSizeSp, maxTextSizeSp, 1, TypedValue.COMPLEX_UNIT_SP
-                        )
-                    }
-                }
-
-                child.setTag(R.id.tag_bg_color, box.bgColor)
-
-                if (isVertical && box.translatedText.isNotEmpty()) {
-                    // Vertical text: create view with swapped dimensions (width=rectH,
-                    // height=rectW) so auto-sizing picks a readable font, then rotate
-                    // 90° CW so text reads top-to-bottom in the original narrow box.
-                    val lp = LayoutParams(rectH, rectW)
-                    addView(child, lp)
-                    child.rotation = 90f
-                    // Position so the visual center aligns with the original box center.
-                    // After rotation, the (rectH × rectW) layout visually becomes (rectW × rectH).
-                    child.translationX = rect.centerX() - rectH / 2f
-                    child.translationY = rect.centerY() - rectW / 2f
-                } else {
-                    val lp = LayoutParams(rectW, rectH).apply {
-                        leftMargin = rect.left.toInt()
-                        topMargin = rect.top.toInt()
-                    }
-                    addView(child, lp)
-                }
+                (rect.height() * 0.7f).coerceAtLeast(4f)
             }
-        }
-
-        if (hasPlaceholders) startShimmer()
-    }
-
-    /** Builds a skeleton placeholder with [lineCount] bars evenly spaced within the box.
-     *  When [alignment] is [TextAlignment.CENTER], bars are horizontally centered
-     *  within the box so the short last-row bar visually reflects center-aligned
-     *  source text rather than dropping to the left edge. */
-    private fun buildSkeletonView(
-        boxW: Int, boxH: Int, lineCount: Int, bgColor: Int, barColor: Int,
-        alignment: TextAlignment = TextAlignment.LEFT,
-    ): View {
-        val container = FrameLayout(context).apply {
-            setBackgroundColor(bgColor)
-        }
-
-        val sideMargin = textMargin * 2
-        val availW = boxW - sideMargin * 2
-
-        for (line in 0 until lineCount) {
-            val widthFraction = if (line == lineCount - 1 && lineCount > 1) 0.6f else 0.85f
-            val barW = (availW * widthFraction).toInt().coerceAtLeast(1)
-
-            // Evenly distribute: bar centers at boxH*(i+1)/(N+1)
-            val centerY = boxH * (line + 1) / (lineCount + 1)
-            val barTop = centerY - skeletonBarHeight / 2
-
-            val bar = View(context).apply {
-                background = GradientDrawable().apply {
-                    setColor(barColor)
-                    cornerRadius = skeletonCornerRadius
-                }
-            }
-            skeletonBars.add(bar)
-            val barLeft = if (alignment == TextAlignment.CENTER) {
-                ((boxW - barW) / 2).coerceAtLeast(sideMargin)
+            val strokeW = 3f * dp
+            val strokePad = (strokeW / 2f + 0.5f).toInt()
+            // Vertical: stack characters top-to-bottom with newlines
+            val displayText = if (isVerticalFurigana) {
+                box.translatedText.toList().joinToString("\n")
             } else {
-                sideMargin
+                box.translatedText
             }
-            val barLp = LayoutParams(barW, skeletonBarHeight).apply {
-                leftMargin = barLeft
-                topMargin = barTop
+            val child = OutlinedTextView(context).apply {
+                text = displayText
+                setTextColor(Color.WHITE)
+                outlineColor = Color.BLACK
+                outlineWidth = strokeW
+                typeface = Typeface.DEFAULT_BOLD
+                includeFontPadding = false
+                setShadowLayer(strokeW, 0f, 0f, Color.TRANSPARENT)
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
+                if (isVerticalFurigana) {
+                    gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                    setPadding(strokePad, 0, strokePad, 0)
+                    setLineSpacing(0f, 0.8f)
+                } else {
+                    setPadding(strokePad, strokePad, strokePad, strokePad)
+                }
             }
-            container.addView(bar, barLp)
-        }
-
-        return container
-    }
-
-    private val skeletonBars = mutableListOf<View>()
-
-    /**
-     * Build a full-view pinhole mask. Pinhole positions have alpha
-     * [PinholeCalibration.MASK_ALPHA], all other pixels are fully transparent.
-     * Drawn with DST_OUT in dispatchDraw to punch partially-transparent holes
-     * through all children.
-     *
-     * See [PinholeCalibration] for why the mask alpha and spacing are
-     * tightly coupled to `PinholeOverlayMode.checkPinholes` — editing them
-     * here without re-tuning the detection thresholds silently breaks
-     * pinhole detection.
-     *
-     * **Scale note:** The mask is generated at VIEW resolution, with pinhole
-     * positions on a fixed [PinholeCalibration.PINHOLE_SPACING]-pixel grid
-     * in view coordinates. Pinhole detection assumes the mask spacing is
-     * also valid in screenshot-bitmap coordinates, which requires view dims
-     * == screenshot dims (identity scale). At non-identity scale the sparse
-     * mask pattern is smeared by bitmap downsampling and the
-     * `predicted = (ref + overlay) / 2` math no longer holds. See
-     * [com.playtranslate.FrameCoordinates] KDoc for the full explanation.
-     */
-    private fun createPinholeMask(w: Int, h: Int): Bitmap {
-        val spacing = PinholeCalibration.PINHOLE_SPACING
-        val pixels = IntArray(w * h) // all 0 = fully transparent
-        for (y in 0 until h) {
-            val rowGroup = (y / spacing) % 2
-            val xOffset = if (rowGroup == 0) 0 else spacing / 2
-            if (y % spacing != 0) continue
-            var x = xOffset
-            while (x < w) {
-                pixels[y * w + x] = PinholeCalibration.MASK_PIXEL
-                x += spacing
+            child.setTag(R.id.tag_bg_color, Color.BLACK)
+            addView(child, LayoutParams(
+                LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
+            ))
+            // Position after measurement but before draw — no (0,0) flash
+            child.doOnLayout {
+                if (isVerticalFurigana) {
+                    // Vertical: align to top of OCR box, no Y offset
+                    child.translationX = rect.left - strokePad
+                    child.translationY = rect.top
+                } else {
+                    child.translationX = rect.left - strokePad
+                    child.translationY = (rect.bottom - child.measuredHeight).coerceAtLeast(0f)
+                }
             }
         }
-        return Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888)
     }
 
     /**
@@ -385,79 +168,5 @@ class TranslationOverlayView(
             }
         }
         return rects
-    }
-
-    /**
-     * True iff this view AND every child currently has measured dimensions
-     * and no layout pass is pending. Callers (PinholeOverlayMode) poll this
-     * to defer [renderToOffscreen] until the freshly-rebuilt children have
-     * actually been laid out — without this gate, pinhole detection captures
-     * an empty/stale overlay bitmap on the cycle right after a teardown,
-     * then over-flags every box for REMOVE on the following cycle.
-     */
-    fun areChildrenLaidOut(): Boolean {
-        if (width <= 0 || height <= 0) return false
-        if (isLayoutRequested) return false
-        if (childCount == 0) return boxes.isEmpty()
-        for (i in 0 until childCount) {
-            val c = getChildAt(i)
-            if (c.width <= 0 || c.height <= 0) return false
-            if (c.isLayoutRequested) return false
-        }
-        return true
-    }
-
-    /**
-     * Render the overlay to an offscreen bitmap WITHOUT pinholes.
-     * Returns the exact pixel-for-pixel content of the overlay (bg + text +
-     * outlines), at the view's current dimensions. Used for pinhole change
-     * detection — provides the overlay_rendered term in:
-     *   predicted = clean_ref * 0.5 + overlay_rendered * 0.5
-     * Call after layout completes.
-     *
-     * **Scale assumption:** the output is at **view dimensions**. Pinhole
-     * detection assumes view dims == screenshot dims (identity scale).
-     * See [com.playtranslate.FrameCoordinates] KDoc and
-     * [com.playtranslate.PinholeOverlayMode.checkPinholes] for why
-     * non-identity scale is not a supported configuration; the live modes
-     * fail-closed at non-identity before calling this.
-     */
-    fun renderToOffscreen(): Bitmap? {
-        if (width <= 0 || height <= 0) return null
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        // Draw each child directly. This deliberately sidesteps our own
-        // [dispatchDraw] override (which would punch pinhole holes when
-        // [pinholeMode] is true) so the resulting bitmap is the "what the
-        // overlay would look like without holes" reference used by
-        // [PinholeOverlayMode.checkPinholes]. This view never uses custom
-        // z-order, disappearing-child animations, or `getChildDrawingOrder`,
-        // so iterating in child index order is equivalent to
-        // `super.dispatchDraw` minus the mask.
-        val drawingTime = drawingTime
-        for (i in 0 until childCount) {
-            val child = getChildAt(i)
-            if (child.visibility == VISIBLE) {
-                drawChild(canvas, child, drawingTime)
-            }
-        }
-        return bitmap
-    }
-
-
-    private fun startShimmer() {
-        shimmerAnimator = ValueAnimator.ofFloat(0.8f, 0.3f).apply {
-            duration = 800
-            repeatMode = ValueAnimator.REVERSE
-            repeatCount = ValueAnimator.INFINITE
-            interpolator = LinearInterpolator()
-            addUpdateListener { anim ->
-                val a = anim.animatedValue as Float
-                for (bar in skeletonBars) {
-                    bar.alpha = a
-                }
-            }
-            start()
-        }
     }
 }

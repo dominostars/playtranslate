@@ -62,7 +62,6 @@ import kotlinx.coroutines.launch
 class PlayTranslateAccessibilityService : AccessibilityService() {
 
     private var debugOverlayView: OcrDebugOverlayView? = null
-    private var debugOverlayWm: WindowManager? = null
     private val debugOcrManager get() = OcrManager.instance
     private val debugHandler = Handler(Looper.getMainLooper())
     private var debugRunning = false
@@ -300,14 +299,12 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             PixelFormat.TRANSLUCENT
         )
         addOverlayWindow(view, wm, params, display.displayId)
-        debugOverlayWm = wm
         debugOverlayView = view
     }
 
     fun hideDebugOverlay() {
         debugOverlayView?.let { removeOverlayWindow(it) }
         debugOverlayView = null
-        debugOverlayWm = null
     }
 
     // ── Input monitoring for live mode ──────────────────────────────────

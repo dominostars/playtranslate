@@ -81,8 +81,8 @@ class OneShotManager(private val service: CaptureService) {
         val targets = activeJobs.keys.toList()
         activeJobs.values.forEach { it.cancel() }
         activeJobs.clear()
-        val a11y = CaptureBackendResolver.activeOverlayUi ?: return
-        for (id in targets) a11y.hideTranslationOverlayForDisplay(id)
+        val overlayUi = CaptureBackendResolver.activeOverlayUi ?: return
+        for (id in targets) overlayUi.hideTranslationOverlayForDisplay(id)
     }
 
     /** Replace the running set in preparation for a NEW cycle group.
@@ -95,8 +95,8 @@ class OneShotManager(private val service: CaptureService) {
         val toHide = activeJobs.keys - newTargets
         activeJobs.values.forEach { it.cancel() }
         activeJobs.clear()
-        val a11y = CaptureBackendResolver.activeOverlayUi ?: return
-        for (id in toHide) a11y.hideTranslationOverlayForDisplay(id)
+        val overlayUi = CaptureBackendResolver.activeOverlayUi ?: return
+        for (id in toHide) overlayUi.hideTranslationOverlayForDisplay(id)
     }
 
 
@@ -176,11 +176,11 @@ class OneShotManager(private val service: CaptureService) {
     }
 
     private fun showNoTextPill(displayId: Int) {
-        val a11y = CaptureBackendResolver.activeOverlayUi
+        val overlayUi = CaptureBackendResolver.activeOverlayUi
         val dm = service.getSystemService(android.hardware.display.DisplayManager::class.java)
         val display = dm?.getDisplay(displayId)
-        if (a11y != null && display != null) {
-            a11y.showNoTextPill(display, service.noTextMessage(displayId))
+        if (overlayUi != null && display != null) {
+            overlayUi.showNoTextPill(display, service.noTextMessage(displayId))
         }
     }
 }

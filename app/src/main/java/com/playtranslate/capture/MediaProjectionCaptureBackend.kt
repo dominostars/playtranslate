@@ -26,6 +26,11 @@ object MediaProjectionCaptureBackend : CaptureBackend {
 
     override val requiresAccessibilityService: Boolean get() = false
 
+    /** A capture before consent is held launches the screen-record dialog,
+     *  so a passive capture is safe only once consent exists. */
+    override val canCaptureWithoutPrompting: Boolean
+        get() = CaptureService.instance?.mediaProjectionController?.hasConsent == true
+
     /** MediaProjection mirrors only the default display (see
      *  [MediaProjectionController.projectedDisplayId]) — it resolves to that
      *  display regardless of [selected], which has no meaning on this backend

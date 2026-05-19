@@ -27,6 +27,12 @@ class MediaProjectionConsentActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Only launch the consent dialog on a fresh start. A config change
+        // outside this activity's configChanges (uiMode / density / fontScale)
+        // recreates it while the system dialog is still up — re-launching
+        // would stack a duplicate. The registered launcher survives the
+        // recreation and still delivers the original result.
+        if (savedInstanceState != null) return
         val mgr = getSystemService(MediaProjectionManager::class.java)
         if (mgr == null) {
             CaptureService.instance?.mediaProjectionController

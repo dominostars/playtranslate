@@ -14,9 +14,9 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Display
-import android.view.Surface
 import com.playtranslate.CaptureService
 import com.playtranslate.PlayTranslateTileService
+import com.playtranslate.displaySizePx
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -44,17 +44,21 @@ class MediaProjectionController(private val service: CaptureService) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    private var resultCode: Int = Activity.RESULT_CANCELED
-    private var resultData: Intent? = null
-    private var projection: MediaProjection? = null
-    private var virtualDisplay: VirtualDisplay? = null
-    private var imageReader: ImageReader? = null
-    private var readerW = 0
-    private var readerH = 0
+    // Session fields are touched from the consent-result callback, the
+    // suspend capture path, and the projection teardown callback — @Volatile
+    // gives every reader (notably hasConsent, polled off-main through
+    // CaptureLifecycle) the latest write. Visibility only; no compound update.
+    @Volatile private var resultCode: Int = Activity.RESULT_CANCELED
+    @Volatile private var resultData: Intent? = null
+    @Volatile private var projection: MediaProjection? = null
+    @Volatile private var virtualDisplay: VirtualDisplay? = null
+    @Volatile private var imageReader: ImageReader? = null
+    @Volatile private var readerW = 0
+    @Volatile private var readerH = 0
 
     /** Non-null while a consent dialog is in flight; every concurrent
      *  [captureFrame] awaits the same gate so only one dialog shows. */
-    private var consentGate: CompletableDeferred<Boolean>? = null
+    @Volatile private var consentGate: CompletableDeferred<Boolean>? = null
 
     /** True once the user has granted a token still valid for this process. */
     val hasConsent: Boolean get() = resultData != null
@@ -99,13 +103,13 @@ class MediaProjectionController(private val service: CaptureService) {
 
     /**
      * Capture one clean frame of the projected display ([projectedDisplayId])
-     * at its native resolution. Lazily establishes consent + projection +
+     * at its current resolution. Lazily establishes consent + projection +
      * virtual display. Returns null on denied consent or any failure. Call on
      * the main thread — the heavy pixel copy is moved off it internally.
      */
     suspend fun captureFrame(): Bitmap? {
         if (!ensureProjection()) return null
-        val (w, h) = nativeSize(projectedDisplayId) ?: return null
+        val (w, h) = captureSize(projectedDisplayId) ?: return null
         val reader = ensureVirtualDisplay(w, h) ?: return null
         return acquireBitmap(reader, w, h)
     }
@@ -165,19 +169,20 @@ class MediaProjectionController(private val service: CaptureService) {
         return reader
     }
 
-    /** Native panel resolution for [displayId], oriented to the current
-     *  rotation. Uses Display.getMode() — the metrics APIs misreport on some
-     *  dual-screen devices, so the physical mode dims are the reliable source. */
-    private fun nativeSize(displayId: Int): Pair<Int, Int>? {
+    /** Pixel size of [displayId] in its current rotation — the resolution the
+     *  capture [VirtualDisplay] + [ImageReader] are built at.
+     *
+     *  Sourced from [displaySizePx], the same window-context `WindowMetrics`
+     *  query the overlays size off — so the captured frame and the overlay
+     *  coordinate space are identical by construction. The pinhole detector
+     *  ([com.playtranslate.FrameCoordinates]) assumes that identity scale.
+     *  `displaySizePx` already reports post-rotation bounds, so no manual
+     *  rotation adjustment is needed here. */
+    private fun captureSize(displayId: Int): Pair<Int, Int>? {
         val dm = service.getSystemService(DisplayManager::class.java) ?: return null
         val display = dm.getDisplay(displayId) ?: return null
-        val mode = display.mode
-        val pw = mode.physicalWidth
-        val ph = mode.physicalHeight
-        val landscape = display.rotation == Surface.ROTATION_90 ||
-            display.rotation == Surface.ROTATION_270
-        return if (landscape) maxOf(pw, ph) to minOf(pw, ph)
-        else minOf(pw, ph) to maxOf(pw, ph)
+        val size = service.createDisplayContext(display).displaySizePx()
+        return if (size.x > 0 && size.y > 0) size.x to size.y else null
     }
 
     private suspend fun acquireBitmap(reader: ImageReader, width: Int, height: Int): Bitmap? {

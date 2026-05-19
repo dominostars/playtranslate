@@ -27,6 +27,9 @@ object AccessibilityCaptureBackend : CaptureBackend {
 
     override val requiresAccessibilityService: Boolean get() = true
 
+    /** `takeScreenshot` never shows a prompt. */
+    override val canCaptureWithoutPrompting: Boolean get() = true
+
     /** `takeScreenshot` can target any display, so the selection stands. */
     override fun capturableDisplays(selected: Set<Int>): Set<Int> = selected
 
@@ -37,5 +40,11 @@ object AccessibilityCaptureBackend : CaptureBackend {
 
     override fun stopInputMonitoring(displayId: Int) {
         PlayTranslateAccessibilityService.instance?.stopInputMonitoring(displayId)
+    }
+
+    /** Routes to the service's own all-displays teardown, which drops the
+     *  touch sentinels and clears key-event / touch tracking state. */
+    override fun stopAllInputMonitoring() {
+        PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
     }
 }

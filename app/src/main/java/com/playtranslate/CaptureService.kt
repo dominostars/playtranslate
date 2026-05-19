@@ -371,13 +371,14 @@ class CaptureService : Service() {
     override fun onDestroy() {
         Log.w(TAG, "onDestroy")
         // Release the MediaProjection session (projection / VirtualDisplay /
-        // ImageReader) before the service goes away — the controller owns
-        // those native resources and nothing else releases them. Gated on the
+        // ImageReader) before the service goes away — nothing else releases
+        // those native resources. Routed through the capture source's
+        // destroy() (stops loops, then tears the controller down) so MP
+        // teardown is symmetric with ScreenshotManager.destroy(). Gated on the
         // FGS-promotion flag, which ensureProjection() sets before it builds
-        // the projection: when it's true the `by lazy` controller has already
-        // been initialized, so this never force-creates the backend just to
-        // tear it down.
-        if (mediaProjectionFgsActive) mediaProjectionController.destroy()
+        // the projection: when it's true the `by lazy` capture source has
+        // already been initialized, so this never force-creates the backend.
+        if (mediaProjectionFgsActive) mediaProjectionCaptureSource.destroy()
         instance = null
         stopLive()
         serviceScope.cancel()
@@ -1215,7 +1216,7 @@ class CaptureService : Service() {
         // TODO(P1): with setLiveDisplays(emptySet()) guaranteeing per-mode
         //   teardown via the canonical mutator, this fan-out should be removable.
         CaptureBackendResolver.active().liveCaptureSource?.stopAllLoops()
-        PlayTranslateAccessibilityService.instance?.stopInputMonitoring()
+        CaptureBackendResolver.active().stopAllInputMonitoring()
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlay()
         // Don't reset _panelState here — let the last live result
         // linger so a STOP→START reattach still shows it. The VM's
@@ -1260,9 +1261,10 @@ class CaptureService : Service() {
      * can render cleanly, and launches the one-shot.
      *
      * [holdActive] doubles as the pause signal for [PinholeOverlayMode] (its
-     * cycle polls the flag directly). [ScreenshotManager.stopLoop] is needed
-     * for modes that drive capture through the loop (Furigana) — Pinhole
-     * calls `requestRaw` directly and would otherwise keep screenshotting.
+     * cycle polls the flag directly). Stopping the backend's live capture
+     * loop is needed for modes that drive capture through the loop
+     * (Furigana) — Pinhole calls `requestRaw` directly and would otherwise
+     * keep screenshotting.
      * Hiding the existing overlay view up front is what prevents its visible
      * content (e.g. furigana boxes) from being swapped in-place to shimmer
      * placeholders during the one-shot, and also prevents the live loop's
@@ -1286,8 +1288,7 @@ class CaptureService : Service() {
             // Hold pause is global — stop every per-display loop and hide
             // every translation overlay. Each fan-out cycle then paints its
             // own result on its own display.
-            PlayTranslateAccessibilityService.instance
-                ?.screenshotManager?.stopAllLoops()
+            CaptureBackendResolver.active().liveCaptureSource?.stopAllLoops()
             CaptureBackendResolver.activeOverlayUi
                 ?.hideTranslationOverlay()
         }

@@ -1653,12 +1653,7 @@ class MainActivity :
             notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         val openOverlaySettings = View.OnClickListener {
-            startActivity(
-                Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:$packageName"),
-                )
-            )
+            startActivity(overlayPermissionSettingsIntent())
         }
         pageA11y.findViewById<View>(R.id.btnOpenA11y).setOnClickListener(openOverlaySettings)
         // Highlight "PlayTranslate" in the hint text with the theme accent color

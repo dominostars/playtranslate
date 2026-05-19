@@ -26,6 +26,14 @@ interface CaptureBackend {
     val liveCaptureSource: LiveCaptureSource?
         get() = captureSource as? LiveCaptureSource
 
+    /** Whether [captureSource]'s `requestClean` can run right now without a
+     *  user-facing prompt. The accessibility backend always can; the
+     *  MediaProjection backend can only once screen-record consent is held —
+     *  before that, a capture launches the consent dialog. Passive callers
+     *  (e.g. the Settings display-picker thumbnail) gate on this so merely
+     *  opening a screen can't trigger the prompt. */
+    val canCaptureWithoutPrompting: Boolean
+
     /** Overlay-window host for this backend, or null while not ready. */
     val overlayHost: OverlayHost?
 
@@ -61,4 +69,14 @@ interface CaptureBackend {
 
     /** Stop the [startInputMonitoring] watch for [displayId]. */
     fun stopInputMonitoring(displayId: Int)
+
+    /**
+     * Stop every input watch across all displays — the `stopLive()` teardown
+     * fan-out. The default drops all touch sentinels via [overlayHost]; the
+     * accessibility backend overrides this to also clear its key-event and
+     * touch tracking state.
+     */
+    fun stopAllInputMonitoring() {
+        overlayHost?.removeAllTouchSentinels()
+    }
 }

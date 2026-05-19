@@ -17,9 +17,10 @@ import android.view.WindowMetrics
  * service context they return garbage: on an AYN Thor a 1920x1080 panel
  * reported 1240x1080.
  *
- * Each call builds a *fresh* window context: a cached one was observed to
- * occasionally report the pre-rotation orientation's bounds. The binder cost
- * is small and none of these are hot-path calls.
+ * Each call builds a *fresh* window context — never cached: a cached one was
+ * observed to occasionally report the pre-rotation orientation's bounds. The
+ * binder cost is small; the most frequent caller is the MediaProjection
+ * capture loop, a few times a second — well short of a per-frame hot path.
  *
  * The window context is typed `TYPE_APPLICATION_OVERLAY`, not
  * `TYPE_ACCESSIBILITY_OVERLAY`: the latter makes `createWindowContext` throw

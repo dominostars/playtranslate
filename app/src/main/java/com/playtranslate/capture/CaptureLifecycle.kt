@@ -42,7 +42,7 @@ object CaptureLifecycle {
         if (!CaptureBackendResolver.active().requiresAccessibilityService) {
             CaptureService.instance?.let { svc ->
                 if (svc.isLive) svc.stopLive()
-                svc.mediaProjectionController.destroy()
+                svc.mediaProjectionCaptureSource.destroy()
             }
             CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
             PlayTranslateTileService.TileSync.refresh(ctx)

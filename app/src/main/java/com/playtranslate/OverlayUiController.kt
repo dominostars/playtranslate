@@ -208,28 +208,22 @@ class OverlayUiController(
     // ── Overlay-specific mutable state ───────────────────────────────────
 
     private var dragView: RegionDragView? = null
-    private var dragWm: WindowManager? = null
 
     /** True when the region drag editor overlay is showing. */
     val isRegionEditorActive: Boolean get() = dragView != null
 
     private var floatingMenu: FloatingIconMenu? = null
-    private var floatingMenuWm: WindowManager? = null
 
     private var regionEditorBar: View? = null
-    private var regionEditorBarWm: WindowManager? = null
     private var regionEditorLabel: View? = null
-    private var regionEditorLabelWm: WindowManager? = null
 
     private var regionIndicatorView: View? = null
-    private var regionIndicatorWm: WindowManager? = null
     private var regionIndicatorPersistent = false
     private var regionIndicatorDisplayId: Int = -1
     private var regionIndicatorUpdater: ((RegionEntry) -> Unit)? = null
     private val regionIndicatorHandler = Handler(Looper.getMainLooper())
 
     private var pillView: View? = null
-    private var pillWm: WindowManager? = null
     private val pillHandler = Handler(Looper.getMainLooper())
 
     // ── Region overlay (region picker preview) ───────────────────────────
@@ -413,7 +407,7 @@ class OverlayUiController(
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            overlayHost.windowType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
@@ -421,7 +415,6 @@ class OverlayUiController(
         )
         overlayHost.addOverlayWindow(view, wm, params, display.displayId)
         regionIndicatorView = view
-        regionIndicatorWm = wm
         regionIndicatorPersistent = persistent
         regionIndicatorDisplayId = display.displayId
         regionIndicatorUpdater = if (persistent) {
@@ -462,7 +455,6 @@ class OverlayUiController(
             overlayHost.removeOverlayWindow(view)
         }
         regionIndicatorView = null
-        regionIndicatorWm = null
         regionIndicatorPersistent = false
         regionIndicatorDisplayId = -1
         regionIndicatorUpdater = null
@@ -523,7 +515,7 @@ class OverlayUiController(
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            overlayHost.windowType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
             PixelFormat.TRANSLUCENT
@@ -534,7 +526,6 @@ class OverlayUiController(
 
         overlayHost.addOverlayWindow(view, wm, params, display.displayId)
         pillView = view
-        pillWm = wm
 
         // Brief display, then fade out
         pillHandler.postDelayed({
@@ -554,7 +545,6 @@ class OverlayUiController(
             overlayHost.removeOverlayWindow(view)
         }
         pillView = null
-        pillWm = null
     }
 
     // ── Region drag overlay ──────────────────────────────────────────────
@@ -573,20 +563,18 @@ class OverlayUiController(
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            overlayHost.windowType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
         overlayHost.addOverlayWindow(view, wm, params, display.displayId)
-        dragWm = wm
         dragView = view
     }
 
     fun hideRegionDragOverlay() {
         dragView?.let { overlayHost.removeOverlayWindow(it) }
         dragView = null
-        dragWm = null
     }
 
     fun getDragRegion(): RegionEntry {
@@ -636,13 +624,13 @@ class OverlayUiController(
         val displayCtx = context.createDisplayContext(display)
         val themedCtx = android.view.ContextThemeWrapper(displayCtx, android.R.style.Theme_DeviceDefault)
         val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
-        val view = TranslationOverlayView(themedCtx, pinholeMode = false).apply {
+        val view = TranslationOverlayView(themedCtx).apply {
             setBoxes(boxes, cropLeft, cropTop, screenshotW, screenshotH)
         }
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            overlayHost.windowType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
@@ -822,7 +810,7 @@ class OverlayUiController(
         }
         val params = WindowManager.LayoutParams(
             w, h,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            overlayHost.windowType,
             flags,
             PixelFormat.TRANSLUCENT
         ).apply {
@@ -971,7 +959,7 @@ class OverlayUiController(
 
         val params = WindowManager.LayoutParams(
             icon.viewSizePx, icon.viewSizePx,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            overlayHost.windowType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
@@ -1016,12 +1004,7 @@ class OverlayUiController(
         fun resumeLiveMode() {
             if (liveWasPausedForPopup) {
                 liveWasPausedForPopup = false
-                val effectivelySingleScreen = Prefs.isSingleScreen(context) || !MainActivity.isInForeground
-                if (effectivelySingleScreen) {
-                    toggleLiveDirect(true)
-                } else {
-                    sendMainActivityIntent(MainActivity.ACTION_START_LIVE)
-                }
+                startLiveRouted()
             }
         }
 
@@ -1038,12 +1021,7 @@ class OverlayUiController(
             // Pause live mode while dragging for definitions
             if (CaptureService.instance?.isLive == true) {
                 liveWasPausedForPopup = true
-                val effectivelySingleScreen = Prefs.isSingleScreen(context) || !MainActivity.isInForeground
-                if (effectivelySingleScreen) {
-                    toggleLiveDirect(false)
-                } else {
-                    sendMainActivityIntent(MainActivity.ACTION_STOP_LIVE)
-                }
+                stopLiveRouted()
             }
             controller.onDragStart()
         }
@@ -1122,8 +1100,7 @@ class OverlayUiController(
      *  magnifier so the dismiss-chain's resumeLiveMode is a no-op when the
      *  detail view will cover the live-mode surface. */
     fun cancelLivePauseObligation() {
-        val effectivelySingleScreen = Prefs.isSingleScreen(context) || !MainActivity.isInForeground
-        if (effectivelySingleScreen) {
+        if (effectivelySingleScreen()) {
             iconHandles.values.forEach { it.clearLivePauseFlag.invoke() }
         }
     }
@@ -1149,8 +1126,7 @@ class OverlayUiController(
         applyAccentOverlay(themedCtx.theme, context)
         val menu = FloatingIconMenu(themedCtx)
         menu.isSingleScreen = Prefs.isSingleScreen(context)
-        menu.exitFlow = !CaptureBackendResolver.active().requiresAccessibilityService ||
-            Prefs.isSingleScreen(context)
+        menu.exitFlow = CaptureLifecycle.hasActivateControl(context)
 
         // Suppress live captures while menu is open.
         CaptureService.instance?.holdActive = true
@@ -1187,22 +1163,12 @@ class OverlayUiController(
         menu.onToggleLive = {
             dismissFloatingMenu()
             if (CaptureService.instance?.isLive == true) {
-                val effectivelySingleScreen = Prefs.isSingleScreen(context) || !MainActivity.isInForeground
-                if (effectivelySingleScreen) {
-                    toggleLiveDirect(false)
-                } else {
-                    sendMainActivityIntent(MainActivity.ACTION_STOP_LIVE)
-                }
+                stopLiveRouted()
             } else {
                 if (Prefs.shouldUseInAppOnlyMode(context)) {
                     sendMainActivityIntent(MainActivity.ACTION_START_LIVE)
                 } else {
-                    val effectivelySingleScreen = Prefs.isSingleScreen(context) || !MainActivity.isInForeground
-                    if (effectivelySingleScreen) {
-                        toggleLiveDirect(true)
-                    } else {
-                        sendMainActivityIntent(MainActivity.ACTION_START_LIVE)
-                    }
+                    startLiveRouted()
                 }
             }
         }
@@ -1214,8 +1180,7 @@ class OverlayUiController(
                 hideTranslationOverlay()
                 CaptureService.instance?.refreshLiveOverlay()
             } else {
-                val effectivelySingleScreen = Prefs.isSingleScreen(context) || !MainActivity.isInForeground
-                if (effectivelySingleScreen) {
+                if (effectivelySingleScreen()) {
                     handleRegionSelection(display.displayId, region)
                 } else {
                     sendMainActivityIntent(MainActivity.ACTION_REGION_CAPTURE, display.displayId)
@@ -1235,8 +1200,7 @@ class OverlayUiController(
         }
         menu.onCaptureRegion = {
             dismissFloatingMenu()
-            val effectivelySingleScreen = Prefs.isSingleScreen(context) || !MainActivity.isInForeground
-            if (effectivelySingleScreen) {
+            if (effectivelySingleScreen()) {
                 showRegionEditor(display)
             } else {
                 sendMainActivityIntent(MainActivity.ACTION_ADD_CUSTOM_REGION, display.displayId)
@@ -1250,13 +1214,12 @@ class OverlayUiController(
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            overlayHost.windowType,
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
 
         overlayHost.addOverlayWindow(menu, wm, params, display.displayId)
-        floatingMenuWm = wm
         floatingMenu = menu
 
         val p = icon.params
@@ -1269,7 +1232,6 @@ class OverlayUiController(
         val wasShowing = floatingMenu != null
         floatingMenu?.let { overlayHost.removeOverlayWindow(it) }
         floatingMenu = null
-        floatingMenuWm = null
         if (wasShowing) {
             CaptureService.instance?.holdActive = false
         }
@@ -1293,8 +1255,7 @@ class OverlayUiController(
         // "Turn Off" turns PlayTranslate off (turned back on from the app), so
         // the confirm matches the Settings Turn On / Turn Off button. Only
         // accessibility + dual-screen keeps the older hide/minimize wording.
-        val exitFlow = !CaptureBackendResolver.active().requiresAccessibilityService ||
-            Prefs.isSingleScreen(context)
+        val exitFlow = CaptureLifecycle.hasActivateControl(context)
 
         if (exitFlow) {
             builder.setTitle("Turn Off $appName?")
@@ -1436,7 +1397,7 @@ class OverlayUiController(
         val barParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            overlayHost.windowType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
@@ -1446,7 +1407,6 @@ class OverlayUiController(
         }
 
         overlayHost.addOverlayWindow(bar, wm, barParams, display.displayId)
-        regionEditorBarWm = wm
         regionEditorBar = bar
 
         val label = android.widget.TextView(ctx).apply {
@@ -1471,7 +1431,7 @@ class OverlayUiController(
         val labelParams = WindowManager.LayoutParams(
             label.measuredWidth,
             label.measuredHeight,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            overlayHost.windowType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
@@ -1481,7 +1441,6 @@ class OverlayUiController(
             y = (16 * dp).toInt()
         }
         overlayHost.addOverlayWindow(label, wm, labelParams, display.displayId)
-        regionEditorLabelWm = wm
         regionEditorLabel = label
     }
 
@@ -1489,10 +1448,8 @@ class OverlayUiController(
         hideRegionDragOverlay()
         regionEditorBar?.let { overlayHost.removeOverlayWindow(it) }
         regionEditorBar = null
-        regionEditorBarWm = null
         regionEditorLabel?.let { overlayHost.removeOverlayWindow(it) }
         regionEditorLabel = null
-        regionEditorLabelWm = null
         CaptureService.instance?.holdActive = false
     }
 
@@ -1521,6 +1478,26 @@ class OverlayUiController(
         }
     }
 
+    /** True when live/region actions should run directly on this device
+     *  rather than route through MainActivity — single-screen, or the app is
+     *  not foregrounded (so there is no in-app surface to hand off to). */
+    private fun effectivelySingleScreen(): Boolean =
+        Prefs.isSingleScreen(context) || !MainActivity.isInForeground
+
+    /** Start live mode — directly when [effectivelySingleScreen], else routed
+     *  through MainActivity. */
+    private fun startLiveRouted() {
+        if (effectivelySingleScreen()) toggleLiveDirect(true)
+        else sendMainActivityIntent(MainActivity.ACTION_START_LIVE)
+    }
+
+    /** Stop live mode — directly when [effectivelySingleScreen], else routed
+     *  through MainActivity. */
+    private fun stopLiveRouted() {
+        if (effectivelySingleScreen()) toggleLiveDirect(false)
+        else sendMainActivityIntent(MainActivity.ACTION_STOP_LIVE)
+    }
+
     private fun sendMainActivityIntent(action: String, targetDisplayId: Int? = null) {
         val intent = Intent(context, MainActivity::class.java).apply {
             this.action = action
@@ -1538,8 +1515,7 @@ class OverlayUiController(
      * TranslationResultActivity. Otherwise: send ACTION_REGION_CAPTURE.
      */
     private fun handleRegionSelection(displayId: Int, region: RegionEntry) {
-        val effectivelySingleScreen = Prefs.isSingleScreen(context) || !MainActivity.isInForeground
-        if (effectivelySingleScreen) {
+        if (effectivelySingleScreen()) {
             scope.launch {
                 val bitmap = CaptureBackendResolver.active().captureSource?.requestClean(displayId)
                 val intent = Intent(context, com.playtranslate.ui.TranslationResultActivity::class.java).apply {

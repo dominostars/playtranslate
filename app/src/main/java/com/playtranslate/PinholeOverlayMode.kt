@@ -838,8 +838,8 @@ class PinholeOverlayMode(
 
     /**
      * Build a TranslationResult from ALL current cachedBoxes and send to the
-     * in-app panel. Unlike TranslationOverlayMode which re-OCRs the bare screen,
-     * we already have sourceText + translatedText on every box.
+     * in-app panel. No re-OCR is needed — every cached box already carries
+     * its sourceText + translatedText.
      */
     private fun sendFullStateToPanel(screenshotPath: String?) {
         val boxes = cachedBoxes ?: return
