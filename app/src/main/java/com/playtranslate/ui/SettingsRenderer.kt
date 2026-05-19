@@ -556,7 +556,7 @@ class SettingsRenderer(
         switchOverlayIcon.trackDecorationTintList = ColorStateList.valueOf(attention)
     }
 
-    // ── Start / Stop PlayTranslate ───────────────────────────────────────
+    // ── Turn On / Turn Off PlayTranslate ───────────────────────────────────────
 
     private fun setupCaptureLifecycleButton() {
         val onClick = View.OnClickListener {
@@ -591,7 +591,7 @@ class SettingsRenderer(
         refreshCaptureLifecycleButton()
     }
 
-    /** Show / hide + style both Start / Stop buttons — the big in-content one
+    /** Show / hide + style both Turn On / Turn Off buttons — the big in-content one
      *  and the nav-bar one — against the current [CaptureLifecycle] state.
      *  Both are hidden on the accessibility backend in dual-screen, where
      *  "active" is always true and there is nothing to start. */
@@ -609,7 +609,7 @@ class SettingsRenderer(
         updateCaptureButtonCrossfade(settingsScrollView.scrollY)
     }
 
-    /** Filled-accent ("Start") / outlined ("Stop") styling for one button. */
+    /** Filled-accent ("Turn On") / outlined ("Turn Off") styling for one button. */
     private fun styleCaptureButton(btn: MaterialButton, active: Boolean) {
         btn.setText(
             if (active) R.string.capture_lifecycle_stop
@@ -644,7 +644,7 @@ class SettingsRenderer(
         btnCaptureLifecycle.alpha = t
     }
 
-    // ── Start/Stop attention shimmer ─────────────────────────────────────
+    // ── Turn On/Off attention shimmer ─────────────────────────────────────
     // A brief light sweep every few seconds draws the eye to the control,
     // whichever form is currently on screen. Started / stopped with the
     // settings screen's resume / pause (see SettingsBottomSheet).
@@ -660,7 +660,7 @@ class SettingsRenderer(
         }
     }
 
-    /** Begin the periodic attention shimmer on the Start / Stop control. */
+    /** Begin the periodic attention shimmer on the Turn On / Turn Off control. */
     fun startCaptureButtonShimmer() {
         shimmerHandler.removeCallbacks(shimmerRunnable)
         shimmerHandler.postDelayed(shimmerRunnable, 5_000L)

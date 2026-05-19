@@ -56,7 +56,7 @@ class SettingsBottomSheet : DialogFragment() {
     /** The live MediaProjection session this sheet holds a teardown listener
      *  on while resumed (kept so onPause unregisters from the same one).
      *  MediaProjection "active" is held consent, not a pref the
-     *  SharedPreferences listener observes — so the Start/Stop buttons are
+     *  SharedPreferences listener observes — so the Turn On/Off buttons are
      *  refreshed from this teardown callback instead. */
     private var teardownController: com.playtranslate.capture.MediaProjectionController? = null
     private val onProjectionTeardown: () -> Unit = { renderer?.refreshOverlayIconSwitch() }
@@ -111,9 +111,9 @@ class SettingsBottomSheet : DialogFragment() {
 
     override fun onResume() {
         super.onResume()
-        // Observe MediaProjection teardown so the Start/Stop buttons refresh
+        // Observe MediaProjection teardown so the Turn On/Off buttons refresh
         // when capture is stopped from outside Settings (e.g. the floating-
-        // icon menu's "Stop"). Released again in onPause.
+        // icon menu's "Turn Off"). Released again in onPause.
         teardownController =
             com.playtranslate.CaptureService.instance?.mediaProjectionController?.also {
                 it.addTeardownListener(onProjectionTeardown)
@@ -121,7 +121,7 @@ class SettingsBottomSheet : DialogFragment() {
         renderer?.startCaptureButtonShimmer()
         renderer?.refreshAnkiSection()
         renderer?.refreshOverlayIconSwitch()
-        // The toolbar hosts the Start/Stop button on the MediaProjection
+        // The toolbar hosts the Turn On/Off button on the MediaProjection
         // backend — re-check its visibility in case the accessibility grant
         // changed while we were away (same catch-up reason as the rows here).
         view?.let { refreshToolbarVisibility(it) }
@@ -217,7 +217,7 @@ class SettingsBottomSheet : DialogFragment() {
 
     /** Show the toolbar in dialog mode (single-screen), and in inline mode
      *  (dual-screen) only when the accessibility service is off — the
-     *  MediaProjection backend then needs the Start/Stop control the toolbar
+     *  MediaProjection backend then needs the Turn On/Off control the toolbar
      *  hosts. With accessibility on, dual-screen capture is always running, so
      *  there is nothing to start. Re-checked on resume since the grant can
      *  change while the user is away in system settings.

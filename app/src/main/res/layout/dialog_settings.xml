@@ -89,7 +89,7 @@
             android:paddingTop="4dp"
             android:paddingBottom="20dp">
 
-            <!-- Start / Stop control, big form. Cross-fades into the nav-bar
+            <!-- Turn On / Turn Off control, big form. Cross-fades into the nav-bar
                  ShimmerButton as the user scrolls (see SettingsRenderer). -->
             <com.playtranslate.ui.ShimmerButton
                 android:id="@+id/btnCaptureLifecycleLarge"

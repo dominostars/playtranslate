@@ -18,7 +18,7 @@ import com.google.android.material.button.MaterialButton
  * A [MaterialButton] that can play a one-shot "light sweep" shimmer — a soft
  * highlight band travelling across the face of the button — to draw the eye.
  *
- * Used by the Start / Stop capture control, which is shimmered on a timer.
+ * Used by the Turn On / Turn Off capture control, shimmered on a timer.
  * The sweep is clipped to the button's rounded-rect shape and reads the
  * current width/height every frame, so it stays correct while the button is
  * restyled or alpha-/scale-animated by the scroll cross-fade.

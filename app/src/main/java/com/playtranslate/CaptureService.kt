@@ -347,7 +347,7 @@ class CaptureService : Service() {
         // Immediately evaluate — may stopForeground if no game-screen presence yet
         updateForegroundState()
         if (intent?.action == ACTION_MP_ACTIVATE) {
-            // QS tile "Start PlayTranslate" in MediaProjection mode — routed
+            // QS tile turn-on in MediaProjection mode — routed
             // through the service so it works even from a cold start.
             serviceScope.launch { CaptureLifecycle.activateMediaProjection() }
         }

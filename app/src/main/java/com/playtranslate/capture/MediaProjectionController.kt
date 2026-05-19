@@ -59,7 +59,7 @@ class MediaProjectionController(private val service: CaptureService) {
     val hasConsent: Boolean get() = resultData != null
 
     /** Observers notified right after a teardown drops the held consent. The
-     *  Settings sheet registers one to refresh its Start/Stop buttons —
+     *  Settings sheet registers one to refresh its Turn On/Off buttons —
      *  MediaProjection "active" is held consent, not a pref it could watch. */
     private val teardownListeners = mutableListOf<() -> Unit>()
 

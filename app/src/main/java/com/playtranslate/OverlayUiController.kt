@@ -1286,16 +1286,16 @@ class OverlayUiController(
         val builder = OverlayAlert.Builder(displayCtx, overlayWm, display.displayId)
             .setOverlayHost(overlayHost)
 
-        // MediaProjection mode, or single-screen: the icon's "Exit" reads as
-        // stopping PlayTranslate (re-started from the app), so the confirm is
-        // a Stop — equivalent to the Settings Start/Stop button. Only
+        // MediaProjection mode, or single-screen: the floating icon's
+        // "Turn Off" turns PlayTranslate off (turned back on from the app), so
+        // the confirm matches the Settings Turn On / Turn Off button. Only
         // accessibility + dual-screen keeps the older hide/minimize wording.
         val exitFlow = !CaptureBackendResolver.active().requiresAccessibilityService ||
             Prefs.isSingleScreen(context)
 
         if (exitFlow) {
-            builder.setTitle("Stop $appName?")
-                .setMessage("Re-start in $appName app")
+            builder.setTitle("Turn Off $appName?")
+                .setMessage("Turn back on in $appName app")
             if (!alreadyCompact) {
                 builder.addButton("Minimize Icon", accentColor) {
                     prefs.compactOverlayIcon = true
@@ -1303,7 +1303,7 @@ class OverlayUiController(
                     reconcileFloatingIcons()
                 }
             }
-            builder.addButton("Stop", dividerColor, dangerColor) {
+            builder.addButton("Turn Off", dividerColor, dangerColor) {
                     CaptureLifecycle.deactivate(context)
                 }
                 .addCancelButton()

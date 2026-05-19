@@ -9,7 +9,7 @@ import com.playtranslate.Prefs
 /**
  * Single source of truth for whether PlayTranslate is "active" — its capture
  * system is running — and for the activate / deactivate operations behind the
- * Settings "Start / Stop PlayTranslate" button and the Quick Settings tile.
+ * Settings "Turn On / Turn Off" button and the Quick Settings tile.
  *
  * "active" is derived, never stored:
  *  - MediaProjection backend → screen-record consent is currently held
@@ -29,7 +29,7 @@ object CaptureLifecycle {
         return Prefs(ctx).showOverlayIcon && PlayTranslateAccessibilityService.isEnabled(ctx)
     }
 
-    /** Whether the Settings screen should surface the Start / Stop button.
+    /** Whether the Settings screen should surface the Turn On / Turn Off button.
      *  False only for the accessibility backend on dual-screen, where "active"
      *  is always true and the button would do nothing. */
     fun hasActivateControl(ctx: Context): Boolean =

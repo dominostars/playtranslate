@@ -64,11 +64,12 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     var isSingleScreen: Boolean = false
 
     /** True in MediaProjection mode or single-screen — the hide control then
-     *  reads "Exit" and confirms a Stop. Set by showFloatingMenu. */
+     *  reads "Turn Off" and confirms turning PlayTranslate off. Set by
+     *  showFloatingMenu. */
     var exitFlow: Boolean = false
         set(value) {
             field = value
-            hideLabel.text = if (value) "Exit" else "Hide"
+            hideLabel.text = if (value) "Turn Off" else "Hide"
             hideIcon.setImageResource(
                 if (value) R.drawable.ic_mode_off_on else R.drawable.ic_exit_to_app
             )
