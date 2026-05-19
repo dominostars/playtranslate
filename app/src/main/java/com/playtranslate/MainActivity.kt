@@ -1532,7 +1532,16 @@ class MainActivity :
         }
 
         if (captureReady) {
+            // Finishing onboarding by granting the overlay permission (the
+            // MediaProjection backend, accessibility off) drops the user on
+            // Settings, where the Turn On control lives.
+            val leavingOnboarding = onboardingContainer.visibility == View.VISIBLE
             onboardingContainer.visibility = View.GONE
+            if (leavingOnboarding &&
+                !CaptureBackendResolver.active().requiresAccessibilityService) {
+                selectTab(Tab.SETTINGS)
+                openSettingsInline()
+            }
             return
         }
         showOnboardingPage(pageA11y)
