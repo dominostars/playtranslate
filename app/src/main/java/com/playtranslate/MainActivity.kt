@@ -1953,21 +1953,7 @@ class MainActivity :
         dismissDropdown()
         inDragMode = false
         if (selectedRegionIdx == -1) {
-            when {
-                PlayTranslateAccessibilityService.isConnected ->
-                    openAddCustomRegionFromDropdown()
-                // Binding window — silent no-op; don't re-prompt for a
-                // permission the user has already granted.
-                PlayTranslateAccessibilityService.isEnabled(this) -> {}
-                else -> AlertDialog.Builder(this)
-                    .setTitle(R.string.custom_region_a11y_required_title)
-                    .setMessage(R.string.custom_region_a11y_required_message)
-                    .setPositiveButton(R.string.btn_open_a11y_settings) { _, _ ->
-                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                    }
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .show()
-            }
+            openAddCustomRegionFromDropdown()
             return
         }
         val changedSavedRegion = dropdownHighlightedRow != dropdownRegionOrder.lastIndex

@@ -14,13 +14,11 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.RadioButton
 import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.DialogFragment
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.playtranslate.MainActivity
-import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.Prefs
 import com.playtranslate.RegionEntry
 import com.playtranslate.R
@@ -122,25 +120,9 @@ class RegionPickerSheet : DialogFragment() {
         displaySegmentedControl = view.findViewById(R.id.displaySegmentedControl)
         setupDisplaySegmentedControl()
 
-        val noPreviewNotice = view.findViewById<View>(R.id.noPreviewNotice)
-        if (PlayTranslateAccessibilityService.isEnabled(requireContext())) {
-            noPreviewNotice.visibility = View.GONE
-        } else {
-            noPreviewNotice.visibility = View.VISIBLE
-            noPreviewNotice.setOnClickListener {
-                startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            }
-        }
-
         view.findViewById<View>(R.id.btnAddRegion).setOnClickListener {
             if (isEditMode) exitEditMode()
-            when {
-                PlayTranslateAccessibilityService.isConnected -> openAddCustomSheet()
-                // Binding window — silent no-op; don't re-prompt for a
-                // permission the user has already granted.
-                PlayTranslateAccessibilityService.isEnabled(requireContext()) -> {}
-                else -> showCustomRegionA11yDialog()
-            }
+            openAddCustomSheet()
         }
 
         btnEdit.setOnClickListener {
@@ -392,17 +374,6 @@ class RegionPickerSheet : DialogFragment() {
     }
 
     // ── Sheets ──────────────────────────────────────────────────────────
-
-    private fun showCustomRegionA11yDialog() {
-        AlertDialog.Builder(requireContext())
-            .setTitle(R.string.custom_region_a11y_required_title)
-            .setMessage(R.string.custom_region_a11y_required_message)
-            .setPositiveButton(R.string.btn_open_a11y_settings) { _, _ ->
-                startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
 
     private fun openEditSheet(index: Int) {
         if (childFragmentManager.findFragmentByTag(AddCustomRegionSheet.TAG) != null) return

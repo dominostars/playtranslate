@@ -55,9 +55,6 @@
     <string name="restricted_settings_title">Allow Restricted Settings</string>
     <string name="restricted_settings_message">From PlayTranslate\'s Android settings page, select the button on the top right with three dots (⋮) and then select \"Allow restricted settings\". After authenticating, you should be able to turn on accessibility permissions.</string>
     <string name="btn_open_app_settings">Open PlayTranslate Settings</string>
-    <string name="region_picker_no_preview">To see a preview of your selected region on the game screen, you must enable Accessibility Settings. This is also necessary to create new capture regions. Tap here to change.</string>
-    <string name="custom_region_a11y_required_title">Accessibility required</string>
-    <string name="custom_region_a11y_required_message">Adding custom regions requires the Accessibility permission. It\'s used to draw a live preview box on the game screen so you can see exactly what area you\'re selecting.\n\nGo to Settings → Accessibility → Installed apps → PlayTranslate → Enable.</string>
 
     <!-- Word detail -->
     <string name="word_detail_not_found">No dictionary entry found for \"%1$s\"</string>
