@@ -332,17 +332,24 @@ class OverlayUiController(
             private val labelBgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                 color = accentColor
                 style = android.graphics.Paint.Style.FILL
-                setShadowLayer(7.8f * dp, 0f, 2.6f * dp, android.graphics.Color.argb(140, 0, 0, 0))
             }
+            // Label drop shadow — a blurred round-rect drawn behind the pill.
+            // Deliberately not Paint.setShadowLayer: that is ignored for
+            // non-text draws on a hardware-accelerated canvas, and this view
+            // must NOT be software-layered — a full-display software layer
+            // exceeds the device's layer-size cap, after which the view
+            // silently isn't drawn at all. BlurMaskFilter renders fine on the
+            // hardware canvas (minSdk 30).
+            private val labelShadowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.argb(140, 0, 0, 0)
+                style = android.graphics.Paint.Style.FILL
+                maskFilter = android.graphics.BlurMaskFilter(7.8f * dp, android.graphics.BlurMaskFilter.Blur.NORMAL)
+            }
+            private val labelShadowDy = 2.6f * dp
             private val labelPadH = 10f * dp
             private val labelPadV = 4f * dp
             private val labelRadius = 6f * dp
             private val labelMargin = 8f * dp
-
-            init {
-                // BlurMaskFilter requires software rendering
-                setLayerType(LAYER_TYPE_SOFTWARE, null)
-            }
 
             override fun onDraw(canvas: android.graphics.Canvas) {
                 val w = width.toFloat()
@@ -385,7 +392,12 @@ class OverlayUiController(
                 val labelTop = if (aboveY >= 0) aboveY else b + labelMargin
                 val labelBottom = labelTop + pillH
 
-                // Pill background
+                // Pill drop shadow, then the pill background on top
+                canvas.drawRoundRect(
+                    cx - pillW / 2, labelTop + labelShadowDy,
+                    cx + pillW / 2, labelBottom + labelShadowDy,
+                    labelRadius, labelRadius, labelShadowPaint
+                )
                 canvas.drawRoundRect(
                     cx - pillW / 2, labelTop, cx + pillW / 2, labelBottom,
                     labelRadius, labelRadius, labelBgPaint
