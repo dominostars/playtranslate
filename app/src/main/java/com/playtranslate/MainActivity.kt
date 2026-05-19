@@ -362,12 +362,21 @@ class MainActivity :
         // this activity already implements) — no separate sink wiring
         // needed.
 
-        // Restore previously selected tab (survives recreate for theme changes)
-        val restoredTab = Tab.entries.getOrElse(
-            savedInstanceState?.getInt("selected_tab", 0) ?: 0
-        ) { Tab.TRANSLATE }
-        selectTab(restoredTab)
-        when (restoredTab) {
+        // The tab to open on launch. A recreate (theme change) restores the
+        // tab the user was on. A cold launch opens Translate — except
+        // dual-screen on the MediaProjection backend, which opens Settings:
+        // that is where Turn On lives, and MediaProjection consent must be
+        // re-granted each session since it does not survive a process restart.
+        val initialTab = when {
+            savedInstanceState != null -> Tab.entries.getOrElse(
+                savedInstanceState.getInt("selected_tab", 0)
+            ) { Tab.TRANSLATE }
+            !isSingleScreen() &&
+                !CaptureBackendResolver.active().requiresAccessibilityService -> Tab.SETTINGS
+            else -> Tab.TRANSLATE
+        }
+        selectTab(initialTab)
+        when (initialTab) {
             Tab.SETTINGS -> openSettingsInline()
             Tab.REGIONS -> openRegionPickerInline()
             else -> {}
