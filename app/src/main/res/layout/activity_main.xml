@@ -391,80 +391,7 @@
 
         </LinearLayout>
 
-        <!-- Page 2a: Accessibility — single-screen devices (no screen recording option) -->
-        <LinearLayout
-            android:id="@+id/pageA11ySingle"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:padding="28dp"
-            android:visibility="gone">
-
-            <ScrollView
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/onboarding_a11y_single_title"
-                        android:textColor="?attr/ptText"
-                        android:textSize="26sp"
-                        android:textStyle="bold"
-                        android:layout_marginBottom="24dp" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/onboarding_a11y_single_body"
-                        android:textColor="?attr/ptTextMuted"
-                        android:textSize="14sp"
-                        android:lineSpacingMultiplier="1.4" />
-
-                </LinearLayout>
-            </ScrollView>
-
-            <TextView
-                android:id="@+id/tvA11yHintSingle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
-                android:text="@string/onboarding_a11y_hint"
-                android:textColor="?attr/ptText"
-                android:textSize="13sp"
-                android:gravity="center"
-                android:layout_marginBottom="12dp" />
-
-            <Button
-                android:id="@+id/btnOpenA11ySingle"
-                android:layout_width="match_parent"
-                android:layout_height="56dp"
-                android:text="@string/btn_open_a11y_settings"
-                android:textSize="16sp"
-                android:backgroundTint="?attr/ptAccent"
-                android:textColor="?attr/ptAccentOn"
-                app:cornerRadius="8dp" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnCantEnableA11ySingle"
-                style="@style/Widget.Material3.Button.TextButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/btn_cant_enable_a11y"
-                android:textSize="14sp"
-                android:textAllCaps="false"
-                android:textColor="?attr/ptTextMuted" />
-
-        </LinearLayout>
-
-        <!-- Page 2b: Accessibility / screen recording choice (multi-screen) -->
+        <!-- Page 2: Display over other apps permission -->
         <LinearLayout
             android:id="@+id/pageA11y"
             android:layout_width="match_parent"
@@ -518,22 +445,11 @@
                 android:id="@+id/btnOpenA11y"
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
-                android:text="@string/btn_open_a11y_settings"
+                android:text="@string/btn_open_overlay_settings"
                 android:textSize="16sp"
                 android:backgroundTint="?attr/ptAccent"
                 android:textColor="?attr/ptAccentOn"
                 app:cornerRadius="8dp" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnCantEnableA11y"
-                style="@style/Widget.Material3.Button.TextButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/btn_cant_enable_a11y"
-                android:textSize="14sp"
-                android:textAllCaps="false"
-                android:textColor="?attr/ptTextMuted" />
 
         </LinearLayout>
 

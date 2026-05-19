@@ -109,7 +109,6 @@ class MainActivity :
     private lateinit var pageWelcome: View
     private lateinit var pageNotif: View
     private lateinit var pageA11y: View
-    private lateinit var pageA11ySingle: View
     private lateinit var rowWelcomeGameLang: View
     private lateinit var rowWelcomeYourLang: View
     private lateinit var btnWelcomeContinue: Button
@@ -573,7 +572,6 @@ class MainActivity :
         pageWelcome          = findViewById(R.id.pageWelcome)
         pageNotif            = findViewById(R.id.pageNotif)
         pageA11y             = findViewById(R.id.pageA11y)
-        pageA11ySingle       = findViewById(R.id.pageA11ySingle)
         rowWelcomeGameLang   = findViewById(R.id.rowWelcomeGameLang)
         rowWelcomeYourLang   = findViewById(R.id.rowWelcomeYourLang)
         btnWelcomeContinue   = findViewById(R.id.btnWelcomeContinue)
@@ -1516,7 +1514,7 @@ class MainActivity :
         if (singleScreen) {
             if (!captureReady) {
                 existingSheet?.dismissAllowingStateLoss()
-                showOnboardingPage(pageA11ySingle)
+                showOnboardingPage(pageA11y)
                 return
             }
             onboardingContainer.visibility = View.GONE
@@ -1596,7 +1594,6 @@ class MainActivity :
         pageWelcome.visibility    = if (page == pageWelcome)    View.VISIBLE else View.GONE
         pageNotif.visibility      = if (page == pageNotif)      View.VISIBLE else View.GONE
         pageA11y.visibility       = if (page == pageA11y)       View.VISIBLE else View.GONE
-        pageA11ySingle.visibility = if (page == pageA11ySingle) View.VISIBLE else View.GONE
     }
 
     private fun setupOnboarding() {
@@ -1641,19 +1638,18 @@ class MainActivity :
         pageNotif.findViewById<View>(R.id.btnGrantNotif).setOnClickListener {
             notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        pageA11y.findViewById<View>(R.id.btnOpenA11y).setOnClickListener {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        val openOverlaySettings = View.OnClickListener {
+            startActivity(
+                Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName"),
+                )
+            )
         }
-        pageA11ySingle.findViewById<View>(R.id.btnOpenA11ySingle).setOnClickListener {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-        }
-        val cantEnableClick = View.OnClickListener { showRestrictedSettingsDialog() }
-        pageA11y.findViewById<View>(R.id.btnCantEnableA11y).setOnClickListener(cantEnableClick)
-        pageA11ySingle.findViewById<View>(R.id.btnCantEnableA11ySingle).setOnClickListener(cantEnableClick)
+        pageA11y.findViewById<View>(R.id.btnOpenA11y).setOnClickListener(openOverlaySettings)
         // Highlight "PlayTranslate" in the hint text with the theme accent color
         val accentColor = themeColor(R.attr.ptTextTranslation)
         colorizeAppName(pageA11y.findViewById(R.id.tvA11yHintDual), accentColor)
-        colorizeAppName(pageA11ySingle.findViewById(R.id.tvA11yHintSingle), accentColor)
     }
 
     private fun colorizeAppName(tv: TextView, color: Int) {
