@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -11,6 +12,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.view.MotionEvent
 import android.view.View
 import android.view.animation.Interpolator
 import android.view.animation.PathInterpolator
@@ -27,20 +29,22 @@ import com.playtranslate.R
  * sees; the final pose of the animation matches the icon's docked
  * `compactMode` rendering exactly, so the handoff frame has no seam.
  *
- * Timeline (all times in ms from animation start; total 2560 ms):
+ * Timeline (all times in ms from animation start; total 3560 ms):
  *
- *  | Phase            | Window           | Effect                              |
- *  | ---------------- | ---------------- | ----------------------------------- |
- *  | Ring 1           | 20  – 900        | White ring expands 1.28× → 3.6×, opacity 0.9 → 0, border 2.5 → 0.5 dp |
- *  | Ring 2           | 180 – 1140       | Second ring 1.28× → 3.8×, opacity 0.7 → 0           |
- *  | Spring pop-in    | 0   – 720        | Carrier scales 0.40 → 1.40 → 1.20 → 1.286 with opacity 0 → 1, sitting 80 dp inboard of the dock edge |
- *  | Hold             | 720 – 2000       | Carrier dwells at 1.286× so the user reads the icon |
- *  | Slide / bounce   | 2000 – 2560      | Carrier slides to the dock edge with an overshoot squash + rebound; crossfades from app-icon art to the compact nub between 2160 – 2320 |
- *  | Settled          | 2560+            | Same pose as [FloatingOverlayIcon]'s compact dock   |
+ *  | Phase             | Window (ms)      | Effect                              |
+ *  | ----------------- | ---------------- | ----------------------------------- |
+ *  | Sonar rings ×4    | 0    – 3000      | Four evenly-placed white rings, 750ms apart. Each ramps in (1.28× scale, full opacity, 3.5dp border), then expands + fades to 3.7× / opacity 0 / 0.5dp border over 670ms. |
+ *  | Spring pop-in     | 0    – 720       | Carrier scales 0.40 → 1.40 → 1.20 → 1.286 with opacity 0 → 1, sitting 80dp inboard of the dock edge |
+ *  | Undulation 1      | 720  – 1860      | Carrier eases 1.286 → 1.40 → 1.286 (sine-like via paired ease-out + ease-in) |
+ *  | Undulation 2      | 1860 – 3000      | Same shape — ends EXACTLY at 3000 ms so the next frame is the start of travel, no still hold between |
+ *  | Slide / bounce    | 3000 – 3560      | Carrier eases into the wall, squashes, rebounds, and settles; crossfades from app-icon art to the compact nub between 3160 – 3320 |
+ *  | Settled           | 3560+            | Same pose as [FloatingOverlayIcon]'s compact dock   |
  *
- *  Sonar rings are listed first because they now fire concurrently with the
- *  carrier's fade-in / spring (rather than after, as the original spec had
- *  them) — the rings emanate from where the icon is arriving.
+ *  Touches: the intro window is touchable and absorbs every gesture in its
+ *  footprint without acting on it (see [onTouchEvent]). The underlying
+ *  [FloatingOverlayIcon] sits below in z-order, so any tap on the visible
+ *  carrier is consumed here and the icon's click handlers never fire while
+ *  the intro is playing.
  *
  * The view is symmetric for [FloatingOverlayIcon.Edge.LEFT] and
  * [Edge.RIGHT] — the same keyframes are mirrored horizontally for LEFT.
@@ -138,6 +142,15 @@ class SonarPingIntroView(
         super.onDetachedFromWindow()
     }
 
+    /** Absorbs every touch in the intro window's bounds without acting on
+     *  it. The intro window is layered above the (alpha-0) FloatingOverlayIcon
+     *  in z-order, so taps on the visible carrier (or anywhere else in this
+     *  window's footprint) get consumed here and don't reach the icon's
+     *  click handlers — the icon is "touchable but inert" for the duration
+     *  of the intro. */
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: MotionEvent): Boolean = true
+
     // ── Drawing ──────────────────────────────────────────────────────────
 
     override fun onDraw(canvas: Canvas) {
@@ -149,11 +162,12 @@ class SonarPingIntroView(
 
         // Rings are anchored at the carrier's ENTRY position
         // (translate(-80dp, 0) from the anchor) and stay put as the carrier
-        // moves on to dock. They're already faded out by the time the
-        // travel phase starts so they never "follow".
+        // moves on to dock. They're all faded out by the time the travel
+        // phase starts so they never "follow".
         val ringCenterX = anchorX + sign * (-ENTRY_OFFSET_DP * density)
-        drawRing(canvas, ringCenterX, anchorY, timeMs, ring2 = false)
-        drawRing(canvas, ringCenterX, anchorY, timeMs, ring2 = true)
+        for (spec in RING_SPECS) {
+            drawRing(canvas, ringCenterX, anchorY, timeMs, spec)
+        }
 
         // Carrier.
         val carrier = carrierAt(timeMs)
@@ -241,45 +255,37 @@ class SonarPingIntroView(
         canvas.drawPath(arrowPath, arrowPaint)
     }
 
-    /** Draws one of the two sonar rings. The two differ only in start
-     *  delay, peak opacity, and end scale — collapsed here to a couple of
-     *  conditionals. */
+    /** Draws one sonar ring per its [spec]. Quiet outside the spec's
+     *  start–end window; in-window, ramps in (linear, 0 → peak opacity,
+     *  0.6× → 1.28× scale, 2.5dp border) then expands and fades out on
+     *  the decel bezier (cubic-bezier(0.2, 0.6, 0.2, 1)) to the spec's
+     *  end scale, opacity 0, border 0.5dp. */
     private fun drawRing(
         canvas: Canvas,
         cx: Float, cy: Float,
         timeMs: Float,
-        ring2: Boolean,
+        spec: RingSpec,
     ) {
-        val startMs = if (ring2) RING2_START_MS else RING1_START_MS
-        val peakMs = if (ring2) RING2_PEAK_MS else RING1_PEAK_MS
-        val endMs = if (ring2) RING2_END_MS else RING1_END_MS
-        val peakOpacity = if (ring2) RING2_PEAK_OPACITY else RING1_PEAK_OPACITY
-        val endScale = if (ring2) RING2_END_SCALE else RING1_END_SCALE
-
-        if (timeMs < startMs || timeMs > endMs) return
+        if (timeMs < spec.startMs || timeMs > spec.endMs) return
 
         val scale: Float
         val opacity: Float
         val borderDp: Float
-        if (timeMs < peakMs) {
-            // Fade-in phase: scale 0.6 → 1.28, opacity 0 → peak. Linear.
-            val k = (timeMs - startMs) / (peakMs - startMs)
+        if (timeMs < spec.peakMs) {
+            val k = (timeMs - spec.startMs) / (spec.peakMs - spec.startMs)
             scale = lerp(RING_START_SCALE, RING_PEAK_SCALE, k)
-            opacity = lerp(0f, peakOpacity, k)
+            opacity = lerp(0f, spec.peakOpacity, k)
             borderDp = RING_START_BORDER_DP
         } else {
-            // Expand + fade phase: peak scale → end scale, opacity peak → 0,
-            // border 2.5 → 0.5 dp. Easing applied here (the demo's cubic-
-            // bezier(0.2, 0.6, 0.2, 1)).
-            val rawK = (timeMs - peakMs) / (endMs - peakMs)
+            val rawK = (timeMs - spec.peakMs) / (spec.endMs - spec.peakMs)
             val k = ringEasing.getInterpolation(rawK.coerceIn(0f, 1f))
-            scale = lerp(RING_PEAK_SCALE, endScale, k)
-            opacity = lerp(peakOpacity, 0f, k)
+            scale = lerp(RING_PEAK_SCALE, spec.endScale, k)
+            opacity = lerp(spec.peakOpacity, 0f, k)
             borderDp = lerp(RING_START_BORDER_DP, RING_END_BORDER_DP, k)
         }
 
         if (opacity <= 0f) return
-        ringPaint.alpha = (opacity * 255f * RING_BASE_ALPHA).toInt().coerceIn(0, 255)
+        ringPaint.alpha = (opacity * 255f).toInt().coerceIn(0, 255)
         ringPaint.strokeWidth = borderDp * density
         canvas.drawCircle(cx, cy, circleRadiusPx * scale, ringPaint)
     }
@@ -357,9 +363,23 @@ class SonarPingIntroView(
         val easeIn: Interpolator? = null,
     )
 
+    /** One sonar ring's lifecycle. [startMs]/[peakMs]/[endMs] in animation-
+     *  start ms; [peakOpacity] = max alpha at the ping moment (used
+     *  directly as the stroke alpha, no further scaling); [endScale] = max
+     *  scale relative to the carrier radius. */
+    private data class RingSpec(
+        val startMs: Float,
+        val peakMs: Float,
+        val endMs: Float,
+        val peakOpacity: Float,
+        val endScale: Float,
+    )
+
     companion object {
-        /** Full intro duration. */
-        const val TOTAL_DURATION_MS = 2560L
+        /** Full intro duration. Sized so the sonar phase (0–3000 ms) and
+         *  the carrier's travel-to-dock (3000–3560 ms) don't overlap — the
+         *  icon waits for the last ring to finish before moving home. */
+        const val TOTAL_DURATION_MS = 3560L
 
         /** Entry offset — carrier pops in 80 dp inboard of the dock edge,
          *  per the spec. */
@@ -384,70 +404,107 @@ class SonarPingIntroView(
          *  [FloatingOverlayIcon]'s 0.22. */
         private const val ARROW_SIZE_RATIO = 0.22f
 
-        /** Crossfade between the launcher art and the compact nub. */
-        private const val CROSSFADE_START_MS = 2160f
-        private const val CROSSFADE_END_MS = 2320f
+        /** Crossfade between the launcher art and the compact nub —
+         *  positioned inside the travel phase (3000–3560 ms) at the same
+         *  relative offset the original spec used (160 ms into travel,
+         *  ending 320 ms in), so the swap happens mid-bounce. */
+        private const val CROSSFADE_START_MS = 3160f
+        private const val CROSSFADE_END_MS = 3320f
         private const val CROSSFADE_DURATION_MS = CROSSFADE_END_MS - CROSSFADE_START_MS
 
         /** Carrier opacity fade-in completes at 240 ms (in step with the
          *  spring's first overshoot). */
         private const val CARRIER_FADE_IN_END_MS = 240f
 
-        // Sonar timing — shifted 300ms earlier than the original design
-        // HTML (Ring 1 was 320–1200, Ring 2 was 480–1440). The rings now
-        // start while the carrier is still fading in / springing, so they
-        // emanate from where the icon is *arriving* rather than after it
-        // has settled. Inter-ring offset (160 ms) and individual phase
-        // durations (80 ms fade-in, 800/880 ms expand-and-fade) are
-        // unchanged from the spec.
+        // Sonar timing — four evenly-placed rings spanning a 3-second
+        // window (0–3000ms). 750ms spacing between starts; each ring's
+        // lifetime is also 750ms so they tile without dead air. Each ring
+        // ramps in for 80ms (fade-in to peak), then expands + fades over
+        // 670ms (compressed from the original 800ms so the lifetime fits
+        // the spacing). Peak opacity is fully opaque (1.0) so the ring
+        // reads as a hard line at the moment of the ping, then fades to 0
+        // as it expands.
+        private val RING_SPECS: List<RingSpec> = run {
+            val spacing = 750f
+            val lifetime = 750f
+            val fadeInMs = 80f
+            val opacity = 1.0f
+            val endScale = 3.7f
+            List(4) { i ->
+                val start = i * spacing
+                RingSpec(
+                    startMs = start,
+                    peakMs = start + fadeInMs,
+                    endMs = start + lifetime,
+                    peakOpacity = opacity,
+                    endScale = endScale,
+                )
+            }
+        }
 
-        /** Ring 1 timing & end scale. */
-        private const val RING1_START_MS = 20f
-        private const val RING1_PEAK_MS = 100f
-        private const val RING1_END_MS = 900f
-        private const val RING1_PEAK_OPACITY = 0.9f
-        private const val RING1_END_SCALE = 3.6f
-
-        /** Ring 2 timing & end scale — slightly larger & dimmer. */
-        private const val RING2_START_MS = 180f
-        private const val RING2_PEAK_MS = 260f
-        private const val RING2_END_MS = 1140f
-        private const val RING2_PEAK_OPACITY = 0.7f
-        private const val RING2_END_SCALE = 3.8f
-
-        /** Shared ring geometry. */
+        /** Shared ring geometry. Start border bumped 2.5 → 3.5dp so the
+         *  ping reads as a confident hard line at the moment of fire; it
+         *  still tapers to 0.5dp as the ring expands and fades. */
         private const val RING_START_SCALE = 0.6f
         private const val RING_PEAK_SCALE = 1.28f
-        private const val RING_START_BORDER_DP = 2.5f
+        private const val RING_START_BORDER_DP = 3.5f
         private const val RING_END_BORDER_DP = 0.5f
-        /** Multiplier so the per-ring opacity peaks at 0.85 × 1 (matches
-         *  the spec's `rgba(255, 255, 255, 0.85)` stroke colour). */
-        private const val RING_BASE_ALPHA = 0.85f
 
         /** Material-standard ease-in curve (cubic-bezier(0.4, 0, 1, 1)) —
          *  starts slow, accelerates into the end. Applied to the travel
          *  segment so the icon eases off its hover and accelerates into
          *  the wall before the squash. */
         private val EASE_IN: Interpolator = PathInterpolator(0.4f, 0f, 1f, 1f)
+        /** Material-standard ease-out curve (cubic-bezier(0, 0, 0.2, 1)) —
+         *  starts fast, decelerates as it approaches the end. Paired with
+         *  EASE_IN on the undulation's down-segment to give the up-down
+         *  arc a sine-like silhouette without extra keyframes. */
+        private val EASE_OUT: Interpolator = PathInterpolator(0f, 0f, 0.2f, 1f)
 
-        /** Carrier keyframes, exact values from the design HTML. */
+        /** Peak scale of the slow undulation that runs between the spring
+         *  pop-in and the travel-to-dock. Matches the spring's overshoot
+         *  peak (1.40) for a consistent "swell" height, but reached over
+         *  ~740ms rather than the spring's ~240ms. */
+        private const val UNDULATION_PEAK_SCALE = 1.40f
+
+        /** Carrier keyframes:
+         *
+         *    0 –  720 ms  spring pop-in (spec'd 4-keyframe overshoot)
+         *  720 – 1860 ms  undulation 1 (1.286 → 1.40 → 1.286, ease-out
+         *                 then ease-in, ~sine half-cycle each way)
+         * 1860 – 3000 ms  undulation 2 (same shape)
+         * 3000 – 3560 ms  travel + squash + rebound + settle. The travel
+         *                 segment eases in from the second undulation's
+         *                 return, so the icon starts the slide slowly
+         *                 right as the last sonar finishes.
+         *
+         * The two undulations END precisely at 3000 ms — there's no still
+         * hold between them and the travel; the second cycle's return-to-
+         * rest is the same frame the travel starts moving.
+         */
         private val CARRIER_KEYFRAMES = listOf(
             // Spring pop-in
             CarrierKeyframe(0f,    -ENTRY_OFFSET_DP, 0.40f, 0.40f),
             CarrierKeyframe(240f,  -ENTRY_OFFSET_DP, 1.40f, 1.40f),
             CarrierKeyframe(480f,  -ENTRY_OFFSET_DP, 1.20f, 1.20f),
             CarrierKeyframe(720f,  -ENTRY_OFFSET_DP, ENTRY_SETTLE_SCALE, ENTRY_SETTLE_SCALE),
-            // Hold
-            CarrierKeyframe(2000f, -ENTRY_OFFSET_DP, ENTRY_SETTLE_SCALE, ENTRY_SETTLE_SCALE),
-            // Travel — eases in from the hover so the icon starts the slide
-            // slowly and picks up speed before slamming into the wall.
-            CarrierKeyframe(2240f,  0.40f * 56f, 1.05f, 1.05f, easeIn = EASE_IN),
+            // Undulation 1 — up (ease-out) to peak, then down (ease-in).
+            CarrierKeyframe(1290f, -ENTRY_OFFSET_DP, UNDULATION_PEAK_SCALE, UNDULATION_PEAK_SCALE, easeIn = EASE_OUT),
+            CarrierKeyframe(1860f, -ENTRY_OFFSET_DP, ENTRY_SETTLE_SCALE, ENTRY_SETTLE_SCALE, easeIn = EASE_IN),
+            // Undulation 2 — same shape; the return frame at 3000 ms is the
+            // same frame travel starts, so the icon flows straight from
+            // breathing into sliding without a still beat between.
+            CarrierKeyframe(2430f, -ENTRY_OFFSET_DP, UNDULATION_PEAK_SCALE, UNDULATION_PEAK_SCALE, easeIn = EASE_OUT),
+            CarrierKeyframe(3000f, -ENTRY_OFFSET_DP, ENTRY_SETTLE_SCALE, ENTRY_SETTLE_SCALE, easeIn = EASE_IN),
+            // Travel — eases in so the icon picks up speed before slamming
+            // into the wall.
+            CarrierKeyframe(3240f,  0.40f * 56f, 1.05f, 1.05f, easeIn = EASE_IN),
             // Squash into the wall (horizontal squash, vertical stretch).
-            CarrierKeyframe(2400f,  0.88f * 56f, 0.86f, 1.12f),
+            CarrierKeyframe(3400f,  0.88f * 56f, 0.86f, 1.12f),
             // Rebound (slight overshoot the other way).
-            CarrierKeyframe(2500f,  0.70f * 56f, 1.06f, 0.94f),
+            CarrierKeyframe(3500f,  0.70f * 56f, 1.06f, 0.94f),
             // Settled at the dock pose.
-            CarrierKeyframe(2560f,  DOCK_TRANSLATE_DP, 1.0f, 1.0f),
+            CarrierKeyframe(3560f,  DOCK_TRANSLATE_DP, 1.0f, 1.0f),
         )
     }
 }

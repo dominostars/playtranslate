@@ -884,11 +884,15 @@ class OverlayUiController(
         tearDownSonarIntroForDisplay(displayId)
 
         val intro = SonarPingIntroView(displayCtx, edge)
+        // Touchable (no FLAG_NOT_TOUCHABLE): the intro window absorbs taps
+        // on the visible carrier so the underlying FloatingOverlayIcon
+        // doesn't get tap-fired while the user thinks they're tapping the
+        // animating intro. The view's onTouchEvent returns true, so taps
+        // are consumed silently — no action, just "yes, I saw that".
         val params = WindowManager.LayoutParams(
             windowWidth, windowHeight,
             overlayHost.windowType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
