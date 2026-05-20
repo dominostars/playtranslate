@@ -844,17 +844,6 @@ class CaptureService : Service() {
             reconcileLiveModes("displayAdded($displayId)")
         }
         override fun onDisplayChanged(displayId: Int) {
-            // Rotation / configuration changes need the floating icon's snap
-            // position re-applied against the new screen dimensions —
-            // otherwise the icon stays at its pre-rotation x/y and ends up
-            // off the new edge. The accessibility backend handles this via
-            // its own DisplayListener; in MediaProjection mode no a11y
-            // service is connected, so this is the only path that fires.
-            // repositionIconForDisplay is a no-op for displays without an
-            // icon, so calling it before the live-mode early-return below
-            // is safe.
-            CaptureBackendResolver.activeOverlayUi
-                ?.repositionIconForDisplay(displayId)
             if (displayId !in gameDisplayIds) return
             val st = getSystemService(DisplayManager::class.java)
                 ?.getDisplay(displayId)?.state

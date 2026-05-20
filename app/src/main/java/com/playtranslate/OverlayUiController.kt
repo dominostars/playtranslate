@@ -79,6 +79,37 @@ class OverlayUiController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val handler = Handler(Looper.getMainLooper())
 
+    /** Listens for display changes (rotation, hot-plug, foldable state) so
+     *  icons can be repositioned against the new dimensions and the icon
+     *  registry can be reconciled against the new set of available displays.
+     *
+     *  This used to live exclusively on
+     *  [PlayTranslateAccessibilityService.displayListener] and on
+     *  [CaptureService]'s live-mode-gated listener, but on the
+     *  MediaProjection backend neither one is reliably active when the
+     *  floating icon is showing without live mode running (a11y service
+     *  isn't connected; CaptureService.displayListener is only registered
+     *  while live mode runs). Result: a rotation in MP mode left the icon
+     *  pinned to its pre-rotation x/y and ending up off the new edge.
+     *
+     *  Hosting the listener here keeps rotation/hot-plug handling in
+     *  lockstep with icon visibility — the controller exists for as long
+     *  as a backend can show icons. The a11y service's listener is left
+     *  intact (its onDisplayChanged call duplicates this one, harmlessly);
+     *  this controller's listener fills the gap on the MP backend. */
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) = reconcileFloatingIcons()
+        override fun onDisplayRemoved(displayId: Int) = reconcileFloatingIcons()
+        override fun onDisplayChanged(displayId: Int) {
+            repositionIconForDisplay(displayId)
+        }
+    }
+
+    init {
+        (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
+            ?.registerDisplayListener(displayListener, handler)
+    }
+
     private val regionController = RegionOverlayController(
         context, overlayHost,
         anyIconInDragMode = { anyIconInDragMode() },
@@ -1309,6 +1340,8 @@ class OverlayUiController(
     /** Full teardown — [hideAll] plus scope/handler cancellation. For host
      *  death (accessibility-service unbind). */
     fun destroy() {
+        (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
+            ?.unregisterDisplayListener(displayListener)
         hideAll()
         regionController.destroy()
         pillHandler.removeCallbacksAndMessages(null)
