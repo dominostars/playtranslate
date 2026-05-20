@@ -29,6 +29,7 @@ import com.playtranslate.ui.FloatingOverlayIcon
 import com.playtranslate.ui.MagnifierLens
 import com.playtranslate.ui.OverlayAlert
 import com.playtranslate.ui.OverlayLayout
+import com.playtranslate.ui.SonarPingIntroView
 import com.playtranslate.ui.TextBox
 import com.playtranslate.ui.TranslationOverlayView
 import com.playtranslate.ui.WordLookupPopup
@@ -39,6 +40,14 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 private const val TAG = "OverlayUiController"
+
+/** Sonar-ping intro overlay window size — sized to cover the carrier's
+ *  travel range plus the two expanding rings (ring 2 ends at scale 3.8 ×
+ *  56dp = 213dp diameter centred on the entry pose, which sits 108dp from
+ *  the dock edge). Width 320dp comfortably contains entry → dock with the
+ *  outer ring; height 280dp the vertical ring extent. */
+private const val SONAR_INTRO_WIDTH_DP = 320
+private const val SONAR_INTRO_HEIGHT_DP = 280
 
 /**
  * Owns every game-screen overlay the app draws: the floating icon + menu, the
@@ -91,6 +100,22 @@ class OverlayUiController(
     )
 
     private val iconHandles: MutableMap<Int, FloatingIconHandle> = mutableMapOf()
+
+    // ── Sonar-ping intro ─────────────────────────────────────────────────
+    //
+    // Attention animation that plays whenever a fresh floating icon lands in
+    // a window (see design_handoff_sonar_ping/). Fires for every install —
+    // capture activation, the QS tile flipping showOverlayIcon on, a new
+    // display being added, etc. Does NOT fire for rotation
+    // (repositionIconForDisplay updates the existing icon's params in place)
+    // or for z-order re-raises (bringFloatingIconsToFront removes-and-re-
+    // adds the same icon view without going through install).
+    //
+    // Keyed by displayId so simultaneous intros on multi-display setups don't
+    // overwrite each other's overlay-window references and leave one
+    // orphaned.
+
+    private val activeSonarIntros: MutableMap<Int, SonarPingIntroView> = mutableMapOf()
 
     /** True iff at least one floating icon is currently registered. */
     val hasAnyFloatingIcon: Boolean get() = iconHandles.isNotEmpty()
@@ -806,12 +831,106 @@ class OverlayUiController(
                 dragController = controller,
                 clearLivePauseFlag = clearLivePauseFlag,
             )
+            // Fresh icon → sonar-ping intro. This is the only "icon added to
+            // a window" path (rotation reuses the existing icon's params;
+            // bring-to-front re-stacks without going through install), so
+            // gating the intro here gives us exactly the firing model the
+            // design asked for: every fresh appearance, never a routine
+            // re-layout.
+            showSonarIntro(icon, displayId, displayCtx, pos)
         } else {
             controller.destroy()
         }
 
         CaptureService.instance?.updateForegroundState()
         CaptureService.instance?.syncIconState()
+    }
+
+    /** Install the sonar-ping intro overlay on top of the just-added
+     *  floating icon, hide the icon (alpha 0) for the duration, and restore
+     *  it when the animation ends. Animation details live in
+     *  [SonarPingIntroView]. */
+    private fun showSonarIntro(
+        icon: FloatingOverlayIcon,
+        displayId: Int,
+        displayCtx: Context,
+        pos: IconPosition,
+    ) {
+        val wm = icon.wm ?: return
+        val iconParams = icon.params ?: return
+        val edge = if (pos.edge == FloatingOverlayIcon.Edge.LEFT.ordinal)
+            FloatingOverlayIcon.Edge.LEFT
+        else
+            FloatingOverlayIcon.Edge.RIGHT
+
+        val density = displayCtx.resources.displayMetrics.density
+        val windowWidth = (SONAR_INTRO_WIDTH_DP * density).toInt()
+        val windowHeight = (SONAR_INTRO_HEIGHT_DP * density).toInt()
+        val screenSize = displayCtx.displaySizePx()
+        // Centre the intro window vertically on the icon's centre Y; the
+        // anchor inside the view is at view-x = (width − 28dp) for RIGHT or
+        // 28dp for LEFT, which lines the carrier up exactly with the icon's
+        // docked compact-mode position on screen.
+        val iconCenterY = iconParams.y + icon.viewSizePx / 2
+        val windowX = when (edge) {
+            FloatingOverlayIcon.Edge.RIGHT -> screenSize.x - windowWidth
+            FloatingOverlayIcon.Edge.LEFT -> 0
+        }
+        val windowY = iconCenterY - windowHeight / 2
+
+        // Stop any earlier intro that's still playing on the same display
+        // (e.g. very rapid toggle-off → toggle-on). The new install gets a
+        // fresh intro from t=0.
+        tearDownSonarIntroForDisplay(displayId)
+
+        val intro = SonarPingIntroView(displayCtx, edge)
+        val params = WindowManager.LayoutParams(
+            windowWidth, windowHeight,
+            overlayHost.windowType,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = windowX
+            y = windowY
+        }
+
+        // Hide the underlying icon while the intro plays. The intro's final
+        // pose draws the same compact nub at the same screen position, so
+        // restoring alpha at the end produces no visible seam.
+        icon.alpha = 0f
+
+        // Each intro removes its own overlay window on natural end — the
+        // map slot is only nulled if it still points at THIS intro (a
+        // newer one for the same display would have replaced it).
+        intro.onAnimationEnd = {
+            icon.alpha = 1f
+            overlayHost.removeOverlayWindow(intro)
+            if (activeSonarIntros[displayId] === intro) {
+                activeSonarIntros.remove(displayId)
+            }
+        }
+
+        if (overlayHost.addOverlayWindow(intro, wm, params, displayId)) {
+            activeSonarIntros[displayId] = intro
+            intro.start()
+        } else {
+            Log.w(TAG, "Sonar intro overlay add failed; skipping animation")
+            icon.alpha = 1f
+        }
+    }
+
+    /** Tear down the intro overlay if it's currently playing on [displayId].
+     *  Called from [hideFloatingIconForDisplay] so a capture-off mid-intro
+     *  doesn't leave a dangling overlay. Suppresses the completion callback
+     *  so it doesn't try to remove the already-removed window. */
+    private fun tearDownSonarIntroForDisplay(displayId: Int) {
+        val intro = activeSonarIntros.remove(displayId) ?: return
+        intro.onAnimationEnd = null
+        overlayHost.removeOverlayWindow(intro)
     }
 
     /**
@@ -838,6 +957,10 @@ class OverlayUiController(
     }
 
     private fun hideFloatingIconForDisplay(displayId: Int, reason: String) {
+        // Kill any in-flight sonar intro on this display first — the intro
+        // is a sibling overlay that doesn't track the icon's lifecycle, so
+        // we have to remove it explicitly.
+        tearDownSonarIntroForDisplay(displayId)
         val handle = iconHandles.remove(displayId) ?: return
         Log.i(TAG, "hideFloatingIcon[$displayId]: $reason")
         handle.dragController.destroy()
