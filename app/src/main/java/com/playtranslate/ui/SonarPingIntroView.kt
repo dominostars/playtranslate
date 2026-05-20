@@ -33,7 +33,7 @@ import com.playtranslate.R
  *
  *  | Phase             | Window (ms)      | Effect                              |
  *  | ----------------- | ---------------- | ----------------------------------- |
- *  | Sonar rings ×4    | 0    – 3000      | Four evenly-placed white rings, 750ms apart. Each ramps in (1.28× scale, full opacity, 3.5dp border), then expands + fades to 3.7× / opacity 0 / 0.5dp border over 670ms. |
+ *  | Sonar rings ×4    | 0    – 3000      | Four evenly-placed white rings, 750ms apart. Each ramps in (1.28× scale, full opacity, 15dp border), then expands + fades to 3.7× / opacity 0 / 0.5dp border over 670ms. |
  *  | Spring pop-in     | 0    – 720       | Carrier scales 0.40 → 1.40 → 1.20 → 1.286 with opacity 0 → 1, sitting 80dp inboard of the dock edge |
  *  | Undulation 1      | 720  – 1860      | Carrier eases 1.286 → 1.40 → 1.286 (sine-like via paired ease-out + ease-in) |
  *  | Undulation 2      | 1860 – 3000      | Same shape — ends EXACTLY at 3000 ms so the next frame is the start of travel, no still hold between |
@@ -104,6 +104,14 @@ class SonarPingIntroView(
     private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         color = Color.WHITE
+    }
+    /** Sonar ring border — drawn UNDERNEATH the white stroke at the same
+     *  radius with [RING_BORDER_PIPE_DP] of extra width on each side, so
+     *  it shows as a thin dark piping on both the inside and outside of
+     *  the white ring. Same alpha curve as the white ring. */
+    private val ringBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = Color.parseColor("#555555")
     }
 
     // ── Animation state ──────────────────────────────────────────────────
@@ -285,9 +293,18 @@ class SonarPingIntroView(
         }
 
         if (opacity <= 0f) return
-        ringPaint.alpha = (opacity * 255f).toInt().coerceIn(0, 255)
+        val alpha = (opacity * 255f).toInt().coerceIn(0, 255)
+        val radius = circleRadiusPx * scale
+        // Border first — wider stroke, drawn at the same radius, so 1dp of
+        // dark grey peeks out on each side of the white ring once the
+        // narrower white stroke overdraws the middle.
+        ringBorderPaint.alpha = alpha
+        ringBorderPaint.strokeWidth = (borderDp + 2f * RING_BORDER_PIPE_DP) * density
+        canvas.drawCircle(cx, cy, radius, ringBorderPaint)
+        // White ring on top.
+        ringPaint.alpha = alpha
         ringPaint.strokeWidth = borderDp * density
-        canvas.drawCircle(cx, cy, circleRadiusPx * scale, ringPaint)
+        canvas.drawCircle(cx, cy, radius, ringPaint)
     }
 
     // ── Carrier keyframes ────────────────────────────────────────────────
@@ -442,13 +459,18 @@ class SonarPingIntroView(
             }
         }
 
-        /** Shared ring geometry. Start border bumped 2.5 → 3.5dp so the
-         *  ping reads as a confident hard line at the moment of fire; it
-         *  still tapers to 0.5dp as the ring expands and fades. */
+        /** Shared ring geometry. Start border is 15dp — at the smallest
+         *  scale the stroke is wider than the ring's inner hole, so the
+         *  ping reads as a nearly-solid disc that then opens up into an
+         *  expanding ring as it scales and the stroke tapers to 0.5dp. */
         private const val RING_START_SCALE = 0.6f
         private const val RING_PEAK_SCALE = 1.28f
-        private const val RING_START_BORDER_DP = 3.5f
+        private const val RING_START_BORDER_DP = 15f
         private const val RING_END_BORDER_DP = 0.5f
+        /** Dark-grey piping on each side of the white ring stroke. The
+         *  border stroke uses [borderDp] + 2 × this so 1dp of grey peeks
+         *  out at both the inner and outer edge of the white. */
+        private const val RING_BORDER_PIPE_DP = 1f
 
         /** Material-standard ease-in curve (cubic-bezier(0.4, 0, 1, 1)) —
          *  starts slow, accelerates into the end. Applied to the travel
