@@ -102,7 +102,7 @@ class RegionPickerSheet : DialogFragment() {
         // segmented control with a dead segment.
         val dm = displayManager()
         selectedDisplayIds = CaptureBackendResolver.active()
-            .capturableDisplays(prefs.captureDisplayIds)
+            .capturableTargets(prefs.captureDisplayIds)
             .filter { dm?.getDisplay(it) != null }
             .ifEmpty { listOf(Display.DEFAULT_DISPLAY) }
 

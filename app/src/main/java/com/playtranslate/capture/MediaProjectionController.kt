@@ -29,11 +29,15 @@ private const val TAG = "MediaProjectionCtl"
  * a per-resolution [VirtualDisplay], and the [ImageReader] frames are pulled
  * from. One instance per [CaptureService].
  *
- * Lazily established on the first [captureFrame]: with no consent, a
- * transparent [MediaProjectionConsentActivity] is launched and the call
- * suspends on [consentGate] until the user responds. The session is then kept
- * warm for the process lifetime — MediaProjection tokens can't be persisted,
- * so a process restart (or a user revoke) needs fresh consent.
+ * Consent is secured up front via [ensureConsent] — by `startLive()` before
+ * the live-mode loop exists, or by the Settings / Quick-Settings activate path
+ * — never lazily from inside a capture. [captureFrame] requires consent to
+ * already be held and returns null otherwise; it never launches the dialog. (A
+ * prompt mid-loop has its Cancel tap caught by the live-mode touch sentinel as
+ * game input, restarting the loop and re-prompting in a cycle.) Once granted,
+ * the session is kept warm for the process lifetime — MediaProjection tokens
+ * can't be persisted, so a process restart or a user revoke needs fresh
+ * consent.
  *
  * MediaProjection captures the display the projection was authorized for —
  * always the default display ([projectedDisplayId]); it can't target an
@@ -103,9 +107,11 @@ class MediaProjectionController(private val service: CaptureService) {
 
     /**
      * Capture one clean frame of the projected display ([projectedDisplayId])
-     * at its current resolution. Lazily establishes consent + projection +
-     * virtual display. Returns null on denied consent or any failure. Call on
-     * the main thread — the heavy pixel copy is moved off it internally.
+     * at its current resolution. Lazily establishes the projection + virtual
+     * display, but NOT consent — consent must already be held (see
+     * [ensureConsent]); returns null without prompting if it isn't. Returns
+     * null on any capture failure too. Call on the main thread — the heavy
+     * pixel copy is moved off it internally.
      */
     suspend fun captureFrame(): Bitmap? {
         if (!ensureProjection()) return null
@@ -114,9 +120,14 @@ class MediaProjectionController(private val service: CaptureService) {
         return acquireBitmap(reader, w, h)
     }
 
-    private suspend fun ensureProjection(): Boolean {
+    private fun ensureProjection(): Boolean {
         if (projection != null) return true
-        if (!ensureConsent()) return false
+        // captureFrame never prompts — consent is secured up front by
+        // ensureConsent() (startLive / the activate path). A loop reaching
+        // here without consent means a mid-session revoke; fail so the
+        // caller's checkConsentLost stops live mode, rather than the dialog
+        // re-appearing every frame.
+        if (!hasConsent) return false
         // API 34+: the foreground service must already carry the
         // mediaProjection type before getMediaProjection() is called.
         service.ensureMediaProjectionForegroundType()

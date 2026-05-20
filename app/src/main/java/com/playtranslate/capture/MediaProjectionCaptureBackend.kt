@@ -26,18 +26,26 @@ object MediaProjectionCaptureBackend : CaptureBackend {
 
     override val requiresAccessibilityService: Boolean get() = false
 
-    /** A capture before consent is held launches the screen-record dialog,
-     *  so a passive capture is safe only once consent exists. */
+    /** Capture never prompts — it fails closed until consent is held — so a
+     *  passive capture is meaningful only once consent exists. */
     override val canCaptureWithoutPrompting: Boolean
         get() = CaptureService.instance?.mediaProjectionController?.hasConsent == true
 
+    /** Obtain screen-record consent, prompting if needed — the up-front
+     *  consent gate `startLive()` awaits before building the live-mode loop. */
+    override suspend fun ensureCaptureReady(): Boolean =
+        CaptureService.instance?.mediaProjectionController?.ensureConsent() ?: false
+
     /** MediaProjection mirrors only the default display (see
-     *  [MediaProjectionController.projectedDisplayId]) — it resolves to that
-     *  display regardless of [selected], which has no meaning on this backend
-     *  (the picker is gated; a persisted multi-display selection is a stale
-     *  accessibility-mode artifact). */
-    override fun capturableDisplays(selected: Set<Int>): Set<Int> =
-        setOf(Display.DEFAULT_DISPLAY)
+     *  [MediaProjectionController.projectedDisplayId]). */
+    override fun canCapture(displayId: Int): Boolean =
+        displayId == Display.DEFAULT_DISPLAY
+
+    /** The default display is the universal capture target — if a saved
+     *  selection has no capturable overlap (e.g., a persisted accessibility-
+     *  mode `{1}` after switching to this backend), start-path callers
+     *  fall back to it rather than silently no-op. */
+    override val fallbackDisplay: Int = Display.DEFAULT_DISPLAY
 
     override fun startInputMonitoring(displayId: Int, onGameInput: () -> Unit) {
         overlayHost?.addTouchSentinel(displayId, onGameInput)

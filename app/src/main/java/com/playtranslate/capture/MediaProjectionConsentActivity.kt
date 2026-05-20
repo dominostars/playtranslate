@@ -12,8 +12,8 @@ import com.playtranslate.CaptureService
 /**
  * Transparent, UI-less activity whose only job is to show the system
  * MediaProjection consent dialog and hand the result to
- * [MediaProjectionController]. Launched lazily by the controller on the first
- * capture when there is no consent yet.
+ * [MediaProjectionController]. Launched by the controller's `ensureConsent`
+ * when consent is first needed — never from inside a capture.
  */
 class MediaProjectionConsentActivity : ComponentActivity() {
 

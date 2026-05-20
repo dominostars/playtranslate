@@ -662,10 +662,13 @@ class OverlayUiController(
             return
         }
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-        // Constrain to displays the active backend can actually capture —
-        // MediaProjection collapses this to the default display, so the icon
-        // never lands on a screen it can't drive.
-        val target = CaptureBackendResolver.active().capturableDisplays(prefs.captureDisplayIds)
+        // Resolve the saved selection through the backend shim — MediaProjection
+        // collapses a stale non-default selection to its fallback display, so
+        // the icon never lands on a screen it can't drive. Empty only when
+        // the backend has no fallback either (accessibility with every saved
+        // display unreachable); the downstream "all unreachable" branch picks
+        // up in that case.
+        val target = CaptureBackendResolver.active().capturableTargets(prefs.captureDisplayIds)
 
         // Snapshot before mutating — tear down icons no longer needed.
         val staleIds = iconHandles.keys.filter { id ->
@@ -919,8 +922,10 @@ class OverlayUiController(
             }
         }
         menu.onToggleLive = {
+            val live = CaptureService.instance?.isLive == true
+            android.util.Log.i("LiveToggleDbg", "OverlayUi.onToggleLive; svc.isLive=$live; svcInstance=${CaptureService.instance != null}")
             dismissFloatingMenu()
-            if (CaptureService.instance?.isLive == true) {
+            if (live) {
                 stopLiveRouted()
             } else {
                 if (Prefs.shouldUseInAppOnlyMode(context)) {
@@ -1060,7 +1065,11 @@ class OverlayUiController(
      * foreground. Used on single-screen devices.
      */
     private fun toggleLiveDirect(start: Boolean) {
-        val svc = CaptureService.instance ?: return
+        val svc = CaptureService.instance ?: run {
+            android.util.Log.i("LiveToggleDbg", "toggleLiveDirect(start=$start) aborted: CaptureService.instance is null")
+            return
+        }
+        android.util.Log.i("LiveToggleDbg", "toggleLiveDirect(start=$start); svc.isLive=${svc.isLive}")
         if (start) {
             val hadPopup = isAnyDragLookupPopupShowing
             dismissAllDragLookupPopups()
@@ -1094,11 +1103,14 @@ class OverlayUiController(
     /** Stop live mode — directly when [effectivelySingleScreen], else routed
      *  through MainActivity. */
     private fun stopLiveRouted() {
-        if (effectivelySingleScreen()) toggleLiveDirect(false)
+        val single = effectivelySingleScreen()
+        android.util.Log.i("LiveToggleDbg", "stopLiveRouted; effSingle=$single; isSingleScreen=${Prefs.isSingleScreen(context)}; appFg=${MainActivity.isInForeground}")
+        if (single) toggleLiveDirect(false)
         else sendMainActivityIntent(MainActivity.ACTION_STOP_LIVE)
     }
 
     private fun sendMainActivityIntent(action: String, targetDisplayId: Int? = null) {
+        android.util.Log.i("LiveToggleDbg", "sendMainActivityIntent action=$action targetDisplayId=$targetDisplayId")
         val intent = Intent(context, MainActivity::class.java).apply {
             this.action = action
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -1163,12 +1175,17 @@ class OverlayUiController(
         }
     }
 
-    /** Fallback display for [reconcileFloatingIcons] when the selection is empty. */
+    /** Fallback display for [reconcileFloatingIcons] when the saved selection
+     *  resolves to no reachable display. Routes through the backend shim so a
+     *  stale selection that isn't capturable (e.g., `{1}` on MediaProjection)
+     *  doesn't put the icon on an uncapturable display — the shim collapses
+     *  to the backend's fallback first. */
     private fun findIconDisplay(prefs: Prefs): Display? {
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val displays = dm.displays
         if (displays.size <= 1) return displays.firstOrNull()
-        val primaryId = prefs.captureDisplayIds.firstOrNull()
+        val backend = CaptureBackendResolver.active()
+        val primaryId = backend.capturableTargets(prefs.captureDisplayIds).firstOrNull()
             ?: Display.DEFAULT_DISPLAY
         return dm.getDisplay(primaryId) ?: displays.firstOrNull()
     }

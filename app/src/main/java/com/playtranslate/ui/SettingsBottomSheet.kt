@@ -459,10 +459,10 @@ class SettingsBottomSheet : DialogFragment() {
         displayManager.registerDisplayListener(displayListener, null)
 
         // Capture thumbnails asynchronously. On the MediaProjection backend
-        // captureSource.requestClean() lazily launches the screen-record
-        // consent dialog, so the backend source is used only when capturing
-        // won't prompt; otherwise the own-display activity thumbnail is used,
-        // as on the null-source path below.
+        // captureSource.requestClean() fails closed without screen-record
+        // consent, so the backend source is used only when capture can
+        // actually produce a frame; otherwise the own-display activity
+        // thumbnail is used, as on the null-source path below.
         val myDisplayId = requireActivity().display?.displayId ?: android.view.Display.DEFAULT_DISPLAY
         val backend = CaptureBackendResolver.active()
         val mgr = backend.captureSource?.takeIf { backend.canCaptureWithoutPrompting }
@@ -470,11 +470,8 @@ class SettingsBottomSheet : DialogFragment() {
         // thumbnail — MediaProjection mirrors just the default display, so a
         // requestClean for any other display would return the default
         // display's pixels under the wrong row. Other rows get no thumbnail.
-        val capturable = backend.capturableDisplays(
-            displays.mapTo(mutableSetOf()) { it.displayId }
-        )
         displays.forEach { display ->
-            if (mgr != null && display.displayId in capturable) {
+            if (mgr != null && backend.canCapture(display.displayId)) {
                 viewLifecycleOwner.lifecycleScope.launch {
                     val bitmap = mgr.requestClean(display.displayId)
                     if (bitmap != null) {

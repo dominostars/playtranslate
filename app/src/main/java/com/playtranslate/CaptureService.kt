@@ -871,28 +871,55 @@ class CaptureService : Service() {
     }
 
     fun startLive() {
-        if (!CaptureBackendResolver.active().supportsLiveMode) {
+        val backend = CaptureBackendResolver.active()
+        if (!backend.supportsLiveMode) {
             val msg = getString(R.string.error_live_mode_unsupported_backend)
             emitError(msg)
             Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
             return
         }
         oneShotCaptureJob?.cancel()
+
+        // Secure capture readiness — the MediaProjection screen-record consent
+        // token — BEFORE the live-mode loop and its touch sentinel exist. A
+        // consent dialog launched from inside the running loop has its Cancel
+        // tap caught by the 1×1 outside-touch sentinel as "game input", which
+        // restarts the loop and re-launches the dialog in an unbreakable
+        // cycle. canCaptureWithoutPrompting keeps the common already-ready
+        // case (consent held, or the accessibility backend) fully synchronous.
+        if (backend.canCaptureWithoutPrompting) {
+            beginLiveCapture()
+        } else {
+            serviceScope.launch {
+                if (backend.ensureCaptureReady()) {
+                    beginLiveCapture()
+                } else {
+                    emitError(getString(R.string.error_screen_capture_denied))
+                }
+            }
+        }
+    }
+
+    /**
+     * The post-consent tail of [startLive]: compute the target display set
+     * and hand off to [setLiveDisplays]. Split out so [startLive] can await
+     * [CaptureBackend.ensureCaptureReady] first — on the MediaProjection
+     * backend the consent dialog must fully resolve before any live-mode
+     * window (and its touch sentinel) is built. Main thread only.
+     */
+    private fun beginLiveCapture() {
         // Reset the panel to Searching so the activity sees an
         // immediate transition into live mode (rather than a stale
         // result lingering until the first cycle lands).
         _panelState.value = PanelState.Searching
 
         val prefs = Prefs(this)
-
-        // Compute target = user-selected displays minus those we should
-        // skip right now (STATE_OFF, or hosting PlayTranslate's own UI
-        // under multi-select). InAppOnly's "force {first}" rule is
-        // applied inside [setLiveDisplays] so callers don't need to know.
         val activeIds = gameDisplayIds.ifEmpty { setOf(primaryGameDisplayId()) }
-        val target = activeIds.filterNot { shouldSkipDisplay(it) }.toSet()
-        Log.d(TAG, "startLive: activeIds=$activeIds target=$target prefs.overlayMode=${prefs.overlayMode}")
-        setLiveDisplays(target)
+        Log.d(TAG, "startLive: activeIds=$activeIds prefs.overlayMode=${prefs.overlayMode}")
+        // setLiveDisplays handles capturableTargets + shouldSkipDisplay
+        // resolution centrally — every caller (start, reconcile, multi-
+        // window, the display listener) gets the same shim.
+        setLiveDisplays(activeIds)
     }
 
     /**
@@ -959,15 +986,19 @@ class CaptureService : Service() {
         val prefs = Prefs(this)
         val flavor = desiredFlavor(prefs)
 
-        // The displays to actually run live mode on: what the active backend
-        // can capture — MediaProjection collapses to the default display (see
-        // CaptureBackend.capturableDisplays), the accessibility backend keeps
-        // the whole set — minus any currently off / app-occluded. Resolving
-        // capturableDisplays first, rather than intersecting the incoming
-        // target, keeps MediaProjection pinned to the default display even
-        // when the persisted selection names a different one.
-        val capturable = CaptureBackendResolver.active()
-            .capturableDisplays(target)
+        // Resolve through the backend shim — capturable subset of [target]
+        // with the backend's fallback display substituted when nothing in
+        // [target] is capturable (stale-selection collapse). Then drop
+        // displays currently off / app-occluded. This is THE canonical
+        // resolution: every non-stop caller (start, reconcile, multi-window,
+        // the display listener after a state change) gets the same result
+        // without needing to remember to apply the shim itself. Stop bypasses
+        // this path entirely via [tearDownAllLiveModes] — passing ∅ here
+        // would resolve to the backend's fallback (MediaProjection always
+        // reaches default), which is right for "selection filtered to
+        // nothing" but wrong for "user pressed stop."
+        val backend = CaptureBackendResolver.active()
+        val capturable = backend.capturableTargets(target)
             .filterNot { shouldSkipDisplay(it) }
             .toSet()
         // IN_APP_ONLY is single-display by design — collapse to the primary
@@ -1056,6 +1087,34 @@ class CaptureService : Service() {
         }
 
         return true
+    }
+
+    /**
+     * Stop every running live mode without going through [setLiveDisplays].
+     * Mirrors the teardown branch of [setLiveDisplays] (stop modes, fire the
+     * non-empty→empty state observers, unregister the display listener) but
+     * skips the capturableTargets shim — which would substitute the
+     * backend's fallback display for an empty input and keep MediaProjection
+     * running on the default. That fallback is the right answer for
+     * "selection filtered to nothing" at reconcile / multi-window / listener
+     * call sites, and the wrong answer for "the user pressed stop."
+     */
+    @MainThread
+    private fun tearDownAllLiveModes() {
+        check(Looper.myLooper() == Looper.getMainLooper()) {
+            "tearDownAllLiveModes must run on the main thread " +
+                "(got ${Thread.currentThread().name})"
+        }
+        if (liveModes.isEmpty()) return
+        val ids = liveModes.keys.toList()
+        val wasLive = _liveModeState.value == true
+        for (id in ids) liveModes.remove(id)?.stop()
+        if (wasLive) {
+            _liveModeState.value = false
+            updateForegroundState()
+            syncIconState()
+            getSystemService(DisplayManager::class.java)?.unregisterDisplayListener(displayListener)
+        }
     }
 
     /**
@@ -1203,18 +1262,20 @@ class CaptureService : Service() {
     }
 
     fun stopLive() {
+        android.util.Log.i("LiveToggleDbg", "CaptureService.stopLive entry; isLive=$isLive; modes=${liveModes.keys}")
         Log.i(TAG, "stopLive() called (isLive=$isLive, modes=${liveModes.keys})", Throwable("stopLive caller"))
-        // setLiveDisplays(emptySet()) handles: stop every running mode (each
-        // tears down its own loop+input+sentinel+overlay), unregister the
-        // display listener on the non-empty→empty transition, fire LiveData
-        // false, run updateForegroundState/syncIconState.
-        setLiveDisplays(emptySet())
+        // Stop bypasses setLiveDisplays: we genuinely want zero live modes,
+        // not "fall back to the backend's capturable default" — which is what
+        // setLiveDisplays(emptySet()) now resolves to via the capturableTargets
+        // shim (MediaProjection always reaches default). tearDownAllLiveModes
+        // mirrors setLiveDisplays' teardown branch (stop modes, fire LiveData
+        // false, unregister the display listener) without going through the
+        // shim.
+        tearDownAllLiveModes()
         setDegraded(false)
         // Belt-and-suspenders fan-out — each LiveMode.stop() should already
         // have torn down its own loop / input / overlay, but historically these
         // calls have caught misbehaving modes that left state behind.
-        // TODO(P1): with setLiveDisplays(emptySet()) guaranteeing per-mode
-        //   teardown via the canonical mutator, this fan-out should be removable.
         CaptureBackendResolver.active().liveCaptureSource?.stopAllLoops()
         CaptureBackendResolver.active().stopAllInputMonitoring()
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlay()

@@ -26,13 +26,27 @@ interface CaptureBackend {
     val liveCaptureSource: LiveCaptureSource?
         get() = captureSource as? LiveCaptureSource
 
-    /** Whether [captureSource]'s `requestClean` can run right now without a
-     *  user-facing prompt. The accessibility backend always can; the
-     *  MediaProjection backend can only once screen-record consent is held —
-     *  before that, a capture launches the consent dialog. Passive callers
-     *  (e.g. the Settings display-picker thumbnail) gate on this so merely
-     *  opening a screen can't trigger the prompt. */
+    /** Whether [captureSource]'s `requestClean` can capture right now. The
+     *  accessibility backend always can; the MediaProjection backend can only
+     *  once screen-record consent is held. Capture itself never prompts —
+     *  [ensureCaptureReady] is the one consent entry point — so before consent
+     *  a capture fails closed. Passive callers (e.g. the Settings display-
+     *  picker thumbnail) gate on this to skip a capture that would no-op. */
     val canCaptureWithoutPrompting: Boolean
+
+    /**
+     * Secure whatever this backend needs before a sustained capture session
+     * can run — for MediaProjection, the screen-record consent token,
+     * prompting the user when it isn't held. The accessibility backend needs
+     * nothing and returns true immediately.
+     *
+     * `CaptureService.startLive()` awaits this up front so the consent dialog
+     * resolves BEFORE the capture loop and its 1×1 outside-touch sentinel are
+     * built: a dialog launched mid-loop has its Cancel tap caught by that
+     * sentinel as game input, restarting the loop and re-prompting in an
+     * unbreakable cycle. Returns whether capture may now proceed.
+     */
+    suspend fun ensureCaptureReady(): Boolean = true
 
     /** Overlay-window host for this backend, or null while not ready. */
     val overlayHost: OverlayHost?
@@ -52,13 +66,53 @@ interface CaptureBackend {
     val requiresAccessibilityService: Boolean
 
     /**
-     * Of the user-selected [selected] displays, the ones this backend can
-     * actually capture. The accessibility backend captures any display and
-     * returns [selected] unchanged; MediaProjection can only mirror the
-     * default display, so it returns just that — capture, overlays, the
-     * floating icon, and regions must all stay on it.
+     * True iff this backend can structurally mirror [displayId]. A capability
+     * question — what the backend's *type* can reach — not a permission
+     * question (see [canCaptureWithoutPrompting] for that): the accessibility
+     * service can mirror any connected display; MediaProjection can only
+     * mirror the default display.
+     *
+     * Stateless. Call sites do the intersection with the user's selection
+     * themselves — keeping that logic at the call site means an empty
+     * intersection (the `stopLive()` signal, or a stale selection that
+     * doesn't overlap with this backend's reach) doesn't get accidentally
+     * re-inflated into a non-empty set, which would silently override `stop`.
      */
-    fun capturableDisplays(selected: Set<Int>): Set<Int>
+    fun canCapture(displayId: Int): Boolean
+
+    /**
+     * A last-resort display this backend can always reach, used by start-path
+     * callers when a saved selection produces nothing capturable.
+     * MediaProjection provides the default display (the only thing it can
+     * mirror, so any selection that doesn't overlap with default is stale by
+     * definition — typically an accessibility-mode artifact). The
+     * accessibility backend returns null: it can capture any display, so an
+     * empty intersection there means every display is currently off /
+     * displaced, not stale — there's nothing sensible to fall back *to*.
+     */
+    val fallbackDisplay: Int? get() = null
+
+    /**
+     * The capturable subset of [saved] — `saved.filter { canCapture(it) }` —
+     * with [fallbackDisplay] substituted when that filter yields nothing AND
+     * a fallback exists. Returns empty only when there is neither a
+     * capturable display in [saved] nor a fallback (the accessibility case
+     * when every saved display is currently unreachable).
+     *
+     * The standard "given the user's saved selection, what should we
+     * actually act on?" shim. Every UI surface that turns
+     * `Prefs.captureDisplayIds` into the displays it operates on — live
+     * start, floating-icon placement, the region dropdown, the region
+     * picker, the first-seed — goes through this so a stale accessibility-
+     * mode selection on MediaProjection (e.g., `{1}` from before the
+     * backend switched) collapses to the backend's reachable display
+     * instead of silently no-op-ing the call site.
+     */
+    fun capturableTargets(saved: Set<Int>): Set<Int> {
+        val filtered = saved.filterTo(linkedSetOf()) { canCapture(it) }
+        if (filtered.isNotEmpty()) return filtered
+        return fallbackDisplay?.let { setOf(it) } ?: emptySet()
+    }
 
     /**
      * Watch for user interaction with the game screen on [displayId], running

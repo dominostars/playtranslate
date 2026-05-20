@@ -400,7 +400,11 @@ class MainActivity :
                     if (!isDestroyed && !isFinishing) withAccessibility { startLiveMode() }
                 }
             }
-            ACTION_STOP_LIVE -> if (isLiveMode) stopLiveMode()
+            ACTION_STOP_LIVE -> {
+                android.util.Log.i("LiveToggleDbg", "MainActivity ACTION_STOP_LIVE intent; isLiveMode=$isLiveMode; svc=${captureService != null}; liveModeState=${captureService?.liveModeState?.value}")
+                if (isLiveMode) stopLiveMode()
+                else android.util.Log.i("LiveToggleDbg", "MainActivity ACTION_STOP_LIVE skipped (isLiveMode=false)")
+            }
             ACTION_ADD_CUSTOM_REGION -> {
                 // Floating-icon route carries the originating display so the
                 // editor scopes to that screen. Bare action (no extra) is the
@@ -679,6 +683,7 @@ class MainActivity :
     }
 
     private fun toggleLiveMode() {
+        android.util.Log.i("LiveToggleDbg", "MainActivity.toggleLiveMode; isLiveMode=$isLiveMode; svc=${captureService != null}; liveModeState=${captureService?.liveModeState?.value}")
         if (isLiveMode) stopLiveMode() else withAccessibility { startLiveMode() }
     }
 
@@ -704,6 +709,7 @@ class MainActivity :
     }
 
     private fun stopLiveMode() {
+        android.util.Log.i("LiveToggleDbg", "MainActivity.stopLiveMode; svc=${captureService != null}")
         captureService?.stopLive()
     }
 
@@ -1277,12 +1283,14 @@ class MainActivity :
             // KEY_DISPLAY_IDS from the legacy KEY_DISPLAY_ID before this
             // gate ever runs.
             if (!prefs.hasDisplaySelection) {
-                // Narrow the auto-detected display to what the active backend
-                // can capture — MediaProjection only ever mirrors the default
-                // display, so seeding it with a secondary one would be stale
-                // from the start.
+                // Seed the saved selection: the auto-detected game display if
+                // this backend can capture it, else the backend's fallback
+                // (MediaProjection only mirrors the default, so any other
+                // detection is stale from the start). Routes through the
+                // shared backend shim so seeding behaves like every other
+                // call site that turns a selection into the working set.
                 prefs.captureDisplayIds = CaptureBackendResolver.active()
-                    .capturableDisplays(setOf(findGameDisplayId()))
+                    .capturableTargets(setOf(findGameDisplayId()))
             }
             configureService()
         }
@@ -1871,11 +1879,13 @@ class MainActivity :
      *  — the first entry is treated as the "primary" preview target since
      *  the region indicator is single-display. */
     private fun dropdownTargetDisplayIds(): List<Int> {
-        // Only displays the active backend can capture — MediaProjection
-        // collapses this to the default display, so the dropdown never
-        // applies a region to a screen it can't drive.
+        // Resolve through the backend shim — MediaProjection collapses a
+        // stale non-default selection to its fallback display so the
+        // dropdown still has something to apply a region to. Matches live
+        // start and floating-icon placement.
         val all = CaptureBackendResolver.active()
-            .capturableDisplays(prefs.captureDisplayIds).toList()
+            .capturableTargets(prefs.captureDisplayIds)
+            .toList()
         val filtered = all.filter { it != MainActivity.foregroundDisplayId }
         return filtered.ifEmpty { all }
     }

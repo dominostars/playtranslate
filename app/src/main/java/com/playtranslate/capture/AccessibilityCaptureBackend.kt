@@ -30,8 +30,8 @@ object AccessibilityCaptureBackend : CaptureBackend {
     /** `takeScreenshot` never shows a prompt. */
     override val canCaptureWithoutPrompting: Boolean get() = true
 
-    /** `takeScreenshot` can target any display, so the selection stands. */
-    override fun capturableDisplays(selected: Set<Int>): Set<Int> = selected
+    /** `takeScreenshot` can target any display. */
+    override fun canCapture(displayId: Int): Boolean = true
 
     override fun startInputMonitoring(displayId: Int, onGameInput: () -> Unit) {
         PlayTranslateAccessibilityService.instance

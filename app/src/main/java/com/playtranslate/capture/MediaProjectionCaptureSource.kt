@@ -42,8 +42,23 @@ class MediaProjectionCaptureSource(
 
     // ── One-shot capture ─────────────────────────────────────────────────
 
-    override suspend fun requestClean(displayId: Int): Bitmap? =
-        captureMutex.withLock { cleanCapture(displayId) }
+    override suspend fun requestClean(displayId: Int): Bitmap? {
+        // One-shot capture: prompt for consent up front so first-use paths
+        // (Translate button, drag-lookup, region OCR, scene-detect's
+        // captureScreen) work before screen-record has been granted via the
+        // activate flow. Returning null without prompting would make these
+        // entry points silently fail on a fresh MediaProjection session.
+        //
+        // The continuous loop ([startLoop]) and Pinhole's [requestRaw] cycle
+        // deliberately do NOT prompt: a consent dialog launched while a
+        // capture loop is running has its Cancel tap caught by the 1×1
+        // outside-touch sentinel as game input, creating an unbreakable
+        // re-prompt cycle. One-shots have no such race — no sentinel exists
+        // unless live mode is running, and live mode running means consent
+        // is already held so this [ensureConsent] short-circuits.
+        if (!controller.ensureConsent()) return null
+        return captureMutex.withLock { cleanCapture(displayId) }
+    }
 
     override suspend fun requestRaw(displayId: Int, onCaptured: (() -> Unit)?): Bitmap? =
         captureMutex.withLock {
@@ -111,6 +126,7 @@ class MediaProjectionCaptureSource(
         val loop = Loop(displayId = displayId, cleanRequested = true)
         loops[displayId] = loop
         DetectionLog.log("MP Loop[$displayId]: started")
+        android.util.Log.i("LiveToggleDbg", "MP loop starting for display $displayId")
         loop.job = scope.launch {
             var lastCaptureMs = 0L
             while (isActive) {
@@ -140,6 +156,9 @@ class MediaProjectionCaptureSource(
                     else -> DetectionLog.log("MP Loop[$displayId]: capture failed (transient), skipping frame")
                 }
             }
+        }
+        loop.job?.invokeOnCompletion { cause ->
+            android.util.Log.i("LiveToggleDbg", "MP loop completed for display $displayId; cause=$cause")
         }
     }
 
