@@ -215,7 +215,6 @@ class SettingsRenderer(
     private val powerSwitch: MaterialSwitch = root.findViewById(R.id.powerSwitch)
 
     private val rowAddQuickTile: View = root.findViewById(R.id.rowAddQuickTile)
-    private val dividerAddQuickTile: View = root.findViewById(R.id.dividerAddQuickTile)
 
     private val overlayModeSection: View = root.findViewById(R.id.overlayModeSection)
     private val overlayModeToggleContainer: FrameLayout = root.findViewById(R.id.overlayModeToggleContainer)
@@ -434,13 +433,19 @@ class SettingsRenderer(
      *  [android.app.StatusBarManager.requestAddTileService] exists) and only
      *  while the user hasn't already confirmed adding the tile (tracked in
      *  [Prefs.quickTileAdded] from the request callback). Pre-Tiramisu and
-     *  post-add the row stays hidden, including its leading divider, so the
-     *  Minimize Icon row remains the last entry in the card. */
+     *  post-add the row stays hidden; the floating-icon footer's own
+     *  hairline divider (from bg_word_tatoeba_attribution) is then enough
+     *  separation from the power cell.
+     *
+     *  Also re-syncs dividerPowerCell — it's the divider between the power
+     *  cell and the quick-tile row, so it should hide whenever the
+     *  quick-tile row is hidden (the footer's own top divider takes over
+     *  the separation duty). */
     private fun setupAddQuickTileRow() {
         val apiSupported = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU
         val visible = apiSupported && !prefs.quickTileAdded
         rowAddQuickTile.visibility = if (visible) View.VISIBLE else View.GONE
-        dividerAddQuickTile.visibility = if (visible) View.VISIBLE else View.GONE
+        refreshDividerPowerCellVisibility()
         if (!visible) return
 
         rowAddQuickTile.findViewById<TextView>(R.id.tvRowTitle).text =
@@ -451,6 +456,22 @@ class SettingsRenderer(
         rowAddQuickTile.findViewById<ImageView>(R.id.ivRowIcon)
             ?.setImageResource(R.drawable.ic_add)
         rowAddQuickTile.setOnClickListener { requestAddQuickTile() }
+    }
+
+    /** dividerPowerCell sits between the power cell and the quick-tile row.
+     *  It needs to be visible only when BOTH cells are showing — when the
+     *  power cell is hidden (a11y dual-screen) there's nothing above to
+     *  separate from; when the quick-tile row is hidden the floating-icon
+     *  footer's own top divider provides the separation, and a separate
+     *  divider here would double-stroke against it.
+     *
+     *  Called from both [refreshCaptureLifecycleButton] (which toggles the
+     *  power cell) and [setupAddQuickTileRow] (which toggles the quick-tile
+     *  row) so the rule stays in sync with whichever changed last. */
+    private fun refreshDividerPowerCellVisibility() {
+        val both = powerCard.visibility == View.VISIBLE &&
+            rowAddQuickTile.visibility == View.VISIBLE
+        dividerPowerCell.visibility = if (both) View.VISIBLE else View.GONE
     }
 
     @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.TIRAMISU)
@@ -528,9 +549,9 @@ class SettingsRenderer(
             if (CaptureLifecycle.hasActivateControl(ctx)) View.VISIBLE else View.GONE
         btnCaptureLifecycle.visibility = visibility
         powerCard.visibility = visibility
-        // Hide the divider in lock-step with the cell so the top of the
-        // top-section card doesn't show a stray rule.
-        dividerPowerCell.visibility = visibility
+        // dividerPowerCell visibility depends on BOTH this cell and the
+        // quick-tile row below — see refreshDividerPowerCellVisibility.
+        refreshDividerPowerCellVisibility()
         val active = CaptureLifecycle.isActive(ctx)
         // Cell colours ALWAYS reflect active — when the power cell is hidden
         // (accessibility dual-screen), isActive returns true so full colour.

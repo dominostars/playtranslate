@@ -136,20 +136,24 @@
                         android:layout_marginStart="@dimen/pt_row_h_padding"
                         android:background="?attr/ptDivider" />
 
-                    <!-- "On the floating icon" — informational cell describing
-                         the docked floating icon and its gestures. No toggle
-                         (the floating icon's visibility is driven by the
-                         capture lifecycle + Quick Settings tile, not here).
-                         The title uses the small ALL-CAPS state-label style
-                         (matching the power cell's "ON/OFF" label); the
-                         subtitle below carries the gesture explanation. -->
+                    <include layout="@layout/settings_row_link"
+                        android:id="@+id/rowAddQuickTile" />
+
+                    <!-- "On the floating icon" — sits at the bottom of the
+                         top section as a footer (same surface tint + hairline
+                         top divider as the capture-display footer; see
+                         bg_word_tatoeba_attribution). Text formatting and
+                         the runtime dim/recolour driven by
+                         refreshCaptureLifecycleButton are unchanged from
+                         when this lived in the middle of the card. -->
                     <LinearLayout
                         android:id="@+id/rowOverlayIcon"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:background="@drawable/bg_word_tatoeba_attribution"
+                        android:gravity="center_vertical"
                         android:minHeight="@dimen/pt_row_min_height"
                         android:orientation="horizontal"
-                        android:gravity="center_vertical"
                         android:paddingHorizontal="@dimen/pt_row_h_padding"
                         android:paddingVertical="12dp">
 
@@ -264,16 +268,6 @@
                             android:visibility="gone" />
 
                     </LinearLayout>
-
-                    <View
-                        android:id="@+id/dividerAddQuickTile"
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:layout_marginStart="@dimen/pt_row_h_padding"
-                        android:background="?attr/ptDivider" />
-
-                    <include layout="@layout/settings_row_link"
-                        android:id="@+id/rowAddQuickTile" />
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
