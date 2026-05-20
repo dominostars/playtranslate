@@ -1180,11 +1180,18 @@ class OverlayUiController(
         menu.positionNearIcon(iconCx, iconCy, icon.currentEdge, screenSize.x, screenSize.y)
     }
 
-    fun dismissFloatingMenu() {
+    /** Dismiss the floating menu. Most callers leave [clearHoldActive] at
+     *  the default — the menu's open state held [CaptureService.holdActive]
+     *  true to suppress live captures during the user's interaction, and
+     *  closing the menu should clear it. The hold-for-translation entry
+     *  points pass `false` because they're about to set holdActive = true
+     *  themselves and don't want a momentary false → true cycle that could
+     *  wake a live-mode cycle between frames. */
+    fun dismissFloatingMenu(clearHoldActive: Boolean = true) {
         val wasShowing = floatingMenu != null
         floatingMenu?.let { overlayHost.removeOverlayWindow(it) }
         floatingMenu = null
-        if (wasShowing) {
+        if (wasShowing && clearHoldActive) {
             CaptureService.instance?.holdActive = false
         }
     }

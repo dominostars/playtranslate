@@ -1434,6 +1434,16 @@ class CaptureService : Service() {
      */
     fun holdStart(displayId: Int) {
         lastInteractedDisplayId = displayId
+        // If the floating menu is up, tear it down outright instead of
+        // letting the capture path alpha-cycle it. Avoids a class of
+        // post-capture layout glitches on the MediaProjection backend where
+        // the restored menu re-appeared at wrong coords, and matches the
+        // user's intent — they wanted a translation, not a half-broken
+        // menu to come back. Pass clearHoldActive=false so the dismissal
+        // doesn't flip holdActive off between here and the holdActive=true
+        // we're about to set in the live-peek branch / beginHoldPreview.
+        CaptureBackendResolver.activeOverlayUi
+            ?.dismissFloatingMenu(clearHoldActive = false)
         // Pinhole / translation-overlay live modes: "peek" through the
         // overlay at the game underneath, without running a one-shot.
         // PinholeOverlayMode's cycle polls [holdActive] and pauses itself.
@@ -1461,6 +1471,10 @@ class CaptureService : Service() {
      * panel.
      */
     fun holdStartFanout() {
+        // Same rationale as holdStart: if the floating menu is up, tear it
+        // down outright so prepareForCleanCapture has nothing to restore.
+        CaptureBackendResolver.activeOverlayUi
+            ?.dismissFloatingMenu(clearHoldActive = false)
         val isFurigana = liveModes.values.any { it.flavor == OverlayFlavor.FURIGANA }
         if (isLive && !isFurigana && !isInAppOnly) {
             // Live translation overlay peek — hide so user can see game
