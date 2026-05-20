@@ -30,11 +30,23 @@ class PlayTranslateTileService : TileService() {
 
     override fun onStartListening() {
         super.onStartListening()
+        // Pick up permission grants the user made outside the app since the
+        // tile last bound — most commonly "Display over other apps" granted
+        // from this tile's own activation flow. Without this the cached
+        // [CaptureBackendResolver.useMediaProjection] stays on its old value
+        // until MainActivity resumes, and the tile keeps acting on the wrong
+        // backend.
+        CaptureBackendResolver.reresolve(this)
         renderState()
     }
 
     override fun onClick() {
         super.onClick()
+        // Defensive: re-resolve here too in case onStartListening's cached
+        // resolution is stale by the time the user taps (e.g., a permission
+        // toast was acted on between bind and tap). Cheap when nothing
+        // changed — see [CaptureBackendResolver.reresolve].
+        CaptureBackendResolver.reresolve(this)
         if (!CaptureBackendResolver.active().requiresAccessibilityService) {
             // MediaProjection backend — the tile activates / deactivates the
             // capture lifecycle.
