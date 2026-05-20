@@ -101,7 +101,11 @@ class OverlayUiController(
         override fun onDisplayAdded(displayId: Int) = reconcileFloatingIcons()
         override fun onDisplayRemoved(displayId: Int) = reconcileFloatingIcons()
         override fun onDisplayChanged(displayId: Int) {
+            // Order matters: icon reposition first so it picks up the new
+            // screen dimensions; the intro reposition then reads the icon's
+            // freshly-updated centre Y to position itself relative to it.
             repositionIconForDisplay(displayId)
+            repositionSonarIntroForDisplay(displayId)
         }
     }
 
@@ -966,6 +970,36 @@ class OverlayUiController(
         val intro = activeSonarIntros.remove(displayId) ?: return
         intro.onAnimationEnd = null
         overlayHost.removeOverlayWindow(intro)
+    }
+
+    /** Re-anchor an in-flight sonar intro after a display change (rotation,
+     *  resize). Recomputes x/y from the new screen dimensions and the
+     *  icon's freshly-updated centre Y, then pushes a layout update onto
+     *  the existing intro window — no view rebuild, animation continues
+     *  uninterrupted from wherever it was. No-op when no intro is showing
+     *  on [displayId] or the underlying icon handle is gone. */
+    private fun repositionSonarIntroForDisplay(displayId: Int) {
+        val intro = activeSonarIntros[displayId] ?: return
+        val handle = iconHandles[displayId] ?: return
+        val params = intro.layoutParams as? WindowManager.LayoutParams ?: return
+        val iconParams = handle.icon.params ?: return
+
+        val displayCtx = intro.context
+        val density = displayCtx.resources.displayMetrics.density
+        val windowWidth = (SONAR_INTRO_WIDTH_DP * density).toInt()
+        val windowHeight = (SONAR_INTRO_HEIGHT_DP * density).toInt()
+        val screenSize = displayCtx.displaySizePx()
+        val iconCenterY = iconParams.y + handle.icon.viewSizePx / 2
+
+        val newX = when (intro.edge) {
+            FloatingOverlayIcon.Edge.RIGHT -> screenSize.x - windowWidth
+            FloatingOverlayIcon.Edge.LEFT -> 0
+        }
+        val newY = iconCenterY - windowHeight / 2
+        if (params.x == newX && params.y == newY) return
+        params.x = newX
+        params.y = newY
+        try { handle.wm.updateViewLayout(intro, params) } catch (_: Exception) {}
     }
 
     /**

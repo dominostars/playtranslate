@@ -51,7 +51,11 @@ import com.playtranslate.R
  */
 class SonarPingIntroView(
     context: Context,
-    private val edge: FloatingOverlayIcon.Edge,
+    /** Screen edge the carrier docks against. Read by
+     *  [com.playtranslate.OverlayUiController] when the display rotates so
+     *  the intro window's x/y can be recomputed against the new screen
+     *  dimensions without rebuilding the view. */
+    val edge: FloatingOverlayIcon.Edge,
 ) : View(context) {
 
     /** Optional completion callback. Fired once on the main thread when the
