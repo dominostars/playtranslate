@@ -370,19 +370,30 @@ class CaptureService : Service() {
 
     override fun onDestroy() {
         Log.w(TAG, "onDestroy")
+        // Tear down live modes FIRST — while [instance] is still set, so
+        // CaptureBackendResolver.activeOverlayUi can still resolve to this
+        // service's MediaProjection overlay UI and the cleanup chain (each
+        // LiveMode.stop, stopAllInputMonitoring, hideTranslationOverlay)
+        // actually finds the overlays/sentinels to remove. Nulling [instance]
+        // before this is what would leak the MP floating icon / translation
+        // window / touch sentinels — the resolver would return null and the
+        // chain would no-op.
+        stopLive()
+        // Hide the MediaProjection floating icon and any region UI — a
+        // separate concern from live-mode overlays (which stopLive handled
+        // above). Gated on whether the overlay UI was ever touched so an
+        // accessibility-only session doesn't force-initialize it.
+        if (mediaProjectionOverlayUiLazy.isInitialized()) {
+            mediaProjectionOverlayUi.destroy()
+        }
         // Release the MediaProjection session (projection / VirtualDisplay /
-        // ImageReader) before the service goes away — nothing else releases
-        // those native resources. Routed through the capture source's
-        // destroy() (stops loops, then tears the controller down) so MP
-        // teardown is symmetric with ScreenshotManager.destroy(). Gated on
-        // whether the source's `by lazy` ever realized — accessibility-only
-        // sessions skip this entirely instead of force-initializing the MP
-        // backend just to tear it down.
+        // ImageReader) — nothing else releases those native resources. Same
+        // lazy-gate pattern — accessibility-only sessions skip this entirely
+        // instead of force-initializing the MP backend just to tear it down.
         if (mediaProjectionCaptureSourceLazy.isInitialized()) {
             mediaProjectionCaptureSource.destroy()
         }
         instance = null
-        stopLive()
         serviceScope.cancel()
         // The TranslationBackendRegistry is owned at app scope (built in
         // PlayTranslateApplication.onCreate) and outlives this service —
@@ -801,12 +812,17 @@ class CaptureService : Service() {
 
     /** Game-screen overlay UI for MediaProjection mode. Its floating controls
      *  stay hidden until MediaProjection consent is granted — see
-     *  [OverlayUiController]'s canShowControls gate. */
-    internal val mediaProjectionOverlayUi by lazy {
+     *  [OverlayUiController]'s canShowControls gate. Stored as an explicit
+     *  [Lazy] so [onDestroy] can gate teardown on whether the overlay UI was
+     *  ever touched (via [Lazy.isInitialized]) — accessibility-only sessions
+     *  never realize it and never need its teardown. */
+    private val mediaProjectionOverlayUiLazy = lazy {
         OverlayUiController(this, mediaProjectionOverlayHost) {
             mediaProjectionController.hasConsent
         }
     }
+    internal val mediaProjectionOverlayUi: OverlayUiController
+        by mediaProjectionOverlayUiLazy
 
     /**
      * Listens for capture displays going away (external monitor unplugged,
