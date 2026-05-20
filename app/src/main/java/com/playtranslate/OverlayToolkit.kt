@@ -1,7 +1,6 @@
 package com.playtranslate
 
 import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
@@ -477,16 +476,22 @@ object OverlayToolkit {
     }
 
     /**
-     * Crop to active region, blackout floating icon, run OCR, filter source-lang chars.
-     * Returns null if no text detected. Does NOT do dedup, translation, or display.
+     * Crop to active region, run OCR, filter source-lang chars. Returns null
+     * if no text detected. Does NOT do dedup, translation, or display.
      *
-     * [seedWriter], when non-null, is invoked after [OcrManager.recognise] with
-     * the bitmap that was actually fed to OCR and the result (possibly null) —
-     * before the bitmap is recycled. Used to wire [OcrSeedWriter] into the
-     * pinhole / live OCR path so we can capture the exact filled bitmap a
-     * failing repro produced, including the "recognise returned null" case
-     * that wouldn't otherwise be recoverable from a manual capture (manual
-     * capture operates on the raw screen with no overlay fills applied).
+     * The floating icon is now always rendered in compact mode (~1/4 of a
+     * circle pressed against the screen edge), so the old icon-blackout step
+     * is gone — the small edge-arrow doesn't bleed into the OCR region
+     * enough to be worth a per-frame rect fill.
+     *
+     * [seedWriter], when non-null, is invoked after [OcrManager.recognise]
+     * with the bitmap that was actually fed to OCR and the result (possibly
+     * null) — before the bitmap is recycled. Used to wire [OcrSeedWriter]
+     * into the pinhole / live OCR path so we can capture the exact filled
+     * bitmap a failing repro produced, including the "recognise returned
+     * null" case that wouldn't otherwise be recoverable from a manual
+     * capture (manual capture operates on the raw screen with no overlay
+     * fills applied).
      */
     suspend fun runOcrPipeline(
         raw: Bitmap,
@@ -494,8 +499,6 @@ object OverlayToolkit {
         sourceLang: String,
         ocrManager: OcrManager,
         statusBarHeight: Int,
-        iconRect: Rect?,
-        compactIcon: Boolean,
         seedWriter: ((Bitmap, OcrManager.OcrResult?) -> Unit)? = null
     ): OcrPipelineResult? {
         val crop = computeOcrCrop(raw.width, raw.height, activeRegion, statusBarHeight)
@@ -506,13 +509,8 @@ object OverlayToolkit {
 
         val ocrResult: OcrManager.OcrResult?
         try {
-            val ocrBitmap = blackoutFloatingIcon(bitmap, crop.left, crop.top, iconRect, compactIcon)
-            try {
-                ocrResult = ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
-                seedWriter?.invoke(ocrBitmap, ocrResult)
-            } finally {
-                if (ocrBitmap !== raw && ocrBitmap !== bitmap) ocrBitmap.recycle()
-            }
+            ocrResult = ocrManager.recognise(bitmap, sourceLang, screenshotWidth = raw.width)
+            seedWriter?.invoke(bitmap, ocrResult)
         } finally {
             // Always clean up the crop (NOT raw — caller manages that)
             if (bitmap !== raw && !bitmap.isRecycled) bitmap.recycle()
@@ -525,29 +523,6 @@ object OverlayToolkit {
 
         return OcrPipelineResult(ocrResult, dedupKey, crop.left, crop.top, raw.width, raw.height)
     }
-
-    /**
-     * Black out the floating icon area in a bitmap so OCR doesn't read it.
-     * Pure function — takes icon rect as parameter.
-     */
-    fun blackoutFloatingIcon(
-        bitmap: Bitmap, cropLeft: Int, cropTop: Int,
-        iconRect: Rect?, compactIcon: Boolean
-    ): Bitmap {
-        if (compactIcon) return bitmap
-        if (iconRect == null) return bitmap
-        val left = (iconRect.left - cropLeft).coerceAtLeast(0)
-        val top = (iconRect.top - cropTop).coerceAtLeast(0)
-        val right = (iconRect.right - cropLeft).coerceAtMost(bitmap.width)
-        val bottom = (iconRect.bottom - cropTop).coerceAtMost(bitmap.height)
-        if (left >= right || top >= bottom) return bitmap
-        val mutable = if (bitmap.isMutable) bitmap
-            else bitmap.copy(bitmap.config, true).also { bitmap.recycle() }
-        Canvas(mutable).drawRect(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat(), blackoutPaint)
-        return mutable
-    }
-
-    private val blackoutPaint = Paint().apply { color = Color.BLACK }
 
     // ── Factory ───────────────────────────────────────────────────────────
 

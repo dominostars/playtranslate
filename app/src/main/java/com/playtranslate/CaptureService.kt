@@ -700,20 +700,14 @@ class CaptureService : Service() {
             val right  = (raw.width  * region.right).toInt()
             bitmap = cropBitmap(raw, top, bottom, left, right)
 
-            // blackoutFloatingIcon may recycle its input (immutable path),
-            // so `bitmap` may be stale after this call. A nested try/finally
-            // on ocrBitmap keeps its cleanup local and survives OCR exceptions
-            // without the outer finally having to follow ownership transfers.
-            val ocrBitmap = blackoutFloatingIcon(bitmap, displayId, left, top)
-            val ocrResult = try {
-                state.value = CaptureState.InProgress(getString(R.string.status_ocr))
-                val result = ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
-                if (BuildConfig.DEBUG && Prefs(this@CaptureService).debugSaveOcrSeed) {
-                    OcrSeedWriter.writeSeed(this@CaptureService, ocrBitmap, result)
-                }
-                result
-            } finally {
-                if (!ocrBitmap.isRecycled) ocrBitmap.recycle()
+            // The floating icon is always rendered in compact mode (a small
+            // edge-arrow), so the pre-OCR icon blackout is gone — we feed
+            // OCR the crop directly. Cleanup of `bitmap` is the outer
+            // finally's job.
+            state.value = CaptureState.InProgress(getString(R.string.status_ocr))
+            val ocrResult = ocrManager.recognise(bitmap, sourceLang, screenshotWidth = raw.width)
+            if (BuildConfig.DEBUG && Prefs(this@CaptureService).debugSaveOcrSeed) {
+                OcrSeedWriter.writeSeed(this@CaptureService, bitmap, ocrResult)
             }
 
             if (ocrResult == null) {
@@ -1576,8 +1570,6 @@ class CaptureService : Service() {
             sourceLang,
             ocrManager,
             getStatusBarHeightForDisplay(displayId),
-            CaptureBackendResolver.activeOverlayUi?.getFloatingIconRect(displayId),
-            prefs.compactOverlayIcon,
             seedWriter = seedWriter
         )
     }
@@ -1686,31 +1678,6 @@ class CaptureService : Service() {
         val DEFAULT_REGION = RegionEntry("", 0f, 1f)
     }
 
-    /**
-     * Blacks out the floating icon area so OCR doesn't read the icon's text.
-     * Returns a mutable bitmap with the icon area painted black. If the icon
-     * is not in the crop area, returns the original bitmap unchanged.
-     *
-     * @param bitmap   The (possibly immutable) cropped bitmap.
-     * @param cropLeft Left offset of the crop in full-screen coordinates.
-     * @param cropTop  Top offset of the crop in full-screen coordinates.
-     */
-    /** Black out [displayId]'s floating icon area in [bitmap] so OCR doesn't
-     *  pick up the icon glyph as text. The icon rect is resolved per-display
-     *  — passing the wrong displayId here is what was producing garbled OCR
-     *  on multi-display before this refactor (the secondary's icon stayed
-     *  visible to OCR; the primary's icon coords got applied to the wrong
-     *  bitmap). */
-    private fun blackoutFloatingIcon(
-        bitmap: Bitmap,
-        displayId: Int,
-        cropLeft: Int = 0,
-        cropTop: Int = 0,
-    ): Bitmap =
-        OverlayToolkit.blackoutFloatingIcon(bitmap, cropLeft, cropTop,
-            CaptureBackendResolver.activeOverlayUi?.getFloatingIconRect(displayId),
-            Prefs(this).compactOverlayIcon)
-
     fun resetConfiguration() {
         // Translation backends are owned by TranslationBackendRegistry at
         // app scope and are not reset here — they survive service teardown
@@ -1777,17 +1744,11 @@ class CaptureService : Service() {
             val right  = (raw.width  * region.right).toInt()
             bitmap = cropBitmap(raw, top, bottom, left, right)
 
-            // See runProcessCycle for the ownership rationale behind the
-            // nested try/finally.
-            val ocrBitmap = blackoutFloatingIcon(bitmap, displayId, left, top)
-            val ocrResult = try {
-                val result = ocrManager.recognise(ocrBitmap, sourceLang, screenshotWidth = raw.width)
-                if (BuildConfig.DEBUG && Prefs(this@CaptureService).debugSaveOcrSeed) {
-                    OcrSeedWriter.writeSeed(this@CaptureService, ocrBitmap, result)
-                }
-                result
-            } finally {
-                if (!ocrBitmap.isRecycled) ocrBitmap.recycle()
+            // No pre-OCR icon blackout — the floating icon is always rendered
+            // in compact mode so it doesn't bleed into the OCR region.
+            val ocrResult = ocrManager.recognise(bitmap, sourceLang, screenshotWidth = raw.width)
+            if (BuildConfig.DEBUG && Prefs(this@CaptureService).debugSaveOcrSeed) {
+                OcrSeedWriter.writeSeed(this@CaptureService, bitmap, ocrResult)
             }
 
             if (ocrResult == null) return PipelineOutcome.NoText

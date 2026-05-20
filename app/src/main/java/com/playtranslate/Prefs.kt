@@ -569,11 +569,6 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_SHOW_OVERLAY_ICON, true)
         set(v) = sp.edit().putBoolean(KEY_SHOW_OVERLAY_ICON, v).apply()
 
-    /** Compact mode: shows 1/3 of circle with arrow instead of full icon. */
-    var compactOverlayIcon: Boolean
-        get() = sp.getBoolean("compact_overlay_icon", false)
-        set(v) = sp.edit().putBoolean("compact_overlay_icon", v).apply()
-
     /** Set to true once StatusBarManager.requestAddTileService reports the
      *  PlayTranslate tile is added (or already added). Drives whether the
      *  Settings "Add Quick Settings tile" row is offered. */

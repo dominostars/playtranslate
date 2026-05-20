@@ -158,7 +158,6 @@ class SettingsBottomSheet : DialogFragment() {
         prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             when (key) {
                 "show_overlay_icon" -> renderer?.refreshOverlayIconState()
-                "compact_overlay_icon" -> renderer?.refreshOverlayIconPreviewCompactMode()
                 "auto_translation_mode" -> renderer?.refreshAutoModeToggle()
                 Prefs.KEY_DEEPL_ENABLED -> {
                     renderer?.refreshDeeplBackendSwitch()

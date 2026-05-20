@@ -716,7 +716,6 @@ class OverlayUiController(
             this.wm = wm
             this.displayId = displayId
             this.overlayHost = this@OverlayUiController.overlayHost
-            compactMode = prefs.compactOverlayIcon
         }
 
         val params = WindowManager.LayoutParams(
@@ -1006,8 +1005,6 @@ class OverlayUiController(
         val dividerColor = themed.themeColor(R.attr.ptDivider)
         val dangerColor = themed.themeColor(R.attr.ptDanger)
         val appName = context.getString(R.string.app_name)
-        val prefs = Prefs(context)
-        val alreadyCompact = prefs.compactOverlayIcon
 
         val builder = OverlayAlert.Builder(displayCtx, overlayWm, display.displayId)
             .setOverlayHost(overlayHost)
@@ -1015,39 +1012,27 @@ class OverlayUiController(
         // MediaProjection mode, or single-screen: the floating icon's
         // "Turn Off" turns PlayTranslate off (turned back on from the app), so
         // the confirm matches the Settings Turn On / Turn Off button. Only
-        // accessibility + dual-screen keeps the older hide/minimize wording.
+        // accessibility + dual-screen keeps the older hide-for-now wording
+        // (no per-display lifecycle to toggle, so the user only has "hide
+        // until next launch" vs "disable accessibility entirely"). The
+        // "Minimize Icon" option that previously shrank the floating icon is
+        // gone — the icon is always minimised now.
         val exitFlow = CaptureLifecycle.hasActivateControl(context)
 
         if (exitFlow) {
             builder.setTitle("Turn Off $appName?")
                 .setMessage("Turn back on in $appName app")
-            if (!alreadyCompact) {
-                builder.addButton("Minimize Icon", accentColor) {
-                    prefs.compactOverlayIcon = true
-                    hideFloatingIcon("confirm_minimize_exit")
-                    reconcileFloatingIcons()
-                }
-            }
-            builder.addButton("Turn Off", dividerColor, dangerColor) {
+                .addButton("Turn Off", dividerColor, dangerColor) {
                     CaptureLifecycle.deactivate(context)
                 }
                 .addCancelButton()
         } else {
             builder.setTitle("Hide $appName game screen controls?")
-            if (!alreadyCompact) {
-                builder.setMessage("“Minimize Icon” shrinks the floating icon. “Turn Off” disables it until re-enabled in settings.")
-                    .addButton("Minimize Icon", accentColor) {
-                        prefs.compactOverlayIcon = true
-                        hideFloatingIcon("confirm_minimize_multi")
-                        reconcileFloatingIcons()
-                    }
-            } else {
-                builder.setMessage("“Hide for Now” brings it back next time you open $appName. “Turn Off” disables it until re-enabled in settings.")
-                    .addButton("Hide for Now", accentColor) {
-                        hideFloatingIcon("confirm_hide_for_now")
-                    }
-            }
-            builder.addButton("Turn Off", dividerColor, dangerColor) {
+                .setMessage("“Hide for Now” brings it back next time you open $appName. “Turn Off” disables it until re-enabled in settings.")
+                .addButton("Hide for Now", accentColor) {
+                    hideFloatingIcon("confirm_hide_for_now")
+                }
+                .addButton("Turn Off", dividerColor, dangerColor) {
                     PlayTranslateAccessibilityService.disable(context, "confirm_turn_off_multi")
                 }
                 .addCancelButton()

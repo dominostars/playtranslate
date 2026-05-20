@@ -2,32 +2,29 @@ package com.playtranslate.ui
 
 import android.animation.ValueAnimator
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Point
 import android.graphics.Rect
-import android.graphics.RectF
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import com.playtranslate.PlayTranslateAccessibilityService
-import com.playtranslate.R
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.displaySizePx
 import com.playtranslate.displayWindowMetrics
 import kotlin.math.abs
 
 /**
- * A circular floating icon that snaps to left/right screen edges,
- * showing only half the circle. Supports drag, fling, and tap.
+ * A circular floating icon that snaps to left/right screen edges, pushed off-
+ * screen so only a ~1/4-circle edge-arrow is visible. Supports drag, fling,
+ * and tap.
  *
- * Position is persisted as edge (LEFT=0, RIGHT=1) + fraction (0..1)
- * along that edge vertically.
+ * Position is persisted as edge (LEFT=0, RIGHT=1) + fraction (0..1) along
+ * that edge vertically.
  *
  * During a drag, switches to a "magnifying glass ring" appearance so the
  * text underneath is visible for screenshot capture.
@@ -36,18 +33,14 @@ class FloatingOverlayIcon(context: Context) : View(context) {
 
     enum class Edge { LEFT, RIGHT }
 
-    /** Diameter of the visible circle. */
+    /** Diameter of the (notional) full circle — only ~1/4 of this lands
+     *  inside the screen since the rest is pushed off the edge. */
     private val circleSizePx = (56 * resources.displayMetrics.density).toInt()
     /** Extra touch padding around the circle for easier grabbing. */
     private val touchPaddingPx = (12 * resources.displayMetrics.density).toInt()
     /** Total view size (circle + padding on each side). */
     val viewSizePx = circleSizePx + touchPaddingPx * 2
-    private val circleHalf = circleSizePx / 2
     private val viewHalf = viewSizePx / 2
-
-    /** Compact mode: shows 1/3 circle with arrow instead of half circle with icon. */
-    var compactMode = false
-        set(value) { field = value; invalidate() }
 
     /** When true, the circle fill turns red to indicate live mode is active. */
     var liveMode = false
@@ -74,13 +67,9 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         color = Color.WHITE
         style = Paint.Style.FILL
     }
-    private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    private val iconBitmap: Bitmap = BitmapFactory.decodeResource(resources, R.drawable.ic_floating_icon)
-
     // Scratch objects reused in onLayout/onDraw — allocating per frame is lint DrawAllocation.
     private val gestureRect = Rect()
     private val gestureRectList = listOf(gestureRect)
-    private val dstRect = RectF()
 
     // ── Loading spinner (separate overlay window) ──────────────────────
     private var spinnerView: View? = null
@@ -287,7 +276,6 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     }
 
     override fun onDraw(canvas: Canvas) {
-        if (iconBitmap.isRecycled) return
         val center = viewSizePx / 2f
         val r = circleSizePx / 2f
         circlePaint.color = when {
@@ -304,33 +292,17 @@ class FloatingOverlayIcon(context: Context) : View(context) {
             canvas.drawCircle(center, center, r - ringPaint.strokeWidth / 2, ringPaint)
             // Small magnifying glass icon in center
             drawMagnifyingGlass(canvas, center, center, r * 0.4f)
-        } else if (compactMode) {
-            // Compact: circle pushed off-screen so only ~1/4 is visible
-            val compactOffset = r * 0.5f
-            val cx = if (currentEdge == Edge.LEFT) center - compactOffset else center + compactOffset
-            canvas.drawCircle(cx, center, r, circlePaint)
-            canvas.drawCircle(cx, center, r, borderPaint)
-            // Arrow in the visible slice, nudged toward the screen edge
-            val arrowNudge = r * 0.65f
-            val arrowCx = if (currentEdge == Edge.LEFT) cx + arrowNudge else cx - arrowNudge
-            drawEdgeArrow(canvas, arrowCx, center, r * 0.22f)
-        } else {
-            canvas.drawCircle(center, center, r, circlePaint)
-            canvas.drawCircle(center, center, r, borderPaint)
-            // Draw icon bitmap centered on the visible half, nudged toward screen edge
-            val nudge = 3 * resources.displayMetrics.density
-            val cx = if (currentEdge == Edge.LEFT) {
-                center + circleHalf / 2f - nudge
-            } else {
-                center - circleHalf / 2f + nudge
-            }
-            val targetH = circleSizePx * 0.5f
-            val scale = targetH / iconBitmap.height
-            val drawW = iconBitmap.width * scale
-            val drawH = targetH
-            dstRect.set(cx - drawW / 2f, center - drawH / 2f, cx + drawW / 2f, center + drawH / 2f)
-            canvas.drawBitmap(iconBitmap, null, dstRect, bitmapPaint)
+            return
         }
+        // Compact (always): circle pushed off-screen so only ~1/4 is visible.
+        val compactOffset = r * 0.5f
+        val cx = if (currentEdge == Edge.LEFT) center - compactOffset else center + compactOffset
+        canvas.drawCircle(cx, center, r, circlePaint)
+        canvas.drawCircle(cx, center, r, borderPaint)
+        // Arrow in the visible slice, nudged toward the screen edge.
+        val arrowNudge = r * 0.65f
+        val arrowCx = if (currentEdge == Edge.LEFT) cx + arrowNudge else cx - arrowNudge
+        drawEdgeArrow(canvas, arrowCx, center, r * 0.22f)
     }
 
     /** Draws a small arrow pointing toward the screen center (away from the edge). */
@@ -601,8 +573,10 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         hideSpinnerWindow()
     }
 
-    /** Call when the icon is permanently removed, not just temporarily detached. */
+    /** Call when the icon is permanently removed, not just temporarily detached.
+     *  Currently a no-op (no owned resources to free) — kept as a hook so
+     *  callers don't have to track whether destroy is still meaningful. */
     fun destroy() {
-        if (!iconBitmap.isRecycled) iconBitmap.recycle()
+        // Intentionally empty.
     }
 }

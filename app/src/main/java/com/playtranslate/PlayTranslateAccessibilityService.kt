@@ -245,20 +245,14 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             val ocr = debugOcrManager
             val result = try {
                 kotlinx.coroutines.withContext(Dispatchers.Default) {
-                    val ocrBitmap = OverlayToolkit.blackoutFloatingIcon(
-                        cropped, crop.left, crop.top,
-                        overlayUiController.getFloatingIconRect(displayId), prefs.compactOverlayIcon,
+                    // No pre-OCR icon blackout — the floating icon is always
+                    // compact and doesn't bleed into the OCR region.
+                    ocr.recognise(
+                        cropped,
+                        SourceLanguageProfiles[prefs.sourceLangId].translationCode,
+                        collectDebugBoxes = true,
+                        screenshotWidth = raw.width,
                     )
-                    try {
-                        ocr.recognise(
-                            ocrBitmap,
-                            SourceLanguageProfiles[prefs.sourceLangId].translationCode,
-                            collectDebugBoxes = true,
-                            screenshotWidth = raw.width,
-                        )
-                    } finally {
-                        if (ocrBitmap !== raw && ocrBitmap !== cropped) ocrBitmap.recycle()
-                    }
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Debug OCR failed: ${e.message}")

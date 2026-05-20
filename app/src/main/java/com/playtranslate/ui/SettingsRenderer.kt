@@ -697,17 +697,16 @@ class SettingsRenderer(
             .show()
     }
 
-    /** Build (or rebuild) the single-screen floating-icon preview. The icon
-     *  view draws a full circle; the 40dp-wide slot clips it to the left half
-     *  so it reads as the edge-docked icon. Compact mode narrows the visible
-     *  slice automatically. Non-interactive — never hosted as a window. */
+    /** Build (or rebuild) the floating-icon preview shown in the "On the
+     *  floating icon" cell. The icon view draws a full notional 56dp circle
+     *  pushed off the screen edge — the 40dp-wide slot clips it to the
+     *  visible quarter. Non-interactive — never hosted as a window. */
     private fun buildOverlayIconPreview() {
         destroyOverlayIconPreview()
         overlayIconPreviewSlot.removeAllViews()
         val preview = FloatingOverlayIcon(ctx).apply {
             isClickable = false
             isFocusable = false
-            compactMode = prefs.compactOverlayIcon
         }
         overlayIconPreviewSlot.addView(
             preview,
@@ -2034,14 +2033,6 @@ class SettingsRenderer(
      *  on-screen-controls dim) is what we need. */
     fun refreshOverlayIconState() {
         refreshCaptureLifecycleButton()
-    }
-
-    /** Push [Prefs.compactOverlayIcon] into the docked-icon preview shown in
-     *  the "On the floating icon" row. Called when the pref changes from
-     *  outside Settings (e.g. the user drags the floating icon into compact
-     *  mode in-game). */
-    fun refreshOverlayIconPreviewCompactMode() {
-        overlayIconPreview?.compactMode = prefs.compactOverlayIcon
     }
 
     fun refreshAutoModeToggle() {
