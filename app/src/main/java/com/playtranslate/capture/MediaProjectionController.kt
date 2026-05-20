@@ -164,20 +164,34 @@ class MediaProjectionController(private val service: CaptureService) {
     private fun ensureVirtualDisplay(w: Int, h: Int): ImageReader? {
         val proj = projection ?: return null
         imageReader?.let { if (readerW == w && readerH == h) return it }
-        // First use, or resolution changed (rotation / reconfig) — rebuild.
-        virtualDisplay?.release()
-        imageReader?.close()
-        val reader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
         val dpi = service.resources.displayMetrics.densityDpi
-        virtualDisplay = proj.createVirtualDisplay(
-            "PlayTranslateCapture", w, h, dpi,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            reader.surface, null, mainHandler,
-        )
-        imageReader = reader
+        val newReader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
+        val oldReader = imageReader
+        val vd = virtualDisplay
+        if (vd == null) {
+            // First use of this projection — build the VirtualDisplay around
+            // the new ImageReader's surface.
+            virtualDisplay = proj.createVirtualDisplay(
+                "PlayTranslateCapture", w, h, dpi,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                newReader.surface, null, mainHandler,
+            )
+        } else {
+            // Resolution changed (rotation / reconfig). API 34+ allows a
+            // MediaProjection to create only ONE VirtualDisplay per token —
+            // a second proj.createVirtualDisplay throws SecurityException
+            // ("Cannot create more than one VirtualDisplay"). So reuse the
+            // existing VirtualDisplay: resize it and swap its output Surface
+            // to the new reader. setSurface first, then close the old reader
+            // so the VD never targets a closed surface.
+            vd.resize(w, h, dpi)
+            vd.setSurface(newReader.surface)
+        }
+        imageReader = newReader
         readerW = w
         readerH = h
-        return reader
+        oldReader?.close()
+        return newReader
     }
 
     /** Pixel size of [displayId] in its current rotation — the resolution the
