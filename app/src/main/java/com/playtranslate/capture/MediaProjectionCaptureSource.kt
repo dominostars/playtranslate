@@ -126,7 +126,6 @@ class MediaProjectionCaptureSource(
         val loop = Loop(displayId = displayId, cleanRequested = true)
         loops[displayId] = loop
         DetectionLog.log("MP Loop[$displayId]: started")
-        android.util.Log.i("LiveToggleDbg", "MP loop starting for display $displayId")
         loop.job = scope.launch {
             var lastCaptureMs = 0L
             while (isActive) {
@@ -156,9 +155,6 @@ class MediaProjectionCaptureSource(
                     else -> DetectionLog.log("MP Loop[$displayId]: capture failed (transient), skipping frame")
                 }
             }
-        }
-        loop.job?.invokeOnCompletion { cause ->
-            android.util.Log.i("LiveToggleDbg", "MP loop completed for display $displayId; cause=$cause")
         }
     }
 

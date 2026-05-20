@@ -47,6 +47,15 @@ class PlayTranslateTileService : TileService() {
         // toast was acted on between bind and tap). Cheap when nothing
         // changed — see [CaptureBackendResolver.reresolve].
         CaptureBackendResolver.reresolve(this)
+        // No capture permission either way — the tile is a control surface,
+        // not an onboarding surface. Defer the backend choice (accessibility
+        // vs MediaProjection) to the app's onboarding flow in MainActivity
+        // rather than baking it into the tile's no-permission fall-through.
+        if (!PlayTranslateAccessibilityService.isEnabled(this) &&
+            !Settings.canDrawOverlays(this)) {
+            openMainActivityOnboarding()
+            return
+        }
         if (!CaptureBackendResolver.active().requiresAccessibilityService) {
             // MediaProjection backend — the tile activates / deactivates the
             // capture lifecycle.
@@ -105,6 +114,22 @@ class PlayTranslateTileService : TileService() {
     private fun openOverlayPermissionSettings() {
         val intent = overlayPermissionSettingsIntent()
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (Build.VERSION.SDK_INT >= 34) {
+            startActivityAndCollapse(
+                PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+            )
+        } else {
+            @Suppress("DEPRECATION") startActivityAndCollapse(intent)
+        }
+    }
+
+    /** Open MainActivity (and collapse the shade) so the user can complete
+     *  onboarding. Used when neither accessibility nor "Display over other
+     *  apps" is granted — the backend choice belongs in the app's onboarding
+     *  flow, not in the tile's no-permission fall-through. */
+    private fun openMainActivityOnboarding() {
+        val intent = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         if (Build.VERSION.SDK_INT >= 34) {
             startActivityAndCollapse(
                 PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)

@@ -1280,7 +1280,6 @@ class CaptureService : Service() {
     }
 
     fun stopLive() {
-        android.util.Log.i("LiveToggleDbg", "CaptureService.stopLive entry; isLive=$isLive; modes=${liveModes.keys}")
         Log.i(TAG, "stopLive() called (isLive=$isLive, modes=${liveModes.keys})", Throwable("stopLive caller"))
         // Stop bypasses setLiveDisplays: we genuinely want zero live modes,
         // not "fall back to the backend's capturable default" — which is what

@@ -221,10 +221,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
-            setOnClickListener {
-                android.util.Log.i("LiveToggleDbg", "FloatingMenu.liveBtn click; isLiveMode=$isLiveMode")
-                onToggleLive?.invoke()
-            }
+            setOnClickListener { onToggleLive?.invoke() }
         }
         liveIcon = TextView(context).apply {
             text = "\u25B6"

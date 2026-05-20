@@ -400,11 +400,7 @@ class MainActivity :
                     if (!isDestroyed && !isFinishing) withAccessibility { startLiveMode() }
                 }
             }
-            ACTION_STOP_LIVE -> {
-                android.util.Log.i("LiveToggleDbg", "MainActivity ACTION_STOP_LIVE intent; isLiveMode=$isLiveMode; svc=${captureService != null}; liveModeState=${captureService?.liveModeState?.value}")
-                if (isLiveMode) stopLiveMode()
-                else android.util.Log.i("LiveToggleDbg", "MainActivity ACTION_STOP_LIVE skipped (isLiveMode=false)")
-            }
+            ACTION_STOP_LIVE -> if (isLiveMode) stopLiveMode()
             ACTION_ADD_CUSTOM_REGION -> {
                 // Floating-icon route carries the originating display so the
                 // editor scopes to that screen. Bare action (no extra) is the
@@ -683,7 +679,6 @@ class MainActivity :
     }
 
     private fun toggleLiveMode() {
-        android.util.Log.i("LiveToggleDbg", "MainActivity.toggleLiveMode; isLiveMode=$isLiveMode; svc=${captureService != null}; liveModeState=${captureService?.liveModeState?.value}")
         if (isLiveMode) stopLiveMode() else withAccessibility { startLiveMode() }
     }
 
@@ -709,7 +704,6 @@ class MainActivity :
     }
 
     private fun stopLiveMode() {
-        android.util.Log.i("LiveToggleDbg", "MainActivity.stopLiveMode; svc=${captureService != null}")
         captureService?.stopLive()
     }
 
@@ -993,14 +987,22 @@ class MainActivity :
         ft.commitAllowingStateLoss()
     }
 
-    /** True when the accessibility service is enabled in system Settings.
-     *  Reads through `isEnabled(ctx)` rather than the bound-instance check
-     *  so the capture-readiness status doesn't flicker needed → idle while
-     *  the service binds shortly after a cold start — taps during the brief
-     *  unbound window are absorbed by the three-way decision in
-     *  [withAccessibility] rather than gated here. */
+    /** True when the active capture backend's prerequisites are satisfied:
+     *  on the accessibility backend, the service is enabled in system
+     *  Settings; on the MediaProjection backend, there is no prerequisite to
+     *  gate on here (consent is requested on-demand). Reads through
+     *  `isEnabled(ctx)` rather than the bound-instance check so the
+     *  capture-readiness status doesn't flicker needed → idle while the
+     *  accessibility service binds shortly after a cold start — taps during
+     *  the brief unbound window are absorbed by the three-way decision in
+     *  [withAccessibility] rather than gated here.
+     *
+     *  Mirrors the broader `captureReady` formula in [checkOnboardingState]
+     *  so MediaProjection users don't see the stale "Accessibility required"
+     *  message in the Translate status area. */
     private val isCaptureReady: Boolean
-        get() = PlayTranslateAccessibilityService.isEnabled(this)
+        get() = PlayTranslateAccessibilityService.isEnabled(this) ||
+            !CaptureBackendResolver.active().requiresAccessibilityService
 
     /** Reconciles the result-area status line with capture readiness: shows
      *  the "enable accessibility" prompt while the accessibility service is

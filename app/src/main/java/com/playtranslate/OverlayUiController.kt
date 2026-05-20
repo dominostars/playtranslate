@@ -922,10 +922,8 @@ class OverlayUiController(
             }
         }
         menu.onToggleLive = {
-            val live = CaptureService.instance?.isLive == true
-            android.util.Log.i("LiveToggleDbg", "OverlayUi.onToggleLive; svc.isLive=$live; svcInstance=${CaptureService.instance != null}")
             dismissFloatingMenu()
-            if (live) {
+            if (CaptureService.instance?.isLive == true) {
                 stopLiveRouted()
             } else {
                 if (Prefs.shouldUseInAppOnlyMode(context)) {
@@ -1065,11 +1063,7 @@ class OverlayUiController(
      * foreground. Used on single-screen devices.
      */
     private fun toggleLiveDirect(start: Boolean) {
-        val svc = CaptureService.instance ?: run {
-            android.util.Log.i("LiveToggleDbg", "toggleLiveDirect(start=$start) aborted: CaptureService.instance is null")
-            return
-        }
-        android.util.Log.i("LiveToggleDbg", "toggleLiveDirect(start=$start); svc.isLive=${svc.isLive}")
+        val svc = CaptureService.instance ?: return
         if (start) {
             val hadPopup = isAnyDragLookupPopupShowing
             dismissAllDragLookupPopups()
@@ -1103,14 +1097,11 @@ class OverlayUiController(
     /** Stop live mode — directly when [effectivelySingleScreen], else routed
      *  through MainActivity. */
     private fun stopLiveRouted() {
-        val single = effectivelySingleScreen()
-        android.util.Log.i("LiveToggleDbg", "stopLiveRouted; effSingle=$single; isSingleScreen=${Prefs.isSingleScreen(context)}; appFg=${MainActivity.isInForeground}")
-        if (single) toggleLiveDirect(false)
+        if (effectivelySingleScreen()) toggleLiveDirect(false)
         else sendMainActivityIntent(MainActivity.ACTION_STOP_LIVE)
     }
 
     private fun sendMainActivityIntent(action: String, targetDisplayId: Int? = null) {
-        android.util.Log.i("LiveToggleDbg", "sendMainActivityIntent action=$action targetDisplayId=$targetDisplayId")
         val intent = Intent(context, MainActivity::class.java).apply {
             this.action = action
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
