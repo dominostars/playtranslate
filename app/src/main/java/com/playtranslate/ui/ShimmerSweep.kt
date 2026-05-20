@@ -14,8 +14,8 @@ import android.view.animation.AccelerateDecelerateInterpolator
 
 /**
  * Plays a one-shot "light sweep" highlight band across [host]. Shared by
- * [ShimmerButton] (button face) and [ShimmerCardView] (card surface) so the
- * sweep animation and clip-path are defined in exactly one place.
+ * [ShimmerButton] (button face) and [ShimmerLinearLayout] (row surface) so
+ * the sweep animation and clip-path are defined in exactly one place.
  *
  * Hosts wire it in three places:
  *  - construct one instance per host (passing `this`)

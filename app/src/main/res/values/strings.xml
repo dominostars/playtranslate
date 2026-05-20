@@ -134,8 +134,9 @@
     <string name="label_region_name">Region name</string>
     <string name="hint_region_name">e.g. Dialogue box</string>
 
-    <!-- Overlay icon -->
-    <string name="settings_show_overlay_icon">Game screen controls</string>
+    <!-- Overlay icon — informational cell in the top section. Rendered ALL
+         CAPS via the Text.PT.GroupHeader style. -->
+    <string name="settings_show_overlay_icon">On the floating icon</string>
 
     <!-- Turn On / Turn Off PlayTranslate button (capture lifecycle) -->
     <string name="capture_lifecycle_start">Turn On</string>
@@ -156,8 +157,13 @@
     <string name="mp_overlay_permission_title">Display over other apps</string>
     <string name="mp_overlay_permission_message">PlayTranslate needs permission to display over other apps so the floating game-screen controls can show on top of your game.</string>
     <string name="mp_overlay_permission_button">Open settings</string>
-    <string name="settings_overlay_icon_hint_dual">• Drag — Look up words by dragging over game text\n• Hold — Preview translations\n• Tap — Open quick menu</string>
-    <string name="settings_overlay_icon_hint_single">• Drag — Look up words by dragging over game text\n• Hold — Preview translations\n• Tap — Open quick menu</string>
+    <!-- Floating-icon gesture hints in the top section's "On the floating
+         icon" row. Each line is a leading Material Symbol + bold verb +
+         em-dash + explanation. The bold span is baked into the resource via
+         inline <b>; the icon comes from the layout (ic_touch_triple etc.). -->
+    <string name="overlay_icon_gesture_drag"><b>Drag</b> &#8212; Look up words by dragging over text</string>
+    <string name="overlay_icon_gesture_hold"><b>Hold</b> &#8212; Preview translations</string>
+    <string name="overlay_icon_gesture_tap"><b>Tap</b> &#8212; Open the quick menu</string>
     <string name="overlay_icon_a11y_required_title">Accessibility required</string>
     <string name="overlay_icon_a11y_required_message">The floating overlay icon requires the Accessibility permission to draw on the game screen.\n\nGo to Settings → Accessibility → Installed apps → PlayTranslate → Enable.</string>
 

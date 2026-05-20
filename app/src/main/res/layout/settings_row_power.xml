@@ -1,130 +1,120 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Power status card (replaces the old "Turn On / Turn Off" big button).
-     Whole card is the tap target; the MaterialSwitch is non-clickable and
-     follows the row tap. The icon block, state-label dot, label colour, and
-     subtitle text are all driven from SettingsRenderer.refreshPowerCard()
-     against CaptureLifecycle.isActive(ctx). -->
-<com.playtranslate.ui.ShimmerCardView
+<!-- Power status cell — the top row of the unified Settings top section card
+     (cardOnScreenControls). Whole cell is the tap target; the trailing
+     MaterialSwitch is non-clickable and follows the row tap. Tilted-band
+     shimmer plays only while capture is off; the sweep clips to this row,
+     not the whole card. All per-state styling — icon block bg/stroke + glyph
+     tint, state-label dot/halo/colour, title + subtitle copy, switch
+     checked-ness — is applied in SettingsRenderer.stylePowerCard(). -->
+<com.playtranslate.ui.ShimmerLinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="8dp"
-    android:layout_marginBottom="4dp"
+    android:background="?attr/selectableItemBackground"
     android:clickable="true"
     android:focusable="true"
-    android:foreground="?attr/selectableItemBackground"
-    app:cardBackgroundColor="?attr/ptCard"
-    app:cardCornerRadius="@dimen/pt_radius"
-    app:cardElevation="0dp"
-    app:strokeColor="?attr/ptOutline"
-    app:strokeWidth="1dp">
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingHorizontal="16dp"
+    android:paddingVertical="16dp">
 
+    <!-- Icon block: 48dp rounded square. Background drawable + glyph tint
+         are set programmatically — they swap between Off (elevated + muted
+         glyph) and On (accent tint + accent glyph). -->
+    <FrameLayout
+        android:id="@+id/powerIconBlock"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginEnd="14dp">
+
+        <ImageView
+            android:id="@+id/powerIconGlyph"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_gravity="center"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_mode_off_on" />
+    </FrameLayout>
+
+    <!-- Title block: ON/OFF state label (with LED dot) above a bold title
+         above a supporting line. -->
     <LinearLayout
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingHorizontal="16dp"
-        android:paddingVertical="16dp">
+        android:layout_marginEnd="14dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
 
-        <!-- Icon block: 48dp rounded square. Background drawable + glyph tint
-             are set programmatically — they swap between Off (elevated + muted
-             glyph) and On (accent tint + accent glyph). -->
-        <FrameLayout
-            android:id="@+id/powerIconBlock"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginEnd="14dp">
-
-            <ImageView
-                android:id="@+id/powerIconGlyph"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:layout_gravity="center"
-                android:src="@drawable/ic_mode_off_on"
-                android:importantForAccessibility="no" />
-        </FrameLayout>
-
-        <!-- Title block: ON/OFF state label (with LED dot) above a bold title
-             above a supporting line. -->
+        <!-- State label row: 13dp halo-capable LED dot + ALL-CAPS label. -->
         <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:layout_marginEnd="14dp">
-
-            <!-- State label row: 13dp halo-capable LED dot + ALL-CAPS label. -->
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginBottom="4dp">
-
-                <!-- Dot + halo: 13dp frame so the active halo has room. The
-                     halo is INVISIBLE in the Off state but keeps the same
-                     bounds so the label doesn't shift between states. -->
-                <FrameLayout
-                    android:layout_width="13dp"
-                    android:layout_height="13dp"
-                    android:layout_marginEnd="6dp">
-
-                    <View
-                        android:id="@+id/powerStateHalo"
-                        android:layout_width="13dp"
-                        android:layout_height="13dp"
-                        android:layout_gravity="center"
-                        android:visibility="invisible" />
-
-                    <View
-                        android:id="@+id/powerStateDot"
-                        android:layout_width="7dp"
-                        android:layout_height="7dp"
-                        android:layout_gravity="center" />
-                </FrameLayout>
-
-                <TextView
-                    android:id="@+id/powerStateLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="sans-serif-medium"
-                    android:letterSpacing="0.12"
-                    android:textAllCaps="true"
-                    android:textSize="11sp" />
-            </LinearLayout>
-
-            <!-- Title text is set per-state in SettingsRenderer.stylePowerCard()
-                 — Off: "Allow screen capture", On: "Screen capture permitted". -->
-            <TextView
-                android:id="@+id/powerTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="2dp"
-                android:fontFamily="sans-serif-medium"
-                android:textColor="?attr/ptText"
-                android:textSize="17sp"
-                android:textStyle="bold"
-                tools:text="Allow screen capture" />
-
-            <TextView
-                android:id="@+id/powerSubtitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:lineSpacingMultiplier="1.35"
-                android:textColor="?attr/ptTextMuted"
-                android:textSize="12.5sp" />
-        </LinearLayout>
-
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/powerSwitch"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:clickable="false"
-            android:focusable="false"
-            app:materialThemeOverlay="@style/Widget.PlayTranslate.MaterialSwitch" />
+            android:layout_marginBottom="4dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
+            <!-- Dot + halo: 13dp frame so the active halo has room. The
+                 halo is INVISIBLE in the Off state but keeps the same
+                 bounds so the label doesn't shift between states. -->
+            <FrameLayout
+                android:layout_width="13dp"
+                android:layout_height="13dp"
+                android:layout_marginEnd="6dp">
+
+                <View
+                    android:id="@+id/powerStateHalo"
+                    android:layout_width="13dp"
+                    android:layout_height="13dp"
+                    android:layout_gravity="center"
+                    android:visibility="invisible" />
+
+                <View
+                    android:id="@+id/powerStateDot"
+                    android:layout_width="7dp"
+                    android:layout_height="7dp"
+                    android:layout_gravity="center" />
+            </FrameLayout>
+
+            <TextView
+                android:id="@+id/powerStateLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-medium"
+                android:letterSpacing="0.12"
+                android:textAllCaps="true"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <!-- Title text is set per-state in SettingsRenderer.stylePowerCard()
+             — Off: "Allow screen capture", On: "Screen capture permitted". -->
+        <TextView
+            android:id="@+id/powerTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="2dp"
+            android:fontFamily="sans-serif-medium"
+            android:textColor="?attr/ptText"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            tools:text="Allow screen capture" />
+
+        <TextView
+            android:id="@+id/powerSubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:lineSpacingMultiplier="1.35"
+            android:textColor="?attr/ptTextMuted"
+            android:textSize="13.5sp" />
     </LinearLayout>
-</com.playtranslate.ui.ShimmerCardView>
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/powerSwitch"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:clickable="false"
+        android:focusable="false"
+        app:materialThemeOverlay="@style/Widget.PlayTranslate.MaterialSwitch" />
+
+</com.playtranslate.ui.ShimmerLinearLayout>

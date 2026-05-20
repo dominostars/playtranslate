@@ -223,7 +223,7 @@
     </style>
 
     <style name="Text.PT.RowSubtitle" parent="">
-        <item name="android:textSize">12sp</item>
+        <item name="android:textSize">13sp</item>
         <item name="android:textColor">?attr/ptTextMuted</item>
         <item name="android:lineSpacingMultiplier">1.35</item>
     </style>

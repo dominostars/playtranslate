@@ -178,20 +178,33 @@ class SettingsRenderer(
     private val cardUpdateLanguagePacks: MaterialCardView = root.findViewById(R.id.cardUpdateLanguagePacks)
     private val rowUpdateLanguagePacks: View = root.findViewById(R.id.rowUpdateLanguagePacks)
 
-    private val cardOnScreenControls: MaterialCardView = root.findViewById(R.id.cardOnScreenControls)
     private val rowOverlayIcon: View = root.findViewById(R.id.rowOverlayIcon)
-    private val switchOverlayIcon: MaterialSwitch = rowOverlayIcon.findViewById(R.id.switchRowToggle)
     private val overlayIconPreviewSlot: FrameLayout = rowOverlayIcon.findViewById(R.id.overlayIconPreviewSlot)
     private var overlayIconPreview: FloatingOverlayIcon? = null
+    // "On the floating icon" cell — text + icon tints are driven by the
+    // capture lifecycle. Active: title = ptTextMuted (GroupHeader default),
+    // gesture text + icons = ptText. Disabled: everything shifts down to
+    // ptTextHint so the whole cell reads as a single recessed group.
+    private val tvOverlayIconTitle: TextView = rowOverlayIcon.findViewById(R.id.tvRowTitle)
+    private val tvGestureDrag: TextView = rowOverlayIcon.findViewById(R.id.tvGestureDrag)
+    private val tvGestureHold: TextView = rowOverlayIcon.findViewById(R.id.tvGestureHold)
+    private val tvGestureTap: TextView = rowOverlayIcon.findViewById(R.id.tvGestureTap)
+    private val iconGestureDrag: ImageView = rowOverlayIcon.findViewById(R.id.iconGestureDrag)
+    private val iconGestureHold: ImageView = rowOverlayIcon.findViewById(R.id.iconGestureHold)
+    private val iconGestureTap: ImageView = rowOverlayIcon.findViewById(R.id.iconGestureTap)
 
     private val btnCaptureLifecycle: ShimmerButton = root.findViewById(R.id.btnCaptureLifecycle)
 
-    // ── Power status card (top of Settings, replaces the old big button) ──
-    // Card itself is the tap target; the inner switch is non-clickable and
-    // follows the row tap. All the per-state styling — icon block bg + stroke,
-    // glyph tint, dot + halo, state-label text + colour, subtitle text,
-    // switch checked-ness — is applied in stylePowerCard().
-    private val powerCard: ShimmerCardView = root.findViewById(R.id.powerCard)
+    // ── Power status cell (top row of the unified top-section card) ──────
+    // The cell itself is the tap target; the inner switch is non-clickable
+    // and follows the row tap. All per-state styling — icon block bg + stroke,
+    // glyph tint, dot + halo, state-label text + colour, title + subtitle
+    // copy, switch checked-ness — is applied in stylePowerCard(). The
+    // divider sits between the power cell and the Game-screen-controls row
+    // and is hidden in lock-step with the cell (a11y dual-screen has no
+    // activate control and the cell is GONE).
+    private val powerCard: ShimmerLinearLayout = root.findViewById(R.id.powerCard)
+    private val dividerPowerCell: View = root.findViewById(R.id.dividerPowerCell)
     private val powerIconBlock: FrameLayout = root.findViewById(R.id.powerIconBlock)
     private val powerIconGlyph: ImageView = root.findViewById(R.id.powerIconGlyph)
     private val powerStateHalo: View = root.findViewById(R.id.powerStateHalo)
@@ -200,10 +213,6 @@ class SettingsRenderer(
     private val powerTitle: TextView = root.findViewById(R.id.powerTitle)
     private val powerSubtitle: TextView = root.findViewById(R.id.powerSubtitle)
     private val powerSwitch: MaterialSwitch = root.findViewById(R.id.powerSwitch)
-
-    private val rowCompactIcon: View = root.findViewById(R.id.rowCompactIcon)
-    private val switchCompactIcon: MaterialSwitch = rowCompactIcon.findViewById(R.id.switchRowToggle)
-    private val dividerCompactIcon: View = root.findViewById(R.id.dividerCompactIcon)
 
     private val rowAddQuickTile: View = root.findViewById(R.id.rowAddQuickTile)
     private val dividerAddQuickTile: View = root.findViewById(R.id.dividerAddQuickTile)
@@ -266,7 +275,9 @@ class SettingsRenderer(
 
     private fun setupGroupHeaders() {
         setGroupHeader(R.id.headerLanguage, "LANGUAGE")
-        setGroupHeader(R.id.headerOnScreen, "ON-SCREEN CONTROLS")
+        // ON-SCREEN CONTROLS has no header — its card sits directly under
+        // the power card as part of the top section (no headerOnScreen in
+        // dialog_settings.xml).
         setGroupHeader(R.id.headerAutoTranslate, "AUTO-TRANSLATE")
         setGroupHeader(R.id.headerHotkeys, "HOTKEYS")
         setGroupHeader(R.id.headerCaptureDisplay, "CAPTURE DISPLAY")
@@ -375,11 +386,9 @@ class SettingsRenderer(
     }
 
     /** Tint the Update language packs card with the warning attention color
-     *  — same blend recipe (`blendColors(attention, baseCard, 0.20f)`) and
-     *  full-strength stroke that `refreshOnScreenControlsTint` uses for the
-     *  Game Screen Controls card in dual-screen mode when the floating-icon
-     *  switch is off. Conveys "this pack is degraded; tap to fix" with the
-     *  same visual weight as other recoverable-state warnings. */
+     *  — blend recipe `blendColors(attention, baseCard, 0.20f)` with a full-
+     *  strength stroke. Conveys "this pack is degraded; tap to fix" with a
+     *  consistent visual weight for recoverable-state warnings. */
     private fun applyUpdatePacksWarningTint() {
         val baseCard = ctx.themeColor(R.attr.ptCard)
         val warning = ctx.themeColor(R.attr.ptWarning)
@@ -409,59 +418,14 @@ class SettingsRenderer(
     // ── On-screen controls ───────────────────────────────────────────────
 
     private fun setupOnScreenControls() {
-        val isSingle = Prefs.isSingleScreen(ctx)
-
-        // -- Game screen controls row --
-        rowOverlayIcon.findViewById<TextView>(R.id.tvRowTitle)
-            .setText(R.string.settings_show_overlay_icon)
-        val subtitleOverlay = rowOverlayIcon.findViewById<TextView>(R.id.tvRowSubtitle)
-        subtitleOverlay.setText(
-            if (isSingle) R.string.settings_overlay_icon_hint_single
-            else R.string.settings_overlay_icon_hint_dual
-        )
-        subtitleOverlay.visibility = View.VISIBLE
-        subtitleOverlay.setTextColor(ctx.themeColor(R.attr.ptText))
-
-        if (isSingle) {
-            // Single-screen: no toggle — the floating icon always shows while
-            // active. The row is an informational cell with a docked preview.
-            switchOverlayIcon.visibility = View.GONE
-            overlayIconPreviewSlot.visibility = View.VISIBLE
-            buildOverlayIconPreview()
-            rowOverlayIcon.setOnClickListener(null)
-            rowOverlayIcon.isClickable = false
-            rowOverlayIcon.foreground = null
-        } else {
-            // Dual-screen: the toggle is the "show the floating icon"
-            // preference — a plain pref, fully independent of whether
-            // PlayTranslate is active. It never prompts for consent or
-            // accessibility (the Start button owns activation) and stays
-            // enabled at all times.
-            switchOverlayIcon.visibility = View.VISIBLE
-            overlayIconPreviewSlot.visibility = View.GONE
-            switchOverlayIcon.setOnCheckedChangeListener { _, checked ->
-                if (syncingOverlayIconSwitch) return@setOnCheckedChangeListener
-                prefs.showOverlayIcon = checked
-                CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
-                PlayTranslateTileService.TileSync.refresh(ctx)
-                refreshOnScreenControlsTint()
-            }
-            rowOverlayIcon.setOnClickListener { switchOverlayIcon.toggle() }
-            syncOverlayIconSwitch()
-        }
-        refreshOnScreenControlsTint()
-
-        // -- Compact icon row --
-        rowCompactIcon.findViewById<TextView>(R.id.tvRowTitle).text = "Minimize icon"
-        switchCompactIcon.isChecked = prefs.compactOverlayIcon
-        switchCompactIcon.setOnCheckedChangeListener { _, checked ->
-            prefs.compactOverlayIcon = checked
-            overlayIconPreview?.compactMode = checked
-            val ui = CaptureBackendResolver.activeOverlayUi
-            ui?.hideFloatingIcon("settings_compact_recreate")
-            ui?.reconcileFloatingIcons()
-        }
-        rowCompactIcon.setOnClickListener { switchCompactIcon.toggle() }
+        // "On the floating icon" — informational cell. No toggle, no click
+        // handler. The floating icon's visibility is driven by the capture
+        // lifecycle (and the Quick Settings tile via Prefs.showOverlayIcon)
+        // — this row just teaches the user about the icon and its gestures.
+        // Gesture text + icon tints come from refreshCaptureLifecycleButton().
+        tvOverlayIconTitle.setText(R.string.settings_show_overlay_icon)
+        overlayIconPreviewSlot.visibility = View.VISIBLE
+        buildOverlayIconPreview()
 
         setupAddQuickTileRow()
     }
@@ -514,61 +478,6 @@ class SettingsRenderer(
         }
     }
 
-    /** Tints the on-screen-controls card with the warning color when the
-     *  dual-screen "Game screen controls" toggle is off while active —
-     *  flagging that the floating helper is missing. Single-screen has no
-     *  toggle, so its card is purely informational and never tinted.
-     *  Off-warning = warning styling; otherwise neutral. */
-    private fun refreshOnScreenControlsTint() {
-        // Single-screen has no toggle to be "off"; only dual-screen warns
-        // when the "Game screen controls" preference is off.
-        val warn = !Prefs.isSingleScreen(ctx) && !prefs.showOverlayIcon
-        val baseCard = ctx.themeColor(R.attr.ptCard)
-        val baseStroke = compositeOver(ctx.themeColor(R.attr.ptDivider), baseCard)
-        // Canonical theme-driven switch tints — same resources the
-        // Widget.PlayTranslate.MaterialSwitch style references at inflation.
-        val themeThumbTint = ContextCompat.getColorStateList(ctx, R.color.switch_thumb)
-        val themeTrackTint = ContextCompat.getColorStateList(ctx, R.color.switch_track)
-        val themeTrackDecorationTint =
-            ContextCompat.getColorStateList(ctx, R.color.switch_track_decoration)
-        if (!warn) {
-            cardOnScreenControls.setCardBackgroundColor(baseCard)
-            cardOnScreenControls.strokeColor = baseStroke
-            switchOverlayIcon.thumbTintList = themeThumbTint
-            switchOverlayIcon.trackTintList = themeTrackTint
-            switchOverlayIcon.trackDecorationTintList = themeTrackDecorationTint
-            return
-        }
-        val attention = ctx.themeColor(R.attr.ptWarning)
-        cardOnScreenControls.setCardBackgroundColor(blendColors(attention, baseCard, 0.20f))
-        // Border uses the attention color at full strength so the card reads
-        // clearly as needing action, even on themes where the 20% fill blend
-        // lands close to the base card color.
-        cardOnScreenControls.strokeColor = attention
-        // State-aware tint lists so the switch flips cleanly to its
-        // theme-driven ON appearance mid-animation: checked-state colors
-        // come from the canonical @color/switch_* resources (so we don't
-        // drift from whatever the rest of the app's switches use), and the
-        // unchecked state gets the attention color.
-        val checkedStates = arrayOf(
-            intArrayOf(android.R.attr.state_checked),
-            intArrayOf(-android.R.attr.state_checked),
-        )
-        val themeCheckedThumb = themeThumbTint?.getColorForState(checkedStates[0], 0) ?: 0
-        val themeCheckedTrack = themeTrackTint?.getColorForState(checkedStates[0], 0) ?: 0
-        switchOverlayIcon.thumbTintList = ColorStateList(
-            checkedStates,
-            intArrayOf(themeCheckedThumb, attention),
-        )
-        switchOverlayIcon.trackTintList = ColorStateList(
-            checkedStates,
-            intArrayOf(themeCheckedTrack, blendColors(attention, baseCard, 0.30f)),
-        )
-        // Track outline (visible only when unchecked) picks up the full
-        // attention color to match the card border.
-        switchOverlayIcon.trackDecorationTintList = ColorStateList.valueOf(attention)
-    }
-
     // ── Turn On / Turn Off PlayTranslate ───────────────────────────────────────
 
     private fun setupCaptureLifecycleButton() {
@@ -577,7 +486,6 @@ class SettingsRenderer(
                 CaptureLifecycle.isActive(ctx) -> {
                     CaptureLifecycle.deactivate(ctx)
                     refreshCaptureLifecycleButton()
-                    refreshOverlayIconSwitch()
                 }
                 !CaptureBackendResolver.active().requiresAccessibilityService ->
                     // MediaProjection — the consent flow is Activity-scoped;
@@ -585,7 +493,6 @@ class SettingsRenderer(
                     callbacks.requestMediaProjectionControls()
                 CaptureLifecycle.activateAccessibility(ctx) -> {
                     refreshCaptureLifecycleButton()
-                    refreshOverlayIconSwitch()
                 }
                 else -> showOverlayIconA11yAlert()
             }
@@ -608,14 +515,41 @@ class SettingsRenderer(
      *  power card and the nav-bar button — against the current
      *  [CaptureLifecycle] state. Both are hidden on the accessibility backend
      *  in dual-screen, where "active" is always true and there is nothing to
-     *  start. */
+     *  start.
+     *
+     *  Also recolours the adjacent "On the floating icon" cell while capture
+     *  is OFF: title + gesture text + gesture icons all drop to ptTextHint
+     *  (the next-darker theme step below ptTextMuted) so the whole cell
+     *  reads as a single recessed group. The docked-icon preview drops to
+     *  50% alpha as a stronger "this is currently dark" cue.
+     */
     fun refreshCaptureLifecycleButton() {
         val visibility =
             if (CaptureLifecycle.hasActivateControl(ctx)) View.VISIBLE else View.GONE
         btnCaptureLifecycle.visibility = visibility
         powerCard.visibility = visibility
-        if (visibility != View.VISIBLE) return
+        // Hide the divider in lock-step with the cell so the top of the
+        // top-section card doesn't show a stray rule.
+        dividerPowerCell.visibility = visibility
         val active = CaptureLifecycle.isActive(ctx)
+        // Cell colours ALWAYS reflect active — when the power cell is hidden
+        // (accessibility dual-screen), isActive returns true so full colour.
+        val titleColor = ctx.themeColor(
+            if (active) R.attr.ptTextMuted else R.attr.ptTextHint
+        )
+        val gestureColor = ctx.themeColor(
+            if (active) R.attr.ptText else R.attr.ptTextHint
+        )
+        val gestureTint = ColorStateList.valueOf(gestureColor)
+        tvOverlayIconTitle.setTextColor(titleColor)
+        tvGestureDrag.setTextColor(gestureColor)
+        tvGestureHold.setTextColor(gestureColor)
+        tvGestureTap.setTextColor(gestureColor)
+        iconGestureDrag.imageTintList = gestureTint
+        iconGestureHold.imageTintList = gestureTint
+        iconGestureTap.imageTintList = gestureTint
+        overlayIconPreviewSlot.alpha = if (active) 1f else 0.5f
+        if (visibility != View.VISIBLE) return
         styleCaptureButton(btnCaptureLifecycle, active)
         stylePowerCard(active)
         // A refresh can land while the list is already scrolled — re-apply
@@ -2093,29 +2027,20 @@ class SettingsRenderer(
         rowTargetLang.findViewById<TextView>(R.id.tvRowValue).text = resolveTargetName()
     }
 
-    /** True while [syncOverlayIconSwitch] writes [switchOverlayIcon], so the
-     *  change listener — which carries user-action side effects — skips our
-     *  own programmatic write. */
-    private var syncingOverlayIconSwitch = false
-
-    /** Push the [Prefs.showOverlayIcon] preference into the dual-screen switch
-     *  without tripping its change listener. "Game screen controls" is a plain
-     *  preference — independent of whether PlayTranslate is active. Visually a
-     *  no-op on single-screen, where the switch is GONE. */
-    private fun syncOverlayIconSwitch() {
-        syncingOverlayIconSwitch = true
-        switchOverlayIcon.isChecked = prefs.showOverlayIcon
-        syncingOverlayIconSwitch = false
-    }
-
-    fun refreshOverlayIconSwitch() {
-        syncOverlayIconSwitch()
-        refreshOnScreenControlsTint()
+    /** Settings's response to [Prefs.showOverlayIcon] changing externally
+     *  (Quick Settings tile, accessibility service disabling it). The pref
+     *  feeds [CaptureLifecycle.isActive] on the accessibility backend, so a
+     *  full refresh of the lifecycle surfaces (power cell + nav-bar button +
+     *  on-screen-controls dim) is what we need. */
+    fun refreshOverlayIconState() {
         refreshCaptureLifecycleButton()
     }
 
-    fun refreshCompactIconSwitch() {
-        switchCompactIcon.isChecked = prefs.compactOverlayIcon
+    /** Push [Prefs.compactOverlayIcon] into the docked-icon preview shown in
+     *  the "On the floating icon" row. Called when the pref changes from
+     *  outside Settings (e.g. the user drags the floating icon into compact
+     *  mode in-game). */
+    fun refreshOverlayIconPreviewCompactMode() {
         overlayIconPreview?.compactMode = prefs.compactOverlayIcon
     }
 

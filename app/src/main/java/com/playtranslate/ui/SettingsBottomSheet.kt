@@ -61,7 +61,7 @@ class SettingsBottomSheet : DialogFragment() {
      *  SharedPreferences listener observes — so the Turn On/Off buttons are
      *  refreshed from this teardown callback instead. */
     private var teardownController: com.playtranslate.capture.MediaProjectionController? = null
-    private val onProjectionTeardown: () -> Unit = { renderer?.refreshOverlayIconSwitch() }
+    private val onProjectionTeardown: () -> Unit = { renderer?.refreshOverlayIconState() }
 
     private val requestAnkiPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -122,7 +122,7 @@ class SettingsBottomSheet : DialogFragment() {
             }
         renderer?.startCaptureButtonShimmer()
         renderer?.refreshAnkiSection()
-        renderer?.refreshOverlayIconSwitch()
+        renderer?.refreshOverlayIconState()
         // The toolbar hosts the Turn On/Off button on the MediaProjection
         // backend — re-check its visibility in case the accessibility grant
         // changed while we were away (same catch-up reason as the rows here).
@@ -157,8 +157,8 @@ class SettingsBottomSheet : DialogFragment() {
         val sp = ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
         prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             when (key) {
-                "show_overlay_icon" -> renderer?.refreshOverlayIconSwitch()
-                "compact_overlay_icon" -> renderer?.refreshCompactIconSwitch()
+                "show_overlay_icon" -> renderer?.refreshOverlayIconState()
+                "compact_overlay_icon" -> renderer?.refreshOverlayIconPreviewCompactMode()
                 "auto_translation_mode" -> renderer?.refreshAutoModeToggle()
                 Prefs.KEY_DEEPL_ENABLED -> {
                     renderer?.refreshDeeplBackendSwitch()
@@ -1210,7 +1210,7 @@ class SettingsBottomSheet : DialogFragment() {
                     .activeOverlayUi?.reconcileFloatingIcons()
                 com.playtranslate.PlayTranslateTileService.TileSync.refresh(activity)
             }
-            renderer?.refreshOverlayIconSwitch()
+            renderer?.refreshOverlayIconState()
         }
     }
 

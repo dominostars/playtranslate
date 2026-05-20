@@ -14,7 +14,7 @@ import com.google.android.material.button.MaterialButton
  * current width/height every frame, so it stays correct while the button is
  * restyled or alpha-/scale-animated by the scroll cross-fade.
  *
- * Sweep animation lives in [ShimmerSweep] (shared with [ShimmerCardView]).
+ * Sweep animation lives in [ShimmerSweep] (shared with [ShimmerLinearLayout]).
  */
 class ShimmerButton @JvmOverloads constructor(
     context: Context,

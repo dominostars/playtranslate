@@ -89,13 +89,194 @@
             android:paddingTop="4dp"
             android:paddingBottom="20dp">
 
-            <!-- Power status card. Replaces the old big "Turn On / Turn Off"
-                 button — see SettingsRenderer.stylePowerCard(). Whole card is
-                 the tap target; the nav-bar ShimmerButton still fades in as
-                 the user scrolls past this card. -->
-            <include
-                android:id="@+id/powerCard"
-                layout="@layout/settings_row_power" />
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- TOP SECTION — one card containing:                    -->
+            <!--   • Power cell (Allow screen capture / status)        -->
+            <!--   • Game screen controls (toggle on dual / info+icon  -->
+            <!--     preview on single)                                -->
+            <!--   • Compact icon toggle                               -->
+            <!--   • Add to quick settings                             -->
+            <!-- No section header. The power cell answers "is it      -->
+            <!-- ready?" and the on-screen controls answer "how do I   -->
+            <!-- use it?" — they belong in the same table.             -->
+            <!-- The Game-screen-controls row's text + icon-preview    -->
+            <!-- dim to 50% alpha while the power cell is OFF, and the -->
+            <!-- power cell shimmers in place (see SettingsRenderer.   -->
+            <!-- refreshCaptureLifecycleButton).                       -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardOnScreenControls"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptOutline"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <!-- Power cell (Allow screen capture). Whole row is the
+                         tap target; trailing switch follows the row tap.
+                         Replaces the old standalone "Turn On / Turn Off"
+                         button — see SettingsRenderer.stylePowerCard(). The
+                         nav-bar ShimmerButton still fades in as the user
+                         scrolls past it. -->
+                    <include
+                        android:id="@+id/powerCard"
+                        layout="@layout/settings_row_power" />
+
+                    <View
+                        android:id="@+id/dividerPowerCell"
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="@dimen/pt_row_h_padding"
+                        android:background="?attr/ptDivider" />
+
+                    <!-- "On the floating icon" — informational cell describing
+                         the docked floating icon and its gestures. No toggle
+                         (the floating icon's visibility is driven by the
+                         capture lifecycle + Quick Settings tile, not here).
+                         The title uses the small ALL-CAPS state-label style
+                         (matching the power cell's "ON/OFF" label); the
+                         subtitle below carries the gesture explanation. -->
+                    <LinearLayout
+                        android:id="@+id/rowOverlayIcon"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/pt_row_min_height"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:paddingHorizontal="@dimen/pt_row_h_padding"
+                        android:paddingVertical="12dp">
+
+                        <!-- Text container: GroupHeader-styled title above a
+                             three-row gesture list. Container id is kept so
+                             refreshCaptureLifecycleButton can dim or recolor
+                             everything inside in lock-step. -->
+                        <LinearLayout
+                            android:id="@+id/overlayIconTextContent"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:layout_marginEnd="16dp">
+
+                            <TextView
+                                android:id="@+id/tvRowTitle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                style="@style/Text.PT.GroupHeader" />
+
+                            <!-- Three gesture rows. Verb is bold (inline <b>
+                                 in the string resource); icon to the left.
+                                 Icon tint + text colour are driven by
+                                 refreshCaptureLifecycleButton: ptText when
+                                 active, ptTextMuted when disabled (matching
+                                 the GroupHeader title). -->
+                            <LinearLayout
+                                android:id="@+id/gestureList"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp"
+                                android:orientation="vertical">
+
+                                <LinearLayout
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:gravity="center_vertical"
+                                    android:orientation="horizontal">
+
+                                    <ImageView
+                                        android:id="@+id/iconGestureDrag"
+                                        android:layout_width="20dp"
+                                        android:layout_height="20dp"
+                                        android:layout_marginEnd="10dp"
+                                        android:importantForAccessibility="no"
+                                        android:src="@drawable/ic_touch_triple" />
+
+                                    <TextView
+                                        android:id="@+id/tvGestureDrag"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:text="@string/overlay_icon_gesture_drag"
+                                        android:textColor="?attr/ptText"
+                                        android:textSize="15sp" />
+                                </LinearLayout>
+
+                                <LinearLayout
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="4dp"
+                                    android:gravity="center_vertical"
+                                    android:orientation="horizontal">
+
+                                    <ImageView
+                                        android:id="@+id/iconGestureHold"
+                                        android:layout_width="20dp"
+                                        android:layout_height="20dp"
+                                        android:layout_marginEnd="10dp"
+                                        android:importantForAccessibility="no"
+                                        android:src="@drawable/ic_touch_long" />
+
+                                    <TextView
+                                        android:id="@+id/tvGestureHold"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:text="@string/overlay_icon_gesture_hold"
+                                        android:textColor="?attr/ptText"
+                                        android:textSize="15sp" />
+                                </LinearLayout>
+
+                                <LinearLayout
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="4dp"
+                                    android:gravity="center_vertical"
+                                    android:orientation="horizontal">
+
+                                    <ImageView
+                                        android:id="@+id/iconGestureTap"
+                                        android:layout_width="20dp"
+                                        android:layout_height="20dp"
+                                        android:layout_marginEnd="10dp"
+                                        android:importantForAccessibility="no"
+                                        android:src="@drawable/ic_touch_app" />
+
+                                    <TextView
+                                        android:id="@+id/tvGestureTap"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:text="@string/overlay_icon_gesture_tap"
+                                        android:textColor="?attr/ptText"
+                                        android:textSize="15sp" />
+                                </LinearLayout>
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <FrameLayout
+                            android:id="@+id/overlayIconPreviewSlot"
+                            android:layout_width="40dp"
+                            android:layout_height="80dp"
+                            android:visibility="gone" />
+
+                    </LinearLayout>
+
+                    <View
+                        android:id="@+id/dividerAddQuickTile"
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="@dimen/pt_row_h_padding"
+                        android:background="?attr/ptDivider" />
+
+                    <include layout="@layout/settings_row_link"
+                        android:id="@+id/rowAddQuickTile" />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
             <!-- ══════════════════════════════════════════════════════ -->
             <!-- LANGUAGE                                              -->
@@ -145,106 +326,6 @@
                 <include layout="@layout/settings_row_value_multiline"
                     android:id="@+id/rowUpdateLanguagePacks" />
 
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- ══════════════════════════════════════════════════════ -->
-            <!-- ON-SCREEN CONTROLS                                    -->
-            <!-- ══════════════════════════════════════════════════════ -->
-
-            <include layout="@layout/settings_group_header"
-                android:id="@+id/headerOnScreen" />
-
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardOnScreenControls"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:cardBackgroundColor="?attr/ptCard"
-                app:cardCornerRadius="@dimen/pt_radius"
-                app:cardElevation="0dp"
-                app:strokeColor="?attr/ptDivider"
-                app:strokeWidth="1dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical">
-
-                    <!-- Game screen controls: a toggle on dual-screen; an
-                         informational cell with a docked icon preview on
-                         single-screen (rebuilt inline from settings_row_switch
-                         so the preview slot can be injected). -->
-                    <LinearLayout
-                        android:id="@+id/rowOverlayIcon"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:minHeight="@dimen/pt_row_min_height"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:paddingHorizontal="@dimen/pt_row_h_padding"
-                        android:paddingVertical="9dp"
-                        android:background="?attr/selectableItemBackground"
-                        android:clickable="true"
-                        android:focusable="true">
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical"
-                            android:layout_marginEnd="16dp">
-
-                            <TextView
-                                android:id="@+id/tvRowTitle"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                style="@style/Text.PT.RowTitle" />
-
-                            <TextView
-                                android:id="@+id/tvRowSubtitle"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:visibility="gone"
-                                style="@style/Text.PT.RowSubtitle" />
-                        </LinearLayout>
-
-                        <FrameLayout
-                            android:id="@+id/overlayIconPreviewSlot"
-                            android:layout_width="40dp"
-                            android:layout_height="80dp"
-                            android:visibility="gone" />
-
-                        <com.google.android.material.materialswitch.MaterialSwitch
-                            android:id="@+id/switchRowToggle"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:clickable="false"
-                            android:focusable="false"
-                            app:materialThemeOverlay="@style/Widget.PlayTranslate.MaterialSwitch" />
-
-                    </LinearLayout>
-
-                    <View
-                        android:id="@+id/dividerCompactIcon"
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:layout_marginStart="@dimen/pt_row_h_padding"
-                        android:background="?attr/ptDivider" />
-
-                    <include layout="@layout/settings_row_switch"
-                        android:id="@+id/rowCompactIcon" />
-
-                    <View
-                        android:id="@+id/dividerAddQuickTile"
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:layout_marginStart="@dimen/pt_row_h_padding"
-                        android:background="?attr/ptDivider" />
-
-                    <include layout="@layout/settings_row_link"
-                        android:id="@+id/rowAddQuickTile" />
-
-                </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
             <!-- ══════════════════════════════════════════════════════ -->
