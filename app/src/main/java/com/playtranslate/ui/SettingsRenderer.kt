@@ -19,6 +19,7 @@ import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextWatcher
 import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.LayoutInflater
@@ -474,6 +475,34 @@ class SettingsRenderer(
         dividerPowerCell.visibility = if (both) View.VISIBLE else View.GONE
     }
 
+    /** Pulls the gesture string [stringRes] (which carries an inline `<b>`
+     *  on the leading verb word), copies it into a SpannableStringBuilder,
+     *  and overlays a [ForegroundColorSpan] of [color] across the same
+     *  range as the inline BOLD — so the verb word gets the accent (or
+     *  the disabled hint) colour without needing to hardcode verb-word
+     *  lengths in code or duplicate the string.
+     *
+     *  Returns a fresh SpannableStringBuilder each call — cheap (one
+     *  StyleSpan lookup, one ForegroundColorSpan applied) and avoids the
+     *  resource cache reusing the same Spanned instance across refreshes
+     *  with stale colours layered on. */
+    private fun withVerbColored(stringRes: Int, color: Int): SpannableStringBuilder {
+        val text = ctx.getText(stringRes)
+        val sb = SpannableStringBuilder(text)
+        val boldSpan = sb.getSpans(0, sb.length, StyleSpan::class.java)
+            .firstOrNull { it.style == Typeface.BOLD }
+        if (boldSpan != null) {
+            val start = sb.getSpanStart(boldSpan)
+            val end = sb.getSpanEnd(boldSpan)
+            sb.setSpan(
+                ForegroundColorSpan(color),
+                start, end,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
+        return sb
+    }
+
     @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.TIRAMISU)
     private fun requestAddQuickTile() {
         val statusBarManager = ctx.getSystemService(android.app.StatusBarManager::class.java)
@@ -558,17 +587,27 @@ class SettingsRenderer(
         val titleColor = ctx.themeColor(
             if (active) R.attr.ptTextMuted else R.attr.ptTextHint
         )
-        val gestureColor = ctx.themeColor(
+        // Gesture line has two colour zones: the rest of the line (baseColor)
+        // and the leading bold verb (verbColor). Active accents the verb +
+        // matching icon; disabled flattens both into the same muted hint
+        // colour as the rest of the line.
+        val baseColor = ctx.themeColor(
             if (active) R.attr.ptText else R.attr.ptTextHint
         )
-        val gestureTint = ColorStateList.valueOf(gestureColor)
+        val verbColor = ctx.themeColor(
+            if (active) R.attr.ptAccent else R.attr.ptTextHint
+        )
+        val iconTint = ColorStateList.valueOf(verbColor)
         tvOverlayIconTitle.setTextColor(titleColor)
-        tvGestureDrag.setTextColor(gestureColor)
-        tvGestureHold.setTextColor(gestureColor)
-        tvGestureTap.setTextColor(gestureColor)
-        iconGestureDrag.imageTintList = gestureTint
-        iconGestureHold.imageTintList = gestureTint
-        iconGestureTap.imageTintList = gestureTint
+        tvGestureDrag.text = withVerbColored(R.string.overlay_icon_gesture_drag, verbColor)
+        tvGestureHold.text = withVerbColored(R.string.overlay_icon_gesture_hold, verbColor)
+        tvGestureTap.text  = withVerbColored(R.string.overlay_icon_gesture_tap,  verbColor)
+        tvGestureDrag.setTextColor(baseColor)
+        tvGestureHold.setTextColor(baseColor)
+        tvGestureTap.setTextColor(baseColor)
+        iconGestureDrag.imageTintList = iconTint
+        iconGestureHold.imageTintList = iconTint
+        iconGestureTap.imageTintList = iconTint
         overlayIconPreviewSlot.alpha = if (active) 1f else 0.5f
         if (visibility != View.VISIBLE) return
         styleCaptureButton(btnCaptureLifecycle, active)

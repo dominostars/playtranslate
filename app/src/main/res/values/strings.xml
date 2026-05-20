@@ -161,9 +161,9 @@
          icon" row. Each line is a leading Material Symbol + bold verb +
          em-dash + explanation. The bold span is baked into the resource via
          inline <b>; the icon comes from the layout (ic_touch_triple etc.). -->
-    <string name="overlay_icon_gesture_drag"><b>Drag</b> &#8212; Look up words by dragging over text</string>
-    <string name="overlay_icon_gesture_hold"><b>Hold</b> &#8212; Preview translations</string>
-    <string name="overlay_icon_gesture_tap"><b>Tap</b> &#8212; Open the quick menu</string>
+    <string name="overlay_icon_gesture_drag"><b>Drag</b> over words for quick definitions</string>
+    <string name="overlay_icon_gesture_hold"><b>Hold</b> to preview translations</string>
+    <string name="overlay_icon_gesture_tap"><b>Tap</b> to open the quick menu</string>
     <string name="overlay_icon_a11y_required_title">Accessibility required</string>
     <string name="overlay_icon_a11y_required_message">The floating overlay icon requires the Accessibility permission to draw on the game screen.\n\nGo to Settings → Accessibility → Installed apps → PlayTranslate → Enable.</string>
 
