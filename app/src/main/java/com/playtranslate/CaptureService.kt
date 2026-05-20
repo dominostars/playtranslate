@@ -374,11 +374,13 @@ class CaptureService : Service() {
         // ImageReader) before the service goes away — nothing else releases
         // those native resources. Routed through the capture source's
         // destroy() (stops loops, then tears the controller down) so MP
-        // teardown is symmetric with ScreenshotManager.destroy(). Gated on the
-        // FGS-promotion flag, which ensureProjection() sets before it builds
-        // the projection: when it's true the `by lazy` capture source has
-        // already been initialized, so this never force-creates the backend.
-        if (mediaProjectionFgsActive) mediaProjectionCaptureSource.destroy()
+        // teardown is symmetric with ScreenshotManager.destroy(). Gated on
+        // whether the source's `by lazy` ever realized — accessibility-only
+        // sessions skip this entirely instead of force-initializing the MP
+        // backend just to tear it down.
+        if (mediaProjectionCaptureSourceLazy.isInitialized()) {
+            mediaProjectionCaptureSource.destroy()
+        }
         instance = null
         stopLive()
         serviceScope.cancel()
@@ -782,10 +784,15 @@ class CaptureService : Service() {
     /** Owns the MediaProjection session (consent, VirtualDisplay, ImageReader). */
     internal val mediaProjectionController by lazy { MediaProjectionController(this) }
 
-    /** One-shot clean-capture source backed by [mediaProjectionController]. */
-    internal val mediaProjectionCaptureSource by lazy {
+    /** One-shot clean-capture source backed by [mediaProjectionController].
+     *  Stored as an explicit [Lazy] so [onDestroy] can gate teardown on
+     *  whether the source was ever touched (via [Lazy.isInitialized]) without
+     *  force-initializing it through the property access itself. */
+    private val mediaProjectionCaptureSourceLazy = lazy {
         MediaProjectionCaptureSource(mediaProjectionController)
     }
+    internal val mediaProjectionCaptureSource: MediaProjectionCaptureSource
+        by mediaProjectionCaptureSourceLazy
 
     /** Overlay-window host for MediaProjection mode (TYPE_APPLICATION_OVERLAY). */
     internal val mediaProjectionOverlayHost by lazy {
@@ -800,11 +807,6 @@ class CaptureService : Service() {
             mediaProjectionController.hasConsent
         }
     }
-
-    /** True once the foreground service has been promoted to include the
-     *  mediaProjection type. Never downgraded afterwards — the platform kills
-     *  the projection if the type is dropped. */
-    private var mediaProjectionFgsActive = false
 
     /**
      * Listens for capture displays going away (external monitor unplugged,
@@ -2108,20 +2110,24 @@ class CaptureService : Service() {
 
     /** Promote the foreground service to include the mediaProjection type.
      *  MUST run before MediaProjectionManager.getMediaProjection() on API
-     *  34+. Idempotent. */
+     *  34+. Routes through [enterForeground], which derives the type from
+     *  [MediaProjectionController.hasConsent] — the call carries the
+     *  mediaProjection type whenever consent is held, and drops it back to
+     *  SPECIAL_USE only once consent goes away. */
     internal fun ensureMediaProjectionForegroundType() {
-        if (mediaProjectionFgsActive) return
-        mediaProjectionFgsActive = true
         enterForeground()
     }
 
-    /** startForeground with the correct service type(s). Once
-     *  [ensureMediaProjectionForegroundType] has run, the mediaProjection type
-     *  is included so a later onStartCommand / updateForegroundState doesn't
-     *  downgrade a live projection (which the platform would kill). The catch
-     *  below handles the platform rejecting the type after the token lapses. */
+    /** startForeground with the correct service type(s). The mediaProjection
+     *  type is included exactly when [MediaProjectionController.hasConsent]
+     *  is currently true — single source of truth: there's no separate flag
+     *  to drift out of sync with the consent token. The catch handles the
+     *  platform rejecting the MP type by invalidating the consent that
+     *  claimed it, so a subsequent ensureProjection short-circuits on null
+     *  resultData (no doomed getMediaProjection) and the user re-prompts on
+     *  the next capture attempt. */
     private fun enterForeground() {
-        if (mediaProjectionFgsActive) {
+        if (mediaProjectionController.hasConsent) {
             try {
                 startForeground(
                     NOTIF_ID, buildNotification(),
@@ -2132,20 +2138,19 @@ class CaptureService : Service() {
             } catch (e: Exception) {
                 // The mediaProjection FGS type is only valid while a live
                 // screen-record token is held. The token can lapse out from
-                // under us — single-use on API 34+, or the system stopping the
-                // projection — before mediaProjectionFgsActive is cleared, and
-                // the platform then rejects this start with a SecurityException.
-                // Drop the stale promotion and fall through to SPECIAL_USE so
-                // the service still reaches the foreground.
+                // under us — single-use on API 34+, or the system stopping
+                // the projection — and the platform then rejects this start
+                // with a SecurityException. Invalidate the consent so
+                // hasConsent reflects reality; the SPECIAL_USE fall-through
+                // below still gets the service to the foreground.
                 Log.w(TAG, "enterForeground: mediaProjection FGS type rejected, " +
                     "falling back to SPECIAL_USE — ${e.message}")
-                mediaProjectionFgsActive = false
+                mediaProjectionController.invalidateConsent()
             }
         }
         // SPECIAL_USE only. The 2-arg startForeground would apply every
         // manifest-declared type — including mediaProjection, which API 34+
-        // rejects with a SecurityException until a projection token is held
-        // (ensureMediaProjectionForegroundType promotes to it after consent).
+        // rejects with a SecurityException until a projection token is held.
         startForeground(
             NOTIF_ID, buildNotification(),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,

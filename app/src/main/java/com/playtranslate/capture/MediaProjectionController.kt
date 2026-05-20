@@ -267,6 +267,20 @@ class MediaProjectionController(private val service: CaptureService) {
         if (hadConsent) teardownListeners.toList().forEach { it() }
     }
 
+    /** Drop the consent token without tearing down any live projection /
+     *  VirtualDisplay / ImageReader. Used by the foreground-service-type
+     *  catch in [CaptureService.enterForeground] when the platform rejects
+     *  the mediaProjection FGS type: the consent that claimed the type is
+     *  invalid (and the catch fires before getMediaProjection, so no live
+     *  projection exists yet to tear down), so [hasConsent] should reflect
+     *  that and the next capture attempt re-prompts cleanly. */
+    fun invalidateConsent() {
+        val hadConsent = resultData != null
+        resultCode = Activity.RESULT_CANCELED
+        resultData = null
+        if (hadConsent) teardownListeners.toList().forEach { it() }
+    }
+
     /** The projection is gone — stopped by the system or the user (a revoke /
      *  sleep teardown), or [getMediaProjection] failed to turn a held consent
      *  token into a session. Not our own [destroy]. Tear the session down,
