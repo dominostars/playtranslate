@@ -140,6 +140,17 @@
     <!-- Turn On / Turn Off PlayTranslate button (capture lifecycle) -->
     <string name="capture_lifecycle_start">Turn On</string>
     <string name="capture_lifecycle_stop">Turn Off</string>
+    <!-- Power status card (top of Settings). Both title and subtitle vary
+         with state — the OFF strings carry the CTA ("Allow…", "Required…")
+         while the ON strings describe the resulting permission + capability
+         WITHOUT claiming any active capture/translation happens (capture
+         only runs when the user triggers a translation). -->
+    <string name="capture_lifecycle_state_on">On</string>
+    <string name="capture_lifecycle_state_off">Off</string>
+    <string name="capture_lifecycle_on_title">Screen capture permitted</string>
+    <string name="capture_lifecycle_off_title">Allow screen capture</string>
+    <string name="capture_lifecycle_on_subtitle">Ready to translate</string>
+    <string name="capture_lifecycle_off_subtitle">Required to read game text</string>
 
     <!-- MediaProjection floating-controls overlay permission -->
     <string name="mp_overlay_permission_title">Display over other apps</string>

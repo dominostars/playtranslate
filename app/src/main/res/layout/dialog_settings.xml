@@ -89,25 +89,13 @@
             android:paddingTop="4dp"
             android:paddingBottom="20dp">
 
-            <!-- Turn On / Turn Off control, big form. Cross-fades into the nav-bar
-                 ShimmerButton as the user scrolls (see SettingsRenderer). -->
-            <com.playtranslate.ui.ShimmerButton
-                android:id="@+id/btnCaptureLifecycleLarge"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:layout_marginTop="8dp"
-                android:layout_marginBottom="4dp"
-                android:textAllCaps="false"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                app:icon="@drawable/ic_mode_off_on"
-                app:iconSize="20dp"
-                app:iconGravity="textStart"
-                app:cornerRadius="@dimen/pt_radius"
-                android:visibility="gone" />
+            <!-- Power status card. Replaces the old big "Turn On / Turn Off"
+                 button — see SettingsRenderer.stylePowerCard(). Whole card is
+                 the tap target; the nav-bar ShimmerButton still fades in as
+                 the user scrolls past this card. -->
+            <include
+                android:id="@+id/powerCard"
+                layout="@layout/settings_row_power" />
 
             <!-- ══════════════════════════════════════════════════════ -->
             <!-- LANGUAGE                                              -->

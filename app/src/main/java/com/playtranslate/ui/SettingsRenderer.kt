@@ -185,8 +185,21 @@ class SettingsRenderer(
     private var overlayIconPreview: FloatingOverlayIcon? = null
 
     private val btnCaptureLifecycle: ShimmerButton = root.findViewById(R.id.btnCaptureLifecycle)
-    private val btnCaptureLifecycleLarge: ShimmerButton =
-        root.findViewById(R.id.btnCaptureLifecycleLarge)
+
+    // ── Power status card (top of Settings, replaces the old big button) ──
+    // Card itself is the tap target; the inner switch is non-clickable and
+    // follows the row tap. All the per-state styling — icon block bg + stroke,
+    // glyph tint, dot + halo, state-label text + colour, subtitle text,
+    // switch checked-ness — is applied in stylePowerCard().
+    private val powerCard: ShimmerCardView = root.findViewById(R.id.powerCard)
+    private val powerIconBlock: FrameLayout = root.findViewById(R.id.powerIconBlock)
+    private val powerIconGlyph: ImageView = root.findViewById(R.id.powerIconGlyph)
+    private val powerStateHalo: View = root.findViewById(R.id.powerStateHalo)
+    private val powerStateDot: View = root.findViewById(R.id.powerStateDot)
+    private val powerStateLabel: TextView = root.findViewById(R.id.powerStateLabel)
+    private val powerTitle: TextView = root.findViewById(R.id.powerTitle)
+    private val powerSubtitle: TextView = root.findViewById(R.id.powerSubtitle)
+    private val powerSwitch: MaterialSwitch = root.findViewById(R.id.powerSwitch)
 
     private val rowCompactIcon: View = root.findViewById(R.id.rowCompactIcon)
     private val switchCompactIcon: MaterialSwitch = rowCompactIcon.findViewById(R.id.switchRowToggle)
@@ -578,11 +591,11 @@ class SettingsRenderer(
             }
         }
         btnCaptureLifecycle.setOnClickListener(onClick)
-        btnCaptureLifecycleLarge.setOnClickListener(onClick)
+        powerCard.setOnClickListener(onClick)
 
-        // The big in-content button cross-fades into the nav-bar button as
-        // the user scrolls: the big one rides the scroll up while shrinking
-        // and fading out, the nav-bar one fades in.
+        // The nav-bar ShimmerButton fades in as the user scrolls past the
+        // power card. The card itself does not fade — it scrolls out of view
+        // naturally and the toolbar takes over as the sticky reminder.
         settingsScrollView.setOnScrollChangeListener(
             androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
                 updateCaptureButtonCrossfade(scrollY)
@@ -591,25 +604,28 @@ class SettingsRenderer(
         refreshCaptureLifecycleButton()
     }
 
-    /** Show / hide + style both Turn On / Turn Off buttons — the big in-content one
-     *  and the nav-bar one — against the current [CaptureLifecycle] state.
-     *  Both are hidden on the accessibility backend in dual-screen, where
-     *  "active" is always true and there is nothing to start. */
+    /** Show / hide + style both Turn On / Turn Off surfaces — the in-content
+     *  power card and the nav-bar button — against the current
+     *  [CaptureLifecycle] state. Both are hidden on the accessibility backend
+     *  in dual-screen, where "active" is always true and there is nothing to
+     *  start. */
     fun refreshCaptureLifecycleButton() {
         val visibility =
             if (CaptureLifecycle.hasActivateControl(ctx)) View.VISIBLE else View.GONE
         btnCaptureLifecycle.visibility = visibility
-        btnCaptureLifecycleLarge.visibility = visibility
+        powerCard.visibility = visibility
         if (visibility != View.VISIBLE) return
         val active = CaptureLifecycle.isActive(ctx)
         styleCaptureButton(btnCaptureLifecycle, active)
-        styleCaptureButton(btnCaptureLifecycleLarge, active)
+        stylePowerCard(active)
         // A refresh can land while the list is already scrolled — re-apply
-        // the cross-fade for the current offset.
+        // the toolbar fade-in for the current offset.
         updateCaptureButtonCrossfade(settingsScrollView.scrollY)
     }
 
-    /** Filled-accent ("Turn On") / outlined ("Turn Off") styling for one button. */
+    /** Filled-accent ("Turn On") / outlined ("Turn Off") styling for the
+     *  nav-bar ShimmerButton. The in-content power card uses a different
+     *  shape entirely — see [stylePowerCard]. */
     private fun styleCaptureButton(btn: MaterialButton, active: Boolean) {
         btn.setText(
             if (active) R.string.capture_lifecycle_stop
@@ -631,30 +647,93 @@ class SettingsRenderer(
         }
     }
 
-    /** Cross-fade the big in-content button and the nav-bar button from
-     *  scroll position: fraction 0 (top) shows only the big button, 1 only
-     *  the nav-bar one. The big one also shrinks slightly as it goes. */
+    /** Render the power status card for [active]:
+     *  - Icon block: ptElevated fill / ptOutline stroke / muted glyph (Off);
+     *    ptAccentTint fill / ptAccent stroke / accent glyph (On).
+     *  - State label: ALL-CAPS "OFF"/"ON" in ptTextMuted/ptAccent.
+     *  - LED dot: ptTextHint (Off) or ptAccent with a ptAccentTint halo (On).
+     *  - Subtitle: per-state copy from strings.xml.
+     *  - Switch: checked = active, driven by state (NOT optimistically — the
+     *    refresh chain runs after the lifecycle call settles).
+     */
+    private fun stylePowerCard(active: Boolean) {
+        val density = ctx.resources.displayMetrics.density
+
+        // Icon block: rounded 12dp rect with theme-tinted fill + stroke.
+        powerIconBlock.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 12f * density
+            setColor(ctx.themeColor(if (active) R.attr.ptAccentTint else R.attr.ptElevated))
+            setStroke(
+                (1 * density).toInt(),
+                ctx.themeColor(if (active) R.attr.ptAccent else R.attr.ptOutline),
+            )
+        }
+        powerIconGlyph.imageTintList = ColorStateList.valueOf(
+            ctx.themeColor(if (active) R.attr.ptAccent else R.attr.ptTextMuted)
+        )
+
+        // State label + LED dot + halo.
+        powerStateLabel.setText(
+            if (active) R.string.capture_lifecycle_state_on
+            else R.string.capture_lifecycle_state_off
+        )
+        powerStateLabel.setTextColor(
+            ctx.themeColor(if (active) R.attr.ptAccent else R.attr.ptTextMuted)
+        )
+        powerStateDot.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(ctx.themeColor(if (active) R.attr.ptAccent else R.attr.ptTextHint))
+        }
+        if (active) {
+            powerStateHalo.background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(ctx.themeColor(R.attr.ptAccentTint))
+            }
+            powerStateHalo.visibility = View.VISIBLE
+        } else {
+            powerStateHalo.visibility = View.INVISIBLE
+        }
+
+        // Title + supporting text + switch state. The title swaps with state
+        // to honour the "permission, not action" framing — Off is the CTA
+        // ("Allow screen capture"), On is the calm permission state
+        // ("Screen capture permitted"). Subtitle mirrors: Off describes
+        // what's required; On describes the resulting capability.
+        powerTitle.setText(
+            if (active) R.string.capture_lifecycle_on_title
+            else R.string.capture_lifecycle_off_title
+        )
+        powerSubtitle.setText(
+            if (active) R.string.capture_lifecycle_on_subtitle
+            else R.string.capture_lifecycle_off_subtitle
+        )
+        powerSwitch.isChecked = active
+    }
+
+    /** Fade the nav-bar ShimmerButton in as the user scrolls past the power
+     *  card. The card itself is never faded — it just scrolls naturally with
+     *  the content. */
     private fun updateCaptureButtonCrossfade(scrollY: Int) {
         val distance = 72f * ctx.resources.displayMetrics.density
         val t = (scrollY / distance).coerceIn(0f, 1f)
-        btnCaptureLifecycleLarge.alpha = 1f - t
-        val scale = 1f - 0.12f * t
-        btnCaptureLifecycleLarge.scaleX = scale
-        btnCaptureLifecycleLarge.scaleY = scale
         btnCaptureLifecycle.alpha = t
     }
 
     // ── Turn On/Off attention shimmer ─────────────────────────────────────
-    // A brief light sweep every few seconds draws the eye to the control,
-    // whichever form is currently on screen. Started / stopped with the
-    // settings screen's resume / pause (see SettingsBottomSheet).
+    // A brief light sweep every few seconds draws the eye to the controls
+    // ONLY while capture is off. Once the user has enabled it, the accent
+    // tint and LED-on state already announce themselves on both surfaces
+    // (card + nav-bar button) and a sweep over them would be noise.
 
     private val shimmerHandler = Handler(Looper.getMainLooper())
     private val shimmerRunnable = object : Runnable {
         override fun run() {
-            if (CaptureLifecycle.hasActivateControl(ctx)) {
+            if (CaptureLifecycle.hasActivateControl(ctx) &&
+                !CaptureLifecycle.isActive(ctx)
+            ) {
                 btnCaptureLifecycle.shimmer()
-                btnCaptureLifecycleLarge.shimmer()
+                powerCard.shimmer()
             }
             shimmerHandler.postDelayed(this, 5_000L)
         }
