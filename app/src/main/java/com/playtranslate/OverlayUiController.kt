@@ -115,6 +115,11 @@ class OverlayUiController(
         }
         override fun onDisplayChanged(displayId: Int) {
             if (!isActiveController) return
+            // A rotation / resize invalidates a per-box translation overlay
+            // group — its cached displayW/displayH drive the OCR→screen
+            // mapping. Drop it on a size change; the next capture cycle
+            // rebuilds the group at the new dimensions.
+            dropResizedTranslationOverlay(displayId)
             // Order matters: icon reposition first so it picks up the new
             // screen dimensions; the intro reposition then reads the icon's
             // freshly-updated centre Y to position itself relative to it.
@@ -538,10 +543,21 @@ class OverlayUiController(
         val cropSame = group.cropLeft == cropLeft && group.cropTop == cropTop &&
             group.screenshotW == screenshotW && group.screenshotH == screenshotH
         if (cropSame && (current == boxes || OverlayLayout.boxesMatchFuzzy(current, boxes))) {
-            // Visual content is stable — leave the windows. But refresh each
-            // BoxWindow.box so metadata-only changes (the dirty flag) register.
+            // Window layout is stable — boxesMatchFuzzy proved text, bounds
+            // and orientation equal, so no window needs adding or moving. The
+            // sampled blend colours and line count aren't part of that check,
+            // though: refresh BoxWindow.box for metadata-only changes (the
+            // dirty flag), and re-render any box whose colours / line count
+            // shifted so the overlay keeps matching the game background.
             if (current != boxes && group.boxWindows.size == boxes.size) {
-                group.boxWindows.forEachIndexed { i, bw -> bw.box = boxes[i] }
+                group.boxWindows.forEachIndexed { i, bw ->
+                    val newBox = boxes[i]
+                    val visualChanged = bw.box.bgColor != newBox.bgColor ||
+                        bw.box.textColor != newBox.textColor ||
+                        bw.box.lineCount != newBox.lineCount
+                    bw.box = newBox
+                    if (visualChanged) bw.view.setBox(newBox)
+                }
             }
             return false
         }
@@ -713,6 +729,24 @@ class OverlayUiController(
     fun hideTranslationOverlay() {
         val ids = (furiganaOverlays.keys + translationOverlayGroups.keys).toSet().toList()
         for (id in ids) hideTranslationOverlayForDisplay(id)
+    }
+
+    /** Drop the per-box translation overlay on [displayId] when the display
+     *  has been resized / rotated since the overlay group was built. The
+     *  group caches displayW/displayH for the OCR→screen mapping and the
+     *  reuse path in [showBoxOverlay] never refreshes them, so a stale size
+     *  mispositions every box. Removing it lets the next capture cycle
+     *  rebuild the group at the current dimensions. No-op when the size is
+     *  unchanged, so non-resize onDisplayChanged events (refresh rate, HDR)
+     *  don't churn a live overlay. */
+    private fun dropResizedTranslationOverlay(displayId: Int) {
+        val group = translationOverlayGroups[displayId] ?: return
+        val display = (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
+            ?.getDisplay(displayId) ?: return
+        val size = getDisplaySize(display)
+        if (size.x != group.displayW || size.y != group.displayH) {
+            hideTranslationOverlayForDisplay(displayId)
+        }
     }
 
     /** Remove specific furigana boxes without rebuilding the whole overlay.
