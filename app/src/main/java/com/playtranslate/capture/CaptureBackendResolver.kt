@@ -43,9 +43,10 @@ object CaptureBackendResolver {
      * selects MediaProjection; with neither, the accessibility backend stands
      * (onboarding asks for a permission). Called at app start and from
      * MainActivity.checkOnboardingState so a permission granted in system
-     * Settings is picked up on the next resume. Stops live mode and hides the
-     * outgoing backend's overlays before the swap, then brings up the incoming
-     * backend's floating icon(s).
+     * Settings is picked up on the next resume. Stops live mode, releases the
+     * outgoing MediaProjection session, and hides the outgoing backend's
+     * overlays before the swap, then brings up the incoming backend's floating
+     * icon(s).
      */
     fun reresolve(context: Context) {
         // Accessibility takes precedence: when its service is enabled, use it
@@ -53,7 +54,15 @@ object CaptureBackendResolver {
         val want = !PlayTranslateAccessibilityService.isEnabled(context) &&
             Settings.canDrawOverlays(context)
         if (want == useMediaProjection) return
-        CaptureService.instance?.let { if (it.isLive) it.stopLive() }
+        CaptureService.instance?.let { svc ->
+            if (svc.isLive) svc.stopLive()
+            // Outgoing MediaProjection backend: release its session (consent
+            // token, VirtualDisplay, ImageReader) so a stale projection doesn't
+            // linger — and keep the service foreground — under the now-inactive
+            // backend. teardown() is the same release onDestroy / the off
+            // switch use; stopLive() above already stopped any capture loops.
+            if (useMediaProjection) svc.mediaProjectionController.destroy()
+        }
         active().overlayUi?.hideAll()
         useMediaProjection = want
         active().overlayUi?.reconcileFloatingIcons()
