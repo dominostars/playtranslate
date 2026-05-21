@@ -117,6 +117,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         // time runs before attachBaseContext, when context-touching calls
         // NPE — see [OverlayUiController.attach].)
         overlayUiController.attach()
+        // Pick up the backend swap the moment the a11y service binds — the
+        // user may have enabled it while the app was backgrounded, where no
+        // MainActivity / QS-tile reresolve() runs. onServiceConnected only
+        // fires because the service is enabled, so this resolves to the
+        // accessibility backend (or no-ops when already there); reresolve
+        // tears down any outgoing MediaProjection session + overlays.
+        CaptureBackendResolver.reresolve(this)
         overlayUiController.reconcileFloatingIcons()
         registerHotkeyCallbacks()
         PlayTranslateTileService.TileSync.refresh(this)
@@ -142,6 +149,12 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         screenshotManager = null
         serviceScope.cancel()
         instance = null
+        // Mirror onServiceConnected: re-resolve so the backend leaves
+        // accessibility the moment the service unbinds (e.g. the user
+        // disabled it from system Settings without returning to the app).
+        // A no-op if the OS hasn't flushed the setting yet — MainActivity /
+        // the tile then catch up, same as before.
+        CaptureBackendResolver.reresolve(this)
         PlayTranslateTileService.TileSync.refresh(this)
         return super.onUnbind(intent)
     }
