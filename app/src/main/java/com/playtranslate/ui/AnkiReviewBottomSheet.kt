@@ -17,6 +17,7 @@ import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
 import com.playtranslate.fullScreenDialogTheme
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.tts.TtsEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -130,29 +131,47 @@ class AnkiReviewBottomSheet : DialogFragment() {
         childFragmentManager.findFragmentByTag(TAG_CONTENT) as? SentenceAnkiContentFragment
 
     private suspend fun sendToAnki(deckId: Long) {
-        val data = getContentFragment()?.getCardData() ?: return
-        val result = dispatchSendToAnki(
-            deckId = deckId,
-            mode = CardMode.SENTENCE,
-            screenshotPath = data.screenshotPath,
-            legacyFront = {
-                SentenceAnkiHtmlBuilder.buildFrontHtml(
-                    data.source, data.words, data.selectedWords, data.sourceLangId,
-                )
-            },
-            legacyBack = { imageFilename ->
-                SentenceAnkiHtmlBuilder.buildBackHtml(
-                    data.source, data.target, data.words,
-                    imageFilename, data.selectedWords, data.sourceLangId,
-                )
-            },
-            structured = { imageFilename ->
-                AnkiCardOutputBuilder.forSentence(data, imageFilename)
-            },
-        )
+        val content = getContentFragment() ?: return
+        val data = content.getCardData()
+        // Synthesize sentence audio up front when the switch is on; the
+        // temp WAV is uploaded by the dispatcher and deleted once sent.
+        val wantAudio = content.sentenceAudioEnabled
+        val audioFile = if (wantAudio) {
+            TtsEngine.synthesizeToFile(requireContext(), data.source, data.sourceLangId)
+        } else null
+        val result = try {
+            dispatchSendToAnki(
+                deckId = deckId,
+                mode = CardMode.SENTENCE,
+                screenshotPath = data.screenshotPath,
+                audioPath = audioFile?.absolutePath,
+                legacyFront = {
+                    SentenceAnkiHtmlBuilder.buildFrontHtml(
+                        data.source, data.words, data.selectedWords, data.sourceLangId,
+                    )
+                },
+                legacyBack = { imageFilename, audioFilename ->
+                    SentenceAnkiHtmlBuilder.buildBackHtml(
+                        data.source, data.target, data.words,
+                        imageFilename, data.selectedWords, data.sourceLangId,
+                        audioFilename = audioFilename,
+                    )
+                },
+                structured = { imageFilename, audioFilename ->
+                    AnkiCardOutputBuilder.forSentence(
+                        data, imageFilename, audioFilename = audioFilename,
+                    )
+                },
+            )
+        } finally {
+            audioFile?.delete()
+        }
         when (result) {
-            AnkiSendResult.Success -> {
-                Toast.makeText(requireContext(), R.string.anki_added, Toast.LENGTH_SHORT).show()
+            is AnkiSendResult.Success -> {
+                val msg = if (wantAudio && (audioFile == null || result.audioDropped))
+                              R.string.anki_added_no_audio
+                          else R.string.anki_added
+                Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
                 parentFragmentManager.setFragmentResult(RESULT_ANKI_ADDED, bundleOf())
                 dismiss()
             }

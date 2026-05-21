@@ -40,8 +40,11 @@ private sealed interface ModelTarget {
  * Toast / dismiss behavior.
  */
 sealed interface AnkiSendResult {
-    /** addNote succeeded — callers Toast success and dismiss. */
-    data object Success : AnkiSendResult
+    /** addNote succeeded — callers Toast success and dismiss.
+     *  [audioDropped] is true when audio was requested (a non-null
+     *  audioPath) but its media upload failed, so the note was added
+     *  without the `[sound:]` tag; callers surface that to the user. */
+    data class Success(val audioDropped: Boolean = false) : AnkiSendResult
     /** addNote attempted but the content provider rejected it — Toast
      *  generic failure. */
     data object Failed : AnkiSendResult
@@ -67,25 +70,33 @@ sealed interface AnkiSendResult {
  *                         re-open path).
  * @param screenshotPath   Path to the screenshot to attach to the
  *                         Picture field, or null.
+ * @param audioPath        Path to the synthesized TTS audio file to
+ *                         attach, or null.
  * @param legacyFront      Lazy builder for the legacy v004 front HTML.
  * @param legacyBack       Lazy builder for the legacy v004 back HTML;
- *                         receives the AnkiDroid-side image filename.
+ *                         receives the AnkiDroid-side image and audio
+ *                         filenames.
  * @param structured       Lazy builder for the structured outputs;
- *                         receives the AnkiDroid-side image filename.
+ *                         receives the AnkiDroid-side image and audio
+ *                         filenames.
  */
 suspend fun Fragment.dispatchSendToAnki(
     deckId: Long,
     mode: CardMode,
     screenshotPath: String?,
+    audioPath: String?,
     legacyFront: () -> String,
-    legacyBack: (imageFilename: String?) -> String,
-    structured: (imageFilename: String?) -> CardOutputs,
+    legacyBack: (imageFilename: String?, audioFilename: String?) -> String,
+    structured: (imageFilename: String?, audioFilename: String?) -> CardOutputs,
 ): AnkiSendResult {
     val ctx = requireContext()
     val prefs = Prefs(ctx)
     val anki = AnkiManager(ctx)
 
     val imageFilename = screenshotPath?.let {
+        withContext(Dispatchers.IO) { anki.addMediaFromFile(File(it)) }
+    }
+    val audioFilename = audioPath?.let {
         withContext(Dispatchers.IO) { anki.addMediaFromFile(File(it)) }
     }
 
@@ -145,10 +156,10 @@ suspend fun Fragment.dispatchSendToAnki(
         ModelTarget.Legacy -> {
             val v004 = withContext(Dispatchers.IO) { anki.getOrCreateModel() }
                 ?: return AnkiSendResult.Failed
-            v004 to listOf(legacyFront(), legacyBack(imageFilename))
+            v004 to listOf(legacyFront(), legacyBack(imageFilename, audioFilename))
         }
         is ModelTarget.Basic -> {
-            val outputs = structured(imageFilename)
+            val outputs = structured(imageFilename, audioFilename)
             val flds = AnkiCardTypeMapper.assembleBasicNote(
                 target.model.fieldNames, mode, outputs)
             Log.d(TAG, "basic send: model=${target.model.name} mode=$mode " +
@@ -156,7 +167,7 @@ suspend fun Fragment.dispatchSendToAnki(
             target.model.id to flds
         }
         is ModelTarget.Structured -> {
-            val outputs = structured(imageFilename)
+            val outputs = structured(imageFilename, audioFilename)
             val flds = AnkiCardTypeMapper.assembleNote(
                 target.model.fieldNames, target.mapping, outputs)
             Log.d(TAG, "structured send: model=${target.model.name} " +
@@ -188,5 +199,11 @@ suspend fun Fragment.dispatchSendToAnki(
     }
 
     val ok = withContext(Dispatchers.IO) { anki.addNote(modelId, deckId, fields) }
-    return if (ok) AnkiSendResult.Success else AnkiSendResult.Failed
+    if (!ok) return AnkiSendResult.Failed
+    // The note was added. Flag the partial case where audio was requested
+    // but its media upload failed (addMediaFromFile returned null) — the
+    // card carries no [sound:] tag, and the caller should say so.
+    return AnkiSendResult.Success(
+        audioDropped = audioPath != null && audioFilename.isNullOrEmpty(),
+    )
 }

@@ -36,6 +36,7 @@ import com.playtranslate.language.WordTranslator
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.Example
 import com.playtranslate.themeColor
+import com.playtranslate.tts.TtsEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -62,6 +63,9 @@ class WordAnkiReviewSheet : DialogFragment() {
     private lateinit var sentenceContainer: FrameLayout
     private lateinit var wordContainer: LinearLayout
     private var definitionsCard: LinearLayout? = null
+    /** Handle to the word-tab Audio card. The switch state is read at
+     *  send time; the Voice row text is refreshed in [onResume]. */
+    private var wordAudioHandle: AnkiAudioHandle? = null
     /** First child of the Screenshot group inside [wordContainer] (its
      *  header). Tracked so the lazy More examples group can be inserted
      *  immediately above the Screenshot group rather than appended to
@@ -150,7 +154,16 @@ class WordAnkiReviewSheet : DialogFragment() {
         screenshotCardView = null
         deckSubtitleView = null
         currentScreenshotPath = null
+        wordAudioHandle?.release()
+        wordAudioHandle = null
         super.onDestroyView()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // TtsVoiceActivity (opened from the Audio card's Voice row)
+        // returns no result; re-read the saved voice when we resume.
+        wordAudioHandle?.refreshVoiceLabel()
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -383,6 +396,16 @@ class WordAnkiReviewSheet : DialogFragment() {
             })
         }
         parent.addView(header)
+
+        // ── Audio group: TTS of the headword, attached as [sound:]. ──
+        wordAudioHandle = addAnkiAudioSection(
+            parent = parent,
+            lang = sourceLangId,
+            rowLabel = getString(R.string.anki_content_word_audio),
+            previewText = { word },
+            initialChecked = Prefs(ctx).ankiWordAudioEnabled,
+            onCheckedChange = { Prefs(ctx).ankiWordAudioEnabled = it },
+        )
 
         // ── Definitions group: starts with a loading placeholder. The
         //    async lookup in onViewCreated replaces it with per-sense
@@ -1159,31 +1182,46 @@ class WordAnkiReviewSheet : DialogFragment() {
         freqScore: Int, deckId: Long, screenshotPath: String?,
         sourceLangId: SourceLangId,
     ) {
-        val result = dispatchSendToAnki(
-            deckId = deckId,
-            mode = CardMode.WORD,
-            screenshotPath = screenshotPath,
-            legacyFront = { buildWordFrontHtml(word) },
-            legacyBack = { imageFilename ->
-                buildWordBackHtml(word, reading, pos, fallbackDefinition,
-                    freqScore, imageFilename)
-            },
-            structured = { imageFilename ->
-                AnkiCardOutputBuilder.forWord(
-                    word = word,
-                    reading = reading,
-                    pos = pos,
-                    definitionHtml = buildWordDefinitionHtml(inlineStyler),
-                    freqScore = freqScore,
-                    imageFilename = imageFilename,
-                    examplesHtml = buildExamplesHtml(inlineStyler),
-                    sourceLangId = sourceLangId,
-                )
-            },
-        )
+        // Synthesize word audio up front when the switch is on; the temp
+        // WAV is uploaded by the dispatcher and deleted once sent.
+        val wantAudio = wordAudioHandle?.switch?.isChecked == true
+        val audioFile = if (wantAudio) {
+            TtsEngine.synthesizeToFile(requireContext(), word, sourceLangId)
+        } else null
+        val result = try {
+            dispatchSendToAnki(
+                deckId = deckId,
+                mode = CardMode.WORD,
+                screenshotPath = screenshotPath,
+                audioPath = audioFile?.absolutePath,
+                legacyFront = { buildWordFrontHtml(word) },
+                legacyBack = { imageFilename, audioFilename ->
+                    buildWordBackHtml(word, reading, pos, fallbackDefinition,
+                        freqScore, imageFilename, audioFilename)
+                },
+                structured = { imageFilename, audioFilename ->
+                    AnkiCardOutputBuilder.forWord(
+                        word = word,
+                        reading = reading,
+                        pos = pos,
+                        definitionHtml = buildWordDefinitionHtml(inlineStyler),
+                        freqScore = freqScore,
+                        imageFilename = imageFilename,
+                        examplesHtml = buildExamplesHtml(inlineStyler),
+                        sourceLangId = sourceLangId,
+                        audioFilename = audioFilename,
+                    )
+                },
+            )
+        } finally {
+            audioFile?.delete()
+        }
         when (result) {
-            AnkiSendResult.Success -> {
-                Toast.makeText(requireContext(), R.string.anki_added, Toast.LENGTH_SHORT).show()
+            is AnkiSendResult.Success -> {
+                val msg = if (wantAudio && (audioFile == null || result.audioDropped))
+                              R.string.anki_added_no_audio
+                          else R.string.anki_added
+                Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
                 dismiss()
             }
             AnkiSendResult.Failed -> {
@@ -1213,6 +1251,7 @@ class WordAnkiReviewSheet : DialogFragment() {
     private fun buildWordBackHtml(
         word: String, reading: String, pos: String,
         fallbackDefinition: String, freqScore: Int, imageFilename: String?,
+        audioFilename: String? = null,
     ): String = buildString {
         append("<style>")
         append("body{visibility:hidden!important;white-space:normal!important;}")
@@ -1233,6 +1272,14 @@ class WordAnkiReviewSheet : DialogFragment() {
             append("<img src=\"")
             append(htmlEscape(imageFilename))
             append("\" style=\"max-width:100%;border-radius:6px;\">")
+            append("</div>")
+        }
+        // [sound:] near the top of the back, under the screenshot. Inside
+        // .gl-back so the replay button inherits the visible-back
+        // visibility (body is hidden!important above).
+        if (audioFilename != null) {
+            append("<div style=\"text-align:center;margin:8px 0;\">")
+            append("[sound:$audioFilename]")
             append("</div>")
         }
         append("<div style=\"text-align:center;font-size:1.8em;padding:12px 4px;\">")
@@ -1464,33 +1511,50 @@ class WordAnkiReviewSheet : DialogFragment() {
     // ── Send: sentence mode ──────────────────────────────────────────────────
 
     private suspend fun sendSentenceToAnki(deckId: Long) {
-        val data = getContentFragment()?.getCardData() ?: return
-        val result = dispatchSendToAnki(
-            deckId = deckId,
-            mode = CardMode.SENTENCE,
-            screenshotPath = data.screenshotPath,
-            legacyFront = {
-                SentenceAnkiHtmlBuilder.buildFrontHtml(
-                    data.source, data.words, data.selectedWords, data.sourceLangId,
-                )
-            },
-            legacyBack = { imageFilename ->
-                SentenceAnkiHtmlBuilder.buildBackHtml(
-                    data.source, data.target, data.words,
-                    imageFilename, data.selectedWords, data.sourceLangId,
-                )
-            },
-            structured = { imageFilename ->
-                AnkiCardOutputBuilder.forSentence(
-                    cardData = data,
-                    imageFilename = imageFilename,
-                    examplesHtml = buildExamplesHtml(inlineStyler),
-                )
-            },
-        )
+        val content = getContentFragment() ?: return
+        val data = content.getCardData()
+        // Synthesize sentence audio up front when the switch is on; the
+        // temp WAV is uploaded by the dispatcher and deleted once sent.
+        val wantAudio = content.sentenceAudioEnabled
+        val audioFile = if (wantAudio) {
+            TtsEngine.synthesizeToFile(requireContext(), data.source, data.sourceLangId)
+        } else null
+        val result = try {
+            dispatchSendToAnki(
+                deckId = deckId,
+                mode = CardMode.SENTENCE,
+                screenshotPath = data.screenshotPath,
+                audioPath = audioFile?.absolutePath,
+                legacyFront = {
+                    SentenceAnkiHtmlBuilder.buildFrontHtml(
+                        data.source, data.words, data.selectedWords, data.sourceLangId,
+                    )
+                },
+                legacyBack = { imageFilename, audioFilename ->
+                    SentenceAnkiHtmlBuilder.buildBackHtml(
+                        data.source, data.target, data.words,
+                        imageFilename, data.selectedWords, data.sourceLangId,
+                        audioFilename = audioFilename,
+                    )
+                },
+                structured = { imageFilename, audioFilename ->
+                    AnkiCardOutputBuilder.forSentence(
+                        cardData = data,
+                        imageFilename = imageFilename,
+                        examplesHtml = buildExamplesHtml(inlineStyler),
+                        audioFilename = audioFilename,
+                    )
+                },
+            )
+        } finally {
+            audioFile?.delete()
+        }
         when (result) {
-            AnkiSendResult.Success -> {
-                Toast.makeText(requireContext(), R.string.anki_added, Toast.LENGTH_SHORT).show()
+            is AnkiSendResult.Success -> {
+                val msg = if (wantAudio && (audioFile == null || result.audioDropped))
+                              R.string.anki_added_no_audio
+                          else R.string.anki_added
+                Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
                 parentFragmentManager.setFragmentResult(
                     AnkiReviewBottomSheet.RESULT_ANKI_ADDED, bundleOf())
                 dismiss()

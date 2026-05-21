@@ -92,7 +92,8 @@ object SentenceAnkiHtmlBuilder {
     fun buildBackHtml(
         japanese: String, english: String, words: List<WordEntry>,
         imageFilename: String?, highlightedWords: Set<String> = emptySet(),
-        sourceLangId: SourceLangId = SourceLangId.JA
+        sourceLangId: SourceLangId = SourceLangId.JA,
+        audioFilename: String? = null,
     ): String {
         val wordMap = words.associate { it.word to it.reading }
         val furigana = annotateText(japanese, wordMap, newlineAsBr = true, sourceLangId = sourceLangId)
@@ -114,6 +115,14 @@ object SentenceAnkiHtmlBuilder {
             if (imageFilename != null) {
                 append("<div style=\"text-align:center;margin:12px 0;\">")
                 append("<img src=\"${htmlEscape(imageFilename)}\" style=\"max-width:100%;border-radius:6px;\">")
+                append("</div>")
+            }
+            // [sound:] near the top of the back, under the screenshot.
+            // Inside .gl-back so the replay button inherits the
+            // visible-back visibility (body is hidden!important above).
+            if (audioFilename != null) {
+                append("<div style=\"text-align:center;margin:8px 0;\">")
+                append("[sound:$audioFilename]")
                 append("</div>")
             }
             append("<div style=\"text-align:center;font-size:1.5em;margin:12px 4px;line-height:2.2em;\">$furigana</div>")

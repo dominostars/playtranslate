@@ -310,16 +310,21 @@ class AnkiManager(private val context: Context) {
                 "com.ichi2.anki", fileUri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
+            // AnkiDroid builds the stored name as "<preferred>_<unique>.<ext>",
+            // so a preferred_name that still carries its own extension yields a
+            // doubled "<base>.wav_<unique>.wav". Pass the base name only.
             val cv = ContentValues().apply {
                 put("file_uri", fileUri.toString())
-                put("preferred_name", file.name)
+                put("preferred_name", file.nameWithoutExtension)
             }
             val resultUri = context.contentResolver.insert(MEDIA_URI, cv) ?: run {
                 Log.e(TAG, "addMedia insert returned null")
                 return null
             }
-            Log.d(TAG, "addMedia ok")
-            resultUri.lastPathSegment
+            val assignedName = resultUri.lastPathSegment
+            Log.i(TAG, "addMedia ok: preferred='${file.nameWithoutExtension}' " +
+                "result='$resultUri' assigned='$assignedName'")
+            assignedName
         } catch (e: Exception) {
             Log.e(TAG, "addMedia failed: ${e.message}", e)
             null

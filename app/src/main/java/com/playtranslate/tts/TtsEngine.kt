@@ -1,16 +1,19 @@
 package com.playtranslate.tts
 
 import android.content.Context
+import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import com.playtranslate.Prefs
 import com.playtranslate.language.SourceLangId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * Cached wrapper around the system [TextToSpeech] engine.
@@ -63,36 +66,47 @@ object TtsEngine {
      *  being flushed by its QUEUE_FLUSH. Mutated only under [lock]. */
     private var utteranceCounter = 0
 
-    /** The caller awaiting its utterance's completion. Written only under
-     *  [lock] — by [speak] and [discardEngine]; [utteranceListener] only reads
-     *  it, on the engine's callback thread. A finished awaiter left in the slot
-     *  is harmless: ids are unique and completing it again is a no-op. */
-    @Volatile private var pending: PendingSpeech? = null
-
-    /** An awaited utterance: the id it was queued under, paired with the
-     *  deferred to complete once it reaches a terminal state. */
-    private class PendingSpeech(
-        val utteranceId: String,
-        val done: CompletableDeferred<Unit>,
+    /** An awaited utterance: the deferred that resolves at a terminal
+     *  callback, plus an optional [onStart] hook fired when playback
+     *  actually begins (lets a caller tell the loading phase from playing). */
+    private class Awaiter(
+        val done: CompletableDeferred<Boolean>,
+        val onStart: (() -> Unit)?,
     )
 
+    /** Utterances awaiting a callback, keyed by utterance id. [Awaiter.done]
+     *  resolves `true` on [UtteranceProgressListener.onDone] and `false` on
+     *  error or stop — including the QUEUE_FLUSH or engine discard that
+     *  aborts an utterance before it can finish. [speak] ignores the value;
+     *  [synthesizeToFile] needs it to tell a finished WAV from an aborted
+     *  one. Every access is wrapped in `synchronized(pending)`: the listener
+     *  callbacks land on the engine's thread, off [lock]. */
+    private val pending = HashMap<String, Awaiter>()
+
     /** Engine-wide progress listener, installed once per engine build by
-     *  [currentEngine]. Completes the [pending] awaiter when ITS utterance
-     *  finishes, errors, or is stopped/flushed; callbacks for any other id
-     *  (e.g. a prior utterance discarded by a new QUEUE_FLUSH) are ignored so
-     *  the wait can't end early. */
+     *  [currentEngine]. On [onStart] it fires the awaiter's playback-begun
+     *  hook; on a terminal callback it resolves the awaiter — `true` on
+     *  done, `false` on error or stop. A callback for an id with no awaiter
+     *  (a fire-and-forget [speak], or one already drained by a QUEUE_FLUSH)
+     *  is a no-op. */
     private val utteranceListener = object : UtteranceProgressListener() {
-        override fun onStart(utteranceId: String?) {}
-        override fun onDone(utteranceId: String?) { settle(utteranceId) }
+        override fun onStart(utteranceId: String?) {
+            val awaiter = synchronized(pending) { pending[utteranceId] }
+            awaiter?.onStart?.invoke()
+        }
+        override fun onDone(utteranceId: String?) { settle(utteranceId, true) }
         @Suppress("OVERRIDE_DEPRECATION")
-        override fun onError(utteranceId: String?) { settle(utteranceId) }
+        override fun onError(utteranceId: String?) { settle(utteranceId, false) }
+        override fun onError(utteranceId: String?, errorCode: Int) {
+            settle(utteranceId, false)
+        }
         override fun onStop(utteranceId: String?, interrupted: Boolean) {
-            settle(utteranceId)
+            settle(utteranceId, false)
         }
 
-        private fun settle(utteranceId: String?) {
-            val awaited = pending ?: return
-            if (awaited.utteranceId == utteranceId) awaited.done.complete(Unit)
+        private fun settle(utteranceId: String?, success: Boolean) {
+            val awaiter = synchronized(pending) { pending.remove(utteranceId) }
+            awaiter?.done?.complete(success)
         }
     }
 
@@ -106,14 +120,20 @@ object TtsEngine {
      * errors, or is interrupted (by [stop] or a later speak) before returning;
      * otherwise returns once the utterance is queued. A non-[SpeakResult.Spoken]
      * outcome is returned without waiting either way.
+     *
+     * [onStart] is invoked — on the engine's callback thread — when playback
+     * of this utterance actually begins, letting a caller distinguish the
+     * loading phase from the playing phase. Delivered only when
+     * [awaitCompletion] is set.
      */
     suspend fun speak(
         context: Context,
         text: String,
         lang: SourceLangId,
         awaitCompletion: Boolean = false,
+        onStart: (() -> Unit)? = null,
     ): SpeakResult {
-        val completion: CompletableDeferred<Unit>? = lock.withLock {
+        val completion: CompletableDeferred<Boolean>? = lock.withLock {
             val savedVoiceName = Prefs(context).ttsVoiceName(lang)
             var engine = currentEngine(context) ?: return SpeakResult.NoEngine
             if (!prepareEngine(engine, lang, savedVoiceName)) {
@@ -127,15 +147,16 @@ object TtsEngine {
                 }
             }
             val utteranceId = "pt-tts-${++utteranceCounter}"
-            // Every speak() flushes the queue, so a prior utterance — and any
-            // caller awaiting it — is finished the moment this one is enqueued.
-            // Settle that awaiter now: once [pending] is overwritten below, the
-            // listener's id check would no longer match its terminal callback.
-            pending?.done?.complete(Unit)
+            // Every speak() flushes the queue, so any prior utterance — and a
+            // synthesizeToFile in flight — is aborted the moment this one is
+            // enqueued. Settle every awaiter now; their terminal callbacks
+            // (if any still arrive) then find no entry and no-op.
+            drainPending()
             val done = if (awaitCompletion) {
-                CompletableDeferred<Unit>().also { pending = PendingSpeech(utteranceId, it) }
+                CompletableDeferred<Boolean>().also {
+                    synchronized(pending) { pending[utteranceId] = Awaiter(it, onStart) }
+                }
             } else {
-                pending = null
                 null
             }
             val queued = engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
@@ -144,12 +165,84 @@ object TtsEngine {
             // hang on an utterance that will never run. The rejection is not
             // surfaced as a distinct result (speak() still returns Spoken):
             // an OCR'd screen of game text never approaches that length.
-            if (done != null && queued == TextToSpeech.ERROR) done.complete(Unit)
+            if (done != null && queued == TextToSpeech.ERROR) {
+                synchronized(pending) { pending.remove(utteranceId) }
+                done.complete(false)
+            }
             done
         }
         // Awaited outside the lock — a long utterance must not block other calls.
         completion?.await()
         return SpeakResult.Spoken
+    }
+
+    /** A synthesis in flight: the WAV being written, its utterance id (so a
+     *  cancelled caller can drop the awaiter), and the deferred that
+     *  resolves when [utteranceListener] sees the utterance's terminal
+     *  callback (`true` = done, `false` = error/stop). */
+    private class SynthHandle(
+        val file: File,
+        val done: CompletableDeferred<Boolean>,
+        val utteranceId: String,
+    )
+
+    /**
+     * Render [text] in [lang] to a WAV file under the app cache,
+     * suspending until synthesis finishes. Returns the file on success,
+     * or null when no engine is available, the engine can't serve [lang],
+     * synthesis errors, or the output is empty. The caller owns the
+     * returned file and must delete it once it has been consumed.
+     */
+    suspend fun synthesizeToFile(
+        context: Context,
+        text: String,
+        lang: SourceLangId,
+    ): File? {
+        val handle: SynthHandle = lock.withLock {
+            val savedVoiceName = Prefs(context).ttsVoiceName(lang)
+            var engine = currentEngine(context) ?: return null
+            if (!prepareEngine(engine, lang, savedVoiceName)) {
+                // Same dead-binding ambiguity as speak(): rebuild once and
+                // re-ask before trusting an "unsupported" answer.
+                discardEngine()
+                engine = currentEngine(context) ?: return null
+                if (!prepareEngine(engine, lang, savedVoiceName)) return null
+            }
+            val dir = File(context.cacheDir, "tts-audio").apply { mkdirs() }
+            val utteranceId = "pt-synth-${++utteranceCounter}"
+            val file = File(dir, "$utteranceId.wav")
+            val done = CompletableDeferred<Boolean>()
+            synchronized(pending) { pending[utteranceId] = Awaiter(done, null) }
+            val queued = engine.synthesizeToFile(text, Bundle(), file, utteranceId)
+            // A rejected enqueue fires no progress callback — settle the
+            // awaiter here so the await below can't hang.
+            if (queued == TextToSpeech.ERROR) {
+                synchronized(pending) { pending.remove(utteranceId) }
+                file.delete()
+                return null
+            }
+            SynthHandle(file, done, utteranceId)
+        }
+        // Awaited outside the lock — synthesis is slow and must not block
+        // other callers (e.g. a concurrent speak()).
+        val ok = try {
+            handle.done.await()
+        } catch (e: CancellationException) {
+            // Cancelled mid-synthesis (e.g. the review sheet was dismissed):
+            // the caller never receives the file, so clean up here — drop the
+            // awaiter, stop the engine so it can't keep writing, and delete
+            // the partial WAV — before propagating the cancellation.
+            synchronized(pending) { pending.remove(handle.utteranceId) }
+            stop()
+            handle.file.delete()
+            throw e
+        }
+        return if (ok && handle.file.exists() && handle.file.length() > 0L) {
+            handle.file
+        } else {
+            handle.file.delete()
+            null
+        }
     }
 
     /** Stop any in-progress utterance. */
@@ -282,9 +375,18 @@ object TtsEngine {
         tts = null
         cachedEnginePackage = null
         // A shut-down engine delivers no further utterance callbacks; settle
-        // any awaiter now so it can't hang waiting for one.
-        pending?.done?.complete(Unit)
-        pending = null
+        // every awaiter now so none can hang waiting for one.
+        drainPending()
+    }
+
+    /** Resolve and clear every awaiter with `false`. Called when a
+     *  QUEUE_FLUSH or an engine discard aborts the queued utterances
+     *  before any terminal callback can arrive. */
+    private fun drainPending() {
+        val drained = synchronized(pending) {
+            pending.values.toList().also { pending.clear() }
+        }
+        drained.forEach { it.done.complete(false) }
     }
 
     /** Human-readable name of the active (default) engine, or null if it

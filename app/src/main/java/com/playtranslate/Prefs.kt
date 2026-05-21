@@ -395,6 +395,21 @@ class Prefs(context: Context) {
         sp.edit().putString(KEY_ANKI_FIELD_MAPPINGS, root.toString()).apply()
     }
 
+    /** Whether new word cards include synthesized word audio. Mirrors the
+     *  Audio-card switch in the word review sheet — toggling the switch
+     *  writes this, and the next card seeds the switch from it. There is
+     *  deliberately no Settings UI; the last-used state is the default. */
+    var ankiWordAudioEnabled: Boolean
+        get() = sp.getBoolean(KEY_ANKI_WORD_AUDIO, true)
+        set(v) = sp.edit().putBoolean(KEY_ANKI_WORD_AUDIO, v).apply()
+
+    /** Whether new sentence cards include synthesized sentence audio.
+     *  See [ankiWordAudioEnabled] — same last-used-state-is-the-default
+     *  behavior, for the sentence review surface. */
+    var ankiSentenceAudioEnabled: Boolean
+        get() = sp.getBoolean(KEY_ANKI_SENTENCE_AUDIO, true)
+        set(v) = sp.edit().putBoolean(KEY_ANKI_SENTENCE_AUDIO, v).apply()
+
     var showTransliteration: Boolean
         get() = sp.getBoolean(KEY_SHOW_TRANSLITERATION, false)
         set(v) = sp.edit().putBoolean(KEY_SHOW_TRANSLITERATION, v).apply()
@@ -701,6 +716,8 @@ class Prefs(context: Context) {
         private const val KEY_ANKI_MODEL_ID        = "anki_model_id"
         private const val KEY_ANKI_MODEL_NAME      = "anki_model_name"
         private const val KEY_ANKI_FIELD_MAPPINGS  = "anki_field_mappings"   // JSON
+        private const val KEY_ANKI_WORD_AUDIO      = "anki_word_audio_enabled"
+        private const val KEY_ANKI_SENTENCE_AUDIO  = "anki_sentence_audio_enabled"
         private const val KEY_REGION_LIST    = "region_list"
         private const val KEY_DEEPL_KEY      = "deepl_api_key"
         const val KEY_DEEPL_ENABLED          = "deepl_enabled"

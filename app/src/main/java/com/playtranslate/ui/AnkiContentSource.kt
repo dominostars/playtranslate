@@ -54,6 +54,10 @@ enum class ContentSource(
                           R.string.anki_content_examples_desc),
     PICTURE              (R.string.anki_content_picture,
                           R.string.anki_content_picture_desc),
+    WORD_AUDIO           (R.string.anki_content_word_audio,
+                          R.string.anki_content_word_audio_desc),
+    SENTENCE_AUDIO       (R.string.anki_content_sentence_audio,
+                          R.string.anki_content_sentence_audio_desc),
     FREQUENCY            (R.string.anki_content_frequency,
                           R.string.anki_content_frequency_desc),
     PART_OF_SPEECH       (R.string.anki_content_part_of_speech,
@@ -100,6 +104,8 @@ data class CardOutputs(
     val sentenceFurigana: String,
     val sentenceTranslation: String,
     val picture: String,
+    val wordAudio: String,
+    val sentenceAudio: String,
     val definition: String,
     val examples: String,
     val frequency: String,
@@ -122,6 +128,8 @@ fun CardOutputs.valueFor(source: ContentSource): String = when (source) {
     ContentSource.DEFINITION                  -> definition
     ContentSource.EXAMPLE_SENTENCES           -> examples
     ContentSource.PICTURE                     -> picture
+    ContentSource.WORD_AUDIO                  -> wordAudio
+    ContentSource.SENTENCE_AUDIO              -> sentenceAudio
     ContentSource.FREQUENCY                   -> frequency
     ContentSource.PART_OF_SPEECH              -> partOfSpeech
     ContentSource.WORDS_TABLE                 -> wordsTable

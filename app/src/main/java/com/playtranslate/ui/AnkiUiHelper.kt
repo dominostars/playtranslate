@@ -3,8 +3,6 @@ package com.playtranslate.ui
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import com.playtranslate.overlayThemedContext
-import com.playtranslate.themeColor
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -20,10 +18,15 @@ import android.widget.Spinner
 import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.language.SourceLangId
 import com.playtranslate.overlay.OverlayHost
+import com.playtranslate.overlayThemedContext
+import com.playtranslate.themeColor
+import com.playtranslate.tts.TtsEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -280,6 +283,105 @@ fun Fragment.addAnkiSection(
             }
         }
     }
+}
+
+/**
+ * Handle to an Audio section built by [addAnkiAudioSection]. The hosting
+ * sheet reads [switch].isChecked at send time, calls [refreshVoiceLabel]
+ * from its onResume() (the Voice row launches [TtsVoiceActivity], which
+ * returns no result, so the saved pref is the source of truth on return),
+ * and calls [release] from onDestroyView so a running preview stops.
+ */
+class AnkiAudioHandle internal constructor(
+    private val fragment: Fragment,
+    private val lang: SourceLangId,
+    val switch: MaterialSwitch,
+    private val voiceValue: TextView,
+    private val chip: AnkiAudioPreviewChip,
+) {
+    /** Re-read the saved voice for [lang] and update the Voice row's
+     *  value text. Mirrors the Settings TTS section's "Voice N" /
+     *  "Default" label. */
+    fun refreshVoiceLabel() {
+        val ctx = voiceValue.context
+        fragment.viewLifecycleOwner.lifecycleScope.launch {
+            val savedName = Prefs(ctx).ttsVoiceName(lang)
+            voiceValue.text = if (savedName == null) {
+                ctx.getString(R.string.anki_voice_default)
+            } else {
+                val voices = TtsEngine.voicesFor(ctx, lang)
+                val idx = voices.indexOfFirst { it.name == savedName }
+                if (idx >= 0) ctx.getString(R.string.anki_voice_numbered, idx + 1)
+                else ctx.getString(R.string.anki_voice_default)
+            }
+        }
+    }
+
+    /** Stop any in-flight preview. Call from the host's onDestroyView so
+     *  audio doesn't outlive the sheet. */
+    fun release() = chip.stop()
+}
+
+/**
+ * Inflates an "Audio" section (header + one card) into [parent]: an
+ * audio row — a preview chip, [rowLabel], and an include-on-card switch
+ * — above a Voice row that opens [TtsVoiceActivity].
+ *
+ * The switch seeds from [initialChecked] and reports flips through
+ * [onCheckedChange]; the caller persists the last-used state. The
+ * preview chip speaks [previewText] live via [TtsEngine.speak] —
+ * evaluated at tap time so an edited sentence previews its current text.
+ *
+ * @param lang        language for the preview and the Voice picker.
+ * @param previewText text to speak when the preview chip is tapped.
+ */
+fun Fragment.addAnkiAudioSection(
+    parent: LinearLayout,
+    lang: SourceLangId,
+    rowLabel: String,
+    previewText: () -> String,
+    initialChecked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+): AnkiAudioHandle {
+    val ctx = requireContext()
+    val inflater = android.view.LayoutInflater.from(ctx)
+
+    ankiGroupHeader(parent, ctx.getString(R.string.anki_group_audio))
+    val card = ankiGroupCard(parent)
+
+    // -- Audio row: preview chip + label + include switch --
+    val audioRow = inflater.inflate(R.layout.settings_row_switch, card, false)
+    audioRow.findViewById<TextView>(R.id.tvRowTitle).text = rowLabel
+    val switch = audioRow.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+    val chip = AnkiAudioPreviewChip(this, lang, previewText)
+    // Seed before wiring the listener so seeding doesn't write the pref.
+    switch.isChecked = initialChecked
+    chip.setSwitchOn(initialChecked)
+    switch.setOnCheckedChangeListener { _, checked ->
+        onCheckedChange(checked)
+        chip.setSwitchOn(checked)
+    }
+    audioRow.setOnClickListener { switch.toggle() }
+    (audioRow as ViewGroup).addView(chip.view, 0)
+    card.addView(audioRow)
+
+    ankiInsetDivider(card)
+
+    // -- Voice row: opens the per-language voice picker --
+    val voiceRow = inflater.inflate(R.layout.settings_row_value, card, false)
+    voiceRow.findViewById<TextView>(R.id.tvRowTitle).text =
+        ctx.getString(R.string.anki_voice_row_label)
+    val voiceValue = voiceRow.findViewById<TextView>(R.id.tvRowValue)
+    voiceRow.setOnClickListener {
+        // Pass the card's language so the picker edits the same voice
+        // preference the preview and synthesis use.
+        startActivity(TtsVoiceActivity.intent(ctx, lang))
+    }
+    card.addView(voiceRow)
+
+    val handle = AnkiAudioHandle(this, lang, switch, voiceValue, chip)
+    handle.refreshVoiceLabel()
+    return handle
 }
 
 /**

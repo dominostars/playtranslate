@@ -37,6 +37,18 @@ object AnkiCardOutputBuilder {
         else "<img src=\"${htmlEscape(imageFilename)}\" style=\"max-width:100%;\">"
 
     /**
+     * Wraps an AnkiDroid-side media filename in Anki's `[sound:…]` tag.
+     *
+     * Unlike [pictureHtml] this emits no HTML and does not escape: Anki
+     * parses `[sound:filename]` as a directive before HTML rendering, and
+     * the filename is one AnkiDroid itself assigned (media-safe). The tag
+     * is identical for the legacy and structured paths — both write it
+     * verbatim into a field, where AnkiDroid turns it into a play button.
+     */
+    private fun soundTag(audioFilename: String?): String =
+        if (audioFilename.isNullOrEmpty()) "" else "[sound:$audioFilename]"
+
+    /**
      * Builds outputs from a sentence sheet's current state. The caller
      * may supply pre-rendered [examplesHtml] (Tatoeba pairs for the
      * highlighted word) — usually available only when the send is
@@ -48,6 +60,7 @@ object AnkiCardOutputBuilder {
         cardData: SentenceAnkiContentFragment.CardData,
         imageFilename: String?,
         examplesHtml: String = "",
+        audioFilename: String? = null,
     ): CardOutputs {
         val firstHighlighted = cardData.words.firstOrNull {
             it.word in cardData.selectedWords
@@ -124,6 +137,8 @@ object AnkiCardOutputBuilder {
             sentenceFurigana = sentenceFuriganaHtml,
             sentenceTranslation = translationHtml,
             picture = pictureHtml(imageFilename),
+            wordAudio = "",
+            sentenceAudio = soundTag(audioFilename),
             definition = definition,
             examples = examplesHtml,
             frequency = frequency,
@@ -163,6 +178,7 @@ object AnkiCardOutputBuilder {
         examplesHtml: String = "",
         sourceLangId: com.playtranslate.language.SourceLangId =
             com.playtranslate.language.SourceLangId.JA,
+        audioFilename: String? = null,
     ): CardOutputs = CardOutputs(
         // EXPRESSION: plain headword text — for fields rendered raw
         // via `{{Expression}}` (Lapis vocab-card front, Hint, etc.).
@@ -178,6 +194,8 @@ object AnkiCardOutputBuilder {
         sentenceFurigana = "",
         sentenceTranslation = "",
         picture = pictureHtml(imageFilename),
+        wordAudio = soundTag(audioFilename),
+        sentenceAudio = "",
         definition = definitionHtml,
         examples = examplesHtml,
         // starsString emits only ★ glyphs — safe.

@@ -19,11 +19,10 @@ object AnkiCardTypeMapper {
     /**
      * Lapis (donkuri/lapis). Per the canonical README, Lapis uses an
      * Expression/MainDefinition/Glossary schema (NOT Word/Glossary like
-     * older docs sometimes claim). Furigana / Reading variants (the
-     * bracketed `kanji[kana]` form) stay NONE because we don't compute
-     * that format; ditto audio fields. `Glossary` is an alternative
-     * primary definition slot — user can swap to DEFINITION via the
-     * mapping dialog if they prefer it over `MainDefinition`.
+     * older docs sometimes claim). `ExpressionAudio` / `SentenceAudio`
+     * carry PT-synthesized TTS. `Glossary` is an alternative primary
+     * definition slot — user can swap to DEFINITION via the mapping
+     * dialog if they prefer it over `MainDefinition`.
      *
      * Flag wiring: `IsWordAndSentenceCard` fires for PT word sends
      * (the closest Lapis variant — word on front, sentence below as
@@ -46,6 +45,8 @@ object AnkiCardTypeMapper {
         "Sentence"              to ContentSource.SENTENCE,
         "SentenceFurigana"      to ContentSource.SENTENCE_FURIGANA,
         "Picture"               to ContentSource.PICTURE,
+        "ExpressionAudio"       to ContentSource.WORD_AUDIO,
+        "SentenceAudio"         to ContentSource.SENTENCE_AUDIO,
         "Frequency"             to ContentSource.FREQUENCY,
         "IsWordAndSentenceCard" to ContentSource.VOCABULARY_CARD_FLAG,
         "IsSentenceCard"        to ContentSource.SENTENCE_CARD_FLAG,
@@ -72,7 +73,7 @@ object AnkiCardTypeMapper {
      *                        (e.g. `…<b> 偽者[にせもの]</b>だな！`),
      *                        rendered via `{{furigana:SentenceReading}}`
      *
-     * Audio fields are unmapped — PT doesn't produce audio.
+     * `WordAudio` / `SentenceAudio` carry PT-synthesized TTS.
      */
     private val JPMN_DEFAULTS: Map<String, ContentSource> = mapOf(
         "Word"                    to ContentSource.EXPRESSION,
@@ -82,6 +83,8 @@ object AnkiCardTypeMapper {
         "Sentence"                to ContentSource.SENTENCE,
         "SentenceReading"         to ContentSource.SENTENCE_FURIGANA,
         "Picture"                 to ContentSource.PICTURE,
+        "WordAudio"                to ContentSource.WORD_AUDIO,
+        "SentenceAudio"            to ContentSource.SENTENCE_AUDIO,
         // JPMN's vocab variant is the no-flag default; we only fire the
         // sentence + targeted-sentence flags. IsTargetedSentenceCard
         // combines with IsSentenceCard per JPMN's compound-flag rules:
@@ -98,10 +101,11 @@ object AnkiCardTypeMapper {
      * FLAGS: any non-empty content flips Migaku's card rendering.
      * Those MUST stay NONE.
      *
-     * Audio fields (`Sentence Audio`, `Word Audio`) and `Example
-     * Sentences` are unmapped — we don't produce that content. `Images`
-     * is a secondary media slot; we put screenshots in `Screenshot`
-     * which is the canonical PT-side equivalent.
+     * `Word Audio` / `Sentence Audio` carry PT-synthesized TTS — a word
+     * send fills the former, a sentence send the latter. `Example
+     * Sentences` is filled from Tatoeba pairs on the word flow. `Images`
+     * is a secondary media slot; we put screenshots in `Screenshot`,
+     * the canonical PT-side equivalent.
      */
     private val MIGAKU_DEFAULTS: Map<String, ContentSource> = mapOf(
         // Migaku's `Sentence` and `Target Word` both render with
@@ -112,6 +116,8 @@ object AnkiCardTypeMapper {
         "Target Word"        to ContentSource.EXPRESSION_FURIGANA,
         "Definitions"        to ContentSource.DEFINITION,
         "Screenshot"         to ContentSource.PICTURE,
+        "Word Audio"         to ContentSource.WORD_AUDIO,
+        "Sentence Audio"     to ContentSource.SENTENCE_AUDIO,
         // Migaku is the only template among the four we recognize with
         // a dedicated example-sentences slot. Filled from Tatoeba pairs
         // when the send routes through WordAnkiReviewSheet (which
@@ -120,7 +126,8 @@ object AnkiCardTypeMapper {
         // Is Vocabulary Card fires "x" for word sends only (matches
         // Migaku's own addon: "x" toggles vocab variant; empty leaves
         // the default sentence-card layout). Is Audio Card stays
-        // unmapped because PT doesn't produce audio.
+        // unmapped — it's a state flag, not a content slot; the audio
+        // itself rides in Word Audio / Sentence Audio above.
         "Is Vocabulary Card" to ContentSource.VOCABULARY_CARD_FLAG,
     )
 

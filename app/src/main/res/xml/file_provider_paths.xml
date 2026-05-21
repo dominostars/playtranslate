@@ -2,5 +2,6 @@
 <paths>
     <cache-path name="screenshots" path="screenshots/" />
     <cache-path name="logs" path="logs/" />
+    <cache-path name="tts" path="tts-audio/" />
     <files-path name="crashes" path="crashes/" />
 </paths>

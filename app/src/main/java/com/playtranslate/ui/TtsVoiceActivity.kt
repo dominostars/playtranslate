@@ -1,5 +1,7 @@
 package com.playtranslate.ui
 
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.speech.tts.Voice
 import android.view.LayoutInflater
@@ -47,7 +49,13 @@ class TtsVoiceActivity : AppCompatActivity() {
         setContentView(R.layout.activity_tts_voice)
 
         prefs = Prefs(this)
-        lang = prefs.sourceLangId
+        // Prefer the language passed by the launcher — the Anki Audio card
+        // passes the card's language so the picker edits the same voice
+        // preview and synthesis use. Falls back to the global source
+        // language when opened from Settings (no extra).
+        lang = intent.getStringExtra(EXTRA_LANG)
+            ?.let { SourceLangId.fromCode(it) }
+            ?: prefs.sourceLangId
         selectedName = prefs.ttsVoiceName(lang)
         voiceRows = findViewById(R.id.voiceRows)
 
@@ -149,5 +157,16 @@ class TtsVoiceActivity : AppCompatActivity() {
         val region = voice.locale.displayCountry
         return if (region.isNotBlank()) "$region · $quality · $network"
         else "$quality · $network"
+    }
+
+    companion object {
+        private const val EXTRA_LANG = "lang"
+
+        /** Intent that opens the picker for a specific [lang] — used by the
+         *  Anki Audio card so the picker edits the card's language, not the
+         *  global source language. */
+        fun intent(context: Context, lang: SourceLangId): Intent =
+            Intent(context, TtsVoiceActivity::class.java)
+                .putExtra(EXTRA_LANG, lang.code)
     }
 }

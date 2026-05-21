@@ -88,12 +88,13 @@ class AnkiCardTypeMapperTest {
         // non-empty per send).
         assertEquals(ContentSource.VOCABULARY_CARD_FLAG,     mapping["IsWordAndSentenceCard"])
         assertEquals(ContentSource.SENTENCE_CARD_FLAG,       mapping["IsSentenceCard"])
-        // Audio, alternative-definition slots, the OTHER state flags
+        // Audio fields carry PT-synthesized TTS.
+        assertEquals(ContentSource.WORD_AUDIO,     mapping["ExpressionAudio"])
+        assertEquals(ContentSource.SENTENCE_AUDIO, mapping["SentenceAudio"])
+        // Alternative-definition slots, the OTHER state flags
         // (IsClickCard / IsAudioCard), pitch — none of which we produce
         // or want to auto-populate — stay null (treated as
         // ContentSource.NONE by the dialog).
-        assertEquals(null, mapping["ExpressionAudio"])
-        assertEquals(null, mapping["SentenceAudio"])
         assertEquals(null, mapping["Glossary"])
         assertEquals(null, mapping["IsClickCard"])
         assertEquals(null, mapping["IsAudioCard"])
@@ -141,11 +142,12 @@ class AnkiCardTypeMapperTest {
         // condition inside the builder.
         assertEquals(ContentSource.SENTENCE_CARD_FLAG,          mapping["IsSentenceCard"])
         assertEquals(ContentSource.TARGETED_SENTENCE_CARD_FLAG, mapping["IsTargetedSentenceCard"])
-        // Audio, secondary definition slots, user-preference flags,
-        // pre-stylized frequency / pitch HTML — none of which PT
-        // produces or auto-populates — stay unmapped.
-        assertEquals(null, mapping["WordAudio"])
-        assertEquals(null, mapping["SentenceAudio"])
+        // Audio fields carry PT-synthesized TTS.
+        assertEquals(ContentSource.WORD_AUDIO,     mapping["WordAudio"])
+        assertEquals(ContentSource.SENTENCE_AUDIO, mapping["SentenceAudio"])
+        // Secondary definition slots, user-preference flags, pre-stylized
+        // frequency / pitch HTML — none of which PT produces or
+        // auto-populates — stay unmapped.
         assertEquals(null, mapping["SecondaryDefinition"])
         assertEquals(null, mapping["IsHoverCard"])
         assertEquals(null, mapping["IsClickCard"])
@@ -185,11 +187,12 @@ class AnkiCardTypeMapperTest {
         assertEquals(ContentSource.PICTURE,               mapping["Screenshot"])
         assertEquals(ContentSource.EXAMPLE_SENTENCES,     mapping["Example Sentences"])
         // Is Vocabulary Card now wired to the mode-aware vocab flag —
-        // fires "x" on word sends, empty on sentence sends. Is Audio
-        // Card stays unmapped (we don't produce audio).
+        // fires "x" on word sends, empty on sentence sends.
         assertEquals(ContentSource.VOCABULARY_CARD_FLAG, mapping["Is Vocabulary Card"])
-        assertEquals(null, mapping["Sentence Audio"])
-        assertEquals(null, mapping["Word Audio"])
+        // Word/Sentence Audio carry PT-synthesized TTS. Is Audio Card
+        // stays unmapped — it's a state flag, not a content slot.
+        assertEquals(ContentSource.SENTENCE_AUDIO, mapping["Sentence Audio"])
+        assertEquals(ContentSource.WORD_AUDIO, mapping["Word Audio"])
         assertEquals(null, mapping["Images"])
         assertEquals(null, mapping["Is Audio Card"])
     }
@@ -315,6 +318,8 @@ class AnkiCardTypeMapperTest {
         sentenceFurigana = "sent[fur]",
         sentenceTranslation = "trans",
         picture = "pic.jpg",
+        wordAudio = "[sound:word.wav]",
+        sentenceAudio = "[sound:sentence.wav]",
         definition = "<div>def</div>",
         examples = "<div>ex</div>",
         frequency = "★★★",

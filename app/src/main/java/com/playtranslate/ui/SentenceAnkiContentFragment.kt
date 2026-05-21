@@ -15,6 +15,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.fragment.app.Fragment
+import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.themeColor
@@ -40,6 +41,11 @@ class SentenceAnkiContentFragment : Fragment() {
     var includePhoto = true
         private set
 
+    /** Whether the sentence-audio switch is on. Read by the host sheet
+     *  at send time; false when the Audio section wasn't built. */
+    val sentenceAudioEnabled: Boolean
+        get() = audioHandle?.switch?.isChecked == true
+
     private lateinit var root: LinearLayout
     private lateinit var etOriginal: EditText
     private lateinit var etTranslation: EditText
@@ -48,6 +54,7 @@ class SentenceAnkiContentFragment : Fragment() {
     private var screenshotHeader: View? = null
     private var screenshotGroup: View? = null
     private var ivPhoto: ImageView? = null
+    private var audioHandle: AnkiAudioHandle? = null
 
     data class CardData(
         val source: String,
@@ -74,7 +81,15 @@ class SentenceAnkiContentFragment : Fragment() {
     override fun onDestroyView() {
         ivPhoto?.setImageBitmap(null)
         ivPhoto = null
+        audioHandle?.release()
+        audioHandle = null
         super.onDestroyView()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // TtsVoiceActivity returns no result; re-read the saved voice.
+        audioHandle?.refreshVoiceLabel()
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -146,6 +161,19 @@ class SentenceAnkiContentFragment : Fragment() {
             id = R.id.etAnkiTranslation
         }
         translationCard.addView(buildEditableFrame(etTranslation))
+
+        // Audio — TTS of the sentence, attached as [sound:] media.
+        val prefs = Prefs(ctx)
+        val lang = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG))
+            ?: SourceLangId.JA
+        audioHandle = addAnkiAudioSection(
+            parent = root,
+            lang = lang,
+            rowLabel = getString(R.string.anki_content_sentence_audio),
+            previewText = { etOriginal.text.toString() },
+            initialChecked = prefs.ankiSentenceAudioEnabled,
+            onCheckedChange = { prefs.ankiSentenceAudioEnabled = it },
+        )
 
         // Words on card
         ankiGroupHeader(root, getString(R.string.anki_group_words_count, words.size))
