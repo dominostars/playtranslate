@@ -98,9 +98,23 @@ class OverlayUiController(
      *  intact (its onDisplayChanged call duplicates this one, harmlessly);
      *  this controller's listener fills the gap on the MP backend. */
     private val displayListener = object : DisplayManager.DisplayListener {
-        override fun onDisplayAdded(displayId: Int) = reconcileFloatingIcons()
-        override fun onDisplayRemoved(displayId: Int) = reconcileFloatingIcons()
+        // Both capture backends keep an OverlayUiController alive for the
+        // CaptureService's lifetime, but only the active backend's should
+        // react to display events. A backend swap (CaptureBackendResolver.
+        // reresolve) does not unregister the outgoing controller's listener,
+        // so without this guard a display add/remove would let the inactive
+        // controller resurrect its floating icons in the wrong window type.
+        private val isActiveController: Boolean
+            get() = CaptureBackendResolver.activeOverlayUi === this@OverlayUiController
+
+        override fun onDisplayAdded(displayId: Int) {
+            if (isActiveController) reconcileFloatingIcons()
+        }
+        override fun onDisplayRemoved(displayId: Int) {
+            if (isActiveController) reconcileFloatingIcons()
+        }
         override fun onDisplayChanged(displayId: Int) {
+            if (!isActiveController) return
             // Order matters: icon reposition first so it picks up the new
             // screen dimensions; the intro reposition then reads the icon's
             // freshly-updated centre Y to position itself relative to it.

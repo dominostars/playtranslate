@@ -30,8 +30,10 @@ private const val TAG = "MediaProjectionCtl"
  * from. One instance per [CaptureService].
  *
  * Consent is secured up front via [ensureConsent] — by `startLive()` before
- * the live-mode loop exists, or by the Settings / Quick-Settings activate path
- * — never lazily from inside a capture. [captureFrame] requires consent to
+ * the live-mode loop exists, by the one-shot capture path
+ * ([MediaProjectionCaptureSource.requestClean]), or by the Settings /
+ * Quick-Settings activate path — never lazily from inside a capture.
+ * [captureFrame] requires consent to
  * already be held and returns null otherwise; it never launches the dialog. (A
  * prompt mid-loop has its Cancel tap caught by the live-mode touch sentinel as
  * game input, restarting the loop and re-prompting in a cycle.) Once granted,

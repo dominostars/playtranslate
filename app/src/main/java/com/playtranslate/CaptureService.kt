@@ -2091,7 +2091,13 @@ class CaptureService : Service() {
             }
         }
 
-        if (iconShowing || isLive) {
+        // A held MediaProjection must stay backed by a running mediaProjection
+        // foreground service (Android 14+). A one-shot capture
+        // (MediaProjectionCaptureSource.requestClean) can acquire consent and
+        // leave the projection warm with neither live mode nor a floating icon
+        // up — iconShowing || isLive alone would then stopForeground() out
+        // from under an active projection and the system would tear it down.
+        if (iconShowing || isLive || mediaProjectionController.hasConsent) {
             enterForeground()
         } else {
             stopForeground(STOP_FOREGROUND_REMOVE)
