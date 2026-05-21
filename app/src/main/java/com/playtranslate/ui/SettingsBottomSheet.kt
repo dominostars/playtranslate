@@ -1191,10 +1191,9 @@ class SettingsBottomSheet : DialogFragment() {
     // ── MediaProjection controls ─────────────────────────────────────────
 
     /** MediaProjection-backend "turn on game screen controls": prompt for the
-     *  screen-record consent and, on grant, flip showOverlayIcon on and
-     *  reconcile the floating icons. Runs on the Activity scope so the consent
-     *  round-trip survives a Settings dismiss; the switch refresh is null-safe
-     *  for that case. */
+     *  screen-record consent and, on grant, reconcile the floating icons.
+     *  Runs on the Activity scope so the consent round-trip survives a
+     *  Settings dismiss; the switch refresh is null-safe for that case. */
     private fun requestMediaProjectionControls() {
         val activity = activity as? androidx.appcompat.app.AppCompatActivity ?: return
         if (!android.provider.Settings.canDrawOverlays(activity)) {
@@ -1209,7 +1208,10 @@ class SettingsBottomSheet : DialogFragment() {
                 com.playtranslate.CaptureService.instance?.mediaProjectionController
             val granted = controller?.ensureConsent() ?: false
             if (granted) {
-                // Don't force showOverlayIcon — it's the independent toggle.
+                // showOverlayIcon doesn't apply on the MediaProjection
+                // backend — the icon shows whenever capture is active (see
+                // OverlayUiController.reconcileFloatingIcons), so there's
+                // nothing to flip here.
                 com.playtranslate.capture.CaptureBackendResolver
                     .activeOverlayUi?.reconcileFloatingIcons()
                 com.playtranslate.PlayTranslateTileService.TileSync.refresh(activity)

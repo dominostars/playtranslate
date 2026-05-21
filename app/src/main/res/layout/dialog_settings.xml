@@ -129,6 +129,47 @@
                         android:id="@+id/powerCard"
                         layout="@layout/settings_row_power" />
 
+                    <!-- Game Screen Controls — takes the power cell's slot on
+                         the accessibility backend in dual-screen, where
+                         capture is always on and the floating icon's
+                         visibility is the only thing left to toggle. Backed
+                         by Prefs.showOverlayIcon. Shown / hidden in lock-step
+                         with the power cell (never both at once) by
+                         SettingsRenderer.refreshCaptureLifecycleButton; the
+                         row owns the tap, the switch follows. -->
+                    <LinearLayout
+                        android:id="@+id/rowGameScreenControls"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:minHeight="@dimen/pt_row_min_height"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="@dimen/pt_row_h_padding"
+                        android:paddingVertical="9dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginEnd="16dp"
+                            android:text="@string/game_screen_controls_title"
+                            style="@style/Text.PT.RowTitle" />
+
+                        <!-- Non-clickable; the row owns the tap. -->
+                        <com.google.android.material.materialswitch.MaterialSwitch
+                            android:id="@+id/switchGameScreenControls"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:clickable="false"
+                            android:focusable="false"
+                            app:materialThemeOverlay="@style/Widget.PlayTranslate.MaterialSwitch" />
+
+                    </LinearLayout>
+
                     <View
                         android:id="@+id/dividerPowerCell"
                         android:layout_width="match_parent"

@@ -152,6 +152,10 @@
     <string name="capture_lifecycle_off_title">Allow screen capture</string>
     <string name="capture_lifecycle_on_subtitle">Ready to translate</string>
     <string name="capture_lifecycle_off_subtitle">Required to read game text</string>
+    <!-- Floating-icon visibility toggle. Takes the power cell's slot on the
+         accessibility backend in dual-screen, where capture is always on and
+         the icon is the only thing left to control. -->
+    <string name="game_screen_controls_title">Game Screen Controls</string>
 
     <!-- MediaProjection floating-controls overlay permission -->
     <string name="mp_overlay_permission_title">Display over other apps</string>

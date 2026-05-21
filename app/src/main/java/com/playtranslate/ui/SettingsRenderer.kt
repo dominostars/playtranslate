@@ -215,6 +215,13 @@ class SettingsRenderer(
     private val powerSubtitle: TextView = root.findViewById(R.id.powerSubtitle)
     private val powerSwitch: MaterialSwitch = root.findViewById(R.id.powerSwitch)
 
+    // Game Screen Controls — the floating-icon visibility toggle that takes
+    // the power cell's slot on the accessibility backend in dual-screen.
+    // Exactly one of {powerCard, rowGameScreenControls} is visible at a time.
+    private val rowGameScreenControls: View = root.findViewById(R.id.rowGameScreenControls)
+    private val switchGameScreenControls: MaterialSwitch =
+        root.findViewById(R.id.switchGameScreenControls)
+
     private val rowAddQuickTile: View = root.findViewById(R.id.rowAddQuickTile)
 
     private val overlayModeSection: View = root.findViewById(R.id.overlayModeSection)
@@ -274,6 +281,7 @@ class SettingsRenderer(
     fun bind() {
         setupGroupHeaders()
         setupCaptureLifecycleButton()
+        setupGameScreenControlsRow()
         setupLanguageSection()
         setupOnScreenControls()
         setupAutoTranslateSection()
@@ -476,20 +484,23 @@ class SettingsRenderer(
         rowAddQuickTile.setOnClickListener { requestAddQuickTile() }
     }
 
-    /** dividerPowerCell sits between the power cell and the quick-tile row.
-     *  It needs to be visible only when BOTH cells are showing — when the
-     *  power cell is hidden (a11y dual-screen) there's nothing above to
-     *  separate from; when the quick-tile row is hidden the floating-icon
-     *  footer's own top divider provides the separation, and a separate
-     *  divider here would double-stroke against it.
+    /** dividerPowerCell sits between the top-slot cell (the power cell or the
+     *  Game Screen Controls row — exactly one is always present) and the
+     *  quick-tile row. It shows only when the quick-tile row below is also
+     *  visible; when that row is hidden the floating-icon footer's own top
+     *  divider provides the separation, and a divider here would
+     *  double-stroke against it.
      *
      *  Called from both [refreshCaptureLifecycleButton] (which toggles the
-     *  power cell) and [setupAddQuickTileRow] (which toggles the quick-tile
-     *  row) so the rule stays in sync with whichever changed last. */
+     *  top-slot cell) and [setupAddQuickTileRow] (which toggles the
+     *  quick-tile row) so the rule stays in sync with whichever changed
+     *  last. */
     private fun refreshDividerPowerCellVisibility() {
-        val both = powerCard.visibility == View.VISIBLE &&
-            rowAddQuickTile.visibility == View.VISIBLE
-        dividerPowerCell.visibility = if (both) View.VISIBLE else View.GONE
+        val cellAbove = powerCard.visibility == View.VISIBLE ||
+            rowGameScreenControls.visibility == View.VISIBLE
+        dividerPowerCell.visibility =
+            if (cellAbove && rowAddQuickTile.visibility == View.VISIBLE) View.VISIBLE
+            else View.GONE
     }
 
     /** Pulls the gesture string [stringRes] (which carries an inline `<b>`
@@ -578,41 +589,79 @@ class SettingsRenderer(
         refreshCaptureLifecycleButton()
     }
 
-    /** Show / hide + style both Turn On / Turn Off surfaces — the in-content
-     *  power card and the nav-bar button — against the current
-     *  [CaptureLifecycle] state. Both are hidden on the accessibility backend
-     *  in dual-screen, where "active" is always true and there is nothing to
-     *  start.
+    /** Wire the Game Screen Controls row — the floating-icon visibility
+     *  toggle that occupies the power cell's slot on the accessibility
+     *  backend in dual-screen, where capture itself is always on. Mirrors
+     *  the QS tile's accessibility on/off branch so the Settings toggle and
+     *  the tile stay in sync. [refreshCaptureLifecycleButton] owns the row's
+     *  visibility and the switch's checked state. */
+    private fun setupGameScreenControlsRow() {
+        rowGameScreenControls.setOnClickListener {
+            if (prefs.showOverlayIcon) {
+                // Off — the canonical "icon goes away" path (writes the pref,
+                // stops live mode, hides the icon, refreshes the tile), shared
+                // with the QS tile and CaptureLifecycle.deactivate.
+                PlayTranslateAccessibilityService.disable(
+                    ctx, "settings_game_screen_controls_off"
+                )
+            } else {
+                // On — bring the floating icon back.
+                prefs.showOverlayIcon = true
+                CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
+                PlayTranslateTileService.TileSync.refresh(ctx)
+            }
+            refreshCaptureLifecycleButton()
+        }
+    }
+
+    /** Show / hide + style the top-slot capture controls against the current
+     *  [CaptureLifecycle] state:
+     *   - Power cell + nav-bar button — shown wherever there is a capture
+     *     lifecycle to start / stop.
+     *   - Game Screen Controls row — shown instead on the accessibility
+     *     backend in dual-screen, where "active" is always true and the
+     *     floating icon is the only thing left to toggle.
      *
-     *  Also recolours the adjacent "On the floating icon" cell while capture
-     *  is OFF: title + gesture text + gesture icons all drop to ptTextHint
-     *  (the next-darker theme step below ptTextMuted) so the whole cell
-     *  reads as a single recessed group. The docked-icon preview drops to
-     *  50% alpha as a stronger "this is currently dark" cue.
+     *  Also recolours the adjacent "On the floating icon" footer: while the
+     *  icon is hidden its title + gesture text + gesture icons all drop to
+     *  ptTextHint (the next-darker theme step below ptTextMuted) so the whole
+     *  cell reads as a single recessed group, and the docked-icon preview
+     *  drops to 50% alpha as a stronger "this is currently dark" cue.
      */
     fun refreshCaptureLifecycleButton() {
-        val visibility =
-            if (CaptureLifecycle.hasActivateControl(ctx)) View.VISIBLE else View.GONE
-        btnCaptureLifecycle.visibility = visibility
-        powerCard.visibility = visibility
-        // dividerPowerCell visibility depends on BOTH this cell and the
+        // Exactly one of {power cell, Game Screen Controls row} occupies the
+        // top slot. The power cell shows wherever there is a capture lifecycle
+        // to start / stop; the Game Screen Controls row takes over on the
+        // accessibility backend in dual-screen, where capture is always on.
+        val showPowerCell = CaptureLifecycle.hasActivateControl(ctx)
+        val powerVisibility = if (showPowerCell) View.VISIBLE else View.GONE
+        btnCaptureLifecycle.visibility = powerVisibility
+        powerCard.visibility = powerVisibility
+        rowGameScreenControls.visibility =
+            if (showPowerCell) View.GONE else View.VISIBLE
+        switchGameScreenControls.isChecked = prefs.showOverlayIcon
+        // dividerPowerCell visibility depends on the cell above it and the
         // quick-tile row below — see refreshDividerPowerCellVisibility.
         refreshDividerPowerCellVisibility()
         val active = CaptureLifecycle.isActive(ctx)
-        // Cell colours ALWAYS reflect active — when the power cell is hidden
-        // (accessibility dual-screen), isActive returns true so full colour.
+        // The floating-icon footer is lit when the icon is actually on the
+        // game screen, dim otherwise. That tracks `active` everywhere except
+        // a11y dual-screen, where capture is always active but the Game
+        // Screen Controls toggle gates the icon — there it tracks
+        // showOverlayIcon instead.
+        val iconLit = if (showPowerCell) active else prefs.showOverlayIcon
         val titleColor = ctx.themeColor(
-            if (active) R.attr.ptTextMuted else R.attr.ptTextHint
+            if (iconLit) R.attr.ptTextMuted else R.attr.ptTextHint
         )
         // Gesture line has two colour zones: the rest of the line (baseColor)
-        // and the leading bold verb (verbColor). Active accents the verb +
-        // matching icon; disabled flattens both into the same muted hint
-        // colour as the rest of the line.
+        // and the leading bold verb (verbColor). Lit accents the verb +
+        // matching icon; dim flattens both into the same muted hint colour as
+        // the rest of the line.
         val baseColor = ctx.themeColor(
-            if (active) R.attr.ptText else R.attr.ptTextHint
+            if (iconLit) R.attr.ptText else R.attr.ptTextHint
         )
         val verbColor = ctx.themeColor(
-            if (active) R.attr.ptAccent else R.attr.ptTextHint
+            if (iconLit) R.attr.ptAccent else R.attr.ptTextHint
         )
         val iconTint = ColorStateList.valueOf(verbColor)
         tvOverlayIconTitle.setTextColor(titleColor)
@@ -625,8 +674,8 @@ class SettingsRenderer(
         iconGestureDrag.imageTintList = iconTint
         iconGestureHold.imageTintList = iconTint
         iconGestureTap.imageTintList = iconTint
-        overlayIconPreviewSlot.alpha = if (active) 1f else 0.5f
-        if (visibility != View.VISIBLE) return
+        overlayIconPreviewSlot.alpha = if (iconLit) 1f else 0.5f
+        if (!showPowerCell) return
         styleCaptureButton(btnCaptureLifecycle, active)
         stylePowerCard(active)
         // A refresh can land while the list is already scrolled — re-apply

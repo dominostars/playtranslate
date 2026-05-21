@@ -720,12 +720,15 @@ class OverlayUiController(
      */
     fun reconcileFloatingIcons() {
         val prefs = Prefs(context)
-        // The "show the floating icon" preference gates the icon — except on
-        // single-screen MediaProjection, where there is no toggle and the icon
-        // always shows while active (consent is the only gate, checked below).
-        val mpSingleScreen = Prefs.isSingleScreen(context) &&
+        // The "show the floating icon" preference gates the icon only on the
+        // accessibility backend. MediaProjection has no in-app toggle for it
+        // — single-screen never did, and dual-screen deliberately doesn't
+        // either (the Game Screen Controls row in Settings is a11y-only) — so
+        // the icon always shows there while capture is active (consent is the
+        // only gate, checked below).
+        val isMediaProjection =
             !CaptureBackendResolver.active().requiresAccessibilityService
-        if (!mpSingleScreen && !prefs.showOverlayIcon) {
+        if (!isMediaProjection && !prefs.showOverlayIcon) {
             hideFloatingIcon("pref_disabled")
             return
         }
