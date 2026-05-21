@@ -344,6 +344,79 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
 
+                    <!-- Enhanced auto-translate. Off: switch + the "More
+                         responsive…" pitch — tapping the row shows the
+                         accessibility-required alert (same alert used by
+                         the display picker). On: checkmark + "Enabled",
+                         row becomes non-clickable. Driven by
+                         SettingsRenderer.refreshEnhancedAutoTranslateRow
+                         against PlayTranslateAccessibilityService.isEnabled. -->
+                    <LinearLayout
+                        android:id="@+id/rowEnhancedAutoTranslate"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/pt_row_min_height"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:paddingHorizontal="@dimen/pt_row_h_padding"
+                        android:paddingVertical="9dp"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:layout_marginEnd="16dp">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/enhanced_auto_translate_title"
+                                style="@style/Text.PT.RowTitle" />
+
+                            <TextView
+                                android:id="@+id/tvEnhancedAutoTranslateSubtitle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                style="@style/Text.PT.RowSubtitle" />
+                        </LinearLayout>
+
+                        <!-- The switch is non-clickable; the row owns the
+                             tap. It stays unchecked even when tapped — the
+                             refresh path sets it based on actual a11y
+                             state, not optimistic toggle (the user has to
+                             grant via system Settings). -->
+                        <com.google.android.material.materialswitch.MaterialSwitch
+                            android:id="@+id/switchEnhancedAutoTranslate"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:clickable="false"
+                            android:focusable="false"
+                            app:materialThemeOverlay="@style/Widget.PlayTranslate.MaterialSwitch" />
+
+                        <!-- Shown instead of the switch once a11y is on. -->
+                        <ImageView
+                            android:id="@+id/checkEnhancedAutoTranslate"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/ic_check"
+                            android:importantForAccessibility="no"
+                            android:visibility="gone"
+                            app:tint="?attr/ptAccent" />
+
+                    </LinearLayout>
+
+                    <View
+                        android:id="@+id/dividerEnhancedAutoTranslate"
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="@dimen/pt_row_h_padding"
+                        android:background="?attr/ptDivider" />
+
                     <!-- Overlay mode section (conditional: only when language has hint text) -->
                     <LinearLayout
                         android:id="@+id/overlayModeSection"

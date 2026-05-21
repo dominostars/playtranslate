@@ -71,7 +71,7 @@ import java.util.Locale
 
 /** Which accessibility-gated Settings action raised the "accessibility
  *  required" alert — selects the alert's explanatory copy. */
-enum class AccessibilityRequirement { MULTI_DISPLAY, HOTKEY }
+enum class AccessibilityRequirement { MULTI_DISPLAY, HOTKEY, ENHANCED_AUTO_TRANSLATE }
 
 /**
  * Wires every settings row in dialog_settings.xml to prefs / callbacks.
@@ -219,6 +219,23 @@ class SettingsRenderer(
 
     private val overlayModeSection: View = root.findViewById(R.id.overlayModeSection)
     private val overlayModeToggleContainer: FrameLayout = root.findViewById(R.id.overlayModeToggleContainer)
+
+    // Enhanced auto-translate row — top of the AUTO-TRANSLATE card.
+    // Reflects PlayTranslateAccessibilityService.isEnabled: when off, a
+    // MaterialSwitch + the "More responsive…" pitch, tapping the row
+    // shows the a11y-required alert. When on, a check mark + "Enabled",
+    // row becomes non-clickable. State sync happens in
+    // refreshEnhancedAutoTranslateRow, which the bottom sheet calls in
+    // onResume so returning from system Accessibility Settings picks up
+    // the grant immediately.
+    private val rowEnhancedAutoTranslate: View =
+        root.findViewById(R.id.rowEnhancedAutoTranslate)
+    private val tvEnhancedAutoTranslateSubtitle: TextView =
+        rowEnhancedAutoTranslate.findViewById(R.id.tvEnhancedAutoTranslateSubtitle)
+    private val switchEnhancedAutoTranslate: MaterialSwitch =
+        rowEnhancedAutoTranslate.findViewById(R.id.switchEnhancedAutoTranslate)
+    private val checkEnhancedAutoTranslate: ImageView =
+        rowEnhancedAutoTranslate.findViewById(R.id.checkEnhancedAutoTranslate)
 
     private val rowHideOverlays: View = root.findViewById(R.id.rowHideOverlays)
     private val switchHideOverlays: MaterialSwitch = rowHideOverlays.findViewById(R.id.switchRowToggle)
@@ -783,7 +800,56 @@ class SettingsRenderer(
 
     // ── Auto-translate section ───────────────────────────────────────────
 
+    private fun setupEnhancedAutoTranslateRow() {
+        rowEnhancedAutoTranslate.setOnClickListener {
+            // Click only fires while a11y is off (refreshEnhanced…
+            // sets isClickable=false otherwise). The alert routes the
+            // user to system Accessibility Settings; the row picks up
+            // the grant when the sheet's onResume runs the refresh.
+            callbacks.showAccessibilityRequiredAlert(
+                AccessibilityRequirement.ENHANCED_AUTO_TRANSLATE
+            )
+        }
+        refreshEnhancedAutoTranslateRow()
+    }
+
+    /** Re-sync the Enhanced auto-translate row against
+     *  [PlayTranslateAccessibilityService.isEnabled]. Called from setup
+     *  and from the bottom sheet's onResume so a user returning from
+     *  system Accessibility Settings sees the row flip to "Enabled" +
+     *  check mark immediately. */
+    fun refreshEnhancedAutoTranslateRow() {
+        val enabled = PlayTranslateAccessibilityService.isEnabled(ctx)
+        if (enabled) {
+            tvEnhancedAutoTranslateSubtitle.setText(
+                R.string.enhanced_auto_translate_subtitle_on
+            )
+            switchEnhancedAutoTranslate.visibility = View.GONE
+            checkEnhancedAutoTranslate.visibility = View.VISIBLE
+            // Non-clickable while on — the row is a status indicator at
+            // that point; selectableItemBackground also suppresses its
+            // ripple when isClickable is false, so no stray feedback.
+            rowEnhancedAutoTranslate.isClickable = false
+            rowEnhancedAutoTranslate.isFocusable = false
+        } else {
+            tvEnhancedAutoTranslateSubtitle.setText(
+                R.string.enhanced_auto_translate_subtitle_off
+            )
+            switchEnhancedAutoTranslate.visibility = View.VISIBLE
+            // Switch stays unchecked — the user grants accessibility via
+            // system Settings, not by flipping this switch. The grant
+            // path then routes back through refreshEnhancedAutoTranslateRow
+            // and the switch is replaced by the check mark.
+            switchEnhancedAutoTranslate.isChecked = false
+            checkEnhancedAutoTranslate.visibility = View.GONE
+            rowEnhancedAutoTranslate.isClickable = true
+            rowEnhancedAutoTranslate.isFocusable = true
+        }
+    }
+
     private fun setupAutoTranslateSection() {
+        setupEnhancedAutoTranslateRow()
+
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
         val hasHintText = hintKind != HintTextKind.NONE
 

@@ -171,6 +171,19 @@
     <string name="a11y_required_alert_title">Accessibility required</string>
     <string name="a11y_required_displays_message">Changing screens or translating multiple screens at once requires the Accessibility permission. It lets PlayTranslate capture any display, not just the main one.</string>
     <string name="a11y_required_hotkey_message">Setting hotkeys requires the Accessibility permission. It lets PlayTranslate detect the keys you press while gaming.</string>
+    <!-- Vague-on-purpose alert message for the "Enhanced auto-translate"
+         row — sells the user-experience improvement without listing the
+         underlying mechanisms (button-press refresh, touch-through
+         overlays, hotkeys, multi-display). The toggle's subtitle already
+         carries the elevator pitch; this is the confirm dialog. -->
+    <string name="a11y_required_enhanced_message">PlayTranslate uses these enhanced controls to improve the auto-translate experience.</string>
+
+    <!-- Enhanced auto-translate row (top of AUTO-TRANSLATE section).
+         Gated on accessibility — off shows a MaterialSwitch + the
+         "More responsive…" pitch; on shows a check mark + "Enabled". -->
+    <string name="enhanced_auto_translate_title">Enhanced auto-translate</string>
+    <string name="enhanced_auto_translate_subtitle_off">More responsive translations. Uses accessibility access.</string>
+    <string name="enhanced_auto_translate_subtitle_on">Enabled</string>
 
     <!-- Anki integration -->
     <string name="section_anki_deck">Anki Deck</string>

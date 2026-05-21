@@ -132,6 +132,9 @@ class SettingsBottomSheet : DialogFragment() {
         // unlocks the moment the user returns from Accessibility Settings.
         renderer?.refreshDisplayRows(Prefs(requireContext()))
         renderer?.refreshAutoModeToggle()
+        // Catch up on the Enhanced auto-translate row in case the user
+        // granted (or revoked) accessibility while the sheet was paused.
+        renderer?.refreshEnhancedAutoTranslateRow()
         renderer?.refreshTtsSection()
         // Pick up backend toggle changes made while we were paused —
         // DeepLSettingsActivity flips deeplEnabled while the prefs listener
@@ -1166,6 +1169,8 @@ class SettingsBottomSheet : DialogFragment() {
                 getString(R.string.a11y_required_displays_message)
             AccessibilityRequirement.HOTKEY ->
                 getString(R.string.a11y_required_hotkey_message)
+            AccessibilityRequirement.ENHANCED_AUTO_TRANSLATE ->
+                getString(R.string.a11y_required_enhanced_message)
         }
         OverlayAlert.Builder(ctx)
             .hideIcon()
