@@ -813,7 +813,7 @@ class CaptureService : Service() {
     private val mediaProjectionOverlayUiLazy = lazy {
         OverlayUiController(this, mediaProjectionOverlayHost) {
             mediaProjectionController.hasConsent
-        }
+        }.also { it.attach() }
     }
     internal val mediaProjectionOverlayUi: OverlayUiController
         by mediaProjectionOverlayUiLazy

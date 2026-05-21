@@ -109,8 +109,22 @@ class OverlayUiController(
         }
     }
 
-    init {
-        (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
+    /** Wire up listeners that depend on a usable host context.
+     *
+     *  The a11y backend constructs us as a non-lazy field on
+     *  [PlayTranslateAccessibilityService], so our `init { }` block runs
+     *  inside the service's no-arg constructor — *before*
+     *  [Service.attachBaseContext] fires. At that point the service's
+     *  `mBase` is null, so any context-touching call (including
+     *  `getApplicationContext()`) NPEs. The MP backend constructs us
+     *  lazily, so this constraint doesn't bind there, but we share the
+     *  same lifecycle pattern for symmetry.
+     *
+     *  Idempotent in practice because each host calls it exactly once per
+     *  controller instance — a11y from [onServiceConnected], MP from the
+     *  lazy `OverlayUiController(...).also { it.attach() }` block. */
+    fun attach() {
+        (context.applicationContext.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
             ?.registerDisplayListener(displayListener, handler)
     }
 
@@ -1381,7 +1395,11 @@ class OverlayUiController(
     /** Full teardown — [hideAll] plus scope/handler cancellation. For host
      *  death (accessibility-service unbind). */
     fun destroy() {
-        (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
+        // Mirrors [attach] — same applicationContext hop so we hit the
+        // exact same DisplayManager instance for symmetric register /
+        // unregister. Safe to call even if attach() was skipped: the
+        // framework no-ops an unregister of a listener it doesn't have.
+        (context.applicationContext.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
             ?.unregisterDisplayListener(displayListener)
         hideAll()
         regionController.destroy()

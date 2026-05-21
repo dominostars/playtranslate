@@ -112,6 +112,11 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         registerReceiver(screenReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
         (getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
             .registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
+        // Wire OverlayUiController's own DisplayListener now that the
+        // service has a usable base context. (Construction at field-init
+        // time runs before attachBaseContext, when context-touching calls
+        // NPE — see [OverlayUiController.attach].)
+        overlayUiController.attach()
         overlayUiController.reconcileFloatingIcons()
         registerHotkeyCallbacks()
         PlayTranslateTileService.TileSync.refresh(this)
