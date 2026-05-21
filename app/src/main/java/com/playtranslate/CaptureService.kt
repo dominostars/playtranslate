@@ -1386,18 +1386,31 @@ class CaptureService : Service() {
      *  fall-through to capturing the foreground display, which would
      *  OCR the app's own UI and publish a garbage panel result.
      *
-     *  Single-display always returns the only display — the skip
-     *  predicate's foreground branch is gated on `size > 1`, so the
-     *  only way the filter can empty here is STATE_OFF, in which case
-     *  captureScreen will return null and the cycle exits cleanly.
-     *  Returning the display rather than empty preserves "the gesture
-     *  always tries to do something on a single-display setup."
-     *  Iteration order follows [gameDisplayIds] insertion order. */
+     *  A genuine single-display setup ([gameDisplayIds] size <= 1) always
+     *  returns the target — the skip predicate's foreground branch is gated
+     *  on `gameDisplayIds.size > 1`, so the only way the filter can empty
+     *  there is STATE_OFF, in which case captureScreen returns null and the
+     *  cycle exits cleanly, preserving "the gesture always tries to do
+     *  something on a single-display setup."
+     *  Iteration order follows [gameDisplayIds] insertion order.
+     *
+     *  Routed through [CaptureBackend.capturableTargets] — the same shim
+     *  live start and icon placement use — so a stale non-default
+     *  selection carried over from an accessibility session collapses to
+     *  the MediaProjection backend's only capturable display. Without it
+     *  a fan-out one-shot would request a display MediaProjection can't
+     *  mirror and silently get default-display pixels back. */
     internal fun oneShotFanoutDisplayIds(): Set<Int> {
-        val all = gameDisplayIds.ifEmpty { setOf(primaryGameDisplayId()) }
+        val all = CaptureBackendResolver.active()
+            .capturableTargets(gameDisplayIds.ifEmpty { setOf(primaryGameDisplayId()) })
         val filtered = all.filter { !shouldSkipDisplay(it) }
         if (filtered.isNotEmpty()) return filtered.toSet()
-        if (all.size == 1) return all
+        // Single-display exception is keyed on gameDisplayIds — the field
+        // shouldSkipDisplay's foreground gate reads — NOT the collapsed `all`.
+        // A stale multi-display selection that capturableTargets collapsed to
+        // one fallback display is still multi-display: returning `all` here
+        // would capture the foregrounded app UI instead of no-op'ing.
+        if (gameDisplayIds.size <= 1) return all
         return emptySet()
     }
 
