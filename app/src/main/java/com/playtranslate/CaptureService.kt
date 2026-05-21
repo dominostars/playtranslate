@@ -17,6 +17,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.view.WindowManager
 import android.os.Binder
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -2127,15 +2128,29 @@ class CaptureService : Service() {
         enterForeground()
     }
 
-    /** startForeground with the correct service type(s). The mediaProjection
-     *  type is included exactly when [MediaProjectionController.hasConsent]
-     *  is currently true — single source of truth: there's no separate flag
-     *  to drift out of sync with the consent token. The catch handles the
-     *  platform rejecting the MP type by invalidating the consent that
-     *  claimed it, so a subsequent ensureProjection short-circuits on null
-     *  resultData (no doomed getMediaProjection) and the user re-prompts on
-     *  the next capture attempt. */
+    /** startForeground with the correct service type(s).
+     *
+     *  Pre-34: foreground-service types are declarative-only — no per-type
+     *  permission enforcement, no mediaProjection token rule — so the 2-arg
+     *  call (which applies the manifest-declared type) is all that's needed.
+     *  It is also the exact call v2.2.0 shipped, field-proven across OEMs at
+     *  minSdk 30; the explicit 3-arg + specialUse-int form below is new on
+     *  this branch, so pre-34 deliberately stays on the proven path.
+     *
+     *  API 34+: the type must be passed explicitly, and must include the
+     *  mediaProjection type exactly when [MediaProjectionController.hasConsent]
+     *  is true — single source of truth, no separate flag to drift out of
+     *  sync with the consent token. The catch handles the platform rejecting
+     *  the MP type by invalidating the consent that claimed it, so a
+     *  subsequent ensureProjection short-circuits on null resultData (no
+     *  doomed getMediaProjection) and the user re-prompts on the next
+     *  capture attempt. */
     private fun enterForeground() {
+        // Pre-34 has none of the FGS-type machinery below — one proven call.
+        if (Build.VERSION.SDK_INT < 34) {
+            startForeground(NOTIF_ID, buildNotification())
+            return
+        }
         if (mediaProjectionController.hasConsent) {
             try {
                 startForeground(
@@ -2147,8 +2162,8 @@ class CaptureService : Service() {
             } catch (e: Exception) {
                 // The mediaProjection FGS type is only valid while a live
                 // screen-record token is held. The token can lapse out from
-                // under us — single-use on API 34+, or the system stopping
-                // the projection — and the platform then rejects this start
+                // under us (single-use on API 34+, or the system stopping
+                // the projection) and the platform then rejects this start
                 // with a SecurityException. Invalidate the consent so
                 // hasConsent reflects reality; the SPECIAL_USE fall-through
                 // below still gets the service to the foreground.
@@ -2157,9 +2172,7 @@ class CaptureService : Service() {
                 mediaProjectionController.invalidateConsent()
             }
         }
-        // SPECIAL_USE only. The 2-arg startForeground would apply every
-        // manifest-declared type — including mediaProjection, which API 34+
-        // rejects with a SecurityException until a projection token is held.
+        // SPECIAL_USE only — the no-consent (or rejected-MP-type) state.
         startForeground(
             NOTIF_ID, buildNotification(),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
