@@ -10,6 +10,7 @@ import android.util.Log
 import android.view.WindowManager
 import com.playtranslate.R
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
 
@@ -17,16 +18,19 @@ private const val TAG = "TtsUiHelper"
 private const val GOOGLE_TTS_PACKAGE = "com.google.android.tts"
 
 /**
- * Where a TTS alert should be presented. The drag-lookup lens runs as an
- * accessibility overlay; the in-app lens (e.g. the translation result screen)
+ * Where a TTS alert should be presented. The drag-lookup lens runs as a
+ * capture overlay; the in-app lens (e.g. the translation result screen)
  * runs inside an Activity. [context] also serves engine and Prefs lookups.
  */
 sealed interface TtsAlertTarget {
     val context: Context
 
-    /** An accessibility-overlay surface (the drag-lookup lens). */
+    /** A capture-overlay surface (the drag-lookup lens). [overlayHost]
+     *  carries the active backend's window type so the alert shows on
+     *  MediaProjection as well as accessibility. */
     data class Overlay(
         override val context: Context,
+        val overlayHost: OverlayHost,
         val wm: WindowManager,
         val displayId: Int,
     ) : TtsAlertTarget
@@ -117,9 +121,9 @@ private fun showTtsAlert(
 ) {
     when (target) {
         is TtsAlertTarget.Overlay ->
-            OverlayAlert.Builder(target.context, target.wm, target.displayId)
-                .apply(configure)
-                .show()
+            OverlayAlert.Builder(
+                target.context, target.overlayHost, target.wm, target.displayId,
+            ).apply(configure).show()
         is TtsAlertTarget.InActivity ->
             OverlayAlert.Builder(target.activity)
                 .apply(configure)

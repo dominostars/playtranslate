@@ -23,6 +23,7 @@ import androidx.lifecycle.lifecycleScope
 import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.overlay.OverlayHost
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -529,11 +530,18 @@ fun showAnkiNotInstalledDialog(activity: Activity) {
         .showInActivity(activity)
 }
 
-/** Accessibility-overlay variant — for surfaces that aren't an Activity
- *  (e.g. the drag-lookup lens shown by [PlayTranslateAccessibilityService]). */
-fun showAnkiNotInstalledDialog(context: Context, wm: WindowManager, displayId: Int) {
-    configureAnkiNotInstalled(context, OverlayAlert.Builder(context, wm, displayId))
-        .show()
+/** Capture-overlay variant — for surfaces that aren't an Activity (e.g. the
+ *  drag-lookup lens). [overlayHost] carries the active backend's window type
+ *  so the alert shows on MediaProjection as well as accessibility. */
+fun showAnkiNotInstalledDialog(
+    context: Context,
+    overlayHost: OverlayHost,
+    wm: WindowManager,
+    displayId: Int,
+) {
+    configureAnkiNotInstalled(
+        context, OverlayAlert.Builder(context, overlayHost, wm, displayId),
+    ).show()
 }
 
 /**
@@ -553,18 +561,5 @@ fun showAnkiPermissionRationaleDialog(
     configureAnkiPermissionRationale(
         activity, OverlayAlert.Builder(activity), onCancel, onContinue,
     ).showInActivity(activity)
-}
-
-/** Accessibility-overlay variant — see the Activity overload above. */
-fun showAnkiPermissionRationaleDialog(
-    context: Context,
-    wm: WindowManager,
-    displayId: Int,
-    onCancel: (() -> Unit)? = null,
-    onContinue: () -> Unit,
-) {
-    configureAnkiPermissionRationale(
-        context, OverlayAlert.Builder(context, wm, displayId), onCancel, onContinue,
-    ).show()
 }
 

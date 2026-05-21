@@ -16,6 +16,7 @@ import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.displaySizePx
 import com.playtranslate.MainActivity
 import com.playtranslate.OcrManager
+import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.Prefs
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
@@ -42,7 +43,8 @@ class DragLookupController(
     private val context: Context,
     private val displayId: Int,
     private val popup: WordLookupPopup,
-    private val magnifier: MagnifierLens
+    private val magnifier: MagnifierLens,
+    private val overlayHost: OverlayHost,
 ) {
     /** Fires once per drag, on the main thread, when no popup will surface
      *  from this drag (release with no OCR / no hit / async lookup miss) or
@@ -154,7 +156,7 @@ class DragLookupController(
         speakChip = LensSpeakChip(
             magnifier,
             scope,
-            TtsAlertTarget.Overlay(magnifier.rawCtx, magnifier.wm, displayId),
+            TtsAlertTarget.Overlay(magnifier.rawCtx, overlayHost, magnifier.wm, displayId),
         ) {
             lastWord?.let { LensSpeakChip.Request(it, Prefs(popup.ctx).sourceLangId) }
         }
@@ -1354,10 +1356,11 @@ class DragLookupController(
 
         val ankiManager = AnkiManager(context)
         if (!ankiManager.isAnkiDroidInstalled()) {
-            // Service context — no Activity to attach to, so route the
-            // alert through the accessibility-overlay path on the lens's
-            // display.
-            showAnkiNotInstalledDialog(magnifier.rawCtx, magnifier.wm, displayId)
+            // Service context — no Activity to attach to, so route the alert
+            // through the capture-overlay path on the lens's display.
+            showAnkiNotInstalledDialog(
+                magnifier.rawCtx, overlayHost, magnifier.wm, displayId,
+            )
             return
         }
 

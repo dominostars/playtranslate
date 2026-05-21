@@ -825,7 +825,8 @@ class OverlayUiController(
             context = context,
             displayId = displayId,
             popup = popup,
-            magnifier = magnifier
+            magnifier = magnifier,
+            overlayHost = overlayHost,
         )
         // Track whether live mode / region overlay were active when drag started
         var liveWasPausedForPopup = false
@@ -1222,8 +1223,9 @@ class OverlayUiController(
         val dangerColor = themed.themeColor(R.attr.ptDanger)
         val appName = context.getString(R.string.app_name)
 
-        val builder = OverlayAlert.Builder(displayCtx, overlayWm, display.displayId)
-            .setOverlayHost(overlayHost)
+        val builder = OverlayAlert.Builder(
+            displayCtx, overlayHost, overlayWm, display.displayId,
+        )
 
         // MediaProjection mode, or single-screen: the floating icon's
         // "Turn Off" turns PlayTranslate off (turned back on from the app), so

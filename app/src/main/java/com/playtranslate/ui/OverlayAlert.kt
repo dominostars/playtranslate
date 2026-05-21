@@ -16,17 +16,16 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
-import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.R
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
 
 /**
- * A reusable alert dialog that can be attached either to a WindowManager
- * (as an overlay window — see [Builder.setOverlayHost]) or to an Activity's
- * decorView. Matches the visual style of the floating icon hide confirmation
- * dialog.
+ * A reusable alert dialog that can be attached either to a capture-overlay
+ * window (via the (context, overlayHost, wm, displayId) [Builder] constructor
+ * + [Builder.show]) or to an Activity's decorView (via [Builder.showInActivity]).
+ * Matches the visual style of the floating icon hide confirmation dialog.
  */
 class OverlayAlert private constructor(
     rawContext: Context,
@@ -55,26 +54,31 @@ class OverlayAlert private constructor(
          *  tap — both are "user dismissed without taking an action." */
         private var onCancel: (() -> Unit)? = null
 
-        constructor(context: Context, wm: WindowManager, displayId: Int) : this(context) {
+        /** Overlay-window path. [overlayHost] stamps the window with the
+         *  active capture backend's type (TYPE_ACCESSIBILITY_OVERLAY or
+         *  TYPE_APPLICATION_OVERLAY), so the alert displays on either
+         *  backend — pass the host owned by the surface presenting the
+         *  alert. Finish with [show]. The activity path uses the primary
+         *  [Builder] constructor + [showInActivity] instead. */
+        constructor(
+            context: Context,
+            overlayHost: OverlayHost,
+            wm: WindowManager,
+            displayId: Int,
+        ) : this(context) {
+            this.overlayHost = overlayHost
             this.wm = wm
             this.displayId = displayId
         }
 
-        private var wm: WindowManager? = null
-        /** Set by the (context, wm, displayId) constructor for the
-         *  accessibility-overlay path. Unused on the activity path. */
-        private var displayId: Int = android.view.Display.DEFAULT_DISPLAY
+        /** Set together by the overlay-window constructor — both null on the
+         *  activity path. [show] requires them; [showInActivity] ignores them. */
         private var overlayHost: OverlayHost? = null
+        private var wm: WindowManager? = null
+        private var displayId: Int = android.view.Display.DEFAULT_DISPLAY
 
         fun setTitle(title: String) = apply { this.title = title }
         fun setMessage(message: String) = apply { this.message = message }
-
-        /** Route the alert window through [host] so it carries the active
-         *  capture backend's window type. Required on the MediaProjection
-         *  backend: its CaptureService cannot add a TYPE_ACCESSIBILITY_OVERLAY,
-         *  so without a host [show] would fail to display anything. Absent a
-         *  host, [show] falls back to the accessibility-service overlay path. */
-        fun setOverlayHost(host: OverlayHost) = apply { this.overlayHost = host }
 
         /** Suppresses the circular app-icon header above the title. Use for
          *  utility popups where branding is noise (e.g. settings-scoped
@@ -101,15 +105,17 @@ class OverlayAlert private constructor(
             ))
         }
 
-        /** Shows the alert as an overlay window — through [setOverlayHost]'s
-         *  host when set, else the accessibility-service overlay path. */
+        /** Shows the alert as a capture-overlay window through the host
+         *  supplied to the overlay-window constructor. */
         fun show(): OverlayAlert {
-            val alert = OverlayAlert(context, title, message, buttons, showIcon, onCancel)
-            alert.showAsOverlay(
-                wm ?: error("OverlayAlert.Builder.show() requires a WindowManager"),
-                displayId,
-                overlayHost,
+            val host = overlayHost ?: error(
+                "OverlayAlert.show() requires the " +
+                    "(context, overlayHost, wm, displayId) constructor"
             )
+            val alert = OverlayAlert(context, title, message, buttons, showIcon, onCancel)
+            // wm is non-null whenever overlayHost is — both are set together
+            // by the overlay-window constructor.
+            alert.showAsOverlay(host, wm!!, displayId)
             return alert
         }
 
@@ -272,8 +278,10 @@ class OverlayAlert private constructor(
         return scrimView
     }
 
-    private fun showAsOverlay(wm: WindowManager, displayId: Int, overlayHost: OverlayHost?) {
+    private fun showAsOverlay(overlayHost: OverlayHost, wm: WindowManager, displayId: Int) {
         val scrimView = buildScrim()
+        // addOverlayWindow re-stamps params.type with the active backend's
+        // window type, so the type given here is just a placeholder.
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -281,19 +289,9 @@ class OverlayAlert private constructor(
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
-        // OverlayHost stamps params.type with the active backend's window
-        // type; without one, fall back to the accessibility-service path.
-        val added = if (overlayHost != null) {
-            overlayHost.addOverlayWindow(scrimView, wm, params, displayId)
-        } else {
-            PlayTranslateAccessibilityService.addOverlay(scrimView, wm, params, displayId)
-        }
-        if (!added) return
+        if (!overlayHost.addOverlayWindow(scrimView, wm, params, displayId)) return
         scrim = scrimView
-        dismissAction = {
-            if (overlayHost != null) overlayHost.removeOverlayWindow(scrimView)
-            else PlayTranslateAccessibilityService.removeOverlay(scrimView, wm)
-        }
+        dismissAction = { overlayHost.removeOverlayWindow(scrimView) }
     }
 
     private fun showInActivity(activity: Activity) {
