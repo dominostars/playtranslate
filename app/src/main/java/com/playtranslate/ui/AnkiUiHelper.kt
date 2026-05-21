@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -351,7 +352,13 @@ fun Fragment.addAnkiAudioSection(
 
     // -- Audio row: preview chip + label + include switch --
     val audioRow = inflater.inflate(R.layout.settings_row_switch, card, false)
-    audioRow.findViewById<TextView>(R.id.tvRowTitle).text = rowLabel
+    audioRow.findViewById<TextView>(R.id.tvRowTitle).apply {
+        text = rowLabel
+        // The label is the actual word/sentence being spoken — keep it to
+        // one line and let Android ellipsize a long sentence.
+        maxLines = 1
+        ellipsize = TextUtils.TruncateAt.END
+    }
     val switch = audioRow.findViewById<MaterialSwitch>(R.id.switchRowToggle)
     val chip = AnkiAudioPreviewChip(this, lang, previewText)
     // Seed before wiring the listener so seeding doesn't write the pref.

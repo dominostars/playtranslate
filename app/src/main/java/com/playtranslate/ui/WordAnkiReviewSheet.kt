@@ -401,7 +401,7 @@ class WordAnkiReviewSheet : DialogFragment() {
         wordAudioHandle = addAnkiAudioSection(
             parent = parent,
             lang = sourceLangId,
-            rowLabel = getString(R.string.anki_content_word_audio),
+            rowLabel = word,
             previewText = { word },
             initialChecked = Prefs(ctx).ankiWordAudioEnabled,
             onCheckedChange = { Prefs(ctx).ankiWordAudioEnabled = it },

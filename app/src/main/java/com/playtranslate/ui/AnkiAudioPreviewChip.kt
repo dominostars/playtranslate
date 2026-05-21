@@ -23,8 +23,8 @@ import kotlinx.coroutines.launch
 /**
  * The preview chip at the start of an Audio-section row — a bordered circle
  * that plays [previewText] aloud and reflects the request lifecycle:
- *  - idle:    speaker icon, tinted accent when the include switch is on,
- *             muted when it is off
+ *  - idle:    speaker icon and ring, tinted accent when the include
+ *             switch is on, muted when it is off
  *  - loading: a small ring spinner (the widget the magnifier lens uses)
  *  - playing: a pause icon; tapping it stops playback
  * Playback returns to idle when it finishes, errors, or is stopped.
@@ -66,12 +66,17 @@ class AnkiAudioPreviewChip(
         layoutParams = FrameLayout.LayoutParams(dp(16), dp(16), Gravity.CENTER)
         visibility = View.GONE
     }
+    private val strokeWidthPx = dp(1).coerceAtLeast(1)
+
+    /** The chip's ring. Held so [render] can recolour the stroke alongside
+     *  the icon — accent when active, muted when the switch is off. */
+    private val circleBg = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(Color.TRANSPARENT)
+        setStroke(strokeWidthPx, muted)
+    }
     private val circle = FrameLayout(ctx).apply {
-        background = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(Color.TRANSPARENT)
-            setStroke(dp(1).coerceAtLeast(1), muted)
-        }
+        background = circleBg
         // START so the circle sits flush with the row's content edge
         // rather than indented by the tap target's slack.
         layoutParams = FrameLayout.LayoutParams(
@@ -164,13 +169,17 @@ class AnkiAudioPreviewChip(
     }
 
     private fun render() {
+        // Ring and icon share one colour: accent while active (loading,
+        // playing, or idle with the switch on), muted only when idle with
+        // the switch off.
+        val color = if (state == State.IDLE && !switchOn) muted else accent
+        circleBg.setStroke(strokeWidthPx, color)
         when (state) {
             State.IDLE -> {
                 spinner.visibility = View.GONE
                 icon.visibility = View.VISIBLE
                 icon.setImageResource(R.drawable.ic_lens_speak)
-                icon.imageTintList =
-                    ColorStateList.valueOf(if (switchOn) accent else muted)
+                icon.imageTintList = ColorStateList.valueOf(color)
             }
             State.LOADING -> {
                 icon.visibility = View.GONE
@@ -180,7 +189,7 @@ class AnkiAudioPreviewChip(
                 spinner.visibility = View.GONE
                 icon.visibility = View.VISIBLE
                 icon.setImageResource(R.drawable.ic_pause)
-                icon.imageTintList = ColorStateList.valueOf(accent)
+                icon.imageTintList = ColorStateList.valueOf(color)
             }
         }
     }

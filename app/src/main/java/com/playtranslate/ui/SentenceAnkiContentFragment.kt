@@ -169,7 +169,7 @@ class SentenceAnkiContentFragment : Fragment() {
         audioHandle = addAnkiAudioSection(
             parent = root,
             lang = lang,
-            rowLabel = getString(R.string.anki_content_sentence_audio),
+            rowLabel = original,
             previewText = { etOriginal.text.toString() },
             initialChecked = prefs.ankiSentenceAudioEnabled,
             onCheckedChange = { prefs.ankiSentenceAudioEnabled = it },
