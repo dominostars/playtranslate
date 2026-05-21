@@ -201,9 +201,9 @@
     <string name="btn_continue">Continue</string>
     <string name="anki_permission_denied">Permission denied — grant it in AnkiDroid settings</string>
     <string name="anki_no_deck_selected">No decks found in AnkiDroid</string>
-    <string name="anki_added">Added to Anki!</string>
     <string name="anki_added_no_audio">Added to Anki (audio unavailable)</string>
-    <string name="anki_failed">Failed to add card to Anki</string>
+    <string name="anki_send_failed_title">Couldn\'t add card</string>
+    <string name="anki_send_failed_message">AnkiDroid didn\'t accept the card. Make sure AnkiDroid is running, then try again.</string>
     <string name="btn_add_to_anki">Add to Anki</string>
     <string name="btn_remove_photo">Remove</string>
     <string name="label_screenshot">Screenshot</string>

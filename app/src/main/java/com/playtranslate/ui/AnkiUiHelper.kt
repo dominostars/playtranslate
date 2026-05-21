@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -15,8 +16,10 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.Spinner
 import android.widget.TextView
+import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.materialswitch.MaterialSwitch
@@ -670,5 +673,76 @@ fun showAnkiPermissionRationaleDialog(
     configureAnkiPermissionRationale(
         activity, OverlayAlert.Builder(activity), onCancel, onContinue,
     ).showInActivity(activity)
+}
+
+/**
+ * Drives an Anki review sheet's save button through a send. The idle
+ * button (icon + label) is swapped for a centred spinner while the send
+ * runs, and the button is disabled so it can't fire twice; [setLoading]
+ * with `false` restores it. A successful send dismisses the sheet, so the
+ * restore path is only used on failure. [button] is the save FrameLayout
+ * from either review-sheet layout — its first (and only) child is the
+ * icon/label content the spinner stands in for.
+ */
+class AnkiSendButton(private val button: FrameLayout) {
+    private val content: View = button.getChildAt(0)
+    private val spinner: ProgressBar = ProgressBar(button.context).apply {
+        isIndeterminate = true
+        // The button fill is the accent colour, so the spinner takes the
+        // on-accent colour — same as the icon and label it replaces.
+        indeterminateTintList =
+            ColorStateList.valueOf(button.context.themeColor(R.attr.ptAccentOn))
+        val size = (28 * button.resources.displayMetrics.density).toInt()
+        layoutParams = FrameLayout.LayoutParams(size, size, Gravity.CENTER)
+        visibility = View.GONE
+    }
+
+    init { button.addView(spinner) }
+
+    /** Swap the button to its spinner and block taps; pass `false` to
+     *  restore the icon + label. The content is hidden with INVISIBLE so
+     *  the button keeps its size and nothing reflows. */
+    fun setLoading(loading: Boolean) {
+        button.isEnabled = !loading
+        content.visibility = if (loading) View.INVISIBLE else View.VISIBLE
+        spinner.visibility = if (loading) View.VISIBLE else View.GONE
+    }
+}
+
+/**
+ * Applies an [AnkiSendResult] to a review sheet's UI:
+ *  - [AnkiSendResult.Success] runs [onSuccess] — the caller dismisses the
+ *    sheet (and signals any fragment result).
+ *  - [AnkiSendResult.Failed] shows the error in an [OverlayAlert] layered
+ *    over the sheet, then runs [onRestore] to hand the save button back.
+ *  - [AnkiSendResult.NeedsMapping] just runs [onRestore]: the dispatcher
+ *    has already opened the field-mapping dialog, so no alert is shown.
+ *
+ * The alert attaches to the sheet's own dialog window (via
+ * [OverlayAlert.Builder.showInDialog]) so it layers above the sheet.
+ */
+fun DialogFragment.applyAnkiSendResult(
+    result: AnkiSendResult,
+    onSuccess: () -> Unit,
+    onRestore: () -> Unit,
+) {
+    when (result) {
+        is AnkiSendResult.Success -> onSuccess()
+        is AnkiSendResult.Failed -> {
+            val ctx = requireContext()
+            OverlayAlert.Builder(ctx)
+                .hideIcon()
+                .setTitle(getString(R.string.anki_send_failed_title))
+                .setMessage(getString(result.messageRes))
+                .addButton(
+                    getString(android.R.string.ok),
+                    ctx.themeColor(R.attr.ptAccent),
+                    ctx.themeColor(R.attr.ptAccentOn),
+                ) {}
+                .showInDialog(requireDialog())
+            onRestore()
+        }
+        AnkiSendResult.NeedsMapping -> onRestore()
+    }
 }
 

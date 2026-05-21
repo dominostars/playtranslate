@@ -1,6 +1,7 @@
 package com.playtranslate.ui
 
 import android.app.Activity
+import android.app.Dialog
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -123,6 +124,16 @@ class OverlayAlert private constructor(
         fun showInActivity(activity: Activity): OverlayAlert {
             val alert = OverlayAlert(activity, title, message, buttons, showIcon, onCancel)
             alert.showInActivity(activity)
+            return alert
+        }
+
+        /** Shows attached to the decorView of [dialog]'s own window. Use
+         *  from a DialogFragment so the alert layers above the dialog;
+         *  [showInActivity] would attach to the Activity window beneath
+         *  the dialog, where the alert would stay hidden. */
+        fun showInDialog(dialog: Dialog): OverlayAlert {
+            val alert = OverlayAlert(context, title, message, buttons, showIcon, onCancel)
+            alert.showInDialog(dialog)
             return alert
         }
     }
@@ -295,8 +306,18 @@ class OverlayAlert private constructor(
     }
 
     private fun showInActivity(activity: Activity) {
+        attachToDecor(activity.window.decorView as ViewGroup)
+    }
+
+    /** Attaches to the decorView of [dialog]'s window; a no-op if the
+     *  dialog has already lost its window. */
+    private fun showInDialog(dialog: Dialog) {
+        val decor = dialog.window?.decorView as? ViewGroup ?: return
+        attachToDecor(decor)
+    }
+
+    private fun attachToDecor(decor: ViewGroup) {
         val scrimView = buildScrim()
-        val decor = activity.window.decorView as ViewGroup
         val lp = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT

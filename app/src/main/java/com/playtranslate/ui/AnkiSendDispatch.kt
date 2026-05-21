@@ -2,6 +2,7 @@ package com.playtranslate.ui
 
 import android.util.Log
 import android.widget.Toast
+import androidx.annotation.StringRes
 import androidx.fragment.app.Fragment
 import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
@@ -40,17 +41,19 @@ private sealed interface ModelTarget {
  * Toast / dismiss behavior.
  */
 sealed interface AnkiSendResult {
-    /** addNote succeeded — callers Toast success and dismiss.
+    /** addNote succeeded — the caller dismisses the sheet.
      *  [audioDropped] is true when audio was requested (a non-null
      *  audioPath) but its media upload failed, so the note was added
      *  without the `[sound:]` tag; callers surface that to the user. */
     data class Success(val audioDropped: Boolean = false) : AnkiSendResult
-    /** addNote attempted but the content provider rejected it — Toast
-     *  generic failure. */
-    data object Failed : AnkiSendResult
+    /** The send failed — the caller shows [messageRes] in an error
+     *  alert and restores the save button. [messageRes] names the cause
+     *  where the dispatcher knows it, and is generic otherwise. */
+    data class Failed(@StringRes val messageRes: Int) : AnkiSendResult
     /** Dispatcher diverted to the mapping dialog because the user's
      *  picked card type had no configured mapping. A Toast was already
-     *  shown by the dispatcher; callers should NOT show another. */
+     *  shown by the dispatcher; callers should NOT show another, and
+     *  just restore the save button. */
     data object NeedsMapping : AnkiSendResult
 }
 
@@ -115,9 +118,7 @@ suspend fun Fragment.dispatchSendToAnki(
             // "success" toast. The healing pass at
             // AnkiUiHelper.applyHealing applies the same guard.
             if (models.isEmpty()) {
-                Toast.makeText(ctx, R.string.anki_models_unavailable,
-                    Toast.LENGTH_LONG).show()
-                return AnkiSendResult.Failed
+                return AnkiSendResult.Failed(R.string.anki_models_unavailable)
             }
             val picked = models.firstOrNull { it.id == pickedId }
             if (picked == null) {
@@ -155,7 +156,7 @@ suspend fun Fragment.dispatchSendToAnki(
     val (modelId, fields) = when (target) {
         ModelTarget.Legacy -> {
             val v004 = withContext(Dispatchers.IO) { anki.getOrCreateModel() }
-                ?: return AnkiSendResult.Failed
+                ?: return AnkiSendResult.Failed(R.string.anki_send_failed_message)
             v004 to listOf(legacyFront(), legacyBack(imageFilename, audioFilename))
         }
         is ModelTarget.Basic -> {
@@ -199,7 +200,7 @@ suspend fun Fragment.dispatchSendToAnki(
     }
 
     val ok = withContext(Dispatchers.IO) { anki.addNote(modelId, deckId, fields) }
-    if (!ok) return AnkiSendResult.Failed
+    if (!ok) return AnkiSendResult.Failed(R.string.anki_send_failed_message)
     // The note was added. Flag the partial case where audio was requested
     // but its media upload failed (addMediaFromFile returned null) — the
     // card carries no [sound:] tag, and the caller should say so.

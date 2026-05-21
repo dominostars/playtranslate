@@ -27,6 +27,9 @@ class AnkiReviewBottomSheet : DialogFragment() {
 
     private var deckSubtitleView: TextView? = null
 
+    /** Controller for the Save button's idle ↔ loading swap. */
+    private var sendButton: AnkiSendButton? = null
+
     override fun getTheme(): Int = fullScreenDialogTheme(requireContext())
 
     override fun onCreateDialog(savedInstanceState: Bundle?): android.app.Dialog {
@@ -41,6 +44,7 @@ class AnkiReviewBottomSheet : DialogFragment() {
 
     override fun onDestroyView() {
         deckSubtitleView = null
+        sendButton = null
         super.onDestroyView()
     }
 
@@ -102,16 +106,17 @@ class AnkiReviewBottomSheet : DialogFragment() {
                 .commitNow()
         }
 
-        view.findViewById<View>(R.id.btnSendToAnki).setOnClickListener { btn ->
+        val sendBtn = view.findViewById<FrameLayout>(R.id.btnSendToAnki)
+        sendButton = AnkiSendButton(sendBtn)
+        sendBtn.setOnClickListener {
             val deckId = Prefs(requireContext()).ankiDeckId
             if (deckId < 0L) {
                 Toast.makeText(requireContext(), getString(R.string.anki_no_deck_selected), Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            btn.isEnabled = false
+            sendButton?.setLoading(true)
             viewLifecycleOwner.lifecycleScope.launch {
                 sendToAnki(deckId)
-                btn.isEnabled = true
             }
         }
     }
@@ -131,7 +136,7 @@ class AnkiReviewBottomSheet : DialogFragment() {
         childFragmentManager.findFragmentByTag(TAG_CONTENT) as? SentenceAnkiContentFragment
 
     private suspend fun sendToAnki(deckId: Long) {
-        val content = getContentFragment() ?: return
+        val content = getContentFragment() ?: run { sendButton?.setLoading(false); return }
         val data = content.getCardData()
         // Synthesize sentence audio up front when the switch is on; the
         // temp WAV is uploaded by the dispatcher and deleted once sent.
@@ -166,20 +171,20 @@ class AnkiReviewBottomSheet : DialogFragment() {
         } finally {
             audioFile?.delete()
         }
-        when (result) {
-            is AnkiSendResult.Success -> {
-                val msg = if (wantAudio && (audioFile == null || result.audioDropped))
-                              R.string.anki_added_no_audio
-                          else R.string.anki_added
-                Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
+        val audioMissing = wantAudio && (audioFile == null ||
+            (result as? AnkiSendResult.Success)?.audioDropped == true)
+        applyAnkiSendResult(
+            result,
+            onSuccess = {
+                if (audioMissing) {
+                    Toast.makeText(requireContext(), R.string.anki_added_no_audio,
+                        Toast.LENGTH_SHORT).show()
+                }
                 parentFragmentManager.setFragmentResult(RESULT_ANKI_ADDED, bundleOf())
                 dismiss()
-            }
-            AnkiSendResult.Failed -> {
-                Toast.makeText(requireContext(), R.string.anki_failed, Toast.LENGTH_SHORT).show()
-            }
-            AnkiSendResult.NeedsMapping -> { /* dispatcher already Toasted + opened dialog */ }
-        }
+            },
+            onRestore = { sendButton?.setLoading(false) },
+        )
     }
 
     companion object {
