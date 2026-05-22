@@ -40,11 +40,10 @@ import com.playtranslate.R
  *  | Slide / bounce    | 3000 – 3560      | Carrier eases into the wall, squashes, rebounds, and settles; crossfades from app-icon art to the compact nub between 3160 – 3320 |
  *  | Settled           | 3560+            | Same pose as [FloatingOverlayIcon]'s compact dock   |
  *
- *  Touches: the intro window is touchable and absorbs every gesture in its
- *  footprint without acting on it (see [onTouchEvent]). The underlying
- *  [FloatingOverlayIcon] sits below in z-order, so any tap on the visible
- *  carrier is consumed here and the icon's click handlers never fire while
- *  the intro is playing.
+ *  Touches: a touch anywhere in the intro window resolves the animation
+ *  early and the whole gesture is forwarded to the underlying
+ *  [FloatingOverlayIcon] — a tap opens the floating menu, a hold or drag
+ *  starts the magnifying search (see [onTouchEvent]).
  *
  * The view is symmetric for [FloatingOverlayIcon.Edge.LEFT] and
  * [Edge.RIGHT] — the same keyframes are mirrored horizontally for LEFT.
@@ -56,13 +55,25 @@ class SonarPingIntroView(
      *  the intro window's x/y can be recomputed against the new screen
      *  dimensions without rebuilding the view. */
     val edge: FloatingOverlayIcon.Edge,
+    /** The real floating icon this intro plays over. A touch on the intro
+     *  resolves the animation early and is forwarded to this icon so the
+     *  gesture acts on it directly — see [onTouchEvent]. */
+    private val icon: FloatingOverlayIcon,
 ) : View(context) {
 
     /** Optional completion callback. Fired once on the main thread when the
-     *  full intro finishes (after the carrier settles at the dock pose). The
-     *  caller is responsible for removing this view's overlay window and
-     *  restoring the underlying [FloatingOverlayIcon] to `alpha = 1`. */
-    var onAnimationEnd: (() -> Unit)? = null
+     *  intro finishes — either the animation ran its full course, or a
+     *  touch resolved it early (see [onTouchEvent]). The caller removes this
+     *  view's overlay window and clears its bookkeeping. The underlying
+     *  [FloatingOverlayIcon] is back at `alpha = 1` by then — restored by
+     *  the caller on natural end, or by [resolveForTouch] on a touch. */
+    var onFinished: (() -> Unit)? = null
+
+    /** True once a touch has resolved the intro early: the animator is
+     *  cancelled and [onDraw] stops painting the carrier, so the real icon
+     *  — restored to `alpha = 1` and now owning the gesture — shows through
+     *  the (still-installed) intro window until the gesture ends. */
+    private var resolved = false
 
     private val density = resources.displayMetrics.density
     /** Radius of the floating icon's carrier circle (matches
@@ -141,7 +152,7 @@ class SonarPingIntroView(
             }
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
-                    onAnimationEnd?.invoke()
+                    onFinished?.invoke()
                 }
             })
             start()
@@ -154,18 +165,55 @@ class SonarPingIntroView(
         super.onDetachedFromWindow()
     }
 
-    /** Absorbs every touch in the intro window's bounds without acting on
-     *  it. The intro window is layered above the (alpha-0) FloatingOverlayIcon
-     *  in z-order, so taps on the visible carrier (or anywhere else in this
-     *  window's footprint) get consumed here and don't reach the icon's
-     *  click handlers — the icon is "touchable but inert" for the duration
-     *  of the intro. */
+    /** A touch on the still-playing intro resolves it at once and hands the
+     *  whole gesture to the real [icon]: a tap opens the floating menu, a
+     *  hold or drag starts the magnifying search — exactly as if the user
+     *  had grabbed the docked icon at the screen edge.
+     *
+     *  The intro window captured ACTION_DOWN, so the OS keeps delivering the
+     *  rest of the gesture here even once the finger leaves the window's
+     *  bounds; each event is forwarded straight to the icon's own
+     *  [FloatingOverlayIcon.onTouchEvent]. The icon reads screen-absolute
+     *  `rawX`/`rawY` and acts on its own window, so forwarding the events
+     *  verbatim drives it correctly. */
     @SuppressLint("ClickableViewAccessibility")
-    override fun onTouchEvent(event: MotionEvent): Boolean = true
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (!resolved) resolveForTouch()
+        icon.onTouchEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                icon.holdStartsDrag = false
+                onFinished?.invoke()
+            }
+        }
+        return true
+    }
+
+    /** Resolve the intro the instant it is touched: cancel the animation,
+     *  stop drawing the carrier, un-hide the real icon, and route a hold on
+     *  the forwarded gesture into the magnifying search. The intro window is
+     *  NOT removed here — it still owns the in-flight gesture and keeps
+     *  forwarding it; [onFinished] tears the window down on ACTION_UP /
+     *  ACTION_CANCEL. */
+    private fun resolveForTouch() {
+        resolved = true
+        // Drop the end-listener before cancelling: ValueAnimator.cancel()
+        // fires its onAnimationEnd listener synchronously, which would
+        // invoke onFinished and tear the window down mid-gesture. The intro
+        // fires onFinished itself once the gesture completes.
+        animator?.removeAllListeners()
+        animator?.cancel()
+        animator = null
+        icon.alpha = 1f
+        icon.holdStartsDrag = true
+        invalidate()
+    }
 
     // ── Drawing ──────────────────────────────────────────────────────────
 
     override fun onDraw(canvas: Canvas) {
+        // Resolved by a touch — the real icon now renders the carrier.
+        if (resolved) return
         val timeMs = progress * TOTAL_DURATION_MS
         val mirror = edge == FloatingOverlayIcon.Edge.LEFT
         val anchorX = if (mirror) anchorInsetPx else (width - anchorInsetPx)

@@ -185,6 +185,14 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     /** Called on every touch event (for dim controller reset). */
     var onAnyTouch: (() -> Unit)? = null
 
+    /** When true, a hold (long press without movement) begins the drag /
+     *  magnifying-search gesture instead of firing [onHoldStart]. Set by
+     *  [SonarPingIntroView] while it forwards a gesture from the intro
+     *  animation: the intro offers only "tap → menu" and "hold or drag →
+     *  search", so its forwarded holds route into the drag flow. The docked
+     *  icon leaves this false, keeping the hold-for-translation gesture. */
+    var holdStartsDrag = false
+
     var wm: WindowManager? = null
 
     /** The display this icon (and any sub-windows like the loading spinner)
@@ -249,8 +257,15 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     private val holdDelayMs = 400L
     private val holdRunnable = Runnable {
         if (!dragStartFired && totalMovement < tapThresholdPx) {
-            holdFired = true
-            onHoldStart?.invoke()
+            if (holdStartsDrag) {
+                // Forwarded intro gesture: a hold opens the magnifying
+                // search, not the hold-for-translation preview. Anchor the
+                // drag at the press point — the finger hasn't moved.
+                beginDrag(downRawX, downRawY)
+            } else {
+                holdFired = true
+                onHoldStart?.invoke()
+            }
         }
     }
     /** Current snapped edge — used to position icon on the visible half. */
@@ -354,6 +369,30 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         invalidate()
     }
 
+    /** Enters drag mode for a gesture anchored at (rawX, rawY): re-centres
+     *  the icon window on that point, flips to the ring + magnifying-glass
+     *  appearance, and fires [onDragStart] followed by an initial
+     *  [onDragMove]. Shared by the move-threshold path ([onTouchEvent]'s
+     *  ACTION_MOVE) and the hold-to-drag path ([holdRunnable]). */
+    private fun beginDrag(rawX: Float, rawY: Float) {
+        val p = params ?: return
+        // Centre the icon on the finger — the user may have grabbed it
+        // off-centre, or (for a forwarded intro gesture) pressed the
+        // carrier while it was animating inboard of the dock edge.
+        p.x = (rawX - viewHalf).toInt()
+        p.y = (rawY - viewHalf).toInt()
+        // Rebase so future moves are relative to this centred position.
+        downRawX = rawX
+        downRawY = rawY
+        downParamX = p.x
+        downParamY = p.y
+        try { wm?.updateViewLayout(this, p) } catch (_: Exception) {}
+        enterDragMode()
+        dragStartFired = true
+        post { onDragStart?.invoke() }
+        onDragMove?.invoke(rawX, rawY)
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         onAnyTouch?.invoke()
         parent?.requestDisallowInterceptTouchEvent(true)
@@ -393,7 +432,11 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                 p.y = (downParamY + dy).toInt()
                 try { wm?.updateViewLayout(this, p) } catch (_: Exception) {}
 
-                if (totalMovement >= tapThresholdPx) {
+                // Once a drag is under way every move feeds onDragMove —
+                // tapThresholdPx is only the *entry* gate, and totalMovement
+                // can dip back under it when the finger returns toward the
+                // start point.
+                if (dragStartFired || totalMovement >= tapThresholdPx) {
                     removeCallbacks(holdRunnable)
                     // If hold was active, cancel it and transition to drag
                     if (holdFired) {
@@ -401,23 +444,10 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                         onHoldCancel?.invoke()
                     }
                     if (!dragStartFired) {
-                        // Center the icon on the finger (user may have grabbed off-center)
-                        val rawX = event.rawX
-                        val rawY = event.rawY
-                        p.x = (rawX - viewHalf).toInt()
-                        p.y = (rawY - viewHalf).toInt()
-                        // Rebase so future moves are relative to this centered position
-                        downRawX = rawX
-                        downRawY = rawY
-                        downParamX = p.x
-                        downParamY = p.y
-                        try { wm?.updateViewLayout(this, p) } catch (_: Exception) {}
-
-                        enterDragMode()
-                        dragStartFired = true
-                        post { onDragStart?.invoke() }
+                        beginDrag(event.rawX, event.rawY)
+                    } else {
+                        onDragMove?.invoke(event.rawX, event.rawY)
                     }
-                    onDragMove?.invoke(event.rawX, event.rawY)
                 }
                 return true
             }

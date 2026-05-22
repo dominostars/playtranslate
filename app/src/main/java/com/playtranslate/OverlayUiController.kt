@@ -984,12 +984,11 @@ class OverlayUiController(
         // fresh intro from t=0.
         tearDownSonarIntroForDisplay(displayId)
 
-        val intro = SonarPingIntroView(displayCtx, edge)
-        // Touchable (no FLAG_NOT_TOUCHABLE): the intro window absorbs taps
-        // on the visible carrier so the underlying FloatingOverlayIcon
-        // doesn't get tap-fired while the user thinks they're tapping the
-        // animating intro. The view's onTouchEvent returns true, so taps
-        // are consumed silently — no action, just "yes, I saw that".
+        val intro = SonarPingIntroView(displayCtx, edge, icon)
+        // Touchable (no FLAG_NOT_TOUCHABLE): a touch on the intro resolves
+        // the animation early and the gesture is forwarded to the icon —
+        // a tap opens the floating menu, a hold or drag starts the
+        // magnifying search. See SonarPingIntroView.onTouchEvent.
         val params = WindowManager.LayoutParams(
             windowWidth, windowHeight,
             overlayHost.windowType,
@@ -1008,10 +1007,11 @@ class OverlayUiController(
         // restoring alpha at the end produces no visible seam.
         icon.alpha = 0f
 
-        // Each intro removes its own overlay window on natural end — the
-        // map slot is only nulled if it still points at THIS intro (a
-        // newer one for the same display would have replaced it).
-        intro.onAnimationEnd = {
+        // The intro removes its own overlay window when it finishes —
+        // whether the animation ran its course or a touch resolved it
+        // early. The map slot is only nulled if it still points at THIS
+        // intro (a newer one for the same display would have replaced it).
+        intro.onFinished = {
             icon.alpha = 1f
             overlayHost.removeOverlayWindow(intro)
             if (activeSonarIntros[displayId] === intro) {
@@ -1034,7 +1034,7 @@ class OverlayUiController(
      *  so it doesn't try to remove the already-removed window. */
     private fun tearDownSonarIntroForDisplay(displayId: Int) {
         val intro = activeSonarIntros.remove(displayId) ?: return
-        intro.onAnimationEnd = null
+        intro.onFinished = null
         overlayHost.removeOverlayWindow(intro)
     }
 
