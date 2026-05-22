@@ -125,6 +125,10 @@ class MagnifierLens(
     /** Tolerance for the lens overrunning the top of the screen before we
      *  flip it below the finger; matches the original feel. */
     private val topOverhangTolerancePx = lensH / 5
+    /** Extra slack on the flip threshold: the lens flips below the finger
+     *  32dp earlier — while the finger is still 32dp lower on the screen
+     *  than the geometric fit alone would require. */
+    private val flipBiasPx = dp(32f)
 
     private var lensView: LensView? = null
     private var params: WindowManager.LayoutParams? = null
@@ -244,12 +248,13 @@ class MagnifierLens(
      * line in the flipped case (otherwise "below" means below the line's top,
      * which lands on the line itself).
      *
-     * Flip decision: prefer above when the lens fits, fall back to below
-     * otherwise. In drag mode we tolerate a small overhang past the screen
-     * top because the user's finger is on-screen and they can see what
-     * happens; in activity-window mode there's a status bar to worry about,
-     * so we require the lens window — including the pill/chip overhang —
-     * to fully fit before staying above.
+     * Flip decision: prefer above when the lens fits with [flipBiasPx] of
+     * headroom to spare, fall back to below otherwise. In drag mode we
+     * tolerate a small overhang past the screen top because the user's
+     * finger is on-screen and they can see what happens; in activity-window
+     * mode there's a status bar to worry about, so we require the lens
+     * window — including the pill/chip overhang — to fully fit before
+     * staying above.
      */
     fun show(
         fingerX: Int,
@@ -283,7 +288,7 @@ class MagnifierLens(
         // chip's exact position isn't load-bearing).
         val flipThreshold =
             if (useActivityWindow) pillChipOverhangPx else -topOverhangTolerancePx
-        val flipped = aboveY < flipThreshold
+        val flipped = aboveY < flipThreshold + flipBiasPx
         view.setSourcePoint(fingerX.toFloat(), fingerY.toFloat(), screenW, screenH)
         view.setLensFlipped(flipped)
         view.visibility = View.VISIBLE
