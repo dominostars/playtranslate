@@ -1983,7 +1983,9 @@ class MainActivity :
         dismissDropdown()
         inDragMode = false
         if (selectedRegionIdx == -1) {
-            openAddCustomRegionFromDropdown()
+            // The dropdown's explicit "+ Add custom region" row always
+            // opens a blank new-region sheet — never edits the active one.
+            openAddCustomRegionFromDropdown(forceNewRegion = true)
             return
         }
         val changedSavedRegion = dropdownHighlightedRow != dropdownRegionOrder.lastIndex
@@ -2024,9 +2026,16 @@ class MainActivity :
      *  display the user tapped on, matching the icon's per-display
      *  intent. The first id in [targetIds] is also used as the editor
      *  render target and as the inner Translate Once override / capture
-     *  display. */
+     *  display.
+     *
+     *  [forceNewRegion] always opens a blank new-region sheet, skipping
+     *  the seed-from-active-region branch below. The dropdown's explicit
+     *  "+ Add custom region" row sets it; the floating menu's Capture
+     *  Region route leaves it false so it still edits the active custom
+     *  region in place. */
     private fun openAddCustomRegionFromDropdown(
         targetIds: List<Int> = dropdownTargetDisplayIds(),
+        forceNewRegion: Boolean = false,
     ) {
         CaptureBackendResolver.activeOverlayUi?.hideRegionOverlay()
         if (targetIds.isEmpty()) return
@@ -2045,7 +2054,7 @@ class MainActivity :
         val current = CaptureService.instance?.activeRegionForDisplay(targetDisplayId)
         AddCustomRegionSheet().also { sheet ->
             sheet.gameDisplay = gameDisplay
-            if (current != null && !current.isFullScreen) {
+            if (!forceNewRegion && current != null && !current.isFullScreen) {
                 if (captureService?.isOverrideForDisplay(targetDisplayId) == true) {
                     sheet.initRegion(current)
                 } else {
