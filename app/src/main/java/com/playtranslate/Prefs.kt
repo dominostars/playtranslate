@@ -554,6 +554,75 @@ class Prefs(context: Context) {
             (sp.getString(KEY_DEEPL_KEY, "") ?: "").isNotBlank()) {
             sp.edit().putBoolean(KEY_DEEPL_ENABLED, true).apply()
         }
+
+        // Back-fill TTS-audio field mappings for non-default card types
+        // configured before v2.2.0 — see [migrateAnkiAudioFieldMappings].
+        migrateAnkiAudioFieldMappings()
+    }
+
+    /**
+     * One-shot back-fill of TTS-audio field mappings for non-default
+     * card types configured before v2.2.0.
+     *
+     * Until v2.2.0, [com.playtranslate.ui.ContentSource] had no audio
+     * sources, so [com.playtranslate.ui.AnkiCardTypeMapper]'s Lapis /
+     * JPMN / Migaku defaults left those templates' audio fields unmapped
+     * and the field-mapping dialog persisted them as `NONE`. A user who
+     * wired up one of those card types on v2.1.0 therefore carries a
+     * saved mapping that pins every audio field to `NONE` — and because
+     * [getAnkiFieldMapping] is authoritative once non-empty, the v2.2.0
+     * audio defaults never get a chance to fill them in. The send path
+     * then silently drops the synthesized audio: no field carries the
+     * `[sound:]` tag, the media upload still succeeds, and nothing
+     * reports the loss.
+     *
+     * This walks every saved mapping and rewrites any audio field still
+     * sitting at `NONE` to its
+     * [com.playtranslate.ui.AnkiCardTypeMapper.AUDIO_FIELD_DEFAULTS]
+     * source. It touches only fields already present in the saved JSON,
+     * and only those still at `NONE` — a field the user (or a
+     * fresh-v2.2.0 default) already mapped is left as-is. Gated on
+     * [KEY_ANKI_AUDIO_MAPPING_MIGRATED] so it runs exactly once: after
+     * it, a `NONE` on an audio field is a deliberate choice to keep.
+     */
+    private fun migrateAnkiAudioFieldMappings() {
+        if (sp.contains(KEY_ANKI_AUDIO_MAPPING_MIGRATED)) return
+
+        val raw = sp.getString(KEY_ANKI_FIELD_MAPPINGS, null)
+        if (raw != null) {
+            try {
+                val root = JSONObject(raw)
+                val audioDefaults = com.playtranslate.ui.AnkiCardTypeMapper.AUDIO_FIELD_DEFAULTS
+                val noneName = com.playtranslate.ui.ContentSource.NONE.name
+                var changed = false
+                val modelIds = root.keys()
+                while (modelIds.hasNext()) {
+                    val obj = root.optJSONObject(modelIds.next()) ?: continue
+                    for ((fieldName, source) in audioDefaults) {
+                        // Back-fill only a field the pre-v2.2.0 dialog
+                        // left at NONE. An absent field — the model
+                        // gained the audio slot in AnkiDroid after the
+                        // mapping was saved — is left for the mapping
+                        // dialog; that is a schema change, not a
+                        // v2.1.0→v2.2.0 upgrade gap.
+                        if (obj.has(fieldName) && obj.optString(fieldName) == noneName) {
+                            obj.put(fieldName, source.name)
+                            changed = true
+                        }
+                    }
+                }
+                if (changed) {
+                    sp.edit().putString(KEY_ANKI_FIELD_MAPPINGS, root.toString()).apply()
+                }
+            } catch (_: Exception) {
+                // Corrupt JSON — getAnkiFieldMapping already degrades it
+                // to an empty mapping, so there is nothing to migrate.
+                // Fall through and set the marker rather than re-parsing
+                // a broken blob on every launch.
+            }
+        }
+
+        sp.edit().putBoolean(KEY_ANKI_AUDIO_MAPPING_MIGRATED, true).apply()
     }
 
     /** Hotkey combo for hold-to-show translations. Empty = not set. Format: keyCodes joined by "+". */
@@ -718,6 +787,7 @@ class Prefs(context: Context) {
         private const val KEY_ANKI_FIELD_MAPPINGS  = "anki_field_mappings"   // JSON
         private const val KEY_ANKI_WORD_AUDIO      = "anki_word_audio_enabled"
         private const val KEY_ANKI_SENTENCE_AUDIO  = "anki_sentence_audio_enabled"
+        private const val KEY_ANKI_AUDIO_MAPPING_MIGRATED = "anki_audio_mapping_migrated"
         private const val KEY_REGION_LIST    = "region_list"
         private const val KEY_DEEPL_KEY      = "deepl_api_key"
         const val KEY_DEEPL_ENABLED          = "deepl_enabled"

@@ -224,6 +224,25 @@ class AnkiCardTypeMapperTest {
         assertEquals(ContentSource.SENTENCE_FURIGANA, mapping["Sentence"])
     }
 
+    // ─── Audio field defaults ────────────────────────────────────────────
+    // AUDIO_FIELD_DEFAULTS is the field-name → source table the v2.1.0→
+    // v2.2.0 prefs migration (Prefs.migrateAnkiAudioFieldMappings) uses
+    // to back-fill audio fields. It is derived from the per-template
+    // defaults, so this pins the exact result of that derivation.
+
+    @Test fun `AUDIO_FIELD_DEFAULTS exposes every template audio field`() {
+        assertEquals(
+            mapOf(
+                "ExpressionAudio" to ContentSource.WORD_AUDIO,      // Lapis
+                "SentenceAudio"   to ContentSource.SENTENCE_AUDIO,  // Lapis + JPMN
+                "WordAudio"       to ContentSource.WORD_AUDIO,      // JPMN
+                "Word Audio"      to ContentSource.WORD_AUDIO,      // Migaku
+                "Sentence Audio"  to ContentSource.SENTENCE_AUDIO,  // Migaku
+            ),
+            AnkiCardTypeMapper.AUDIO_FIELD_DEFAULTS,
+        )
+    }
+
     // ─── Basic shape ─────────────────────────────────────────────────────
     // Basic-shape templates bypass the mapping system entirely — fields
     // are assembled at dispatch time from the current mode via

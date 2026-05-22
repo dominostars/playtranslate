@@ -132,6 +132,28 @@ object AnkiCardTypeMapper {
     )
 
     /**
+     * Every audio field PT auto-maps across the recognised mining
+     * templates, as one field-name → source table. Derived from the
+     * per-template defaults, so an audio slot added to [LAPIS_DEFAULTS],
+     * [JPMN_DEFAULTS], or [MIGAKU_DEFAULTS] later is reflected here for
+     * free.
+     *
+     * The field names are unambiguous across templates — each resolves
+     * to a single audio source, with no name colliding on a different
+     * source — so a name-keyed lookup needs no template re-detection.
+     *
+     * Consumed by [com.playtranslate.Prefs.migrateLegacyPrefs] to
+     * back-fill mappings configured before v2.2.0: until
+     * [ContentSource.WORD_AUDIO] / [ContentSource.SENTENCE_AUDIO]
+     * existed, these fields had no source to map to and the field-
+     * mapping dialog persisted them as [ContentSource.NONE].
+     */
+    val AUDIO_FIELD_DEFAULTS: Map<String, ContentSource> =
+        (LAPIS_DEFAULTS + JPMN_DEFAULTS + MIGAKU_DEFAULTS).filterValues {
+            it == ContentSource.WORD_AUDIO || it == ContentSource.SENTENCE_AUDIO
+        }
+
+    /**
      * Anki Basic-shape templates skip the per-field mapping system
      * entirely. Their schema is too simple to make a meaningful
      * mapping decision (Front = the question, Back = the answer),
