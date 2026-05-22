@@ -1233,7 +1233,12 @@ class OverlayUiController(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             overlayHost.windowType,
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            // Non-focusable: a focusable overlay becomes the window the system
+            // reads system-bar visibility from, dropping the game's immersive
+            // state and popping the nav pill. The menu is touch-only (no key
+            // or joystick handling) so it never needed focus.
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
 

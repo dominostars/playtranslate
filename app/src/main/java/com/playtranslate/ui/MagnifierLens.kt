@@ -14,6 +14,7 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.hardware.input.InputManager
 import android.os.SystemClock
 import android.text.TextUtils
 import android.util.TypedValue
@@ -188,10 +189,20 @@ class MagnifierLens(
     fun makeInteractive() {
         val view = lensView ?: return
         val p = params ?: return
-        p.flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+        // The interactive card needs window focus only to receive analog-
+        // stick motion for stick-nudge dismissal. With no game controller
+        // attached there is no stick, so stay non-focusable: that keeps the
+        // window from becoming the system-bar owner and showing the nav
+        // pill over an immersive game. Touch and outside-touch dismissal
+        // work either way — neither needs focus.
+        var flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
             WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+        if (!hasGameController()) {
+            flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        }
+        p.flags = flags
         try { wm.updateViewLayout(view, p) } catch (_: Exception) {}
         view.attachInteractiveListeners(onDismissRequest = { dismiss() })
         // Arrow x stays inside the card region — clamped so the triangle's
@@ -203,6 +214,24 @@ class MagnifierLens(
             cardLeftInView + cardW - arrowSizePx,
         )
         view.setArrowVisible(true, arrowRelX)
+    }
+
+    /** True when a physical game controller (gamepad / joystick) is
+     *  connected — including a handheld's built-in controls, which report
+     *  as a real SOURCE_GAMEPAD / SOURCE_JOYSTICK device. Gates whether the
+     *  interactive card takes window focus; see [makeInteractive]. */
+    private fun hasGameController(): Boolean {
+        val inputManager = rawCtx.getSystemService(InputManager::class.java)
+            ?: return false
+        for (id in inputManager.inputDeviceIds) {
+            val sources = inputManager.getInputDevice(id)?.sources ?: continue
+            if (sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
+                sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK
+            ) {
+                return true
+            }
+        }
+        return false
     }
 
     /** Window flags for the lens in its non-interactive (zoom) state. On the
