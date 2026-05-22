@@ -50,7 +50,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private val textColor: Int = context.themeColor(R.attr.ptText).takeIf { it != 0 } ?: Color.parseColor("#ECEFF1")
     private val mutedColor: Int = context.themeColor(R.attr.ptTextMuted).takeIf { it != 0 } ?: Color.parseColor("#9AA1A8")
     private val bgColor: Int = context.themeColor(R.attr.ptBg).takeIf { it != 0 } ?: Color.parseColor("#0B0D0E")
-    private val pauseColor: Int = context.themeColor(R.attr.ptDanger).takeIf { it != 0 } ?: Color.parseColor("#E05D5D")
+    private val dangerColor: Int = context.themeColor(R.attr.ptDanger).takeIf { it != 0 } ?: Color.parseColor("#E05D5D")
 
     var onHideIcon: (() -> Unit)? = null
     var onHideTemporary: (() -> Unit)? = null
@@ -78,6 +78,12 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     /** Current active capture region as fractional coordinates (top, bottom, left, right).
      *  null or (0,1,0,1) means full screen — no region highlight shown. */
     var activeRegion: RegionEntry? = null
+        set(value) {
+            field = value
+            // The drag-hint pill and the region preview are mutually exclusive.
+            instructionPill.visibility =
+                if (value != null && !value.isFullScreen) View.GONE else View.VISIBLE
+        }
     /** Label for the hint-text overlay mode ("Furigana", "Pinyin", etc.), or null for translation mode. */
     var hintModeLabel: String? = null
         set(value) { field = value; updateLiveButton() }
@@ -132,12 +138,12 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
 
     private val regionStrokePaint = Paint().apply {
         style = Paint.Style.STROKE
-        color = Color.argb(200, 100, 180, 255)
+        color = Color.argb(200, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor))
         strokeWidth = 2f * dp
         isAntiAlias = true
     }
     private val regionFillPaint = Paint().apply {
-        color = Color.argb(60, 100, 180, 255)
+        color = Color.argb(60, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor))
         style = Paint.Style.FILL
     }
     private val regionLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -160,7 +166,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
 
     private val menuCard: LinearLayout
     private val settingsBtn: View
-    private val instructionText: TextView
+    private val instructionPill: LinearLayout
     private val appName: String = context.getString(R.string.app_name)
 
     private lateinit var liveIcon: TextView
@@ -342,33 +348,41 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             ViewGroup.LayoutParams.WRAP_CONTENT
         ))
 
-        // Instruction text at top center
+        // Drag-hint pill, centered on screen
         val dividerColor = context.themeColor(R.attr.ptDivider)
-        instructionText = TextView(context).apply {
+        val instructionIcon = ImageView(context).apply {
+            setImageResource(R.drawable.ic_gesture_select)
+            imageTintList = android.content.res.ColorStateList.valueOf(textColor)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            layoutParams = LinearLayout.LayoutParams((20 * dp).toInt(), (20 * dp).toInt()).apply {
+                rightMargin = (8 * dp).toInt()
+            }
+        }
+        val instructionLabel = TextView(context).apply {
             text = "Drag finger to capture a specific area"
             setTextColor(textColor)
             textSize = 14f
-            gravity = Gravity.CENTER
+        }
+        instructionPill = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             setPadding(
-                (14 * dp).toInt(), (3 * dp).toInt(),
-                (14 * dp).toInt(), (9 * dp).toInt()
+                (18 * dp).toInt(), (10 * dp).toInt(),
+                (18 * dp).toInt(), (10 * dp).toInt()
             )
             background = GradientDrawable().apply {
                 setColor(Color.argb(0xD9, Color.red(bgColor), Color.green(bgColor), Color.blue(bgColor)))
                 setStroke((1 * dp).toInt(), dividerColor)
-                cornerRadii = floatArrayOf(
-                    0f, 0f,           // top-left
-                    0f, 0f,           // top-right
-                    24 * dp, 24 * dp, // bottom-right
-                    24 * dp, 24 * dp  // bottom-left
-                )
+                cornerRadius = 100 * dp
             }
+            addView(instructionIcon)
+            addView(instructionLabel)
         }
-        addView(instructionText, LayoutParams(
+        addView(instructionPill, LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            gravity = Gravity.CENTER
         })
 
         // Degraded translation warning pill at bottom-center (initially hidden)
@@ -435,7 +449,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             liveIcon.setTextColor(Color.parseColor("#E8E8E8"))
             liveIcon.setPadding(0, 0, 0, 0)
             liveLabel.text = "Pause Auto"
-            (liveBtn.background as? GradientDrawable)?.setColor(pauseColor)
+            (liveBtn.background as? GradientDrawable)?.setColor(dangerColor)
         } else {
             liveIcon.text = "\u25B6" // ▶ play
             liveIcon.textSize = 26f
@@ -513,7 +527,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 if (!isDragging && (dx * dx + dy * dy > touchSlop * touchSlop)) {
                     isDragging = true
                     menuCard.visibility = View.GONE
-                    instructionText.visibility = View.GONE
+                    instructionPill.visibility = View.GONE
                     clearRegionButton?.visibility = View.GONE
                 }
                 if (isDragging) {
@@ -678,7 +692,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         val btn = View(context).apply {
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(Color.argb(220, 200, 40, 40))
+                setColor(dangerColor)
             }
             setOnClickListener {
                 onClearRegion?.invoke()
