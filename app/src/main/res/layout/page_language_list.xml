@@ -1,15 +1,97 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Source/target language picker page. The search field, focus underline,
+     and "No results" label are PERSISTENT siblings of languageListRoot — the
+     filter rebuilds only languageListRoot per keystroke, so the EditText
+     keeps its focus + IME. -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
     <LinearLayout
-        android:id="@+id/languageListRoot"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingHorizontal="@dimen/pt_section_h_padding"
-        android:paddingTop="4dp"
-        android:paddingBottom="20dp" />
+        android:orientation="vertical">
+
+        <!-- Borderless inline filter (Variant B): magnifier + input + clear. -->
+        <LinearLayout
+            android:id="@+id/searchFieldBlock"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/pt_row_h_padding">
+
+            <ImageView
+                android:id="@+id/ivSearchIcon"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_lens_search"
+                android:importantForAccessibility="no" />
+
+            <EditText
+                android:id="@+id/etSearch"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="12dp"
+                android:background="@null"
+                android:maxLines="1"
+                android:inputType="text|textNoSuggestions"
+                android:imeOptions="actionSearch|flagNoFullscreen|flagNoExtractUi"
+                android:importantForAutofill="no"
+                android:hint="@string/lang_search_hint"
+                android:textColor="?attr/ptText"
+                android:textColorHint="?attr/ptTextHint"
+                android:textSize="16sp"
+                android:fontFamily="sans-serif-medium"
+                android:paddingVertical="0dp" />
+
+            <!-- Shown only when the field has text (toggled in code). -->
+            <ImageView
+                android:id="@+id/ivSearchClear"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:padding="11dp"
+                android:layout_marginEnd="-8dp"
+                android:src="@drawable/ic_close"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:visibility="gone"
+                android:contentDescription="@string/lang_search_clear_cd" />
+
+        </LinearLayout>
+
+        <!-- Hairline below the field; animates to ?attr/ptAccent on focus. -->
+        <View
+            android:id="@+id/searchUnderline"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/ptDivider" />
+
+        <!-- Empty-state label; shown (and languageListRoot hidden) when a
+             query matches nothing. -->
+        <TextView
+            android:id="@+id/tvNoResults"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_horizontal"
+            android:paddingTop="32dp"
+            android:paddingHorizontal="24dp"
+            android:text="@string/lang_search_no_results"
+            android:textSize="14sp"
+            android:textColor="?attr/ptTextMuted"
+            android:visibility="gone" />
+
+        <!-- The only subtree cleared/rebuilt on each filter change. -->
+        <LinearLayout
+            android:id="@+id/languageListRoot"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="@dimen/pt_section_h_padding"
+            android:paddingTop="4dp"
+            android:paddingBottom="20dp" />
+
+    </LinearLayout>
 
 </ScrollView>

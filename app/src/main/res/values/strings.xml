@@ -95,6 +95,17 @@
     <string name="lang_state_failed">Failed — retry</string>
     <string name="lang_size_mb">%1$d MB</string>
 
+    <!-- Language picker search/filter -->
+    <string name="lang_search_hint">Search languages</string>
+    <string name="lang_search_clear_cd">Clear search</string>
+    <string name="lang_search_no_results">No results</string>
+    <string name="lang_section_suggested">Suggested</string>
+    <string name="lang_section_all">All</string>
+    <plurals name="lang_search_match_count">
+        <item quantity="one">%d match</item>
+        <item quantity="other">%d matches</item>
+    </plurals>
+
     <!-- Pack-upgrade flow (launch-time staleness scan + Settings cell) -->
     <string name="pack_upgrade_title">Language Pack Updates Available</string>
     <string name="pack_upgrade_button_now">Update Now</string>

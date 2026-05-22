@@ -17,12 +17,33 @@
     android:clickable="true"
     android:focusable="true">
 
-    <TextView
-        android:id="@+id/tvRowTitle"
+    <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        style="@style/Text.PT.RowTitle" />
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tvRowTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:ellipsize="end"
+            style="@style/Text.PT.RowTitle" />
+
+        <!-- Endonym (language's own name); hidden in code when it equals
+             the title. -->
+        <TextView
+            android:id="@+id/tvRowEndonym"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:visibility="gone"
+            style="@style/Text.PT.RowSubtitle" />
+
+    </LinearLayout>
 
     <FrameLayout
         android:id="@+id/btnDelete"

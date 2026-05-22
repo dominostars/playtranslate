@@ -78,6 +78,7 @@
         <activity
             android:name=".ui.LanguageSetupActivity"
             android:exported="false"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.PlayTranslate" />
 
         <!-- DeepL API key entry sub-screen (launched from Settings → Translation Service). -->

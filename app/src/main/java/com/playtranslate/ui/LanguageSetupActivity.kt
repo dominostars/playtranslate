@@ -1,17 +1,31 @@
 package com.playtranslate.ui
 
+import android.animation.ArgbEvaluator
+import android.animation.ValueAnimator
 import android.app.Dialog
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.text.Editable
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.TextWatcher
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
 import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -44,6 +58,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.Collator
+import java.text.Normalizer
 import java.util.Locale
 
 class LanguageSetupActivity : AppCompatActivity() {
@@ -129,10 +144,6 @@ class LanguageSetupActivity : AppCompatActivity() {
     // ── Source list ───────────────────────────────────────────────────────
 
     private fun showSourceList() {
-        toolbar.title = getString(R.string.lang_translate_from)
-        val view = LayoutInflater.from(this).inflate(R.layout.page_language_list, contentFrame, false)
-        val root = view.findViewById<LinearLayout>(R.id.languageListRoot)
-
         // Sort by the system-locale display name so the order matches what
         // the user actually reads (and is meaningful in their locale's
         // collation rules — Collator handles accented chars / non-Latin scripts).
@@ -154,7 +165,8 @@ class LanguageSetupActivity : AppCompatActivity() {
             // sibling as non-deletable too — its trash just stays hidden.
             val sharesPackWithSelection = currentId != null && id.packId == currentId.packId
             return LangRow(
-                title = id.displayName(),
+                titleNorm = normalizeWithMap(id.displayName()),
+                endonymNorm = normalizeWithMap(id.displayName(id.locale)),
                 isSelected = isSelected,
                 canDelete = installed && !sharesPackWithSelection,
                 onRowClick = { onSourceSelected(id) },
@@ -168,12 +180,13 @@ class LanguageSetupActivity : AppCompatActivity() {
         // per user request.
         val suggested = allIds.filter { LanguagePackStore.isInstalled(this, it) }
 
-        if (suggested.isNotEmpty()) {
-            addLanguageSection(root, title = "Suggested", rows = suggested.map(::toRow))
-        }
-        addLanguageSection(root, title = "All", rows = allIds.map(::toRow))
-
-        contentFrame.addView(view)
+        bindLanguagePage(
+            LanguagePageData(
+                toolbarTitle = getString(R.string.lang_translate_from),
+                allRows = allIds.map(::toRow),
+                suggestedRows = suggested.map(::toRow),
+            )
+        )
     }
 
     private fun onSourceSelected(id: SourceLangId) {
@@ -243,10 +256,6 @@ class LanguageSetupActivity : AppCompatActivity() {
     // ── Target list ──────────────────────────────────────────────────────
 
     private fun showTargetList() {
-        toolbar.title = getString(R.string.lang_translate_to)
-        val view = LayoutInflater.from(this).inflate(R.layout.page_language_list, contentFrame, false)
-        val root = view.findViewById<LinearLayout>(R.id.languageListRoot)
-
         val collator = Collator.getInstance(Locale.getDefault())
         val allLangs = TranslateLanguage.getAllLanguages()
             .map { code -> code to targetDisplayName(code) }
@@ -259,7 +268,8 @@ class LanguageSetupActivity : AppCompatActivity() {
             val installed = code != "en" && LanguagePackStore.isTargetInstalled(this, code)
             val isSelected = code == currentTarget
             return LangRow(
-                title = displayName,
+                titleNorm = normalizeWithMap(displayName),
+                endonymNorm = normalizeWithMap(targetDisplayName(code, Locale(code))),
                 isSelected = isSelected,
                 canDelete = installed && !isSelected,
                 onRowClick = { onTargetSelected(code) },
@@ -275,12 +285,13 @@ class LanguageSetupActivity : AppCompatActivity() {
             code == deviceLang || LanguagePackStore.isTargetInstalled(this, code)
         }
 
-        if (suggested.isNotEmpty()) {
-            addLanguageSection(root, title = "Suggested", rows = suggested.map { (c, n) -> toRow(c, n) })
-        }
-        addLanguageSection(root, title = "All", rows = allLangs.map { (c, n) -> toRow(c, n) })
-
-        contentFrame.addView(view)
+        bindLanguagePage(
+            LanguagePageData(
+                toolbarTitle = getString(R.string.lang_translate_to),
+                allRows = allLangs.map { (c, n) -> toRow(c, n) },
+                suggestedRows = suggested.map { (c, n) -> toRow(c, n) },
+            )
+        )
     }
 
     private fun onTargetSelected(code: String) {
@@ -304,6 +315,139 @@ class LanguageSetupActivity : AppCompatActivity() {
                 finish()
             },
         )
+    }
+
+    // ── Shared list page: search field + filtered render ─────────────────
+
+    /** Pre-built, mode-agnostic data for one picker page. */
+    private class LanguagePageData(
+        val toolbarTitle: String,
+        /** Every language, once — the source the filter runs against. */
+        val allRows: List<LangRow>,
+        /** Subset shown under "Suggested" when the query is blank. */
+        val suggestedRows: List<LangRow>,
+    )
+
+    /** Inflates the picker page, wires the search field, and renders [data].
+     *  Shared by both modes so the search behaves identically for each. */
+    private fun bindLanguagePage(data: LanguagePageData) {
+        toolbar.title = data.toolbarTitle
+
+        val view = LayoutInflater.from(this)
+            .inflate(R.layout.page_language_list, contentFrame, false)
+        val listRoot = view.findViewById<LinearLayout>(R.id.languageListRoot)
+        val tvNoResults = view.findViewById<TextView>(R.id.tvNoResults)
+        val etSearch = view.findViewById<EditText>(R.id.etSearch)
+        val ivClear = view.findViewById<ImageView>(R.id.ivSearchClear)
+        val ivSearchIcon = view.findViewById<ImageView>(R.id.ivSearchIcon)
+        val underline = view.findViewById<View>(R.id.searchUnderline)
+
+        // The search/clear vectors carry baked-in path colours — tint at runtime.
+        ivClear.imageTintList = ColorStateList.valueOf(themeColor(R.attr.ptTextMuted))
+        ivSearchIcon.imageTintList = ColorStateList.valueOf(themeColor(R.attr.ptTextMuted))
+
+        // Rebuilds languageListRoot only — the search field is a sibling and
+        // survives, so focus + IME are kept. [rawQuery] is normalized here,
+        // the single normalization point.
+        fun renderList(rawQuery: String) {
+            listRoot.removeAllViews()
+            val q = normalize(rawQuery)
+            if (q.isEmpty()) {
+                tvNoResults.visibility = View.GONE
+                listRoot.visibility = View.VISIBLE
+                if (data.suggestedRows.isNotEmpty()) {
+                    addLanguageSection(
+                        listRoot,
+                        getString(R.string.lang_section_suggested),
+                        data.suggestedRows,
+                    )
+                }
+                addLanguageSection(
+                    listRoot,
+                    getString(R.string.lang_section_all),
+                    data.allRows,
+                )
+            } else {
+                val matches = data.allRows.filter { it.matches(q) }
+                if (matches.isEmpty()) {
+                    listRoot.visibility = View.GONE
+                    tvNoResults.visibility = View.VISIBLE
+                } else {
+                    tvNoResults.visibility = View.GONE
+                    listRoot.visibility = View.VISIBLE
+                    val header = resources.getQuantityString(
+                        R.plurals.lang_search_match_count, matches.size, matches.size,
+                    )
+                    addLanguageSection(listRoot, header, matches, q)
+                }
+            }
+        }
+
+        wireSearchField(etSearch, ivClear, ivSearchIcon, underline) { raw -> renderList(raw) }
+
+        renderList("")
+        contentFrame.addView(view)
+    }
+
+    /** Wires the inline search field: debounced live filter, clear button,
+     *  IME "search" action, and the focus-driven underline/icon colours. */
+    private fun wireSearchField(
+        etSearch: EditText,
+        ivClear: ImageView,
+        ivSearchIcon: ImageView,
+        underline: View,
+        onQueryChanged: (String) -> Unit,
+    ) {
+        val debounce = Handler(Looper.getMainLooper())
+        var pending: Runnable? = null
+
+        etSearch.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(s: Editable?) {
+                val text = s?.toString().orEmpty()
+                // Clear button tracks content immediately — not debounced.
+                ivClear.visibility = if (text.isEmpty()) View.GONE else View.VISIBLE
+                pending?.let { debounce.removeCallbacks(it) }
+                val runnable = Runnable { onQueryChanged(text) }
+                pending = runnable
+                debounce.postDelayed(runnable, 120L)
+            }
+        })
+
+        ivClear.setOnClickListener { etSearch.setText("") }
+
+        etSearch.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                // Filtering is already live — the action just dismisses the IME.
+                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.hideSoftInputFromWindow(etSearch.windowToken, 0)
+                true
+            } else {
+                false
+            }
+        }
+
+        etSearch.setOnFocusChangeListener { _, hasFocus ->
+            animateUnderline(underline, hasFocus)
+            val iconAttr = when {
+                hasFocus -> R.attr.ptAccent
+                etSearch.text.isNotEmpty() -> R.attr.ptText
+                else -> R.attr.ptTextMuted
+            }
+            ivSearchIcon.imageTintList = ColorStateList.valueOf(themeColor(iconAttr))
+        }
+    }
+
+    /** Cross-fades the search underline between ptDivider and ptAccent. */
+    private fun animateUnderline(underline: View, focused: Boolean) {
+        val from = themeColor(if (focused) R.attr.ptDivider else R.attr.ptAccent)
+        val to = themeColor(if (focused) R.attr.ptAccent else R.attr.ptDivider)
+        ValueAnimator.ofObject(ArgbEvaluator(), from, to).apply {
+            duration = 120L
+            addUpdateListener { underline.setBackgroundColor(it.animatedValue as Int) }
+            start()
+        }
     }
 
     // ── Download + load popup (OverlayProgress) ─────────────────────────
@@ -414,12 +558,21 @@ class LanguageSetupActivity : AppCompatActivity() {
      *  can't be because `canDelete` excludes the selection and its siblings.
      */
     private data class LangRow(
-        val title: String,
+        /** Display name in the user's UI locale, plus its normalization map. */
+        val titleNorm: NormalizedText,
+        /** Name in the language's own locale (endonym), plus its map. */
+        val endonymNorm: NormalizedText,
         val isSelected: Boolean,
         val canDelete: Boolean,
         val onRowClick: () -> Unit,
         val onTrashClick: () -> Unit,
-    )
+    ) {
+        /** True when [normalizedQuery] (already normalized) is a substring of
+         *  the title or the endonym. */
+        fun matches(normalizedQuery: String): Boolean =
+            titleNorm.normalized.contains(normalizedQuery) ||
+                endonymNorm.normalized.contains(normalizedQuery)
+    }
 
     /**
      * Adds one grouped-card section to [root]: an optional uppercase group
@@ -430,6 +583,7 @@ class LanguageSetupActivity : AppCompatActivity() {
         root: LinearLayout,
         title: String?,
         rows: List<LangRow>,
+        query: String? = null,
     ) {
         if (rows.isEmpty()) return
         val inflater = LayoutInflater.from(this)
@@ -451,7 +605,7 @@ class LanguageSetupActivity : AppCompatActivity() {
             if (idx > 0) rowContainer.addView(inflateLanguageListDivider(rowContainer))
             val topRadius = if (idx == 0) cardRadius else 0f
             val bottomRadius = if (idx == lastIdx) cardRadius else 0f
-            rowContainer.addView(buildLanguageListRow(rowContainer, row, topRadius, bottomRadius))
+            rowContainer.addView(buildLanguageListRow(rowContainer, row, topRadius, bottomRadius, query))
         }
         root.addView(card)
     }
@@ -461,10 +615,24 @@ class LanguageSetupActivity : AppCompatActivity() {
         row: LangRow,
         topCornerRadius: Float,
         bottomCornerRadius: Float,
+        query: String?,
     ): View {
         val view = LayoutInflater.from(this)
             .inflate(R.layout.language_list_row, container, false)
-        view.findViewById<TextView>(R.id.tvRowTitle).text = row.title
+        view.findViewById<TextView>(R.id.tvRowTitle).text = highlighted(row.titleNorm, query)
+
+        // Endonym subtitle — hidden when it would merely repeat the title
+        // (e.g. the UI language is this row's own language).
+        val tvEndonym = view.findViewById<TextView>(R.id.tvRowEndonym)
+        if (row.endonymNorm.original.isBlank() ||
+            row.endonymNorm.original.equals(row.titleNorm.original, ignoreCase = true)
+        ) {
+            tvEndonym.visibility = View.GONE
+        } else {
+            tvEndonym.visibility = View.VISIBLE
+            tvEndonym.text = highlighted(row.endonymNorm, query)
+        }
+
         view.setOnClickListener { row.onRowClick() }
 
         // The XML layout gives the trailing slot its default state: hidden,
@@ -577,18 +745,34 @@ class LanguageSetupActivity : AppCompatActivity() {
             .showInActivity(this)
     }
 
-    private fun langDisplayName(code: String): String =
-        Locale(code).getDisplayLanguage(Locale.getDefault())
-            .replaceFirstChar { it.uppercase(Locale.getDefault()) }
-
-    /** Display name for target languages, rendered in the system locale to
-     *  match the source picker (e.g. on an English device, Japanese shows as
-     *  "Japanese", not "日本語"). */
-    private fun targetDisplayName(code: String): String {
-        val locale = Locale.getDefault()
-        return Locale(code).getDisplayLanguage(locale)
-            .replaceFirstChar { it.uppercase(locale) }
+    /** [norm].original with the (already-normalized) [query] match spanned
+     *  accent + bold, or the plain original when [query] is null/empty or
+     *  doesn't occur in this string. */
+    private fun highlighted(norm: NormalizedText, query: String?): CharSequence {
+        if (query.isNullOrEmpty()) return norm.original
+        val matchStart = norm.normalized.indexOf(query)
+        if (matchStart < 0) return norm.original
+        val origStart = norm.normToOrig[matchStart]
+        val lastCp = norm.normToOrig[matchStart + query.length - 1]
+        val origEnd = lastCp + Character.charCount(norm.original.codePointAt(lastCp))
+        return SpannableString(norm.original).apply {
+            setSpan(
+                ForegroundColorSpan(themeColor(R.attr.ptAccent)),
+                origStart, origEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+            setSpan(
+                StyleSpan(Typeface.BOLD),
+                origStart, origEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
     }
+
+    /** Display name for a target language [code], rendered in [locale]
+     *  (default: the system locale — e.g. Japanese shows as "Japanese" on an
+     *  English device). Pass `Locale(code)` to get the endonym ("日本語"). */
+    private fun targetDisplayName(code: String, locale: Locale = Locale.getDefault()): String =
+        Locale(code).getDisplayLanguage(locale)
+            .replaceFirstChar { it.uppercase(locale) }
 
     interface Delegate {
         fun onSourceSelectionDone(sourceId: SourceLangId)
@@ -612,3 +796,45 @@ class LanguageSetupActivity : AppCompatActivity() {
         }
     }
 }
+
+// ── Search-text normalization ────────────────────────────────────────────
+// One shared transform powers both matching and highlight, so the matched
+// string and the searched-for string can never disagree.
+
+private val COMBINING_MARKS = Regex("\\p{Mn}+")
+
+/** A display string, its normalized form, and an index map: normToOrig[i] is
+ *  the start index, in [original], of the code point that produced
+ *  normalized[i]. Lets a match found in [normalized] map back to [original]. */
+private class NormalizedText(
+    val original: String,
+    val normalized: String,
+    val normToOrig: IntArray,
+)
+
+/** NFKD-decomposes, strips combining marks, and lowercases [original] one
+ *  code point at a time, recording where each normalized char came from.
+ *  NOT trimmed — trimming would desync the index map. */
+private fun normalizeWithMap(original: String): NormalizedText {
+    val sb = StringBuilder()
+    val map = ArrayList<Int>(original.length + 4)
+    var i = 0
+    while (i < original.length) {
+        val cp = original.codePointAt(i)
+        val piece = Normalizer
+            .normalize(String(Character.toChars(cp)), Normalizer.Form.NFKD)
+            .replace(COMBINING_MARKS, "")
+            .lowercase(Locale.ROOT)
+        for (c in piece) {
+            sb.append(c)
+            map.add(i)
+        }
+        i += Character.charCount(cp)
+    }
+    return NormalizedText(original, sb.toString(), map.toIntArray())
+}
+
+/** Query-side normalization: the same transform as [normalizeWithMap], then
+ *  trimmed (the query needs no index map, and soft keyboards tack on stray
+ *  trailing spaces). */
+private fun normalize(s: String): String = normalizeWithMap(s).normalized.trim()
