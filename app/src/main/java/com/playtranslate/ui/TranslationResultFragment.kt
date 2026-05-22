@@ -472,9 +472,10 @@ class TranslationResultFragment : Fragment() {
 
     /** Lens Anki chip handler — adds the tapped word (not the sentence)
      *  to Anki. Mirrors [DragLookupController.openAnkiReviewForLens]:
-     *  installation gate here, permission gate inside the activity.
-     *  Sentence context comes from the current VM result so the card
-     *  carries the source sentence + translation + screenshot. */
+     *  installation gate here, permission gate handled by the launched
+     *  [AnkiPermissionActivity]. Sentence context comes from the current
+     *  VM result so the card carries the source sentence + translation +
+     *  screenshot. */
     private fun launchWordAnki(
         activity: Activity,
         word: String,
@@ -498,7 +499,7 @@ class TranslationResultFragment : Fragment() {
         val ready = (vm.result.value as? ResultState.Ready)?.result
         val readingForExtra = reading?.takeIf { it != word } ?: ""
         dismissWordPopup()
-        val intent = Intent(activity, WordAnkiReviewActivity::class.java).apply {
+        val intent = Intent(activity, AnkiPermissionActivity::class.java).apply {
             putExtra(WordAnkiReviewActivity.EXTRA_WORD, word)
             putExtra(WordAnkiReviewActivity.EXTRA_READING, readingForExtra)
             putExtra(WordAnkiReviewActivity.EXTRA_POS, pos)

@@ -4,14 +4,17 @@ import android.content.DialogInterface
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
-import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
 import com.playtranslate.language.SourceLangId
 
 /**
- * Lightweight activity that hosts [WordAnkiReviewSheet] when launched from
- * the floating overlay popup. Separate from MainActivity so that pressing
- * back finishes only this activity — without affecting the floating icon.
+ * Opaque activity that hosts [WordAnkiReviewSheet]. Separate from
+ * MainActivity so that pressing back finishes only this activity — without
+ * affecting the floating icon.
+ *
+ * Reached only through [AnkiPermissionActivity], which guarantees the
+ * AnkiDroid permission is held before forwarding here — so this activity
+ * just builds the review sheet from the launch intent.
  */
 class WordAnkiReviewActivity : AppCompatActivity() {
 
@@ -40,18 +43,6 @@ class WordAnkiReviewActivity : AppCompatActivity() {
         val sentenceTranslation = intent.getStringExtra(EXTRA_SENTENCE_TRANSLATION)
         val sourceLangId = SourceLangId.fromCode(intent.getStringExtra(EXTRA_SOURCE_LANG))
             ?: Prefs(applicationContext).sourceLangId
-
-        if (!AnkiManager(this).hasPermission()) {
-            showAnkiPermissionRationaleDialog(
-                activity = this,
-                onCancel = { finish() },
-            ) {
-                androidx.core.app.ActivityCompat.requestPermissions(
-                    this, arrayOf(AnkiManager.PERMISSION), 0
-                )
-            }
-            return
-        }
 
         // Read word results from cache if sentence context matches
         val cachedWordResults = if (sentenceOriginal != null

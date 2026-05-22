@@ -45,7 +45,19 @@
             </intent-filter>
         </activity>
 
-        <!-- Lightweight host for Anki review when launched from the floating overlay. -->
+        <!-- Translucent trampoline: ensures the AnkiDroid permission, then
+             forwards to WordAnkiReviewActivity. Asks in place so a missing
+             permission never lands the user on a blank screen. -->
+        <activity
+            android:name=".ui.AnkiPermissionActivity"
+            android:exported="false"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
+
+        <!-- Opaque host for the Anki word-review sheet, reached via
+             AnkiPermissionActivity. -->
         <activity
             android:name=".ui.WordAnkiReviewActivity"
             android:exported="false"

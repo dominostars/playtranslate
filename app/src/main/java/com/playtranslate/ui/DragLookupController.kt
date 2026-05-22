@@ -148,7 +148,7 @@ class DragLookupController(
         // Anki chip → standard "Add to Anki" review flow. Gates on
         // AnkiDroid being installed via an overlay alert (the service
         // context has no Activity to attach to); permission gating is
-        // handled inside [WordAnkiReviewActivity] itself.
+        // handled by AnkiPermissionActivity once the flow launches.
         magnifier.onAnkiTap = { openAnkiReviewForLens() }
         // Speak chip → pronounce the looked-up headword via the system TTS
         // engine. LensSpeakChip installs the lens's onSpeakTap handler and
@@ -1344,11 +1344,11 @@ class DragLookupController(
     }
 
     /**
-     * Launches [WordAnkiReviewActivity] with the lens's current word
+     * Launches the Anki word-review flow with the lens's current word
      * context. Snapshots state before dismissing the lens (onDismiss
      * nulls lastWord / currentEntry, so reads after dismiss would lose
-     * the data). Gates on AnkiDroid being installed; permission gating
-     * is handled by the activity itself when it opens.
+     * the data). Gates on AnkiDroid being installed; [AnkiPermissionActivity]
+     * handles the permission gate, then forwards to the review sheet.
      */
     private fun openAnkiReviewForLens() {
         val word = lastWord ?: return
@@ -1383,7 +1383,7 @@ class DragLookupController(
         CaptureBackendResolver.activeOverlayUi?.cancelLivePauseObligation()
         magnifier.dismiss()
 
-        val intent = Intent(context, WordAnkiReviewActivity::class.java).apply {
+        val intent = Intent(context, AnkiPermissionActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
             putExtra(WordAnkiReviewActivity.EXTRA_WORD, word)
             putExtra(WordAnkiReviewActivity.EXTRA_READING, reading)
