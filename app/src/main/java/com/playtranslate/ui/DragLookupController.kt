@@ -558,16 +558,21 @@ class DragLookupController(
      *  (n-gram phrase matches in `tokenizeWithSurfaces` carry null
      *  readings).
      *
-     *  **Phase 2** — canonicalize each unique lookupForm against the
-     *  dictionary. Per-form (not per-token) dedupe is the key cost
-     *  control: a screen with 240 tokens commonly has ~50 unique
-     *  lookupForms, so we pay 50 SQLite queries instead of 240. Each
-     *  resolved form patches every cache entry that uses it — fixes both
-     *  the wrong-reading case (replaces kuromoji's surface reading with
-     *  JMdict's lemma reading) and the missing-reading case (fills in
-     *  what tokenizeWithSurfaces left null). Reader (onDragMove) re-reads
-     *  the cache on every tick so the label updates in place as Phase 2
-     *  progresses.
+     *  **Phase 2** — canonicalize each unique (lookupForm, reading) pair
+     *  against the dictionary. Dedupe keys on the pair, not the form
+     *  alone, so kuromoji's per-token reading can ride along as a
+     *  disambiguation hint: a homograph kanji (人 → ひと "person" vs にん
+     *  "counter for people") then resolves to the entry that matches the
+     *  surface, instead of whichever entry happens to win the reading-
+     *  blind ranking. The pair count barely exceeds the form count — a
+     *  form appearing with two readings on one screen is uncommon — so a
+     *  240-token screen still collapses to ~50-ish SQLite queries, not
+     *  240. Each resolved pair patches every cache entry that uses it —
+     *  fixes both the wrong-reading case (replaces kuromoji's surface
+     *  reading with JMdict's lemma reading) and the missing-reading case
+     *  (fills in what tokenizeWithSurfaces left null). Reader (onDragMove)
+     *  re-reads the cache on every tick so the label updates in place as
+     *  Phase 2 progresses.
      *
      *  Re-throws [CancellationException] before the generic catch so a
      *  cancelled drag's coroutine actually exits without overwriting
@@ -620,26 +625,29 @@ class DragLookupController(
             refreshLabelAndDwell()
         }
 
-        // Phase 2: per-unique-lookupForm canonicalization.
-        val uniqueForms = LinkedHashSet<String>()
-        for (tokens in cache.values) for (t in tokens) uniqueForms.add(t.lookupForm)
-        for (form in uniqueForms) {
+        // Phase 2: per-unique-(lookupForm, reading) canonicalization.
+        // Keying on the pair — not the form alone — lets the lookup pass
+        // kuromoji's reading as a hint so a homograph kanji resolves to
+        // the matching entry instead of the top reading-blind one.
+        val uniqueKeys = LinkedHashSet<Pair<String, String?>>()
+        for (tokens in cache.values) for (t in tokens) uniqueKeys.add(t.lookupForm to t.reading)
+        for ((form, hintReading) in uniqueKeys) {
             val (canonicalWord, canonicalReading) = try {
-                val head = engine.lookup(form, null)?.entries?.firstOrNull()
+                val head = engine.lookup(form, hintReading)?.entries?.firstOrNull()
                     ?.headwords?.firstOrNull()
                 if (head != null) (head.written ?: head.reading ?: form) to head.reading
                 else continue  // not in dict — leave Phase 1 entry as-is
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.w(TAG, "pretokenize phase 2 failed for $form: ${e.message}")
+                Log.w(TAG, "pretokenize phase 2 failed for $form [$hintReading]: ${e.message}")
                 continue
             }
             val gatedReading = canonicalReading?.takeIf { readingAddsInfo(canonicalWord, it) }
             for ((lineText, tokens) in cache.toMap()) {
                 var dirty = false
                 val patched = tokens.map { t ->
-                    if (t.lookupForm == form &&
+                    if (t.lookupForm == form && t.reading == hintReading &&
                         (t.lookupForm != canonicalWord || t.reading != gatedReading)
                     ) {
                         dirty = true
