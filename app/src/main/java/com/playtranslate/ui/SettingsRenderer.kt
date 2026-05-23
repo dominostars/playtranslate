@@ -101,6 +101,11 @@ class SettingsRenderer(
          *  the per-backend settings sub-screen. [id] selects which provider
          *  (currently "openai" or "gemini"). */
         fun openLlmBackendSettings(id: BackendId)
+
+        /** Tap on the "Model" sub-cell under an enabled LLM backend row in
+         *  Settings (or the Model row inside the backend's sub-screen) —
+         *  open the full-screen model picker for [id]. */
+        fun openLlmModelPicker(id: BackendId)
         /** Tap on the TTS "Voice" cell — open the per-language voice picker. */
         fun openTtsVoicePicker()
         /** Tap on the TTS no-engine cell — show the "No Text-to-Speech" alert. */
@@ -1298,7 +1303,11 @@ class SettingsRenderer(
     // ── Translation service section ──────────────────────────────────────
 
     private val rowBackendGemini: View = root.findViewById(R.id.rowBackendGemini)
+    private val sectionBackendGeminiModel: View = root.findViewById(R.id.sectionBackendGeminiModel)
+    private val rowBackendGeminiModel: View = root.findViewById(R.id.rowBackendGeminiModel)
     private val rowBackendOpenai: View = root.findViewById(R.id.rowBackendOpenai)
+    private val sectionBackendOpenaiModel: View = root.findViewById(R.id.sectionBackendOpenaiModel)
+    private val rowBackendOpenaiModel: View = root.findViewById(R.id.rowBackendOpenaiModel)
     private val rowBackendDeepl: View = root.findViewById(R.id.rowBackendDeepl)
     private val rowBackendLingva: View = root.findViewById(R.id.rowBackendLingva)
     private val rowBackendTranslategemma: View = root.findViewById(R.id.rowBackendTranslategemma)
@@ -1332,7 +1341,9 @@ class SettingsRenderer(
         )
 
         wireGeminiBackendRow()
+        wireGeminiModelRow()
         wireOpenAiBackendRow()
+        wireOpenAiModelRow()
         wireDeeplBackendRow()
         wireTranslateGemmaBackendRow()
         wireQwenMnnBackendRow()
@@ -1416,20 +1427,41 @@ class SettingsRenderer(
         }
     }
 
-    /** Refresh the Gemini switch from the current pref value. Driven by the
-     *  SP listener after [LlmBackendSettingsActivity] persists a save. */
+    /** Refresh the Gemini switch from the current pref value AND the
+     *  visibility of the inline "Model" sub-cell (only shown when the
+     *  backend is enabled). Driven by the SP listener after
+     *  [LlmBackendSettingsActivity] persists a save. */
     fun refreshGeminiBackendSwitch() {
         rowBackendGemini.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
             it.isChecked = prefs.geminiEnabled
         }
+        sectionBackendGeminiModel.visibility =
+            if (prefs.geminiEnabled) View.VISIBLE else View.GONE
     }
 
-    /** Refresh the OpenAI switch from the current pref value. Mirrors
+    /** Refresh the OpenAI switch from the current pref value AND the
+     *  visibility of the inline "Model" sub-cell. Mirrors
      *  [refreshGeminiBackendSwitch]. */
     fun refreshOpenaiBackendSwitch() {
         rowBackendOpenai.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
             it.isChecked = prefs.openaiEnabled
         }
+        sectionBackendOpenaiModel.visibility =
+            if (prefs.openaiEnabled) View.VISIBLE else View.GONE
+    }
+
+    /** Re-read the Gemini model name into the inline sub-cell's title
+     *  (the row's title is the model name itself; the value column is
+     *  intentionally blank). Driven by the SP listener on
+     *  [Prefs.KEY_GEMINI_MODEL] so a save from [LlmModelPickerActivity]
+     *  propagates here on resume. */
+    fun refreshGeminiModelValue() {
+        rowBackendGeminiModel.findViewById<TextView>(R.id.tvRowTitle).text = prefs.geminiModel
+    }
+
+    /** Mirrors [refreshGeminiModelValue] for OpenAI. */
+    fun refreshOpenaiModelValue() {
+        rowBackendOpenaiModel.findViewById<TextView>(R.id.tvRowTitle).text = prefs.openaiModel
     }
 
     /** Refresh the Lingva switch from the current pref value. */
@@ -1803,6 +1835,50 @@ class SettingsRenderer(
                 callbacks.openLlmBackendSettings("openai")
             }
         }
+    }
+
+    private fun wireGeminiModelRow() {
+        // The row's title IS the model name (e.g. "gemini-2.5-flash"); the
+        // value column is left blank — only the chevron carries "tap to
+        // change" affordance. Title is rendered in the regular sans-serif
+        // weight (not the medium baked into Text.PT.RowTitle) and the
+        // row is compacted vertically so the sub-cell reads as a
+        // secondary annotation rather than a peer to the backend row.
+        applyModelRowChrome(rowBackendGeminiModel, prefs.geminiModel)
+        rowBackendGeminiModel.setOnClickListener {
+            callbacks.openLlmModelPicker("gemini")
+        }
+        sectionBackendGeminiModel.visibility =
+            if (prefs.geminiEnabled) View.VISIBLE else View.GONE
+    }
+
+    private fun wireOpenAiModelRow() {
+        applyModelRowChrome(rowBackendOpenaiModel, prefs.openaiModel)
+        rowBackendOpenaiModel.setOnClickListener {
+            callbacks.openLlmModelPicker("openai")
+        }
+        sectionBackendOpenaiModel.visibility =
+            if (prefs.openaiEnabled) View.VISIBLE else View.GONE
+    }
+
+    /** Apply the compact, muted styling to an inline "Model" sub-cell.
+     *  Shared between Gemini/OpenAI (and any future LLM row) so the visual
+     *  treatment stays in one place. Title is rendered in the regular
+     *  sans-serif weight tinted with [R.attr.ptTextMuted] — the same color
+     *  the hotkey row uses for its "Not set" placeholder — so the cell
+     *  reads as a secondary annotation rather than a peer to the backend
+     *  row above it. */
+    private fun applyModelRowChrome(row: View, modelName: String) {
+        val title = row.findViewById<TextView>(R.id.tvRowTitle)
+        title.text = modelName
+        title.typeface = android.graphics.Typeface.SANS_SERIF
+        title.setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+        row.findViewById<TextView>(R.id.tvRowValue).text = ""
+        val density = ctx.resources.displayMetrics.density
+        val hPad = ctx.resources.getDimensionPixelSize(R.dimen.pt_row_h_padding)
+        val vPad = (6 * density).toInt()
+        row.setPaddingRelative(hPad, vPad, hPad, vPad)
+        row.minimumHeight = (48 * density).toInt()
     }
 
     private fun wireBackendSwitchRow(

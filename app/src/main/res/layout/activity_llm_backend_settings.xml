@@ -129,11 +129,6 @@
                     <include layout="@layout/settings_row_link"
                         android:id="@+id/rowGetKeyLink" />
 
-                    <include layout="@layout/settings_row_divider" />
-
-                    <include layout="@layout/settings_row_value"
-                        android:id="@+id/rowTodayUsage" />
-
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -145,12 +140,19 @@
         android:layout_height="1dp"
         android:background="?attr/ptDivider" />
 
+    <!-- Save button: rounded-rect, sized to fill the bottom bar vertically.
+         Bar overall stays the same height as the previous wrap_content +
+         16dp margins (60dp button + 8dp top + 8dp bottom = 76dp); we just
+         shifted the visual weight from margin to button. -->
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btnSave"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_margin="16dp"
+        android:layout_height="60dp"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginVertical="8dp"
         android:text="@string/deepl_settings_save"
-        android:textAllCaps="false" />
+        android:textAllCaps="false"
+        android:textSize="15sp"
+        app:cornerRadius="12dp" />
 
 </LinearLayout>

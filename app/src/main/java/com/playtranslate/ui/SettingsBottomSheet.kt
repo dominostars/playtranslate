@@ -156,6 +156,8 @@ class SettingsBottomSheet : DialogFragment() {
         renderer?.refreshDeeplBackendSwitch()
         renderer?.refreshGeminiBackendSwitch()
         renderer?.refreshOpenaiBackendSwitch()
+        renderer?.refreshGeminiModelValue()
+        renderer?.refreshOpenaiModelValue()
         renderer?.refreshLingvaBackendSwitch()
         renderer?.refreshTranslategemmaSwitch()
         renderer?.refreshQwenSwitch()
@@ -219,6 +221,10 @@ class SettingsBottomSheet : DialogFragment() {
                 Prefs.KEY_OPENAI_BASE_URL -> {
                     renderer?.refreshAllBackendStatuses()
                     com.playtranslate.CaptureService.instance?.clearTranslationCache()
+                    // The inline "Model" sub-cell under each LLM row also
+                    // mirrors the model pref; refresh the matching one.
+                    if (key == Prefs.KEY_GEMINI_MODEL) renderer?.refreshGeminiModelValue()
+                    if (key == Prefs.KEY_OPENAI_MODEL) renderer?.refreshOpenaiModelValue()
                 }
                 Prefs.KEY_LINGVA_ENABLED -> {
                     renderer?.refreshLingvaBackendSwitch()
@@ -400,6 +406,9 @@ class SettingsBottomSheet : DialogFragment() {
                         android.content.Intent(requireContext(), LlmBackendSettingsActivity::class.java)
                             .putExtra(LlmBackendSettingsActivity.EXTRA_BACKEND_ID, id)
                     )
+                }
+                override fun openLlmModelPicker(id: com.playtranslate.translation.BackendId) {
+                    startActivity(LlmModelPickerActivity.newIntent(requireContext(), id))
                 }
                 override fun openTtsVoicePicker() {
                     startActivity(android.content.Intent(requireContext(), TtsVoiceActivity::class.java))

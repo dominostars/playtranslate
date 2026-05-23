@@ -10,7 +10,6 @@ import android.view.View
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
@@ -31,10 +30,13 @@ import kotlinx.coroutines.launch
  *
  * UX contract mirrors [DeepLSettingsActivity]:
  *  - Prepopulates from prefs on entry.
- *  - The toolbar X discards in-progress edits.
- *  - Save persists key / model / base URL and flips `enabled` to true iff
- *    the key is non-blank. The pref change drives the row's switch back in
+ *  - The toolbar X discards in-progress edits to key / base URL.
+ *  - Save persists key / base URL and flips `enabled` to true iff the key
+ *    is non-blank. The pref change drives the row's switch back in
  *    Settings via the SharedPreferences listener.
+ *  - Model selection is its own sub-screen ([LlmModelPickerActivity]) and
+ *    writes straight to prefs on tap — the model row here just displays
+ *    the current value and re-reads it in onResume.
  *
  * Special handling:
  *  - Base URL field is GONE when [LlmBackendConfig.allowsBaseUrl] is false.
@@ -47,11 +49,7 @@ import kotlinx.coroutines.launch
 class LlmBackendSettingsActivity : AppCompatActivity() {
 
     private lateinit var config: LlmBackendConfig
-
-    /** Pending model selection. The picker writes here instead of straight
-     *  to prefs so the toolbar X (discard) leaves the previously-saved
-     *  model untouched — [onSave] flushes this to prefs. */
-    private var pendingModel: String = ""
+    private var modelRowValue: TextView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         applyTheme(this)
@@ -61,7 +59,6 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         val backendId = intent.getStringExtra(EXTRA_BACKEND_ID)
             ?: error("LlmBackendSettingsActivity launched without EXTRA_BACKEND_ID")
         config = LlmBackendConfigs.forId(this, backendId)
-        pendingModel = config.getModel()
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         toolbar.title = getString(config.titleStringRes)
@@ -75,11 +72,18 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         wireBaseUrlSection(findViewById(R.id.sectionBaseUrl))
         wireModelRow(findViewById(R.id.rowModel))
         wireGetKeyLink(findViewById(R.id.rowGetKeyLink))
-        wireUsageRow(findViewById(R.id.rowTodayUsage))
 
         findViewById<MaterialButton>(R.id.btnSave).setOnClickListener {
             onSave(etApiKey)
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // [LlmModelPickerActivity] writes the model straight to prefs and
+        // finishes back into us — pick the new value up so the row's
+        // displayed value matches what was just chosen.
+        modelRowValue?.text = config.getModel()
     }
 
     private fun wireBaseUrlSection(section: View) {
@@ -98,49 +102,12 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         row.findViewById<TextView>(R.id.tvRowTitle).text =
             getString(R.string.llm_backend_model_label)
         val tvValue = row.findViewById<TextView>(R.id.tvRowValue)
-        tvValue.text = pendingModel
-        row.setOnClickListener { showModelPicker(tvValue) }
-    }
-
-    private fun showModelPicker(tvValue: TextView) {
-        val curated = config.availableModels
-        val customLabel = getString(R.string.llm_backend_model_custom_entry)
-        val items = curated + customLabel
-        val currentIdx = curated.indexOf(pendingModel).let { if (it >= 0) it else items.size - 1 }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.llm_backend_model_label)
-            .setSingleChoiceItems(items.toTypedArray(), currentIdx) { dialog, which ->
-                dialog.dismiss()
-                if (which == items.size - 1) {
-                    showCustomModelDialog(tvValue)
-                } else {
-                    val picked = items[which]
-                    pendingModel = picked
-                    tvValue.text = picked
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
-    private fun showCustomModelDialog(tvValue: TextView) {
-        val input = EditText(this).apply {
-            setSingleLine(true)
-            setText(pendingModel)
-            setSelection(text.length)
+        tvValue.text = config.getModel()
+        modelRowValue = tvValue
+        val backendId = intent.getStringExtra(EXTRA_BACKEND_ID) ?: return
+        row.setOnClickListener {
+            startActivity(LlmModelPickerActivity.newIntent(this, backendId))
         }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.llm_backend_model_custom_entry)
-            .setView(input)
-            .setPositiveButton(R.string.deepl_settings_save) { _, _ ->
-                val typed = input.text.toString().trim()
-                if (typed.isNotBlank()) {
-                    pendingModel = typed
-                    tvValue.text = typed
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
     }
 
     private fun wireGetKeyLink(row: View) {
@@ -160,16 +127,6 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun wireUsageRow(row: View) {
-        row.findViewById<TextView>(R.id.tvRowTitle).text =
-            getString(R.string.llm_backend_today_usage_label)
-        val tvValue = row.findViewById<TextView>(R.id.tvRowValue)
-        tvValue.text = getString(R.string.llm_status_today_tokens_fmt, config.todayUsageString())
-        row.isClickable = false
-        row.isFocusable = false
-        row.findViewById<View?>(R.id.tvRowValue)?.let { /* keep value visible */ }
-    }
-
     private fun onSave(etApiKey: EditText) {
         val key = etApiKey.text.toString().trim()
         if (config.allowsBaseUrl) {
@@ -183,9 +140,8 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
             config.setBaseUrl(rawUrl)
         }
         config.setKey(key)
-        // SharedPreferences only fires its listener on actual value changes,
-        // so writing pendingModel == current value is a safe no-op.
-        config.setModel(pendingModel)
+        // Model is owned by [LlmModelPickerActivity] now and is already
+        // in prefs by this point — Save only flushes the editable fields.
         config.setEnabled(key.isNotBlank())
 
         // Fire the validation ping after the prefs write so the backend's

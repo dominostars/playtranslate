@@ -694,10 +694,36 @@
                     <include layout="@layout/settings_row_backend"
                         android:id="@+id/rowBackendGemini" />
 
+                    <!-- "Model" sub-cell under the Gemini row. Visible only
+                         when the backend is enabled; the outer LinearLayout
+                         exists as a visibility-toggle wrapper so the row
+                         includes can stay inflated normally. -->
+                    <LinearLayout
+                        android:id="@+id/sectionBackendGeminiModel"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <include layout="@layout/settings_row_value"
+                            android:id="@+id/rowBackendGeminiModel" />
+                    </LinearLayout>
+
                     <include layout="@layout/settings_row_divider" />
 
                     <include layout="@layout/settings_row_backend"
                         android:id="@+id/rowBackendOpenai" />
+
+                    <LinearLayout
+                        android:id="@+id/sectionBackendOpenaiModel"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <include layout="@layout/settings_row_value"
+                            android:id="@+id/rowBackendOpenaiModel" />
+                    </LinearLayout>
 
                     <include layout="@layout/settings_row_divider" />
 

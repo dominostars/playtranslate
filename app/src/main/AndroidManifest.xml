@@ -96,6 +96,15 @@
             android:parentActivityName=".MainActivity"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- Full-screen model picker for LLM backends. Reached from the
+             "Model" row on the per-backend sub-screen above OR from the
+             inline "Model" cell under each enabled LLM row in Settings. -->
+        <activity
+            android:name=".ui.LlmModelPickerActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.PlayTranslate" />
+
         <!-- Per-language Text-to-Speech voice picker (launched from Settings → Text-to-Speech). -->
         <activity
             android:name=".ui.TtsVoiceActivity"
