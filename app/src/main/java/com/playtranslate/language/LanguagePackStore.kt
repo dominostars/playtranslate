@@ -377,8 +377,31 @@ object LanguagePackStore {
      * deleting the old pack until the new one is confirmed in place.
      * If the swap fails, the old pack is restored so the user never loses
      * a working install.
+     *
+     * Refuses to promote a missing or empty [tmpDir]. Without that guard,
+     * the `copyDirectory(tmpDir, finalDir)` fallback path silently creates
+     * an empty `finalDir` (because `listFiles()` returns null when src is
+     * missing, and `copyDirectory` still calls `dst.mkdirs()`), and the
+     * post-step deletes the backup of the previous good install. Net
+     * effect: the on-device install gate believes the new pack/model is
+     * present while the directory is empty. Originally surfaced on the
+     * new MNN download path where a cancel between extract and swap
+     * could delete `tmpDir` mid-commit (Codex adversarial review,
+     * 2026-05-22); the same hole applies to language-pack installs where
+     * any path that loses `tmpDir` before this method is called would
+     * destroy the previous install without a replacement.
      */
     internal fun safeSwap(tmpDir: File, finalDir: File) {
+        if (!tmpDir.exists() || !tmpDir.isDirectory) {
+            throw IllegalStateException(
+                "safeSwap: source ${tmpDir.absolutePath} does not exist or is not a directory"
+            )
+        }
+        if (tmpDir.listFiles().isNullOrEmpty()) {
+            throw IllegalStateException(
+                "safeSwap: source ${tmpDir.absolutePath} is empty; refusing to promote"
+            )
+        }
         val backupDir = File(finalDir.parentFile, finalDir.name + ".old")
         if (backupDir.exists()) backupDir.deleteRecursively()
 

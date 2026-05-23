@@ -236,18 +236,26 @@ class OnDeviceLlmDownloader(
         return try {
             onProgress(Progress.Extracting(0L, null))
             PackIntegrity.extractZip(zipPartial, tmpDir)
-            // safeSwap is rollback-safe: if it fails mid-promotion, the
-            // previous final directory (if any) is restored from a sibling
-            // `<finalDir>.old` backup. After this returns, finalDir is the
-            // freshly-extracted contents.
+            // Write the sentinel INSIDE tmpDir, before safeSwap. Two
+            // properties that buys:
+            //   1. The directory rename promotes contents AND install gate
+            //      atomically — finalDir is never observed with a sentinel
+            //      and missing files, or files and a missing sentinel.
+            //   2. If something deletes tmpDir between extract and swap —
+            //      e.g. the cancel handler's deletePartial() racing this
+            //      coroutine on Dispatchers.IO — safeSwap throws
+            //      (LanguagePackStore now refuses an empty/missing src) and
+            //      finalDir is left untouched. The catch below returns
+            //      Outcome.Failed; the previous good install survives.
+            // Closes the [high] in Codex's 2026-05-22 adversarial review.
+            File(tmpDir, ".sentinel").writeText(expectedSha)
+            // Deterministic cancellation pickup before the destructive ops.
+            // Without this, a cancel that fired during extract is only
+            // observed at the next suspending call — safeSwap is synchronous,
+            // so cancellation wouldn't surface until the OkHttp-level
+            // suspend points up the stack.
+            coroutineContext.ensureActive()
             LanguagePackStore.safeSwap(tmpDir, finalDir)
-            // The sentinel is the post-extract install gate. ModelHelper's
-            // isInstalled() in directory mode reads this file and compares
-            // its contents to the catalog sha. We write it AFTER safeSwap so
-            // a kill mid-swap leaves the directory either un-promoted or
-            // promoted-without-sentinel — either way isInstalled() returns
-            // false and the next launch's deletePartial() can clean up.
-            File(finalDir, ".sentinel").writeText(expectedSha)
             // Delete the verified zip — already extracted; keeping it would
             // double the on-disk cost of the model.
             zipPartial.delete()
