@@ -18,12 +18,14 @@ enum class BackendQuality { Bad, Okay, Good, Better }
  *  leave [TranslationBackend.speed] null — their perceived speed is
  *  network-bound, not a useful comparison axis.
  *
- *  [Moderate] sits between [Slow] and [Fast]: faster than a GGUF Qwen
+ *  [Okay] sits between [Slow] and [Fast]: faster than a GGUF Qwen
  *  through llama.cpp (~750 ms median on Thor) but not in ML Kit territory
  *  (~50–100 ms). The MNN-backed Qwen lands in this bucket — measured 513 ms
  *  median in the spike (mnn-spike/SPIKE_REPORT.md), 1.45× faster than the
- *  legacy GGUF path. */
-enum class BackendSpeed { VerySlow, Slow, Moderate, Fast }
+ *  legacy GGUF path. Renders as "Okay speed" so the user sees the speed-vs-
+ *  quality distinction explicitly (the parallel quality tier is
+ *  [BackendQuality.Okay], rendered as "Okay quality"). */
+enum class BackendSpeed { VerySlow, Slow, Okay, Fast }
 
 /**
  * A pluggable translation source. Implementations are pair-agnostic

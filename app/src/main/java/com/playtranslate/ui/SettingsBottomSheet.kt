@@ -176,31 +176,52 @@ class SettingsBottomSheet : DialogFragment() {
                     renderer?.refreshTranslategemmaSwitch()
                     renderer?.refreshAllBackendStatuses()
                     com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
-                    maybeUnloadOnDeviceLlmIfBothDisabled(ctx)
+                    maybeUnloadIdleEngines(ctx)
                 }
                 Prefs.KEY_QWEN_ENABLED -> {
                     renderer?.refreshQwenSwitch()
                     renderer?.refreshAllBackendStatuses()
                     com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
-                    maybeUnloadOnDeviceLlmIfBothDisabled(ctx)
+                    maybeUnloadIdleEngines(ctx)
+                }
+                Prefs.KEY_QWEN_MNN_ENABLED -> {
+                    // The MNN tier's parallel to the TG/Qwen handlers above.
+                    // Missing this case is what caused the row's toggle UI to
+                    // stay stale after a successful download — the pref was
+                    // set true but the renderer never knew to refresh.
+                    renderer?.refreshQwenMnnSwitch()
+                    renderer?.refreshAllBackendStatuses()
+                    com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
+                    maybeUnloadIdleEngines(ctx)
                 }
             }
         }
         sp.registerOnSharedPreferenceChangeListener(prefsListener)
     }
 
-    /** When the user disables BOTH on-device LLM backends, drop the loaded
-     *  model from native memory. Frees ~300-400 MB of KV cache + scratch
-     *  immediately and lets the kernel reclaim the mmap'd weight pages. If
-     *  only one backend is disabled, the singleton stays loaded for the other.
+    /**
+     * Drop any loaded on-device LLM models whose toggle is currently off,
+     * freeing the KV cache + mmap'd weights so the OS can reclaim that RAM.
      *
-     *  Mutex-serialized inside [LlamaTranslator.unloadModel] — won't race with
-     *  any in-flight translation triggered just before the toggle changed. */
-    private fun maybeUnloadOnDeviceLlmIfBothDisabled(ctx: Context) {
+     *  - `:llama` serves both TG and legacy Qwen; unload only when *both* are
+     *    disabled.
+     *  - `:mnn` serves only the new Qwen-MNN tier; unload when that's disabled.
+     *
+     * Each unloadModel is mutex-serialized inside its own translator
+     * singleton so it can't race an in-flight translation that started right
+     * before the toggle changed.
+     */
+    private fun maybeUnloadIdleEngines(ctx: Context) {
         val prefs = Prefs(ctx)
         if (!prefs.translateGemmaEnabled && !prefs.qwenEnabled) {
             viewLifecycleOwner.lifecycleScope.launch {
                 com.playtranslate.translation.translategemma.LlamaTranslator
+                    .getInstance(ctx).unloadModel()
+            }
+        }
+        if (!prefs.qwenMnnEnabled) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                com.playtranslate.translation.mnn.MnnTranslator
                     .getInstance(ctx).unloadModel()
             }
         }
@@ -625,6 +646,26 @@ class SettingsBottomSheet : DialogFragment() {
 
     private var translategemmaDownloadJob: kotlinx.coroutines.Job? = null
 
+    /**
+     * Returns true and short-circuits if a download for the same backend is
+     * already in flight. Three backends use this guard (TG / legacy Qwen /
+     * MNN Qwen) — without it, a frustrated user tapping the row repeatedly
+     * (because the OverlayProgress dialog isn't showing fast enough, or got
+     * dismissed by the back key, etc.) launches one new download coroutine
+     * per tap, each opening the same `<name>.partial` with `append=false`
+     * and truncating the others' progress to zero. Worst case observed on
+     * the MNN Qwen flow: six concurrent downloads in 4 s, app OOM-killed
+     * mid-stream, no successful install. See the in-place comments at each
+     * call site.
+     */
+    private fun isDownloadInFlight(job: kotlinx.coroutines.Job?, label: String): Boolean {
+        if (job?.isActive == true) {
+            android.util.Log.d(TAG, "$label download already in flight; ignoring tap")
+            return true
+        }
+        return false
+    }
+
     /** Kick off [com.playtranslate.language.PackUpgradeOrchestrator] for the
      *  user's deferred-upgrade list (the "Update language packs" cell tap).
      *
@@ -788,6 +829,7 @@ class SettingsBottomSheet : DialogFragment() {
      *  cancels the coroutine but preserves the partial file (resume on next
      *  attempt). The Cancel button explicitly deletes the partial file. */
     private fun showTranslateGemmaDownloadDialog() {
+        if (isDownloadInFlight(translategemmaDownloadJob, "TranslateGemma")) return
         val ctx = context ?: return
         val backend = com.playtranslate.translation.TranslationBackendRegistry
             .byId("translategemma") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
@@ -1009,6 +1051,7 @@ class SettingsBottomSheet : DialogFragment() {
      *  [showTranslateGemmaDownloadDialog] but with QwenModel + a 4 GB total-mem
      *  floor (Qwen 1.5B fits comfortably below TG's 6 GB requirement). */
     private fun showQwenDownloadDialog() {
+        if (isDownloadInFlight(qwenDownloadJob, "Qwen (legacy)")) return
         val ctx = context ?: return
         val backend = com.playtranslate.translation.TranslationBackendRegistry
             .byId("qwen") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
@@ -1260,6 +1303,7 @@ class SettingsBottomSheet : DialogFragment() {
      *  [showQwenDownloadDialog]; the downloader picks ZipExtract automatically
      *  via [com.playtranslate.translation.qwen.QwenMnnModel.isDirectoryMode]. */
     private fun showQwenMnnDownloadDialog() {
+        if (isDownloadInFlight(qwenMnnDownloadJob, "Qwen MNN")) return
         val ctx = context ?: return
         val backend = com.playtranslate.translation.TranslationBackendRegistry
             .byId("qwen_mnn") as? com.playtranslate.translation.llm.OnDeviceLlmBackend

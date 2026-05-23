@@ -42,7 +42,7 @@ class QwenMnnBackend(
     override val displayName: String = context.getString(R.string.qwen_mnn_display_name)
     override val priority: Int = PRIORITY
     override val quality: BackendQuality = BackendQuality.Okay
-    override val speed: BackendSpeed = BackendSpeed.Moderate
+    override val speed: BackendSpeed = BackendSpeed.Okay
     override val modelHelper = QwenMnnModel
     override val promptStyle = PromptStyle.StandardChat
 

@@ -3,9 +3,12 @@ package com.playtranslate.language
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.net.Inet4Address
+import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
 
@@ -155,6 +158,35 @@ class LanguagePackDownloader(
         private fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
+            // Prefer IPv4 over IPv6. Many consumer networks advertise a
+            // routable IPv6 address but can't actually reach AWS CloudFront
+            // (where huggingface.co + the Xet LFS CDN live) over v6 — the
+            // SYN goes out, no reply, the socket sits in SYN_SENT until
+            // connectTimeout fires (15 s), and OkHttp's happy-eyeballs
+            // fallback to v4 only kicks in after the v6 attempt's head-start
+            // window. Observed on the AYN Thor + a residential router that
+            // ping6 huggingface.co loses 100% of packets while ping over v4
+            // is healthy. Returning v4 first sidesteps the 15-s-per-route
+            // cycle: v4 wins happy eyeballs immediately.
+            //
+            // Doesn't disable v6 — falls back to it when no v4 is available,
+            // so a v6-only network (or a v4-blocked corporate egress) still
+            // works without code changes.
+            .dns(Ipv4PreferredDns)
             .build()
+
+        /**
+         * [Dns] implementation that returns IPv4 addresses before IPv6 for
+         * any hostname, leaning on [Dns.SYSTEM] for the actual resolution.
+         * See [defaultClient] for the rationale.
+         */
+        private val Ipv4PreferredDns: Dns = object : Dns {
+            override fun lookup(hostname: String): List<InetAddress> {
+                val all = Dns.SYSTEM.lookup(hostname)
+                // sortedBy boolean: false (v4) comes before true (v6),
+                // preserving the original order within each group.
+                return all.sortedBy { it !is Inet4Address }
+            }
+        }
     }
 }

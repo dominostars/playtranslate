@@ -1366,7 +1366,7 @@ class SettingsRenderer(
             val (speedText, speedTone) = when (speed) {
                 BackendSpeed.VerySlow -> ctx.getString(R.string.tr_service_speed_very_slow) to Tone.Danger
                 BackendSpeed.Slow     -> ctx.getString(R.string.tr_service_speed_slow)      to Tone.Warning
-                BackendSpeed.Moderate -> ctx.getString(R.string.tr_service_speed_moderate)  to null
+                BackendSpeed.Okay     -> ctx.getString(R.string.tr_service_speed_okay)      to null
                 BackendSpeed.Fast     -> ctx.getString(R.string.tr_service_speed_fast)      to null
             }
             appendMaybeColored(builder, speedText, speedTone)

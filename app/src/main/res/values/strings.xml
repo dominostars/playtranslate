@@ -384,7 +384,7 @@
     <!-- Backend speed labels (line 1 third part — offline backends only) -->
     <string name="tr_service_speed_very_slow">Very slow</string>
     <string name="tr_service_speed_slow">Slow</string>
-    <string name="tr_service_speed_moderate">Moderate</string>
+    <string name="tr_service_speed_okay">Okay speed</string>
     <string name="tr_service_speed_fast">Fast</string>
 
     <!-- Download UI: shown between SHA verify and ready for directory-mode
