@@ -59,18 +59,29 @@ internal class MnnChatImpl private constructor(
     }
 
     // JNI surface — see mnn_chat.cpp. All methods serialize through
-    // [mnnDispatcher]; `@FastNative` skips JNI's parameter-copy fast-path
-    // safety net since we're confident in the contract.
+    // [mnnDispatcher]. `@FastNative` is reserved here for genuinely-short
+    // calls (microseconds): init/systemInfo do trivial work, `eraseHistory`
+    // is a KV-metadata flip, and `shutdown` is a no-op on MNN. The
+    // load/prepare/prompt/generation path is *deliberately* plain JNI —
+    // unlike `:llama` (which is per-token via `generateNextToken`), MNN's
+    // public `Llm::response` runs prefill + the entire generation loop in
+    // one synchronous call (~500 ms–3 s on Thor). `@FastNative` parks the
+    // thread in the Native state for the whole call, which delays GC
+    // safepoints and defers coroutine-cancellation pickup until the native
+    // response returns — both visible under memory pressure exactly when
+    // this backend is most active. The plain-JNI transition cost (~100 ns)
+    // is irrelevant against a multi-hundred-ms call. See the Codex
+    // adversarial review (May 22 2026) for the framing.
     @FastNative private external fun init(nativeLibDir: String)
-    @FastNative private external fun load(modelDir: String): Int
-    @FastNative private external fun prepare(): Int
+    private external fun load(modelDir: String): Int
+    private external fun prepare(): Int
     @FastNative private external fun systemInfo(): String
-    @FastNative private external fun processSystemPrompt(systemPrompt: String): Int
+    private external fun processSystemPrompt(systemPrompt: String): Int
     @FastNative private external fun nativeResetForNextPrompt(): Int
-    @FastNative private external fun nativeProcessRawPrefix(prefix: String): Int
-    @FastNative private external fun processUserPromptBlocking(userPrompt: String, predictLength: Int): String
-    @FastNative private external fun nativeProcessRawSuffixBlocking(suffix: String, predictLength: Int): String
-    @FastNative private external fun unload()
+    private external fun nativeProcessRawPrefix(prefix: String): Int
+    private external fun processUserPromptBlocking(userPrompt: String, predictLength: Int): String
+    private external fun nativeProcessRawSuffixBlocking(suffix: String, predictLength: Int): String
+    private external fun unload()
     @FastNative private external fun shutdown()
 
     private val _state =

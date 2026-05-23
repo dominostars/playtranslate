@@ -17,6 +17,10 @@ local/
 scripts/thor-wifi-connect.sh
 docs/
 
+# Stale MNN-converter log file dropped here by the spike's `llmexport.py`
+# run (contains local absolute paths + transient tool output).
+.export.log
+
 # Python cache from scripts/
 __pycache__/
 *.pyc
