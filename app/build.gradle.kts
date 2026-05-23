@@ -124,6 +124,7 @@ kotlin {
 
 dependencies {
     implementation(project(":llama"))
+    implementation(project(":mnn"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)

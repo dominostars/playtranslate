@@ -4,3 +4,6 @@
 [submodule "vendor/OpenCL-ICD-Loader"]
 	path = vendor/OpenCL-ICD-Loader
 	url = https://github.com/KhronosGroup/OpenCL-ICD-Loader.git
+[submodule "mnn/third-party/MNN"]
+	path = mnn/third-party/MNN
+	url = https://github.com/alibaba/MNN.git

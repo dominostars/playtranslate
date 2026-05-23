@@ -5,7 +5,7 @@ import com.playtranslate.R
 import com.playtranslate.translation.llm.OnDeviceLlmBackend
 import com.playtranslate.translation.llm.StatusStringIds
 import com.playtranslate.translation.qwen.QwenModel
-import com.playtranslate.translation.translategemma.PromptStyle
+import com.playtranslate.translation.llm.PromptStyle
 
 /**
  * Downloadable on-device translation backend powered by Qwen 2.5 1.5B Instruct

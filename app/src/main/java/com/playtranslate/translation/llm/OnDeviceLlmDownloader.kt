@@ -7,6 +7,8 @@ import android.net.NetworkCapabilities
 import android.os.StatFs
 import android.util.Log
 import com.playtranslate.language.LanguagePackDownloader
+import com.playtranslate.language.LanguagePackStore
+import com.playtranslate.language.PackIntegrity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -18,26 +20,37 @@ import java.security.MessageDigest
 import kotlin.coroutines.coroutineContext
 
 /**
- * Drives a manifest-backed download of an on-device LLM GGUF.
+ * Drives a manifest-backed download of an on-device LLM artifact.
  *
- * Pipeline:
- *  1. Pre-flight checks (RAM / free storage) — surfaced as [Outcome.Refused].
- *  2. Streamed download via [LanguagePackDownloader] into [ModelHelper.partialFile]
- *     (resumable — the partial persists across cancel-by-dismiss; only
- *     [deletePartial] removes it).
- *  3. Streaming SHA-256 over the partial. On hash mismatch: delete and report failure.
- *  4. Atomic replace `<file>.partial` → `<file>` (`Files.move` with `ATOMIC_MOVE` +
- *     `REPLACE_EXISTING`). Only after this rename does [ModelHelper.isInstalled]
- *     return true — a kill between byte-complete and SHA-complete leaves the
- *     unverified bytes at `.partial` where they can't be mistaken for an
- *     install. `REPLACE_EXISTING` also makes future in-place catalog upgrades
- *     safe: the previous install keeps serving translations until the new
- *     artifact verifies, then is swapped out in a single rename syscall.
- *  5. Caller flips the per-backend `enabled` pref. We just emit [Outcome.Success].
+ * Two commit modes, picked per-entry from the catalog's [extract] flag (and
+ * mirrored by [ModelHelper.isDirectoryMode] on the receiving side):
  *
- * Lifted from the previous TG-specific `TranslateGemmaDownloader`; parameterized
- * via [modelHelper] and [totalMemFloorBytes] so siblings (Qwen, ...) reuse the
- * same pipeline without code duplication.
+ * **FileSwap** (legacy default — GGUFs):
+ *  1. Pre-flight checks (RAM / free storage).
+ *  2. Streamed download via [LanguagePackDownloader] into
+ *     [ModelHelper.partialFile] (resumable across cancel-by-dismiss).
+ *  3. Streaming SHA-256 over the partial.
+ *  4. Atomic replace `<file>.partial` → `<file>` (`Files.move` with
+ *     `ATOMIC_MOVE` + `REPLACE_EXISTING`). Only after this rename does
+ *     [ModelHelper.isInstalled] return true.
+ *
+ * **ZipExtract** (engine zips — currently just the MNN Qwen):
+ *  1. Same pre-flights.
+ *  2. Same streamed download — the partial here is the *zip*.
+ *  3. Same streaming SHA-256 over the zip.
+ *  4. Extract into a sibling `<final>.tmp/` directory (path-traversal-safe
+ *     via [PackIntegrity.extractZip]).
+ *  5. Directory swap via [LanguagePackStore.safeSwap] (same rollback-safe
+ *     pattern language packs use).
+ *  6. Write `<final>/.sentinel` containing the catalog sha256, then delete
+ *     the verified zip partial. The sentinel is what
+ *     [ModelHelper.isInstalled] checks in directory mode (the file-mode
+ *     "match catalog size" check doesn't apply when the catalog's size is
+ *     the zip's compressed size, not the extracted footprint).
+ *
+ * Lifted from the previous TG-specific `TranslateGemmaDownloader`;
+ * parameterized via [modelHelper] and [totalMemFloorBytes] so siblings
+ * (Qwen GGUF, Qwen MNN, ...) reuse the same pipeline.
  */
 class OnDeviceLlmDownloader(
     private val context: Context,
@@ -49,6 +62,24 @@ class OnDeviceLlmDownloader(
     sealed interface Progress {
         data class Downloading(val received: Long, val total: Long) : Progress
         data object Verifying : Progress
+
+        /**
+         * Emitted between [Verifying] and the final commit for directory-mode
+         * (zip-extract) entries. [extractedBytes] is currently always 0 — the
+         * underlying [PackIntegrity.extractZip] doesn't have a per-entry
+         * callback and the extracted MNN model is small enough (~900 MB
+         * uncompressed, single-digit seconds on Thor) that an indeterminate
+         * spinner is fine. Plumb a real counter through if extract time grows
+         * past the "user notices" threshold.
+         */
+        data class Extracting(val extractedBytes: Long, val totalUncompressed: Long?) : Progress
+    }
+
+    enum class CommitStrategy {
+        /** Default for single-file GGUFs — `Files.move` atomic rename. */
+        FileSwap,
+        /** For engine entries that ship as a zip of multiple files — see kdoc above. */
+        ZipExtract,
     }
 
     sealed interface Outcome {
@@ -64,9 +95,9 @@ class OnDeviceLlmDownloader(
     }
 
     /**
-     * Run the full download → verify pipeline. Honors coroutine cancellation;
-     * the underlying [LanguagePackDownloader] cancels the OkHttp call when the
-     * surrounding coroutine is cancelled.
+     * Run the full download → verify → commit pipeline. Honors coroutine
+     * cancellation; the underlying [LanguagePackDownloader] cancels the
+     * OkHttp call when the surrounding coroutine is cancelled.
      */
     suspend fun run(
         onProgress: (Progress) -> Unit,
@@ -85,9 +116,18 @@ class OnDeviceLlmDownloader(
                 "Catalog SHA256 missing for ${modelHelper.catalogKey}",
             )
 
+        // Strategy decision: trust the helper's isDirectoryMode() as the
+        // source of truth. The catalog's `extract: true` should match, but
+        // we don't gate on it — a helper override is enough to opt in.
+        val strategy = if (modelHelper.isDirectoryMode()) {
+            CommitStrategy.ZipExtract
+        } else {
+            CommitStrategy.FileSwap
+        }
+
         // -- Pre-flights -----------------------------------------------------------
         preflightRam()?.let { return@withContext Outcome.Refused(it) }
-        preflightStorage(expectedSize)?.let { return@withContext Outcome.Refused(it) }
+        preflightStorage(expectedSize, strategy)?.let { return@withContext Outcome.Refused(it) }
         // Metered-network is a *warning* the caller surfaces BEFORE calling run().
         // We don't gate here — the caller is responsible for prompting the user.
 
@@ -95,7 +135,7 @@ class OnDeviceLlmDownloader(
         val partial = modelHelper.partialFile(context)
         Log.i(
             TAG,
-            "Starting download: $url -> ${partial.absolutePath} (expected $expectedSize bytes)",
+            "Starting download ($strategy): $url -> ${partial.absolutePath} (expected $expectedSize bytes)",
         )
 
         // -- Download --------------------------------------------------------------
@@ -136,6 +176,21 @@ class OnDeviceLlmDownloader(
         }
 
         // -- Commit ----------------------------------------------------------------
+        when (strategy) {
+            CommitStrategy.FileSwap -> commitFileSwap(partial, finalFile)?.let { return@withContext it }
+            CommitStrategy.ZipExtract -> commitZipExtract(partial, finalFile, expectedSha, onProgress)?.let { return@withContext it }
+        }
+
+        Log.i(TAG, "Download + verify + commit succeeded: ${finalFile.absolutePath}")
+        Outcome.Success
+    }
+
+    /**
+     * FileSwap commit: atomic-rename the verified partial onto [finalFile].
+     * Returns null on success, or a populated [Outcome.Failed] on error
+     * (caller short-circuits with the returned outcome).
+     */
+    private fun commitFileSwap(partial: File, finalFile: File): Outcome.Failed? = try {
         // Atomic replace: rename(2) either succeeds atomically or leaves both
         // paths untouched. REPLACE_EXISTING covers in-place model upgrades
         // (catalog ships v2 at the same filename). On failure, the verified
@@ -143,32 +198,95 @@ class OnDeviceLlmDownloader(
         // finalFile keeps serving — no path where we delete one and fail to
         // land the other. Both paths are under noBackupFilesDir (same FS), so
         // ATOMIC_MOVE is honored by ext4/f2fs without falling back.
-        try {
-            Files.move(
-                partial.toPath(),
-                finalFile.toPath(),
-                StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING,
-            )
+        Files.move(
+            partial.toPath(),
+            finalFile.toPath(),
+            StandardCopyOption.ATOMIC_MOVE,
+            StandardCopyOption.REPLACE_EXISTING,
+        )
+        null
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to commit verified model to ${finalFile.absolutePath}", e)
+        Outcome.Failed(
+            "Failed to commit verified model to ${finalFile.absolutePath}: " +
+                (e.message ?: e.javaClass.simpleName),
+            e,
+        )
+    }
+
+    /**
+     * ZipExtract commit: extract the verified zip partial to `<finalDir>.tmp/`,
+     * directory-swap onto [finalDir], write the sentinel containing the
+     * catalog sha (so [ModelHelper.isInstalled] knows the extract was
+     * complete), then delete the now-redundant zip partial.
+     *
+     * Returns null on success, or a populated [Outcome.Failed] on error.
+     */
+    private suspend fun commitZipExtract(
+        zipPartial: File,
+        finalDir: File,
+        expectedSha: String,
+        onProgress: (Progress) -> Unit,
+    ): Outcome.Failed? {
+        val tmpDir = tmpDirFor(finalDir)
+        // Wipe any leftover .tmp from a kill mid-extract (which deletePartial()
+        // already covers on the next launch, but be belt-and-suspenders here
+        // — the failed install path also needs a clean slate).
+        if (tmpDir.exists()) tmpDir.deleteRecursively()
+        return try {
+            onProgress(Progress.Extracting(0L, null))
+            PackIntegrity.extractZip(zipPartial, tmpDir)
+            // safeSwap is rollback-safe: if it fails mid-promotion, the
+            // previous final directory (if any) is restored from a sibling
+            // `<finalDir>.old` backup. After this returns, finalDir is the
+            // freshly-extracted contents.
+            LanguagePackStore.safeSwap(tmpDir, finalDir)
+            // The sentinel is the post-extract install gate. ModelHelper's
+            // isInstalled() in directory mode reads this file and compares
+            // its contents to the catalog sha. We write it AFTER safeSwap so
+            // a kill mid-swap leaves the directory either un-promoted or
+            // promoted-without-sentinel — either way isInstalled() returns
+            // false and the next launch's deletePartial() can clean up.
+            File(finalDir, ".sentinel").writeText(expectedSha)
+            // Delete the verified zip — already extracted; keeping it would
+            // double the on-disk cost of the model.
+            zipPartial.delete()
+            null
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to commit verified model to ${finalFile.absolutePath}", e)
-            return@withContext Outcome.Failed(
-                "Failed to commit verified model to ${finalFile.absolutePath}: " +
+            Log.e(TAG, "Failed to extract/install zip to ${finalDir.absolutePath}", e)
+            // Don't delete zipPartial here — it's SHA-verified and could
+            // support a retry without re-downloading. deletePartial() is the
+            // explicit "give up, start over" path.
+            Outcome.Failed(
+                "Failed to extract/install zip to ${finalDir.absolutePath}: " +
                     (e.message ?: e.javaClass.simpleName),
                 e,
             )
         }
-
-        Log.i(TAG, "Download + verify succeeded: ${finalFile.absolutePath}")
-        Outcome.Success
     }
 
-    /** Delete any partial file. Use on explicit user cancel (not on transient failure). */
+    /** The sibling staging directory used by ZipExtract: `<final>.tmp`. */
+    private fun tmpDirFor(finalDir: File): File =
+        File(finalDir.parentFile, "${finalDir.name}.tmp")
+
+    /**
+     * Delete any partial file *and* any orphan extract directory. Use on
+     * explicit user cancel (not on transient failure). File-mode helpers
+     * only have a `.partial`; directory-mode helpers also have a `.tmp/`
+     * staging directory that a mid-extract kill may have left behind.
+     */
     fun deletePartial() {
         val f = modelHelper.partialFile(context)
         if (f.exists()) {
             val ok = f.delete()
             Log.i(TAG, "Deleted partial file: ${f.absolutePath} ok=$ok")
+        }
+        if (modelHelper.isDirectoryMode()) {
+            val tmp = tmpDirFor(modelHelper.file(context))
+            if (tmp.exists()) {
+                val ok = tmp.deleteRecursively()
+                Log.i(TAG, "Deleted partial tmp dir: ${tmp.absolutePath} ok=$ok")
+            }
         }
     }
 
@@ -186,23 +304,27 @@ class OnDeviceLlmDownloader(
         return null
     }
 
-    private fun preflightStorage(expectedSize: Long): String? {
+    private fun preflightStorage(expectedSize: Long, strategy: CommitStrategy): String? {
         val dir = context.noBackupFilesDir
         val sf = StatFs(dir.absolutePath)
         val free = sf.availableBytes
         // Partial-file accounting. After a download is interrupted we keep the
         // partial on disk for resume (LanguagePackDownloader uses HTTP Range);
         // the bytes we still need to *fetch* are (expectedSize - alreadyOnDisk).
-        // A naive expectedSize-sized check would falsely refuse the resume
-        // attempt — user's 1 GB partial of a 2 GB GGUF would need only ~1 GB
-        // more free, but the old check demanded ~2 GB.
         val partial = modelHelper.partialFile(context)
         val alreadyOnDisk = if (partial.exists()) partial.length() else 0L
         val remainingBytes = (expectedSize - alreadyOnDisk).coerceAtLeast(0L)
-        // 5% headroom for filesystem overhead, plus a 100 MB minimum so a tiny
-        // remaining-bytes value still has reasonable elbow room for verification
-        // / ext4 metadata / etc.
-        val needed = (remainingBytes * 105 / 100).coerceAtLeast(remainingBytes + 100_000_000L)
+        // 5% headroom + 100 MB minimum.
+        var needed = (remainingBytes * 105 / 100).coerceAtLeast(remainingBytes + 100_000_000L)
+        // ZipExtract additionally needs room for the extracted contents
+        // (which the partial zip will hold compressed). Without an
+        // `extractedSize` catalog field we don't know exactly — budget 2.5×
+        // the zip size as a heuristic. The MNN Qwen zip is ~840 MB
+        // compressed, ~1.0 GB uncompressed (mostly already-quantized
+        // .mnn.weight, which compresses poorly), so 2.5× is comfortable.
+        if (strategy == CommitStrategy.ZipExtract) {
+            needed += (expectedSize * 25 / 10)
+        }
         if (free < needed) {
             return "Need ${humanSize(needed)} free, only ${humanSize(free)} available"
         }

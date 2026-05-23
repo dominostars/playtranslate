@@ -4,7 +4,7 @@ import android.content.Context
 import com.playtranslate.R
 import com.playtranslate.translation.llm.OnDeviceLlmBackend
 import com.playtranslate.translation.llm.StatusStringIds
-import com.playtranslate.translation.translategemma.PromptStyle
+import com.playtranslate.translation.llm.PromptStyle
 import com.playtranslate.translation.translategemma.TranslateGemmaModel
 
 /**

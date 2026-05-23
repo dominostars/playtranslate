@@ -340,21 +340,29 @@ class MainActivity :
         // `~/.claude/plans/cheerful-yawning-donut.md` and the StalePack
         // ordering analysis from the plan review.
         maybePromptForPackUpgrade { skipTargetCodes ->
-            setupOnboarding()
-            // Only preload when the source pack is actually present.
-            // Fresh-install and data-wiped users route through the welcome
-            // flow to download a pack first; preloading before that would
-            // just log a PackMissing and is pointless.
-            if (LanguagePackStore.isInstalled(applicationContext, prefs.sourceLangId)) {
-                lifecycleScope.launch(Dispatchers.IO) {
-                    preloadEngineAndRecover(prefs.sourceLangId)
+            // Chain the Qwen-legacy-migration prompt at the call site here
+            // (instead of inside maybePromptForPackUpgrade) so both helpers
+            // stay independent — pack-upgrade doesn't need to know about
+            // model-tier nudges, and a future deep-link that triggers
+            // pack-upgrade-only can call it directly without dragging the
+            // Qwen prompt along.
+            maybePromptForQwenLegacyMigration {
+                setupOnboarding()
+                // Only preload when the source pack is actually present.
+                // Fresh-install and data-wiped users route through the welcome
+                // flow to download a pack first; preloading before that would
+                // just log a PackMissing and is pointless.
+                if (LanguagePackStore.isInstalled(applicationContext, prefs.sourceLangId)) {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        preloadEngineAndRecover(prefs.sourceLangId)
+                    }
                 }
+                // One-shot migration: if the user already has a non-English target but
+                // no target gloss pack installed, offer to download it. Skips any
+                // target the upgrade flow already handled (or is about to handle)
+                // to avoid two prompts addressing the same pack.
+                checkTargetPackMigration(skipTargetCodes)
             }
-            // One-shot migration: if the user already has a non-English target but
-            // no target gloss pack installed, offer to download it. Skips any
-            // target the upgrade flow already handled (or is about to handle)
-            // to avoid two prompts addressing the same pack.
-            checkTargetPackMigration(skipTargetCodes)
         }
 
         // Fragment event handlers live on TranslationResultHost (which
@@ -919,9 +927,14 @@ class MainActivity :
         openSettingsInline()
     }
 
-    /** Add the settings fragment to the already-visible settings container. */
-    private fun openSettingsInline() {
-        val sheet = SettingsBottomSheet.newInstance(hideDismiss = false).apply {
+    /** Add the settings fragment to the already-visible settings container.
+     *  [anchor], if non-null, is passed through to [SettingsBottomSheet.newInstance]
+     *  so the freshly-bound sheet scrolls the corresponding section header
+     *  into view on its first layout pass — for deep-links like the
+     *  cold-launch Qwen-legacy nudge that want to land the user at a
+     *  specific section without creating a duplicate fragment. */
+    private fun openSettingsInline(anchor: com.playtranslate.ui.SettingsAnchor? = null) {
+        val sheet = SettingsBottomSheet.newInstance(hideDismiss = false, anchor = anchor).apply {
             setShowsDialog(false)
             onDisplayChanged = {
                 val wasLive = captureService?.isLive == true
@@ -955,6 +968,45 @@ class MainActivity :
 
     private fun hideSettings() {
         selectTab(Tab.TRANSLATE)
+    }
+
+    /**
+     * Open Settings keyed to a specific section anchor — without duplicating
+     * the SettingsBottomSheet fragment if one already exists.
+     *
+     * Three states it has to handle:
+     *  - **Dual-screen, default Settings tab**: a SettingsBottomSheet is
+     *    already in the fragment manager (added by [openSettingsInline] at
+     *    initial-tab selection). Just scroll *that* instance to the anchor.
+     *  - **Single-screen, Settings tab visited earlier**: the sheet was
+     *    removed when the user navigated away (see [selectTab]'s fragment
+     *    cleanup at line 859), so the fragment manager doesn't have it.
+     *    Select the SETTINGS tab and add a fresh sheet with the anchor
+     *    baked into its arguments.
+     *  - **Single-screen, never visited Settings**: same as above.
+     *
+     * Replaces the earlier `SettingsBottomSheet.newInstance(…).show(…)`
+     * approach that incorrectly used the DialogFragment `.show()` path to
+     * stack a *modal* dialog over the existing fragment.
+     */
+    private fun openSettingsAtAnchor(anchor: com.playtranslate.ui.SettingsAnchor) {
+        val existing = supportFragmentManager
+            .findFragmentByTag(SettingsBottomSheet.TAG) as? SettingsBottomSheet
+        if (existing != null) {
+            // Sheet already attached (dual-screen default, or onboarding
+            // dialog mode — both wear the same TAG). Scrolling in place
+            // beats creating a second instance.
+            existing.scrollToAnchor(anchor)
+            // Defensive: a dual-screen flow that switched away from SETTINGS
+            // between alert fire + button tap should land back on it. Normal
+            // dual-screen path is a no-op (selectedTab is already SETTINGS).
+            if (selectedTab != Tab.SETTINGS) selectTab(Tab.SETTINGS)
+            return
+        }
+        // No existing sheet — switch to the Settings tab and add a fresh
+        // sheet with the anchor pre-set via newInstance args.
+        if (selectedTab != Tab.SETTINGS) selectTab(Tab.SETTINGS)
+        openSettingsInline(anchor)
     }
 
     /** Creates and shows a SettingsBottomSheet as a dialog (for onboarding). */
@@ -1426,6 +1478,60 @@ class MainActivity :
             // until the user actually downloads.
             .addCancelButton(getString(R.string.pack_upgrade_button_later)) {
                 onProceed(skipTargetCodes)
+            }
+            .showInActivity(this)
+    }
+
+    /**
+     * Cold-launch nudge for users still running the legacy GGUF Qwen.
+     * Fires on every cold launch where the legacy model is on disk and the
+     * user hasn't tapped "Don't remind me" yet; routes the accent button
+     * to Settings → Offline Translations (the new MNN-Qwen row sits at the
+     * top of that section). [onProceed] is always invoked exactly once,
+     * regardless of which dismissal path the user took — same contract as
+     * [maybePromptForPackUpgrade]'s onProceed.
+     *
+     * Skipped silently when:
+     *  - The user has tapped "Don't remind me" (`qwenLegacyUpgradeDismissed`).
+     *  - The legacy GGUF Qwen isn't installed (nothing to migrate from).
+     *
+     * The "Remind me later" cancel button intentionally does NOT set the
+     * dismissal flag — the prompt re-fires next cold launch. Tap on scrim
+     * routes through the same cancel handler (OverlayAlert.addCancelButton's
+     * onClick fires for both button-tap and scrim-tap dismissals).
+     */
+    private fun maybePromptForQwenLegacyMigration(onProceed: () -> Unit) {
+        if (Prefs(this).qwenLegacyUpgradeDismissed ||
+            !com.playtranslate.translation.qwen.QwenModel.isInstalled(this)) {
+            onProceed(); return
+        }
+        OverlayAlert.Builder(this)
+            .setTitle(getString(R.string.qwen_legacy_upgrade_title))
+            .setMessage(getString(R.string.qwen_legacy_upgrade_message))
+            .addButton(
+                getString(R.string.qwen_legacy_upgrade_button_open),
+                themeColor(R.attr.ptAccent),
+            ) {
+                // Key into the existing settings fragment when present
+                // (dual-screen default, or otherwise already-attached);
+                // otherwise switch tabs + add a fresh instance with the
+                // anchor pre-set. Avoids the duplicate-modal bug that
+                // `.show()` would have caused on top of the inline sheet.
+                openSettingsAtAnchor(com.playtranslate.ui.SettingsAnchor.OfflineTranslation)
+                onProceed()
+            }
+            .addButton(
+                getString(R.string.qwen_legacy_upgrade_button_dont_remind),
+                themeColor(R.attr.ptDivider),
+                themeColor(R.attr.ptDanger),
+            ) {
+                Prefs(this).qwenLegacyUpgradeDismissed = true
+                onProceed()
+            }
+            // "Remind me later" — cancel button AND scrim-tap route here.
+            // No flag set, so the prompt re-fires on next cold launch.
+            .addCancelButton(getString(R.string.qwen_legacy_upgrade_button_later)) {
+                onProceed()
             }
             .showInActivity(this)
     }

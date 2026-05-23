@@ -158,6 +158,19 @@ class SettingsRenderer(
          *  call [SettingsRenderer.refreshQwenSwitch] to revert the switch. */
         fun showQwenDisableDialog()
 
+        /** Tap on the MNN-backed Qwen row when the model isn't installed —
+         *  start a zip download via the OnDeviceLlmDownloader ZipExtract
+         *  commit path. Mirrors [startQwenDownload]. */
+        fun startQwenMnnDownload()
+
+        /** Tap on the MNN-backed Qwen row when the model is already extracted
+         *  but the switch is off. Revert via [refreshQwenMnnSwitch] on
+         *  Cancel / Delete. */
+        fun enableInstalledQwenMnn()
+
+        /** Tap on the MNN-backed Qwen row when it's currently enabled. */
+        fun showQwenMnnDisableDialog()
+
         /** Tap on the "Update language packs" row in the Language section.
          *  Implementer instantiates [com.playtranslate.language.PackUpgradeOrchestrator]
          *  and calls `upgradeAll(stalePacks)`. On completion, calls
@@ -1283,7 +1296,14 @@ class SettingsRenderer(
     private val rowBackendDeepl: View = root.findViewById(R.id.rowBackendDeepl)
     private val rowBackendLingva: View = root.findViewById(R.id.rowBackendLingva)
     private val rowBackendTranslategemma: View = root.findViewById(R.id.rowBackendTranslategemma)
+    private val rowBackendQwenMnn: View = root.findViewById(R.id.rowBackendQwenMnn)
+    private val dividerBackendQwenMnn: View = root.findViewById(R.id.dividerBackendQwenMnn)
     private val rowBackendQwen: View = root.findViewById(R.id.rowBackendQwen)
+    // `dividerBackendQwen` is the divider *above the legacy Qwen row*. After
+    // the layout rename (see dialog_settings.xml), the divider above the new
+    // MNN-Qwen row is `dividerBackendQwenMnn`; the name `dividerBackendQwen`
+    // continues to mean "the divider that hides with the legacy row" — see
+    // [wireQwenBackendRow]'s visibility gate.
     private val dividerBackendQwen: View = root.findViewById(R.id.dividerBackendQwen)
     private val rowBackendMlkit: View = root.findViewById(R.id.rowBackendMlkit)
 
@@ -1307,6 +1327,7 @@ class SettingsRenderer(
 
         wireDeeplBackendRow()
         wireTranslateGemmaBackendRow()
+        wireQwenMnnBackendRow()
         wireQwenBackendRow()
 
         // Compose line 1 for each backend from its metadata
@@ -1345,6 +1366,7 @@ class SettingsRenderer(
             val (speedText, speedTone) = when (speed) {
                 BackendSpeed.VerySlow -> ctx.getString(R.string.tr_service_speed_very_slow) to Tone.Danger
                 BackendSpeed.Slow     -> ctx.getString(R.string.tr_service_speed_slow)      to Tone.Warning
+                BackendSpeed.Moderate -> ctx.getString(R.string.tr_service_speed_moderate)  to null
                 BackendSpeed.Fast     -> ctx.getString(R.string.tr_service_speed_fast)      to null
             }
             appendMaybeColored(builder, speedText, speedTone)
@@ -1408,6 +1430,27 @@ class SettingsRenderer(
         }
     }
 
+    /** Refresh the MNN-Qwen switch from the current pref value. Mirrors
+     *  [refreshQwenSwitch] — driven by the same SP-listener observer. */
+    fun refreshQwenMnnSwitch() {
+        rowBackendQwenMnn.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
+            it.isChecked = prefs.qwenMnnEnabled
+        }
+    }
+
+    /** Re-evaluate the legacy Qwen row's visibility. Called after a successful
+     *  delete (which the disable-dialog branch performs) so the row hides
+     *  immediately instead of waiting for the next full re-render. */
+    fun refreshQwenLegacyVisibility() {
+        wireQwenBackendRow()
+        // Compose line 1 again — even when the row is now GONE, the metadata
+        // line update is cheap and keeps the row in sync if it later flips
+        // back to VISIBLE on a re-download.
+        com.playtranslate.translation.TranslationBackendRegistry.byId("qwen")?.let {
+            setBackendLine1(rowBackendQwen, it)
+        }
+    }
+
     /** Re-render every backend row's secondary subtitle line and kick off
      *  an async [TranslationBackend.refreshStatus] for each. Called on
      *  initial bind, on Settings resume (after [DeepLSettingsActivity]
@@ -1435,6 +1478,7 @@ class SettingsRenderer(
         "deepl"           -> rowBackendDeepl
         "lingva"          -> rowBackendLingva
         "translategemma"  -> rowBackendTranslategemma
+        "qwen_mnn"        -> rowBackendQwenMnn
         "qwen"            -> rowBackendQwen
         "mlkit"           -> rowBackendMlkit
         else              -> null
@@ -1573,12 +1617,24 @@ class SettingsRenderer(
         }
     }
 
-    /** Wire the Qwen backend row (download / enable / disable-with-dialog).
-     *  Mirrors [wireTranslateGemmaBackendRow] without the BuildConfig flag —
-     *  Qwen ships visible by default. */
+    /** Wire the legacy Qwen backend row (download / enable / disable-with-dialog).
+     *  Mirrors [wireTranslateGemmaBackendRow] without the BuildConfig flag.
+     *
+     *  Visibility gate: hidden when the legacy GGUF isn't installed. The new
+     *  MNN-Qwen tier replaces this for new users; the legacy row only appears
+     *  for users who still have the GGUF on disk from a previous version.
+     *  Re-runs on delete via [refreshQwenLegacyVisibility]. */
     private fun wireQwenBackendRow() {
+        if (!com.playtranslate.translation.qwen.QwenModel.isInstalled(ctx)) {
+            rowBackendQwen.visibility = View.GONE
+            dividerBackendQwen.visibility = View.GONE
+            return
+        }
+        rowBackendQwen.visibility = View.VISIBLE
+        dividerBackendQwen.visibility = View.VISIBLE
+
         rowBackendQwen.findViewById<TextView>(R.id.tvRowTitle).text =
-            ctx.getString(R.string.qwen_display_name)
+            ctx.getString(R.string.qwen_legacy_display_name)
 
         val backend = com.playtranslate.translation.TranslationBackendRegistry
             .byId("qwen") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
@@ -1603,6 +1659,43 @@ class SettingsRenderer(
                     callbacks.enableInstalledQwen()
                 } else {
                     callbacks.startQwenDownload()
+                }
+            }
+        }
+    }
+
+    /** Wire the MNN-backed Qwen row. Same shape as [wireQwenBackendRow] but
+     *  routes to the `qwen_mnn` backend + [com.playtranslate.translation.qwen.QwenMnnModel]
+     *  + `prefs.qwenMnnEnabled`. No visibility gate — this is the canonical
+     *  Qwen row going forward; it's always visible (subject to hardware
+     *  compatibility) regardless of whether the legacy GGUF is on disk. */
+    private fun wireQwenMnnBackendRow() {
+        rowBackendQwenMnn.findViewById<TextView>(R.id.tvRowTitle).text =
+            ctx.getString(R.string.qwen_mnn_display_name)
+
+        val backend = com.playtranslate.translation.TranslationBackendRegistry
+            .byId("qwen_mnn") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+        if (backend != null && configureIncompatibleHardwareRow(rowBackendQwenMnn, backend)) {
+            return
+        }
+
+        val switch = rowBackendQwenMnn.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        switch.isChecked = prefs.qwenMnnEnabled
+
+        rowBackendQwenMnn.setOnClickListener {
+            if (prefs.qwenMnnEnabled) {
+                switch.isChecked = false
+                callbacks.showQwenMnnDisableDialog()
+            } else {
+                val installed = com.playtranslate.translation.qwen
+                    .QwenMnnModel.isInstalled(ctx)
+                if (installed) {
+                    // Optimistic flip; the bottom sheet runs the availMem gate
+                    // and either flips the pref or reverts via refreshQwenMnnSwitch().
+                    switch.isChecked = true
+                    callbacks.enableInstalledQwenMnn()
+                } else {
+                    callbacks.startQwenMnnDownload()
                 }
             }
         }

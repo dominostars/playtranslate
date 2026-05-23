@@ -384,7 +384,12 @@
     <!-- Backend speed labels (line 1 third part — offline backends only) -->
     <string name="tr_service_speed_very_slow">Very slow</string>
     <string name="tr_service_speed_slow">Slow</string>
+    <string name="tr_service_speed_moderate">Moderate</string>
     <string name="tr_service_speed_fast">Fast</string>
+
+    <!-- Download UI: shown between SHA verify and ready for directory-mode
+         (zip-extract) engine entries like the MNN Qwen. -->
+    <string name="model_download_extracting">Extracting…</string>
 
     <!-- TranslateGemma backend (downloadable on-device 4B model) -->
     <string name="translategemma_display_name">TranslateGemma</string>
@@ -407,6 +412,7 @@
     <string name="translategemma_download_paused">Download paused. Reopen Settings to resume.</string>
 
     <string name="qwen_display_name">Qwen 2.5 1.5B</string>
+    <string name="qwen_legacy_display_name">Qwen 2.5 1.5B (legacy)</string>
     <string name="qwen_status_not_downloaded">Requires %1$s memory, %2$s on disk</string>
     <string name="qwen_status_downloaded_disabled">Downloaded but disabled (%1$s on disk)</string>
     <string name="qwen_status_ready">Requires %1$s memory, %2$s on disk</string>
@@ -424,6 +430,32 @@
     <string name="qwen_metered_warning_title">Download on cellular?</string>
     <string name="qwen_metered_warning_message">Qwen 2.5 1.5B is %1$s. Continue on cellular?</string>
     <string name="qwen_download_paused">Download paused. Reopen Settings to resume.</string>
+
+    <!-- MNN-backed Qwen tier (faster than the legacy GGUF — see :mnn module
+         + mnn-spike/SPIKE_REPORT.md). Mirrors the legacy Qwen strings;
+         status text is identical (same model, same disk/RAM cost). -->
+    <string name="qwen_mnn_display_name">Qwen 2.5 1.5B</string>
+    <string name="qwen_mnn_status_not_downloaded">Requires %1$s memory, %2$s on disk</string>
+    <string name="qwen_mnn_status_downloaded_disabled">Downloaded but disabled (%1$s on disk)</string>
+    <string name="qwen_mnn_status_ready">Requires %1$s memory, %2$s on disk</string>
+    <string name="qwen_mnn_status_downloading">Downloading… %1$s of %2$s</string>
+    <string name="qwen_mnn_status_verifying">Verifying download…</string>
+    <string name="qwen_mnn_disable_title">Disable Qwen (MNN)?</string>
+    <string name="qwen_mnn_disable_message">The %1$s model is installed. You can keep it for later or delete it to free up space.</string>
+    <string name="qwen_mnn_download_failed">Download failed: %1$s</string>
+    <string name="qwen_mnn_insufficient_memory">This device doesn\'t have enough memory to run Qwen.</string>
+    <string name="qwen_mnn_insufficient_storage">Not enough free storage. Qwen needs %1$s free.</string>
+    <string name="qwen_mnn_metered_warning_title">Download on cellular?</string>
+    <string name="qwen_mnn_metered_warning_message">Qwen 2.5 1.5B (MNN) is %1$s. Continue on cellular?</string>
+
+    <!-- Cold-launch OverlayAlert (MainActivity.maybePromptForQwenLegacyMigration).
+         Fires on every cold launch while the legacy Qwen GGUF is on disk and
+         the user hasn't tapped "Don't remind me" (qwenLegacyUpgradeDismissed). -->
+    <string name="qwen_legacy_upgrade_title">Faster Qwen available</string>
+    <string name="qwen_legacy_upgrade_message">A faster MNN-based version of Qwen 2.5 is now available. The older model still works — you can switch in Settings.</string>
+    <string name="qwen_legacy_upgrade_button_open">Open Settings</string>
+    <string name="qwen_legacy_upgrade_button_dont_remind">Don\'t remind me</string>
+    <string name="qwen_legacy_upgrade_button_later">Remind me later</string>
 
     <!-- Status line shown on a TG / Qwen row when the device's hardware can't
          run on-device LLMs. The row stays visible (so the user understands

@@ -37,6 +37,30 @@
         }
       ]
     },
+    "engine-qwen-1-5b-mnn": {
+      "display": "Qwen 2.5 1.5B (MNN)",
+      "type": "engine",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "additiveFromVersion": 1,
+      "extract": true,
+      "size": 0,
+      "url": "https://huggingface.co/playtranslate/qwen2.5-1.5b-instruct-mnn/resolve/main/qwen2.5-1.5b-instruct-mnn.zip",
+      "sha256": "TBD-UPLOAD-ZIP-TO-HF-AND-FILL-IN",
+      "licenses": [
+        {
+          "component": "Qwen 2.5 1.5B Instruct (MNN format)",
+          "license": "Apache-2.0",
+          "attribution": "© Alibaba Cloud. Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0."
+        },
+        {
+          "component": "MNN runtime (libMNN.so / libllm.so / libMNN_Express.so)",
+          "license": "Apache-2.0",
+          "attribution": "© Alibaba. Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0."
+        }
+      ]
+    },
     "ja": {
       "display": "Japanese",
       "script": "CJK_JAPANESE",

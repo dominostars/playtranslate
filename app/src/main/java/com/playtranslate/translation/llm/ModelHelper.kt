@@ -24,10 +24,33 @@ interface ModelHelper {
      *  (e.g. tests) or the entry is missing. */
     fun catalogEntry(ctx: Context): CatalogEntry?
 
-    /** Absolute path where the verified GGUF lives on disk. A file at this path
-     *  is guaranteed (by the downloader's atomic-rename) to have passed SHA-256
-     *  verification. Implementations should ensure the parent directory exists. */
+    /**
+     * For file-mode helpers (the GGUF default): the absolute path of the
+     * verified single-file model on disk. The downloader's atomic-rename
+     * guarantees a file at this path has passed SHA-256 verification.
+     *
+     * For directory-mode helpers (when [isDirectoryMode] is true): the
+     * absolute path of the *extracted root directory* containing the model's
+     * loose files (e.g. MNN's `llm.mnn`, `llm.mnn.weight`, `config.json`).
+     * The downloader's zip-extract path writes a `.sentinel` file inside this
+     * directory containing the catalog SHA-256 after a verified successful
+     * extract; [isInstalled] checks that sentinel rather than a single-file
+     * size, since the catalog `size` is the *zip's* size, not the extracted
+     * footprint.
+     *
+     * Either way, implementations should ensure the parent directory exists.
+     * Callers that need to disambiguate use [isDirectoryMode].
+     */
     fun file(ctx: Context): File
+
+    /**
+     * True if [file] returns the *extracted root directory* of a zip-distributed
+     * multi-file model (e.g. the MNN Qwen helper), false if it returns a
+     * single verified file (the default — used by all GGUF models). The
+     * downloader keys its [CommitStrategy] on this flag (see
+     * `OnDeviceLlmDownloader`), so directory-mode helpers MUST override it.
+     */
+    fun isDirectoryMode(): Boolean = false
 
     /** Absolute path where in-flight download bytes land before verification.
      *  Persists across coroutine cancellation to support HTTP Range resume;

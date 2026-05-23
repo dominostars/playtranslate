@@ -53,6 +53,21 @@ data class CatalogEntry(
      * compatibility window. See `project_pack_update_policy.md`.
      */
     val additiveFromVersion: Int? = null,
+
+    /**
+     * `true` for engine entries (`type: "engine"`) that ship as a zip of
+     * multiple loose files rather than a single GGUF. The
+     * [com.playtranslate.translation.llm.OnDeviceLlmDownloader] downloads
+     * the zip, SHA-verifies it, then extracts to a sibling `.tmp/` dir and
+     * safe-swaps to the final dir (matching the language-pack pattern in
+     * `LanguagePackStore`). The catalog's [size] and [sha256] are the
+     * **zip's** integrity values, not the extracted footprint.
+     *
+     * `null` / omitted defaults to file-mode (the existing GGUF default for
+     * every previously-shipped engine entry). The first directory-mode
+     * entry is the MNN-backed Qwen (`engine-qwen-1-5b-mnn`).
+     */
+    val extract: Boolean? = null,
 )
 
 /**

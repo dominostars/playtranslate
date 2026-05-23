@@ -265,10 +265,21 @@ class SettingsBottomSheet : DialogFragment() {
         }
         refreshToolbarVisibility(view)
 
-        // Scroll position restore after theme change
+        // Scroll position restore after theme change vs. deep-link anchor.
+        // Anchor wins when present — it's a fresh "land here" navigation, so
+        // it should override a stale settingsScrollY left over from a prior
+        // theme change (which would otherwise restore a position the user
+        // never asked to return to in this flow).
         val settingsScrollView = view.findViewById<NestedScrollView>(R.id.settingsScrollView)
+        val anchorName = arguments?.getString(ARG_ANCHOR)
         val savedScroll = prefs.settingsScrollY
-        if (savedScroll > 0) {
+        if (anchorName != null) {
+            val anchor = runCatching { SettingsAnchor.valueOf(anchorName) }.getOrNull()
+            // Clear the saved scroll position so a later theme change after
+            // the anchor land doesn't pop the user back to a stale offset.
+            if (savedScroll > 0) prefs.settingsScrollY = 0
+            if (anchor != null) scrollToAnchor(anchor)
+        } else if (savedScroll > 0) {
             fun tryRestore() {
                 if (settingsScrollView.height > 0) {
                     settingsScrollView.scrollTo(0, savedScroll)
@@ -333,6 +344,15 @@ class SettingsBottomSheet : DialogFragment() {
                 }
                 override fun showQwenDisableDialog() {
                     this@SettingsBottomSheet.showQwenDisableDialog()
+                }
+                override fun startQwenMnnDownload() {
+                    showQwenMnnDownloadDialog()
+                }
+                override fun enableInstalledQwenMnn() {
+                    this@SettingsBottomSheet.enableInstalledQwenMnn()
+                }
+                override fun showQwenMnnDisableDialog() {
+                    this@SettingsBottomSheet.showQwenMnnDisableDialog()
                 }
                 override fun onUpdateLanguagePacksTapped(
                     stalePacks: List<com.playtranslate.language.StalePack>
@@ -866,6 +886,18 @@ class SettingsBottomSheet : DialogFragment() {
                                 dialog?.setMessage(getString(R.string.translategemma_status_verifying))
                                 dialog?.setProgress(100)
                             }
+                            is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Extracting -> {
+                                // TG ships as a single GGUF (FileSwap commit
+                                // strategy), so this branch is never reached
+                                // for TranslateGemma — but the `when` needs
+                                // to cover every Progress variant since the
+                                // sealed interface enumerates them. Mirroring
+                                // Verifying's full-progress affordance keeps
+                                // the dialog visually consistent.
+                                dialog?.setMessage(getString(R.string.model_download_extracting))
+                                dialog?.setProgress(100)
+                            }
                         }
                     }
                 }
@@ -1058,6 +1090,15 @@ class SettingsBottomSheet : DialogFragment() {
                                 }
                             }
                             is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Extracting -> {
+                                // Reached for the MNN-backed Qwen (directory-
+                                // mode / zip distribution) between SHA verify
+                                // and the final directory swap. Legacy Qwen
+                                // GGUF (FileSwap commit) never hits this branch.
+                                dialog?.setMessage(getString(R.string.model_download_extracting))
+                                dialog?.setProgress(100)
+                            }
+                            is com.playtranslate.translation.llm
                                 .OnDeviceLlmDownloader.Progress.Verifying -> {
                                 dialog?.setMessage(getString(R.string.qwen_status_verifying))
                                 dialog?.setProgress(100)
@@ -1151,6 +1192,235 @@ class SettingsBottomSheet : DialogFragment() {
                 renderer?.refreshAllBackendStatuses()
             }
             .addCancelButton { renderer?.refreshQwenSwitch() }
+            .showInActivity(activity)
+    }
+
+    /**
+     * Smooth-scrolls the named section header into view. Safe to call on an
+     * already-shown sheet (e.g. the dual-screen default sheet that's already
+     * in the fragment manager when the cold-launch alert fires) — uses the
+     * same `post` + height-poll pattern as the theme-change scroll restore
+     * so the target's `top` coordinate is meaningful when we call scrollTo.
+     *
+     * Called from two paths:
+     *  - onViewCreated, when a freshly-created sheet was constructed with
+     *    `newInstance(anchor = …)` — the anchor is read from arguments.
+     *  - [com.playtranslate.MainActivity.openSettingsAtAnchor], when the
+     *    sheet is already shown and we want to navigate within it instead
+     *    of duplicating the fragment.
+     */
+    fun scrollToAnchor(anchor: SettingsAnchor) {
+        val root = view ?: return
+        val sv = root.findViewById<NestedScrollView>(R.id.settingsScrollView) ?: return
+        val target = root.findViewById<android.view.View>(anchor.headerId) ?: return
+        fun tryScroll() {
+            if (sv.height > 0 && target.height > 0) {
+                // Subtract a small top margin so the header doesn't sit
+                // flush with the scroll view's top edge.
+                val dp = root.resources.displayMetrics.density
+                val topMargin = (16 * dp).toInt()
+                sv.smoothScrollTo(0, (target.top - topMargin).coerceAtLeast(0))
+            } else {
+                sv.postDelayed(::tryScroll, 16)
+            }
+        }
+        sv.post { tryScroll() }
+    }
+
+    // ── Qwen (MNN) flow ──────────────────────────────────────────────────
+
+    private var qwenMnnDownloadJob: kotlinx.coroutines.Job? = null
+
+    /** Re-enable an already-extracted MNN-Qwen model. Mirrors
+     *  [enableInstalledQwen] but routes through MnnTranslator for the unload-
+     *  on-delete branch (so the right engine's native state is freed). */
+    private fun enableInstalledQwenMnn() {
+        val ctx = context ?: return
+        val backend = com.playtranslate.translation.TranslationBackendRegistry
+            .byId("qwen_mnn") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+            ?: return
+        checkAvailMemAndProceed(
+            backend = backend,
+            modelDisplayName = getString(R.string.qwen_mnn_display_name),
+            onProceed = { Prefs(ctx).qwenMnnEnabled = true },
+            allowDelete = true,
+            onDelete = {
+                com.playtranslate.translation.qwen.QwenMnnModel.delete(ctx)
+                viewLifecycleOwner.lifecycleScope.launch {
+                    com.playtranslate.translation.mnn.MnnTranslator
+                        .getInstance(ctx).unloadModel()
+                }
+                renderer?.refreshAllBackendStatuses()
+            },
+            onCancel = { renderer?.refreshQwenMnnSwitch() },
+        )
+    }
+
+    /** Show the modal download dialog for the MNN-Qwen zip. Mirrors
+     *  [showQwenDownloadDialog]; the downloader picks ZipExtract automatically
+     *  via [com.playtranslate.translation.qwen.QwenMnnModel.isDirectoryMode]. */
+    private fun showQwenMnnDownloadDialog() {
+        val ctx = context ?: return
+        val backend = com.playtranslate.translation.TranslationBackendRegistry
+            .byId("qwen_mnn") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+            ?: return
+        val downloader = com.playtranslate.translation.llm.OnDeviceLlmDownloader(
+            context = ctx,
+            modelHelper = com.playtranslate.translation.qwen.QwenMnnModel,
+            totalMemFloorBytes = backend.totalMemFloorBytes,
+        )
+        checkAvailMemAndProceed(
+            backend = backend,
+            modelDisplayName = getString(R.string.qwen_mnn_display_name),
+            onProceed = { showQwenMnnDownloadDialogPostGate(ctx, downloader) },
+        )
+    }
+
+    private fun showQwenMnnDownloadDialogPostGate(
+        ctx: Context,
+        downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
+    ) {
+        if (downloader.isCurrentNetworkMetered()) {
+            val sizeStr = com.playtranslate.translation.qwen.QwenMnnModel.humanSize(ctx)
+            androidx.appcompat.app.AlertDialog.Builder(ctx)
+                .setTitle(R.string.qwen_mnn_metered_warning_title)
+                .setMessage(getString(R.string.qwen_mnn_metered_warning_message, sizeStr))
+                .setPositiveButton(android.R.string.ok) { _, _ ->
+                    runQwenMnnDownload(ctx, downloader)
+                }
+                .setNegativeButton(android.R.string.cancel) { _, _ -> }
+                .show()
+            return
+        }
+        runQwenMnnDownload(ctx, downloader)
+    }
+
+    private fun runQwenMnnDownload(
+        ctx: Context,
+        downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
+    ) {
+        val activity = activity ?: return
+        val sizeStr = com.playtranslate.translation.qwen.QwenMnnModel.humanSize(ctx)
+
+        var dialog: OverlayProgress? = null
+        dialog = OverlayProgress.Builder(ctx)
+            .setTitle(getString(R.string.qwen_mnn_display_name))
+            .setMessage(getString(R.string.qwen_mnn_status_downloading, "0 B", sizeStr))
+            .setProgress(0)
+            .setOnCancel {
+                qwenMnnDownloadJob?.cancel()
+                downloader.deletePartial()
+                renderer?.refreshAllBackendStatuses()
+            }
+            .showInActivity(activity)
+
+        qwenMnnDownloadJob = viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val outcome = downloader.run { progress ->
+                    requireActivity().runOnUiThread {
+                        when (progress) {
+                            is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Downloading -> {
+                                val recv = com.playtranslate.translation.llm
+                                    .humanSize(progress.received)
+                                val total = com.playtranslate.translation.llm
+                                    .humanSize(progress.total)
+                                dialog?.setMessage(getString(
+                                    R.string.qwen_mnn_status_downloading,
+                                    recv, total,
+                                ))
+                                if (progress.total > 0) {
+                                    dialog?.setProgress(
+                                        ((progress.received * 100) / progress.total).toInt()
+                                    )
+                                }
+                            }
+                            is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Verifying -> {
+                                dialog?.setMessage(getString(R.string.qwen_mnn_status_verifying))
+                                dialog?.setProgress(100)
+                            }
+                            is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Extracting -> {
+                                // The directory-mode commit path lives here.
+                                // The MNN Qwen zip extracts to ~30 separate
+                                // files (.mnn / .mnn.weight / tokenizer.txt /
+                                // config.json / ...) over a few seconds on
+                                // Thor; indeterminate spinner is fine.
+                                dialog?.setMessage(getString(R.string.model_download_extracting))
+                                dialog?.setProgress(100)
+                            }
+                        }
+                    }
+                }
+                if (!isAdded) return@launch
+                requireActivity().runOnUiThread {
+                    dialog?.dismiss()
+                    when (outcome) {
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Success -> {
+                            Prefs(ctx).qwenMnnEnabled = true
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Refused -> {
+                            android.widget.Toast.makeText(
+                                ctx,
+                                getString(R.string.qwen_mnn_download_failed, outcome.reason),
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Failed -> {
+                            android.widget.Toast.makeText(
+                                ctx,
+                                getString(R.string.qwen_mnn_download_failed, outcome.reason),
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Cancelled -> {
+                            // User-cancelled — partial may remain for resume,
+                            // unless the Cancel button's onCancel deleted it.
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Lifecycle cancellation — leave the partial in place.
+            } finally {
+                qwenMnnDownloadJob = null
+            }
+        }
+    }
+
+    /** Show the 3-button disable dialog for the MNN-Qwen tier. Mirrors
+     *  [showQwenDisableDialog] but deletes via [QwenMnnModel.delete] and
+     *  unloads through [MnnTranslator]. Refreshes the legacy row visibility
+     *  after a successful delete in case both tiers were installed. */
+    private fun showQwenMnnDisableDialog() {
+        val ctx = context ?: return
+        val activity = activity ?: return
+        val sizeStr = com.playtranslate.translation.qwen.QwenMnnModel.humanSize(ctx)
+        OverlayAlert.Builder(ctx)
+            .setTitle(getString(R.string.qwen_mnn_disable_title))
+            .setMessage(getString(R.string.qwen_mnn_disable_message, sizeStr))
+            .hideIcon()
+            .addButton(getString(R.string.qwen_disable_keep), ctx.themeColor(R.attr.ptAccent)) {
+                Prefs(ctx).qwenMnnEnabled = false
+            }
+            .addButton(getString(R.string.qwen_disable_delete), ctx.themeColor(R.attr.ptDivider), ctx.themeColor(R.attr.ptDanger)) {
+                Prefs(ctx).qwenMnnEnabled = false
+                com.playtranslate.translation.qwen.QwenMnnModel.delete(ctx)
+                viewLifecycleOwner.lifecycleScope.launch {
+                    com.playtranslate.translation.mnn.MnnTranslator
+                        .getInstance(ctx).unloadModel()
+                }
+                renderer?.refreshAllBackendStatuses()
+            }
+            .addCancelButton { renderer?.refreshQwenMnnSwitch() }
             .showInActivity(activity)
     }
 
@@ -1249,8 +1519,28 @@ class SettingsBottomSheet : DialogFragment() {
         // class itself — see OnDeviceLlmBackend.totalMemFloorBytes — so the UI's
         // hardware-gate logic and the downloader's preflight read the same source.)
 
-        fun newInstance(hideDismiss: Boolean = false) = SettingsBottomSheet().apply {
-            if (hideDismiss) arguments = Bundle().apply { putBoolean(ARG_HIDE_DISMISS, true) }
+        private const val ARG_ANCHOR = "anchor"
+
+        fun newInstance(
+            hideDismiss: Boolean = false,
+            anchor: SettingsAnchor? = null,
+        ) = SettingsBottomSheet().apply {
+            val args = Bundle()
+            if (hideDismiss) args.putBoolean(ARG_HIDE_DISMISS, true)
+            if (anchor != null) args.putString(ARG_ANCHOR, anchor.name)
+            if (!args.isEmpty) arguments = args
         }
     }
+}
+
+/**
+ * Named scroll target for [SettingsBottomSheet.newInstance]. Add new entries
+ * here when a deep-link needs to land the user at a specific section of the
+ * Settings sheet; the sheet scrolls the corresponding header view into view
+ * after layout. See [SettingsBottomSheet.maybeScrollToAnchor].
+ */
+enum class SettingsAnchor(val headerId: Int) {
+    /** "Offline translations" section header. Used by the cold-launch
+     *  "faster Qwen available" OverlayAlert in MainActivity. */
+    OfflineTranslation(com.playtranslate.R.id.headerOfflineTranslations),
 }

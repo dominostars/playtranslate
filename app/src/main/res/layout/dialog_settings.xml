@@ -736,6 +736,21 @@
                     <include layout="@layout/settings_row_backend"
                         android:id="@+id/rowBackendTranslategemma" />
 
+                    <!-- Divider above the new MNN-backed Qwen row.
+                         Previously named `dividerBackendQwen` (the divider
+                         between TG and the legacy Qwen); renamed because
+                         the legacy-row gate uses `dividerBackendQwen` for
+                         the *now-new* divider just below this one. -->
+                    <include layout="@layout/settings_row_divider"
+                        android:id="@+id/dividerBackendQwenMnn" />
+
+                    <include layout="@layout/settings_row_backend"
+                        android:id="@+id/rowBackendQwenMnn" />
+
+                    <!-- Divider above the legacy Qwen row. Both this and
+                         rowBackendQwen are toggled GONE together when the
+                         legacy GGUF isn't installed (SettingsRenderer
+                         .wireQwenBackendRow). -->
                     <include layout="@layout/settings_row_divider"
                         android:id="@+id/dividerBackendQwen" />
 

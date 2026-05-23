@@ -6,33 +6,17 @@ import android.util.Log
 import com.arm.aichat.AiChat
 import com.arm.aichat.InferenceEngine
 import com.arm.aichat.isModelLoaded
+import com.playtranslate.translation.llm.PromptStyle
+import com.playtranslate.translation.llm.languageDisplayName
+import com.playtranslate.translation.qwen.QwenChatTemplate
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.Locale
 
-/**
- * The two on-device LLM prompting flows we support. The caller declares which one
- * applies to the model it's asking [LlamaTranslator] to load — there is no
- * automatic detection from the file path.
- */
-sealed interface PromptStyle {
-    /**
-     * Models whose chat template has a true `system` role (e.g. Qwen 2.5).
-     * Drives [InferenceEngine.setSystemPrompt] + [InferenceEngine.sendUserPrompt],
-     * with [InferenceEngine.resetForNextPrompt] reusing system-prompt KV across calls.
-     */
-    object StandardChat : PromptStyle
-
-    /**
-     * Models whose chat template emits empty for `role: system` and replays the
-     * system content into every user-turn diff (e.g. Gemma 3). The fixed prefix
-     * (system block + "Please translate..." scaffolding) is decoded once via
-     * [InferenceEngine.processRawPrefix]; per-call only the variable suffix runs
-     * through [InferenceEngine.sendRawSuffix].
-     */
-    object Gemma3Prefix : PromptStyle
-}
+// PromptStyle was moved to `translation/llm/PromptStyle.kt` when the :mnn
+// module joined :llama as a sibling on-device engine — both translators now
+// reference the same enum without cross-engine package dependencies.
 
 /**
  * Process-singleton wrapper around the [com.arm.aichat.AiChat] inference engine.
@@ -64,6 +48,14 @@ class LlamaTranslator private constructor(private val context: Context) {
     // When [translate] is called with the same (source, target) again, we skip the
     // setSystemPrompt re-decode and just trim KV/chat-history back to "after system".
     private var systemPair: Pair<String, String>? = null
+
+    /**
+     * Read-only view of the currently loaded model path. Used by the
+     * cross-engine memory coordinator in
+     * [com.playtranslate.translation.mnn.MnnTranslator.ensureLoaded] to decide
+     * whether to unload us before loading the MNN Qwen.
+     */
+    val currentlyLoadedModelPath: String? get() = loadedModelPath
 
     /**
      * Translate [text] from [source] to [target] using the model at [modelPath].
@@ -106,12 +98,12 @@ class LlamaTranslator private constructor(private val context: Context) {
             }
             PromptStyle.StandardChat -> {
                 if (didReload || systemPair != pair) {
-                    engine.setSystemPrompt(systemPromptFor(source, target))
+                    engine.setSystemPrompt(QwenChatTemplate.systemPrompt(source, target))
                     systemPair = pair
                 } else {
                     engine.resetForNextPrompt()
                 }
-                engine.sendUserPrompt(buildUserMessage(text, source, target), predictLength = 256)
+                engine.sendUserPrompt(QwenChatTemplate.userMessage(text, source, target), predictLength = 256)
                     .collect { token -> sb.append(token) }
             }
         }
@@ -223,6 +215,27 @@ class LlamaTranslator private constructor(private val context: Context) {
         engine.loadModel(modelPath)
         loadedModelPath = modelPath
         systemPair = null
+
+        // Dual-engine coordination: if we just loaded the *legacy* Qwen GGUF
+        // (i.e. the user explicitly opted into the GGUF tier despite the MNN
+        // Qwen being available), unload the MNN Qwen to reclaim its working
+        // set — both engines staying resident is ~2.6 GB and tight on a 4 GB
+        // device. We do NOT unload MNN when this load is TG: TG only runs
+        // through :llama, and the MNN-backed translator's Qwen working set is
+        // disjoint from TG's, so dropping MNN there would just slow down the
+        // next user-driven Qwen translation. Mirrors the inverse coordination
+        // in [com.playtranslate.translation.mnn.MnnTranslator.ensureLoaded].
+        runCatching {
+            val legacyQwenPath = com.playtranslate.translation.qwen.QwenModel.file(context).absolutePath
+            if (modelPath == legacyQwenPath) {
+                val mnn = com.playtranslate.translation.mnn.MnnTranslator.getInstance(context)
+                if (mnn.currentlyLoadedModelPath != null) {
+                    Log.i(TAG, "Coordinating unload of MNN Qwen (legacy GGUF now active)")
+                    mnn.unloadModel()
+                }
+            }
+        }.onFailure { Log.w(TAG, "Cross-engine unload coordination failed (ignored): $it") }
+
         return true
     }
 
@@ -238,28 +251,11 @@ class LlamaTranslator private constructor(private val context: Context) {
         }
     }
 
-    private fun systemPromptFor(source: String, target: String): String {
-        val src = source.lowercase(Locale.ROOT)
-        val tgt = target.lowercase(Locale.ROOT)
-        val srcName = languageDisplayName(src)
-        val tgtName = languageDisplayName(tgt)
-        return """You are a professional $srcName ($src) to $tgtName ($tgt) translator. Your goal is to accurately convey the meaning and nuances of the original $srcName text while adhering to $tgtName grammar, vocabulary, and cultural sensitivities.
-
-Produce only the $tgtName translation, without any additional explanations or commentary."""
-    }
-
-    private fun buildUserMessage(text: String, source: String, target: String): String {
-        val src = source.lowercase(Locale.ROOT)
-        val tgt = target.lowercase(Locale.ROOT)
-        val srcName = languageDisplayName(src)
-        val tgtName = languageDisplayName(tgt)
-        return "Please translate the following $srcName text into $tgtName:\n\n$text"
-    }
-
-    private fun languageDisplayName(code: String): String {
-        // English-locale display name regardless of system locale: "Japanese", not "日本語".
-        return Locale(code).getDisplayLanguage(Locale.ENGLISH).ifBlank { code }
-    }
+    // The Qwen2.5 chat envelope (systemPrompt / userMessage) lives in
+    // [com.playtranslate.translation.qwen.QwenChatTemplate] so the MNN-backed
+    // translator can call the same helpers without copy-pasting the strings.
+    // languageDisplayName moved to `translation/llm/LanguageDisplay.kt` for
+    // the same reason (Gemma3Prefix uses it too).
 
     companion object {
         private const val TAG = "LlamaTranslator"

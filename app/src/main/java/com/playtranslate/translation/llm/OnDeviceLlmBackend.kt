@@ -9,7 +9,6 @@ import com.playtranslate.translation.BackendStatus
 import com.playtranslate.translation.Tone
 import com.playtranslate.translation.TranslationBackend
 import com.playtranslate.translation.translategemma.LlamaTranslator
-import com.playtranslate.translation.translategemma.PromptStyle
 
 /**
  * Shared base for on-device LLM translation backends (TranslateGemma, Qwen, ...).
@@ -131,6 +130,11 @@ abstract class OnDeviceLlmBackend(
      */
     protected open fun supportsPair(source: String, target: String): Boolean = true
 
+    // Open (not `final override`) so engine-specific subclasses can dispatch
+    // through a different translator. The default routes through
+    // [LlamaTranslator], which serves both the legacy GGUF Qwen and the
+    // TG-4B path; the MNN-backed [QwenMnnBackend] overrides this to call
+    // [com.playtranslate.translation.mnn.MnnTranslator] instead.
     override suspend fun translate(text: String, source: String, target: String): String =
         LlamaTranslator.getInstance(context).translate(
             text = text,

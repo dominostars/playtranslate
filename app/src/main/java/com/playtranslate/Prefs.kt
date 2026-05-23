@@ -303,6 +303,27 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_QWEN_ENABLED, false)
         set(v) = sp.edit().putBoolean(KEY_QWEN_ENABLED, v).apply()
 
+    /** Toggle for the new MNN-backed Qwen tier (see :mnn module). Default
+     *  false — Settings flips this on after a successful download or after
+     *  the user explicitly enables an already-present model. Mirrors
+     *  [qwenEnabled]'s semantics; the legacy GGUF Qwen and the MNN Qwen are
+     *  independently toggleable so the hybrid migration window can show
+     *  either, both, or neither. */
+    var qwenMnnEnabled: Boolean
+        get() = sp.getBoolean(KEY_QWEN_MNN_ENABLED, false)
+        set(v) = sp.edit().putBoolean(KEY_QWEN_MNN_ENABLED, v).apply()
+
+    /** Set to true when the user dismisses the cold-launch
+     *  "faster Qwen available" OverlayAlert via the "Don't remind me"
+     *  button. The alert checks this flag before firing and self-suppresses
+     *  thereafter. The "Remind me later" (cancel) button does *not* flip
+     *  this — the alert re-fires on every cold launch while the legacy
+     *  Qwen is still on disk. Cleared on app data reset, so the prompt
+     *  comes back if the user reinstalls. */
+    var qwenLegacyUpgradeDismissed: Boolean
+        get() = sp.getBoolean(KEY_QWEN_LEGACY_UPGRADE_DISMISSED, false)
+        set(v) = sp.edit().putBoolean(KEY_QWEN_LEGACY_UPGRADE_DISMISSED, v).apply()
+
     var ankiDeckId: Long
         get() = sp.getLong(KEY_ANKI_DECK_ID, -1L)
         set(v) = sp.edit().putLong(KEY_ANKI_DECK_ID, v).apply()
@@ -794,6 +815,8 @@ class Prefs(context: Context) {
         const val KEY_LINGVA_ENABLED         = "lingva_enabled"
         const val KEY_TRANSLATEGEMMA_ENABLED = "translategemma_enabled"
         const val KEY_QWEN_ENABLED           = "qwen_enabled"
+        const val KEY_QWEN_MNN_ENABLED              = "qwen_mnn_enabled"
+        const val KEY_QWEN_LEGACY_UPGRADE_DISMISSED = "qwen_legacy_upgrade_dismissed"
         private const val KEY_LEGACY_THEME_INDEX    = "theme_index"
         private const val KEY_THEME_MODE            = "theme_mode"
         private const val KEY_ACCENT_NAME           = "accent_name"
