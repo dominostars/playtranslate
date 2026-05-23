@@ -74,22 +74,24 @@ class MnnTranslator private constructor(private val context: Context) {
         promptStyle: PromptStyle,
         availMemFloorBytes: Long = DEFAULT_AVAIL_MEM_FLOOR_BYTES,
     ): String {
-        val result = mutex.withLock {
+        // Cross-engine memory coordination runs BEFORE we acquire our mutex —
+        // by the time `translateLocked` -> `ensureLoaded` -> `preflightMemory`
+        // runs, the legacy Qwen GGUF working set (~1.2 GB on Thor) has been
+        // freed. Without this, on tight (4 GB) devices `availMem` falls below
+        // MNN's 1.5 GB floor while legacy is still resident, `preflightMemory`
+        // throws `TranslateGemmaTransientException`, the waterfall falls back
+        // to the legacy backend, and the MNN tier never activates (Codex
+        // review, 2026-05-22 [P2]).
+        //
+        // Lock-ordering invariant (no AB-BA): we don't hold our own [mutex]
+        // here, and [LlamaTranslator.unloadModel] acquires + releases its own
+        // mutex internally — by the time `coordinateLlamaUnload` returns,
+        // Llama's mutex is free, then we acquire ours. Never holding both
+        // mutexes simultaneously is what makes the deadlock impossible.
+        coordinateLlamaUnload()
+        return mutex.withLock {
             translateLocked(text, source, target, modelPath, promptStyle, availMemFloorBytes)
         }
-        // Cross-engine memory coordination runs OUTSIDE our mutex so the
-        // acquire-order between our lock and `LlamaTranslator.mutex` is
-        // single-directional (release MNN → acquire Llama), eliminating the
-        // AB-BA deadlock that the inverse path in `LlamaTranslator.translate`
-        // would otherwise create when two coroutines simultaneously switch
-        // engines. Codex adversarial review (May 22 2026) [high].
-        //
-        // Cost: a brief window where both engines stay loaded between our
-        // translate completing and the Llama unload finishing (~100–300 ms).
-        // Net win vs. the previous pin-both-engines-forever-after-transient-
-        // fallthrough behavior.
-        coordinateLlamaUnload()
-        return result
     }
 
     /**
@@ -151,20 +153,23 @@ class MnnTranslator private constructor(private val context: Context) {
     }
 
     /**
-     * Best-effort unload of the sibling `:llama` engine when it's currently
-     * holding the *legacy* Qwen GGUF — we're about to (or just did) serve
-     * Qwen from MNN, so the GGUF working set is wasted RAM. Runs OUTSIDE
-     * [mutex] so we can safely acquire [LlamaTranslator.mutex] without
-     * stacking locks (see [translate] for the deadlock rationale).
+     * Pre-lock unload of the sibling `:llama` engine when it's currently
+     * holding the *legacy* Qwen GGUF. Frees `:llama`'s working set so our
+     * upcoming `preflightMemory` floor (inside [translateLocked]) has room
+     * on tight devices.
      *
      * Does nothing when `:llama` is serving TG (priority 25, the other
      * waterfall tier) — TG's working set is disjoint from Qwen's and
      * dropping it would just delay the next TG translation.
      *
+     * Lock ordering (no AB-BA): see [translate]'s rationale — we don't hold
+     * our own [mutex] when this runs, [LlamaTranslator.unloadModel] acquires
+     * and releases its own mutex synchronously, so we never hold both.
+     *
      * Race tolerated: another coroutine may load/unload the legacy Qwen
      * between our `currentlyLoadedModelPath` read and the
-     * [LlamaTranslator.unloadModel] call. The worst case is an unnecessary
-     * unload cycle on the next call; no correctness issue.
+     * [LlamaTranslator.unloadModel] call. Worst case is an unnecessary
+     * unload cycle; no correctness issue.
      */
     private suspend fun coordinateLlamaUnload() {
         runCatching {

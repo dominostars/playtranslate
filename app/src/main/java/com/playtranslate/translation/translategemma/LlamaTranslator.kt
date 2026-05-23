@@ -82,14 +82,19 @@ class LlamaTranslator private constructor(private val context: Context) {
         promptStyle: PromptStyle,
         availMemFloorBytes: Long = DEFAULT_AVAIL_MEM_FLOOR_BYTES,
     ): String {
-        val result = mutex.withLock {
+        // Pre-lock cross-engine coordination — frees MNN's working set
+        // (~1.2 GB on Thor) BEFORE our `preflightMemory` floor runs inside
+        // [translateLocked]. Symmetric to the same move on the MNN side
+        // (see `MnnTranslator.translate`). Only fires when [modelPath] is
+        // the legacy Qwen tier; TG (the other route through this translator)
+        // has a disjoint working set and leaves MNN alone. Codex review
+        // (2026-05-22 [P2]) — the post-lock placement that previously
+        // lived after `mutex.withLock` could never run when the preflight
+        // failed, leaving the MNN tier unreachable on memory-tight devices.
+        coordinateMnnUnload(modelPath)
+        return mutex.withLock {
             translateLocked(text, source, target, modelPath, promptStyle, availMemFloorBytes)
         }
-        // Cross-engine coordination outside our lock — see [coordinateMnnUnload]
-        // and the matching path in `MnnTranslator.translate`. Prevents AB-BA
-        // deadlock when concurrent translations target opposite engines.
-        coordinateMnnUnload()
-        return result
     }
 
     /**
@@ -133,25 +138,26 @@ class LlamaTranslator private constructor(private val context: Context) {
     }
 
     /**
-     * Best-effort unload of the sibling MNN engine when we just served the
-     * *legacy* Qwen GGUF. Symmetric to
-     * [com.playtranslate.translation.mnn.MnnTranslator.coordinateLlamaUnload];
-     * see [translate] for the lock-ordering rationale (release `:llama`'s
-     * mutex BEFORE acquiring `:mnn`'s, no AB-BA).
+     * Pre-lock unload of the sibling MNN engine when the upcoming load is
+     * the *legacy* Qwen GGUF. Symmetric to
+     * [com.playtranslate.translation.mnn.MnnTranslator.coordinateLlamaUnload].
      *
-     * Skipped when we just served TG (the other waterfall tier): TG's working
-     * set is disjoint from Qwen's, and dropping MNN there would just slow the
-     * user's next manual Qwen lookup. Reads `loadedModelPath` outside the
-     * mutex — benign race: if it just changed under us, the worst case is one
-     * wasted no-op check.
+     * Gating uses the INCOMING [modelPath] (what we're about to load),
+     * not [loadedModelPath] (which still reflects the previous load):
+     * pre-lock placement means we need to decide based on what's coming,
+     * not what's there. TG modelPath → skip (working sets disjoint).
+     *
+     * Lock ordering: see [translate]'s rationale — we don't hold our own
+     * [mutex] when this runs, [MnnTranslator.unloadModel] acquires and
+     * releases its own mutex synchronously, so we never hold both.
      */
-    private suspend fun coordinateMnnUnload() {
+    private suspend fun coordinateMnnUnload(modelPath: String) {
+        val legacyQwenPath = com.playtranslate.translation.qwen.QwenModel.file(context).absolutePath
+        if (modelPath != legacyQwenPath) return
         runCatching {
-            val legacyQwenPath = com.playtranslate.translation.qwen.QwenModel.file(context).absolutePath
-            if (loadedModelPath != legacyQwenPath) return@runCatching
             val mnn = com.playtranslate.translation.mnn.MnnTranslator.getInstance(context)
             if (mnn.currentlyLoadedModelPath != null) {
-                Log.i(TAG, "Coordinating unload of MNN Qwen (legacy GGUF active)")
+                Log.i(TAG, "Coordinating unload of MNN Qwen (loading legacy GGUF)")
                 mnn.unloadModel()
             }
         }.onFailure { Log.w(TAG, "Cross-engine unload coordination failed (ignored): $it") }
