@@ -6,13 +6,17 @@ import android.content.ComponentCallbacks2
 import android.os.Bundle
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.diagnostics.CrashHandler
+import android.content.Context
 import com.playtranslate.translation.DeepLBackend
+import com.playtranslate.translation.GeminiBackend
 import com.playtranslate.translation.LingvaBackend
 import com.playtranslate.translation.MlKitBackend
+import com.playtranslate.translation.OpenAiBackend
 import com.playtranslate.translation.QwenBackend
 import com.playtranslate.translation.QwenMnnBackend
 import com.playtranslate.translation.TranslateGemmaBackend
 import com.playtranslate.translation.TranslationBackendRegistry
+import com.playtranslate.translation.UsageTracker
 import com.playtranslate.translation.translategemma.LlamaTranslator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,10 +27,13 @@ import java.lang.ref.WeakReference
 class PlayTranslateApplication : Application() {
 
     /** Application-scoped coroutine scope for fire-and-forget background work
-     *  (onTrimMemory unloads, etc.). Outlives any individual UI lifecycle.
-     *  IO dispatcher because LLM unload has to wait on the engine's
-     *  llamaDispatcher and shouldn't tie up the main thread. */
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+     *  that must outlive any individual UI lifecycle (onTrimMemory unloads,
+     *  post-save key validation that should still fire its Toast after the
+     *  settings sub-screen finishes, etc.). IO dispatcher because LLM unload
+     *  has to wait on the engine's llamaDispatcher and shouldn't tie up the
+     *  main thread; consumers that need Main (UI Toasts) pass it explicitly
+     *  to [launch]. */
+    val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
         super.onCreate()
@@ -50,8 +57,22 @@ class PlayTranslateApplication : Application() {
         // outlive a single CaptureService instance. The DeepL key is read
         // via closure each call so a Settings change propagates without
         // rebuilding the registry.
+        val sharedPrefs = getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
         TranslationBackendRegistry.init(
             listOf(
+                GeminiBackend(
+                    keyProvider     = { Prefs(this).geminiApiKey },
+                    enabledProvider = { Prefs(this).geminiEnabled },
+                    modelProvider   = { Prefs(this).geminiModel },
+                    usageTracker    = UsageTracker(sharedPrefs, "gemini"),
+                ),
+                OpenAiBackend(
+                    keyProvider     = { Prefs(this).openaiApiKey },
+                    enabledProvider = { Prefs(this).openaiEnabled },
+                    modelProvider   = { Prefs(this).openaiModel },
+                    baseUrlProvider = { Prefs(this).openaiBaseUrl },
+                    usageTracker    = UsageTracker(sharedPrefs, "openai"),
+                ),
                 DeepLBackend(
                     keyProvider     = { Prefs(this).deeplApiKey },
                     enabledProvider = { Prefs(this).deeplEnabled },

@@ -366,8 +366,25 @@
     <string name="deepl_settings_get_key_subtitle">The free plan includes 500,000 characters per month, but requires a credit card to sign up</string>
     <string name="deepl_settings_about">DeepL is a translation service known for high-quality output, especially in European languages.</string>
 
+    <!-- OpenAI / Gemini backend display names + sub-screen titles -->
+    <string name="openai_display_name">OpenAI</string>
+    <string name="gemini_display_name">Gemini</string>
+    <string name="openai_settings_title">OpenAI</string>
+    <string name="gemini_settings_title">Gemini</string>
+
+    <!-- Shared labels and messages for the generic LLM backend sub-screen -->
+    <string name="llm_backend_api_key_label">API Key</string>
+    <string name="llm_backend_model_label">Model</string>
+    <string name="llm_backend_base_url_label">Base URL</string>
+    <string name="llm_backend_base_url_invalid">Must start with https:// (http:// allowed for localhost)</string>
+    <string name="llm_backend_get_key_title_fmt">Get a %1$s API key</string>
+    <string name="llm_backend_today_usage_label">Today\'s usage</string>
+    <string name="llm_backend_model_custom_entry">Custom…</string>
+    <string name="llm_backend_invalid_key_toast">API key rejected by the provider</string>
+    <string name="llm_status_today_tokens_fmt">%s tokens</string>
+
     <!-- Translation Service section footers in Settings -->
-    <string name="tr_service_order_footer">Translations try each enabled service in the order shown, falling back when one is unavailable.</string>
+    <string name="tr_service_order_footer">Translations try each enabled service in the order shown, falling back when one is unavailable. Online translation services receive the captured text. Review each provider\'s privacy policy before enabling.</string>
     <string name="tr_service_offline_footer">Offline translations are used as a fallback when online translations are unavailable. MLKit translations are bad, but the other options can be very slow and taxing, be weary of using them for auto translation.</string>
 
     <!-- Translation Service per-backend status line (line 2) -->

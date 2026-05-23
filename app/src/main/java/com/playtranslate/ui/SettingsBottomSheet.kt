@@ -52,6 +52,19 @@ class SettingsBottomSheet : DialogFragment() {
     private var renderer: SettingsRenderer? = null
     private var currentView: View? = null
     private var prefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
+
+    /** Snapshot of LLM-backend configuration taken in [onPause]. Compared
+     *  against the live config in [onResume] to detect changes made by
+     *  [LlmBackendSettingsActivity] while the prefs listener was
+     *  unregistered — those need to force-clear the translation cache so
+     *  stale entries produced by the previous model / key / base URL
+     *  aren't served by the same-id backend after the swap. */
+    private var llmConfigSnapshotOnPause: String? = null
+
+    private fun snapshotLlmConfig(prefs: Prefs): String = listOf(
+        prefs.geminiApiKey, prefs.geminiModel,
+        prefs.openaiApiKey, prefs.openaiModel, prefs.openaiBaseUrl,
+    ).joinToString("|")
     private var displayListener: DisplayManager.DisplayListener? = null
     private var lastDisplayIds: Set<Int> = emptySet()
 
@@ -137,12 +150,28 @@ class SettingsBottomSheet : DialogFragment() {
         renderer?.refreshEnhancedAutoTranslateRow()
         renderer?.refreshTtsSection()
         // Pick up backend toggle changes made while we were paused —
-        // DeepLSettingsActivity flips deeplEnabled while the prefs listener
-        // is unregistered, so onResume is the catch-up point.
+        // DeepLSettingsActivity / LlmBackendSettingsActivity flip the
+        // *_enabled prefs while the prefs listener is unregistered, so
+        // onResume is the catch-up point.
         renderer?.refreshDeeplBackendSwitch()
+        renderer?.refreshGeminiBackendSwitch()
+        renderer?.refreshOpenaiBackendSwitch()
         renderer?.refreshLingvaBackendSwitch()
         renderer?.refreshTranslategemmaSwitch()
         renderer?.refreshQwenSwitch()
+        // LLM config changes (key / model / base URL) made while we were
+        // paused don't necessarily flip *_enabled, but they DO change the
+        // output any given input maps to — and reconcileBackendPreference
+        // can't catch them (the preferred backend id is unchanged). Compare
+        // the snapshot we stashed in onPause against the current config and
+        // force-clear the translation cache when anything moved.
+        context?.let { ctx ->
+            val before = llmConfigSnapshotOnPause
+            llmConfigSnapshotOnPause = null
+            if (before != null && before != snapshotLlmConfig(Prefs(ctx))) {
+                com.playtranslate.CaptureService.instance?.clearTranslationCache()
+            }
+        }
         // Always re-render every backend's status line on resume — picks
         // up new DeepL keys, freshly toggled state, and triggers a usage
         // re-fetch (the call doesn't consume DeepL characters).
@@ -166,6 +195,30 @@ class SettingsBottomSheet : DialogFragment() {
                     renderer?.refreshDeeplBackendSwitch()
                     renderer?.refreshAllBackendStatuses()
                     com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
+                }
+                Prefs.KEY_GEMINI_ENABLED -> {
+                    renderer?.refreshGeminiBackendSwitch()
+                    renderer?.refreshAllBackendStatuses()
+                    com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
+                }
+                Prefs.KEY_OPENAI_ENABLED -> {
+                    renderer?.refreshOpenaiBackendSwitch()
+                    renderer?.refreshAllBackendStatuses()
+                    com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
+                }
+                // LLM key / model / base-URL changes don't flip the
+                // enabled toggle, but they DO change the *output* the
+                // backend produces for a given input — so cached entries
+                // from the previous config would be served stale.
+                // reconcileBackendPreference can't catch this (the
+                // preferred backend id is unchanged); force-clear the
+                // whole cache instead. Refresh status too — key presence
+                // drives the "API Key Required" vs "Today: …" line.
+                Prefs.KEY_GEMINI_KEY, Prefs.KEY_OPENAI_KEY,
+                Prefs.KEY_GEMINI_MODEL, Prefs.KEY_OPENAI_MODEL,
+                Prefs.KEY_OPENAI_BASE_URL -> {
+                    renderer?.refreshAllBackendStatuses()
+                    com.playtranslate.CaptureService.instance?.clearTranslationCache()
                 }
                 Prefs.KEY_LINGVA_ENABLED -> {
                     renderer?.refreshLingvaBackendSwitch()
@@ -233,6 +286,7 @@ class SettingsBottomSheet : DialogFragment() {
         teardownController = null
         renderer?.stopCaptureButtonShimmer()
         val ctx = context ?: return
+        llmConfigSnapshotOnPause = snapshotLlmConfig(Prefs(ctx))
         val sp = ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
         prefsListener?.let { sp.unregisterOnSharedPreferenceChangeListener(it) }
         prefsListener = null
@@ -340,6 +394,12 @@ class SettingsBottomSheet : DialogFragment() {
                 }
                 override fun openDeepLSettings() {
                     startActivity(android.content.Intent(requireContext(), DeepLSettingsActivity::class.java))
+                }
+                override fun openLlmBackendSettings(id: com.playtranslate.translation.BackendId) {
+                    startActivity(
+                        android.content.Intent(requireContext(), LlmBackendSettingsActivity::class.java)
+                            .putExtra(LlmBackendSettingsActivity.EXTRA_BACKEND_ID, id)
+                    )
                 }
                 override fun openTtsVoicePicker() {
                     startActivity(android.content.Intent(requireContext(), TtsVoiceActivity::class.java))

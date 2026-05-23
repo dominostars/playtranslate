@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generic LLM backend settings sub-screen.
+     Title is set programmatically from LlmBackendConfig.titleStringRes
+     (one layout serves multiple providers, so app:title is intentionally
+     omitted on the toolbar). Base URL row is GONE'd when the provider
+     doesn't expose a configurable endpoint (e.g. Gemini). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="?attr/ptSurface">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/ptSurface"
+        app:navigationIcon="@drawable/ic_close"
+        app:navigationIconTint="?attr/ptText"
+        app:navigationContentDescription="@string/deepl_settings_close_cd"
+        app:titleTextColor="?attr/ptText" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="?attr/ptDivider" />
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <!-- API Key entry -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingHorizontal="@dimen/pt_row_h_padding"
+                        android:paddingVertical="@dimen/pt_row_v_padding">
+
+                        <TextView
+                            android:id="@+id/tvApiKeyLabel"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/llm_backend_api_key_label"
+                            style="@style/Text.PT.RowTitle" />
+
+                        <EditText
+                            android:id="@+id/etApiKey"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:textColorHint="?attr/ptTextHint"
+                            android:textColor="?attr/ptText"
+                            android:textSize="13sp"
+                            android:fontFamily="monospace"
+                            android:singleLine="true"
+                            android:inputType="textVisiblePassword"
+                            android:background="?attr/ptSurface"
+                            android:padding="10dp"
+                            android:importantForAutofill="no" />
+                    </LinearLayout>
+
+                    <include layout="@layout/settings_row_divider"
+                        android:id="@+id/dividerBaseUrl" />
+
+                    <!-- Base URL entry (only for backends that allow it) -->
+                    <LinearLayout
+                        android:id="@+id/sectionBaseUrl"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingHorizontal="@dimen/pt_row_h_padding"
+                        android:paddingVertical="@dimen/pt_row_v_padding"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/llm_backend_base_url_label"
+                            style="@style/Text.PT.RowTitle" />
+
+                        <EditText
+                            android:id="@+id/etBaseUrl"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:textColorHint="?attr/ptTextHint"
+                            android:textColor="?attr/ptText"
+                            android:textSize="13sp"
+                            android:fontFamily="monospace"
+                            android:singleLine="true"
+                            android:inputType="textUri"
+                            android:background="?attr/ptSurface"
+                            android:padding="10dp"
+                            android:importantForAutofill="no" />
+                    </LinearLayout>
+
+                    <include layout="@layout/settings_row_divider"
+                        android:id="@+id/dividerModel" />
+
+                    <include layout="@layout/settings_row_value"
+                        android:id="@+id/rowModel" />
+
+                    <include layout="@layout/settings_row_divider" />
+
+                    <include layout="@layout/settings_row_link"
+                        android:id="@+id/rowGetKeyLink" />
+
+                    <include layout="@layout/settings_row_divider" />
+
+                    <include layout="@layout/settings_row_value"
+                        android:id="@+id/rowTodayUsage" />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="?attr/ptDivider" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnSave"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:text="@string/deepl_settings_save"
+        android:textAllCaps="false" />
+
+</LinearLayout>

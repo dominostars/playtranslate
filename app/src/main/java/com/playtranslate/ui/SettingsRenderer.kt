@@ -97,6 +97,10 @@ class SettingsRenderer(
         fun requestAnkiPermission()
         fun openLanguageSetup(mode: String)
         fun openDeepLSettings()
+        /** Tap on an LLM-backend row's title area (not the switch) — open
+         *  the per-backend settings sub-screen. [id] selects which provider
+         *  (currently "openai" or "gemini"). */
+        fun openLlmBackendSettings(id: BackendId)
         /** Tap on the TTS "Voice" cell — open the per-language voice picker. */
         fun openTtsVoicePicker()
         /** Tap on the TTS no-engine cell — show the "No Text-to-Speech" alert. */
@@ -1293,6 +1297,8 @@ class SettingsRenderer(
 
     // ── Translation service section ──────────────────────────────────────
 
+    private val rowBackendGemini: View = root.findViewById(R.id.rowBackendGemini)
+    private val rowBackendOpenai: View = root.findViewById(R.id.rowBackendOpenai)
     private val rowBackendDeepl: View = root.findViewById(R.id.rowBackendDeepl)
     private val rowBackendLingva: View = root.findViewById(R.id.rowBackendLingva)
     private val rowBackendTranslategemma: View = root.findViewById(R.id.rowBackendTranslategemma)
@@ -1325,6 +1331,8 @@ class SettingsRenderer(
             onChanged = { checked -> prefs.lingvaEnabled = checked },
         )
 
+        wireGeminiBackendRow()
+        wireOpenAiBackendRow()
         wireDeeplBackendRow()
         wireTranslateGemmaBackendRow()
         wireQwenMnnBackendRow()
@@ -1343,14 +1351,19 @@ class SettingsRenderer(
     }
 
     /** Compose the row's line-1 subtitle from the backend's metadata —
-     *  `(quality) · (speed)` for offline backends, just `(quality)` for
-     *  online — with each part tinted by its own [Tone] via a
-     *  [ForegroundColorSpan]. The TextView's base color (set by the
-     *  `Text.PT.RowSubtitle` style) handles parts we don't span. The
-     *  online/offline distinction itself is now carried by the section
-     *  header (Online vs Offline cards), not a per-row pill. */
+     *  `(quality) · (speed)` for offline backends — with each part tinted
+     *  by its own [Tone] via a [ForegroundColorSpan]. The TextView's base
+     *  color (set by the `Text.PT.RowSubtitle` style) handles parts we
+     *  don't span. The online/offline distinction itself is carried by
+     *  the section header (Online vs Offline cards), and online rows skip
+     *  this line entirely — the status line (line 2) carries everything
+     *  the user needs for online backends (key state, usage, quota). */
     private fun setBackendLine1(row: View, backend: TranslationBackend) {
         val tv = row.findViewById<TextView>(R.id.tvRowSubtitle)
+        if (backend.requiresInternet) {
+            tv.visibility = View.GONE
+            return
+        }
         val builder = SpannableStringBuilder()
 
         val (qualityText, qualityTone) = when (backend.quality) {
@@ -1400,6 +1413,22 @@ class SettingsRenderer(
     fun refreshDeeplBackendSwitch() {
         rowBackendDeepl.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
             it.isChecked = prefs.deeplEnabled
+        }
+    }
+
+    /** Refresh the Gemini switch from the current pref value. Driven by the
+     *  SP listener after [LlmBackendSettingsActivity] persists a save. */
+    fun refreshGeminiBackendSwitch() {
+        rowBackendGemini.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
+            it.isChecked = prefs.geminiEnabled
+        }
+    }
+
+    /** Refresh the OpenAI switch from the current pref value. Mirrors
+     *  [refreshGeminiBackendSwitch]. */
+    fun refreshOpenaiBackendSwitch() {
+        rowBackendOpenai.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
+            it.isChecked = prefs.openaiEnabled
         }
     }
 
@@ -1475,6 +1504,8 @@ class SettingsRenderer(
     }
 
     private fun backendRowById(id: BackendId): View? = when (id) {
+        "gemini"          -> rowBackendGemini
+        "openai"          -> rowBackendOpenai
         "deepl"           -> rowBackendDeepl
         "lingva"          -> rowBackendLingva
         "translategemma"  -> rowBackendTranslategemma
@@ -1733,6 +1764,43 @@ class SettingsRenderer(
                 switch.isChecked = false
             } else {
                 callbacks.openDeepLSettings()
+            }
+        }
+    }
+
+    private fun wireGeminiBackendRow() {
+        rowBackendGemini.findViewById<TextView>(R.id.tvRowTitle).text =
+            ctx.getString(R.string.gemini_display_name)
+
+        val switch = rowBackendGemini.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        switch.isChecked = prefs.geminiEnabled
+
+        // Match the DeepL UX: tap when on → disable (preserves saved key);
+        // tap when off → open the sub-screen so the user can enter / verify
+        // the key. The save path in the activity flips the enabled pref.
+        rowBackendGemini.setOnClickListener {
+            if (prefs.geminiEnabled) {
+                prefs.geminiEnabled = false
+                switch.isChecked = false
+            } else {
+                callbacks.openLlmBackendSettings("gemini")
+            }
+        }
+    }
+
+    private fun wireOpenAiBackendRow() {
+        rowBackendOpenai.findViewById<TextView>(R.id.tvRowTitle).text =
+            ctx.getString(R.string.openai_display_name)
+
+        val switch = rowBackendOpenai.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        switch.isChecked = prefs.openaiEnabled
+
+        rowBackendOpenai.setOnClickListener {
+            if (prefs.openaiEnabled) {
+                prefs.openaiEnabled = false
+                switch.isChecked = false
+            } else {
+                callbacks.openLlmBackendSettings("openai")
             }
         }
     }

@@ -88,6 +88,14 @@
             android:parentActivityName=".MainActivity"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- Generic LLM backend (OpenAI / Gemini / future) settings sub-screen.
+             One Activity parameterized by EXTRA_BACKEND_ID. -->
+        <activity
+            android:name=".ui.LlmBackendSettingsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.PlayTranslate" />
+
         <!-- Per-language Text-to-Speech voice picker (launched from Settings → Text-to-Speech). -->
         <activity
             android:name=".ui.TtsVoiceActivity"

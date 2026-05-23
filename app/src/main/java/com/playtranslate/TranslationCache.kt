@@ -55,4 +55,15 @@ class TranslationCache(private val capacity: Int = 500) {
         }
         lastPreferredBackend = preferredBackend
     }
+
+    /**
+     * Force-clear every cached entry. Used by configuration changes that
+     * [reconcilePreferredBackend] can't catch — e.g. an LLM backend's model
+     * or API key changing while the backend id stays "openai"/"gemini".
+     * Without this, cached entries produced by the old config keep getting
+     * served after the user explicitly switched to a different model.
+     */
+    fun clear() {
+        lru.clear()
+    }
 }

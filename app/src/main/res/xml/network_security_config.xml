@@ -1,10 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Explicitly prohibit cleartext (HTTP) traffic for all domains.
-    All network calls in PlayTranslate use HTTPS (DeepL API, Google Translate).
-    This is the default on API 28+ but stating it explicitly protects
-    against accidental regressions and satisfies Play Store security scanners.
+    Explicitly prohibit cleartext (HTTP) traffic for all real domains.
+    All network calls in PlayTranslate use HTTPS (DeepL API, Google
+    Translate, OpenAI, Gemini). This is the default on API 28+ but
+    stating it explicitly protects against accidental regressions and
+    satisfies Play Store security scanners.
+
+    Loopback addresses are an explicit exception: users can point the
+    OpenAI-compatible backend at LM Studio / Ollama / etc. running on
+    the same device (`http://localhost:1234/v1`) without losing the
+    bearer-leak protection for real internet endpoints, which still
+    require HTTPS. The settings UI validator (LlmBackendSettingsActivity
+    .validateBaseUrl) is the gate for what host strings are allowed in;
+    this manifest entry is the runtime guard.
 -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">::1</domain>
+    </domain-config>
 </network-security-config>

@@ -282,6 +282,53 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_LINGVA_ENABLED, true)
         set(v) = sp.edit().putBoolean(KEY_LINGVA_ENABLED, v).apply()
 
+    /** Gemini API key from AI Studio (https://aistudio.google.com/app/apikey).
+     *  Empty by default — users must enter their own key in Settings. */
+    var geminiApiKey: String
+        get() = sp.getString(KEY_GEMINI_KEY, "") ?: ""
+        set(v) = sp.edit().putString(KEY_GEMINI_KEY, v).apply()
+
+    /** User's explicit "use Gemini?" toggle. Independent of [geminiApiKey]
+     *  presence — disabling Gemini preserves the saved key so a later
+     *  re-enable can prepopulate the entry field. Default false; no
+     *  auto-enable migration (unlike DeepL) since Gemini is a paid API
+     *  the user must opt into deliberately. */
+    var geminiEnabled: Boolean
+        get() = sp.getBoolean(KEY_GEMINI_ENABLED, false)
+        set(v) = sp.edit().putBoolean(KEY_GEMINI_ENABLED, v).apply()
+
+    /** Gemini model id. The picker in Settings stores a curated id; the
+     *  "Custom…" entry persists any user-typed string. */
+    var geminiModel: String
+        get() = sp.getString(KEY_GEMINI_MODEL, DEFAULT_GEMINI_MODEL) ?: DEFAULT_GEMINI_MODEL
+        set(v) = sp.edit().putString(KEY_GEMINI_MODEL, v).apply()
+
+    /** OpenAI API key from https://platform.openai.com/api-keys. */
+    var openaiApiKey: String
+        get() = sp.getString(KEY_OPENAI_KEY, "") ?: ""
+        set(v) = sp.edit().putString(KEY_OPENAI_KEY, v).apply()
+
+    /** User's explicit "use OpenAI?" toggle. See [geminiEnabled] for the
+     *  no-auto-enable rationale. */
+    var openaiEnabled: Boolean
+        get() = sp.getBoolean(KEY_OPENAI_ENABLED, false)
+        set(v) = sp.edit().putBoolean(KEY_OPENAI_ENABLED, v).apply()
+
+    /** OpenAI model id; "Custom…" entry persists arbitrary strings (needed
+     *  by OpenAI-compatible endpoints whose model names don't match OpenAI's). */
+    var openaiModel: String
+        get() = sp.getString(KEY_OPENAI_MODEL, DEFAULT_OPENAI_MODEL) ?: DEFAULT_OPENAI_MODEL
+        set(v) = sp.edit().putString(KEY_OPENAI_MODEL, v).apply()
+
+    /** OpenAI base URL. Defaults to the OpenAI public endpoint; users can
+     *  point this at any OpenAI-compatible service (OpenRouter, DeepSeek,
+     *  LM Studio, etc.). The on-save validation ping fires only when this
+     *  matches [DEFAULT_OPENAI_BASE_URL] because custom endpoints have
+     *  unknown key shapes and would false-flag valid third-party keys. */
+    var openaiBaseUrl: String
+        get() = sp.getString(KEY_OPENAI_BASE_URL, DEFAULT_OPENAI_BASE_URL) ?: DEFAULT_OPENAI_BASE_URL
+        set(v) = sp.edit().putString(KEY_OPENAI_BASE_URL, v).apply()
+
     /** User's explicit "use TranslateGemma?" toggle. Default false because the
      *  backend requires a separate ~2.5 GB model download. The download flow
      *  flips this to true on success; toggling it off opens a dialog with
@@ -817,6 +864,20 @@ class Prefs(context: Context) {
         const val KEY_QWEN_ENABLED           = "qwen_enabled"
         const val KEY_QWEN_MNN_ENABLED              = "qwen_mnn_enabled"
         const val KEY_QWEN_LEGACY_UPGRADE_DISMISSED = "qwen_legacy_upgrade_dismissed"
+        const val KEY_GEMINI_KEY                    = "gemini_api_key"
+        const val KEY_GEMINI_ENABLED                = "gemini_enabled"
+        const val KEY_GEMINI_MODEL                  = "gemini_model"
+        const val KEY_OPENAI_KEY                    = "openai_api_key"
+        const val KEY_OPENAI_ENABLED                = "openai_enabled"
+        const val KEY_OPENAI_MODEL                  = "openai_model"
+        const val KEY_OPENAI_BASE_URL               = "openai_base_url"
+
+        /** Default OpenAI endpoint; the on-save key-validation ping fires
+         *  only when [openaiBaseUrl] equals this. Custom endpoints
+         *  (OpenRouter, etc.) skip the ping. */
+        const val DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+        const val DEFAULT_OPENAI_MODEL    = "gpt-4o-mini"
+        const val DEFAULT_GEMINI_MODEL    = "gemini-2.5-flash"
         private const val KEY_LEGACY_THEME_INDEX    = "theme_index"
         private const val KEY_THEME_MODE            = "theme_mode"
         private const val KEY_ACCENT_NAME           = "accent_name"

@@ -574,6 +574,14 @@ class CaptureService : Service() {
         ensureLanguageManagersFor(snapshotTranslationTarget())
     }
 
+    /** Force-drop every cached translation. Used when the *configuration*
+     *  of an LLM backend changes without changing its id — switching the
+     *  OpenAI model, base URL, or API key. [reconcileBackendPreference]
+     *  can't catch those because the preferred backend id is unchanged. */
+    fun clearTranslationCache() {
+        translationCache.clear()
+    }
+
     /** Start a one-shot capture cycle on [displayId]. Caller observes the
      *  returned [CaptureSession]'s [CaptureSession.state] for
      *  progress/result. Cancels any prior one-shot session. */
