@@ -817,6 +817,9 @@ class SettingsBottomSheet : DialogFragment() {
                     com.playtranslate.translation.translategemma.LlamaTranslator
                         .getInstance(ctx).unloadModel()
                 }
+                // Re-run the legacy-row visibility gate — see the
+                // showQwenDisableDialog delete branch for the rationale.
+                renderer?.refreshQwenLegacyVisibility()
                 renderer?.refreshAllBackendStatuses()
             },
             onCancel = { renderer?.refreshQwenSwitch() },
@@ -1232,6 +1235,15 @@ class SettingsBottomSheet : DialogFragment() {
                     com.playtranslate.translation.translategemma.LlamaTranslator
                         .getInstance(ctx).unloadModel()
                 }
+                // Re-run the legacy-row visibility gate: the row is supposed
+                // to appear only while the legacy GGUF is on disk, but
+                // wireQwenBackendRow's `if (!isInstalled) GONE` check only
+                // fires when the row is initially wired. After deletion the
+                // file is gone but the row is still VISIBLE, so its onClick
+                // would fall through to startQwenDownload() and let the user
+                // re-acquire the legacy model — defeating the migration.
+                // Codex review (2026-05-22, [P3]).
+                renderer?.refreshQwenLegacyVisibility()
                 renderer?.refreshAllBackendStatuses()
             }
             .addCancelButton { renderer?.refreshQwenSwitch() }
@@ -1433,8 +1445,32 @@ class SettingsBottomSheet : DialogFragment() {
                     }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
-                // Lifecycle cancellation — leave the partial in place.
+                // Rethrow so the coroutine machinery records the cancellation
+                // and the parent job tears down cleanly. Swallowing it leaves
+                // the cancellation state inconsistent; mirroring TG/Qwen.
+                throw e
+            } catch (e: Exception) {
+                if (isAdded) {
+                    requireActivity().runOnUiThread {
+                        dialog?.dismiss()
+                        android.widget.Toast.makeText(
+                            ctx,
+                            getString(R.string.qwen_mnn_download_failed,
+                                e.message ?: e.javaClass.simpleName),
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                        renderer?.refreshAllBackendStatuses()
+                    }
+                }
             } finally {
+                // OverlayProgress lives on activity.window.decorView, not the
+                // fragment view — a fragment-only lifecycle cancel (sheet
+                // dismissed mid-download) would otherwise leave the scrim
+                // stuck full-screen until process restart. dismiss() is
+                // idempotent so this is safe even after the success/outcome
+                // branches above already dismissed. Codex review
+                // (2026-05-22, [P2]).
+                dialog?.dismiss()
                 qwenMnnDownloadJob = null
             }
         }
