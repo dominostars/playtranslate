@@ -260,6 +260,15 @@ class OnDeviceLlmDownloader(
             // double the on-disk cost of the model.
             zipPartial.delete()
             null
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // CancellationException extends Exception in the JVM, so the
+            // broad catch below would otherwise swallow it and map an
+            // intentional user-cancel into Outcome.Failed (visible as a
+            // "Download failed" toast + ERROR-level logcat). Rethrow here
+            // so the coroutine teardown completes naturally; the caller's
+            // viewLifecycleOwner.lifecycleScope handles the dismissal.
+            // Codex review (2026-05-22, [P2]).
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to extract/install zip to ${finalDir.absolutePath}", e)
             // Don't delete zipPartial here — it's SHA-verified and could
