@@ -884,7 +884,7 @@ class Prefs(context: Context) {
          *  guesses; the picker's listModels log line shows the actual
          *  top so we can adjust if wrong. */
         const val DEFAULT_OPENAI_MODEL    = "gpt-5"
-        const val DEFAULT_GEMINI_MODEL    = "gemini-2.5-flash"
+        const val DEFAULT_GEMINI_MODEL    = "gemini-flash-lite-latest"
         private const val KEY_LEGACY_THEME_INDEX    = "theme_index"
         private const val KEY_THEME_MODE            = "theme_mode"
         private const val KEY_ACCENT_NAME           = "accent_name"
