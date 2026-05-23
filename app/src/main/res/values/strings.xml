@@ -380,6 +380,8 @@
     <string name="llm_backend_get_key_title_fmt">Get a %1$s API key</string>
     <string name="llm_backend_today_usage_label">Today\'s usage</string>
     <string name="llm_backend_model_custom_entry">Custom…</string>
+    <string name="llm_model_picker_loading">Loading models…</string>
+    <string name="llm_model_picker_fetch_failed">Couldn\'t fetch the model list. Check the API key, or type a model id via Custom….</string>
     <string name="llm_backend_invalid_key_toast">API key rejected by the provider</string>
     <string name="llm_status_today_tokens_fmt">%s tokens</string>
 

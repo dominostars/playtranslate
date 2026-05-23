@@ -44,7 +44,7 @@ class DeepLBackend(
     private val keyProvider: () -> String?,
     private val enabledProvider: () -> Boolean,
     private val client: OkHttpClient = OkHttpClient(),
-) : TranslationBackend, QuotaAware {
+) : TranslationBackend, QuotaAware, BatchTranslator {
 
     override val id: BackendId = "deepl"
     override val displayName: String = "DeepL"
@@ -123,38 +123,70 @@ class DeepLBackend(
     override fun isUsable(source: String, target: String): Boolean =
         enabledProvider() && !keyProvider().isNullOrBlank()
 
-    override suspend fun translate(text: String, source: String, target: String): String =
-        withContext(Dispatchers.IO) {
-            val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
-                ?: throw IOException("DeepL API key not configured")
+    override suspend fun translate(text: String, source: String, target: String): String {
+        // Single-text path now delegates to the same request helper as
+        // the batch path — keeps the body shape identical and avoids
+        // drift between the two.
+        val out = postTranslate(listOf(text), source, target)
+        return out.firstOrNull() ?: throw IOException("No translation in DeepL response")
+    }
 
-            val host = hostFor(apiKey)
-            val body = gson.toJson(
-                mapOf(
-                    "text"        to listOf(text),
-                    "target_lang" to toDeepLCode(target),
-                    "source_lang" to toDeepLCode(source),
-                )
-            )
-            val request = Request.Builder()
-                .url("https://$host/v2/translate")
-                .addHeader("Authorization", "DeepL-Auth-Key $apiKey")
-                .addHeader("Content-Type", "application/json")
-                .post(body.toRequestBody("application/json".toMediaType()))
-                .build()
-
-            client.newCall(request).execute().use { response ->
-                when (response.code) {
-                    403 -> throw DeepLAuthException()
-                    456 -> throw DeepLQuotaExceededException()
-                    else -> if (!response.isSuccessful) throw IOException("DeepL error ${response.code}")
-                }
-                val responseBody = response.body?.string() ?: throw IOException("Empty response from DeepL")
-                gson.fromJson(responseBody, DeepLResponse::class.java)
-                    .translations.firstOrNull()?.text
-                    ?: throw IOException("No translation in DeepL response")
-            }
+    override suspend fun translateBatch(
+        texts: List<String>,
+        source: String,
+        target: String,
+    ): List<String> {
+        if (texts.size > MAX_DEEPL_BATCH) {
+            // DeepL's documented cap is 50 strings (or 128 KiB) per
+            // request. OCR rarely produces more than ~10 groups so this
+            // is defensive — refuse oversized batches and let the
+            // registry fall through to the next backend.
+            throw BatchParseException("DeepL batch exceeds $MAX_DEEPL_BATCH strings (got ${texts.size})")
         }
+        val out = postTranslate(texts, source, target)
+        if (out.size != texts.size) {
+            throw BatchParseException("DeepL returned ${out.size} translations for ${texts.size} inputs")
+        }
+        return out
+    }
+
+    /** Shared request body builder + response parser. Used by both the
+     *  single-text [translate] and the batched [translateBatch] paths.
+     *  Returns the raw list of translation strings from DeepL's
+     *  positional `translations` array. */
+    private suspend fun postTranslate(
+        texts: List<String>,
+        source: String,
+        target: String,
+    ): List<String> = withContext(Dispatchers.IO) {
+        val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
+            ?: throw IOException("DeepL API key not configured")
+
+        val host = hostFor(apiKey)
+        val body = gson.toJson(
+            mapOf(
+                "text"        to texts,
+                "target_lang" to toDeepLCode(target),
+                "source_lang" to toDeepLCode(source),
+            )
+        )
+        val request = Request.Builder()
+            .url("https://$host/v2/translate")
+            .addHeader("Authorization", "DeepL-Auth-Key $apiKey")
+            .addHeader("Content-Type", "application/json")
+            .post(body.toRequestBody("application/json".toMediaType()))
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            when (response.code) {
+                403 -> throw DeepLAuthException()
+                456 -> throw DeepLQuotaExceededException()
+                else -> if (!response.isSuccessful) throw IOException("DeepL error ${response.code}")
+            }
+            val responseBody = response.body?.string() ?: throw IOException("Empty response from DeepL")
+            gson.fromJson(responseBody, DeepLResponse::class.java).translations.map { it.text }
+        }
+    }
 
     /** Thin wrapper over [fetchUsageRaw] for the [QuotaAware] capability.
      *  Used by callers other than the Settings status renderer (e.g. a
@@ -221,6 +253,14 @@ class DeepLBackend(
 
     private data class DeepLResponse(val translations: List<Translation>) {
         data class Translation(val text: String = "", val detected_source_language: String = "")
+    }
+
+    companion object {
+        /** DeepL's documented per-request cap is 50 strings (or 128 KiB).
+         *  OCR rarely produces this many groups; the cap exists so a
+         *  pathological capture refuses the batch cleanly rather than
+         *  hitting an opaque 4xx from the server. */
+        private const val MAX_DEEPL_BATCH = 50
     }
 
     private data class DeepLUsageResponse(

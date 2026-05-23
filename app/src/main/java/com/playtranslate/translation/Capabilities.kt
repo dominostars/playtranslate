@@ -45,3 +45,60 @@ interface QuotaAware {
      *  should treat null as "unknown" — not as "unlimited". */
     suspend fun currentQuota(): QuotaStatus?
 }
+
+/**
+ * Backends that can translate a list of strings in ONE remote call.
+ * Mirrors the [QuotaAware] side-interface pattern — implementations are
+ * smart-cast at call sites (`backend as? BatchTranslator`).
+ *
+ * Motivated by real-world rate-limit thrashing on parallel fan-out:
+ * Gemini's free tier throttles simultaneous requests so a 2-group
+ * screen capture often loses ~half its translations to 429s when both
+ * fire at once. Batching means one HTTP request → one rate-limit slot
+ * → all groups complete together.
+ *
+ * **All-or-nothing contract.** Implementations MUST return a list whose
+ * size equals [texts] and whose order matches it. Any deviation
+ * (response parse failure, size mismatch, blank elements where a real
+ * result is required, oversize input, HTTP error) MUST throw — the
+ * registry catches the throw as "this backend failed for this batch"
+ * and falls to the next backend with the full input list. Partial
+ * results are not represented; callers depend on positional ordering.
+ *
+ * **Cancellation.** [CancellationException] from the HTTP call MUST be
+ * re-thrown without wrapping, matching the existing single-text
+ * [TranslationBackend.translate] contract.
+ */
+interface BatchTranslator {
+    suspend fun translateBatch(
+        texts: List<String>,
+        source: String,
+        target: String,
+    ): List<String>
+}
+
+/**
+ * Thrown by [BatchTranslator] implementations when the remote response
+ * could not be parsed in the expected shape, when the returned list
+ * length does not match the request, or when a structural input
+ * constraint is violated (e.g. DeepL's 50-string cap). The registry
+ * catches this and falls through to the next backend.
+ */
+class BatchParseException(message: String, cause: Throwable? = null) : java.io.IOException(message, cause)
+
+/**
+ * Backends that can return the list of models the configured API key
+ * is allowed to call. Used by the LLM model-picker activity to render
+ * a list of selectable options without baking a hardcoded list per
+ * provider. Each implementation hits its own provider's models
+ * endpoint and returns bare model ids (no display names, no
+ * provider-specific metadata) — the picker only needs the id to save
+ * back to prefs.
+ *
+ * Throws [java.io.IOException] (or any subclass) on network / auth /
+ * parse failure. The picker catches these and falls back to a minimal
+ * "Custom…"-only list so the user can still type an id manually.
+ */
+interface ModelLister {
+    suspend fun listModels(): List<String>
+}

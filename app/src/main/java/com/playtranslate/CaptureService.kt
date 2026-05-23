@@ -1897,17 +1897,17 @@ class CaptureService : Service() {
             .filter { (_, key) -> key !in translationCache }
 
         val freshByKey: Map<TranslationCache.Key, Pair<String, String?>> = if (uncached.isNotEmpty()) {
-            // Fan out under coroutineScope so the per-group translations
-            // are children of the calling capture job. When that job is
-            // cancelled (live-mode start, replacement one-shot, etc.) the
-            // children cancel with it instead of continuing on
-            // serviceScope and writing to translationCache / degradedState
-            // after the session has already been marked Cancelled.
-            val outcomes = coroutineScope {
-                uncached.map { (_, key) ->
-                    async { translate(key.text, target) }
-                }.awaitAll()
-            }
+            // Single batched waterfall (one HTTP request per backend
+            // pass when the backend implements BatchTranslator —
+            // DeepL, Gemini, OpenAI, Lingva) instead of N parallel
+            // single-text calls. Eliminates the rate-limit thrashing
+            // we saw on free-tier Gemini where parallel pairs of
+            // requests would each lose ~half to 429s. Non-batching
+            // backends (ML Kit, on-device LLMs) keep their per-text
+            // parallel fan-out inside the registry, so today's
+            // structured-cancellation guarantee (children of the
+            // calling capture job) is preserved end-to-end.
+            val outcomes = translateBatch(uncached.map { it.value.text }, target)
 
             // Set the icon/menu state ONCE from the worst outcome in the
             // batch. Each child's `translate` no longer touches the global
@@ -2001,17 +2001,48 @@ class CaptureService : Service() {
     private suspend fun translate(text: String, target: TranslationTarget): TranslateOutcome {
         // OCR-only bypass: when source and target language are the same, skip
         // translation entirely. This is the universal choke point — every
-        // translation path (batched groups via translateGroupsSeparately, plus
-        // every translateOnce caller: edit overlay, drag-sentence, sentence
-        // tab) flows through here. The earlier bypass in
-        // translateGroupsSeparately is a redundant early-return for the
-        // group/cache path.
+        // single-text translation path (translateOnce callers: edit overlay,
+        // drag-sentence, sentence tab) flows through here. The earlier
+        // bypass in translateGroupsSeparately is a redundant early-return
+        // for the group/cache path.
         if (target.source == target.target) {
             return TranslateOutcome(text, null, DegradedWarningKind.None, null)
         }
 
         ensureLanguageManagersFor(target)
         val result = TranslationBackendRegistry.translate(text, target.source, target.target)
+        return result.toOutcome()
+    }
+
+    /**
+     * Batched counterpart to [translate]. The fan-out used to live in
+     * [translateGroupsSeparately] as N parallel single-text [translate]
+     * calls; the batch waterfall in [TranslationBackendRegistry.translateBatch]
+     * replaces that fan-out with one HTTP request per backend pass
+     * where the backend implements [com.playtranslate.translation.BatchTranslator].
+     *
+     * Must call [ensureLanguageManagersFor] here once before dispatch —
+     * the per-text [translate] used to do that on every call, and the
+     * cache's preferred-backend reconciliation rides on it. Skipping it
+     * would let a backend toggled mid-session serve stale cache entries.
+     */
+    private suspend fun translateBatch(
+        texts: List<String>,
+        target: TranslationTarget,
+    ): List<TranslateOutcome> {
+        if (target.source == target.target) {
+            return texts.map { TranslateOutcome(it, null, DegradedWarningKind.None, null) }
+        }
+        ensureLanguageManagersFor(target)
+        val results = TranslationBackendRegistry.translateBatch(texts, target.source, target.target)
+        return results.map { it.toOutcome() }
+    }
+
+    /** Map a [WaterfallResult] to a [TranslateOutcome] with the per-result
+     *  kind + inline-note logic. Used by both the single-text [translate]
+     *  and the batched [translateBatch] paths so the degraded-state
+     *  semantics stay identical between them. */
+    private fun com.playtranslate.translation.WaterfallResult.toOutcome(): TranslateOutcome {
         // Per-group kind. Displacement that bottomed out at ML Kit is the
         // LowMemory kind; ML Kit chosen for network/service reasons is
         // Offline. Displacement that stayed in the offline tier (Qwen
@@ -2024,8 +2055,8 @@ class CaptureService : Service() {
         // translation. Aggregation happens once per batch in
         // [translateGroupsSeparately] / per call in [translateOnce].
         val kind = when {
-            !result.isDegraded -> DegradedWarningKind.None
-            result.displacedLlmId != null -> DegradedWarningKind.LowMemory
+            !this.isDegraded -> DegradedWarningKind.None
+            this.displacedLlmId != null -> DegradedWarningKind.LowMemory
             else -> DegradedWarningKind.Offline
         }
         // The inline note adds one more bit of detail that the icon doesn't
@@ -2040,7 +2071,7 @@ class CaptureService : Service() {
                 if (isNetworkAvailable()) getString(R.string.note_mlkit_service_unavailable)
                 else getString(R.string.note_mlkit_no_internet)
         }
-        return TranslateOutcome(result.text, note, kind, result.displacedLlmId)
+        return TranslateOutcome(this.text, note, kind, this.displacedLlmId)
     }
 
     /**

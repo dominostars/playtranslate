@@ -876,7 +876,14 @@ class Prefs(context: Context) {
          *  only when [openaiBaseUrl] equals this. Custom endpoints
          *  (OpenRouter, etc.) skip the ping. */
         const val DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
-        const val DEFAULT_OPENAI_MODEL    = "gpt-4o-mini"
+
+        /** Default selected model — chosen to match the first entry in
+         *  the picker after filtering + sorting (newest alias by
+         *  `created` timestamp for OpenAI; highest stable version's
+         *  alphabetical-first variant for Gemini). These are best
+         *  guesses; the picker's listModels log line shows the actual
+         *  top so we can adjust if wrong. */
+        const val DEFAULT_OPENAI_MODEL    = "gpt-5"
         const val DEFAULT_GEMINI_MODEL    = "gemini-2.5-flash"
         private const val KEY_LEGACY_THEME_INDEX    = "theme_index"
         private const val KEY_THEME_MODE            = "theme_mode"

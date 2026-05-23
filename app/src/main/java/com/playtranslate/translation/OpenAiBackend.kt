@@ -1,7 +1,10 @@
 package com.playtranslate.translation
 
+import android.util.Log
 import com.google.gson.Gson
+import com.google.gson.JsonSyntaxException
 import com.playtranslate.Prefs
+import com.playtranslate.translation.llm.LlmBatchPrompt
 import com.playtranslate.translation.llm.cleanLlmOutput
 import com.playtranslate.translation.qwen.QwenChatTemplate
 import kotlinx.coroutines.CancellationException
@@ -50,7 +53,7 @@ class OpenAiBackend(
     private val baseUrlProvider: () -> String,
     private val usageTracker: UsageTracker,
     private val client: OkHttpClient = defaultClient(),
-) : TranslationBackend {
+) : TranslationBackend, BatchTranslator, ModelLister {
 
     override val id: BackendId = "openai"
     override val displayName: String = "OpenAI"
@@ -88,6 +91,8 @@ class OpenAiBackend(
             val model = modelProvider()
             val system = QwenChatTemplate.systemPrompt(source, target)
             val user = QwenChatTemplate.userMessage(text, source, target)
+            val translateStart = System.nanoTime()
+            Log.i(TAG, "translate begin model=$model textLen=${text.length}")
 
             val bodyJson = gson.toJson(
                 mapOf(
@@ -110,7 +115,18 @@ class OpenAiBackend(
             client.newCall(request).execute().use { response ->
                 when (response.code) {
                     401 -> throw OpenAiAuthException()
-                    429 -> throw OpenAiRateLimitException()
+                    429 -> {
+                        // Capture the body + retry-after so the
+                        // "which quota was hit" question is diagnosable
+                        // from logcat. OpenAI's 429 has a JSON error
+                        // object describing the limit; `retry-after`
+                        // header (when present) gives a wall-clock
+                        // hint. Truncated to keep the log readable.
+                        val retryAfter = response.header("retry-after")
+                        val body = response.body?.string()?.take(500) ?: ""
+                        Log.w(TAG, "429 retryAfter=$retryAfter body=$body")
+                        throw OpenAiRateLimitException()
+                    }
                     else -> if (!response.isSuccessful) {
                         throw IOException("OpenAI error ${response.code}")
                     }
@@ -121,9 +137,103 @@ class OpenAiBackend(
                 val raw = parsed.choices.firstOrNull()?.message?.content
                     ?: throw IOException("No translation in OpenAI response")
                 parsed.usage?.let { usageTracker.addTokens(it.prompt_tokens, it.completion_tokens) }
+                val totalMs = (System.nanoTime() - translateStart) / 1_000_000
+                Log.i(TAG, "translate ok totalMs=$totalMs outLen=${raw.length}")
                 cleanLlmOutput(raw)
             }
         }
+
+    override suspend fun translateBatch(
+        texts: List<String>,
+        source: String,
+        target: String,
+    ): List<String> = withContext(Dispatchers.IO) {
+        val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
+            ?: throw IOException("OpenAI API key not configured")
+        val baseUrl = baseUrlProvider().trim().trimEnd('/')
+        val model = modelProvider()
+        val system = LlmBatchPrompt.systemPrompt(source, target)
+        val user = LlmBatchPrompt.userMessage(texts)
+        val translateStart = System.nanoTime()
+        Log.i(TAG, "translate batch begin model=$model batchSize=${texts.size} totalLen=${texts.sumOf { it.length }}")
+
+        // OpenAI strict mode: requires additionalProperties:false +
+        // required[] + strict:true together. Some OpenAI-compatible
+        // endpoints (older models, some proxies) reject strict mode
+        // with HTTP 400 — registry handles that by falling through.
+        val schema = mapOf(
+            "type" to "object",
+            "additionalProperties" to false,
+            "properties" to mapOf(
+                "translations" to mapOf(
+                    "type" to "array",
+                    "items" to mapOf("type" to "string"),
+                ),
+            ),
+            "required" to listOf("translations"),
+        )
+        val bodyJson = gson.toJson(
+            mapOf(
+                "model" to model,
+                "messages" to listOf(
+                    mapOf("role" to "system", "content" to system),
+                    mapOf("role" to "user", "content" to user),
+                ),
+                "temperature" to 0.2,
+                "response_format" to mapOf(
+                    "type" to "json_schema",
+                    "json_schema" to mapOf(
+                        "name" to "translations",
+                        "strict" to true,
+                        "schema" to schema,
+                    ),
+                ),
+            )
+        )
+
+        val request = Request.Builder()
+            .url("$baseUrl/chat/completions")
+            .addHeader("Authorization", "Bearer $apiKey")
+            .addHeader("Content-Type", "application/json")
+            .post(bodyJson.toRequestBody("application/json".toMediaType()))
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            when (response.code) {
+                401 -> throw OpenAiAuthException()
+                429 -> {
+                    val retryAfter = response.header("retry-after")
+                    val body = response.body?.string()?.take(500) ?: ""
+                    Log.w(TAG, "429 retryAfter=$retryAfter body=$body")
+                    throw OpenAiRateLimitException()
+                }
+                else -> if (!response.isSuccessful) {
+                    throw IOException("OpenAI error ${response.code}")
+                }
+            }
+            val bodyStr = response.body?.string()
+                ?: throw IOException("Empty response from OpenAI")
+            val parsed = gson.fromJson(bodyStr, OpenAiChatResponse::class.java)
+            val rawJson = parsed.choices.firstOrNull()?.message?.content
+                ?: throw BatchParseException("OpenAI batch: empty message content")
+            parsed.usage?.let { usageTracker.addTokens(it.prompt_tokens, it.completion_tokens) }
+            val wrapper = try {
+                gson.fromJson(rawJson, BatchTranslationsWrapper::class.java)
+            } catch (e: JsonSyntaxException) {
+                throw BatchParseException("OpenAI batch: response JSON parse failed", e)
+            }
+            val arr = wrapper?.translations
+                ?: throw BatchParseException("OpenAI batch: missing translations[]")
+            if (arr.size != texts.size) {
+                throw BatchParseException(
+                    "OpenAI batch: returned ${arr.size} translations for ${texts.size} inputs"
+                )
+            }
+            val totalMs = (System.nanoTime() - translateStart) / 1_000_000
+            Log.i(TAG, "translate batch ok totalMs=$totalMs batchSize=${arr.size}")
+            arr.map { cleanLlmOutput(it) }
+        }
+    }
 
     /**
      * Verify the API key against the configured endpoint. Returns
@@ -158,6 +268,65 @@ class OpenAiBackend(
         }
     }
 
+    /**
+     * Fetches the list of models the configured key can call.
+     * Honours the user-configured base URL so OpenAI-compatible
+     * providers (OpenRouter, DeepSeek, LM Studio, etc.) return their
+     * own catalog. The OpenAI /v1/models endpoint also returns
+     * non-chat assets (embeddings, TTS, image, transcription, etc.) —
+     * filter those out with a conservative regex so the picker only
+     * shows chat-capable ids. The "Custom…" entry in the picker
+     * remains as the escape hatch when a user wants a model the
+     * filter excludes.
+     *
+     * Throws [IOException] on any network / parse / auth failure.
+     */
+    override suspend fun listModels(): List<String> = withContext(Dispatchers.IO) {
+        val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
+            ?: throw IOException("OpenAI API key not configured")
+        val baseUrl = baseUrlProvider().trim().trimEnd('/')
+        val request = Request.Builder()
+            .url("$baseUrl/models")
+            .addHeader("Authorization", "Bearer $apiKey")
+            .build()
+        client.newCall(request).execute().use { response ->
+            when (response.code) {
+                401 -> throw OpenAiAuthException()
+                else -> if (!response.isSuccessful) {
+                    throw IOException("OpenAI /models error ${response.code}")
+                }
+            }
+            val body = response.body?.string()
+                ?: throw IOException("Empty /models response")
+            val parsed = gson.fromJson(body, OpenAiModelsResponse::class.java)
+            val sorted = parsed.data
+                .asSequence()
+                // Drop fine-tunes and user-owned models — only show
+                // OpenAI's first-party catalog. Non-default base URLs
+                // (OpenRouter, DeepSeek, LM Studio) often return their
+                // own owned_by value, so this filter is permissive:
+                // skip only entries that clearly aren't system.
+                .filter { it.owned_by.isBlank() || it.owned_by == "system" || it.owned_by == "openai" || it.owned_by == "openai-internal" }
+                .filter { it.id.isNotBlank() }
+                .filterNot { NON_CHAT_MODEL_PATTERN.containsMatchIn(it.id) }
+                // Drop dated snapshots ("gpt-4o-2024-05-13") so the
+                // picker shows only the canonical aliases. Users can
+                // still type a dated id via "Custom…" if they want to
+                // pin to a specific snapshot.
+                .filterNot { DATED_SNAPSHOT_PATTERN.containsMatchIn(it.id) }
+                // Newest aliases at the top — sort by creation timestamp
+                // descending. OpenAI's catalog has many legacy entries
+                // (gpt-3.5, davinci, etc.) that fall to the bottom this
+                // way.
+                .sortedByDescending { it.created }
+                .map { it.id }
+                .toList()
+            Log.i(TAG, "listModels returned ${sorted.size} entries (sorted newest → oldest):")
+            sorted.forEachIndexed { i, m -> Log.i(TAG, "  [$i] $m") }
+            sorted
+        }
+    }
+
     override fun close() {
         // Daemon thread because evictAll() can write TLS close-notify on the
         // calling thread; see the equivalent note in DeepLBackend.close().
@@ -180,13 +349,50 @@ class OpenAiBackend(
         )
     }
 
+    private data class BatchTranslationsWrapper(
+        val translations: List<String>? = null,
+    )
+
+    private data class OpenAiModelsResponse(
+        val data: List<ModelEntry> = emptyList(),
+    ) {
+        data class ModelEntry(
+            val id: String = "",
+            val created: Long = 0,
+            val owned_by: String = "",
+        )
+    }
+
     companion object {
+        private const val TAG = "OpenAI"
+
+        /** Excludes non-chat asset ids from /v1/models responses so the
+         *  picker isn't cluttered with embeddings, TTS, image, audio,
+         *  transcription, moderation, and similar entries. Conservative
+         *  — the user can still type the exact id via "Custom…" if they
+         *  need one of these for some reason. */
+        private val NON_CHAT_MODEL_PATTERN = Regex(
+            "(audio|tts|transcribe|whisper|realtime|embedding|dall-e|moderation|image|babbage|davinci|ada|curie|search-preview|computer-use)",
+            RegexOption.IGNORE_CASE,
+        )
+
+        /** Pattern matching dated snapshot suffixes like
+         *  "gpt-4o-2024-05-13" or "gpt-4.1-2025-04-14". We filter
+         *  these so the picker shows only the canonical aliases. */
+        private val DATED_SNAPSHOT_PATTERN = Regex("""-\d{4}-\d{2}-\d{2}$""")
+
         // 30s timeouts: gpt-4o on long passages can take 15-20s; OkHttp's
         // default 10s read timeout would spuriously fail those calls.
         private fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
+            // Happy Eyeballs — see [GeminiBackend] for rationale.
+            .fastFallback(true)
+            // Logs per-phase latency (DNS, connect, TLS, ttfb, total) so
+            // the "cold first call is slow" question is diagnosable from
+            // logcat without an HTTP proxy.
+            .eventListenerFactory(HttpTimingLogger.factory(TAG))
             .build()
     }
 }

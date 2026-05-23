@@ -4,6 +4,9 @@ import android.util.Log
 import com.playtranslate.translation.llm.OnDeviceLlmBackend
 import com.playtranslate.translation.translategemma.TranslateGemmaTransientException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 /**
  * Holds the ordered list of [TranslationBackend]s and runs the
@@ -130,6 +133,159 @@ object TranslationBackendRegistry {
             }
         }
         throw IllegalStateException("All translation backends failed")
+    }
+
+    /**
+     * Batched waterfall: translate every entry in [texts] for the given
+     * pair, returning one [WaterfallResult] per input in matching order.
+     *
+     * Per-backend semantics:
+     *  - If the backend implements [BatchTranslator] and there's more
+     *    than one pending text, try one all-or-nothing batched call.
+     *    Success → fill in every pending slot with the same backend.
+     *    Failure (any exception except [CancellationException]) → fall
+     *    through to the next backend with the FULL pending list. Do NOT
+     *    retry per-text within the same backend (that would re-introduce
+     *    the parallel-call rate-limit thrashing this method exists to
+     *    eliminate).
+     *  - Otherwise (non-batching backend OR pending size == 1) → fan
+     *    out per-text in parallel via [coroutineScope]/[async]. Each
+     *    successful text removes its index from the pending list before
+     *    moving to the next backend.
+     *
+     * Special handling for on-device LLMs: if any text on a non-batching
+     * [OnDeviceLlmBackend] throws [TranslateGemmaTransientException],
+     * treat the WHOLE backend pass as failed for ALL remaining pending
+     * texts. Memory pressure isn't per-text — retrying the rest on the
+     * same backend under the same pressure would pin the engine longer
+     * for no gain. Set [displacedLlmId] on the affected results so the
+     * caller can skip caching that fall-through output.
+     *
+     * Single-text inputs short-circuit through the existing [translate]
+     * path to avoid the batch-prompt overhead on 1-group captures.
+     *
+     * Cancellation re-throws to honor structured concurrency.
+     */
+    suspend fun translateBatch(
+        texts: List<String>,
+        source: String,
+        target: String,
+    ): List<WaterfallResult> {
+        val ordered = orderedBackends()
+        if (ordered.isEmpty()) {
+            throw IllegalStateException("TranslationBackendRegistry has no backends — was init() called?")
+        }
+        if (texts.size == 1) {
+            return listOf(translate(texts[0], source, target))
+        }
+
+        val results = arrayOfNulls<WaterfallResult>(texts.size)
+        var pendingIndices: List<Int> = texts.indices.toList()
+        // Per-index displacement signal: when a non-batching on-device
+        // LLM throws transient on this batch, every text that subsequently
+        // succeeds at a fallback backend carries this id so the caller
+        // can skip caching the fallback output.
+        var displacedLlmId: BackendId? = null
+
+        for (backend in ordered) {
+            if (pendingIndices.isEmpty()) break
+            if (!backend.isUsable(source, target)) continue
+
+            val pendingTexts = pendingIndices.map { texts[it] }
+
+            if (backend is BatchTranslator && pendingTexts.size > 1) {
+                try {
+                    val translated = backend.translateBatch(pendingTexts, source, target)
+                    if (translated.size != pendingTexts.size) {
+                        throw BatchParseException(
+                            "Backend ${backend.id} returned ${translated.size} translations for ${pendingTexts.size} inputs"
+                        )
+                    }
+                    pendingIndices.forEachIndexed { i, origIdx ->
+                        results[origIdx] = WaterfallResult(
+                            text = translated[i],
+                            backend = backend,
+                            isDegraded = backend.isDegradedFallback,
+                            displacedLlmId = displacedLlmId,
+                        )
+                    }
+                    pendingIndices = emptyList()
+                    continue
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(
+                        TAG,
+                        "Backend ${backend.id} batch failed (${e.javaClass.simpleName}: ${e.message}), falling back"
+                    )
+                    // Fall through to the next backend with the FULL
+                    // pending list. Intentional: per-text retry inside
+                    // the same backend would defeat the batching point.
+                    continue
+                }
+            }
+
+            // Per-text parallel fan-out for non-batching backends (or
+            // size-1 pending). Mirrors today's single-text waterfall
+            // behavior, with the addition of per-index displacement
+            // tracking and the LLM-transient backend-wide bailout.
+            var transientHit = false
+            val perBackend = coroutineScope {
+                pendingTexts.map { t ->
+                    async {
+                        if (transientHit) null else {
+                            try {
+                                backend.translate(t, source, target)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                if (e is TranslateGemmaTransientException && backend is OnDeviceLlmBackend) {
+                                    transientHit = true
+                                    if (displacedLlmId == null) displacedLlmId = backend.id
+                                }
+                                Log.w(
+                                    TAG,
+                                    "Backend ${backend.id} failed (${e.javaClass.simpleName}: ${e.message}), falling back"
+                                )
+                                null
+                            }
+                        }
+                    }
+                }.awaitAll()
+            }
+
+            // If memory pressure forced a transient bailout, treat the
+            // whole backend as failed for THIS batch — drop any results
+            // it produced before the throw and fall through with the
+            // full pending list. Otherwise, slot successes into results
+            // and shrink the pending list to just the failures.
+            if (transientHit) {
+                continue
+            }
+            val stillPending = mutableListOf<Int>()
+            pendingIndices.forEachIndexed { i, origIdx ->
+                val translated = perBackend[i]
+                if (translated != null) {
+                    results[origIdx] = WaterfallResult(
+                        text = translated,
+                        backend = backend,
+                        isDegraded = backend.isDegradedFallback,
+                        displacedLlmId = displacedLlmId,
+                    )
+                } else {
+                    stillPending.add(origIdx)
+                }
+            }
+            pendingIndices = stillPending
+        }
+
+        if (pendingIndices.isNotEmpty()) {
+            throw IllegalStateException(
+                "All translation backends failed for ${pendingIndices.size} of ${texts.size} texts"
+            )
+        }
+        @Suppress("UNCHECKED_CAST")
+        return results.toList() as List<WaterfallResult>
     }
 
     fun close() {

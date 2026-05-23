@@ -5,6 +5,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
+import org.json.JSONException
 import java.io.IOException
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
@@ -24,7 +25,7 @@ import java.util.concurrent.TimeUnit
  */
 class LingvaBackend(
     private val enabledProvider: () -> Boolean,
-) : TranslationBackend {
+) : TranslationBackend, BatchTranslator {
 
     override val id: BackendId = "lingva"
     override val displayName: String = "Lingva"
@@ -44,28 +45,87 @@ class LingvaBackend(
 
     override suspend fun translate(text: String, source: String, target: String): String =
         withContext(Dispatchers.IO) {
-            val encoded = URLEncoder.encode(text, "UTF-8")
-            val url = "https://translate.googleapis.com/translate_a/single" +
-                      "?client=gtx&sl=$source&tl=$target&dt=t&q=$encoded"
-
-            val request = Request.Builder().url(url).build()
-
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) throw IOException("Translate error ${response.code}")
-                val body = response.body?.string() ?: throw IOException("Empty response")
-
-                // Response: [[["translated","original",...], ...], null, "ja", ...]
-                val chunks = JSONArray(body).getJSONArray(0)
-                val sb = StringBuilder()
-                for (i in 0 until chunks.length()) {
-                    val chunk = chunks.optJSONArray(i)
-                    if (chunk != null) sb.append(chunk.optString(0))
-                }
-                val result = sb.toString()
-                if (result.isBlank()) throw IOException("Blank translation in response")
-                result
-            }
+            val url = buildUrl(listOf(text), source, target)
+            val body = fetchBody(url)
+            // Single-q response shape: [[["translated","original",...], ...], null, "ja", ...]
+            // The chunks array is at index 0 of the top-level array.
+            val top = JSONArray(body)
+            val chunks = top.getJSONArray(0)
+            val result = reassembleChunks(chunks)
+            if (result.isBlank()) throw IOException("Blank translation in response")
+            result
         }
+
+    override suspend fun translateBatch(
+        texts: List<String>,
+        source: String,
+        target: String,
+    ): List<String> = withContext(Dispatchers.IO) {
+        // gtx is undocumented; the multi-q convention used by tools like
+        // translate-shell and LunaTranslator is to repeat &q= per input
+        // and treat the top-level array as a list of per-q results, each
+        // shaped like the single-q response. If Google ever changes that
+        // shape, the size / JSONException checks below throw
+        // BatchParseException so the registry falls through to per-text
+        // fan-out within the same backend turn — Lingva keeps working
+        // either way, just loses the batching speedup.
+        val url = buildUrl(texts, source, target)
+        val body = fetchBody(url)
+        val top = try {
+            JSONArray(body)
+        } catch (e: JSONException) {
+            throw BatchParseException("Lingva batch: top-level JSON parse failed", e)
+        }
+        if (top.length() != texts.size) {
+            throw BatchParseException(
+                "Lingva batch: top length ${top.length()} != input size ${texts.size}"
+            )
+        }
+        (0 until top.length()).map { i ->
+            val perQ = try {
+                top.getJSONArray(i)
+            } catch (e: JSONException) {
+                throw BatchParseException("Lingva batch: per-q[$i] not array", e)
+            }
+            val chunks = try {
+                perQ.getJSONArray(0)
+            } catch (e: JSONException) {
+                throw BatchParseException("Lingva batch: per-q[$i] missing chunks", e)
+            }
+            val s = reassembleChunks(chunks)
+            if (s.isBlank()) throw BatchParseException("Lingva batch: blank result at index $i")
+            s
+        }
+    }
+
+    /** Build the gtx URL with one or more URL-encoded `&q=` params.
+     *  Re-used by both single-text and batched paths. */
+    private fun buildUrl(texts: List<String>, source: String, target: String): String {
+        val qs = texts.joinToString(separator = "&") { t ->
+            "q=" + URLEncoder.encode(t, "UTF-8")
+        }
+        return "https://translate.googleapis.com/translate_a/single" +
+            "?client=gtx&sl=$source&tl=$target&dt=t&$qs"
+    }
+
+    private fun fetchBody(url: String): String {
+        val request = Request.Builder().url(url).build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw IOException("Translate error ${response.code}")
+            return response.body?.string() ?: throw IOException("Empty response")
+        }
+    }
+
+    /** Reassemble the per-q chunks array (`[[translated, original, ...], ...]`)
+     *  into a single string. Mirrors the original single-q loop exactly. */
+    private fun reassembleChunks(chunks: JSONArray): String {
+        val sb = StringBuilder()
+        for (i in 0 until chunks.length()) {
+            val chunk = chunks.optJSONArray(i)
+            if (chunk != null) sb.append(chunk.optString(0))
+        }
+        return sb.toString()
+    }
 
     override fun close() {
         // Background daemon thread — see DeepLBackend.close() for the

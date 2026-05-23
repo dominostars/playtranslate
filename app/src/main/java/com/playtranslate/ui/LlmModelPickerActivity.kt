@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -14,11 +15,14 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.card.MaterialCardView
 import com.playtranslate.R
 import com.playtranslate.applyTheme
 import com.playtranslate.themeColor
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 /**
  * Full-screen model picker for the LLM backends. Mirrors
@@ -54,10 +58,38 @@ class LlmModelPickerActivity : AppCompatActivity() {
         toolbar.title = getString(R.string.llm_backend_model_label)
         toolbar.setNavigationOnClickListener { finish() }
 
-        renderModelList(findViewById(R.id.modelListContainer))
+        val container = findViewById<LinearLayout>(R.id.modelListContainer)
+        renderLoadingState(container)
+        lifecycleScope.launch {
+            val models = try {
+                config.listModels()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "listModels failed for ${config.displayName}", e)
+                emptyList()
+            }
+            renderModelList(container, models)
+        }
     }
 
-    private fun renderModelList(parent: LinearLayout) {
+    private fun renderLoadingState(parent: LinearLayout) {
+        parent.removeAllViews()
+        val tv = TextView(this).apply {
+            text = getString(R.string.llm_model_picker_loading)
+            setTextColor(themeColor(R.attr.ptTextMuted))
+            textSize = 14f
+            setPadding(0, (16 * resources.displayMetrics.density).toInt(), 0, 0)
+        }
+        parent.addView(tv)
+    }
+
+    /** Render the model list. [fetched] is what the provider's /models
+     *  endpoint returned, or empty on failure. Custom… is always
+     *  appended as the escape hatch. If [fetched] is empty AND the
+     *  current model is non-blank, surface it as a preselected "current"
+     *  entry above Custom… so the user can still see what's saved. */
+    private fun renderModelList(parent: LinearLayout, fetched: List<String>) {
         parent.removeAllViews()
 
         val inflater = LayoutInflater.from(this)
@@ -65,22 +97,28 @@ class LlmModelPickerActivity : AppCompatActivity() {
         val rowContainer = card.findViewById<LinearLayout>(R.id.sectionRows)
         val cardRadius = card.radius
 
-        // Curated entries plus a final "Custom…" row. The custom entry
-        // is special-cased on tap to open a text dialog; otherwise it's
-        // styled identically to the other rows. The current model is
-        // matched against the curated list to decide whether to mark a
-        // curated row or the "Custom…" row as selected.
-        val curated = config.availableModels
         val currentModel = config.getModel()
-        val isCustomCurrent = currentModel !in curated
-        val customLabel = getString(R.string.llm_backend_model_custom_entry)
+        val isCurrentInFetched = currentModel in fetched
+        // Show a tiny inline-error TextView above the card if the fetch
+        // failed (empty list). Custom… is always the escape hatch.
+        if (fetched.isEmpty()) {
+            val warn = TextView(this).apply {
+                text = getString(R.string.llm_model_picker_fetch_failed)
+                setTextColor(themeColor(R.attr.ptTextMuted))
+                textSize = 13f
+                setPadding(0, 0, 0, (12 * resources.displayMetrics.density).toInt())
+            }
+            parent.addView(warn)
+        }
 
-        curated.forEachIndexed { idx, model ->
+        val customLabel = getString(R.string.llm_backend_model_custom_entry)
+        val totalRows = fetched.size + 1 // +1 for Custom…
+        val customIdx = fetched.size
+
+        fetched.forEachIndexed { idx, model ->
             if (idx > 0) rowContainer.addView(insetDivider(rowContainer))
             val topRadius = if (idx == 0) cardRadius else 0f
-            // Custom is the last row, not this curated one, so bottomRadius=0
-            // for all curated entries.
-            val bottomRadius = 0f
+            val bottomRadius = if (idx == totalRows - 1) cardRadius else 0f
             rowContainer.addView(
                 buildModelRow(
                     container = rowContainer,
@@ -97,15 +135,20 @@ class LlmModelPickerActivity : AppCompatActivity() {
             )
         }
 
-        // Custom… row — separator above + bottom corner radius.
-        rowContainer.addView(insetDivider(rowContainer))
+        // Custom… row — separator above (unless it's the only row) +
+        // bottom corner radius.
+        if (fetched.isNotEmpty()) rowContainer.addView(insetDivider(rowContainer))
+        val customTopRadius = if (customIdx == 0) cardRadius else 0f
         rowContainer.addView(
             buildModelRow(
                 container = rowContainer,
                 label = customLabel,
-                detail = if (isCustomCurrent) currentModel else null,
-                isSelected = isCustomCurrent,
-                topRadius = 0f,
+                // If the saved model isn't in the fetched list, show it
+                // as the secondary line on the Custom… row so the user
+                // can see what's currently active without scrolling.
+                detail = if (!isCurrentInFetched && currentModel.isNotBlank()) currentModel else null,
+                isSelected = !isCurrentInFetched,
+                topRadius = customTopRadius,
                 bottomRadius = cardRadius,
                 onTap = { showCustomModelDialog(currentModel) },
             )
@@ -180,6 +223,7 @@ class LlmModelPickerActivity : AppCompatActivity() {
             .inflate(R.layout.settings_row_divider, container, false)
 
     companion object {
+        private const val TAG = "LlmModelPicker"
         const val EXTRA_BACKEND_ID = "backend_id"
 
         fun newIntent(context: android.content.Context, backendId: String): Intent =
