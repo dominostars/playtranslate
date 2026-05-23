@@ -28,6 +28,7 @@ import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.headwordDisplay
 import kotlinx.coroutines.*
 import java.io.File
+import kotlin.coroutines.coroutineContext
 import kotlin.math.abs
 
 /**
@@ -355,8 +356,12 @@ class DragLookupController(
         // contaminate the captured pixels.
         val screen = queryScreenSize()
         magnifier.show(lastX.toInt(), lastY.toInt(), screen.x, screen.y)
+        // Arm the spinner skin BEFORE the first setLabel so the very
+        // first paint of the pill is the loading look — no flash of the
+        // magnifying-glass icon before OCR begins.
+        magnifier.setPillLoading(true)
         magnifier.setLabel(null, null)
-        ocrJob = scope.launch {
+        val thisJob = scope.launch {
             try {
                 if (existingScreenshotPath != null) {
                     ocrFromFile(existingScreenshotPath)
@@ -367,6 +372,22 @@ class DragLookupController(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "OCR failed", e)
+            }
+        }
+        ocrJob = thisJob
+        // Safety net for paths that don't reach the inline clear in
+        // [ocrFromFile] / [captureAndOcr]: bitmap-null / lines-null
+        // early returns, exceptions, and cancellation. On success the
+        // inline clear has already fired and this is a no-op (the
+        // setPillLoading guard makes it idempotent). invokeOnCompletion
+        // fires on an arbitrary thread; post to main. The identity
+        // guard protects against a stale cancelled job's late completion
+        // clearing the new drag's spinner — ML Kit text recognition is
+        // non-cancellable at the native layer, so a previous-drag job
+        // can complete after the next onDragStart has armed its spinner.
+        thisJob.invokeOnCompletion {
+            handler.post {
+                if (ocrJob === thisJob) magnifier.setPillLoading(false)
             }
         }
     }
@@ -396,6 +417,16 @@ class DragLookupController(
         // ocrLines on it would drop release-time lookups during the ~50-
         // 300 ms pretokenize window.
         ocrLines = lines
+        // The pill spinner tracks "release-time lookup is blocked" — clear
+        // it here, not when the OCR coroutine ends. pretokenizeLines below
+        // only refines the hover-time label readout; gating the spinner
+        // on full job completion would keep "Processing…" up while the
+        // user can already lift to look up a word. Identity-guarded
+        // against a stale cancelled job's late return: ML Kit text
+        // recognition is non-cancellable at the native layer.
+        if (ocrJob === coroutineContext[Job]) {
+            magnifier.setPillLoading(false)
+        }
         pretokenizeLines(lines)
     }
 
@@ -897,6 +928,10 @@ class DragLookupController(
         // See ocrFromFile — publish ocrLines first so a quick release
         // doesn't get gated on the per-line pretokenization pass.
         ocrLines = lines
+        // Same spinner boundary as ocrFromFile — see comment there.
+        if (ocrJob === coroutineContext[Job]) {
+            magnifier.setPillLoading(false)
+        }
         pretokenizeLines(lines)
     }
 

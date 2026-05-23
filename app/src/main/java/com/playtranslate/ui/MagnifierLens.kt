@@ -181,6 +181,15 @@ class MagnifierLens(
         lensView?.setLoading(word, reading)
     }
 
+    /** Show the spinner alone in the Placeholder pill (no label) while
+     *  the drag-start OCR job runs. Pass false once OCR completes
+     *  (success, "no text", exception, or cancellation) to animate back
+     *  to the magnifying-glass icon + "Find a word" prompt. No-op when
+     *  the pill is showing a word. */
+    fun setPillLoading(loading: Boolean) {
+        lensView?.setPillLoading(loading)
+    }
+
     /** Show or hide the loading spinner on the Speak chip. */
     fun setSpeakChipLoading(loading: Boolean) {
         lensView?.setSpeakChipLoading(loading)
@@ -604,6 +613,17 @@ class MagnifierLens(
             layoutParams = params
             visibility = GONE
         }
+        /** Spinner shown alone in the pill while the drag-start OCR job
+         *  runs — no accompanying label. The icon's negative leading inset
+         *  (for optical alignment with the Word state's leading edge) is
+         *  intentionally omitted: the spinner stands alone, so the pill's
+         *  natural padding centers it cleanly. */
+        private val pillPlaceholderSpinnerView = ProgressBar(ctx).apply {
+            isIndeterminate = true
+            indeterminateTintList = ColorStateList.valueOf(pillInkColor)
+            layoutParams = LinearLayout.LayoutParams(pillPlaceholderIconSize, pillPlaceholderIconSize)
+            visibility = GONE
+        }
         /** Placeholder label paired with [pillPlaceholderIconView]. */
         private val pillPlaceholderTextView = TextView(ctx).apply {
             text = pillPlaceholderText
@@ -672,6 +692,7 @@ class MagnifierLens(
             // edge when shown; they're GONE in word state, leaving the
             // word/divider/reading/chevron to take their place.
             addView(pillPlaceholderIconView)
+            addView(pillPlaceholderSpinnerView)
             addView(pillPlaceholderTextView)
             addView(pillWordView)
             addView(pillDividerView)
@@ -979,6 +1000,12 @@ class MagnifierLens(
         private var pillWord: String = ""
         private var pillReading: String = ""
         private var pillAnimator: ValueAnimator? = null
+        /** Decorates the Placeholder pill: when true, the magnifying-glass
+         *  icon + "Find a word" prompt are hidden and
+         *  [pillPlaceholderSpinnerView] is shown alone. Set by
+         *  [setPillLoading] from [DragLookupController] for the duration
+         *  of the drag-start OCR job. Word state ignores the flag. */
+        private var pillLoading: Boolean = false
 
         fun setLabel(word: String?, reading: String?) {
             val w = word?.takeIf { it.isNotEmpty() }
@@ -1015,12 +1042,18 @@ class MagnifierLens(
         }
 
         /** Toggle child visibility for the requested state without
-         *  touching the pill's own width or animator. */
+         *  touching the pill's own width or animator. The Placeholder
+         *  state has two skins keyed off [pillLoading]: the magnifying-
+         *  glass icon + "Find a word" prompt at rest, or the spinner
+         *  alone (no label) while drag-start OCR is in flight. */
         private fun applyPillStateVisibility(state: PillState, showReading: Boolean) {
             val placeholderVisible = state == PillState.Placeholder
             val wordVisible = state == PillState.Word
-            pillPlaceholderIconView.visibility = if (placeholderVisible) VISIBLE else GONE
-            pillPlaceholderTextView.visibility = if (placeholderVisible) VISIBLE else GONE
+            val loadingSkin = placeholderVisible && pillLoading
+            val idlePlaceholder = placeholderVisible && !pillLoading
+            pillPlaceholderIconView.visibility = if (idlePlaceholder) VISIBLE else GONE
+            pillPlaceholderSpinnerView.visibility = if (loadingSkin) VISIBLE else GONE
+            pillPlaceholderTextView.visibility = if (idlePlaceholder) VISIBLE else GONE
             pillWordView.visibility = if (wordVisible) VISIBLE else GONE
             pillDividerView.visibility = if (wordVisible && showReading) VISIBLE else GONE
             pillReadingView.visibility = if (wordVisible && showReading) VISIBLE else GONE
@@ -1134,6 +1167,34 @@ class MagnifierLens(
             definitionsScroll.scrollTo(0, 0)
             definitionsScroll.visibility = VISIBLE
             invalidate()
+        }
+
+        /** Toggle the spinner skin on the Placeholder pill. Loading is a
+         *  decoration of [PillState.Placeholder] — when the pill is
+         *  currently showing a word the flag is stored but has no visual
+         *  effect; the next transition back to Placeholder will honor it.
+         *
+         *  Within-Placeholder skin swaps are always width-animated (same
+         *  machinery as state changes via [setLabel]). This matters in
+         *  both directions:
+         *   - Loading off: the narrow spinner pill smoothly grows into
+         *     "Find a word" (or, if pretokenize lands the user's line
+         *     mid-animation, [setLabel] cancels and redirects to the
+         *     Word-state width).
+         *   - Loading on: in the re-drag path, [resetToZoom] has just
+         *     animated Word→Placeholder toward the wide idle width;
+         *     animating again here cancels that tween and redirects to
+         *     the narrow spinner-only width so the spinner doesn't sit
+         *     in an oversized pill for the OCR duration.
+         *
+         *  The very first drag activates while pillState is still None
+         *  and this early-returns — the spinner shows as part of the
+         *  initial setLabel snap. */
+        fun setPillLoading(loading: Boolean) {
+            if (pillLoading == loading) return
+            pillLoading = loading
+            if (pillState != PillState.Placeholder) return
+            animatePillStateTransition(PillState.Placeholder, showReading = false)
         }
 
         var isInteractive: Boolean = false
