@@ -73,7 +73,37 @@ class MnnTranslator private constructor(private val context: Context) {
         modelPath: String,
         promptStyle: PromptStyle,
         availMemFloorBytes: Long = DEFAULT_AVAIL_MEM_FLOOR_BYTES,
-    ): String = mutex.withLock {
+    ): String {
+        val result = mutex.withLock {
+            translateLocked(text, source, target, modelPath, promptStyle, availMemFloorBytes)
+        }
+        // Cross-engine memory coordination runs OUTSIDE our mutex so the
+        // acquire-order between our lock and `LlamaTranslator.mutex` is
+        // single-directional (release MNN → acquire Llama), eliminating the
+        // AB-BA deadlock that the inverse path in `LlamaTranslator.translate`
+        // would otherwise create when two coroutines simultaneously switch
+        // engines. Codex adversarial review (May 22 2026) [high].
+        //
+        // Cost: a brief window where both engines stay loaded between our
+        // translate completing and the Llama unload finishing (~100–300 ms).
+        // Net win vs. the previous pin-both-engines-forever-after-transient-
+        // fallthrough behavior.
+        coordinateLlamaUnload()
+        return result
+    }
+
+    /**
+     * The mutex-protected body of [translate]. Returns the decoded
+     * translation; cross-engine coordination is the caller's job.
+     */
+    private suspend fun translateLocked(
+        text: String,
+        source: String,
+        target: String,
+        modelPath: String,
+        promptStyle: PromptStyle,
+        availMemFloorBytes: Long,
+    ): String {
         val didReload = ensureLoaded(modelPath, availMemFloorBytes)
         val pair = source to target
         val sb = StringBuilder()
@@ -114,10 +144,38 @@ class MnnTranslator private constructor(private val context: Context) {
         // Llm::is_stop and the decoded text won't include the marker, but
         // strip any leaked tokens to be safe (e.g. if a future model variant
         // emits the marker as text instead of as a special-token id).
-        sb.toString()
+        return sb.toString()
             .substringBefore("<|im_end|>")
             .substringBefore("<|endoftext|>")
             .trim()
+    }
+
+    /**
+     * Best-effort unload of the sibling `:llama` engine when it's currently
+     * holding the *legacy* Qwen GGUF — we're about to (or just did) serve
+     * Qwen from MNN, so the GGUF working set is wasted RAM. Runs OUTSIDE
+     * [mutex] so we can safely acquire [LlamaTranslator.mutex] without
+     * stacking locks (see [translate] for the deadlock rationale).
+     *
+     * Does nothing when `:llama` is serving TG (priority 25, the other
+     * waterfall tier) — TG's working set is disjoint from Qwen's and
+     * dropping it would just delay the next TG translation.
+     *
+     * Race tolerated: another coroutine may load/unload the legacy Qwen
+     * between our `currentlyLoadedModelPath` read and the
+     * [LlamaTranslator.unloadModel] call. The worst case is an unnecessary
+     * unload cycle on the next call; no correctness issue.
+     */
+    private suspend fun coordinateLlamaUnload() {
+        runCatching {
+            val llama = LlamaTranslator.getInstance(context)
+            val llamaPath = llama.currentlyLoadedModelPath
+            val legacyQwenPath = QwenModel.file(context).absolutePath
+            if (llamaPath == legacyQwenPath) {
+                Log.i(TAG, "Coordinating unload of legacy Qwen GGUF (MNN active for Qwen)")
+                llama.unloadModel()
+            }
+        }.onFailure { Log.w(TAG, "Cross-engine unload coordination failed (ignored): $it") }
     }
 
     /**
@@ -178,23 +236,10 @@ class MnnTranslator private constructor(private val context: Context) {
         engine.loadModel(modelPath)
         loadedModelPath = modelPath
         systemPair = null
-
-        // Dual-engine coordination: if the legacy Qwen GGUF is currently loaded
-        // in :llama, unload it now. Both engines staying resident is ~2.6 GB
-        // and tight on the 4 GB `totalMemFloorBytes` floor; the legacy GGUF's
-        // working set was about to be replaced by MNN's Qwen anyway. We do NOT
-        // unload :llama when its loaded model is TG — TG is the active workload
-        // for the other waterfall path.
-        runCatching {
-            val llama = LlamaTranslator.getInstance(context)
-            val llamaPath = llama.currentlyLoadedModelPath
-            val legacyQwenPath = QwenModel.file(context).absolutePath
-            if (llamaPath == legacyQwenPath) {
-                Log.i(TAG, "Coordinating unload of legacy Qwen GGUF (MNN now active for Qwen)")
-                llama.unloadModel()
-            }
-        }.onFailure { Log.w(TAG, "Cross-engine unload coordination failed (ignored): $it") }
-
+        // Cross-engine memory coordination used to fire here but moved to
+        // [translate]'s post-mutex coordinator — see [coordinateLlamaUnload].
+        // Doing it inside this locked region risked an AB-BA deadlock with
+        // the symmetric path in `LlamaTranslator.ensureLoaded`.
         return true
     }
 
