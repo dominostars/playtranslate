@@ -45,9 +45,9 @@
       "packVersion": 1,
       "additiveFromVersion": 1,
       "extract": true,
-      "size": 0,
+      "size": 728368682,
       "url": "https://huggingface.co/playtranslate/qwen2.5-1.5b-instruct-mnn/resolve/main/qwen2.5-1.5b-instruct-mnn.zip",
-      "sha256": "TBD-UPLOAD-ZIP-TO-HF-AND-FILL-IN",
+      "sha256": "644d247eac0f7b26504185664abb0877830a6fc0b15c51cd9fef8fa32cfb4f60",
       "licenses": [
         {
           "component": "Qwen 2.5 1.5B Instruct (MNN format)",
