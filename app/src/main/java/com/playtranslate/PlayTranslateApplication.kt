@@ -67,11 +67,34 @@ class PlayTranslateApplication : Application() {
                     usageTracker    = UsageTracker(sharedPrefs, "gemini"),
                 ),
                 OpenAiBackend(
+                    id              = "openai",
+                    displayName     = "OpenAI",
+                    priority        = 8,
                     keyProvider     = { Prefs(this).openaiApiKey },
                     enabledProvider = { Prefs(this).openaiEnabled },
                     modelProvider   = { Prefs(this).openaiModel },
-                    baseUrlProvider = { Prefs(this).openaiBaseUrl },
+                    // Canonical OpenAI endpoint — no longer user-configurable.
+                    baseUrlProvider = { "https://api.openai.com/v1" },
                     usageTracker    = UsageTracker(sharedPrefs, "openai"),
+                    filterFineTunes = true,
+                ),
+                OpenAiBackend(
+                    // DeepSeek speaks the OpenAI-compatible chat-completions
+                    // API; the same backend class drives it with a different
+                    // base URL + key + filter setting. priority=9 puts it
+                    // just below OpenAI in the waterfall (typical user adds
+                    // DeepSeek as a cheaper alternative to OpenAI).
+                    id              = "deepseek",
+                    displayName     = "DeepSeek",
+                    priority        = 9,
+                    keyProvider     = { Prefs(this).deepseekApiKey },
+                    enabledProvider = { Prefs(this).deepseekEnabled },
+                    modelProvider   = { Prefs(this).deepseekModel },
+                    baseUrlProvider = { "https://api.deepseek.com/v1" },
+                    usageTracker    = UsageTracker(sharedPrefs, "deepseek"),
+                    // DeepSeek's /v1/models entries all have owned_by="deepseek";
+                    // the OpenAI fine-tune filter would drop the whole catalog.
+                    filterFineTunes = false,
                 ),
                 DeepLBackend(
                     keyProvider     = { Prefs(this).deeplApiKey },

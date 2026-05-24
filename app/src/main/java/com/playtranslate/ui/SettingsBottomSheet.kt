@@ -63,7 +63,8 @@ class SettingsBottomSheet : DialogFragment() {
 
     private fun snapshotLlmConfig(prefs: Prefs): String = listOf(
         prefs.geminiApiKey, prefs.geminiModel,
-        prefs.openaiApiKey, prefs.openaiModel, prefs.openaiBaseUrl,
+        prefs.openaiApiKey, prefs.openaiModel,
+        prefs.deepseekApiKey, prefs.deepseekModel,
     ).joinToString("|")
     private var displayListener: DisplayManager.DisplayListener? = null
     private var lastDisplayIds: Set<Int> = emptySet()
@@ -156,8 +157,10 @@ class SettingsBottomSheet : DialogFragment() {
         renderer?.refreshDeeplBackendSwitch()
         renderer?.refreshGeminiBackendSwitch()
         renderer?.refreshOpenaiBackendSwitch()
+        renderer?.refreshDeepseekBackendSwitch()
         renderer?.refreshGeminiModelValue()
         renderer?.refreshOpenaiModelValue()
+        renderer?.refreshDeepseekModelValue()
         renderer?.refreshLingvaBackendSwitch()
         renderer?.refreshTranslategemmaSwitch()
         renderer?.refreshQwenSwitch()
@@ -208,23 +211,27 @@ class SettingsBottomSheet : DialogFragment() {
                     renderer?.refreshAllBackendStatuses()
                     com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
                 }
-                // LLM key / model / base-URL changes don't flip the
-                // enabled toggle, but they DO change the *output* the
-                // backend produces for a given input — so cached entries
-                // from the previous config would be served stale.
-                // reconcileBackendPreference can't catch this (the
-                // preferred backend id is unchanged); force-clear the
-                // whole cache instead. Refresh status too — key presence
-                // drives the "API Key Required" vs "Today: …" line.
-                Prefs.KEY_GEMINI_KEY, Prefs.KEY_OPENAI_KEY,
-                Prefs.KEY_GEMINI_MODEL, Prefs.KEY_OPENAI_MODEL,
-                Prefs.KEY_OPENAI_BASE_URL -> {
+                Prefs.KEY_DEEPSEEK_ENABLED -> {
+                    renderer?.refreshDeepseekBackendSwitch()
+                    renderer?.refreshAllBackendStatuses()
+                    com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
+                }
+                // LLM key / model changes don't flip the enabled toggle,
+                // but they DO change the *output* the backend produces
+                // for a given input — so cached entries from the previous
+                // config would be served stale. reconcileBackendPreference
+                // can't catch this (the preferred backend id is unchanged);
+                // force-clear the whole cache instead. Refresh status too —
+                // key presence drives the "API Key Required" vs "Today: …" line.
+                Prefs.KEY_GEMINI_KEY, Prefs.KEY_OPENAI_KEY, Prefs.KEY_DEEPSEEK_KEY,
+                Prefs.KEY_GEMINI_MODEL, Prefs.KEY_OPENAI_MODEL, Prefs.KEY_DEEPSEEK_MODEL -> {
                     renderer?.refreshAllBackendStatuses()
                     com.playtranslate.CaptureService.instance?.clearTranslationCache()
                     // The inline "Model" sub-cell under each LLM row also
                     // mirrors the model pref; refresh the matching one.
                     if (key == Prefs.KEY_GEMINI_MODEL) renderer?.refreshGeminiModelValue()
                     if (key == Prefs.KEY_OPENAI_MODEL) renderer?.refreshOpenaiModelValue()
+                    if (key == Prefs.KEY_DEEPSEEK_MODEL) renderer?.refreshDeepseekModelValue()
                 }
                 Prefs.KEY_LINGVA_ENABLED -> {
                     renderer?.refreshLingvaBackendSwitch()

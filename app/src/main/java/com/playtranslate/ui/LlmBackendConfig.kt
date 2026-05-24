@@ -35,10 +35,6 @@ data class LlmBackendConfig(
      *  and rendering a fallback. */
     val listModels: suspend () -> List<String>,
     val defaultModel: String,
-    val allowsBaseUrl: Boolean,
-    val defaultBaseUrl: String?,
-    val getBaseUrl: () -> String,
-    val setBaseUrl: (String) -> Unit,
     val getEnabled: () -> Boolean,
     val setEnabled: (Boolean) -> Unit,
     val todayUsageString: () -> String,
@@ -52,6 +48,7 @@ object LlmBackendConfigs {
     fun forId(context: Context, id: String): LlmBackendConfig = when (id) {
         "openai" -> openAiConfig(context)
         "gemini" -> geminiConfig(context)
+        "deepseek" -> deepseekConfig(context)
         else -> throw IllegalArgumentException("Unknown LLM backend id: $id")
     }
 
@@ -64,6 +61,16 @@ object LlmBackendConfigs {
     private fun lookupModels(backendId: String): suspend () -> List<String> = {
         (TranslationBackendRegistry.byId(backendId) as? ModelLister)?.listModels()
             ?: emptyList()
+    }
+
+    /** Shared `validateKey` lambda for any provider whose registered
+     *  backend is an [OpenAiBackend] instance. The validation hits the
+     *  provider's /v1/models endpoint with the configured key —
+     *  identical implementation for OpenAI, DeepSeek, and any future
+     *  OpenAI-compatible provider. */
+    private fun lookupValidateKey(backendId: String): suspend () -> KeyStatus = {
+        (TranslationBackendRegistry.byId(backendId) as? OpenAiBackend)?.validateKey()
+            ?: KeyStatus.Unreachable
     }
 
     private fun openAiConfig(context: Context): LlmBackendConfig {
@@ -82,26 +89,12 @@ object LlmBackendConfigs {
             setKey = { prefs.openaiApiKey = it },
             getModel = { prefs.openaiModel },
             setModel = { prefs.openaiModel = it },
-            // Route through the registered backend's ModelLister capability
-            // so the key / base-URL closures see the live prefs values.
-            // Same lambda shape works for any future LLM backend that opts
-            // in to ModelLister (e.g. Anthropic) — no per-class smart-cast.
             listModels = lookupModels("openai"),
             defaultModel = Prefs.DEFAULT_OPENAI_MODEL,
-            allowsBaseUrl = true,
-            defaultBaseUrl = Prefs.DEFAULT_OPENAI_BASE_URL,
-            getBaseUrl = { prefs.openaiBaseUrl },
-            setBaseUrl = { prefs.openaiBaseUrl = it },
             getEnabled = { prefs.openaiEnabled },
             setEnabled = { prefs.openaiEnabled = it },
             todayUsageString = { tracker.todayString() },
-            validateKey = {
-                // Calls the live registry instance so the keyProvider closure
-                // sees the just-saved key — constructing a fresh OpenAiBackend
-                // here would also work but duplicates the OkHttpClient setup.
-                (TranslationBackendRegistry.byId("openai") as? OpenAiBackend)?.validateKey()
-                    ?: KeyStatus.Unreachable
-            },
+            validateKey = lookupValidateKey("openai"),
         )
     }
 
@@ -123,14 +116,35 @@ object LlmBackendConfigs {
             setModel = { prefs.geminiModel = it },
             listModels = lookupModels("gemini"),
             defaultModel = Prefs.DEFAULT_GEMINI_MODEL,
-            allowsBaseUrl = false,
-            defaultBaseUrl = null,
-            getBaseUrl = { "" },
-            setBaseUrl = { /* no-op; Gemini has no configurable base URL */ },
             getEnabled = { prefs.geminiEnabled },
             setEnabled = { prefs.geminiEnabled = it },
             todayUsageString = { tracker.todayString() },
             validateKey = null,
+        )
+    }
+
+    private fun deepseekConfig(context: Context): LlmBackendConfig {
+        val prefs = Prefs(context)
+        val sp = context.applicationContext.getSharedPreferences(
+            "playtranslate_prefs",
+            Context.MODE_PRIVATE,
+        )
+        val tracker = UsageTracker(sp, "deepseek")
+        return LlmBackendConfig(
+            displayName = context.getString(R.string.deepseek_display_name),
+            titleStringRes = R.string.deepseek_settings_title,
+            keyHint = "sk-...",
+            getKeyUrl = "https://platform.deepseek.com/api_keys",
+            getKey = { prefs.deepseekApiKey },
+            setKey = { prefs.deepseekApiKey = it },
+            getModel = { prefs.deepseekModel },
+            setModel = { prefs.deepseekModel = it },
+            listModels = lookupModels("deepseek"),
+            defaultModel = Prefs.DEFAULT_DEEPSEEK_MODEL,
+            getEnabled = { prefs.deepseekEnabled },
+            setEnabled = { prefs.deepseekEnabled = it },
+            todayUsageString = { tracker.todayString() },
+            validateKey = lookupValidateKey("deepseek"),
         )
     }
 }

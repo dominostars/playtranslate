@@ -3,7 +3,6 @@ package com.playtranslate.translation
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
-import com.playtranslate.Prefs
 import com.playtranslate.translation.llm.LlmBatchPrompt
 import com.playtranslate.translation.llm.cleanLlmOutput
 import com.playtranslate.translation.qwen.QwenChatTemplate
@@ -47,17 +46,24 @@ class OpenAiRateLimitException : IOException("OpenAI rate limit exceeded")
  * the interface; deferred.
  */
 class OpenAiBackend(
+    override val id: BackendId,
+    override val displayName: String,
+    override val priority: Int,
     private val keyProvider: () -> String?,
     private val enabledProvider: () -> Boolean,
     private val modelProvider: () -> String,
     private val baseUrlProvider: () -> String,
     private val usageTracker: UsageTracker,
+    /** When true, [listModels] drops entries whose `owned_by` isn't
+     *  one of OpenAI's first-party values — strips out fine-tunes /
+     *  user-uploaded models on platform.openai.com. For other
+     *  OpenAI-compatible providers (DeepSeek etc.) every model's
+     *  `owned_by` is their own org name, so this must be false or
+     *  the picker comes back empty. */
+    private val filterFineTunes: Boolean,
     private val client: OkHttpClient = defaultClient(),
 ) : TranslationBackend, BatchTranslator, ModelLister {
 
-    override val id: BackendId = "openai"
-    override val displayName: String = "OpenAI"
-    override val priority: Int = 8
     override val requiresInternet: Boolean = true
     override val isDegradedFallback: Boolean = false
     override val quality: BackendQuality = BackendQuality.Better
@@ -249,19 +255,16 @@ class OpenAiBackend(
     }
 
     /**
-     * Verify the API key against the configured endpoint. Returns
-     * [KeyStatus.Unreachable] when the base URL is not OpenAI's default —
-     * the `/v1/models` endpoint exists for OpenAI itself but custom
-     * OpenAI-compatible services have unknown key shapes, so probing
-     * them would false-flag valid OpenRouter/DeepSeek/LM-Studio keys.
+     * Verify the API key against the configured endpoint by hitting
+     * `/v1/models`. Each registered provider (OpenAI, DeepSeek) has a
+     * known base URL so the gate that previously skipped validation on
+     * "custom" URLs is no longer needed — every endpoint we configure
+     * is one we've vetted to support `/v1/models`.
      */
     suspend fun validateKey(): KeyStatus = withContext(Dispatchers.IO) {
         val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
             ?: return@withContext KeyStatus.Invalid("API key blank")
         val baseUrl = baseUrlProvider().trim().trimEnd('/')
-        if (baseUrl != Prefs.DEFAULT_OPENAI_BASE_URL.trimEnd('/')) {
-            return@withContext KeyStatus.Unreachable
-        }
         val request = Request.Builder()
             .url("$baseUrl/models")
             .addHeader("Authorization", "Bearer $apiKey")
@@ -311,15 +314,29 @@ class OpenAiBackend(
             }
             val body = response.body?.string()
                 ?: throw IOException("Empty /models response")
+            if (body.isBlank()) throw IOException("Blank /models response")
+            // Gson can return null on malformed/unrecognized JSON.
+            // Concrete trigger: providers that return HTTP 200 with an
+            // empty body when an endpoint URL is wrong (DeepSeek does
+            // this on /v1/models since their models endpoint is at
+            // /models, no v1 prefix).
             val parsed = gson.fromJson(body, OpenAiModelsResponse::class.java)
+                ?: throw IOException("Malformed /models response")
             val sorted = parsed.data
                 .asSequence()
-                // Drop fine-tunes and user-owned models — only show
-                // OpenAI's first-party catalog. Non-default base URLs
-                // (OpenRouter, DeepSeek, LM Studio) often return their
-                // own owned_by value, so this filter is permissive:
-                // skip only entries that clearly aren't system.
-                .filter { it.owned_by.isBlank() || it.owned_by == "system" || it.owned_by == "openai" || it.owned_by == "openai-internal" }
+                // Drop fine-tunes and user-owned models for OpenAI itself
+                // (where owned_by ∈ {system, openai, openai-internal}).
+                // Other OpenAI-compatible providers (DeepSeek) populate
+                // owned_by with their own org name, so gating this filter
+                // on the [filterFineTunes] constructor flag keeps the
+                // picker from coming back empty on those providers.
+                .filter { entry ->
+                    !filterFineTunes ||
+                        entry.owned_by.isBlank() ||
+                        entry.owned_by == "system" ||
+                        entry.owned_by == "openai" ||
+                        entry.owned_by == "openai-internal"
+                }
                 .filter { it.id.isNotBlank() }
                 .filterNot { NON_CHAT_MODEL_PATTERN.containsMatchIn(it.id) }
                 // Drop dated snapshots ("gpt-4o-2024-05-13") so the

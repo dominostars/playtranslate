@@ -1308,6 +1308,9 @@ class SettingsRenderer(
     private val rowBackendOpenai: View = root.findViewById(R.id.rowBackendOpenai)
     private val sectionBackendOpenaiModel: View = root.findViewById(R.id.sectionBackendOpenaiModel)
     private val rowBackendOpenaiModel: View = root.findViewById(R.id.rowBackendOpenaiModel)
+    private val rowBackendDeepseek: View = root.findViewById(R.id.rowBackendDeepseek)
+    private val sectionBackendDeepseekModel: View = root.findViewById(R.id.sectionBackendDeepseekModel)
+    private val rowBackendDeepseekModel: View = root.findViewById(R.id.rowBackendDeepseekModel)
     private val rowBackendDeepl: View = root.findViewById(R.id.rowBackendDeepl)
     private val rowBackendLingva: View = root.findViewById(R.id.rowBackendLingva)
     private val rowBackendTranslategemma: View = root.findViewById(R.id.rowBackendTranslategemma)
@@ -1344,6 +1347,8 @@ class SettingsRenderer(
         wireGeminiModelRow()
         wireOpenAiBackendRow()
         wireOpenAiModelRow()
+        wireDeepseekBackendRow()
+        wireDeepseekModelRow()
         wireDeeplBackendRow()
         wireTranslateGemmaBackendRow()
         wireQwenMnnBackendRow()
@@ -1450,6 +1455,16 @@ class SettingsRenderer(
             if (prefs.openaiEnabled) View.VISIBLE else View.GONE
     }
 
+    /** Refresh the DeepSeek switch + model sub-cell visibility. Mirrors
+     *  [refreshOpenaiBackendSwitch]. */
+    fun refreshDeepseekBackendSwitch() {
+        rowBackendDeepseek.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
+            it.isChecked = prefs.deepseekEnabled
+        }
+        sectionBackendDeepseekModel.visibility =
+            if (prefs.deepseekEnabled) View.VISIBLE else View.GONE
+    }
+
     /** Re-read the Gemini model name into the inline sub-cell's title
      *  (the row's title is the model name itself; the value column is
      *  intentionally blank). Driven by the SP listener on
@@ -1462,6 +1477,11 @@ class SettingsRenderer(
     /** Mirrors [refreshGeminiModelValue] for OpenAI. */
     fun refreshOpenaiModelValue() {
         rowBackendOpenaiModel.findViewById<TextView>(R.id.tvRowTitle).text = prefs.openaiModel
+    }
+
+    /** Mirrors [refreshGeminiModelValue] for DeepSeek. */
+    fun refreshDeepseekModelValue() {
+        rowBackendDeepseekModel.findViewById<TextView>(R.id.tvRowTitle).text = prefs.deepseekModel
     }
 
     /** Refresh the Lingva switch from the current pref value. */
@@ -1538,6 +1558,7 @@ class SettingsRenderer(
     private fun backendRowById(id: BackendId): View? = when (id) {
         "gemini"          -> rowBackendGemini
         "openai"          -> rowBackendOpenai
+        "deepseek"        -> rowBackendDeepseek
         "deepl"           -> rowBackendDeepl
         "lingva"          -> rowBackendLingva
         "translategemma"  -> rowBackendTranslategemma
@@ -1859,6 +1880,32 @@ class SettingsRenderer(
         }
         sectionBackendOpenaiModel.visibility =
             if (prefs.openaiEnabled) View.VISIBLE else View.GONE
+    }
+
+    private fun wireDeepseekBackendRow() {
+        rowBackendDeepseek.findViewById<TextView>(R.id.tvRowTitle).text =
+            ctx.getString(R.string.deepseek_display_name)
+
+        val switch = rowBackendDeepseek.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        switch.isChecked = prefs.deepseekEnabled
+
+        rowBackendDeepseek.setOnClickListener {
+            if (prefs.deepseekEnabled) {
+                prefs.deepseekEnabled = false
+                switch.isChecked = false
+            } else {
+                callbacks.openLlmBackendSettings("deepseek")
+            }
+        }
+    }
+
+    private fun wireDeepseekModelRow() {
+        applyModelRowChrome(rowBackendDeepseekModel, prefs.deepseekModel)
+        rowBackendDeepseekModel.setOnClickListener {
+            callbacks.openLlmModelPicker("deepseek")
+        }
+        sectionBackendDeepseekModel.visibility =
+            if (prefs.deepseekEnabled) View.VISIBLE else View.GONE
     }
 
     /** Apply the compact, muted styling to an inline "Model" sub-cell.

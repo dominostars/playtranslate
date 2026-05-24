@@ -728,6 +728,22 @@
                     <include layout="@layout/settings_row_divider" />
 
                     <include layout="@layout/settings_row_backend"
+                        android:id="@+id/rowBackendDeepseek" />
+
+                    <LinearLayout
+                        android:id="@+id/sectionBackendDeepseekModel"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <include layout="@layout/settings_row_value"
+                            android:id="@+id/rowBackendDeepseekModel" />
+                    </LinearLayout>
+
+                    <include layout="@layout/settings_row_divider" />
+
+                    <include layout="@layout/settings_row_backend"
                         android:id="@+id/rowBackendDeepl" />
 
                     <include layout="@layout/settings_row_divider" />

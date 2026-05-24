@@ -21,35 +21,41 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * Generic settings sub-screen for the OpenAI- and Gemini-style LLM backends.
+ * Generic settings sub-screen for the OpenAI-, Gemini-, and DeepSeek-
+ * style LLM backends.
  *
  * Routes through [LlmBackendConfig] so the activity itself stays
- * provider-agnostic — adding a third backend (Anthropic, OpenRouter as a
- * first-class entry, etc.) is one [LlmBackendConfigs.forId] branch plus
- * the backend class.
+ * provider-agnostic — adding a new backend (Anthropic, etc.) is one
+ * [LlmBackendConfigs.forId] branch plus the backend class.
  *
  * UX contract mirrors [DeepLSettingsActivity]:
- *  - Prepopulates from prefs on entry.
- *  - The toolbar X discards in-progress edits to key / base URL.
- *  - Save persists key / base URL and flips `enabled` to true iff the key
- *    is non-blank. The pref change drives the row's switch back in
+ *  - Prepopulates the key field from prefs on entry.
+ *  - The toolbar X discards in-progress edits to the key.
+ *  - Save persists the key and flips `enabled` to true iff the key is
+ *    non-blank. The pref change drives the row's switch back in
  *    Settings via the SharedPreferences listener.
- *  - Model selection is its own sub-screen ([LlmModelPickerActivity]) and
- *    writes straight to prefs on tap — the model row here just displays
- *    the current value and re-reads it in onResume.
+ *
+ * Model selection deliberately lives outside this screen — the inline
+ * "Model" sub-cell in the main Settings card appears only once the
+ * backend is enabled (i.e. the user has saved a key), at which point
+ * the picker has a real key to call /v1/models with. Keeping the
+ * picker out of this screen avoids the "I typed a key but haven't
+ * saved it, the picker can't use it yet" problem.
+ *
+ * Each registered provider has a hardcoded canonical base URL (set at
+ * registration time in PlayTranslateApplication), so the sub-screen
+ * has no URL field. To add an OpenAI-compatible provider (DeepSeek,
+ * etc.), register a second [com.playtranslate.translation.OpenAiBackend]
+ * instance with the right URL — no UI changes needed here.
  *
  * Special handling:
- *  - Base URL field is GONE when [LlmBackendConfig.allowsBaseUrl] is false.
- *  - Save rejects a blank / non-`https://` base URL with an inline error
- *    (loopback addresses get an `http://` pass for LM Studio).
- *  - When the provider supports it and the base URL is the default, the
- *    activity fires a non-blocking key-validation ping post-save and
+ *  - When the provider supports key validation (OpenAI / DeepSeek),
+ *    Save fires a non-blocking key-validation ping post-save and
  *    surfaces [KeyStatus.Invalid] as a Toast.
  */
 class LlmBackendSettingsActivity : AppCompatActivity() {
 
     private lateinit var config: LlmBackendConfig
-    private var modelRowValue: TextView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         applyTheme(this)
@@ -69,44 +75,10 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         etApiKey.setText(config.getKey())
         etApiKey.setSelection(etApiKey.text.length)
 
-        wireBaseUrlSection(findViewById(R.id.sectionBaseUrl))
-        wireModelRow(findViewById(R.id.rowModel))
         wireGetKeyLink(findViewById(R.id.rowGetKeyLink))
 
         findViewById<MaterialButton>(R.id.btnSave).setOnClickListener {
             onSave(etApiKey)
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // [LlmModelPickerActivity] writes the model straight to prefs and
-        // finishes back into us — pick the new value up so the row's
-        // displayed value matches what was just chosen.
-        modelRowValue?.text = config.getModel()
-    }
-
-    private fun wireBaseUrlSection(section: View) {
-        if (!config.allowsBaseUrl) {
-            section.visibility = View.GONE
-            findViewById<View>(R.id.dividerBaseUrl)?.visibility = View.GONE
-            return
-        }
-        section.visibility = View.VISIBLE
-        val etBaseUrl = section.findViewById<EditText>(R.id.etBaseUrl)
-        etBaseUrl.hint = config.defaultBaseUrl ?: ""
-        etBaseUrl.setText(config.getBaseUrl())
-    }
-
-    private fun wireModelRow(row: View) {
-        row.findViewById<TextView>(R.id.tvRowTitle).text =
-            getString(R.string.llm_backend_model_label)
-        val tvValue = row.findViewById<TextView>(R.id.tvRowValue)
-        tvValue.text = config.getModel()
-        modelRowValue = tvValue
-        val backendId = intent.getStringExtra(EXTRA_BACKEND_ID) ?: return
-        row.setOnClickListener {
-            startActivity(LlmModelPickerActivity.newIntent(this, backendId))
         }
     }
 
@@ -129,19 +101,7 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
 
     private fun onSave(etApiKey: EditText) {
         val key = etApiKey.text.toString().trim()
-        if (config.allowsBaseUrl) {
-            val etBaseUrl = findViewById<EditText>(R.id.etBaseUrl)
-            val rawUrl = etBaseUrl.text.toString().trim()
-            val validation = validateBaseUrl(rawUrl)
-            if (validation != null) {
-                etBaseUrl.error = validation
-                return
-            }
-            config.setBaseUrl(rawUrl)
-        }
         config.setKey(key)
-        // Model is owned by [LlmModelPickerActivity] now and is already
-        // in prefs by this point — Save only flushes the editable fields.
         config.setEnabled(key.isNotBlank())
 
         // Fire the validation ping after the prefs write so the backend's
@@ -166,30 +126,6 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         }
         finish()
     }
-
-    /**
-     * Returns null when the URL is acceptable, or an error string when not.
-     * Rejects blank + non-`https://` URLs, with an `http://` allowance for
-     * loopback hosts so LM Studio's default (`http://localhost:1234/v1`)
-     * works without losing the bearer-leak protection for real endpoints.
-     * A non-blank host is required for both schemes — `https://` or
-     * `https:///v1` would otherwise pass on the scheme alone and then
-     * fail every request at OkHttp URL-build time.
-     */
-    private fun validateBaseUrl(raw: String): String? {
-        if (raw.isBlank()) return getString(R.string.llm_backend_base_url_invalid)
-        val parsed = runCatching { Uri.parse(raw) }.getOrNull()
-            ?: return getString(R.string.llm_backend_base_url_invalid)
-        val scheme = parsed.scheme?.lowercase() ?: return getString(R.string.llm_backend_base_url_invalid)
-        val host = parsed.host?.lowercase()
-        if (host.isNullOrBlank()) return getString(R.string.llm_backend_base_url_invalid)
-        if (scheme == "https") return null
-        if (scheme == "http" && isLoopback(host)) return null
-        return getString(R.string.llm_backend_base_url_invalid)
-    }
-
-    private fun isLoopback(host: String): Boolean =
-        host == "localhost" || host == "127.0.0.1" || host == "[::1]" || host == "::1"
 
     companion object {
         const val EXTRA_BACKEND_ID = "backend_id"

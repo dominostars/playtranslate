@@ -83,47 +83,6 @@
                             android:importantForAutofill="no" />
                     </LinearLayout>
 
-                    <include layout="@layout/settings_row_divider"
-                        android:id="@+id/dividerBaseUrl" />
-
-                    <!-- Base URL entry (only for backends that allow it) -->
-                    <LinearLayout
-                        android:id="@+id/sectionBaseUrl"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:paddingHorizontal="@dimen/pt_row_h_padding"
-                        android:paddingVertical="@dimen/pt_row_v_padding"
-                        android:visibility="gone">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/llm_backend_base_url_label"
-                            style="@style/Text.PT.RowTitle" />
-
-                        <EditText
-                            android:id="@+id/etBaseUrl"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:textColorHint="?attr/ptTextHint"
-                            android:textColor="?attr/ptText"
-                            android:textSize="13sp"
-                            android:fontFamily="monospace"
-                            android:singleLine="true"
-                            android:inputType="textUri"
-                            android:background="?attr/ptSurface"
-                            android:padding="10dp"
-                            android:importantForAutofill="no" />
-                    </LinearLayout>
-
-                    <include layout="@layout/settings_row_divider"
-                        android:id="@+id/dividerModel" />
-
-                    <include layout="@layout/settings_row_value"
-                        android:id="@+id/rowModel" />
-
                     <include layout="@layout/settings_row_divider" />
 
                     <include layout="@layout/settings_row_link"

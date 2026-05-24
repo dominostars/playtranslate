@@ -369,14 +369,14 @@
     <!-- OpenAI / Gemini backend display names + sub-screen titles -->
     <string name="openai_display_name">OpenAI</string>
     <string name="gemini_display_name">Gemini</string>
+    <string name="deepseek_display_name">DeepSeek</string>
     <string name="openai_settings_title">OpenAI</string>
     <string name="gemini_settings_title">Gemini</string>
+    <string name="deepseek_settings_title">DeepSeek</string>
 
     <!-- Shared labels and messages for the generic LLM backend sub-screen -->
     <string name="llm_backend_api_key_label">API Key</string>
     <string name="llm_backend_model_label">Model</string>
-    <string name="llm_backend_base_url_label">Base URL</string>
-    <string name="llm_backend_base_url_invalid">Must start with https:// (http:// allowed for localhost)</string>
     <string name="llm_backend_get_key_title_fmt">Get a %1$s API key</string>
     <string name="llm_backend_today_usage_label">Today\'s usage</string>
     <string name="llm_backend_model_custom_entry">Custom…</string>

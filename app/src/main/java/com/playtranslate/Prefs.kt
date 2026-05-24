@@ -314,20 +314,27 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_OPENAI_ENABLED, false)
         set(v) = sp.edit().putBoolean(KEY_OPENAI_ENABLED, v).apply()
 
-    /** OpenAI model id; "Custom…" entry persists arbitrary strings (needed
-     *  by OpenAI-compatible endpoints whose model names don't match OpenAI's). */
+    /** OpenAI model id; "Custom…" entry persists arbitrary strings. */
     var openaiModel: String
         get() = sp.getString(KEY_OPENAI_MODEL, DEFAULT_OPENAI_MODEL) ?: DEFAULT_OPENAI_MODEL
         set(v) = sp.edit().putString(KEY_OPENAI_MODEL, v).apply()
 
-    /** OpenAI base URL. Defaults to the OpenAI public endpoint; users can
-     *  point this at any OpenAI-compatible service (OpenRouter, DeepSeek,
-     *  LM Studio, etc.). The on-save validation ping fires only when this
-     *  matches [DEFAULT_OPENAI_BASE_URL] because custom endpoints have
-     *  unknown key shapes and would false-flag valid third-party keys. */
-    var openaiBaseUrl: String
-        get() = sp.getString(KEY_OPENAI_BASE_URL, DEFAULT_OPENAI_BASE_URL) ?: DEFAULT_OPENAI_BASE_URL
-        set(v) = sp.edit().putString(KEY_OPENAI_BASE_URL, v).apply()
+    /** DeepSeek API key from https://platform.deepseek.com/api_keys. */
+    var deepseekApiKey: String
+        get() = sp.getString(KEY_DEEPSEEK_KEY, "") ?: ""
+        set(v) = sp.edit().putString(KEY_DEEPSEEK_KEY, v).apply()
+
+    /** User's explicit "use DeepSeek?" toggle. Default false; explicit
+     *  opt-in like every other paid LLM backend. */
+    var deepseekEnabled: Boolean
+        get() = sp.getBoolean(KEY_DEEPSEEK_ENABLED, false)
+        set(v) = sp.edit().putBoolean(KEY_DEEPSEEK_ENABLED, v).apply()
+
+    /** DeepSeek model id. The picker fetches the live list from
+     *  api.deepseek.com/v1/models; "Custom…" persists arbitrary strings. */
+    var deepseekModel: String
+        get() = sp.getString(KEY_DEEPSEEK_MODEL, DEFAULT_DEEPSEEK_MODEL) ?: DEFAULT_DEEPSEEK_MODEL
+        set(v) = sp.edit().putString(KEY_DEEPSEEK_MODEL, v).apply()
 
     /** User's explicit "use TranslateGemma?" toggle. Default false because the
      *  backend requires a separate ~2.5 GB model download. The download flow
@@ -870,12 +877,9 @@ class Prefs(context: Context) {
         const val KEY_OPENAI_KEY                    = "openai_api_key"
         const val KEY_OPENAI_ENABLED                = "openai_enabled"
         const val KEY_OPENAI_MODEL                  = "openai_model"
-        const val KEY_OPENAI_BASE_URL               = "openai_base_url"
-
-        /** Default OpenAI endpoint; the on-save key-validation ping fires
-         *  only when [openaiBaseUrl] equals this. Custom endpoints
-         *  (OpenRouter, etc.) skip the ping. */
-        const val DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+        const val KEY_DEEPSEEK_KEY                  = "deepseek_api_key"
+        const val KEY_DEEPSEEK_ENABLED              = "deepseek_enabled"
+        const val KEY_DEEPSEEK_MODEL                = "deepseek_model"
 
         /** Default selected model — chosen to match the first entry in
          *  the picker after filtering + sorting (newest alias by
@@ -885,6 +889,13 @@ class Prefs(context: Context) {
          *  top so we can adjust if wrong. */
         const val DEFAULT_OPENAI_MODEL    = "gpt-5"
         const val DEFAULT_GEMINI_MODEL    = "gemini-flash-lite-latest"
+        // DeepSeek doesn't ship a rolling -latest alias (per api-docs.
+        // deepseek.com). The legacy `deepseek-chat` / `deepseek-reasoner`
+        // aliases are scheduled for retirement on 2026-07-24, both
+        // currently route to v4-flash anyway. Pin directly to flash —
+        // mirrors the "small/fast/cheap" default we use on Gemini
+        // (flash-lite-latest) and OpenAI (gpt-5-mini-ish).
+        const val DEFAULT_DEEPSEEK_MODEL  = "deepseek-v4-flash"
         private const val KEY_LEGACY_THEME_INDEX    = "theme_index"
         private const val KEY_THEME_MODE            = "theme_mode"
         private const val KEY_ACCENT_NAME           = "accent_name"
