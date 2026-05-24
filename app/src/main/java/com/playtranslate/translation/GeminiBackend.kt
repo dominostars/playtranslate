@@ -204,7 +204,16 @@ class GeminiBackend(
                         bodyStr.contains("API key not valid")) {
                         throw GeminiAuthException()
                     }
-                    throw IOException("Gemini 400: ${bodyStr.take(200)}")
+                    // Mirrors the OpenAI batch 400 handling: a non-auth
+                    // 400 on the batch path is most likely the model
+                    // rejecting the responseSchema / responseMimeType
+                    // body fields the single-text path doesn't send.
+                    // Surface as BatchParseException so the registry
+                    // retries this same Gemini backend's per-text
+                    // translate() (no schema) before skipping to a
+                    // lower-priority backend like DeepL or Lingva.
+                    Log.w(TAG, "batch 400 body=${bodyStr.take(500)} — retrying per-text on same backend")
+                    throw BatchParseException("Gemini batch 400: ${bodyStr.take(200)}")
                 }
                 429 -> {
                     Log.w(TAG, "429 body=${bodyStr.take(500)}")
