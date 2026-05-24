@@ -6,6 +6,7 @@ import com.google.gson.JsonSyntaxException
 import com.playtranslate.translation.llm.LlmBatchPrompt
 import com.playtranslate.translation.llm.cleanLlmOutput
 import com.playtranslate.translation.qwen.QwenChatTemplate
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -45,7 +46,7 @@ class GeminiBackend(
     private val modelProvider: () -> String,
     private val usageTracker: UsageTracker,
     private val client: OkHttpClient = defaultClient(),
-) : TranslationBackend, BatchTranslator, ModelLister {
+) : TranslationBackend, BatchTranslator, ModelLister, KeyValidator {
 
     override val id: BackendId = "gemini"
     override val displayName: String = "Gemini"
@@ -259,6 +260,49 @@ class GeminiBackend(
      * catches it and falls back to a default minimum so the user
      * always has at least one selectable option.
      */
+    /**
+     * Verify the API key against `/v1beta/models`. Cheap auth-only call
+     * (no tokens billed). Used by the settings-save path to block on
+     * known-invalid keys instead of saving them.
+     *
+     * [overrideKey] lets the caller pass a typed-but-unsaved key.
+     */
+    override suspend fun validateKey(overrideKey: String?): KeyStatus = withContext(Dispatchers.IO) {
+        val apiKey = (overrideKey ?: keyProvider())?.takeIf { it.isNotBlank() }
+            ?: return@withContext KeyStatus.Invalid("API key blank")
+        val request = Request.Builder()
+            .url("$ENDPOINT_ROOT/models")
+            .addHeader("x-goog-api-key", apiKey)
+            .build()
+        try {
+            client.newCall(request).execute().use { response ->
+                when {
+                    response.code in 200..299 -> KeyStatus.Ok
+                    response.code == 400 -> {
+                        // Gemini reports invalid keys as 400 INVALID_ARGUMENT
+                        // with "API key not valid" / "API_KEY_INVALID" in the
+                        // body — distinguish from other 400s (which would be
+                        // backend issues we shouldn't block on).
+                        val body = response.body?.string() ?: ""
+                        if (body.contains("API_KEY_INVALID") ||
+                            body.contains("API key not valid")) {
+                            KeyStatus.Invalid("HTTP 400 (invalid key)")
+                        } else {
+                            KeyStatus.Unreachable
+                        }
+                    }
+                    response.code == 401 || response.code == 403 ->
+                        KeyStatus.Invalid("HTTP ${response.code}")
+                    else -> KeyStatus.Unreachable
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IOException) {
+            KeyStatus.Unreachable
+        }
+    }
+
     override suspend fun listModels(): List<String> = withContext(Dispatchers.IO) {
         val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
             ?: throw IOException("Gemini API key not configured")

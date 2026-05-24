@@ -62,7 +62,7 @@ class OpenAiBackend(
      *  the picker comes back empty. */
     private val filterFineTunes: Boolean,
     private val client: OkHttpClient = defaultClient(),
-) : TranslationBackend, BatchTranslator, ModelLister {
+) : TranslationBackend, BatchTranslator, ModelLister, KeyValidator {
 
     override val requiresInternet: Boolean = true
     override val isDegradedFallback: Boolean = false
@@ -260,9 +260,13 @@ class OpenAiBackend(
      * known base URL so the gate that previously skipped validation on
      * "custom" URLs is no longer needed — every endpoint we configure
      * is one we've vetted to support `/v1/models`.
+     *
+     * [overrideKey] lets the settings-save path validate a key that
+     * hasn't been persisted yet (user just typed it). When null,
+     * falls back to the registered keyProvider.
      */
-    suspend fun validateKey(): KeyStatus = withContext(Dispatchers.IO) {
-        val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
+    override suspend fun validateKey(overrideKey: String?): KeyStatus = withContext(Dispatchers.IO) {
+        val apiKey = (overrideKey ?: keyProvider())?.takeIf { it.isNotBlank() }
             ?: return@withContext KeyStatus.Invalid("API key blank")
         val baseUrl = baseUrlProvider().trim().trimEnd('/')
         val request = Request.Builder()

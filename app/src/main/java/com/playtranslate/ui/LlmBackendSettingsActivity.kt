@@ -8,16 +8,17 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.EditText
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
-import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.R
 import com.playtranslate.applyTheme
 import com.playtranslate.translation.KeyStatus
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
@@ -31,31 +32,32 @@ import kotlinx.coroutines.launch
  * UX contract mirrors [DeepLSettingsActivity]:
  *  - Prepopulates the key field from prefs on entry.
  *  - The toolbar X discards in-progress edits to the key.
- *  - Save persists the key and flips `enabled` to true iff the key is
- *    non-blank. The pref change drives the row's switch back in
- *    Settings via the SharedPreferences listener.
+ *  - Save validates the typed key against the provider's auth-only
+ *    endpoint BEFORE persisting. While validation is in flight the
+ *    button is hidden behind an in-place spinner and the key field
+ *    is disabled. On success (Ok or Unreachable) we persist the key
+ *    + flip `enabled` and finish; on Invalid we restore the button,
+ *    re-enable the field, and show an OverlayAlert explaining the
+ *    rejection. Toolbar X mid-validation cancels the in-flight ping
+ *    via lifecycleScope and dismisses the activity unchanged.
  *
  * Model selection deliberately lives outside this screen — the inline
  * "Model" sub-cell in the main Settings card appears only once the
  * backend is enabled (i.e. the user has saved a key), at which point
- * the picker has a real key to call /v1/models with. Keeping the
- * picker out of this screen avoids the "I typed a key but haven't
- * saved it, the picker can't use it yet" problem.
+ * the picker has a real key to call /v1/models with.
  *
  * Each registered provider has a hardcoded canonical base URL (set at
  * registration time in PlayTranslateApplication), so the sub-screen
  * has no URL field. To add an OpenAI-compatible provider (DeepSeek,
  * etc.), register a second [com.playtranslate.translation.OpenAiBackend]
  * instance with the right URL — no UI changes needed here.
- *
- * Special handling:
- *  - When the provider supports key validation (OpenAI / DeepSeek),
- *    Save fires a non-blocking key-validation ping post-save and
- *    surfaces [KeyStatus.Invalid] as a Toast.
  */
 class LlmBackendSettingsActivity : AppCompatActivity() {
 
     private lateinit var config: LlmBackendConfig
+    private lateinit var etApiKey: EditText
+    private lateinit var btnSave: MaterialButton
+    private lateinit var progressSave: ProgressBar
 
     override fun onCreate(savedInstanceState: Bundle?) {
         applyTheme(this)
@@ -70,16 +72,16 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         toolbar.title = getString(config.titleStringRes)
         toolbar.setNavigationOnClickListener { finish() }
 
-        val etApiKey = findViewById<EditText>(R.id.etApiKey)
+        etApiKey = findViewById(R.id.etApiKey)
         etApiKey.hint = config.keyHint
         etApiKey.setText(config.getKey())
         etApiKey.setSelection(etApiKey.text.length)
 
         wireGetKeyLink(findViewById(R.id.rowGetKeyLink))
 
-        findViewById<MaterialButton>(R.id.btnSave).setOnClickListener {
-            onSave(etApiKey)
-        }
+        btnSave = findViewById(R.id.btnSave)
+        progressSave = findViewById(R.id.progressSave)
+        btnSave.setOnClickListener { onSave() }
     }
 
     private fun wireGetKeyLink(row: View) {
@@ -99,32 +101,83 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun onSave(etApiKey: EditText) {
-        val key = etApiKey.text.toString().trim()
-        config.setKey(key)
-        config.setEnabled(key.isNotBlank())
+    /** Toggle the Save button's loading state. While loading, the
+     *  button text is blanked + click suppressed and the centered
+     *  ProgressBar overlays it. The key field is disabled to prevent
+     *  edits racing with the in-flight validation request. */
+    private fun setLoading(loading: Boolean) {
+        if (loading) {
+            btnSave.text = ""
+            btnSave.isEnabled = false
+            progressSave.visibility = View.VISIBLE
+            etApiKey.isEnabled = false
+        } else {
+            btnSave.text = getString(R.string.deepl_settings_save)
+            btnSave.isEnabled = true
+            progressSave.visibility = View.GONE
+            etApiKey.isEnabled = true
+        }
+    }
 
-        // Fire the validation ping after the prefs write so the backend's
-        // keyProvider closure sees the just-saved key. Toast surfaces only
-        // KeyStatus.Invalid; Ok and Unreachable stay silent.
-        //
-        // Launched on the Application's scope (with Main dispatcher for the
-        // Toast) — NOT lifecycleScope, because finish() below cancels that
-        // scope and would silently kill the validation before it completes,
-        // leaving an invalid key saved and enabled without the warning.
-        val validate = config.validateKey
-        if (key.isNotBlank() && validate != null) {
-            val appCtx = applicationContext
-            val warningText = getString(R.string.llm_backend_invalid_key_toast)
-            (application as PlayTranslateApplication).appScope.launch(Dispatchers.Main) {
-                val status = runCatching { validate.invoke() }.getOrNull()
-                    ?: KeyStatus.Unreachable
-                if (status is KeyStatus.Invalid) {
-                    Toast.makeText(appCtx, warningText, Toast.LENGTH_LONG).show()
+    private fun onSave() {
+        val key = etApiKey.text.toString().trim()
+
+        // Blank key short-circuit: clear the saved key + disable the
+        // backend. Nothing to validate.
+        if (key.isBlank()) {
+            config.setKey("")
+            config.setEnabled(false)
+            finish()
+            return
+        }
+
+        setLoading(true)
+        // lifecycleScope so toolbar X (which calls finish()) cancels
+        // the in-flight validation cleanly — the activity's destroy
+        // tears down the scope and the coroutine never reaches its
+        // post-validation save+finish. No prefs are persisted on cancel.
+        lifecycleScope.launch {
+            val status = try {
+                config.validateKey(key)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Defensive: validateKey shouldn't throw (Unreachable
+                // captures network errors), but if it does, fall back
+                // to Unreachable rather than blocking the user.
+                KeyStatus.Unreachable
+            }
+            when (status) {
+                is KeyStatus.Invalid -> {
+                    setLoading(false)
+                    showInvalidKeyAlert()
+                }
+                else -> {
+                    // Ok / Unreachable — save and finish. Unreachable
+                    // means we couldn't *prove* the key wrong (offline,
+                    // 5xx, etc.) so we let the user proceed; the next
+                    // translate call surfaces any real issue.
+                    config.setKey(key)
+                    config.setEnabled(true)
+                    finish()
                 }
             }
         }
-        finish()
+    }
+
+    private fun showInvalidKeyAlert() {
+        OverlayAlert.Builder(this)
+            .hideIcon()
+            .setTitle(getString(R.string.llm_backend_invalid_key_alert_title))
+            .setMessage(
+                getString(
+                    R.string.llm_backend_invalid_key_alert_message_fmt,
+                    config.displayName,
+                    config.getKeyUrl,
+                )
+            )
+            .addCancelButton(getString(R.string.llm_backend_invalid_key_alert_button))
+            .showInActivity(this)
     }
 
     companion object {

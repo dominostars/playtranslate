@@ -4,8 +4,8 @@ import android.content.Context
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.translation.KeyStatus
+import com.playtranslate.translation.KeyValidator
 import com.playtranslate.translation.ModelLister
-import com.playtranslate.translation.OpenAiBackend
 import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.translation.UsageTracker
 
@@ -38,7 +38,12 @@ data class LlmBackendConfig(
     val getEnabled: () -> Boolean,
     val setEnabled: (Boolean) -> Unit,
     val todayUsageString: () -> String,
-    val validateKey: (suspend () -> KeyStatus)?,
+    /** Validates a key against the provider's auth-only endpoint.
+     *  [overrideKey] non-null lets the settings save path test a key
+     *  the user just typed before persisting it. Every registered
+     *  provider implements [KeyValidator], so this is non-null for all
+     *  configs. */
+    val validateKey: suspend (overrideKey: String?) -> KeyStatus,
 )
 
 object LlmBackendConfigs {
@@ -64,12 +69,11 @@ object LlmBackendConfigs {
     }
 
     /** Shared `validateKey` lambda for any provider whose registered
-     *  backend is an [OpenAiBackend] instance. The validation hits the
-     *  provider's /v1/models endpoint with the configured key —
-     *  identical implementation for OpenAI, DeepSeek, and any future
-     *  OpenAI-compatible provider. */
-    private fun lookupValidateKey(backendId: String): suspend () -> KeyStatus = {
-        (TranslationBackendRegistry.byId(backendId) as? OpenAiBackend)?.validateKey()
+     *  backend implements [KeyValidator]. Smart-cast pattern matches
+     *  [lookupModels] — adding a new validating backend (Anthropic,
+     *  etc.) doesn't need a per-class branch here. */
+    private fun lookupValidateKey(backendId: String): suspend (overrideKey: String?) -> KeyStatus = { override ->
+        (TranslationBackendRegistry.byId(backendId) as? KeyValidator)?.validateKey(override)
             ?: KeyStatus.Unreachable
     }
 
@@ -119,7 +123,10 @@ object LlmBackendConfigs {
             getEnabled = { prefs.geminiEnabled },
             setEnabled = { prefs.geminiEnabled = it },
             todayUsageString = { tracker.todayString() },
-            validateKey = null,
+            // Gemini's /v1beta/models is now used for both listing and
+            // key validation — same auth-only endpoint that listModels
+            // already hits successfully.
+            validateKey = lookupValidateKey("gemini"),
         )
     }
 

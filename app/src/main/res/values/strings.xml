@@ -382,7 +382,9 @@
     <string name="llm_backend_model_custom_entry">Custom…</string>
     <string name="llm_model_picker_loading">Loading models…</string>
     <string name="llm_model_picker_fetch_failed">Couldn\'t fetch the model list. Check the API key, or type a model id via Custom….</string>
-    <string name="llm_backend_invalid_key_toast">API key rejected by the provider</string>
+    <string name="llm_backend_invalid_key_alert_title">Couldn\'t verify API key</string>
+    <string name="llm_backend_invalid_key_alert_message_fmt">%1$s rejected the key you entered. Double-check it at %2$s and try again.</string>
+    <string name="llm_backend_invalid_key_alert_button">OK</string>
     <string name="llm_status_today_tokens_fmt">%s tokens</string>
 
     <!-- Translation Service section footers in Settings -->

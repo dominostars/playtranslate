@@ -102,3 +102,27 @@ class BatchParseException(message: String, cause: Throwable? = null) : java.io.I
 interface ModelLister {
     suspend fun listModels(): List<String>
 }
+
+/**
+ * Backends that can verify whether a given API key is valid against
+ * their provider — typically via a cheap auth-gated endpoint that
+ * doesn't bill tokens (OpenAI's `/v1/models`, Gemini's
+ * `/v1beta/models`, etc.).
+ *
+ * [overrideKey] lets the caller validate a key that hasn't been
+ * persisted to prefs yet — e.g. the user just typed it into the
+ * settings sub-screen but hasn't hit Save. When null, implementations
+ * fall back to their configured keyProvider.
+ *
+ * Returns:
+ *  - [KeyStatus.Ok] when the provider accepts the key
+ *  - [KeyStatus.Invalid] when the provider explicitly rejects it
+ *    (401/403, or 400 with a key-invalid marker for Gemini)
+ *  - [KeyStatus.Unreachable] when we can't tell (network down,
+ *    timeout, 5xx, anything that isn't a definitive Invalid). The
+ *    settings save path should treat this as "save anyway" rather
+ *    than blocking the user — we couldn't *prove* it's wrong.
+ */
+interface KeyValidator {
+    suspend fun validateKey(overrideKey: String? = null): KeyStatus
+}
