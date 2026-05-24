@@ -22,11 +22,18 @@ import java.io.File
  * (driven by [isDirectoryMode]) handles the extract + atomic directory swap;
  * sentinel-file gate at the end matches the catalog sha.
  *
- * Phase 1 ships the multimodal-as-distributed bundle from `taobao-mnn`; Phase 2
- * converts `principled-intelligence/gemma-4-E2B-it-text-only` ourselves via
- * `llmexport.py` to drop the inert audio/visual weights (~780 MB on disk and
- * resident RAM). Either bundle's `config.json` resolves to the same MNN
- * directory layout, so this helper doesn't need to know which is on device.
+ * Ships the multimodal-as-distributed bundle from `taobao-mnn`
+ * (huggingface.co/taobao-mnn/gemma-4-E2B-it-MNN, ~2.7 GB zipped, 3.5 GB
+ * extracted). The audio/visual towers (~780 MB) are inert at runtime — we
+ * never call into the multimodal paths — but they're cheaper to ship than
+ * to convert away. A Phase-2 attempt to convert
+ * `principled-intelligence/gemma-4-E2B-it-text-only` ourselves was
+ * deferred; outcome and intermediate findings live in
+ * `~/playtranslate/mnn-spike/PHASE2_LOG.md`. Before reopening this
+ * optimization, read that log AND re-run the 50-prompt benchmark against
+ * `~/playtranslate/mnn-spike/gemma-4-e2b-50.jsonl` — single-prompt smoke
+ * tests passed in that session while the 50-prompt benchmark exposed a
+ * quality regression, so don't trust a smoke test alone.
  */
 object GemmaE2BMnnModel : ModelHelper {
     override val catalogKey: String = "engine-gemma-4-e2b-mnn"
