@@ -207,6 +207,19 @@ class OpenAiBackend(
                     Log.w(TAG, "429 retryAfter=$retryAfter body=$body")
                     throw OpenAiRateLimitException()
                 }
+                400 -> {
+                    // 400 on the batch path is most often
+                    // "this endpoint doesn't support strict json_schema"
+                    // — common on OpenAI-compatible endpoints (older
+                    // OpenRouter / LM Studio / non-`o` model families).
+                    // Surface as BatchParseException so the registry
+                    // retries this same backend's per-text translate()
+                    // (which doesn't send response_format) before
+                    // skipping to a degraded fallback.
+                    val body = response.body?.string()?.take(500) ?: ""
+                    Log.w(TAG, "batch 400 body=$body — retrying per-text on same backend")
+                    throw BatchParseException("OpenAI batch 400: $body")
+                }
                 else -> if (!response.isSuccessful) {
                     throw IOException("OpenAI error ${response.code}")
                 }

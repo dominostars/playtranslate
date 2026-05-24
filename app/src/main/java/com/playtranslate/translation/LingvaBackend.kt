@@ -70,6 +70,18 @@ class LingvaBackend(
         // fan-out within the same backend turn — Lingva keeps working
         // either way, just loses the batching speedup.
         val url = buildUrl(texts, source, target)
+        // Preflight URL length. Many HTTP servers / intermediaries cap
+        // request URIs around 8 KiB (default Tomcat, common nginx
+        // builds). Throwing BatchParseException before the request so
+        // the registry retries per-text on the same backend means an
+        // OCR pass with many long groups still translates via Lingva
+        // (per-text URLs are short) instead of silently dropping to
+        // ML Kit on a 414 / connection reset.
+        if (url.length > MAX_BATCH_URL_LENGTH) {
+            throw BatchParseException(
+                "Lingva batch: URL too long (${url.length} > $MAX_BATCH_URL_LENGTH chars); retrying per-text"
+            )
+        }
         val body = fetchBody(url)
         val top = try {
             JSONArray(body)
@@ -106,6 +118,12 @@ class LingvaBackend(
         }
         return "https://translate.googleapis.com/translate_a/single" +
             "?client=gtx&sl=$source&tl=$target&dt=t&$qs"
+    }
+
+    private companion object {
+        /** Conservative cap below the typical 8 KiB server URI limit.
+         *  Leaves headroom for headers + the fixed query prefix. */
+        const val MAX_BATCH_URL_LENGTH = 6 * 1024
     }
 
     private fun fetchBody(url: String): String {
