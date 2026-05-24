@@ -2,7 +2,7 @@ package com.playtranslate.translation
 
 import android.util.Log
 import com.playtranslate.translation.llm.OnDeviceLlmBackend
-import com.playtranslate.translation.translategemma.TranslateGemmaTransientException
+import com.playtranslate.translation.llm.OnDeviceLlmTransientException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -103,7 +103,7 @@ object TranslationBackendRegistry {
         if (ordered.isEmpty()) {
             throw IllegalStateException("TranslationBackendRegistry has no backends — was init() called?")
         }
-        // First on-device LLM (if any) that threw TranslateGemmaTransientException
+        // First on-device LLM (if any) that threw OnDeviceLlmTransientException
         // during this call. Propagated into the eventual WaterfallResult so the
         // caller can skip caching the fallback's output — without this, a
         // single low-memory moment would freeze a lower-quality result in the
@@ -122,7 +122,7 @@ object TranslationBackendRegistry {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (e is TranslateGemmaTransientException && backend is OnDeviceLlmBackend) {
+                if (e is OnDeviceLlmTransientException && backend is OnDeviceLlmBackend) {
                     // Record the *first* displaced LLM in this call so the
                     // caller can skip caching the fallback's output. Multi-
                     // LLM displacement in the same call is rare; the first
@@ -154,7 +154,7 @@ object TranslationBackendRegistry {
      *    moving to the next backend.
      *
      * Special handling for on-device LLMs: if any text on a non-batching
-     * [OnDeviceLlmBackend] throws [TranslateGemmaTransientException],
+     * [OnDeviceLlmBackend] throws [OnDeviceLlmTransientException],
      * treat the WHOLE backend pass as failed for ALL remaining pending
      * texts. Memory pressure isn't per-text — retrying the rest on the
      * same backend under the same pressure would pin the engine longer
@@ -257,7 +257,7 @@ object TranslationBackendRegistry {
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (e: Exception) {
-                                if (e is TranslateGemmaTransientException && backend is OnDeviceLlmBackend) {
+                                if (e is OnDeviceLlmTransientException && backend is OnDeviceLlmBackend) {
                                     transientHit = true
                                     if (displacedLlmId == null) displacedLlmId = backend.id
                                 }

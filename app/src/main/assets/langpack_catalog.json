@@ -1,39 +1,27 @@
 {
   "catalogVersion": 1,
   "packs": {
-    "engine-translategemma": {
-      "display": "TranslateGemma 4B",
+    "engine-gemma-4-e2b-mnn": {
+      "display": "Gemma 4 E2B (MNN)",
       "type": "engine",
       "script": "",
       "bundled": false,
       "packVersion": 1,
       "additiveFromVersion": 1,
-      "size": 2190470400,
-      "url": "https://huggingface.co/playtranslate/translategemma-4b-it-Q4_0/resolve/main/translategemma-4b-it.Q4_0.gguf",
-      "sha256": "cb7a1b969fdf25bbf64d5d5d94c66005bfac32fb166854675b6e780f20c79cad",
+      "extract": true,
+      "size": 0,
+      "url": "https://huggingface.co/playtranslate/gemma-4-E2B-it-mnn-text/resolve/main/gemma-4-E2B-it-mnn-text.zip",
+      "sha256": "PLACEHOLDER_PHASE_2",
       "licenses": [
         {
-          "component": "TranslateGemma 4B (Gemma 3-based)",
-          "license": "Gemma",
-          "attribution": "© Google. Subject to the Gemma Terms of Use (https://ai.google.dev/gemma/terms)."
-        }
-      ]
-    },
-    "engine-qwen-1-5b": {
-      "display": "Qwen 2.5 1.5B",
-      "type": "engine",
-      "script": "",
-      "bundled": false,
-      "packVersion": 1,
-      "additiveFromVersion": 1,
-      "size": 937535744,
-      "url": "https://huggingface.co/playtranslate/qwen2.5-1.5b-instruct-Q4_0/resolve/main/Qwen2.5-1.5B-Instruct-Q4_0.gguf",
-      "sha256": "a5ab77ebbd1d6d70250ff415339935bebac619b7acc508f71545f08231369dc1",
-      "licenses": [
-        {
-          "component": "Qwen 2.5 1.5B Instruct",
+          "component": "Gemma 4 E2B Instruct (MNN format)",
           "license": "Apache-2.0",
-          "attribution": "© Alibaba Cloud. Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0."
+          "attribution": "© Google. Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0."
+        },
+        {
+          "component": "MNN runtime (libMNN.so / libllm.so / libMNN_Express.so)",
+          "license": "Apache-2.0",
+          "attribution": "© Alibaba. Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0."
         }
       ]
     },

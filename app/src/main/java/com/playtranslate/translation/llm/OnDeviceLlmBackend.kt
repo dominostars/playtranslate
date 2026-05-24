@@ -2,27 +2,27 @@ package com.playtranslate.translation.llm
 
 import android.app.ActivityManager
 import android.content.Context
-import android.os.Build
 import androidx.annotation.StringRes
 import com.playtranslate.R
 import com.playtranslate.translation.BackendStatus
 import com.playtranslate.translation.Tone
 import com.playtranslate.translation.TranslationBackend
-import com.playtranslate.translation.translategemma.LlamaTranslator
+import com.playtranslate.translation.mnn.MnnTranslator
 
 /**
- * Shared base for on-device LLM translation backends (TranslateGemma, Qwen, ...).
+ * Shared base for on-device LLM translation backends. Concrete subclasses
+ * provide configuration: [id], [displayName], [priority], [quality],
+ * [modelHelper], [promptStyle], [availMemFloorBytes], [statusStringIds].
+ * The shared logic — usability gating, status formatting, dispatch through
+ * the [MnnTranslator] singleton — lives here.
  *
- * Concrete subclasses provide configuration: [id], [displayName], [priority],
- * [quality], [modelHelper], [promptStyle], [availMemFloorBytes], [statusStringIds].
- * The shared logic — usability gating, status formatting, dispatch through the
- * [LlamaTranslator] singleton — lives here. Subclasses can override [supportsPair]
- * to whitelist specific language pairs (e.g. TG's en-pivot gate); the default
- * accepts any pair where source != target.
+ * Subclasses can override [supportsPair] to whitelist specific language pairs;
+ * the default accepts any pair where source != target. They can also override
+ * [translate] if they need engine-specific dispatch, but the default
+ * [MnnTranslator] route covers every on-device backend after the :llama strip.
  *
- * `requiresInternet` and `isDegradedFallback` are sealed at this level — every
- * on-device LLM is offline and not a degraded fallback, by definition of the
- * abstraction.
+ * `requiresInternet` and `isDegradedFallback` are sealed at this level —
+ * every on-device LLM is offline and not a degraded fallback, by definition.
  */
 abstract class OnDeviceLlmBackend(
     protected val context: Context,
@@ -33,7 +33,7 @@ abstract class OnDeviceLlmBackend(
     protected abstract val promptStyle: PromptStyle
 
     /** Transient per-call floor checked at translate time inside
-     *  [LlamaTranslator]. If `availMem` drops below this value a translate
+     *  [MnnTranslator]. If `availMem` drops below this value a translate
      *  call throws a transient exception and the registry's waterfall
      *  falls through to the next backend. Public so Settings can read it
      *  for the pre-toggle availMem gate (mirrors [totalMemFloorBytes]). */
@@ -49,9 +49,9 @@ abstract class OnDeviceLlmBackend(
     protected abstract val statusStringIds: StatusStringIds
 
     final override val requiresInternet: Boolean = false
-    // false matches the abstraction (users opt into TG/Qwen; they aren't
-    // "degraded"). When an on-device LLM produces a translation because an
-    // online backend transiently failed, the result gets cached and
+    // false matches the abstraction (users opt into the on-device tier; they
+    // aren't "degraded"). When an on-device LLM produces a translation because
+    // an online backend transiently failed, the result gets cached and
     // outlasts the recovery — narrow staleness window we accept. The
     // inverse case (LLM displaced by transient memory, fallback returns a
     // result) is handled separately via WaterfallResult.displacedLlmId →
@@ -101,8 +101,25 @@ abstract class OnDeviceLlmBackend(
         return null
     }
 
-    private fun supportsRequiredAbi(): Boolean =
-        Build.SUPPORTED_ABIS.any { it == "arm64-v8a" || it == "x86_64" }
+    /**
+     * True iff this process is running 64-bit (and therefore can load MNN).
+     *
+     * `:mnn` builds for arm64-v8a only, so on a 32-bit-only device the
+     * abiFilters policy in `:mnn/build.gradle.kts` keeps every MNN `.so` out
+     * of the APK's 32-bit slice. The OS picks `armeabi-v7a` for that device,
+     * the process runs as 32-bit, and `System.loadLibrary("mnn-chat")` would
+     * fail. [android.os.Process.is64Bit] directly answers "can this process
+     * load 64-bit `.so` files" — true on arm64-v8a / x86_64 hosts, false on
+     * armeabi-v7a / x86. We deliberately do not use `Build.SUPPORTED_ABIS`
+     * here: that's a device-static list, so on a hypothetical 64-bit device
+     * running our 32-bit slice (a wrong App-Bundle split delivery) it would
+     * incorrectly report compatibility.
+     *
+     * `nativeLibraryDir` is not used either: with `extractNativeLibs=false`
+     * (modern AGP default) the `.so` files live inside the APK and are
+     * mmap'd by the dynamic linker, so the directory on disk is empty.
+     */
+    private fun supportsRequiredAbi(): Boolean = android.os.Process.is64Bit()
 
     private fun hasEnoughTotalMemory(): Boolean {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
@@ -125,18 +142,19 @@ abstract class OnDeviceLlmBackend(
 
     /**
      * Default: any pair where source != target. Subclasses can override to
-     * whitelist specific language pairs (e.g. TG's en-pivot gate during the
-     * conservative-default period before per-pair quality is verified).
+     * whitelist specific language pairs (e.g. a JA→EN-only specialist model
+     * during conservative-defaults rollouts).
      */
     protected open fun supportsPair(source: String, target: String): Boolean = true
 
-    // Open (not `final override`) so engine-specific subclasses can dispatch
-    // through a different translator. The default routes through
-    // [LlamaTranslator], which serves both the legacy GGUF Qwen and the
-    // TG-4B path; the MNN-backed [QwenMnnBackend] overrides this to call
-    // [com.playtranslate.translation.mnn.MnnTranslator] instead.
+    /**
+     * Dispatch through the [MnnTranslator] singleton. Open so an
+     * engine-specific subclass could re-route, but every on-device backend
+     * after the :llama strip uses MNN — the override is unnecessary in
+     * practice.
+     */
     override suspend fun translate(text: String, source: String, target: String): String =
-        LlamaTranslator.getInstance(context).translate(
+        MnnTranslator.getInstance(context).translate(
             text = text,
             source = source,
             target = target,
@@ -146,10 +164,10 @@ abstract class OnDeviceLlmBackend(
         )
 
     override fun close() {
-        // The LlamaTranslator singleton outlives any individual backend; closing
+        // The MnnTranslator singleton outlives any individual backend; closing
         // it from one backend's close() would tear down the engine for the
         // still-active sibling. Engine teardown happens at process death;
-        // explicit teardown is via LlamaTranslator.close() if ever needed.
+        // explicit teardown is via MnnTranslator.close() if ever needed.
     }
 
     override val status: BackendStatus
@@ -168,13 +186,13 @@ abstract class OnDeviceLlmBackend(
             // and download progress UI carry the state distinction; this line
             // is purely informational about resource cost.
             //
-            // We surface availMemFloorBytes (what LlamaTranslator.preflightMemory
-            // checks per-translation), not totalMemFloorBytes (the device-class
-            // gate). The latter is bigger because it bakes in headroom for the
-            // OS and other apps; reading "Requires 6 GB" when the model itself
-            // works in ~2.4 GB is confusing. Devices below totalMemFloorBytes
-            // never see this string — they get the hardware-incompatibility
-            // reason from hardwareIncompatibilityReason() above.
+            // availMemFloorBytes is what MnnTranslator.preflightMemory checks
+            // per-translation. totalMemFloorBytes is the device-class gate;
+            // it bakes in headroom for the OS and other apps, so the user-facing
+            // status line shows the per-call number (which is what they'd see
+            // if a translation transiently fails). Devices below
+            // totalMemFloorBytes never see this string — they get the
+            // hardware-incompatibility reason from hardwareIncompatibilityReason().
             val memGb = availMemFloorBytes / 1_000_000_000.0
             val memStr = if (memGb == memGb.toLong().toDouble()) "${memGb.toLong()} GB"
                          else "%.1f GB".format(memGb)

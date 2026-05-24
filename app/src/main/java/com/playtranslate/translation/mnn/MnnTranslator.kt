@@ -6,38 +6,33 @@ import android.util.Log
 import com.playtranslate.mnn.InferenceEngine
 import com.playtranslate.mnn.MnnChat
 import com.playtranslate.mnn.isModelLoaded
+import com.playtranslate.translation.gemma.GemmaE2BChatTemplate
+import com.playtranslate.translation.llm.OnDeviceLlmTransientException
 import com.playtranslate.translation.llm.PromptStyle
-import com.playtranslate.translation.llm.languageDisplayName
 import com.playtranslate.translation.qwen.QwenChatTemplate
-import com.playtranslate.translation.qwen.QwenModel
-import com.playtranslate.translation.translategemma.LlamaTranslator
-import com.playtranslate.translation.translategemma.TranslateGemmaTransientException
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.util.Locale
 
 /**
  * Process-singleton wrapper around the [com.playtranslate.mnn.MnnChat] inference
- * engine. Mirrors [LlamaTranslator]'s shape — singleton, [Mutex]-serialized
- * translate() sequences, cached `(source, target)` to skip re-prefilling the
- * system prompt — but routes through the :mnn JNI bridge instead of :llama.
+ * engine. Single on-device translator after the :llama strip — drives every
+ * on-device backend through one engine, one mutex, one cached
+ * `(source, target)` system block.
  *
- * **Why a singleton.** Same rationale as :llama's: the underlying engine has
- * shared native state (`g_llm`, `g_system_prompt_position` in `mnn_chat.cpp`)
- * and a single-threaded JNI dispatcher. Two `MnnTranslator` instances with
- * independent mutexes would let two backends interleave engine calls and
- * corrupt KV/cached-system-pair state.
+ * **Why a singleton.** The underlying engine has shared native state
+ * (`g_llm`, `g_system_prompt_position` in `mnn_chat.cpp`) and a
+ * single-threaded JNI dispatcher. Two independent instances with separate
+ * mutexes would let two backends interleave engine calls and corrupt
+ * KV / cached-system-pair state.
  *
- * **Current scope.** Only the MNN-backed Qwen 2.5 1.5B tier ([QwenMnnBackend])
- * routes through here. The Gemma3Prefix path is implemented for InferenceEngine
- * parity with :llama, but TG-on-MNN is blocked upstream by alibaba/MNN#4463
- * and there's no production caller yet.
- *
- * **Dual-engine memory coordination.** After this translator successfully
- * loads its model, it unloads the legacy Qwen GGUF in :llama (but NOT TG) —
- * see [ensureLoaded]. Mirrors the inverse coordination in
- * [LlamaTranslator.ensureLoaded].
+ * **Cross-backend model swaps.** [QwenMnnBackend] and [GemmaE2BMnnBackend]
+ * both call [translate] with their own `modelPath`. When the path changes
+ * we cleanUp the prior model *before* preflight (so its working set is
+ * freed before we check `availMem` against the new floor — without that
+ * ordering, swapping from Qwen-MNN's 1.5 GB floor to E2B's 3.5 GB floor on
+ * a tight device would throw transient even though there'd be plenty of
+ * memory after unload).
  */
 class MnnTranslator private constructor(private val context: Context) {
 
@@ -46,25 +41,26 @@ class MnnTranslator private constructor(private val context: Context) {
 
     @Volatile private var loadedModelPath: String? = null
 
-    // Same cache discipline as :llama — when [translate] is called with the
-    // same (source, target) pair, skip the setSystemPrompt re-decode and just
-    // erase-history back to "after system" via [InferenceEngine.resetForNextPrompt].
+    // Same cache discipline as the prior :llama translator: when [translate]
+    // is called with the same (source, target) pair, skip the setSystemPrompt
+    // re-decode and just erase-history back to "after system" via
+    // [InferenceEngine.resetForNextPrompt].
     private var systemPair: Pair<String, String>? = null
 
     /**
-     * Read-only view of the currently loaded model path. Used by the
-     * cross-engine memory coordinator in [LlamaTranslator.ensureLoaded] to
-     * decide whether to unload us before loading the legacy GGUF Qwen.
+     * Read-only view of the currently loaded model path. Public for callers
+     * that need to gate behavior on which backend is resident (e.g., the
+     * `onTrimMemory` hook in [com.playtranslate.PlayTranslateApplication]).
      */
     val currentlyLoadedModelPath: String? get() = loadedModelPath
 
     /**
      * Translate [text] from [source] to [target] using the MNN model at
      * [modelPath] (a *directory* — MNN's `Llm::createLLM` takes the model dir's
-     * `config.json` path, the JNI [com.playtranslate.mnn.InferenceEngine.loadModel]
+     * `config.json` path; the JNI [com.playtranslate.mnn.InferenceEngine.loadModel]
      * computes that from the dir). [promptStyle] is required for the same
-     * reasons as :llama's translator — defaulting it would silently route a
-     * model through the wrong template and produce garbage rather than an error.
+     * reason it always was — defaulting it would silently route a model
+     * through the wrong template and produce garbage rather than an error.
      */
     suspend fun translate(
         text: String,
@@ -74,29 +70,13 @@ class MnnTranslator private constructor(private val context: Context) {
         promptStyle: PromptStyle,
         availMemFloorBytes: Long = DEFAULT_AVAIL_MEM_FLOOR_BYTES,
     ): String {
-        // Cross-engine memory coordination runs BEFORE we acquire our mutex —
-        // by the time `translateLocked` -> `ensureLoaded` -> `preflightMemory`
-        // runs, the legacy Qwen GGUF working set (~1.2 GB on Thor) has been
-        // freed. Without this, on tight (4 GB) devices `availMem` falls below
-        // MNN's 1.5 GB floor while legacy is still resident, `preflightMemory`
-        // throws `TranslateGemmaTransientException`, the waterfall falls back
-        // to the legacy backend, and the MNN tier never activates (Codex
-        // review, 2026-05-22 [P2]).
-        //
-        // Lock-ordering invariant (no AB-BA): we don't hold our own [mutex]
-        // here, and [LlamaTranslator.unloadModel] acquires + releases its own
-        // mutex internally — by the time `coordinateLlamaUnload` returns,
-        // Llama's mutex is free, then we acquire ours. Never holding both
-        // mutexes simultaneously is what makes the deadlock impossible.
-        coordinateLlamaUnload()
         return mutex.withLock {
             translateLocked(text, source, target, modelPath, promptStyle, availMemFloorBytes)
         }
     }
 
     /**
-     * The mutex-protected body of [translate]. Returns the decoded
-     * translation; cross-engine coordination is the caller's job.
+     * The mutex-protected body of [translate]. Returns the decoded translation.
      */
     private suspend fun translateLocked(
         text: String,
@@ -110,16 +90,6 @@ class MnnTranslator private constructor(private val context: Context) {
         val pair = source to target
         val sb = StringBuilder()
         when (promptStyle) {
-            PromptStyle.Gemma3Prefix -> {
-                if (didReload || systemPair != pair) {
-                    engine.processRawPrefix(buildGemma3Prefix(source, target))
-                    systemPair = pair
-                } else {
-                    engine.resetForNextPrompt()
-                }
-                engine.sendRawSuffix(buildGemma3Suffix(text), predictLength = 256)
-                    .collect { token -> sb.append(token) }
-            }
             PromptStyle.StandardChat -> {
                 if (didReload || systemPair != pair) {
                     // *Critical*: feed the full <|im_start|>system…<|im_end|>
@@ -129,8 +99,7 @@ class MnnTranslator private constructor(private val context: Context) {
                     // role markers the model treats the system prompt as
                     // generic context and continues it like a completion —
                     // echoing the input + generating "Translation:" boilerplate
-                    // up to max_new_tokens. Matches the spike's
-                    // `build_prefix` (mnn-spike/MNN/.../demo/llm_demo.cpp).
+                    // up to max_new_tokens.
                     engine.setSystemPrompt(QwenChatTemplate.systemBlock(source, target))
                     systemPair = pair
                 } else {
@@ -141,53 +110,43 @@ class MnnTranslator private constructor(private val context: Context) {
                     predictLength = 256,
                 ).collect { token -> sb.append(token) }
             }
+            PromptStyle.Gemma4Chat -> {
+                if (didReload || systemPair != pair) {
+                    // Gemma 4 uses <|turn>{role}…<turn|> markers per
+                    // llmexport.py:108-113. Same JNI path as StandardChat
+                    // (true system role), different envelope strings. `<bos>`
+                    // is inside [GemmaE2BChatTemplate.systemBlock] — it lands
+                    // exactly once because the system block is cached per
+                    // (source, target) pair and only re-prefilled here when
+                    // the pair changes.
+                    engine.setSystemPrompt(GemmaE2BChatTemplate.systemBlock(source, target))
+                    systemPair = pair
+                } else {
+                    engine.resetForNextPrompt()
+                }
+                engine.sendUserPrompt(
+                    GemmaE2BChatTemplate.userBlock(text, source, target),
+                    predictLength = 256,
+                ).collect { token -> sb.append(token) }
+            }
         }
-        // Defensive cleanup: a clean run terminates at <|im_end|> via
-        // Llm::is_stop and the decoded text won't include the marker, but
+        // Defensive cleanup: a clean run terminates at the model's EOS marker
+        // via Llm::is_stop and the decoded text won't include the marker, but
         // strip any leaked tokens to be safe (e.g. if a future model variant
-        // emits the marker as text instead of as a special-token id).
+        // emits the marker as text instead of as a special-token id). All
+        // three are listed so the strip is engine-agnostic.
         return sb.toString()
             .substringBefore("<|im_end|>")
+            .substringBefore("<turn|>")
             .substringBefore("<|endoftext|>")
             .trim()
     }
 
     /**
-     * Pre-lock unload of the sibling `:llama` engine when it's currently
-     * holding the *legacy* Qwen GGUF. Frees `:llama`'s working set so our
-     * upcoming `preflightMemory` floor (inside [translateLocked]) has room
-     * on tight devices.
-     *
-     * Does nothing when `:llama` is serving TG (priority 25, the other
-     * waterfall tier) — TG's working set is disjoint from Qwen's and
-     * dropping it would just delay the next TG translation.
-     *
-     * Lock ordering (no AB-BA): see [translate]'s rationale — we don't hold
-     * our own [mutex] when this runs, [LlamaTranslator.unloadModel] acquires
-     * and releases its own mutex synchronously, so we never hold both.
-     *
-     * Race tolerated: another coroutine may load/unload the legacy Qwen
-     * between our `currentlyLoadedModelPath` read and the
-     * [LlamaTranslator.unloadModel] call. Worst case is an unnecessary
-     * unload cycle; no correctness issue.
-     */
-    private suspend fun coordinateLlamaUnload() {
-        runCatching {
-            val llama = LlamaTranslator.getInstance(context)
-            val llamaPath = llama.currentlyLoadedModelPath
-            val legacyQwenPath = QwenModel.file(context).absolutePath
-            if (llamaPath == legacyQwenPath) {
-                Log.i(TAG, "Coordinating unload of legacy Qwen GGUF (MNN active for Qwen)")
-                llama.unloadModel()
-            }
-        }.onFailure { Log.w(TAG, "Cross-engine unload coordination failed (ignored): $it") }
-    }
-
-    /**
      * Drop the loaded MNN model and release native state, **without**
      * destroying the engine itself. Mutex-serialized so it can't race with
-     * an in-flight translate(); the [LlamaTranslator.ensureLoaded] coordinator
-     * calls this from its own locked region. Different mutex — no deadlock.
+     * an in-flight translate(); the [com.playtranslate.PlayTranslateApplication]
+     * `onTrimMemory` hook calls this from its own coroutine scope.
      */
     suspend fun unloadModel() = mutex.withLock {
         val state = engine.state.value
@@ -213,23 +172,36 @@ class MnnTranslator private constructor(private val context: Context) {
      */
     private suspend fun ensureLoaded(modelPath: String, availMemFloorBytes: Long): Boolean {
         if (loadedModelPath == modelPath && engine.state.value.isModelLoaded) return false
-        preflightMemory(availMemFloorBytes)
 
-        // Recovery path — same as :llama's. State::Error from a prior translate()
-        // (e.g. JNI returned non-zero) must be cleared via cleanUp() before we
-        // can re-load; without this branch the sibling backends would all keep
-        // failing after a single transient error.
-        if (engine.state.value is InferenceEngine.State.Error) {
-            Log.w(TAG, "Engine in Error state; running cleanUp to recover before reload")
-            engine.cleanUp()
+        // **Swap-cleanup runs BEFORE preflight.** If a different model is
+        // loaded, free its working set first so the preflight memory check
+        // sees the post-unload state. Without this ordering, swapping from
+        // a low-floor backend (Qwen-MNN ~1.5 GB) to a high-floor one
+        // (E2B ~3.5 GB) on a tight 6 GB device would trip the floor check
+        // even though there'd be plenty of memory after the prior unload.
+        if (engine.state.value.isModelLoaded && loadedModelPath != modelPath) {
+            Log.i(TAG, "Swap-cleanup: unloading $loadedModelPath before loading $modelPath")
+            runCatching { engine.cleanUp() }
+                .onFailure { Log.w(TAG, "swap-cleanup encountered $it (ignored)") }
             loadedModelPath = null
             systemPair = null
-        } else if (engine.state.value.isModelLoaded) {
-            Log.i(TAG, "Switching model: cleanUp existing then load $modelPath")
-            engine.cleanUp()
         }
 
-        // Wait for engine.Initialized — same shape as :llama's.
+        preflightMemory(availMemFloorBytes)
+
+        // Error recovery — distinct from swap-cleanup. State::Error from a
+        // prior translate() (e.g. JNI returned non-zero) must be cleared via
+        // cleanUp() before we can re-load; without this branch sibling
+        // backends would all keep failing after a single transient error.
+        if (engine.state.value is InferenceEngine.State.Error) {
+            Log.w(TAG, "Engine in Error state; running cleanUp to recover before reload")
+            runCatching { engine.cleanUp() }
+                .onFailure { Log.w(TAG, "error-recovery cleanUp encountered $it (ignored)") }
+            loadedModelPath = null
+            systemPair = null
+        }
+
+        // Wait for engine.Initialized.
         if (engine.state.value !is InferenceEngine.State.Initialized) {
             Log.i(TAG, "Awaiting engine.Initialized before loadModel...")
             engine.state.firstOrNull { it is InferenceEngine.State.Initialized || it is InferenceEngine.State.Error }
@@ -241,10 +213,6 @@ class MnnTranslator private constructor(private val context: Context) {
         engine.loadModel(modelPath)
         loadedModelPath = modelPath
         systemPair = null
-        // Cross-engine memory coordination used to fire here but moved to
-        // [translate]'s post-mutex coordinator — see [coordinateLlamaUnload].
-        // Doing it inside this locked region risked an AB-BA deadlock with
-        // the symmetric path in `LlamaTranslator.ensureLoaded`.
         return true
     }
 
@@ -253,47 +221,18 @@ class MnnTranslator private constructor(private val context: Context) {
         val mi = ActivityManager.MemoryInfo()
         am.getMemoryInfo(mi)
         if (mi.availMem < availMemFloorBytes) {
-            // Reuse :llama's transient exception so the registry waterfall's
-            // existing TranslateGemmaTransientException catch handles MNN
-            // transient memory failures identically (fall through to next
-            // backend, don't surface to the user).
-            throw TranslateGemmaTransientException(
+            throw OnDeviceLlmTransientException(
                 "Low memory (${mi.availMem / 1_000_000} MB available, need ${availMemFloorBytes / 1_000_000} MB); " +
                     "falling through to next backend"
             )
         }
     }
 
-    // Gemma3 prompting (kept for InferenceEngine parity; no production caller
-    // yet — TG-on-MNN is blocked by alibaba/MNN#4463). Verbatim copy of
-    // :llama's helpers since the chat template is engine-agnostic; if the
-    // strings ever change in one place they should change in both, but we
-    // accept the duplication for now rather than introduce a third shared
-    // file just for these two strings.
-    private fun buildGemma3Prefix(source: String, target: String): String {
-        val src = source.lowercase(Locale.ROOT)
-        val tgt = target.lowercase(Locale.ROOT)
-        val srcName = languageDisplayName(src)
-        val tgtName = languageDisplayName(tgt)
-        return "<start_of_turn>user\n" +
-            "You are a professional $srcName ($src) to $tgtName ($tgt) translator. " +
-            "Your goal is to accurately convey the meaning and nuances of the original $srcName text " +
-            "while adhering to $tgtName grammar, vocabulary, and cultural sensitivities.\n\n" +
-            "Produce only the $tgtName translation, without any additional explanations or commentary.\n\n" +
-            "Please translate the following $srcName text into $tgtName:\n\n"
-    }
-
-    private fun buildGemma3Suffix(text: String): String {
-        return "$text<end_of_turn>\n<start_of_turn>model\n"
-    }
-
     companion object {
         private const val TAG = "MnnTranslator"
 
-        /** Below ~1.5 GB available, loading + KV + scratch is at risk of OOM
-         *  kill for the Qwen-MNN 1.5B working set. Same floor as the legacy
-         *  GGUF Qwen — same model, same ballpark RAM use. The TG-class 4 GB
-         *  floor doesn't apply since we don't (yet) drive TG-4B through MNN. */
+        /** Conservative default for callers that don't supply their own floor.
+         *  Production backends override via [OnDeviceLlmBackend.availMemFloorBytes]. */
         const val DEFAULT_AVAIL_MEM_FLOOR_BYTES = 1_500_000_000L
 
         @Volatile private var INSTANCE: MnnTranslator? = null

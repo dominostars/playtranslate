@@ -9,7 +9,7 @@ package com.playtranslate.translation
  * backend on recovery).
  *
  * [displacedLlmId] is the [BackendId] of the first on-device LLM that
- * threw [com.playtranslate.translation.translategemma.TranslateGemmaTransientException]
+ * threw [com.playtranslate.translation.llm.OnDeviceLlmTransientException]
  * on this call (typically a low-availMem fall-through during translate).
  * Non-null means "the user's preferred on-device LLM couldn't run; we
  * fell through to a lower-priority backend." Callers should skip caching

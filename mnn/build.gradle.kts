@@ -15,10 +15,16 @@ android {
         consumerProguardFiles("consumer-rules.pro")
 
         ndk {
-            // arm64-v8a (real Android devices) + x86_64 (emulators on
-            // Intel/AMD hosts, occasional Chromebook/x86 device). Same ABI
-            // policy as :llama — see llama/build.gradle.kts for the rationale.
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            // arm64-v8a only. MNN's tuned LLM kernels (ARMv8.2 fp16 + i8mm +
+            // transformer-fuse weight-dequant GEMM) are aarch64-only, and on
+            // armeabi-v7a MNN would fall back to plain C++ paths and run
+            // 5–10× slower — effectively unusable for our LLM tier. The
+            // :app module ships armeabi-v7a (so the app installs on a 32-bit
+            // device and ML Kit translation works), but :mnn deliberately
+            // doesn't, so the 32-bit slice has no MNN libs. The runtime
+            // hardware gate in OnDeviceLlmBackend.supportsRequiredAbi() is
+            // what hides the MNN backend rows in Settings on 32-bit.
+            abiFilters += listOf("arm64-v8a")
         }
         externalNativeBuild {
             cmake {
@@ -31,13 +37,14 @@ android {
                 // since we don't ship multimodal LLMs through MNN (the TG-4B
                 // path is blocked upstream by alibaba/MNN#4463). Default
                 // MNN_SEP_BUILD → separate libMNN.so / libllm.so /
-                // libMNN_Express.so / libMNN_CL.so packaged into the APK.
+                // libMNN_Express.so packaged into the APK. OpenCL backend
+                // dropped after a Thor benchmark — see :mnn's CMakeLists.txt
+                // for the numbers.
                 arguments += "-DMNN_BUILD_LLM=ON"
                 arguments += "-DMNN_LOW_MEMORY=ON"
                 arguments += "-DMNN_CPU_WEIGHT_DEQUANT_GEMM=ON"
                 arguments += "-DMNN_SUPPORT_TRANSFORMER_FUSE=ON"
                 arguments += "-DMNN_ARM82=ON"
-                arguments += "-DMNN_OPENCL=ON"
 
                 // Route MNN_PRINT through Android logcat (under the app's UID)
                 // instead of stdout — necessary for in-app log capture and for

@@ -785,29 +785,18 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
 
+                    <!-- Premium-quality manual-lookup tier (replaces the
+                         legacy TranslateGemma). -->
                     <include layout="@layout/settings_row_backend"
-                        android:id="@+id/rowBackendTranslategemma" />
+                        android:id="@+id/rowBackendGemmaE2bMnn" />
 
-                    <!-- Divider above the new MNN-backed Qwen row.
-                         Previously named `dividerBackendQwen` (the divider
-                         between TG and the legacy Qwen); renamed because
-                         the legacy-row gate uses `dividerBackendQwen` for
-                         the *now-new* divider just below this one. -->
+                    <!-- Divider between the manual-lookup tier above and
+                         the live-mode Qwen-MNN tier below. -->
                     <include layout="@layout/settings_row_divider"
                         android:id="@+id/dividerBackendQwenMnn" />
 
                     <include layout="@layout/settings_row_backend"
                         android:id="@+id/rowBackendQwenMnn" />
-
-                    <!-- Divider above the legacy Qwen row. Both this and
-                         rowBackendQwen are toggled GONE together when the
-                         legacy GGUF isn't installed (SettingsRenderer
-                         .wireQwenBackendRow). -->
-                    <include layout="@layout/settings_row_divider"
-                        android:id="@+id/dividerBackendQwen" />
-
-                    <include layout="@layout/settings_row_backend"
-                        android:id="@+id/rowBackendQwen" />
 
                     <include layout="@layout/settings_row_divider" />
 

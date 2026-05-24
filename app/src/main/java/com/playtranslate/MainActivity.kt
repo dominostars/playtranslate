@@ -340,13 +340,12 @@ class MainActivity :
         // `~/.claude/plans/cheerful-yawning-donut.md` and the StalePack
         // ordering analysis from the plan review.
         maybePromptForPackUpgrade { skipTargetCodes ->
-            // Chain the Qwen-legacy-migration prompt at the call site here
-            // (instead of inside maybePromptForPackUpgrade) so both helpers
-            // stay independent — pack-upgrade doesn't need to know about
-            // model-tier nudges, and a future deep-link that triggers
-            // pack-upgrade-only can call it directly without dragging the
-            // Qwen prompt along.
-            maybePromptForQwenLegacyMigration {
+            // Chain the legacy-engines-removed migration alert at the call
+            // site here (instead of inside maybePromptForPackUpgrade) so
+            // both helpers stay independent — pack-upgrade doesn't need to
+            // know about engine-tier migration, and a future deep-link
+            // that triggers pack-upgrade-only can call it directly.
+            maybePromptForLegacyEnginesRemoved {
                 setupOnboarding()
                 // Only preload when the source pack is actually present.
                 // Fresh-install and data-wiped users route through the welcome
@@ -1483,54 +1482,48 @@ class MainActivity :
     }
 
     /**
-     * Cold-launch nudge for users still running the legacy GGUF Qwen.
-     * Fires on every cold launch where the legacy model is on disk and the
-     * user hasn't tapped "Don't remind me" yet; routes the accent button
-     * to Settings → Offline Translations (the new MNN-Qwen row sits at the
-     * top of that section). [onProceed] is always invoked exactly once,
-     * regardless of which dismissal path the user took — same contract as
-     * [maybePromptForPackUpgrade]'s onProceed.
+     * Cold-launch migration alert for users upgrading from a version with
+     * `:llama`-backed legacy translators (Qwen GGUF and/or TranslateGemma
+     * 4B GGUF). Fires once: if either GGUF (or its `.partial` resume artifact)
+     * is on disk, this method deletes all of them and shows a one-time
+     * OverlayAlert explaining the change. After deletion, future cold
+     * launches find nothing and skip the alert.
      *
-     * Skipped silently when:
-     *  - The user has tapped "Don't remind me" (`qwenLegacyUpgradeDismissed`).
-     *  - The legacy GGUF Qwen isn't installed (nothing to migrate from).
+     * [onProceed] is always invoked exactly once — same contract as
+     * [maybePromptForPackUpgrade]'s onProceed. Tapping "Settings"
+     * deep-links to the Offline Translation section so the user can enable
+     * the new MNN-backed E2B + Qwen-MNN tiers; tapping "Cancel" or
+     * dismissing the scrim just proceeds with no further state change.
      *
-     * The "Remind me later" cancel button intentionally does NOT set the
-     * dismissal flag — the prompt re-fires next cold launch. Tap on scrim
-     * routes through the same cancel handler (OverlayAlert.addCancelButton's
-     * onClick fires for both button-tap and scrim-tap dismissals).
+     * Deletion is irreversible regardless of which dismissal path the user
+     * takes — there's no "Keep them" option because the new code has no
+     * way to load the GGUFs (no `:llama` module, no LlamaTranslator). The
+     * alert is informational; the work is the cleanup.
      */
-    private fun maybePromptForQwenLegacyMigration(onProceed: () -> Unit) {
-        if (Prefs(this).qwenLegacyUpgradeDismissed ||
-            !com.playtranslate.translation.qwen.QwenModel.isInstalled(this)) {
-            onProceed(); return
-        }
+    private fun maybePromptForLegacyEnginesRemoved(onProceed: () -> Unit) {
+        val modelsDir = java.io.File(noBackupFilesDir, "models")
+        val legacyFiles = listOf(
+            java.io.File(modelsDir, "qwen2.5-1.5b-instruct-q4_0.gguf"),
+            java.io.File(modelsDir, "translategemma-4b-it.Q4_0.gguf"),
+        )
+        val partialFiles = legacyFiles.map { java.io.File(it.parentFile, "${it.name}.partial") }
+        val candidates = legacyFiles + partialFiles
+        if (candidates.none { it.exists() }) { onProceed(); return }
+        // Delete first — irreversible regardless of which alert button the
+        // user taps. Multi-GB GGUFs disappear; .partial siblings (resume
+        // artifacts from interrupted downloads) too.
+        candidates.forEach { if (it.exists()) it.delete() }
         OverlayAlert.Builder(this)
-            .setTitle(getString(R.string.qwen_legacy_upgrade_title))
-            .setMessage(getString(R.string.qwen_legacy_upgrade_message))
+            .setTitle(getString(R.string.legacy_engines_removed_title))
+            .setMessage(getString(R.string.legacy_engines_removed_message))
             .addButton(
-                getString(R.string.qwen_legacy_upgrade_button_open),
+                getString(R.string.legacy_engines_removed_button_settings),
                 themeColor(R.attr.ptAccent),
             ) {
-                // Key into the existing settings fragment when present
-                // (dual-screen default, or otherwise already-attached);
-                // otherwise switch tabs + add a fresh instance with the
-                // anchor pre-set. Avoids the duplicate-modal bug that
-                // `.show()` would have caused on top of the inline sheet.
                 openSettingsAtAnchor(com.playtranslate.ui.SettingsAnchor.OfflineTranslation)
                 onProceed()
             }
-            .addButton(
-                getString(R.string.qwen_legacy_upgrade_button_dont_remind),
-                themeColor(R.attr.ptDivider),
-                themeColor(R.attr.ptDanger),
-            ) {
-                Prefs(this).qwenLegacyUpgradeDismissed = true
-                onProceed()
-            }
-            // "Remind me later" — cancel button AND scrim-tap route here.
-            // No flag set, so the prompt re-fires on next cold launch.
-            .addCancelButton(getString(R.string.qwen_legacy_upgrade_button_later)) {
+            .addCancelButton(getString(R.string.legacy_engines_removed_button_cancel)) {
                 onProceed()
             }
             .showInActivity(this)

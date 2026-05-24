@@ -22,18 +22,20 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
+        // arm64-v8a + armeabi-v7a. arm64 is the real target — every
+        // post-2019 Play-Store-eligible device is arm64. armeabi-v7a is the
+        // compatibility tier (ML Kit translation works on 32-bit devices),
+        // but :mnn intentionally ships arm64 only, so on a 32-bit slice
+        // there are NO MNN libs at all and the Settings UI hides the MNN
+        // backend rows via OnDeviceLlmBackend.supportsRequiredAbi(). x86_64
+        // dropped — re-add for emulator testing if needed.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
+
         buildConfigField("String", "DEEPL_API_KEY",
             "\"${localProps.getProperty("deepl.api.key", "")}\"")
 
-        // TranslateGemma toggle. Q4_0 + prefix-mode KV reuse (commits c8fc4134 /
-        // 9b337b60) brought Thor latency to median 1436ms / p90 2586ms / max
-        // 4642ms with zero quality flags — comfortably acceptable for manual
-        // lookups, slow but usable in live/overlay paths if the user opts
-        // into TG knowing the latency cost. No registry-level live-mode gate
-        // today; users decide via the Settings toggle. The catalog URL/sha256
-        // reconciliation is a separate pre-release gate (see
-        // langpack_catalog.json comment).
-        buildConfigField("boolean", "TRANSLATEGEMMA_ENABLED", "true")
     }
 
     signingConfigs {
@@ -69,16 +71,10 @@ android {
     }
 
     packaging {
-        // TranslateGemma's GGML_BACKEND_DL=ON pattern needs to dlopen
-        // libggml-cpu-android_*.so files at runtime via opendir() on
-        // nativeLibraryDir. Modern Android packaging keeps .so files inside
-        // the APK (mmap-loaded by System.loadLibrary) which is great for size
-        // but means nativeLibraryDir is empty on disk. Forcing legacy packaging
-        // extracts them to /data/app/.../lib/arm64/ so the dynamic backend
-        // loader can find them. This is required by ggml's backend-DL design.
-        jniLibs {
-            useLegacyPackaging = true
-        }
+        // MNN ships standard .so libs that work fine with modern (mmap-loaded)
+        // packaging. The legacy-packaging flag that lived here for `:llama`'s
+        // GGML_BACKEND_DL=ON dlopen pattern is no longer needed after the
+        // :llama strip.
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             excludes += "/META-INF/LICENSE.md"
@@ -123,7 +119,6 @@ kotlin {
 }
 
 dependencies {
-    implementation(project(":llama"))
     implementation(project(":mnn"))
 
     implementation(libs.androidx.core.ktx)

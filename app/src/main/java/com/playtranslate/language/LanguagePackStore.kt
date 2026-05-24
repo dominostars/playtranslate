@@ -460,7 +460,7 @@ object LanguagePackStore {
      * **Filters out**:
      * - Bundled packs (catalog manages those via APK assets, not download).
      * - Engine packs (`type = "engine"`) — those are managed by
-     *   `LlamaTranslator`/`OnDeviceLlmBackend`, not LanguagePackStore.
+     *   `MnnTranslator`/`OnDeviceLlmBackend`, not LanguagePackStore.
      * - Packs not currently installed (per spec, only previously-installed
      *   packs prompt the upgrade alert; first-time install goes through
      *   the onboarding flow instead).

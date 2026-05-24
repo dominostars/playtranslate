@@ -4,22 +4,14 @@ import com.playtranslate.translation.llm.languageDisplayName
 import java.util.Locale
 
 /**
- * The Qwen 2.5 chat-template envelope, shared between the llama.cpp-backed
- * [com.playtranslate.translation.translategemma.LlamaTranslator] and the
- * MNN-backed [com.playtranslate.translation.mnn.MnnTranslator].
+ * The Qwen 2.5 chat-template envelope, fed to the MNN-backed
+ * [com.playtranslate.translation.mnn.MnnTranslator].
  *
- * Both engines feed the model the *same* `<|im_start|>system\n…<|im_end|>\n
- * <|im_start|>user\n…<|im_end|>\n<|im_start|>assistant\n` envelope: the llama
- * side runs through llama.cpp's `apply_chat_template` (which produces this
- * output automatically for Qwen-tagged GGUFs), and the MNN side enables
- * `use_template:false` and feeds the raw text from these helpers because the
- * taobao-mnn Qwen ships without a jinja `chat_template` and MNN's
- * `apply_chat_template` fallback strips role markers (spike-confirmed; see
- * mnn-spike/SPIKE_REPORT.md).
- *
- * Extracting these to a single object prevents the silent drift the original
- * plan flagged: any future tweak to the Qwen prompt (e.g. tightening the
- * "no commentary" line) updates both engines through one edit.
+ * The MNN side enables `use_template:false` and feeds the raw text from
+ * these helpers because the taobao-mnn Qwen ships without a jinja
+ * `chat_template` and MNN's `apply_chat_template` fallback strips role
+ * markers (spike-confirmed; see mnn-spike/SPIKE_REPORT.md). The envelope:
+ * `<|im_start|>system\n…<|im_end|>\n<|im_start|>user\n…<|im_end|>\n<|im_start|>assistant\n`.
  */
 object QwenChatTemplate {
     /**

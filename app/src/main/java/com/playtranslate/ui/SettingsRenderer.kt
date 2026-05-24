@@ -126,50 +126,9 @@ class SettingsRenderer(
         fun showAnkiCardTypeMapping(onSaved: () -> Unit)
         fun getScrollY(): Int
 
-        /** Tap on the TranslateGemma row when the model isn't installed.
-         *  Implementer shows the download progress dialog, runs the shared
-         *  [com.playtranslate.translation.llm.OnDeviceLlmDownloader] configured
-         *  for TG, and on success flips [Prefs.translateGemmaEnabled] = true
-         *  (which fires the pref-change listener → status refresh + reconcile).
-         *
-         *  Implementer is responsible for running the pre-download availMem
-         *  gate (OverlayAlert with Check-again / Cancel) before kicking off
-         *  the actual download. */
-        fun startTranslateGemmaDownload()
-
-        /** Tap on the TranslateGemma row when the model is already downloaded
-         *  but the switch is currently off. Implementer runs the pre-toggle
-         *  availMem gate (OverlayAlert with Check-again / Delete model / Cancel)
-         *  and on success flips [Prefs.translateGemmaEnabled] = true. The
-         *  renderer optimistically flips the switch on; the Cancel / Delete
-         *  branches must revert it via [refreshTranslategemmaSwitch]. */
-        fun enableInstalledTranslateGemma()
-
-        /** Tap on the TranslateGemma row when it's currently enabled.
-         *  Implementer shows the 3-option AlertDialog (Disable only / Delete
-         *  model / Cancel). The Cancel branch must call
-         *  [SettingsRenderer.refreshTranslategemmaSwitch] to revert the
-         *  switch state since the renderer optimistically flipped it. */
-        fun showTranslateGemmaDisableDialog()
-
-        /** Tap on the Qwen row when the model isn't installed. Mirrors
-         *  [startTranslateGemmaDownload] for the Qwen-configured
-         *  [com.playtranslate.translation.llm.OnDeviceLlmDownloader]. */
-        fun startQwenDownload()
-
-        /** Tap on the Qwen row when the model is already downloaded but the
-         *  switch is currently off. Mirrors [enableInstalledTranslateGemma]
-         *  for Qwen; revert via [refreshQwenSwitch] on Cancel / Delete. */
-        fun enableInstalledQwen()
-
-        /** Tap on the Qwen row when it's currently enabled. Mirrors
-         *  [showTranslateGemmaDisableDialog] for Qwen — the Cancel branch must
-         *  call [SettingsRenderer.refreshQwenSwitch] to revert the switch. */
-        fun showQwenDisableDialog()
-
         /** Tap on the MNN-backed Qwen row when the model isn't installed —
          *  start a zip download via the OnDeviceLlmDownloader ZipExtract
-         *  commit path. Mirrors [startQwenDownload]. */
+         *  commit path. */
         fun startQwenMnnDownload()
 
         /** Tap on the MNN-backed Qwen row when the model is already extracted
@@ -179,6 +138,18 @@ class SettingsRenderer(
 
         /** Tap on the MNN-backed Qwen row when it's currently enabled. */
         fun showQwenMnnDisableDialog()
+
+        /** Tap on the Gemma E2B row when the model isn't installed — start a
+         *  zip download via the OnDeviceLlmDownloader ZipExtract commit path. */
+        fun startGemmaE2bMnnDownload()
+
+        /** Tap on the Gemma E2B row when the model is already extracted but
+         *  the switch is off. Revert via [refreshGemmaE2bSwitch] on
+         *  Cancel / Delete. */
+        fun enableInstalledGemmaE2bMnn()
+
+        /** Tap on the Gemma E2B row when it's currently enabled. */
+        fun showGemmaE2bMnnDisableDialog()
 
         /** Tap on the "Update language packs" row in the Language section.
          *  Implementer instantiates [com.playtranslate.language.PackUpgradeOrchestrator]
@@ -1313,16 +1284,9 @@ class SettingsRenderer(
     private val rowBackendDeepseekModel: View = root.findViewById(R.id.rowBackendDeepseekModel)
     private val rowBackendDeepl: View = root.findViewById(R.id.rowBackendDeepl)
     private val rowBackendLingva: View = root.findViewById(R.id.rowBackendLingva)
-    private val rowBackendTranslategemma: View = root.findViewById(R.id.rowBackendTranslategemma)
-    private val rowBackendQwenMnn: View = root.findViewById(R.id.rowBackendQwenMnn)
+    private val rowBackendGemmaE2bMnn: View = root.findViewById(R.id.rowBackendGemmaE2bMnn)
     private val dividerBackendQwenMnn: View = root.findViewById(R.id.dividerBackendQwenMnn)
-    private val rowBackendQwen: View = root.findViewById(R.id.rowBackendQwen)
-    // `dividerBackendQwen` is the divider *above the legacy Qwen row*. After
-    // the layout rename (see dialog_settings.xml), the divider above the new
-    // MNN-Qwen row is `dividerBackendQwenMnn`; the name `dividerBackendQwen`
-    // continues to mean "the divider that hides with the legacy row" — see
-    // [wireQwenBackendRow]'s visibility gate.
-    private val dividerBackendQwen: View = root.findViewById(R.id.dividerBackendQwen)
+    private val rowBackendQwenMnn: View = root.findViewById(R.id.rowBackendQwenMnn)
     private val rowBackendMlkit: View = root.findViewById(R.id.rowBackendMlkit)
 
     /** Per-backend in-flight `refreshStatus` job, keyed by [BackendId]. Used
@@ -1350,9 +1314,8 @@ class SettingsRenderer(
         wireDeepseekBackendRow()
         wireDeepseekModelRow()
         wireDeeplBackendRow()
-        wireTranslateGemmaBackendRow()
+        wireGemmaE2bMnnBackendRow()
         wireQwenMnnBackendRow()
-        wireQwenBackendRow()
 
         // Compose line 1 for each backend from its metadata
         // (requiresInternet + quality), styled with mixed-color spans.
@@ -1491,44 +1454,21 @@ class SettingsRenderer(
         }
     }
 
-    /** Refresh the TranslateGemma switch from the current pref value.
-     *  Called from the SP listener after the Cancel branch of the disable
-     *  dialog (which needs to revert the optimistic toggle), and after a
-     *  successful download (which flips the pref to true). */
-    fun refreshTranslategemmaSwitch() {
-        rowBackendTranslategemma.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
-            it.isChecked = prefs.translateGemmaEnabled
-        }
-    }
-
-    /** Refresh the Qwen switch from the current pref value. Called from the SP
-     *  listener after the Cancel branch of the disable dialog (which needs to
-     *  revert the optimistic toggle), and after a successful download (which
-     *  flips the pref to true). */
-    fun refreshQwenSwitch() {
-        rowBackendQwen.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
-            it.isChecked = prefs.qwenEnabled
-        }
-    }
-
-    /** Refresh the MNN-Qwen switch from the current pref value. Mirrors
-     *  [refreshQwenSwitch] — driven by the same SP-listener observer. */
+    /** Refresh the MNN-Qwen switch from the current pref value. Driven by the
+     *  SP-listener observer after the Cancel branch of the disable dialog
+     *  (which needs to revert the optimistic toggle) and after a successful
+     *  download (which flips the pref to true). */
     fun refreshQwenMnnSwitch() {
         rowBackendQwenMnn.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
             it.isChecked = prefs.qwenMnnEnabled
         }
     }
 
-    /** Re-evaluate the legacy Qwen row's visibility. Called after a successful
-     *  delete (which the disable-dialog branch performs) so the row hides
-     *  immediately instead of waiting for the next full re-render. */
-    fun refreshQwenLegacyVisibility() {
-        wireQwenBackendRow()
-        // Compose line 1 again — even when the row is now GONE, the metadata
-        // line update is cheap and keeps the row in sync if it later flips
-        // back to VISIBLE on a re-download.
-        com.playtranslate.translation.TranslationBackendRegistry.byId("qwen")?.let {
-            setBackendLine1(rowBackendQwen, it)
+    /** Refresh the Gemma E2B switch from the current pref value. Mirrors
+     *  [refreshQwenMnnSwitch]. */
+    fun refreshGemmaE2bSwitch() {
+        rowBackendGemmaE2bMnn.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
+            it.isChecked = prefs.gemmaE2bEnabled
         }
     }
 
@@ -1561,9 +1501,8 @@ class SettingsRenderer(
         "deepseek"        -> rowBackendDeepseek
         "deepl"           -> rowBackendDeepl
         "lingva"          -> rowBackendLingva
-        "translategemma"  -> rowBackendTranslategemma
+        "gemma_e2b_mnn"   -> rowBackendGemmaE2bMnn
         "qwen_mnn"        -> rowBackendQwenMnn
-        "qwen"            -> rowBackendQwen
         "mlkit"           -> rowBackendMlkit
         else              -> null
     }
@@ -1640,119 +1579,48 @@ class SettingsRenderer(
      *      the switch + retriggers status refresh.
      *    - on  → tap: directly disable (preserving the saved DeepL key
      *      so a later re-enable can prepopulate it). */
-    /** Wire the TranslateGemma row's title + tap behavior, or hide it
-     *  entirely when the feature flag is off.
+    /** Wire the Gemma E2B (MNN) row — premium-quality manual-lookup tier
+     *  that replaces the legacy TranslateGemma 4B.
      *
-     *    - off (model not installed) → tap: callbacks.startTranslateGemmaDownload().
-     *      The download flow is responsible for flipping the pref on success.
-     *    - off (model installed but disabled) → tap: enable directly.
-     *    - on  → tap: callbacks.showTranslateGemmaDisableDialog(); the Cancel
-     *      branch must call refreshTranslategemmaSwitch() to revert the
-     *      optimistic switch flip.
-     *
-     *  The switch state reflects the user's stored intent (`prefs.translateGemmaEnabled`),
-     *  NOT file-system installation state — so a downloaded-but-disabled model
-     *  shows the switch as off. The status line distinguishes the three states.
-     */
-    private fun wireTranslateGemmaBackendRow() {
-        if (!com.playtranslate.BuildConfig.TRANSLATEGEMMA_ENABLED) {
-            // TG is the first row in the Offline card; the divider that
-            // follows it (between TG and Qwen) becomes a stray top border
-            // when TG is hidden, so hide it too.
-            rowBackendTranslategemma.visibility = View.GONE
-            dividerBackendQwen.visibility = View.GONE
-            return
-        }
-
-        rowBackendTranslategemma.findViewById<TextView>(R.id.tvRowTitle).text =
-            ctx.getString(R.string.translategemma_display_name)
+     *    - off (model not installed) → tap: callbacks.startGemmaE2bMnnDownload().
+     *    - off (model installed but disabled) → tap: enable directly via
+     *      callbacks.enableInstalledGemmaE2bMnn().
+     *    - on  → tap: callbacks.showGemmaE2bMnnDisableDialog(); the Cancel
+     *      branch must call refreshGemmaE2bSwitch() to revert the optimistic
+     *      switch flip. */
+    private fun wireGemmaE2bMnnBackendRow() {
+        rowBackendGemmaE2bMnn.findViewById<TextView>(R.id.tvRowTitle).text =
+            ctx.getString(R.string.gemma_e2b_mnn_display_name)
 
         val backend = com.playtranslate.translation.TranslationBackendRegistry
-            .byId("translategemma") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
-        if (backend != null && configureIncompatibleHardwareRow(rowBackendTranslategemma, backend)) {
+            .byId("gemma_e2b_mnn") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+        if (backend != null && configureIncompatibleHardwareRow(rowBackendGemmaE2bMnn, backend)) {
             return
         }
 
-        val switch = rowBackendTranslategemma.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-        switch.isChecked = prefs.translateGemmaEnabled
+        val switch = rowBackendGemmaE2bMnn.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        switch.isChecked = prefs.gemmaE2bEnabled
 
-        rowBackendTranslategemma.setOnClickListener {
-            if (prefs.translateGemmaEnabled) {
-                // Currently on → optimistically flip the switch off so the dialog
-                // shows the right "after" state. Cancel branch reverts it.
+        rowBackendGemmaE2bMnn.setOnClickListener {
+            if (prefs.gemmaE2bEnabled) {
                 switch.isChecked = false
-                callbacks.showTranslateGemmaDisableDialog()
+                callbacks.showGemmaE2bMnnDisableDialog()
             } else {
-                val installed = com.playtranslate.translation.translategemma
-                    .TranslateGemmaModel.isInstalled(ctx)
+                val installed = com.playtranslate.translation.gemma
+                    .GemmaE2BMnnModel.isInstalled(ctx)
                 if (installed) {
-                    // Optimistic flip; the bottom sheet runs the availMem gate
-                    // and either flips the pref on success or reverts via
-                    // refreshTranslategemmaSwitch() on Cancel / Delete.
                     switch.isChecked = true
-                    callbacks.enableInstalledTranslateGemma()
+                    callbacks.enableInstalledGemmaE2bMnn()
                 } else {
-                    // Need to download. The download flow runs the availMem
-                    // gate, then flips the pref on success (which fires the SP
-                    // listener → switch refresh).
-                    callbacks.startTranslateGemmaDownload()
+                    callbacks.startGemmaE2bMnnDownload()
                 }
             }
         }
     }
 
-    /** Wire the legacy Qwen backend row (download / enable / disable-with-dialog).
-     *  Mirrors [wireTranslateGemmaBackendRow] without the BuildConfig flag.
-     *
-     *  Visibility gate: hidden when the legacy GGUF isn't installed. The new
-     *  MNN-Qwen tier replaces this for new users; the legacy row only appears
-     *  for users who still have the GGUF on disk from a previous version.
-     *  Re-runs on delete via [refreshQwenLegacyVisibility]. */
-    private fun wireQwenBackendRow() {
-        if (!com.playtranslate.translation.qwen.QwenModel.isInstalled(ctx)) {
-            rowBackendQwen.visibility = View.GONE
-            dividerBackendQwen.visibility = View.GONE
-            return
-        }
-        rowBackendQwen.visibility = View.VISIBLE
-        dividerBackendQwen.visibility = View.VISIBLE
-
-        rowBackendQwen.findViewById<TextView>(R.id.tvRowTitle).text =
-            ctx.getString(R.string.qwen_legacy_display_name)
-
-        val backend = com.playtranslate.translation.TranslationBackendRegistry
-            .byId("qwen") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
-        if (backend != null && configureIncompatibleHardwareRow(rowBackendQwen, backend)) {
-            return
-        }
-
-        val switch = rowBackendQwen.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-        switch.isChecked = prefs.qwenEnabled
-
-        rowBackendQwen.setOnClickListener {
-            if (prefs.qwenEnabled) {
-                switch.isChecked = false
-                callbacks.showQwenDisableDialog()
-            } else {
-                val installed = com.playtranslate.translation.qwen
-                    .QwenModel.isInstalled(ctx)
-                if (installed) {
-                    // Optimistic flip; the bottom sheet runs the availMem gate
-                    // and either flips the pref or reverts via refreshQwenSwitch().
-                    switch.isChecked = true
-                    callbacks.enableInstalledQwen()
-                } else {
-                    callbacks.startQwenDownload()
-                }
-            }
-        }
-    }
-
-    /** Wire the MNN-backed Qwen row. Same shape as [wireQwenBackendRow] but
-     *  routes to the `qwen_mnn` backend + [com.playtranslate.translation.qwen.QwenMnnModel]
-     *  + `prefs.qwenMnnEnabled`. No visibility gate — this is the canonical
-     *  Qwen row going forward; it's always visible (subject to hardware
-     *  compatibility) regardless of whether the legacy GGUF is on disk. */
+    /** Wire the MNN-backed Qwen row (live-mode tier). Routes to the
+     *  `qwen_mnn` backend + [com.playtranslate.translation.qwen.QwenMnnModel]
+     *  + `prefs.qwenMnnEnabled`. */
     private fun wireQwenMnnBackendRow() {
         rowBackendQwenMnn.findViewById<TextView>(R.id.tvRowTitle).text =
             ctx.getString(R.string.qwen_mnn_display_name)

@@ -162,8 +162,8 @@ class SettingsBottomSheet : DialogFragment() {
         renderer?.refreshOpenaiModelValue()
         renderer?.refreshDeepseekModelValue()
         renderer?.refreshLingvaBackendSwitch()
-        renderer?.refreshTranslategemmaSwitch()
-        renderer?.refreshQwenSwitch()
+        renderer?.refreshQwenMnnSwitch()
+        renderer?.refreshGemmaE2bSwitch()
         // LLM config changes (key / model / base URL) made while we were
         // paused don't necessarily flip *_enabled, but they DO change the
         // output any given input maps to — and reconcileBackendPreference
@@ -238,24 +238,14 @@ class SettingsBottomSheet : DialogFragment() {
                     renderer?.refreshAllBackendStatuses()
                     com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
                 }
-                Prefs.KEY_TRANSLATEGEMMA_ENABLED -> {
-                    renderer?.refreshTranslategemmaSwitch()
-                    renderer?.refreshAllBackendStatuses()
-                    com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
-                    maybeUnloadIdleEngines(ctx)
-                }
-                Prefs.KEY_QWEN_ENABLED -> {
-                    renderer?.refreshQwenSwitch()
-                    renderer?.refreshAllBackendStatuses()
-                    com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
-                    maybeUnloadIdleEngines(ctx)
-                }
                 Prefs.KEY_QWEN_MNN_ENABLED -> {
-                    // The MNN tier's parallel to the TG/Qwen handlers above.
-                    // Missing this case is what caused the row's toggle UI to
-                    // stay stale after a successful download — the pref was
-                    // set true but the renderer never knew to refresh.
                     renderer?.refreshQwenMnnSwitch()
+                    renderer?.refreshAllBackendStatuses()
+                    com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
+                    maybeUnloadIdleEngines(ctx)
+                }
+                Prefs.KEY_GEMMA_E2B_ENABLED -> {
+                    renderer?.refreshGemmaE2bSwitch()
                     renderer?.refreshAllBackendStatuses()
                     com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
                     maybeUnloadIdleEngines(ctx)
@@ -266,26 +256,19 @@ class SettingsBottomSheet : DialogFragment() {
     }
 
     /**
-     * Drop any loaded on-device LLM models whose toggle is currently off,
-     * freeing the KV cache + mmap'd weights so the OS can reclaim that RAM.
+     * Drop the loaded MNN model when every on-device LLM backend toggle is
+     * off, freeing the working set so the OS can reclaim that RAM. Since
+     * `:mnn` serves both Qwen-MNN and Gemma E2B (live-mode and manual-lookup
+     * tiers), we only unload when both tiers are disabled — otherwise we'd
+     * defeat the point of caching the currently-active model mid-session.
      *
-     *  - `:llama` serves both TG and legacy Qwen; unload only when *both* are
-     *    disabled.
-     *  - `:mnn` serves only the new Qwen-MNN tier; unload when that's disabled.
-     *
-     * Each unloadModel is mutex-serialized inside its own translator
-     * singleton so it can't race an in-flight translation that started right
-     * before the toggle changed.
+     * unloadModel is mutex-serialized inside the translator singleton so it
+     * can't race an in-flight translation that started right before the
+     * toggle changed.
      */
     private fun maybeUnloadIdleEngines(ctx: Context) {
         val prefs = Prefs(ctx)
-        if (!prefs.translateGemmaEnabled && !prefs.qwenEnabled) {
-            viewLifecycleOwner.lifecycleScope.launch {
-                com.playtranslate.translation.translategemma.LlamaTranslator
-                    .getInstance(ctx).unloadModel()
-            }
-        }
-        if (!prefs.qwenMnnEnabled) {
+        if (!prefs.qwenMnnEnabled && !prefs.gemmaE2bEnabled) {
             viewLifecycleOwner.lifecycleScope.launch {
                 com.playtranslate.translation.mnn.MnnTranslator
                     .getInstance(ctx).unloadModel()
@@ -424,24 +407,6 @@ class SettingsBottomSheet : DialogFragment() {
                     val act = activity ?: return
                     showTtsNoEngineDialog(TtsAlertTarget.InActivity(act)) { }
                 }
-                override fun startTranslateGemmaDownload() {
-                    showTranslateGemmaDownloadDialog()
-                }
-                override fun enableInstalledTranslateGemma() {
-                    this@SettingsBottomSheet.enableInstalledTranslateGemma()
-                }
-                override fun showTranslateGemmaDisableDialog() {
-                    this@SettingsBottomSheet.showTranslateGemmaDisableDialog()
-                }
-                override fun startQwenDownload() {
-                    showQwenDownloadDialog()
-                }
-                override fun enableInstalledQwen() {
-                    this@SettingsBottomSheet.enableInstalledQwen()
-                }
-                override fun showQwenDisableDialog() {
-                    this@SettingsBottomSheet.showQwenDisableDialog()
-                }
                 override fun startQwenMnnDownload() {
                     showQwenMnnDownloadDialog()
                 }
@@ -450,6 +415,15 @@ class SettingsBottomSheet : DialogFragment() {
                 }
                 override fun showQwenMnnDisableDialog() {
                     this@SettingsBottomSheet.showQwenMnnDisableDialog()
+                }
+                override fun startGemmaE2bMnnDownload() {
+                    showGemmaE2bMnnDownloadDialog()
+                }
+                override fun enableInstalledGemmaE2bMnn() {
+                    this@SettingsBottomSheet.enableInstalledGemmaE2bMnn()
+                }
+                override fun showGemmaE2bMnnDisableDialog() {
+                    this@SettingsBottomSheet.showGemmaE2bMnnDisableDialog()
                 }
                 override fun onUpdateLanguagePacksTapped(
                     stalePacks: List<com.playtranslate.language.StalePack>
@@ -718,21 +692,19 @@ class SettingsBottomSheet : DialogFragment() {
         }
     }
 
-    // ── TranslateGemma flow ─────────────────────────────────────────────
-
-    private var translategemmaDownloadJob: kotlinx.coroutines.Job? = null
+    // ── On-device LLM download / enable / disable flows ────────────────
 
     /**
      * Returns true and short-circuits if a download for the same backend is
-     * already in flight. Three backends use this guard (TG / legacy Qwen /
-     * MNN Qwen) — without it, a frustrated user tapping the row repeatedly
-     * (because the OverlayProgress dialog isn't showing fast enough, or got
-     * dismissed by the back key, etc.) launches one new download coroutine
-     * per tap, each opening the same `<name>.partial` with `append=false`
-     * and truncating the others' progress to zero. Worst case observed on
-     * the MNN Qwen flow: six concurrent downloads in 4 s, app OOM-killed
-     * mid-stream, no successful install. See the in-place comments at each
-     * call site.
+     * already in flight. Two on-device backends use this guard (Qwen-MNN
+     * and Gemma E2B) — without it, a frustrated user tapping the row
+     * repeatedly (because the OverlayProgress dialog isn't showing fast
+     * enough, or got dismissed by the back key, etc.) launches one new
+     * download coroutine per tap, each opening the same `<name>.partial`
+     * with `append=false` and truncating the others' progress to zero.
+     * Worst case observed on the MNN Qwen flow: six concurrent downloads
+     * in 4 s, app OOM-killed mid-stream, no successful install. See the
+     * in-place comments at each call site.
      */
     private fun isDownloadInFlight(job: kotlinx.coroutines.Job?, label: String): Boolean {
         if (job?.isActive == true) {
@@ -781,7 +753,7 @@ class SettingsBottomSheet : DialogFragment() {
      * If availMem is above the floor, [onProceed] is invoked synchronously.
      *
      * The gate value comes from [com.playtranslate.translation.llm.OnDeviceLlmBackend.availMemFloorBytes]
-     * — the same threshold [com.playtranslate.translation.translategemma.LlamaTranslator.preflightMemory]
+     * — the same threshold [com.playtranslate.translation.mnn.MnnTranslator.preflightMemory]
      * enforces at translate time, so the install-time gate and the run-time
      * gate agree on "low memory."
      */
@@ -845,486 +817,6 @@ class SettingsBottomSheet : DialogFragment() {
                else "%.1f GB".format(gb)
     }
 
-    /** Re-enable an already-downloaded TranslateGemma model. Routes through
-     *  the availMem gate; on success flips the pref. The [Delete model] branch
-     *  of the gate matches the disable-dialog "Delete model" behavior so the
-     *  user can free disk space if they decide the model isn't right for the
-     *  device after all. */
-    private fun enableInstalledTranslateGemma() {
-        val ctx = context ?: return
-        val backend = com.playtranslate.translation.TranslationBackendRegistry
-            .byId("translategemma") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
-            ?: return
-        checkAvailMemAndProceed(
-            backend = backend,
-            modelDisplayName = getString(R.string.translategemma_display_name),
-            onProceed = { Prefs(ctx).translateGemmaEnabled = true },
-            allowDelete = true,
-            onDelete = {
-                com.playtranslate.translation.translategemma.TranslateGemmaModel.delete(ctx)
-                // Drop the loaded model from native memory too — see the
-                // disable-dialog delete branch for why (avoids stale mmap
-                // after a re-download to the same filename).
-                viewLifecycleOwner.lifecycleScope.launch {
-                    com.playtranslate.translation.translategemma.LlamaTranslator
-                        .getInstance(ctx).unloadModel()
-                }
-                renderer?.refreshAllBackendStatuses()
-            },
-            onCancel = { renderer?.refreshTranslategemmaSwitch() },
-        )
-    }
-
-    /** Re-enable an already-downloaded Qwen model. Mirrors
-     *  [enableInstalledTranslateGemma]. */
-    private fun enableInstalledQwen() {
-        val ctx = context ?: return
-        val backend = com.playtranslate.translation.TranslationBackendRegistry
-            .byId("qwen") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
-            ?: return
-        checkAvailMemAndProceed(
-            backend = backend,
-            modelDisplayName = getString(R.string.qwen_display_name),
-            onProceed = { Prefs(ctx).qwenEnabled = true },
-            allowDelete = true,
-            onDelete = {
-                com.playtranslate.translation.qwen.QwenModel.delete(ctx)
-                viewLifecycleOwner.lifecycleScope.launch {
-                    com.playtranslate.translation.translategemma.LlamaTranslator
-                        .getInstance(ctx).unloadModel()
-                }
-                // Re-run the legacy-row visibility gate — see the
-                // showQwenDisableDialog delete branch for the rationale.
-                renderer?.refreshQwenLegacyVisibility()
-                renderer?.refreshAllBackendStatuses()
-            },
-            onCancel = { renderer?.refreshQwenSwitch() },
-        )
-    }
-
-    /** Show the modal download dialog (OverlayProgress).
-     *  Drives a [com.playtranslate.translation.llm.OnDeviceLlmDownloader] configured
-     *  for TG from the bottom sheet's lifecycle scope — dismissing the sheet
-     *  cancels the coroutine but preserves the partial file (resume on next
-     *  attempt). The Cancel button explicitly deletes the partial file. */
-    private fun showTranslateGemmaDownloadDialog() {
-        if (isDownloadInFlight(translategemmaDownloadJob, "TranslateGemma")) return
-        val ctx = context ?: return
-        val backend = com.playtranslate.translation.TranslationBackendRegistry
-            .byId("translategemma") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
-            ?: return
-        val downloader = com.playtranslate.translation.llm.OnDeviceLlmDownloader(
-            context = ctx,
-            modelHelper = com.playtranslate.translation.translategemma.TranslateGemmaModel,
-            totalMemFloorBytes = backend.totalMemFloorBytes,
-        )
-
-        // Pre-download availMem gate — runs first so we don't sink a 2 GB
-        // download into a device that can't currently load the model. The
-        // pre-download path has nothing to delete yet, so allowDelete=false
-        // (Check-again / Cancel only). onCancel is a no-op: the renderer
-        // didn't optimistically flip a switch for the download path; tapping
-        // the row enters this method directly and the switch is still off.
-        checkAvailMemAndProceed(
-            backend = backend,
-            modelDisplayName = getString(R.string.translategemma_display_name),
-            onProceed = { showTranslateGemmaDownloadDialogPostGate(ctx, downloader) },
-        )
-    }
-
-    /** Post-availMem-gate continuation of [showTranslateGemmaDownloadDialog].
-     *  Surfaces the metered-network warning (if any) and kicks off the
-     *  download. Split out so the gate's [onProceed] can re-enter this flow
-     *  after a successful [Check memory again] tap. */
-    private fun showTranslateGemmaDownloadDialogPostGate(
-        ctx: Context,
-        downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
-    ) {
-        // Metered-network warning before kicking off the multi-GB download.
-        if (downloader.isCurrentNetworkMetered()) {
-            val sizeStr = com.playtranslate.translation.translategemma
-                .TranslateGemmaModel.humanSize(ctx)
-            androidx.appcompat.app.AlertDialog.Builder(ctx)
-                .setTitle(R.string.translategemma_metered_warning_title)
-                .setMessage(getString(R.string.translategemma_metered_warning_message, sizeStr))
-                .setPositiveButton(android.R.string.ok) { _, _ ->
-                    runTranslateGemmaDownload(ctx, downloader)
-                }
-                .setNegativeButton(android.R.string.cancel) { _, _ -> }
-                .show()
-            return
-        }
-        runTranslateGemmaDownload(ctx, downloader)
-    }
-
-    private fun runTranslateGemmaDownload(
-        ctx: Context,
-        downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
-    ) {
-        val activity = activity ?: return
-        val sizeStr = com.playtranslate.translation.translategemma
-            .TranslateGemmaModel.humanSize(ctx)
-
-        // Reference captured into the cancel callback below; the dialog is
-        // assigned right after via the Builder, then mutated as the download
-        // progresses.
-        var dialog: OverlayProgress? = null
-        dialog = OverlayProgress.Builder(ctx)
-            .setTitle(getString(R.string.translategemma_display_name))
-            .setMessage(getString(R.string.translategemma_status_downloading, "0 B", sizeStr))
-            .setProgress(0)
-            .setOnCancel {
-                translategemmaDownloadJob?.cancel()
-                // Explicit cancel deletes the partial file (no resume on next attempt).
-                downloader.deletePartial()
-                renderer?.refreshAllBackendStatuses()
-            }
-            .showInActivity(activity)
-
-        translategemmaDownloadJob = viewLifecycleOwner.lifecycleScope.launch {
-            try {
-                val outcome = downloader.run { progress ->
-                    requireActivity().runOnUiThread {
-                        when (progress) {
-                            is com.playtranslate.translation.llm
-                                .OnDeviceLlmDownloader.Progress.Downloading -> {
-                                val recv = com.playtranslate.translation.llm
-                                    .humanSize(progress.received)
-                                val total = com.playtranslate.translation.llm
-                                    .humanSize(progress.total)
-                                dialog?.setMessage(getString(
-                                    R.string.translategemma_status_downloading,
-                                    recv, total,
-                                ))
-                                if (progress.total > 0) {
-                                    dialog?.setProgress(
-                                        ((progress.received * 100) / progress.total).toInt()
-                                    )
-                                }
-                            }
-                            is com.playtranslate.translation.llm
-                                .OnDeviceLlmDownloader.Progress.Verifying -> {
-                                dialog?.setMessage(getString(R.string.translategemma_status_verifying))
-                                dialog?.setProgress(100)
-                            }
-                            is com.playtranslate.translation.llm
-                                .OnDeviceLlmDownloader.Progress.Extracting -> {
-                                // TG ships as a single GGUF (FileSwap commit
-                                // strategy), so this branch is never reached
-                                // for TranslateGemma — but the `when` needs
-                                // to cover every Progress variant since the
-                                // sealed interface enumerates them. Mirroring
-                                // Verifying's full-progress affordance keeps
-                                // the dialog visually consistent.
-                                dialog?.setMessage(getString(R.string.model_download_extracting))
-                                dialog?.setProgress(100)
-                            }
-                        }
-                    }
-                }
-                if (!isAdded) return@launch
-                requireActivity().runOnUiThread {
-                    dialog?.dismiss()
-                    when (outcome) {
-                        is com.playtranslate.translation.llm
-                            .OnDeviceLlmDownloader.Outcome.Success -> {
-                            // Flip the pref → SP listener fires → switch + status refresh + reconcile.
-                            Prefs(ctx).translateGemmaEnabled = true
-                        }
-                        is com.playtranslate.translation.llm
-                            .OnDeviceLlmDownloader.Outcome.Refused -> {
-                            android.widget.Toast.makeText(
-                                ctx, outcome.reason, android.widget.Toast.LENGTH_LONG
-                            ).show()
-                            renderer?.refreshAllBackendStatuses()
-                        }
-                        is com.playtranslate.translation.llm
-                            .OnDeviceLlmDownloader.Outcome.Failed -> {
-                            android.widget.Toast.makeText(
-                                ctx,
-                                getString(R.string.translategemma_download_failed, outcome.reason),
-                                android.widget.Toast.LENGTH_LONG,
-                            ).show()
-                            renderer?.refreshAllBackendStatuses()
-                        }
-                        is com.playtranslate.translation.llm
-                            .OnDeviceLlmDownloader.Outcome.Cancelled -> {
-                            // Partial file kept (lifecycle dismiss). Settings will say "Tap to download"
-                            // because isInstalled() is false — but next tap resumes from offset.
-                            android.widget.Toast.makeText(
-                                ctx, R.string.translategemma_download_paused,
-                                android.widget.Toast.LENGTH_SHORT,
-                            ).show()
-                            renderer?.refreshAllBackendStatuses()
-                        }
-                    }
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (isAdded) {
-                    requireActivity().runOnUiThread {
-                        dialog?.dismiss()
-                        android.widget.Toast.makeText(
-                            ctx,
-                            getString(R.string.translategemma_download_failed,
-                                e.message ?: e.javaClass.simpleName),
-                            android.widget.Toast.LENGTH_LONG,
-                        ).show()
-                        renderer?.refreshAllBackendStatuses()
-                    }
-                }
-            } finally {
-                // OverlayProgress lives on activity.window.decorView, not the
-                // fragment view — a fragment-only lifecycle cancel (sheet
-                // dismissed mid-download) would otherwise leave the scrim
-                // stuck. dismiss() is idempotent so this is safe even after
-                // the success/outcome branches above already dismissed.
-                dialog?.dismiss()
-            }
-        }
-    }
-
-
-    /** OverlayAlert with three options when the user taps an enabled TG row.
-     *  Scrim-tap and Cancel both revert the optimistic switch flip via
-     *  [SettingsRenderer.refreshTranslategemmaSwitch]. */
-    private fun showTranslateGemmaDisableDialog() {
-        val ctx = context ?: return
-        val activity = activity ?: return
-        val sizeStr = com.playtranslate.translation.translategemma
-            .TranslateGemmaModel.humanSize(ctx)
-        OverlayAlert.Builder(ctx)
-            .setTitle(getString(R.string.translategemma_disable_title))
-            .setMessage(getString(R.string.translategemma_disable_message, sizeStr))
-            .hideIcon()
-            .addButton(getString(R.string.translategemma_disable_keep), ctx.themeColor(R.attr.ptAccent)) {
-                // File kept; only the toggle flips. SP listener picks up the change.
-                Prefs(ctx).translateGemmaEnabled = false
-            }
-            .addButton(getString(R.string.translategemma_disable_delete), ctx.themeColor(R.attr.ptDivider), ctx.themeColor(R.attr.ptDanger)) {
-                Prefs(ctx).translateGemmaEnabled = false
-                com.playtranslate.translation.translategemma
-                    .TranslateGemmaModel.delete(ctx)
-                // Drop the loaded model from native memory too. Without this,
-                // the unlinked file's mmap'd pages remain valid and a subsequent
-                // re-download would serve stale weights from the previous mmap
-                // because LlamaTranslator.ensureLoaded matches on the path string
-                // (which is unchanged after delete + re-download to the same
-                // FILENAME). See Codex adversarial-review Finding #1.
-                viewLifecycleOwner.lifecycleScope.launch {
-                    com.playtranslate.translation.translategemma.LlamaTranslator
-                        .getInstance(ctx).unloadModel()
-                }
-                renderer?.refreshAllBackendStatuses()
-            }
-            .addCancelButton { renderer?.refreshTranslategemmaSwitch() }
-            .showInActivity(activity)
-    }
-
-    // ── Qwen flow ───────────────────────────────────────────────────────
-
-    private var qwenDownloadJob: kotlinx.coroutines.Job? = null
-
-    /** Show the modal download dialog for Qwen. Mirrors
-     *  [showTranslateGemmaDownloadDialog] but with QwenModel + a 4 GB total-mem
-     *  floor (Qwen 1.5B fits comfortably below TG's 6 GB requirement). */
-    private fun showQwenDownloadDialog() {
-        if (isDownloadInFlight(qwenDownloadJob, "Qwen (legacy)")) return
-        val ctx = context ?: return
-        val backend = com.playtranslate.translation.TranslationBackendRegistry
-            .byId("qwen") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
-            ?: return
-        val downloader = com.playtranslate.translation.llm.OnDeviceLlmDownloader(
-            context = ctx,
-            modelHelper = com.playtranslate.translation.qwen.QwenModel,
-            totalMemFloorBytes = backend.totalMemFloorBytes,
-        )
-
-        // Pre-download availMem gate — mirrors the TG flow. See the comment
-        // there for why allowDelete=false and onCancel is empty.
-        checkAvailMemAndProceed(
-            backend = backend,
-            modelDisplayName = getString(R.string.qwen_display_name),
-            onProceed = { showQwenDownloadDialogPostGate(ctx, downloader) },
-        )
-    }
-
-    /** Post-availMem-gate continuation of [showQwenDownloadDialog]. Mirrors
-     *  [showTranslateGemmaDownloadDialogPostGate]. */
-    private fun showQwenDownloadDialogPostGate(
-        ctx: Context,
-        downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
-    ) {
-        if (downloader.isCurrentNetworkMetered()) {
-            val sizeStr = com.playtranslate.translation.qwen.QwenModel.humanSize(ctx)
-            androidx.appcompat.app.AlertDialog.Builder(ctx)
-                .setTitle(R.string.qwen_metered_warning_title)
-                .setMessage(getString(R.string.qwen_metered_warning_message, sizeStr))
-                .setPositiveButton(android.R.string.ok) { _, _ ->
-                    runQwenDownload(ctx, downloader)
-                }
-                .setNegativeButton(android.R.string.cancel) { _, _ -> }
-                .show()
-            return
-        }
-        runQwenDownload(ctx, downloader)
-    }
-
-    private fun runQwenDownload(
-        ctx: Context,
-        downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
-    ) {
-        val activity = activity ?: return
-        val sizeStr = com.playtranslate.translation.qwen.QwenModel.humanSize(ctx)
-
-        var dialog: OverlayProgress? = null
-        dialog = OverlayProgress.Builder(ctx)
-            .setTitle(getString(R.string.qwen_display_name))
-            .setMessage(getString(R.string.qwen_status_downloading, "0 B", sizeStr))
-            .setProgress(0)
-            .setOnCancel {
-                qwenDownloadJob?.cancel()
-                downloader.deletePartial()
-                renderer?.refreshAllBackendStatuses()
-            }
-            .showInActivity(activity)
-
-        qwenDownloadJob = viewLifecycleOwner.lifecycleScope.launch {
-            try {
-                val outcome = downloader.run { progress ->
-                    requireActivity().runOnUiThread {
-                        when (progress) {
-                            is com.playtranslate.translation.llm
-                                .OnDeviceLlmDownloader.Progress.Downloading -> {
-                                val recv = com.playtranslate.translation.llm
-                                    .humanSize(progress.received)
-                                val total = com.playtranslate.translation.llm
-                                    .humanSize(progress.total)
-                                dialog?.setMessage(getString(
-                                    R.string.qwen_status_downloading,
-                                    recv, total,
-                                ))
-                                if (progress.total > 0) {
-                                    dialog?.setProgress(
-                                        ((progress.received * 100) / progress.total).toInt()
-                                    )
-                                }
-                            }
-                            is com.playtranslate.translation.llm
-                                .OnDeviceLlmDownloader.Progress.Extracting -> {
-                                // Reached for the MNN-backed Qwen (directory-
-                                // mode / zip distribution) between SHA verify
-                                // and the final directory swap. Legacy Qwen
-                                // GGUF (FileSwap commit) never hits this branch.
-                                dialog?.setMessage(getString(R.string.model_download_extracting))
-                                dialog?.setProgress(100)
-                            }
-                            is com.playtranslate.translation.llm
-                                .OnDeviceLlmDownloader.Progress.Verifying -> {
-                                dialog?.setMessage(getString(R.string.qwen_status_verifying))
-                                dialog?.setProgress(100)
-                            }
-                        }
-                    }
-                }
-                if (!isAdded) return@launch
-                requireActivity().runOnUiThread {
-                    dialog?.dismiss()
-                    when (outcome) {
-                        is com.playtranslate.translation.llm
-                            .OnDeviceLlmDownloader.Outcome.Success -> {
-                            Prefs(ctx).qwenEnabled = true
-                        }
-                        is com.playtranslate.translation.llm
-                            .OnDeviceLlmDownloader.Outcome.Refused -> {
-                            android.widget.Toast.makeText(
-                                ctx, outcome.reason, android.widget.Toast.LENGTH_LONG
-                            ).show()
-                            renderer?.refreshAllBackendStatuses()
-                        }
-                        is com.playtranslate.translation.llm
-                            .OnDeviceLlmDownloader.Outcome.Failed -> {
-                            android.widget.Toast.makeText(
-                                ctx,
-                                getString(R.string.qwen_download_failed, outcome.reason),
-                                android.widget.Toast.LENGTH_LONG,
-                            ).show()
-                            renderer?.refreshAllBackendStatuses()
-                        }
-                        is com.playtranslate.translation.llm
-                            .OnDeviceLlmDownloader.Outcome.Cancelled -> {
-                            android.widget.Toast.makeText(
-                                ctx, R.string.qwen_download_paused,
-                                android.widget.Toast.LENGTH_SHORT,
-                            ).show()
-                            renderer?.refreshAllBackendStatuses()
-                        }
-                    }
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (isAdded) {
-                    requireActivity().runOnUiThread {
-                        dialog?.dismiss()
-                        android.widget.Toast.makeText(
-                            ctx,
-                            getString(R.string.qwen_download_failed,
-                                e.message ?: e.javaClass.simpleName),
-                            android.widget.Toast.LENGTH_LONG,
-                        ).show()
-                        renderer?.refreshAllBackendStatuses()
-                    }
-                }
-            } finally {
-                // See translategemma flow above — OverlayProgress sits on
-                // activity decor, so a fragment-only lifecycle cancel
-                // bypasses the inner dismisses. Idempotent late dismiss
-                // catches the !isAdded return and CancellationException
-                // paths.
-                dialog?.dismiss()
-            }
-        }
-    }
-
-    /** OverlayAlert with three options when the user taps an enabled Qwen row.
-     *  Scrim-tap and Cancel both revert the optimistic switch flip via
-     *  [SettingsRenderer.refreshQwenSwitch]. */
-    private fun showQwenDisableDialog() {
-        val ctx = context ?: return
-        val activity = activity ?: return
-        val sizeStr = com.playtranslate.translation.qwen.QwenModel.humanSize(ctx)
-        OverlayAlert.Builder(ctx)
-            .setTitle(getString(R.string.qwen_disable_title))
-            .setMessage(getString(R.string.qwen_disable_message, sizeStr))
-            .hideIcon()
-            .addButton(getString(R.string.qwen_disable_keep), ctx.themeColor(R.attr.ptAccent)) {
-                Prefs(ctx).qwenEnabled = false
-            }
-            .addButton(getString(R.string.qwen_disable_delete), ctx.themeColor(R.attr.ptDivider), ctx.themeColor(R.attr.ptDanger)) {
-                Prefs(ctx).qwenEnabled = false
-                com.playtranslate.translation.qwen.QwenModel.delete(ctx)
-                // See translategemma_disable_delete branch above for why we
-                // also unload the native model on file delete.
-                viewLifecycleOwner.lifecycleScope.launch {
-                    com.playtranslate.translation.translategemma.LlamaTranslator
-                        .getInstance(ctx).unloadModel()
-                }
-                // Re-run the legacy-row visibility gate: the row is supposed
-                // to appear only while the legacy GGUF is on disk, but
-                // wireQwenBackendRow's `if (!isInstalled) GONE` check only
-                // fires when the row is initially wired. After deletion the
-                // file is gone but the row is still VISIBLE, so its onClick
-                // would fall through to startQwenDownload() and let the user
-                // re-acquire the legacy model — defeating the migration.
-                // Codex review (2026-05-22, [P3]).
-                renderer?.refreshQwenLegacyVisibility()
-                renderer?.refreshAllBackendStatuses()
-            }
-            .addCancelButton { renderer?.refreshQwenSwitch() }
-            .showInActivity(activity)
-    }
 
     /**
      * Smooth-scrolls the named section header into view. Safe to call on an
@@ -1552,10 +1044,8 @@ class SettingsBottomSheet : DialogFragment() {
         }
     }
 
-    /** Show the 3-button disable dialog for the MNN-Qwen tier. Mirrors
-     *  [showQwenDisableDialog] but deletes via [QwenMnnModel.delete] and
-     *  unloads through [MnnTranslator]. Refreshes the legacy row visibility
-     *  after a successful delete in case both tiers were installed. */
+    /** Show the 3-button disable dialog for the Qwen-MNN tier. Delete branch
+     *  deletes via [QwenMnnModel.delete] and unloads the loaded MNN model. */
     private fun showQwenMnnDisableDialog() {
         val ctx = context ?: return
         val activity = activity ?: return
@@ -1564,10 +1054,10 @@ class SettingsBottomSheet : DialogFragment() {
             .setTitle(getString(R.string.qwen_mnn_disable_title))
             .setMessage(getString(R.string.qwen_mnn_disable_message, sizeStr))
             .hideIcon()
-            .addButton(getString(R.string.qwen_disable_keep), ctx.themeColor(R.attr.ptAccent)) {
+            .addButton(getString(R.string.qwen_mnn_disable_keep), ctx.themeColor(R.attr.ptAccent)) {
                 Prefs(ctx).qwenMnnEnabled = false
             }
-            .addButton(getString(R.string.qwen_disable_delete), ctx.themeColor(R.attr.ptDivider), ctx.themeColor(R.attr.ptDanger)) {
+            .addButton(getString(R.string.qwen_mnn_disable_delete), ctx.themeColor(R.attr.ptDivider), ctx.themeColor(R.attr.ptDanger)) {
                 Prefs(ctx).qwenMnnEnabled = false
                 com.playtranslate.translation.qwen.QwenMnnModel.delete(ctx)
                 viewLifecycleOwner.lifecycleScope.launch {
@@ -1577,6 +1067,208 @@ class SettingsBottomSheet : DialogFragment() {
                 renderer?.refreshAllBackendStatuses()
             }
             .addCancelButton { renderer?.refreshQwenMnnSwitch() }
+            .showInActivity(activity)
+    }
+
+    // ── Gemma E2B (MNN, manual-lookup tier) flow ────────────────────────
+
+    private var gemmaE2bDownloadJob: kotlinx.coroutines.Job? = null
+
+    /** Re-enable an already-extracted Gemma E2B model. Mirrors
+     *  [enableInstalledQwenMnn] but targets [GemmaE2BMnnModel] +
+     *  `prefs.gemmaE2bEnabled`. */
+    private fun enableInstalledGemmaE2bMnn() {
+        val ctx = context ?: return
+        val backend = com.playtranslate.translation.TranslationBackendRegistry
+            .byId("gemma_e2b_mnn") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+            ?: return
+        checkAvailMemAndProceed(
+            backend = backend,
+            modelDisplayName = getString(R.string.gemma_e2b_mnn_display_name),
+            onProceed = { Prefs(ctx).gemmaE2bEnabled = true },
+            allowDelete = true,
+            onDelete = {
+                com.playtranslate.translation.gemma.GemmaE2BMnnModel.delete(ctx)
+                viewLifecycleOwner.lifecycleScope.launch {
+                    com.playtranslate.translation.mnn.MnnTranslator
+                        .getInstance(ctx).unloadModel()
+                }
+                renderer?.refreshAllBackendStatuses()
+            },
+            onCancel = { renderer?.refreshGemmaE2bSwitch() },
+        )
+    }
+
+    /** Show the modal download dialog for the Gemma E2B zip. Mirrors
+     *  [showQwenMnnDownloadDialog]; same ZipExtract commit strategy. */
+    private fun showGemmaE2bMnnDownloadDialog() {
+        if (isDownloadInFlight(gemmaE2bDownloadJob, "Gemma E2B")) return
+        val ctx = context ?: return
+        val backend = com.playtranslate.translation.TranslationBackendRegistry
+            .byId("gemma_e2b_mnn") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+            ?: return
+        val downloader = com.playtranslate.translation.llm.OnDeviceLlmDownloader(
+            context = ctx,
+            modelHelper = com.playtranslate.translation.gemma.GemmaE2BMnnModel,
+            totalMemFloorBytes = backend.totalMemFloorBytes,
+        )
+        checkAvailMemAndProceed(
+            backend = backend,
+            modelDisplayName = getString(R.string.gemma_e2b_mnn_display_name),
+            onProceed = { showGemmaE2bMnnDownloadDialogPostGate(ctx, downloader) },
+        )
+    }
+
+    private fun showGemmaE2bMnnDownloadDialogPostGate(
+        ctx: Context,
+        downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
+    ) {
+        if (downloader.isCurrentNetworkMetered()) {
+            val sizeStr = com.playtranslate.translation.gemma.GemmaE2BMnnModel.humanSize(ctx)
+            androidx.appcompat.app.AlertDialog.Builder(ctx)
+                .setTitle(R.string.gemma_e2b_mnn_metered_warning_title)
+                .setMessage(getString(R.string.gemma_e2b_mnn_metered_warning_message, sizeStr))
+                .setPositiveButton(android.R.string.ok) { _, _ ->
+                    runGemmaE2bDownload(ctx, downloader)
+                }
+                .setNegativeButton(android.R.string.cancel) { _, _ -> }
+                .show()
+            return
+        }
+        runGemmaE2bDownload(ctx, downloader)
+    }
+
+    private fun runGemmaE2bDownload(
+        ctx: Context,
+        downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
+    ) {
+        val activity = activity ?: return
+        val sizeStr = com.playtranslate.translation.gemma.GemmaE2BMnnModel.humanSize(ctx)
+
+        var dialog: OverlayProgress? = null
+        dialog = OverlayProgress.Builder(ctx)
+            .setTitle(getString(R.string.gemma_e2b_mnn_display_name))
+            .setMessage(getString(R.string.gemma_e2b_mnn_status_downloading, "0 B", sizeStr))
+            .setProgress(0)
+            .setOnCancel {
+                gemmaE2bDownloadJob?.cancel()
+                downloader.deletePartial()
+                renderer?.refreshAllBackendStatuses()
+            }
+            .showInActivity(activity)
+
+        gemmaE2bDownloadJob = viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val outcome = downloader.run { progress ->
+                    requireActivity().runOnUiThread {
+                        when (progress) {
+                            is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Downloading -> {
+                                val recv = com.playtranslate.translation.llm
+                                    .humanSize(progress.received)
+                                val total = com.playtranslate.translation.llm
+                                    .humanSize(progress.total)
+                                dialog?.setMessage(getString(
+                                    R.string.gemma_e2b_mnn_status_downloading,
+                                    recv, total,
+                                ))
+                                if (progress.total > 0) {
+                                    dialog?.setProgress(
+                                        ((progress.received * 100) / progress.total).toInt()
+                                    )
+                                }
+                            }
+                            is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Verifying -> {
+                                dialog?.setMessage(getString(R.string.gemma_e2b_mnn_status_verifying))
+                                dialog?.setProgress(100)
+                            }
+                            is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Extracting -> {
+                                dialog?.setMessage(getString(R.string.model_download_extracting))
+                                dialog?.setProgress(100)
+                            }
+                        }
+                    }
+                }
+                if (!isAdded) return@launch
+                requireActivity().runOnUiThread {
+                    dialog?.dismiss()
+                    when (outcome) {
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Success -> {
+                            Prefs(ctx).gemmaE2bEnabled = true
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Refused -> {
+                            android.widget.Toast.makeText(
+                                ctx,
+                                getString(R.string.gemma_e2b_mnn_download_failed, outcome.reason),
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Failed -> {
+                            android.widget.Toast.makeText(
+                                ctx,
+                                getString(R.string.gemma_e2b_mnn_download_failed, outcome.reason),
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Cancelled -> {
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (isAdded) {
+                    requireActivity().runOnUiThread {
+                        dialog?.dismiss()
+                        android.widget.Toast.makeText(
+                            ctx,
+                            getString(R.string.gemma_e2b_mnn_download_failed,
+                                e.message ?: e.javaClass.simpleName),
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                        renderer?.refreshAllBackendStatuses()
+                    }
+                }
+            } finally {
+                dialog?.dismiss()
+                gemmaE2bDownloadJob = null
+            }
+        }
+    }
+
+    /** Show the 3-button disable dialog for the Gemma E2B tier. Delete branch
+     *  deletes via [GemmaE2BMnnModel.delete] and unloads the loaded MNN model. */
+    private fun showGemmaE2bMnnDisableDialog() {
+        val ctx = context ?: return
+        val activity = activity ?: return
+        val sizeStr = com.playtranslate.translation.gemma.GemmaE2BMnnModel.humanSize(ctx)
+        OverlayAlert.Builder(ctx)
+            .setTitle(getString(R.string.gemma_e2b_mnn_disable_title))
+            .setMessage(getString(R.string.gemma_e2b_mnn_disable_message, sizeStr))
+            .hideIcon()
+            .addButton(getString(R.string.gemma_e2b_mnn_disable_keep), ctx.themeColor(R.attr.ptAccent)) {
+                Prefs(ctx).gemmaE2bEnabled = false
+            }
+            .addButton(getString(R.string.gemma_e2b_mnn_disable_delete), ctx.themeColor(R.attr.ptDivider), ctx.themeColor(R.attr.ptDanger)) {
+                Prefs(ctx).gemmaE2bEnabled = false
+                com.playtranslate.translation.gemma.GemmaE2BMnnModel.delete(ctx)
+                viewLifecycleOwner.lifecycleScope.launch {
+                    com.playtranslate.translation.mnn.MnnTranslator
+                        .getInstance(ctx).unloadModel()
+                }
+                renderer?.refreshAllBackendStatuses()
+            }
+            .addCancelButton { renderer?.refreshGemmaE2bSwitch() }
             .showInActivity(activity)
     }
 

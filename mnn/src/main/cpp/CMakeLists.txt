@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22.1)
 
-project("mnn-chat" VERSION 1.0.0 LANGUAGES C CXX)
+project("mnn-chat" VERSION 1.0.0 LANGUAGES C CXX ASM)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED true)
@@ -26,7 +26,15 @@ set(MNN_SRC ${CMAKE_CURRENT_LIST_DIR}/../../../third-party/MNN)
 set(MNN_BUILD_LLM               ON  CACHE BOOL "")
 set(MNN_LOW_MEMORY              ON  CACHE BOOL "")
 set(MNN_ARM82                   ON  CACHE BOOL "")
-set(MNN_OPENCL                  ON  CACHE BOOL "")
+# OpenCL backend dropped after a Thor benchmark (Adreno 740, SD 8 Gen 2,
+# Qwen 2.5 1.5B Q4): with a warm kernel cache OpenCL was 2.23× slower at
+# prefill (80 vs 178 tok/s) and 2.67× slower at decode (14.6 vs 39 tok/s);
+# cold runs paid an extra 12 s of kernel JIT. Decode is bandwidth-bound on
+# mobile (shared DRAM with the CPU), so the GPU's compute headroom doesn't
+# help, and the OpenCL Q4 path is less tuned than MNN's NEON/i8mm CPU path.
+# Re-enable by flipping back to ON + a clean :mnn rebuild — no other code
+# changes needed.
+set(MNN_OPENCL                  OFF CACHE BOOL "")
 set(MNN_SUPPORT_TRANSFORMER_FUSE ON CACHE BOOL "")
 set(MNN_CPU_WEIGHT_DEQUANT_GEMM ON  CACHE BOOL "")
 set(MNN_USE_LOGCAT              ON  CACHE BOOL "")
@@ -37,6 +45,13 @@ set(MNN_IMGCODECS               OFF CACHE BOOL "")
 set(MNN_BUILD_DIFFUSION         OFF CACHE BOOL "")
 set(MNN_LLM_BUILD_DEMO          OFF CACHE BOOL "")
 set(LLM_SUPPORT_HTTP_RESOURCE   OFF CACHE BOOL "")
+# KleidiAI's CMake setup resolves source paths via CMAKE_SOURCE_DIR which,
+# inside our add_subdirectory'd build, points at :mnn/src/main/cpp/ rather
+# than MNN's third-party root — so it tries to load
+# `mnn/src/main/cpp/source/backend/cpu/kleidiai/*.cpp` and fails. We don't
+# need KleidiAI (Arm's specialized matmul accelerator) for the Qwen / E2B
+# CPU path; explicit OFF.
+set(MNN_KLEIDIAI                OFF CACHE BOOL "")
 # Build MNN as a set of shared libs (AGP packages each .so into the AAR).
 # Matches the official MnnLlmChat layout: libMNN.so / libllm.so /
 # libMNN_Express.so / libMNN_CL.so.

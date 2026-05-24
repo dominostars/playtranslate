@@ -4,9 +4,9 @@ package com.playtranslate.translation.llm
  * Format a byte count as human-readable text. Decimal (10^9) units to match
  * how app stores and OS Settings display sizes.
  *
- * Lifted out of `translategemma.TranslateGemmaModel` (where it was a
- * file-package-scope helper) so it can be reused by sibling on-device backends
- * without dragging the TG package into their imports.
+ * Lives in the shared `llm/` package so every on-device backend's
+ * ModelHelper can format catalog sizes the same way without duplicating
+ * the threshold table.
  */
 fun humanSize(bytes: Long): String = when {
     bytes >= 1_000_000_000L -> "%.2f GB".format(bytes / 1e9)

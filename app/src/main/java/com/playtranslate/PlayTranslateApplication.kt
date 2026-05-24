@@ -8,16 +8,15 @@ import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.diagnostics.CrashHandler
 import android.content.Context
 import com.playtranslate.translation.DeepLBackend
+import com.playtranslate.translation.GemmaE2BMnnBackend
 import com.playtranslate.translation.GeminiBackend
 import com.playtranslate.translation.LingvaBackend
 import com.playtranslate.translation.MlKitBackend
 import com.playtranslate.translation.OpenAiBackend
-import com.playtranslate.translation.QwenBackend
 import com.playtranslate.translation.QwenMnnBackend
-import com.playtranslate.translation.TranslateGemmaBackend
 import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.translation.UsageTracker
-import com.playtranslate.translation.translategemma.LlamaTranslator
+import com.playtranslate.translation.mnn.MnnTranslator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -101,17 +100,13 @@ class PlayTranslateApplication : Application() {
                     enabledProvider = { Prefs(this).deeplEnabled },
                 ),
                 LingvaBackend(enabledProvider = { Prefs(this).lingvaEnabled }),
-                TranslateGemmaBackend(
+                GemmaE2BMnnBackend(
                     context         = this,
-                    enabledProvider = { Prefs(this).translateGemmaEnabled },
+                    enabledProvider = { Prefs(this).gemmaE2bEnabled },
                 ),
                 QwenMnnBackend(
                     context         = this,
                     enabledProvider = { Prefs(this).qwenMnnEnabled },
-                ),
-                QwenBackend(
-                    context         = this,
-                    enabledProvider = { Prefs(this).qwenEnabled },
                 ),
                 MlKitBackend(),
             )
@@ -197,16 +192,16 @@ class PlayTranslateApplication : Application() {
         if (BuildConfig.DEBUG) return
         if (level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE) {
             OcrManager.instance.releaseAll()
-            // Drop the on-device LLM model + KV cache / scratch (~300-400 MB
-            // of real allocations on top of mmap'd weights). At
+            // Drop the on-device LLM model + KV cache / scratch (E2B's working
+            // set is ~3.3 GB on Thor; Qwen-MNN's is ~1 GB). At
             // TRIM_MEMORY_COMPLETE we're at the top of the LRU kill list;
             // freeing now might defer the kill, and if it doesn't we lose
-            // nothing. Mutex-serialized inside [LlamaTranslator.unloadModel]
+            // nothing. Mutex-serialized inside [MnnTranslator.unloadModel]
             // so it can't race an in-flight translate(). Async because the
             // engine's cleanUp() does runBlocking on its own dispatcher and
             // we don't want to ANR the main thread that delivered onTrimMemory.
             appScope.launch {
-                LlamaTranslator.getInstance(this@PlayTranslateApplication).unloadModel()
+                MnnTranslator.getInstance(this@PlayTranslateApplication).unloadModel()
             }
         }
     }

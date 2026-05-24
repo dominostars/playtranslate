@@ -336,47 +336,23 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_DEEPSEEK_MODEL, DEFAULT_DEEPSEEK_MODEL) ?: DEFAULT_DEEPSEEK_MODEL
         set(v) = sp.edit().putString(KEY_DEEPSEEK_MODEL, v).apply()
 
-    /** User's explicit "use TranslateGemma?" toggle. Default false because the
-     *  backend requires a separate ~2.5 GB model download. The download flow
-     *  flips this to true on success; toggling it off opens a dialog with
-     *  "Disable only" / "Delete model" / "Cancel" choices.
-     *
-     *  The on-disk model file is the source of truth for "is the model
-     *  installed?" — see TranslateGemmaModel.isInstalled() — so we deliberately
-     *  do NOT track installation state in prefs. */
-    var translateGemmaEnabled: Boolean
-        get() = sp.getBoolean(KEY_TRANSLATEGEMMA_ENABLED, false)
-        set(v) = sp.edit().putBoolean(KEY_TRANSLATEGEMMA_ENABLED, v).apply()
-
-    /** User-controlled toggle for the on-device Qwen 2.5 1.5B backend. Default
-     *  off; flipped on by the download flow's Success outcome (or by tapping
-     *  the row when the model file is already on disk). The disable dialog
-     *  flips it back off. File existence is checked separately via
-     *  [com.playtranslate.translation.qwen.QwenModel.isInstalled]. */
-    var qwenEnabled: Boolean
-        get() = sp.getBoolean(KEY_QWEN_ENABLED, false)
-        set(v) = sp.edit().putBoolean(KEY_QWEN_ENABLED, v).apply()
-
-    /** Toggle for the new MNN-backed Qwen tier (see :mnn module). Default
-     *  false — Settings flips this on after a successful download or after
-     *  the user explicitly enables an already-present model. Mirrors
-     *  [qwenEnabled]'s semantics; the legacy GGUF Qwen and the MNN Qwen are
-     *  independently toggleable so the hybrid migration window can show
-     *  either, both, or neither. */
+    /** User-controlled toggle for the MNN-backed Qwen 2.5 1.5B (live-mode tier).
+     *  Default false — Settings flips this on after a successful download or
+     *  when the user enables an already-extracted install. File existence is
+     *  checked separately via
+     *  [com.playtranslate.translation.qwen.QwenMnnModel.isInstalled]. */
     var qwenMnnEnabled: Boolean
         get() = sp.getBoolean(KEY_QWEN_MNN_ENABLED, false)
         set(v) = sp.edit().putBoolean(KEY_QWEN_MNN_ENABLED, v).apply()
 
-    /** Set to true when the user dismisses the cold-launch
-     *  "faster Qwen available" OverlayAlert via the "Don't remind me"
-     *  button. The alert checks this flag before firing and self-suppresses
-     *  thereafter. The "Remind me later" (cancel) button does *not* flip
-     *  this — the alert re-fires on every cold launch while the legacy
-     *  Qwen is still on disk. Cleared on app data reset, so the prompt
-     *  comes back if the user reinstalls. */
-    var qwenLegacyUpgradeDismissed: Boolean
-        get() = sp.getBoolean(KEY_QWEN_LEGACY_UPGRADE_DISMISSED, false)
-        set(v) = sp.edit().putBoolean(KEY_QWEN_LEGACY_UPGRADE_DISMISSED, v).apply()
+    /** User-controlled toggle for the MNN-backed Gemma 4 E2B (premium-quality
+     *  manual-lookup tier — replaces the legacy TranslateGemma 4B). Default
+     *  false; same enable/disable semantics as [qwenMnnEnabled]. File
+     *  existence checked via
+     *  [com.playtranslate.translation.gemma.GemmaE2BMnnModel.isInstalled]. */
+    var gemmaE2bEnabled: Boolean
+        get() = sp.getBoolean(KEY_GEMMA_E2B_ENABLED, false)
+        set(v) = sp.edit().putBoolean(KEY_GEMMA_E2B_ENABLED, v).apply()
 
     var ankiDeckId: Long
         get() = sp.getLong(KEY_ANKI_DECK_ID, -1L)
@@ -867,10 +843,8 @@ class Prefs(context: Context) {
         private const val KEY_DEEPL_KEY      = "deepl_api_key"
         const val KEY_DEEPL_ENABLED          = "deepl_enabled"
         const val KEY_LINGVA_ENABLED         = "lingva_enabled"
-        const val KEY_TRANSLATEGEMMA_ENABLED = "translategemma_enabled"
-        const val KEY_QWEN_ENABLED           = "qwen_enabled"
-        const val KEY_QWEN_MNN_ENABLED              = "qwen_mnn_enabled"
-        const val KEY_QWEN_LEGACY_UPGRADE_DISMISSED = "qwen_legacy_upgrade_dismissed"
+        const val KEY_QWEN_MNN_ENABLED   = "qwen_mnn_enabled"
+        const val KEY_GEMMA_E2B_ENABLED  = "gemma_e2b_enabled"
         const val KEY_GEMINI_KEY                    = "gemini_api_key"
         const val KEY_GEMINI_ENABLED                = "gemini_enabled"
         const val KEY_GEMINI_MODEL                  = "gemini_model"
