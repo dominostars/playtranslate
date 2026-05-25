@@ -881,14 +881,14 @@ class Prefs(context: Context) {
          *  alphabetical-first variant for Gemini). These are best
          *  guesses; the picker's listModels log line shows the actual
          *  top so we can adjust if wrong. */
-        const val DEFAULT_OPENAI_MODEL    = "gpt-5"
+        const val DEFAULT_OPENAI_MODEL    = "chat-latest"
         const val DEFAULT_GEMINI_MODEL    = "gemini-flash-lite-latest"
         // DeepSeek doesn't ship a rolling -latest alias (per api-docs.
         // deepseek.com). The legacy `deepseek-chat` / `deepseek-reasoner`
         // aliases are scheduled for retirement on 2026-07-24, both
         // currently route to v4-flash anyway. Pin directly to flash —
         // mirrors the "small/fast/cheap" default we use on Gemini
-        // (flash-lite-latest) and OpenAI (gpt-5-mini-ish).
+        // (flash-lite-latest).
         const val DEFAULT_DEEPSEEK_MODEL  = "deepseek-v4-flash"
         private const val KEY_LEGACY_THEME_INDEX    = "theme_index"
         private const val KEY_THEME_MODE            = "theme_mode"
