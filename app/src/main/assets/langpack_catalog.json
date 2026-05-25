@@ -49,6 +49,30 @@
         }
       ]
     },
+    "engine-hunyuan-mt1-5-1-8b-mnn": {
+      "display": "Hunyuan-MT 1.5 1.8B (MNN)",
+      "type": "engine",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "additiveFromVersion": 1,
+      "extract": true,
+      "size": 0,
+      "url": "https://huggingface.co/playtranslate/hunyuan-mt1-5-1-8b-mnn/resolve/main/hunyuan-mt1-5-1-8b-mnn.zip",
+      "sha256": "TBD-REZIP-WANGJAZZ-BUNDLE-AND-FILL-IN-BEFORE-SHIP",
+      "licenses": [
+        {
+          "component": "Hunyuan-MT 1.5 1.8B (MNN format)",
+          "license": "Tencent HY Community License",
+          "attribution": "© Tencent. Use, distribution, and outputs are governed by the Tencent HY Community License Agreement (https://huggingface.co/tencent/HY-MT1.5-1.8B/blob/main/License.txt). Use is restricted to outside the European Union, United Kingdom, and South Korea (license §1(l), §5(c)). MNN quantization re-packaged from @wangjazz (https://huggingface.co/wangjazz/Hunyuan-MT1.5-1.8B-MNN)."
+        },
+        {
+          "component": "MNN runtime (libMNN.so / libllm.so / libMNN_Express.so)",
+          "license": "Apache-2.0",
+          "attribution": "© Alibaba. Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0."
+        }
+      ]
+    },
     "ja": {
       "display": "Japanese",
       "script": "CJK_JAPANESE",

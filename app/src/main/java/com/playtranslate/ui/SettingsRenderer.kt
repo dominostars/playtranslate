@@ -151,6 +151,22 @@ class SettingsRenderer(
         /** Tap on the Gemma E2B row when it's currently enabled. */
         fun showGemmaE2bMnnDisableDialog()
 
+        /** Tap on the Hunyuan-MT row when the model isn't installed — start a
+         *  zip download via the OnDeviceLlmDownloader ZipExtract commit path.
+         *  The bottom sheet first runs the click-through legal-attestation
+         *  dialog (one-time, persisted in [com.playtranslate.Prefs.hyMtLegalAccepted])
+         *  before kicking off the download. */
+        fun startHyMtDownload()
+
+        /** Tap on the Hunyuan-MT row when the model is already extracted but
+         *  the switch is off. Skips the legal dialog (one-time, already
+         *  accepted on the original install). Revert via [refreshHyMtSwitch]
+         *  on Cancel / Delete. */
+        fun enableInstalledHyMt()
+
+        /** Tap on the Hunyuan-MT row when it's currently enabled. */
+        fun showHyMtDisableDialog()
+
         /** Tap on the "Update language packs" row in the Language section.
          *  Implementer instantiates [com.playtranslate.language.PackUpgradeOrchestrator]
          *  and calls `upgradeAll(stalePacks)`. On completion, calls
@@ -1287,6 +1303,8 @@ class SettingsRenderer(
     private val rowBackendGemmaE2bMnn: View = root.findViewById(R.id.rowBackendGemmaE2bMnn)
     private val dividerBackendQwenMnn: View = root.findViewById(R.id.dividerBackendQwenMnn)
     private val rowBackendQwenMnn: View = root.findViewById(R.id.rowBackendQwenMnn)
+    private val dividerBackendHyMt: View = root.findViewById(R.id.dividerBackendHyMt)
+    private val rowBackendHyMt: View = root.findViewById(R.id.rowBackendHyMt)
     private val rowBackendMlkit: View = root.findViewById(R.id.rowBackendMlkit)
 
     /** Per-backend in-flight `refreshStatus` job, keyed by [BackendId]. Used
@@ -1316,6 +1334,7 @@ class SettingsRenderer(
         wireDeeplBackendRow()
         wireGemmaE2bMnnBackendRow()
         wireQwenMnnBackendRow()
+        wireHyMtBackendRow()
 
         // Compose line 1 for each backend from its metadata
         // (requiresInternet + quality), styled with mixed-color spans.
@@ -1472,6 +1491,14 @@ class SettingsRenderer(
         }
     }
 
+    /** Refresh the Hunyuan-MT switch from the current pref value. Mirrors
+     *  [refreshQwenMnnSwitch]. */
+    fun refreshHyMtSwitch() {
+        rowBackendHyMt.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
+            it.isChecked = prefs.hyMtEnabled
+        }
+    }
+
     /** Re-render every backend row's secondary subtitle line and kick off
      *  an async [TranslationBackend.refreshStatus] for each. Called on
      *  initial bind, on Settings resume (after [DeepLSettingsActivity]
@@ -1503,6 +1530,7 @@ class SettingsRenderer(
         "lingva"          -> rowBackendLingva
         "gemma_e2b_mnn"   -> rowBackendGemmaE2bMnn
         "qwen_mnn"        -> rowBackendQwenMnn
+        "hymt_mnn"        -> rowBackendHyMt
         "mlkit"           -> rowBackendMlkit
         else              -> null
     }
@@ -1613,6 +1641,84 @@ class SettingsRenderer(
                     callbacks.enableInstalledGemmaE2bMnn()
                 } else {
                     callbacks.startGemmaE2bMnnDownload()
+                }
+            }
+        }
+    }
+
+    /** Wire the MNN-backed Hunyuan-MT 1.5 row (translation-specialist tier).
+     *  Routes to the `hymt_mnn` backend +
+     *  [com.playtranslate.translation.hymt.HyMtModel] + `prefs.hyMtEnabled`.
+     *
+     *  **Region-gated**: if [com.playtranslate.region.RegionPolicy.isHunyuanRestricted]
+     *  is true (any device-region signal indicates EU/UK/SK), the row + its
+     *  preceding divider are hidden entirely and the method returns
+     *  immediately — the user in a restricted region never sees the catalog
+     *  row, never gets the legal-attestation dialog, never downloads the
+     *  model. The Tencent HY Community License (§1(l), §5(c)) excludes these
+     *  regions from its Territory definition.
+     *
+     *    - off (model not installed) → tap: callbacks.startHyMtDownload();
+     *      the bottom sheet shows the legal-attestation dialog before
+     *      starting the actual download.
+     *    - off (model installed but disabled) → tap: enable directly via
+     *      callbacks.enableInstalledHyMt() — the legal dialog only fires
+     *      pre-download, not on subsequent enables.
+     *    - on  → tap: callbacks.showHyMtDisableDialog(); the Cancel branch
+     *      must call refreshHyMtSwitch() to revert the optimistic flip. */
+    private fun wireHyMtBackendRow() {
+        // Region gate: hide the row + its preceding divider in restricted
+        // regions, before touching anything else. This is the first-line
+        // license-compliance gate; the legal-attestation dialog in the
+        // bottom sheet is the second-line gate for cases where region
+        // signals don't catch it (default-open).
+        if (com.playtranslate.region.RegionPolicy.isHunyuanRestricted(ctx)) {
+            rowBackendHyMt.visibility = View.GONE
+            dividerBackendHyMt.visibility = View.GONE
+            return
+        }
+        // Catalog metadata gate: hide the row when size/sha256 are still
+        // placeholders (the model hasn't been built/uploaded yet). Without
+        // this, a user could accept the legal dialog and start a download
+        // that the OnDeviceLlmDownloader would inevitably reject at the
+        // length-vs-size or sha256 verify step. Self-disabling row that
+        // appears automatically once the catalog has real values. Codex
+        // review 2026-05-24.
+        if (!com.playtranslate.translation.hymt.HyMtModel.hasShippableCatalogEntry(ctx)) {
+            rowBackendHyMt.visibility = View.GONE
+            dividerBackendHyMt.visibility = View.GONE
+            return
+        }
+
+        rowBackendHyMt.findViewById<TextView>(R.id.tvRowTitle).text =
+            ctx.getString(R.string.hymt_display_name)
+
+        val backend = com.playtranslate.translation.TranslationBackendRegistry
+            .byId("hymt_mnn") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+        if (backend != null && configureIncompatibleHardwareRow(rowBackendHyMt, backend)) {
+            return
+        }
+
+        val switch = rowBackendHyMt.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        switch.isChecked = prefs.hyMtEnabled
+
+        rowBackendHyMt.setOnClickListener {
+            if (prefs.hyMtEnabled) {
+                switch.isChecked = false
+                callbacks.showHyMtDisableDialog()
+            } else {
+                val installed = com.playtranslate.translation.hymt
+                    .HyMtModel.isInstalled(ctx)
+                if (installed) {
+                    // Optimistic flip; the bottom sheet runs the availMem
+                    // gate and either flips the pref or reverts via
+                    // refreshHyMtSwitch(). The legal dialog does NOT
+                    // re-fire here — once hyMtLegalAccepted is true it
+                    // stays true, mirroring how Meta handles Llama ToS.
+                    switch.isChecked = true
+                    callbacks.enableInstalledHyMt()
+                } else {
+                    callbacks.startHyMtDownload()
                 }
             }
         }

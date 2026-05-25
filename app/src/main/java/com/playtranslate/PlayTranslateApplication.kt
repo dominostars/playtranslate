@@ -10,6 +10,7 @@ import android.content.Context
 import com.playtranslate.translation.DeepLBackend
 import com.playtranslate.translation.GemmaE2BMnnBackend
 import com.playtranslate.translation.GeminiBackend
+import com.playtranslate.translation.HyMtBackend
 import com.playtranslate.translation.LingvaBackend
 import com.playtranslate.translation.MlKitBackend
 import com.playtranslate.translation.OpenAiBackend
@@ -103,6 +104,10 @@ class PlayTranslateApplication : Application() {
                 GemmaE2BMnnBackend(
                     context         = this,
                     enabledProvider = { Prefs(this).gemmaE2bEnabled },
+                ),
+                HyMtBackend(
+                    context         = this,
+                    enabledProvider = { Prefs(this).hyMtEnabled },
                 ),
                 QwenMnnBackend(
                     context         = this,

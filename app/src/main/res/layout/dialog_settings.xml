@@ -790,8 +790,19 @@
                     <include layout="@layout/settings_row_backend"
                         android:id="@+id/rowBackendGemmaE2bMnn" />
 
-                    <!-- Divider between the manual-lookup tier above and
-                         the live-mode Qwen-MNN tier below. -->
+                    <!-- Divider above the Hunyuan-MT 1.5 row (translation-
+                         specialist tier). The HyMt row is hidden entirely
+                         (visibility=GONE) when RegionPolicy.isHunyuanRestricted
+                         returns true (EU/UK/SK) OR when the catalog entry's
+                         size/sha256 are still placeholders; see
+                         SettingsRenderer.wireHyMtBackendRow. -->
+                    <include layout="@layout/settings_row_divider"
+                        android:id="@+id/dividerBackendHyMt" />
+
+                    <include layout="@layout/settings_row_backend"
+                        android:id="@+id/rowBackendHyMt" />
+
+                    <!-- Divider above the live-mode Qwen-MNN tier. -->
                     <include layout="@layout/settings_row_divider"
                         android:id="@+id/dividerBackendQwenMnn" />
 

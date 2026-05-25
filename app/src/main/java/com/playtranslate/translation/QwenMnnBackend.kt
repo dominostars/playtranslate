@@ -13,10 +13,13 @@ import com.playtranslate.translation.qwen.QwenMnnModel
  * spike (`mnn-spike/SPIKE_REPORT.md`) on Thor (Snapdragon 8 Gen 2):
  * ~513 ms median wall-time, 0.0% catastrophic failure rate.
  *
- * Slots into the waterfall at priority [PRIORITY] = 26 — below the
- * premium-quality [GemmaE2BMnnBackend] at 25 and above ML Kit at 30. So
- * when both on-device tiers are enabled the manual-lookup tier (E2B) wins
- * first, with Qwen-MNN as the lower-cost fallback before ML Kit.
+ * Slots into the waterfall at priority [PRIORITY] = 27 — below
+ * [GemmaE2BMnnBackend] (25) and [HyMtBackend] (26), above ML Kit (30). The
+ * higher-quality on-device tiers (Gemma 4 E2B, Hunyuan-MT 1.5) win first
+ * when enabled; Qwen-MNN is the lower-cost on-device fallback before
+ * ML Kit. Originally priority 26 (the translation-specialist tier slot)
+ * but moved down to 27 when Hunyuan-MT 1.5 — a translation-specialist
+ * model with judge-mean quality 4.50 vs Qwen's 4.02 — took the 26 slot.
  *
  * Catalog entry: `engine-qwen-1-5b-mnn` in `app/src/main/assets/langpack_catalog.json`.
  * Distribution: a single zip on HuggingFace (`extract: true` triggers
@@ -54,8 +57,8 @@ class QwenMnnBackend(
     )
 
     companion object {
-        /** Below [GemmaE2BMnnBackend.PRIORITY] (25, manual-lookup tier),
-         *  above ML Kit (30). */
-        const val PRIORITY = 26
+        /** Below [GemmaE2BMnnBackend.PRIORITY] (25) and
+         *  [HyMtBackend.PRIORITY] (26); above ML Kit (30). */
+        const val PRIORITY = 27
     }
 }

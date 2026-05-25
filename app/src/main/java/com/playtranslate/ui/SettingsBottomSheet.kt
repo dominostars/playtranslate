@@ -425,6 +425,15 @@ class SettingsBottomSheet : DialogFragment() {
                 override fun showGemmaE2bMnnDisableDialog() {
                     this@SettingsBottomSheet.showGemmaE2bMnnDisableDialog()
                 }
+                override fun startHyMtDownload() {
+                    showHyMtDownloadDialog()
+                }
+                override fun enableInstalledHyMt() {
+                    this@SettingsBottomSheet.enableInstalledHyMt()
+                }
+                override fun showHyMtDisableDialog() {
+                    this@SettingsBottomSheet.showHyMtDisableDialog()
+                }
                 override fun onUpdateLanguagePacksTapped(
                     stalePacks: List<com.playtranslate.language.StalePack>
                 ) {
@@ -1269,6 +1278,258 @@ class SettingsBottomSheet : DialogFragment() {
                 renderer?.refreshAllBackendStatuses()
             }
             .addCancelButton { renderer?.refreshGemmaE2bSwitch() }
+            .showInActivity(activity)
+    }
+
+    // ── Hunyuan-MT 1.5 (MNN, translation-specialist tier) flow ──────────
+    //
+    // Region-gated by SettingsRenderer.wireHyMtBackendRow (which hides the
+    // row entirely in EU/UK/SK). Behind a one-time click-through legal
+    // attestation dialog (showHyMtLegalAttestationDialog) before the first
+    // download. Otherwise mirrors the Qwen-MNN flow above.
+
+    private var hyMtDownloadJob: kotlinx.coroutines.Job? = null
+
+    /** Re-enable an already-extracted Hunyuan-MT model. Skips the legal
+     *  attestation dialog — once `hyMtLegalAccepted` is true (set when the
+     *  user agreed before the first download), it stays true. */
+    private fun enableInstalledHyMt() {
+        val ctx = context ?: return
+        val backend = com.playtranslate.translation.TranslationBackendRegistry
+            .byId("hymt_mnn") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+            ?: return
+        checkAvailMemAndProceed(
+            backend = backend,
+            modelDisplayName = getString(R.string.hymt_display_name),
+            onProceed = { Prefs(ctx).hyMtEnabled = true },
+            allowDelete = true,
+            onDelete = {
+                com.playtranslate.translation.hymt.HyMtModel.delete(ctx)
+                viewLifecycleOwner.lifecycleScope.launch {
+                    com.playtranslate.translation.mnn.MnnTranslator
+                        .getInstance(ctx).unloadModel()
+                }
+                renderer?.refreshAllBackendStatuses()
+            },
+            onCancel = { renderer?.refreshHyMtSwitch() },
+        )
+    }
+
+    /** Show the modal download dialog for the Hunyuan-MT zip. Inserts the
+     *  click-through legal attestation dialog
+     *  ([showHyMtLegalAttestationDialog]) between the availMem and
+     *  metered-network gates and the actual download. The legal dialog
+     *  fires only on first download (when `hyMtLegalAccepted` is false);
+     *  subsequent enables skip it. */
+    private fun showHyMtDownloadDialog() {
+        if (isDownloadInFlight(hyMtDownloadJob, "Hunyuan-MT")) return
+        val ctx = context ?: return
+        val backend = com.playtranslate.translation.TranslationBackendRegistry
+            .byId("hymt_mnn") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+            ?: return
+        val downloader = com.playtranslate.translation.llm.OnDeviceLlmDownloader(
+            context = ctx,
+            modelHelper = com.playtranslate.translation.hymt.HyMtModel,
+            totalMemFloorBytes = backend.totalMemFloorBytes,
+        )
+        checkAvailMemAndProceed(
+            backend = backend,
+            modelDisplayName = getString(R.string.hymt_display_name),
+            onProceed = { showHyMtDownloadDialogPostAvailMem(ctx, downloader) },
+        )
+    }
+
+    /** Stage 2: metered-network gate. Stage 1 (availMem) already passed. */
+    private fun showHyMtDownloadDialogPostAvailMem(
+        ctx: Context,
+        downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
+    ) {
+        if (downloader.isCurrentNetworkMetered()) {
+            val sizeStr = com.playtranslate.translation.hymt.HyMtModel.humanSize(ctx)
+            androidx.appcompat.app.AlertDialog.Builder(ctx)
+                .setTitle(R.string.hymt_metered_warning_title)
+                .setMessage(getString(R.string.hymt_metered_warning_message, sizeStr))
+                .setPositiveButton(android.R.string.ok) { _, _ ->
+                    showHyMtLegalAttestationDialog(ctx, downloader)
+                }
+                .setNegativeButton(android.R.string.cancel) { _, _ ->
+                    renderer?.refreshHyMtSwitch()
+                }
+                .show()
+            return
+        }
+        showHyMtLegalAttestationDialog(ctx, downloader)
+    }
+
+    /** Stage 3 (Hunyuan-MT specific): one-time click-through legal
+     *  attestation. The Tencent HY Community License governs the model
+     *  weights; §1(l) defines a "Territory" that excludes EU/UK/SK, §5(c)
+     *  forbids use outside the Territory, and §5(b) forbids using outputs
+     *  to improve other AI models. RegionPolicy already hid the row from
+     *  users whose device signals indicate restricted regions; this dialog
+     *  catches the default-open case (no signals available, e.g. wifi-only
+     *  tablet) and gives every user an explicit point to read and accept
+     *  the restrictions.
+     *
+     *  Skipped on subsequent enables — once the user has tapped "I Agree"
+     *  once on this device (persisted via [Prefs.hyMtLegalAccepted]), the
+     *  dialog never re-fires. Mirrors how Meta handles Llama ToS. */
+    private fun showHyMtLegalAttestationDialog(
+        ctx: Context,
+        downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
+    ) {
+        val activity = activity ?: return
+        if (Prefs(ctx).hyMtLegalAccepted) {
+            // Already accepted on this device — straight to download.
+            runHyMtDownload(ctx, downloader)
+            return
+        }
+        OverlayAlert.Builder(ctx)
+            .setTitle(getString(R.string.hymt_legal_title))
+            .setMessage(getString(R.string.hymt_legal_message))
+            .hideIcon()
+            .addButton(getString(R.string.hymt_legal_agree), ctx.themeColor(R.attr.ptAccent)) {
+                Prefs(ctx).hyMtLegalAccepted = true
+                runHyMtDownload(ctx, downloader)
+            }
+            .addCancelButton(getString(R.string.hymt_legal_cancel)) {
+                renderer?.refreshHyMtSwitch()
+            }
+            .showInActivity(activity)
+    }
+
+    private fun runHyMtDownload(
+        ctx: Context,
+        downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
+    ) {
+        val activity = activity ?: return
+        val sizeStr = com.playtranslate.translation.hymt.HyMtModel.humanSize(ctx)
+
+        var dialog: OverlayProgress? = null
+        dialog = OverlayProgress.Builder(ctx)
+            .setTitle(getString(R.string.hymt_display_name))
+            .setMessage(getString(R.string.hymt_status_downloading, "0 B", sizeStr))
+            .setProgress(0)
+            .setOnCancel {
+                hyMtDownloadJob?.cancel()
+                downloader.deletePartial()
+                renderer?.refreshAllBackendStatuses()
+            }
+            .showInActivity(activity)
+
+        hyMtDownloadJob = viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val outcome = downloader.run { progress ->
+                    requireActivity().runOnUiThread {
+                        when (progress) {
+                            is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Downloading -> {
+                                val recv = com.playtranslate.translation.llm
+                                    .humanSize(progress.received)
+                                val total = com.playtranslate.translation.llm
+                                    .humanSize(progress.total)
+                                dialog?.setMessage(getString(
+                                    R.string.hymt_status_downloading,
+                                    recv, total,
+                                ))
+                                if (progress.total > 0) {
+                                    dialog?.setProgress(
+                                        ((progress.received * 100) / progress.total).toInt()
+                                    )
+                                }
+                            }
+                            is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Verifying -> {
+                                dialog?.setMessage(getString(R.string.hymt_status_verifying))
+                                dialog?.setProgress(100)
+                            }
+                            is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Extracting -> {
+                                dialog?.setMessage(getString(R.string.model_download_extracting))
+                                dialog?.setProgress(100)
+                            }
+                        }
+                    }
+                }
+                if (!isAdded) return@launch
+                requireActivity().runOnUiThread {
+                    dialog?.dismiss()
+                    when (outcome) {
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Success -> {
+                            Prefs(ctx).hyMtEnabled = true
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Refused -> {
+                            android.widget.Toast.makeText(
+                                ctx,
+                                getString(R.string.hymt_download_failed, outcome.reason),
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Failed -> {
+                            android.widget.Toast.makeText(
+                                ctx,
+                                getString(R.string.hymt_download_failed, outcome.reason),
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Cancelled -> {
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (isAdded) {
+                    requireActivity().runOnUiThread {
+                        dialog?.dismiss()
+                        android.widget.Toast.makeText(
+                            ctx,
+                            getString(R.string.hymt_download_failed,
+                                e.message ?: e.javaClass.simpleName),
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                        renderer?.refreshAllBackendStatuses()
+                    }
+                }
+            } finally {
+                dialog?.dismiss()
+                hyMtDownloadJob = null
+            }
+        }
+    }
+
+    /** Show the 3-button disable dialog for the Hunyuan-MT tier. Mirrors
+     *  [showQwenMnnDisableDialog]. Delete branch wipes the model + unloads
+     *  the loaded MNN engine state. */
+    private fun showHyMtDisableDialog() {
+        val ctx = context ?: return
+        val activity = activity ?: return
+        val sizeStr = com.playtranslate.translation.hymt.HyMtModel.humanSize(ctx)
+        OverlayAlert.Builder(ctx)
+            .setTitle(getString(R.string.hymt_disable_title))
+            .setMessage(getString(R.string.hymt_disable_message, sizeStr))
+            .hideIcon()
+            .addButton(getString(R.string.hymt_disable_keep), ctx.themeColor(R.attr.ptAccent)) {
+                Prefs(ctx).hyMtEnabled = false
+            }
+            .addButton(getString(R.string.hymt_disable_delete), ctx.themeColor(R.attr.ptDivider), ctx.themeColor(R.attr.ptDanger)) {
+                Prefs(ctx).hyMtEnabled = false
+                com.playtranslate.translation.hymt.HyMtModel.delete(ctx)
+                viewLifecycleOwner.lifecycleScope.launch {
+                    com.playtranslate.translation.mnn.MnnTranslator
+                        .getInstance(ctx).unloadModel()
+                }
+                renderer?.refreshAllBackendStatuses()
+            }
+            .addCancelButton { renderer?.refreshHyMtSwitch() }
             .showInActivity(activity)
     }
 

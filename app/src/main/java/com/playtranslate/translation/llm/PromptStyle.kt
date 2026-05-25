@@ -27,4 +27,23 @@ sealed interface PromptStyle {
      * [com.playtranslate.translation.gemma.GemmaE2BChatTemplate].
      */
     object Gemma4Chat : PromptStyle
+
+    /**
+     * Tencent Hunyuan-MT 1.5 chat template — single user turn (no `system`
+     * role per the model card). Full-width pipe markers `<｜hy_User｜>` /
+     * `<｜hy_Assistant｜>` (UTF-8 U+FF5C "｜" pipes, not ASCII `|`) wrap the
+     * single user message; runtime stop is `<｜hy_place▁holder▁no▁2｜>`.
+     *
+     * We still go through the same `setSystemPrompt` + `sendUserPrompt`
+     * dispatch as the other styles — the "system block" here is the
+     * cacheable instruction prefix (`<bos><｜hy_User｜>Translate the
+     * following text into …`), and `sendUserPrompt` carries the
+     * per-sentence body + `<｜hy_Assistant｜>` generation marker. The
+     * model sees one user turn at inference; the cache-boundary split is
+     * invisible to it. This split matches the spike's `benchmark_reuse()`
+     * exactly (see `mnn-spike/HYMT_SPIKE_REPORT.md`, sysLen=23 tokens
+     * cached, 0% catastrophic over 500 sentences). Marker strings live in
+     * [com.playtranslate.translation.hymt.HyMtChatTemplate].
+     */
+    object HyMtChat : PromptStyle
 }

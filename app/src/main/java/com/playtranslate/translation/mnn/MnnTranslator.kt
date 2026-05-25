@@ -7,6 +7,7 @@ import com.playtranslate.mnn.InferenceEngine
 import com.playtranslate.mnn.MnnChat
 import com.playtranslate.mnn.isModelLoaded
 import com.playtranslate.translation.gemma.GemmaE2BChatTemplate
+import com.playtranslate.translation.hymt.HyMtChatTemplate
 import com.playtranslate.translation.llm.OnDeviceLlmTransientException
 import com.playtranslate.translation.llm.PromptStyle
 import com.playtranslate.translation.qwen.QwenChatTemplate
@@ -129,16 +130,40 @@ class MnnTranslator private constructor(private val context: Context) {
                     predictLength = 256,
                 ).collect { token -> sb.append(token) }
             }
+            PromptStyle.HyMtChat -> {
+                if (didReload || systemPair != pair) {
+                    // Hunyuan-MT 1.5 has no system role per the model card;
+                    // the "system block" we set here is the invariant
+                    // instruction prefix (`<bos><｜hy_User｜>Translate the
+                    // following text into …\n\n`). The per-sentence body
+                    // and `<｜hy_Assistant｜>` open marker come from
+                    // [HyMtChatTemplate.userBlock]. The model sees one user
+                    // turn at inference — the cache split is invisible
+                    // because `use_template:false` in mnn_chat.cpp
+                    // concatenates the two strings verbatim. Matches the
+                    // spike's `benchmark_reuse()` exactly (sysLen=23
+                    // tokens cached; see mnn-spike/HYMT_SPIKE_REPORT.md).
+                    engine.setSystemPrompt(HyMtChatTemplate.systemBlock(source, target))
+                    systemPair = pair
+                } else {
+                    engine.resetForNextPrompt()
+                }
+                engine.sendUserPrompt(
+                    HyMtChatTemplate.userBlock(text, source, target),
+                    predictLength = 256,
+                ).collect { token -> sb.append(token) }
+            }
         }
         // Defensive cleanup: a clean run terminates at the model's EOS marker
         // via Llm::is_stop and the decoded text won't include the marker, but
         // strip any leaked tokens to be safe (e.g. if a future model variant
         // emits the marker as text instead of as a special-token id). All
-        // three are listed so the strip is engine-agnostic.
+        // four are listed so the strip is engine-agnostic.
         return sb.toString()
             .substringBefore("<|im_end|>")
             .substringBefore("<turn|>")
             .substringBefore("<|endoftext|>")
+            .substringBefore("<｜hy_place▁holder▁no▁2｜>")
             .trim()
     }
 

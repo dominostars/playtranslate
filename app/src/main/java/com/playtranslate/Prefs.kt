@@ -354,6 +354,24 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_GEMMA_E2B_ENABLED, false)
         set(v) = sp.edit().putBoolean(KEY_GEMMA_E2B_ENABLED, v).apply()
 
+    /** User-controlled toggle for the MNN-backed Hunyuan-MT 1.5 1.8B —
+     *  translation-specialist tier (Tencent HY Community License, restricted
+     *  to outside EU/UK/SK; gated by [com.playtranslate.region.RegionPolicy]
+     *  before the Settings row is even shown). Default false; same
+     *  enable/disable semantics as [qwenMnnEnabled]. File existence checked
+     *  via [com.playtranslate.translation.hymt.HyMtModel.isInstalled]. */
+    var hyMtEnabled: Boolean
+        get() = sp.getBoolean(KEY_HYMT_ENABLED, false)
+        set(v) = sp.edit().putBoolean(KEY_HYMT_ENABLED, v).apply()
+
+    /** Persisted acknowledgement of the Hunyuan-MT 1.5 click-through legal
+     *  attestation dialog. Set to true after the user taps "Agree" the first
+     *  time they enable [hyMtEnabled]; subsequent enables skip the dialog.
+     *  Mirrors how Meta handles Llama ToS acceptance: one-time, persisted. */
+    var hyMtLegalAccepted: Boolean
+        get() = sp.getBoolean(KEY_HYMT_LEGAL_ACCEPTED, false)
+        set(v) = sp.edit().putBoolean(KEY_HYMT_LEGAL_ACCEPTED, v).apply()
+
     var ankiDeckId: Long
         get() = sp.getLong(KEY_ANKI_DECK_ID, -1L)
         set(v) = sp.edit().putLong(KEY_ANKI_DECK_ID, v).apply()
@@ -845,6 +863,8 @@ class Prefs(context: Context) {
         const val KEY_LINGVA_ENABLED         = "lingva_enabled"
         const val KEY_QWEN_MNN_ENABLED   = "qwen_mnn_enabled"
         const val KEY_GEMMA_E2B_ENABLED  = "gemma_e2b_enabled"
+        const val KEY_HYMT_ENABLED          = "hymt_enabled"
+        const val KEY_HYMT_LEGAL_ACCEPTED   = "hymt_legal_accepted"
         const val KEY_GEMINI_KEY                    = "gemini_api_key"
         const val KEY_GEMINI_ENABLED                = "gemini_enabled"
         const val KEY_GEMINI_MODEL                  = "gemini_model"
