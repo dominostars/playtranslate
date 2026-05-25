@@ -65,11 +65,6 @@ Java_com_playtranslate_mnn_internal_MnnChatImpl_prepare(
         LOGe("prepare(): no llm loaded");
         return 1;
     }
-    LOGi("Llm::load() (weights + module init)");
-    if (!g_llm->load()) {
-        LOGe("Llm::load() returned false");
-        return 2;
-    }
     // KV reuse + raw prompt feed + greedy sampling.
     //
     // reuse_kv=true: `generate_init` won't wipe the KV between calls, so
@@ -98,10 +93,21 @@ Java_com_playtranslate_mnn_internal_MnnChatImpl_prepare(
     // config.json reflects upstream choices, not ours. set_config() here is
     // a belt-and-suspenders override that pins our preferred runtime config
     // regardless of what the upstream `config.json` happens to contain.
+    //
+    // MUST run BEFORE load(): MNN constructs the sampler during load() from
+    // whatever config is set then, so setting `sampler_type` afterwards
+    // leaves the default mixed/temperature sampler in place. reuse_kv /
+    // use_template are read per-call and tolerate either order, but pinning
+    // all three pre-load keeps the contract uniform.
     const std::string runtime_config =
         R"({"reuse_kv": true, "use_template": false, "sampler_type": "greedy"})";
     if (!g_llm->set_config(runtime_config)) {
         LOGw("Llm::set_config failed; relying on bundled config.json values");
+    }
+    LOGi("Llm::load() (weights + module init)");
+    if (!g_llm->load()) {
+        LOGe("Llm::load() returned false");
+        return 2;
     }
     return 0;
 }
