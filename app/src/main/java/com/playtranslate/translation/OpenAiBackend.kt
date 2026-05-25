@@ -53,6 +53,15 @@ class OpenAiBackend(
     private val enabledProvider: () -> Boolean,
     private val modelProvider: () -> String,
     private val baseUrlProvider: () -> String,
+    /** URL prefix for `/models` (validateKey + listModels). Defaults to
+     *  [baseUrlProvider] for providers (OpenAI, OpenRouter, LM Studio)
+     *  whose chat-completions and models endpoints share a prefix.
+     *  DeepSeek requires `https://api.deepseek.com` here while
+     *  [baseUrlProvider] stays `https://api.deepseek.com/v1` for
+     *  `/chat/completions` — their /models endpoint sits at the root,
+     *  not under /v1, and pointing /models at /v1/models returns an
+     *  HTTP 200 with an empty body that listModels then rejects. */
+    private val modelsUrlProvider: () -> String = baseUrlProvider,
     private val usageTracker: UsageTracker,
     /** When true, [listModels] drops entries whose `owned_by` isn't
      *  one of OpenAI's first-party values — strips out fine-tunes /
@@ -339,9 +348,9 @@ class OpenAiBackend(
     override suspend fun validateKey(overrideKey: String?): KeyStatus = withContext(Dispatchers.IO) {
         val apiKey = (overrideKey ?: keyProvider())?.takeIf { it.isNotBlank() }
             ?: return@withContext KeyStatus.Invalid("API key blank")
-        val baseUrl = baseUrlProvider().trim().trimEnd('/')
+        val modelsUrl = modelsUrlProvider().trim().trimEnd('/')
         val request = Request.Builder()
-            .url("$baseUrl/models")
+            .url("$modelsUrl/models")
             .addHeader("Authorization", "Bearer $apiKey")
             .build()
         try {
@@ -375,9 +384,9 @@ class OpenAiBackend(
     override suspend fun listModels(): List<String> = withContext(Dispatchers.IO) {
         val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
             ?: throw IOException("OpenAI API key not configured")
-        val baseUrl = baseUrlProvider().trim().trimEnd('/')
+        val modelsUrl = modelsUrlProvider().trim().trimEnd('/')
         val request = Request.Builder()
-            .url("$baseUrl/models")
+            .url("$modelsUrl/models")
             .addHeader("Authorization", "Bearer $apiKey")
             .build()
         client.newCall(request).execute().use { response ->
@@ -391,10 +400,10 @@ class OpenAiBackend(
                 ?: throw IOException("Empty /models response")
             if (body.isBlank()) throw IOException("Blank /models response")
             // Gson can return null on malformed/unrecognized JSON.
-            // Concrete trigger: providers that return HTTP 200 with an
-            // empty body when an endpoint URL is wrong (DeepSeek does
-            // this on /v1/models since their models endpoint is at
-            // /models, no v1 prefix).
+            // Defends against provider quirks like DeepSeek's old
+            // /v1/models = 200 + empty body behaviour (now avoided by
+            // pointing modelsUrlProvider at the root) and similar
+            // misconfigurations on future OpenAI-compatible providers.
             val parsed = gson.fromJson(body, OpenAiModelsResponse::class.java)
                 ?: throw IOException("Malformed /models response")
             val sorted = parsed.data

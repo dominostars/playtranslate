@@ -95,8 +95,12 @@ class PlayTranslateApplication : Application() {
                     enabledProvider = { Prefs(this).deepseekEnabled },
                     modelProvider   = { Prefs(this).deepseekModel },
                     baseUrlProvider = { "https://api.deepseek.com/v1" },
+                    // DeepSeek splits its endpoints: /v1/chat/completions
+                    // works (above) but /v1/models returns 200 + empty body.
+                    // The real model-listing endpoint sits at the root.
+                    modelsUrlProvider = { "https://api.deepseek.com" },
                     usageTracker    = UsageTracker(sharedPrefs, "deepseek"),
-                    // DeepSeek's /v1/models entries all have owned_by="deepseek";
+                    // DeepSeek's /models entries all have owned_by="deepseek";
                     // the OpenAI fine-tune filter would drop the whole catalog.
                     filterFineTunes = false,
                     // DeepSeek opts out of v1 cooldown: its 10-min TCP-hold
