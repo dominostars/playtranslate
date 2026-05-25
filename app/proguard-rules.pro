@@ -3,17 +3,25 @@
 # Data classes passed as TranslationResult / DictionaryResponse through callbacks
 -keep class com.playtranslate.model.** { *; }
 
-# DeepL response is parsed by Gson reflection — field names must survive
-# obfuscation. DeepLResponse is private-nested in DeepLTranslator; Translation
-# is nested one level deeper inside DeepLResponse (so the JVM class name is
-# DeepLTranslator$DeepLResponse$Translation, NOT DeepLTranslator$Translation).
--keep class com.playtranslate.DeepLTranslator$DeepLResponse { *; }
--keep class com.playtranslate.DeepLTranslator$DeepLResponse$Translation { *; }
+# Gson-reflected DTOs in translation backends — field names must survive
+# R8 obfuscation. The `$**` wildcard catches every nested data class at
+# any depth (e.g. DeepLBackend$DeepLResponse$Translation, OpenAiBackend$
+# OpenAiChatResponse$Message). Slight overcollection (companion / anon
+# classes also kept) is harmless — these are small files.
+-keep class com.playtranslate.translation.DeepLBackend$** { *; }
+-keep class com.playtranslate.translation.OpenAiBackend$** { *; }
+-keep class com.playtranslate.translation.GeminiBackend$** { *; }
+# GeminiErrorEnvelope is declared top-level in GeminiBackend.kt for unit
+# testing, so it needs its own keep alongside the GeminiBackend nested
+# rule above.
+-keep class com.playtranslate.translation.GeminiErrorEnvelope { *; }
+-keep class com.playtranslate.translation.GeminiErrorEnvelope$** { *; }
 
 # Language pack catalog + manifest — Gson reflection-parsed, field names must
 # survive R8 obfuscation.
 -keep class com.playtranslate.language.LanguagePackCatalog { *; }
 -keep class com.playtranslate.language.CatalogEntry { *; }
+-keep class com.playtranslate.language.CatalogFile { *; }
 -keep class com.playtranslate.language.LanguagePackManifest { *; }
 -keep class com.playtranslate.language.ManifestFile { *; }
 -keep class com.playtranslate.language.ManifestLicense { *; }
