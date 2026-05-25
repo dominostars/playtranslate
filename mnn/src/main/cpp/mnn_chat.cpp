@@ -91,9 +91,13 @@ Java_com_playtranslate_mnn_internal_MnnChatImpl_prepare(
     //   which adds non-determinism the translation pipeline doesn't want and
     //   runs slower per token.
     //
-    // The bundled model's `config.json` already carries these (we control the
-    // HF upload), but set_config() here is a belt-and-suspenders override —
-    // protects against a stale local config.json after a model reinstall.
+    // Each shipped model's `config.json` typically carries these values, but
+    // the canonical source for some entries (e.g. the Hunyuan-MT 1.5 bundle
+    // fetched directly from wangjazz/Hunyuan-MT1.5-1.8B-MNN via the
+    // MultiFile downloader strategy) is upstream, not us — so the local
+    // config.json reflects upstream choices, not ours. set_config() here is
+    // a belt-and-suspenders override that pins our preferred runtime config
+    // regardless of what the upstream `config.json` happens to contain.
     const std::string runtime_config =
         R"({"reuse_kv": true, "use_template": false, "sampler_type": "greedy"})";
     if (!g_llm->set_config(runtime_config)) {

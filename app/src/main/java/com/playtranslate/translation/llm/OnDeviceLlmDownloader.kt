@@ -6,6 +6,8 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.StatFs
 import android.util.Log
+import com.playtranslate.language.CatalogEntry
+import com.playtranslate.language.CatalogFile
 import com.playtranslate.language.LanguagePackDownloader
 import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.PackIntegrity
@@ -80,6 +82,16 @@ class OnDeviceLlmDownloader(
         FileSwap,
         /** For engine entries that ship as a zip of multiple files — see kdoc above. */
         ZipExtract,
+        /**
+         * For engine entries hosted as individual files (catalog
+         * [CatalogEntry.files] populated). Each file fetched, verified,
+         * and atomic-renamed inside `<finalDir>.tmp/`; aggregate-SHA
+         * sentinel written; safe-swap of `<finalDir>.tmp/` → `<finalDir>/`.
+         * Used to consume the wangjazz Hunyuan-MT 1.5 bundle without
+         * re-hosting (preserves "user agent" liability posture under the
+         * Tencent HY Community License).
+         */
+        MultiFile,
     }
 
     sealed interface Outcome {
@@ -106,6 +118,17 @@ class OnDeviceLlmDownloader(
             ?: return@withContext Outcome.Failed(
                 "Catalog entry missing for ${modelHelper.catalogKey}",
             )
+
+        // MultiFile dispatch must run BEFORE the legacy url/sha256 null guards
+        // below: MultiFile entries have those fields intentionally null
+        // (replaced by [CatalogEntry.files]). Leaving the null guards in front
+        // would short-circuit every MultiFile dispatch into "Catalog URL
+        // missing" before the strategy could be selected (Codex review).
+        val multiFiles = entry.files
+        if (multiFiles != null && multiFiles.isNotEmpty()) {
+            return@withContext runMultiFile(entry, multiFiles, onProgress)
+        }
+
         val url = entry.url
             ?: return@withContext Outcome.Failed(
                 "Catalog URL missing for ${modelHelper.catalogKey}",
@@ -179,6 +202,9 @@ class OnDeviceLlmDownloader(
         when (strategy) {
             CommitStrategy.FileSwap -> commitFileSwap(partial, finalFile)?.let { return@withContext it }
             CommitStrategy.ZipExtract -> commitZipExtract(partial, finalFile, expectedSha, onProgress)?.let { return@withContext it }
+            CommitStrategy.MultiFile -> error(
+                "MultiFile commit reached the legacy commit branch — early dispatch should have returned"
+            )
         }
 
         Log.i(TAG, "Download + verify + commit succeeded: ${finalFile.absolutePath}")
@@ -287,6 +313,251 @@ class OnDeviceLlmDownloader(
         File(finalDir.parentFile, "${finalDir.name}.tmp")
 
     /**
+     * MultiFile commit strategy: catalog ships [CatalogEntry.files] (a list
+     * of per-file URL/size/sha256 triples). Used when the model's canonical
+     * upstream hosts the bundle as individual files instead of a zip —
+     * notably the wangjazz Hunyuan-MT 1.5 MNN bundle, which we consume
+     * directly to preserve the "user agent" liability posture under the
+     * Tencent HY Community License (we never re-host a combined zip).
+     *
+     * Flow:
+     *  1. Validate every file's size > 0, sha256 hex, path safe (no `..`,
+     *     no absolute paths — same canonical-prefix check the zip path
+     *     uses, via [PackIntegrity.isInside]).
+     *  2. Preflight RAM + storage (`totalBytes = sum of per-file sizes`
+     *     plus 5%/100 MB headroom; per-file `.partial`s are atomic-renamed
+     *     in place inside `tmpDir`, and safeSwap uses `renameTo` in the
+     *     happy path, so the peak stays ~1× — same posture as
+     *     [preflightStorage]).
+     *  3. Per file (sequential):
+     *     - download to `<tmpDir>/<path>.partial` via the existing
+     *       [LanguagePackDownloader.download], which gets HTTP-Range
+     *       resume for free.
+     *     - verify size + SHA-256; mismatch → delete partial, fail.
+     *     - atomic-rename `<path>.partial` → `<path>` *inside tmpDir*.
+     *       After this rename the file is considered "verified" — a
+     *       re-entry will skip it via the length-equals-expected check.
+     *  4. Write `<tmpDir>/.sentinel` containing the aggregate SHA via
+     *     [MultiFileSha.aggregate]. Written BEFORE safeSwap so the
+     *     directory rename promotes contents AND install gate
+     *     atomically.
+     *  5. [LanguagePackStore.safeSwap] promotes `<tmpDir>` → `<finalDir>`.
+     *
+     * Sequential not parallel: predictable progress, no HF rate-limit
+     * risk, simpler resume semantics; bandwidth is the bottleneck at
+     * ~1 GB anyway.
+     */
+    private suspend fun runMultiFile(
+        entry: CatalogEntry,
+        files: List<CatalogFile>,
+        onProgress: (Progress) -> Unit,
+    ): Outcome {
+        val finalDir = modelHelper.file(context)
+        val tmpDir = tmpDirFor(finalDir)
+
+        // 1. Validate before touching disk.
+        for (f in files) {
+            if (f.size <= 0L) {
+                return Outcome.Failed("MultiFile entry ${modelHelper.catalogKey}: ${f.path} size <= 0")
+            }
+            if (!SHA_HEX_REGEX.matches(f.sha256)) {
+                return Outcome.Failed("MultiFile entry ${modelHelper.catalogKey}: ${f.path} sha256 malformed")
+            }
+            if (f.path.isBlank()) {
+                return Outcome.Failed("MultiFile entry ${modelHelper.catalogKey}: blank path")
+            }
+            // Path-traversal defense: resolve `<tmpDir>/<f.path>` and confirm
+            // the canonical form lives strictly under tmpDir. Same check
+            // PackIntegrity.extractZip uses per zip entry.
+            if (!PackIntegrity.isInside(tmpDir, File(tmpDir, f.path))) {
+                return Outcome.Failed("MultiFile entry ${modelHelper.catalogKey}: path traversal: ${f.path}")
+            }
+        }
+
+        // 2. Preflights.
+        preflightRam()?.let { return Outcome.Refused(it) }
+        val totalBytes = files.sumOf { it.size }
+        preflightStorageMultiFile(totalBytes, tmpDir, files)?.let { return Outcome.Refused(it) }
+
+        tmpDir.mkdirs()
+        Log.i(
+            TAG,
+            "Starting MultiFile download (${files.size} files, $totalBytes bytes) to ${tmpDir.absolutePath}",
+        )
+
+        // 3. Per-file download → verify → atomic-rename inside tmpDir.
+        var committedBytes = 0L
+        for (f in files) {
+            val verifiedPath = File(tmpDir, f.path).apply { parentFile?.mkdirs() }
+            val partial = File(tmpDir, "${f.path}.partial").apply { parentFile?.mkdirs() }
+
+            // Skip-if-verified resume: a prior attempt may have already
+            // completed this file's atomic-rename. Re-verify the SHA-256
+            // before trusting it — Codex review (2026-05-25) flagged that
+            // length-only would let a catalog upgrade that changes a
+            // file's *content* at the same byte length (e.g. an upstream
+            // re-quant that produces a different bit pattern at the same
+            // size) reuse stale bytes and then stamp them with the NEW
+            // aggregate sentinel, silently shipping a broken install.
+            //
+            // Re-hash is bounded: only fires on re-entry after a cancel
+            // or process kill mid-download, the file is already on local
+            // disk, and the hash cost is sequential 64 KB reads (a
+            // single-digit-seconds scan of the 1 GB weight file on Thor).
+            // Cheaper than re-downloading on the common case (matching
+            // SHA → skip download); explicit safety net on the drift
+            // case (SHA mismatch → delete stale, fall through to fresh
+            // download below).
+            if (verifiedPath.exists() && verifiedPath.length() == f.size) {
+                val priorSha = computeSha256(verifiedPath)
+                if (priorSha.equals(f.sha256, ignoreCase = true)) {
+                    Log.i(TAG, "skip-if-verified: ${f.path} (${f.size} bytes, SHA matched)")
+                    committedBytes += f.size
+                    onProgress(Progress.Downloading(committedBytes, totalBytes))
+                    continue
+                }
+                Log.w(
+                    TAG,
+                    "skip-if-verified: ${f.path} stale (SHA drift vs catalog) — deleting and re-downloading",
+                )
+                if (!verifiedPath.delete()) {
+                    return Outcome.Failed(
+                        "Failed to delete stale staged file ${verifiedPath.absolutePath}",
+                    )
+                }
+            }
+
+            // Capture the "base" before this file's download so the
+            // running progress total accounts for already-committed files.
+            val baseCommitted = committedBytes
+            try {
+                httpDownloader.download(f.url, partial) { p ->
+                    onProgress(Progress.Downloading(baseCommitted + p.bytesReceived, totalBytes))
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                return Outcome.Cancelled
+            } catch (e: Exception) {
+                Log.w(TAG, "Download of ${f.path} interrupted: ${e.message}")
+                return Outcome.Failed(
+                    "Download of ${f.path} failed: ${e.message ?: e.javaClass.simpleName}",
+                    e,
+                )
+            }
+
+            coroutineContext.ensureActive()
+            onProgress(Progress.Verifying)
+            val actualSize = partial.length()
+            if (actualSize != f.size) {
+                partial.delete()
+                return Outcome.Failed(
+                    "MultiFile size mismatch on ${f.path} (got $actualSize, expected ${f.size})",
+                )
+            }
+            val actualSha = computeSha256(partial)
+            if (!actualSha.equals(f.sha256, ignoreCase = true)) {
+                partial.delete()
+                return Outcome.Failed(
+                    "MultiFile SHA-256 mismatch on ${f.path}",
+                )
+            }
+
+            // Atomic rename inside tmpDir. After this rename the file is
+            // "verified"; the skip-if-verified branch above trusts it on
+            // re-entry. Same atomic-rename properties as commitFileSwap —
+            // either succeeds atomically or leaves both paths untouched.
+            try {
+                Files.move(
+                    partial.toPath(),
+                    verifiedPath.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            } catch (e: Exception) {
+                return Outcome.Failed(
+                    "Failed to commit ${f.path} inside tmpDir: ${e.message ?: e.javaClass.simpleName}",
+                    e,
+                )
+            }
+            committedBytes += f.size
+            onProgress(Progress.Downloading(committedBytes, totalBytes))
+        }
+
+        // 4. Sentinel BEFORE safeSwap — same atomicity property the
+        // ZipExtract path documents at length above. The
+        // [MultiFileSha.aggregate] util is the single source of truth so
+        // the writer here and the reader (HyMtModel.isInstalled) can't
+        // drift.
+        val aggregate = MultiFileSha.aggregate(files)
+        try {
+            File(tmpDir, ".sentinel").writeText(aggregate)
+        } catch (e: Exception) {
+            return Outcome.Failed(
+                "Failed to write sentinel in ${tmpDir.absolutePath}: ${e.message ?: e.javaClass.simpleName}",
+                e,
+            )
+        }
+
+        // 5. safeSwap promotes tmpDir → finalDir. Deterministic
+        // cancellation pickup before the destructive op.
+        coroutineContext.ensureActive()
+        return try {
+            LanguagePackStore.safeSwap(tmpDir, finalDir)
+            Log.i(TAG, "MultiFile install succeeded: ${finalDir.absolutePath}")
+            Outcome.Success
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Same rationale as the ZipExtract path — rethrow so the
+            // intentional user-cancel doesn't get mapped to Outcome.Failed.
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to swap tmpDir to ${finalDir.absolutePath}", e)
+            Outcome.Failed(
+                "Failed to install to ${finalDir.absolutePath}: ${e.message ?: e.javaClass.simpleName}",
+                e,
+            )
+        }
+    }
+
+    /**
+     * Storage preflight for [CommitStrategy.MultiFile]. Each per-file
+     * `.partial` is atomic-renamed in place inside `tmpDir`, so the
+     * download peaks at ~1× the bundle size; no zip-extract expansion
+     * cost like [CommitStrategy.ZipExtract] has. [LanguagePackStore.safeSwap]
+     * uses [File.renameTo] in the happy path (metadata-only), so the
+     * upgrade swap window doesn't add disk pressure either — matches
+     * the headroom posture in [preflightStorage].
+     *
+     * Already-on-disk per-file partials (from a prior resumable download)
+     * are subtracted from the remaining-bytes-needed estimate.
+     */
+    private fun preflightStorageMultiFile(
+        totalBytes: Long,
+        tmpDir: File,
+        files: List<CatalogFile>,
+    ): String? {
+        val dir = context.noBackupFilesDir
+        val sf = StatFs(dir.absolutePath)
+        val free = sf.availableBytes
+        // Count bytes already on disk from prior attempts (per-file
+        // partials + verified-renamed siblings inside tmpDir).
+        val alreadyOnDisk = files.sumOf { f ->
+            val verified = File(tmpDir, f.path)
+            val partial = File(tmpDir, "${f.path}.partial")
+            when {
+                verified.exists() && verified.length() == f.size -> f.size
+                partial.exists() -> partial.length().coerceAtMost(f.size)
+                else -> 0L
+            }
+        }
+        val remaining = (totalBytes - alreadyOnDisk).coerceAtLeast(0L)
+        // 5% headroom + 100 MB minimum on remaining bytes.
+        val needed = (remaining * 105 / 100).coerceAtLeast(remaining + 100_000_000L)
+        if (free < needed) {
+            return "Need ${humanSize(needed)} free, only ${humanSize(free)} available"
+        }
+        return null
+    }
+
+    /**
      * Delete any partial file *and* any orphan extract directory. Use on
      * explicit user cancel (not on transient failure). File-mode helpers
      * only have a `.partial`; directory-mode helpers also have a `.tmp/`
@@ -372,5 +643,10 @@ class OnDeviceLlmDownloader(
 
     companion object {
         private const val TAG = "OnDeviceLlmDownloader"
+
+        /** Hex SHA-256 = exactly 64 hexits, case-insensitive. Shared between
+         *  [runMultiFile] (per-file validation) and
+         *  `HyMtModel.hasShippableCatalogEntry` (catalog visibility gate). */
+        val SHA_HEX_REGEX = Regex("^[a-fA-F0-9]{64}$")
     }
 }

@@ -164,6 +164,7 @@ class SettingsBottomSheet : DialogFragment() {
         renderer?.refreshLingvaBackendSwitch()
         renderer?.refreshQwenMnnSwitch()
         renderer?.refreshGemmaE2bSwitch()
+        renderer?.refreshHyMtSwitch()
         // LLM config changes (key / model / base URL) made while we were
         // paused don't necessarily flip *_enabled, but they DO change the
         // output any given input maps to — and reconcileBackendPreference
@@ -250,6 +251,12 @@ class SettingsBottomSheet : DialogFragment() {
                     com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
                     maybeUnloadIdleEngines(ctx)
                 }
+                Prefs.KEY_HYMT_ENABLED -> {
+                    renderer?.refreshHyMtSwitch()
+                    renderer?.refreshAllBackendStatuses()
+                    com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
+                    maybeUnloadIdleEngines(ctx)
+                }
             }
         }
         sp.registerOnSharedPreferenceChangeListener(prefsListener)
@@ -258,9 +265,10 @@ class SettingsBottomSheet : DialogFragment() {
     /**
      * Drop the loaded MNN model when every on-device LLM backend toggle is
      * off, freeing the working set so the OS can reclaim that RAM. Since
-     * `:mnn` serves both Qwen-MNN and Gemma E2B (live-mode and manual-lookup
-     * tiers), we only unload when both tiers are disabled — otherwise we'd
-     * defeat the point of caching the currently-active model mid-session.
+     * `:mnn` serves Qwen-MNN, Gemma E2B, and Hunyuan-MT (live-mode, manual-
+     * lookup, and translation-specialist tiers), we only unload when ALL
+     * three are disabled — otherwise we'd defeat the point of caching the
+     * currently-active model mid-session.
      *
      * unloadModel is mutex-serialized inside the translator singleton so it
      * can't race an in-flight translation that started right before the
@@ -268,7 +276,7 @@ class SettingsBottomSheet : DialogFragment() {
      */
     private fun maybeUnloadIdleEngines(ctx: Context) {
         val prefs = Prefs(ctx)
-        if (!prefs.qwenMnnEnabled && !prefs.gemmaE2bEnabled) {
+        if (!prefs.qwenMnnEnabled && !prefs.gemmaE2bEnabled && !prefs.hyMtEnabled) {
             viewLifecycleOwner.lifecycleScope.launch {
                 com.playtranslate.translation.mnn.MnnTranslator
                     .getInstance(ctx).unloadModel()

@@ -114,4 +114,115 @@ class LanguagePackCatalogTest {
         assertEquals("https://example.com/zh.zip", zh.url)
         assertEquals("abc123", zh.sha256)
     }
+
+    @Test fun `MultiFile entry parses files array round-trip`() {
+        // MultiFile entries (e.g. the HyMt backend pointing at wangjazz's
+        // individual HF files) replace top-level url/sha256 with a `files`
+        // list. Verify each per-file field round-trips through Gson.
+        val json = """
+            {
+              "catalogVersion": 1,
+              "packs": {
+                "engine-hymt-test": {
+                  "display": "HyMt test",
+                  "type": "engine",
+                  "script": "",
+                  "bundled": false,
+                  "packVersion": 1,
+                  "size": 1100,
+                  "files": [
+                    {
+                      "path": "config.json",
+                      "url": "https://huggingface.co/example/repo/resolve/main/config.json",
+                      "size": 100,
+                      "sha256": "${"a".repeat(64)}"
+                    },
+                    {
+                      "path": "llm.mnn",
+                      "url": "https://huggingface.co/example/repo/resolve/main/llm.mnn",
+                      "size": 1000,
+                      "sha256": "${"b".repeat(64)}"
+                    }
+                  ]
+                }
+              }
+            }
+        """.trimIndent()
+
+        val catalog = gson.fromJson(json, LanguagePackCatalog::class.java)
+        val entry = catalog.packs["engine-hymt-test"]!!
+        assertNull(entry.url)
+        assertNull(entry.sha256)
+        val files = entry.files!!
+        assertEquals(2, files.size)
+        assertEquals("config.json", files[0].path)
+        assertEquals(100L, files[0].size)
+        assertEquals("a".repeat(64), files[0].sha256)
+        assertTrue(files[0].url.startsWith("https://"))
+        assertEquals("llm.mnn", files[1].path)
+        assertEquals(1000L, files[1].size)
+    }
+
+    @Test fun `absent files field is null — backward compat with legacy entries`() {
+        // Existing Qwen-MNN / Gemma-E2B entries don't set `files`. Verify
+        // the schema extension doesn't break legacy parsing.
+        val json = """
+            {
+              "catalogVersion": 1,
+              "packs": {
+                "legacy-zip": {
+                  "display": "Legacy zip",
+                  "script": "",
+                  "bundled": false,
+                  "packVersion": 1,
+                  "size": 100,
+                  "url": "https://example.com/x.zip",
+                  "sha256": "${"c".repeat(64)}",
+                  "extract": true
+                }
+              }
+            }
+        """.trimIndent()
+        val catalog = gson.fromJson(json, LanguagePackCatalog::class.java)
+        val entry = catalog.packs["legacy-zip"]!!
+        assertNull(entry.files)
+        assertEquals("https://example.com/x.zip", entry.url)
+        assertEquals(true, entry.extract)
+    }
+
+    @Test fun `parser accepts both files and url — downstream validator rejects the combo`() {
+        // Gson is happy with both fields populated; the
+        // hasShippableCatalogEntry() validator on the model-helper side
+        // is what rejects the combo to surface the misconfig as
+        // "row hidden" rather than silent acceptance.
+        val json = """
+            {
+              "catalogVersion": 1,
+              "packs": {
+                "combo": {
+                  "display": "Combo",
+                  "script": "",
+                  "bundled": false,
+                  "packVersion": 1,
+                  "size": 100,
+                  "url": "https://example.com/x.zip",
+                  "sha256": "${"d".repeat(64)}",
+                  "files": [
+                    {
+                      "path": "a.bin",
+                      "url": "https://example.com/a.bin",
+                      "size": 100,
+                      "sha256": "${"e".repeat(64)}"
+                    }
+                  ]
+                }
+              }
+            }
+        """.trimIndent()
+        val catalog = gson.fromJson(json, LanguagePackCatalog::class.java)
+        val entry = catalog.packs["combo"]!!
+        assertNotNull(entry.url)
+        assertNotNull(entry.files)
+        // Both fields survive parsing; the runtime validator (not Gson) gates.
+    }
 }

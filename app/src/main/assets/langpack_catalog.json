@@ -56,15 +56,44 @@
       "bundled": false,
       "packVersion": 1,
       "additiveFromVersion": 1,
-      "extract": true,
-      "size": 0,
-      "url": "https://huggingface.co/playtranslate/hunyuan-mt1-5-1-8b-mnn/resolve/main/hunyuan-mt1-5-1-8b-mnn.zip",
-      "sha256": "TBD-REZIP-WANGJAZZ-BUNDLE-AND-FILL-IN-BEFORE-SHIP",
+      "size": 1010470397,
+      "files": [
+        {
+          "path": "config.json",
+          "url": "https://huggingface.co/wangjazz/Hunyuan-MT1.5-1.8B-MNN/resolve/main/config.json",
+          "size": 210,
+          "sha256": "c4bd25dbbc950feffccc3b154d634fdfbce96fbed453dd738bda4abfc763b73a"
+        },
+        {
+          "path": "llm.mnn",
+          "url": "https://huggingface.co/wangjazz/Hunyuan-MT1.5-1.8B-MNN/resolve/main/llm.mnn",
+          "size": 575704,
+          "sha256": "b66f4f64caf6907084b26ee4eef48261261cb9af3f3799f50a3a9b2afd42ea04"
+        },
+        {
+          "path": "llm.mnn.weight",
+          "url": "https://huggingface.co/wangjazz/Hunyuan-MT1.5-1.8B-MNN/resolve/main/llm.mnn.weight",
+          "size": 1008538714,
+          "sha256": "e580b0e95da5a0c4612295ac22c977d78b7d3ba64ac253e072b4ceb986e905a4"
+        },
+        {
+          "path": "tokenizer.txt",
+          "url": "https://huggingface.co/wangjazz/Hunyuan-MT1.5-1.8B-MNN/resolve/main/tokenizer.txt",
+          "size": 1354726,
+          "sha256": "4a5b5be3a5d172341df2d118c916401be1faca99d20fe3a160d65a0f828aee5e"
+        },
+        {
+          "path": "llm_config.json",
+          "url": "https://huggingface.co/wangjazz/Hunyuan-MT1.5-1.8B-MNN/resolve/main/llm_config.json",
+          "size": 1043,
+          "sha256": "fe8e28d90da5246d6f78db62182ee410d1c7f83446c55ca43b106d7a714a889b"
+        }
+      ],
       "licenses": [
         {
           "component": "Hunyuan-MT 1.5 1.8B (MNN format)",
           "license": "Tencent HY Community License",
-          "attribution": "© Tencent. Use, distribution, and outputs are governed by the Tencent HY Community License Agreement (https://huggingface.co/tencent/HY-MT1.5-1.8B/blob/main/License.txt). Use is restricted to outside the European Union, United Kingdom, and South Korea (license §1(l), §5(c)). MNN quantization re-packaged from @wangjazz (https://huggingface.co/wangjazz/Hunyuan-MT1.5-1.8B-MNN)."
+          "attribution": "© Tencent. Use, distribution, and outputs are governed by the Tencent HY Community License Agreement (https://huggingface.co/tencent/HY-MT1.5-1.8B/blob/main/License.txt). Use is restricted to outside the European Union, United Kingdom, and South Korea (license §1(l), §5(c)). MNN quantization by @wangjazz (https://huggingface.co/wangjazz/Hunyuan-MT1.5-1.8B-MNN); we fetch each file directly from that repo at the user's request — no re-host."
         },
         {
           "component": "MNN runtime (libMNN.so / libllm.so / libMNN_Express.so)",

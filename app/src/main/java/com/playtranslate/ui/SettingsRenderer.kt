@@ -1668,23 +1668,11 @@ class SettingsRenderer(
      *      must call refreshHyMtSwitch() to revert the optimistic flip. */
     private fun wireHyMtBackendRow() {
         // Region gate: hide the row + its preceding divider in restricted
-        // regions, before touching anything else. This is the first-line
-        // license-compliance gate; the legal-attestation dialog in the
-        // bottom sheet is the second-line gate for cases where region
-        // signals don't catch it (default-open).
+        // regions, before touching anything else. License-compliance gate
+        // — the legal-attestation dialog in the bottom sheet is the
+        // second-line gate for cases where region signals don't catch it
+        // (default-open).
         if (com.playtranslate.region.RegionPolicy.isHunyuanRestricted(ctx)) {
-            rowBackendHyMt.visibility = View.GONE
-            dividerBackendHyMt.visibility = View.GONE
-            return
-        }
-        // Catalog metadata gate: hide the row when size/sha256 are still
-        // placeholders (the model hasn't been built/uploaded yet). Without
-        // this, a user could accept the legal dialog and start a download
-        // that the OnDeviceLlmDownloader would inevitably reject at the
-        // length-vs-size or sha256 verify step. Self-disabling row that
-        // appears automatically once the catalog has real values. Codex
-        // review 2026-05-24.
-        if (!com.playtranslate.translation.hymt.HyMtModel.hasShippableCatalogEntry(ctx)) {
             rowBackendHyMt.visibility = View.GONE
             dividerBackendHyMt.visibility = View.GONE
             return

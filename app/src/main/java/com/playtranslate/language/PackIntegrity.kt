@@ -44,7 +44,7 @@ object PackIntegrity {
                 val entry = zis.nextEntry ?: break
                 try {
                     val out = File(targetDir, entry.name)
-                    if (!out.canonicalPath.startsWith(targetDir.canonicalPath + File.separator)) continue
+                    if (!isInside(targetDir, out)) continue
                     if (entry.isDirectory) {
                         out.mkdirs()
                     } else {
@@ -56,5 +56,25 @@ object PackIntegrity {
                 }
             }
         }
+    }
+
+    /**
+     * `true` iff [candidate]'s canonical path lies strictly under
+     * [targetDir]'s canonical path. Battle-tested path-traversal defense
+     * used by both [extractZip] (per zip entry) and the MultiFile
+     * downloader strategy (per catalog file path). Resolves `..` and
+     * symlinks via [java.io.File.getCanonicalPath]; rejects absolute
+     * paths because `File("/anchor", "/etc/passwd")` returns
+     * `/etc/passwd`, whose canonical form will not start with the
+     * target's canonical prefix.
+     *
+     * Returns `false` on IOException during canonicalization (extremely
+     * unlikely on a noBackupFilesDir path, but the conservative answer
+     * is "not inside" — better to skip than to write somewhere unsafe).
+     */
+    fun isInside(targetDir: File, candidate: File): Boolean = try {
+        candidate.canonicalPath.startsWith(targetDir.canonicalPath + File.separator)
+    } catch (e: java.io.IOException) {
+        false
     }
 }
