@@ -300,13 +300,17 @@ class MediaProjectionController(private val service: CaptureService) {
     /** The projection is gone — stopped by the system or the user (a revoke /
      *  sleep teardown), or [getMediaProjection] failed to turn a held consent
      *  token into a session. Not our own [destroy]. Tear the session down,
-     *  drop the now-ungated floating controls, and refresh the QS tile so the
-     *  UI catches up with the lost consent. Always invoked on the main thread
-     *  (the projection callback posts to [mainHandler]; the failure path is the
-     *  capture path), so the main-thread-only reconcile is safe. */
+     *  drop every overlay this backend owns (a drag/lookup in flight at the
+     *  moment of loss can otherwise leave the magnifier lens, region
+     *  indicator, translation boxes, or floating menu orphaned on screen —
+     *  reconcileFloatingIcons only knew about the floating icon), and refresh
+     *  the QS tile so the UI catches up with the lost consent. Always
+     *  invoked on the main thread (the projection callback posts to
+     *  [mainHandler]; the failure path is the capture path), so the
+     *  main-thread-only hideAll is safe. */
     private fun onProjectionLost() {
         teardown()
-        CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
+        CaptureBackendResolver.activeOverlayUi?.hideAll()
         PlayTranslateTileService.TileSync.refresh(service.applicationContext)
     }
 

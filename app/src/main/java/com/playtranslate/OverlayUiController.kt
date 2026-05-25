@@ -1442,12 +1442,28 @@ class OverlayUiController(
         context.createDisplayContext(display).displaySizePx()
 
     /** Hide every overlay this controller owns, keeping the controller
-     *  reusable (scope intact). Used when the active backend is swapped. */
+     *  reusable (scope intact). Used when the active backend is swapped
+     *  and from [com.playtranslate.capture.MediaProjectionController.onProjectionLost]
+     *  on screen-record revoke / system-stop.
+     *
+     *  The structured per-feature teardown runs first so per-overlay
+     *  state (iconHandles, region/menu/popup refs) stays coherent and
+     *  callbacks fire — then [OverlayHost.removeAll] sweeps every
+     *  remaining tracked window as a backstop. Any overlay that was
+     *  registered through [overlayHost] but missed by the structured
+     *  chain (in-flight popup that hasn't reached its destroy listener,
+     *  a sibling lookalike opened on a different code path, etc.) goes
+     *  with that sweep. Without the sweep, a fragment can survive a
+     *  projection-loss event when the user was mid-interaction with
+     *  the magnifier / popup / a menu the structured destroy chain
+     *  hadn't reached yet. */
     fun hideAll() {
         hideTranslationOverlay()
         regionController.hideAll()
         dismissFloatingMenu()
         hideFloatingIcon("hideAll")
+        overlayHost.removeAll()
+        Log.i(TAG, "hideAll: structured teardown + overlayHost.removeAll() sweep done")
     }
 
     /** Full teardown — [hideAll] plus scope/handler cancellation. For host
