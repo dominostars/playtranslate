@@ -7,6 +7,7 @@ import android.os.Bundle
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.diagnostics.CrashHandler
 import android.content.Context
+import com.playtranslate.region.RegionPolicy
 import com.playtranslate.translation.CooldownState
 import com.playtranslate.translation.DeepLBackend
 import com.playtranslate.translation.GemmaE2BMnnBackend
@@ -115,7 +116,15 @@ class PlayTranslateApplication : Application() {
                 ),
                 HyMtBackend(
                     context         = this,
-                    enabledProvider = { Prefs(this).hyMtEnabled },
+                    // AND-gate the region check at runtime, not just in the
+                    // Settings UI: a restored backup, a region change after
+                    // install, or any path that leaves hyMtEnabled=true in a
+                    // restricted region would otherwise let the waterfall
+                    // run Hunyuan against the HY Community License.
+                    enabledProvider = {
+                        Prefs(this).hyMtEnabled &&
+                            !RegionPolicy.isHunyuanRestricted(this)
+                    },
                 ),
                 QwenMnnBackend(
                     context         = this,
