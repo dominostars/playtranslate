@@ -24,8 +24,8 @@ class MlKitBackend : TranslationBackend {
     override val priority: Int = 30
     override val requiresInternet: Boolean = false
     override val isDegradedFallback: Boolean = true
-    override val quality: BackendQuality = BackendQuality.Bad
-    override val speed: BackendSpeed = BackendSpeed.Fast
+    override val qualityStars: StarRating = 1.0f
+    override val speedStars: StarRating = 5.0f
 
     override val status: BackendStatus = BackendStatus.Info("Bundled with the app, used as a fallback")
 

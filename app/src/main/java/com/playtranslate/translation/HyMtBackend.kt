@@ -49,8 +49,8 @@ class HyMtBackend(
     override val id: BackendId = "hymt_mnn"
     override val displayName: String = context.getString(R.string.hymt_display_name)
     override val priority: Int = PRIORITY
-    override val quality: BackendQuality = BackendQuality.Good
-    override val speed: BackendSpeed = BackendSpeed.Slow
+    override val qualityStars: StarRating = 3.5f
+    override val speedStars: StarRating = 3.0f
     override val modelHelper = HyMtModel
     override val promptStyle = PromptStyle.HyMtChat
 

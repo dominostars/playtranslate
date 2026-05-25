@@ -42,8 +42,8 @@ class GemmaE2BMnnBackend(
     override val id: BackendId = "gemma_e2b_mnn"
     override val displayName: String = context.getString(R.string.gemma_e2b_mnn_display_name)
     override val priority: Int = PRIORITY
-    override val quality: BackendQuality = BackendQuality.Better
-    override val speed: BackendSpeed = BackendSpeed.Slow
+    override val qualityStars: StarRating = 4.0f
+    override val speedStars: StarRating = 2.0f
     override val modelHelper = GemmaE2BMnnModel
     override val promptStyle = PromptStyle.Gemma4Chat
 

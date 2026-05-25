@@ -81,7 +81,7 @@ class OpenAiBackend(
 
     override val requiresInternet: Boolean = true
     override val isDegradedFallback: Boolean = false
-    override val quality: BackendQuality = BackendQuality.Better
+    override val qualityStars: StarRating = 4.5f
 
     private val gson = Gson()
 

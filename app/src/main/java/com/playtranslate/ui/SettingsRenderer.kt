@@ -53,10 +53,9 @@ import com.playtranslate.blendColors
 import com.playtranslate.compositeOver
 import com.playtranslate.themeColor
 import com.playtranslate.translation.BackendId
-import com.playtranslate.translation.BackendQuality
-import com.playtranslate.translation.BackendSpeed
 import com.playtranslate.translation.BackendStatus
 import com.playtranslate.translation.Cooldownable
+import com.playtranslate.translation.StarRating
 import com.playtranslate.translation.Tone
 import com.playtranslate.translation.TranslationBackend
 import com.playtranslate.translation.TranslationBackendRegistry
@@ -1361,31 +1360,135 @@ class SettingsRenderer(
         val tv = row.findViewById<TextView>(R.id.tvRowSubtitle)
         if (backend.requiresInternet) {
             tv.visibility = View.GONE
+            tv.contentDescription = null
             return
         }
         val builder = SpannableStringBuilder()
 
-        val (qualityText, qualityTone) = when (backend.quality) {
-            BackendQuality.Bad    -> ctx.getString(R.string.tr_service_quality_bad)    to Tone.Danger
-            BackendQuality.Okay   -> ctx.getString(R.string.tr_service_quality_okay)   to null
-            BackendQuality.Good   -> ctx.getString(R.string.tr_service_quality_good)   to null
-            BackendQuality.Better -> ctx.getString(R.string.tr_service_quality_better) to null
-        }
-        appendMaybeColored(builder, qualityText, qualityTone)
+        // Quality: <stars>
+        appendLabelAndStars(
+            builder = builder,
+            label = "Quality: ",
+            rating = backend.qualityStars,
+            tone = qualityTone(backend.qualityStars),
+        )
 
-        backend.speed?.let { speed ->
+        // · Speed: <stars> (when the backend supplies a speed rating)
+        backend.speedStars?.let { speed ->
             builder.append(" · ")
-            val (speedText, speedTone) = when (speed) {
-                BackendSpeed.VerySlow -> ctx.getString(R.string.tr_service_speed_very_slow) to Tone.Danger
-                BackendSpeed.Slow     -> ctx.getString(R.string.tr_service_speed_slow)      to Tone.Warning
-                BackendSpeed.Okay     -> ctx.getString(R.string.tr_service_speed_okay)      to null
-                BackendSpeed.Fast     -> ctx.getString(R.string.tr_service_speed_fast)      to null
-            }
-            appendMaybeColored(builder, speedText, speedTone)
+            appendLabelAndStars(
+                builder = builder,
+                label = "Speed: ",
+                rating = speed,
+                tone = speedTone(speed),
+            )
         }
 
         tv.text = builder
+        // Accessibility — the visible text is mostly ImageSpans over
+        // single space characters, so TalkBack would only announce
+        // "Quality: Speed:" without the actual ratings. The
+        // contentDescription overrides that with a parallel readable
+        // form like "Quality 4 out of 5 stars, Speed 2 out of 5 stars".
+        tv.contentDescription = buildString {
+            append("Quality ")
+            append(formatStars(backend.qualityStars))
+            append(" out of 5 stars")
+            backend.speedStars?.let { speed ->
+                append(", Speed ")
+                append(formatStars(speed))
+                append(" out of 5 stars")
+            }
+        }
         tv.visibility = View.VISIBLE
+    }
+
+    /** Half-step star formatter for accessibility text:
+     *  4.0 → "4", 3.5 → "3.5", 0.0 → "0". Rounds to the nearest 0.5
+     *  to match how the visible stars are drawn. */
+    private fun formatStars(rating: StarRating): String {
+        val halfSteps = (rating * 2f).toInt().coerceIn(0, 10)
+        val whole = halfSteps / 2
+        val hasHalf = (halfSteps % 2) != 0
+        return if (hasHalf) "$whole.5" else whole.toString()
+    }
+
+    /** Quality is read as alarming only when truly unusable. Matches
+     *  the previous enum mapping (`Bad → Danger`, everything else
+     *  default-tinted). */
+    private fun qualityTone(stars: StarRating): Tone? = when {
+        stars <= 1.0f -> Tone.Danger
+        else -> null
+    }
+
+    /** Speed tones preserve the prior enum buckets:
+     *  VerySlow (≈0.5 stars) → Danger, Slow (≈2 stars) → Warning,
+     *  Okay/Fast (≥3 stars) → default. */
+    private fun speedTone(stars: StarRating): Tone? = when {
+        stars <= 0.5f -> Tone.Danger
+        stars <= 2.0f -> Tone.Warning
+        else -> null
+    }
+
+    /** Append "$label$stars" to [builder], tinted by [tone]. The label
+     *  text gets the same color as the stars so the whole segment reads
+     *  as one tinted unit. */
+    private fun appendLabelAndStars(
+        builder: SpannableStringBuilder,
+        label: String,
+        rating: StarRating,
+        tone: Tone?,
+    ) {
+        val color: Int? = tone?.let { ctx.themeColor(toneAttr(it)) }
+        val segStart = builder.length
+        builder.append(label)
+        appendStars(builder, rating, color)
+        if (color != null) {
+            // Cover the whole "Quality: ★★★☆☆" run so the label text
+            // matches the (tinted) stars. ImageSpan handles its own
+            // tint, the ForegroundColorSpan covers the text portion.
+            builder.setSpan(
+                ForegroundColorSpan(color),
+                segStart,
+                builder.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
+    }
+
+    /** Append five star ImageSpans (filled / half / outlined) for
+     *  [rating] clamped to 0-5. [color] tints all five drawables when
+     *  non-null; otherwise the vector's default fillColor (white) is
+     *  recolored to the row's muted subtitle attr so it doesn't appear
+     *  jarringly white on dark themes. */
+    private fun appendStars(
+        builder: SpannableStringBuilder,
+        rating: StarRating,
+        color: Int?,
+    ) {
+        val halfStars = (rating * 2f).toInt().coerceIn(0, 10)
+        val starSizePx = (14 * ctx.resources.displayMetrics.density).toInt()
+        val tintColor = color ?: ctx.themeColor(R.attr.ptTextMuted)
+        for (i in 0 until 5) {
+            val starStart = i * 2
+            val resId = when {
+                halfStars >= starStart + 2 -> R.drawable.ic_star_filled
+                halfStars >= starStart + 1 -> R.drawable.ic_star_half
+                else -> R.drawable.ic_star_outline
+            }
+            val drawable = androidx.appcompat.content.res.AppCompatResources
+                .getDrawable(ctx, resId)?.mutate() ?: continue
+            androidx.core.graphics.drawable.DrawableCompat.setTint(drawable, tintColor)
+            drawable.setBounds(0, 0, starSizePx, starSizePx)
+            val pos = builder.length
+            builder.append(" ")
+            builder.setSpan(
+                android.text.style.ImageSpan(drawable, android.text.style.ImageSpan.ALIGN_BASELINE),
+                pos,
+                pos + 1,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
     }
 
     private fun appendMaybeColored(
