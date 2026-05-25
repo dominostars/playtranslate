@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicReference
  */
 class DeepLBackendStatusTest {
 
-    @Test fun `status reports NoKey warning when keyProvider returns null`() {
+    @Test fun `status reports NoKey neutral when keyProvider returns null`() {
         val backend = DeepLBackend(
             keyProvider     = { null },
             enabledProvider = { true },
@@ -32,10 +32,13 @@ class DeepLBackendStatusTest {
         assertTrue("expected Info, got $s", s is BackendStatus.Info)
         s as BackendStatus.Info
         assertEquals("API Key Required (Free option)", s.text)
-        assertEquals(Tone.Warning, s.tone)
+        // Production reads the "missing key" state as configuration, not
+        // alarm — Tone.Neutral keeps the row visually quiet next to
+        // already-configured backends. Was Tone.Warning historically.
+        assertEquals(Tone.Neutral, s.tone)
     }
 
-    @Test fun `status reports NoKey warning when key is blank`() {
+    @Test fun `status reports NoKey neutral when key is blank`() {
         val backend = DeepLBackend(
             keyProvider     = { "   " },
             enabledProvider = { true },
@@ -44,7 +47,7 @@ class DeepLBackendStatusTest {
         val s = backend.status
         assertTrue(s is BackendStatus.Info)
         assertEquals("API Key Required (Free option)", (s as BackendStatus.Info).text)
-        assertEquals(Tone.Warning, s.tone)
+        assertEquals(Tone.Neutral, s.tone)
     }
 
     @Test fun `status surfaces cached usage even when toggle is off`() = runBlocking {

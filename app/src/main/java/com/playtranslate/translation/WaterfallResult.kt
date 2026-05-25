@@ -16,6 +16,13 @@ package com.playtranslate.translation
  * the result so the next call can re-attempt the preferred LLM once
  * memory pressure relaxes; without this, a low-quality fallback output
  * outlasts the pressure window.
+ *
+ * Online-backend cooldowns (rate-limit / billing / quota) don't need
+ * an analogous per-result flag — the cache invalidates naturally
+ * because [TranslationBackendRegistry.preferredOnlineId] excludes
+ * cooled-down backends, so the cache's preferred-backend reconcile
+ * step (see [com.playtranslate.TranslationCache.reconcilePreferredBackend])
+ * drops the old entries whenever a cooldown is entered or exited.
  */
 data class WaterfallResult(
     val text: String,

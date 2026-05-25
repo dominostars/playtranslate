@@ -56,6 +56,7 @@ import com.playtranslate.translation.BackendId
 import com.playtranslate.translation.BackendQuality
 import com.playtranslate.translation.BackendSpeed
 import com.playtranslate.translation.BackendStatus
+import com.playtranslate.translation.Cooldownable
 import com.playtranslate.translation.Tone
 import com.playtranslate.translation.TranslationBackend
 import com.playtranslate.translation.TranslationBackendRegistry
@@ -1514,10 +1515,12 @@ class SettingsRenderer(
         for (backend in TranslationBackendRegistry.orderedBackends()) {
             val row = backendRowById(backend.id) ?: continue
             renderBackendStatusLine(row, backend.status)
+            renderBackendCooldownLine(row, backend)
             backendRefreshJobs[backend.id]?.cancel()
             backendRefreshJobs[backend.id] = lifecycleScope.launch {
                 val fresh = backend.refreshStatus()
                 renderBackendStatusLine(row, fresh)
+                renderBackendCooldownLine(row, backend)
             }
         }
     }
@@ -1565,6 +1568,73 @@ class SettingsRenderer(
                 tv.visibility = View.VISIBLE
             }
         }
+    }
+
+    /**
+     * Render (or hide) the cooldown line below the existing status line.
+     * Drives both the per-row text content and the warning-tinted row
+     * background — when [backend] implements [Cooldownable] and reports
+     * a future `retryAt`, we surface a third subtitle line with a
+     * relative-or-absolute time hint and tint the row to mirror the
+     * existing "Update language packs" warning recipe.
+     *
+     * Called from [refreshAllBackendStatuses] both synchronously and
+     * after the async `refreshStatus()` completes, so the row picks up
+     * cooldown expiry (`unavailableUntil` returning null after the time
+     * passes) the next time Settings opens or refreshes.
+     */
+    private fun renderBackendCooldownLine(row: View, backend: TranslationBackend) {
+        val tv = row.findViewById<TextView>(R.id.tvRowSubtitle3) ?: return
+        val cooldownable = backend as? Cooldownable
+        val until = cooldownable?.unavailableUntil()
+        if (until == null) {
+            tv.visibility = View.GONE
+            clearRowWarningTint(row)
+            return
+        }
+        val description = cooldownable.unavailableDescription() ?: "Unavailable"
+        tv.text = formatCooldownLine(description, until)
+        applyTone(tv, Tone.Warning)
+        applyItalic(tv, false)
+        tv.visibility = View.VISIBLE
+        applyRowWarningTint(row)
+    }
+
+    /** "Rate limited · Retry at 3:42 PM" for short cooldowns;
+     *  "Monthly quota used · Retry on Jun 1" for ones more than ~24h
+     *  out. Time uses the user's locale TimeFormat; date uses a fixed
+     *  "MMM d" so the line stays readable. */
+    private fun formatCooldownLine(description: String, retryAt: Long): String {
+        val now = System.currentTimeMillis()
+        val withinDay = retryAt - now < 24L * 60 * 60 * 1000
+        val formatted = if (withinDay) {
+            android.text.format.DateFormat.getTimeFormat(ctx).format(Date(retryAt))
+        } else {
+            SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(retryAt))
+        }
+        val word = if (withinDay) "Retry at" else "Retry on"
+        return "$description · $word $formatted"
+    }
+
+    private fun applyRowWarningTint(row: View) {
+        val baseCard = ctx.themeColor(R.attr.ptCard)
+        val warning = ctx.themeColor(R.attr.ptWarning)
+        val density = ctx.resources.displayMetrics.density
+        // GradientDrawable here (rather than the MaterialCardView recipe
+        // used by applyUpdatePacksWarningTint) because the row is a
+        // LinearLayout inside an already-rounded card — applying card
+        // properties would target the wrong View. Foreground stays as
+        // selectableItemBackground (XML default) so the ripple still
+        // works over the tinted fill.
+        row.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(blendColors(warning, baseCard, 0.20f))
+            setStroke((1 * density).toInt(), warning)
+        }
+    }
+
+    private fun clearRowWarningTint(row: View) {
+        row.background = null
     }
 
     private fun applyTone(tv: TextView, tone: Tone) {

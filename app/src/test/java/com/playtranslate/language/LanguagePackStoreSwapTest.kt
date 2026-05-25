@@ -78,19 +78,33 @@ class LanguagePackStoreSwapTest {
 
     // ── Rollback on failure ──────────────────────────────────────────────
 
-    @Test fun `old pack preserved when tmpDir is empty`() {
+    @Test fun `safeSwap refuses to promote an empty tmpDir and preserves the old pack`() {
         val tmpDir = dir("tmp")
         val finalDir = dir("final")
         tmpDir.mkdirs() // empty — no files to copy
         createPack(finalDir, "old-data")
 
-        // safeSwap should succeed (rename works for empty dir) but old data
-        // should be gone since the swap completed. This test verifies the
-        // backup-then-promote flow doesn't corrupt an empty new pack.
-        LanguagePackStore.safeSwap(tmpDir, finalDir)
+        // Post-2026-05-22 hardening (Codex adversarial review): safeSwap
+        // throws on an empty source rather than silently promoting an
+        // empty dir over the previous good install. The existing pack
+        // must survive untouched.
+        try {
+            LanguagePackStore.safeSwap(tmpDir, finalDir)
+            fail("expected IllegalStateException for empty tmpDir")
+        } catch (e: IllegalStateException) {
+            assertTrue(
+                "expected 'empty; refusing to promote' message, got: ${e.message}",
+                e.message?.contains("empty") == true,
+            )
+        }
 
-        assertTrue(finalDir.exists())
-        assertFalse(dir("final.old").exists())
+        assertTrue("finalDir should still exist", finalDir.exists())
+        assertEquals(
+            "old pack data must be untouched",
+            "old-data",
+            File(finalDir, "dict.sqlite").readText(),
+        )
+        assertFalse("no backup should be left behind", dir("final.old").exists())
     }
 
     @Test fun `swap preserves all files in multi-file pack`() {

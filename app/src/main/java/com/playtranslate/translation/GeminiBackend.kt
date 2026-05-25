@@ -45,8 +45,9 @@ class GeminiBackend(
     private val enabledProvider: () -> Boolean,
     private val modelProvider: () -> String,
     private val usageTracker: UsageTracker,
+    private val cooldownState: CooldownState,
     private val client: OkHttpClient = defaultClient(),
-) : TranslationBackend, BatchTranslator, ModelLister, KeyValidator {
+) : TranslationBackend, BatchTranslator, ModelLister, KeyValidator, Cooldownable {
 
     override val id: BackendId = "gemini"
     override val displayName: String = "Gemini"
@@ -71,11 +72,36 @@ class GeminiBackend(
             }
         }
 
+    override fun unavailableUntil(): Long? {
+        clearCooldownIfCredentialsChanged()
+        return cooldownState.unavailableUntil()
+    }
+    override fun unavailableDescription(): String? = cooldownState.unavailableDescription()
+    override fun recordSuccess(attemptStartedAtMs: Long) =
+        cooldownState.recordSuccess(attemptStartedAtMs)
+
+    /** Last-seen `(key | model)` fingerprint. When it changes, any
+     *  persisted cooldown (e.g. a daily-quota or insufficient_quota
+     *  Retry-At days from now) is cleared because it belonged to the
+     *  prior credentials — the new key/model could be perfectly
+     *  healthy and shouldn't be skipped by the waterfall. */
+    @Volatile private var lastCredentialsFingerprint: String? = null
+
+    private fun clearCooldownIfCredentialsChanged() {
+        val current = "${keyProvider() ?: ""}|${modelProvider()}"
+        val prev = lastCredentialsFingerprint
+        lastCredentialsFingerprint = current
+        if (prev != null && prev != current) {
+            cooldownState.recordSuccess(System.currentTimeMillis())
+        }
+    }
+
     override fun isUsable(source: String, target: String): Boolean =
         enabledProvider() && !keyProvider().isNullOrBlank()
 
     override suspend fun translate(text: String, source: String, target: String): String =
         withContext(Dispatchers.IO) {
+            clearCooldownIfCredentialsChanged()
             val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
                 ?: throw IOException("Gemini API key not configured")
             val model = modelProvider()
@@ -106,44 +132,61 @@ class GeminiBackend(
                 .post(bodyJson.toRequestBody("application/json".toMediaType()))
                 .build()
 
-            client.newCall(request).execute().use { response ->
-                val bodyStr = response.body?.string() ?: ""
-                when (response.code) {
-                    400 -> {
-                        // Gemini reports invalid keys as 400 with
-                        // `error.status = "INVALID_ARGUMENT"` and a message
-                        // containing "API key not valid" — disambiguate from
-                        // other 400s (bad model id, malformed body).
-                        if (bodyStr.contains("API_KEY_INVALID") ||
-                            bodyStr.contains("API key not valid")) {
-                            throw GeminiAuthException()
+            try {
+                client.newCall(request).execute().use { response ->
+                    val bodyStr = response.body?.string() ?: ""
+                    when (response.code) {
+                        400 -> {
+                            // Gemini reports invalid keys as 400 with
+                            // `error.status = "INVALID_ARGUMENT"` and a message
+                            // containing "API key not valid" — disambiguate from
+                            // other 400s (bad model id, malformed body).
+                            if (bodyStr.contains("API_KEY_INVALID") ||
+                                bodyStr.contains("API key not valid")) {
+                                throw GeminiAuthException()
+                            }
+                            throw StructuralFailureException("Gemini 400: ${bodyStr.take(200)}")
                         }
-                        throw IOException("Gemini 400: ${bodyStr.take(200)}")
+                        429 -> {
+                            Log.w(TAG, "429 body=${bodyStr.take(500)}")
+                            recordGemini429(bodyStr)
+                            throw GeminiRateLimitException()
+                        }
+                        else -> if (!response.isSuccessful) {
+                            if (response.code >= 500) {
+                                cooldownState.recordLadderFailure(
+                                    CooldownLadder.RateLimit, "Server error"
+                                )
+                            }
+                            throw StructuralFailureException("Gemini error ${response.code}")
+                        }
                     }
-                    429 -> {
-                        // Log the body so the diagnostic answers "which
-                        // quota was hit" — Gemini's 429 payload includes
-                        // a structured `error.details` listing the
-                        // specific QuotaFailure (per-minute requests,
-                        // per-minute tokens, per-day requests, etc.).
-                        // Truncated to keep the log line manageable.
-                        Log.w(TAG, "429 body=${bodyStr.take(500)}")
-                        throw GeminiRateLimitException()
+                    if (bodyStr.isEmpty()) throw StructuralFailureException("Empty response from Gemini")
+                    val parsed = gson.fromJson(bodyStr, GeminiResponse::class.java)
+                    val raw = parsed.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                        ?: throw StructuralFailureException("No translation in Gemini response")
+                    parsed.usageMetadata?.let {
+                        usageTracker.addTokens(it.promptTokenCount, it.candidatesTokenCount)
                     }
-                    else -> if (!response.isSuccessful) {
-                        throw IOException("Gemini error ${response.code}")
-                    }
+                    val totalMs = (System.nanoTime() - translateStart) / 1_000_000
+                    Log.i(TAG, "translate ok totalMs=$totalMs outLen=${raw.length}")
+                    cleanLlmOutput(raw)
                 }
-                if (bodyStr.isEmpty()) throw IOException("Empty response from Gemini")
-                val parsed = gson.fromJson(bodyStr, GeminiResponse::class.java)
-                val raw = parsed.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.text
-                    ?: throw IOException("No translation in Gemini response")
-                parsed.usageMetadata?.let {
-                    usageTracker.addTokens(it.promptTokenCount, it.candidatesTokenCount)
-                }
-                val totalMs = (System.nanoTime() - translateStart) / 1_000_000
-                Log.i(TAG, "translate ok totalMs=$totalMs outLen=${raw.length}")
-                cleanLlmOutput(raw)
+            } catch (e: GeminiAuthException) { throw e }
+            catch (e: GeminiRateLimitException) { throw e }
+            catch (e: StructuralFailureException) {
+                // 4xx, 5xx (already recorded above), empty payload, missing
+                // translation — deterministic upstream failures. Skip the
+                // network-ladder bump so a misconfigured key/model doesn't
+                // masquerade as "Connection failed."
+                throw e
+            }
+            catch (e: IOException) {
+                // True network / connection failure path: the first one is
+                // forgiven inside recordNetworkFailure, the second within
+                // the window engages the network cooldown ladder.
+                cooldownState.recordNetworkFailure("Connection failed")
+                throw e
             }
         }
 
@@ -152,6 +195,7 @@ class GeminiBackend(
         source: String,
         target: String,
     ): List<String> = withContext(Dispatchers.IO) {
+        clearCooldownIfCredentialsChanged()
         val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
             ?: throw IOException("Gemini API key not configured")
         val model = modelProvider()
@@ -197,55 +241,79 @@ class GeminiBackend(
             .post(bodyJson.toRequestBody("application/json".toMediaType()))
             .build()
 
-        client.newCall(request).execute().use { response ->
-            val bodyStr = response.body?.string() ?: ""
-            when (response.code) {
-                400 -> {
-                    if (bodyStr.contains("API_KEY_INVALID") ||
-                        bodyStr.contains("API key not valid")) {
-                        throw GeminiAuthException()
+        try {
+            client.newCall(request).execute().use { response ->
+                val bodyStr = response.body?.string() ?: ""
+                when (response.code) {
+                    400 -> {
+                        if (bodyStr.contains("API_KEY_INVALID") ||
+                            bodyStr.contains("API key not valid")) {
+                            throw GeminiAuthException()
+                        }
+                        // Mirrors the OpenAI batch 400 handling: a non-auth
+                        // 400 on the batch path is most likely the model
+                        // rejecting the responseSchema / responseMimeType
+                        // body fields the single-text path doesn't send.
+                        // Surface as BatchParseException so the registry
+                        // retries this same Gemini backend's per-text
+                        // translate() (no schema) before skipping to a
+                        // lower-priority backend like DeepL or Lingva.
+                        Log.w(TAG, "batch 400 body=${bodyStr.take(500)} — retrying per-text on same backend")
+                        throw BatchParseException("Gemini batch 400: ${bodyStr.take(200)}")
                     }
-                    // Mirrors the OpenAI batch 400 handling: a non-auth
-                    // 400 on the batch path is most likely the model
-                    // rejecting the responseSchema / responseMimeType
-                    // body fields the single-text path doesn't send.
-                    // Surface as BatchParseException so the registry
-                    // retries this same Gemini backend's per-text
-                    // translate() (no schema) before skipping to a
-                    // lower-priority backend like DeepL or Lingva.
-                    Log.w(TAG, "batch 400 body=${bodyStr.take(500)} — retrying per-text on same backend")
-                    throw BatchParseException("Gemini batch 400: ${bodyStr.take(200)}")
+                    429 -> {
+                        Log.w(TAG, "429 body=${bodyStr.take(500)}")
+                        recordGemini429(bodyStr)
+                        throw GeminiRateLimitException()
+                    }
+                    else -> if (!response.isSuccessful) {
+                        if (response.code >= 500) {
+                            cooldownState.recordLadderFailure(
+                                CooldownLadder.RateLimit, "Server error"
+                            )
+                        }
+                        throw StructuralFailureException("Gemini error ${response.code}")
+                    }
                 }
-                429 -> {
-                    Log.w(TAG, "429 body=${bodyStr.take(500)}")
-                    throw GeminiRateLimitException()
+                if (bodyStr.isEmpty()) throw StructuralFailureException("Empty response from Gemini")
+                val parsed = gson.fromJson(bodyStr, GeminiResponse::class.java)
+                val rawJson = parsed.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                    ?: throw BatchParseException("Gemini batch: empty candidate payload")
+                parsed.usageMetadata?.let {
+                    usageTracker.addTokens(it.promptTokenCount, it.candidatesTokenCount)
                 }
-                else -> if (!response.isSuccessful) {
-                    throw IOException("Gemini error ${response.code}")
+                val wrapper = try {
+                    gson.fromJson(rawJson, BatchTranslationsWrapper::class.java)
+                } catch (e: JsonSyntaxException) {
+                    throw BatchParseException("Gemini batch: response JSON parse failed", e)
                 }
+                val arr = wrapper?.translations
+                    ?: throw BatchParseException("Gemini batch: missing translations[]")
+                if (arr.size != texts.size) {
+                    throw BatchParseException(
+                        "Gemini batch: returned ${arr.size} translations for ${texts.size} inputs"
+                    )
+                }
+                val totalMs = (System.nanoTime() - translateStart) / 1_000_000
+                Log.i(TAG, "translate batch ok totalMs=$totalMs batchSize=${arr.size}")
+                arr.map { cleanLlmOutput(it) }
             }
-            if (bodyStr.isEmpty()) throw IOException("Empty response from Gemini")
-            val parsed = gson.fromJson(bodyStr, GeminiResponse::class.java)
-            val rawJson = parsed.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.text
-                ?: throw BatchParseException("Gemini batch: empty candidate payload")
-            parsed.usageMetadata?.let {
-                usageTracker.addTokens(it.promptTokenCount, it.candidatesTokenCount)
-            }
-            val wrapper = try {
-                gson.fromJson(rawJson, BatchTranslationsWrapper::class.java)
-            } catch (e: JsonSyntaxException) {
-                throw BatchParseException("Gemini batch: response JSON parse failed", e)
-            }
-            val arr = wrapper?.translations
-                ?: throw BatchParseException("Gemini batch: missing translations[]")
-            if (arr.size != texts.size) {
-                throw BatchParseException(
-                    "Gemini batch: returned ${arr.size} translations for ${texts.size} inputs"
-                )
-            }
-            val totalMs = (System.nanoTime() - translateStart) / 1_000_000
-            Log.i(TAG, "translate batch ok totalMs=$totalMs batchSize=${arr.size}")
-            arr.map { cleanLlmOutput(it) }
+        } catch (e: GeminiAuthException) { throw e }
+        catch (e: GeminiRateLimitException) { throw e }
+        catch (e: BatchParseException) {
+            // Intra-backend retry signal — do NOT cooldown. The registry
+            // re-tries this backend's per-text translate() on the same
+            // call, and that path's own cooldown wiring stands.
+            throw e
+        }
+        catch (e: StructuralFailureException) {
+            // 4xx / 5xx (already recorded above) / empty payload —
+            // deterministic upstream, no network-ladder bump.
+            throw e
+        }
+        catch (e: IOException) {
+            cooldownState.recordNetworkFailure("Connection failed")
+            throw e
         }
     }
 
@@ -369,6 +437,20 @@ class GeminiBackend(
         val translations: List<String>? = null,
     )
 
+    /**
+     * Thin wrapper: parse → route to the right [CooldownState] entry.
+     * Pure parsing lives in [parseGemini429Body] so unit tests can
+     * exercise it without constructing a full backend.
+     */
+    private fun recordGemini429(body: String) {
+        val parsed = parseGemini429Body(body, gson)
+        if (parsed != null) {
+            cooldownState.recordParsedFailure(parsed.first, parsed.second)
+        } else {
+            cooldownState.recordLadderFailure(CooldownLadder.RateLimit, "Rate limited")
+        }
+    }
+
     private data class GeminiModelsResponse(
         val models: List<ModelEntry> = emptyList(),
     ) {
@@ -413,3 +495,65 @@ class GeminiBackend(
             .build()
     }
 }
+
+/**
+ * Parse Gemini's 429 body into a `(retryAt, description)` pair, or
+ * null when the body provides no usable signal (caller falls back to
+ * the ladder).
+ *
+ * Decision tree:
+ *  - `QuotaFailure.violations[].quotaId` matching `/Per(Day|Daily)/i`
+ *    → `nextMidnightPacific(now)` / "Daily quota used".
+ *  - `RetryInfo.retryDelay` ("34s" / "0.5s" / etc.) →
+ *    `now + parsedDelay` / "Rate limited".
+ *  - Anything else (including the minimal
+ *    `{code:429,status:RESOURCE_EXHAUSTED}` shape with no `details[]`)
+ *    → null.
+ *
+ * The PerDay/PerMinute substring convention is community-observed and
+ * not formally spec'd; the regex is loose and the ladder fallback at
+ * the call site covers anything we miss.
+ *
+ * `internal` so unit tests in this module can exercise the parser
+ * without constructing a full [GeminiBackend].
+ */
+internal fun parseGemini429Body(
+    body: String,
+    gson: Gson = Gson(),
+    now: Long = System.currentTimeMillis(),
+): Pair<Long, String>? {
+    val envelope = try {
+        gson.fromJson(body, GeminiErrorEnvelope::class.java)
+    } catch (e: JsonSyntaxException) {
+        return null
+    }
+    val details = envelope?.error?.details ?: return null
+
+    for (detail in details) {
+        val type = detail["@type"] as? String ?: continue
+        if (!type.endsWith("QuotaFailure")) continue
+        val violations = detail["violations"] as? List<*> ?: continue
+        for (v in violations) {
+            val quotaId = (v as? Map<*, *>)?.get("quotaId") as? String ?: continue
+            if (PER_DAY_QUOTA_PATTERN.containsMatchIn(quotaId)) {
+                return nextMidnightPacific(now) to "Daily quota used"
+            }
+        }
+    }
+    for (detail in details) {
+        val type = detail["@type"] as? String ?: continue
+        if (!type.endsWith("RetryInfo")) continue
+        val delay = detail["retryDelay"] as? String ?: continue
+        val ms = GoDuration.parse(delay)?.inWholeMilliseconds ?: continue
+        return (now + ms) to "Rate limited"
+    }
+    return null
+}
+
+internal data class GeminiErrorEnvelope(val error: GeminiErrorBody? = null) {
+    data class GeminiErrorBody(val details: List<Map<String, Any?>>? = null)
+}
+
+/** Loose pattern for Gemini's community-observed per-day quotaId
+ *  substring conventions. */
+internal val PER_DAY_QUOTA_PATTERN = Regex("""Per(Day|Daily)""", RegexOption.IGNORE_CASE)

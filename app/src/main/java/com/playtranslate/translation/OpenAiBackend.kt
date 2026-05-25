@@ -61,8 +61,14 @@ class OpenAiBackend(
      *  `owned_by` is their own org name, so this must be false or
      *  the picker comes back empty. */
     private val filterFineTunes: Boolean,
+    /** Null for backends that should NOT participate in the waterfall
+     *  cooldown system (currently DeepSeek — its 10-minute TCP-hold
+     *  behavior makes SocketTimeoutException categorisation too
+     *  ambiguous for v1). When null, the [Cooldownable] methods all
+     *  return null/no-op and the registry's skip check never fires. */
+    private val cooldownState: CooldownState? = null,
     private val client: OkHttpClient = defaultClient(),
-) : TranslationBackend, BatchTranslator, ModelLister, KeyValidator {
+) : TranslationBackend, BatchTranslator, ModelLister, KeyValidator, Cooldownable {
 
     override val requiresInternet: Boolean = true
     override val isDegradedFallback: Boolean = false
@@ -84,6 +90,30 @@ class OpenAiBackend(
             }
         }
 
+    override fun unavailableUntil(): Long? {
+        clearCooldownIfCredentialsChanged()
+        return cooldownState?.unavailableUntil()
+    }
+    override fun unavailableDescription(): String? = cooldownState?.unavailableDescription()
+    override fun recordSuccess(attemptStartedAtMs: Long) {
+        cooldownState?.recordSuccess(attemptStartedAtMs)
+    }
+
+    /** Last-seen `(key | model | baseUrl)` fingerprint. When it changes
+     *  (user swaps in a new key, picks a different model, etc.), any
+     *  persisted cooldown is cleared — it belonged to the prior
+     *  credentials. No-op when [cooldownState] is null (DeepSeek). */
+    @Volatile private var lastCredentialsFingerprint: String? = null
+
+    private fun clearCooldownIfCredentialsChanged() {
+        val current = "${keyProvider() ?: ""}|${modelProvider()}|${baseUrlProvider()}"
+        val prev = lastCredentialsFingerprint
+        lastCredentialsFingerprint = current
+        if (prev != null && prev != current) {
+            cooldownState?.recordSuccess(System.currentTimeMillis())
+        }
+    }
+
     override fun isUsable(source: String, target: String): Boolean =
         // A future client-side daily cap could gate here too, but v1 lets
         // the meter be informational only.
@@ -91,6 +121,7 @@ class OpenAiBackend(
 
     override suspend fun translate(text: String, source: String, target: String): String =
         withContext(Dispatchers.IO) {
+            clearCooldownIfCredentialsChanged()
             val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
                 ?: throw IOException("OpenAI API key not configured")
             val baseUrl = baseUrlProvider().trim().trimEnd('/')
@@ -118,34 +149,48 @@ class OpenAiBackend(
                 .post(bodyJson.toRequestBody("application/json".toMediaType()))
                 .build()
 
-            client.newCall(request).execute().use { response ->
-                when (response.code) {
-                    401 -> throw OpenAiAuthException()
-                    429 -> {
-                        // Capture the body + retry-after so the
-                        // "which quota was hit" question is diagnosable
-                        // from logcat. OpenAI's 429 has a JSON error
-                        // object describing the limit; `retry-after`
-                        // header (when present) gives a wall-clock
-                        // hint. Truncated to keep the log readable.
-                        val retryAfter = response.header("retry-after")
-                        val body = response.body?.string()?.take(500) ?: ""
-                        Log.w(TAG, "429 retryAfter=$retryAfter body=$body")
-                        throw OpenAiRateLimitException()
+            try {
+                client.newCall(request).execute().use { response ->
+                    when (response.code) {
+                        401 -> throw OpenAiAuthException()
+                        429 -> {
+                            val retryAfter = response.header("retry-after")
+                            val resetReq   = response.header("x-ratelimit-reset-requests")
+                            val resetTok   = response.header("x-ratelimit-reset-tokens")
+                            val body = response.body?.string() ?: ""
+                            Log.w(TAG, "429 retryAfter=$retryAfter resetReq=$resetReq resetTok=$resetTok body=${body.take(500)}")
+                            recordOpenAi429(body, retryAfter, resetReq, resetTok)
+                            throw OpenAiRateLimitException()
+                        }
+                        else -> if (!response.isSuccessful) {
+                            if (response.code >= 500) {
+                                cooldownState?.recordLadderFailure(
+                                    CooldownLadder.RateLimit, "Server error"
+                                )
+                            }
+                            throw StructuralFailureException("OpenAI error ${response.code}")
+                        }
                     }
-                    else -> if (!response.isSuccessful) {
-                        throw IOException("OpenAI error ${response.code}")
-                    }
+                    val bodyStr = response.body?.string()
+                        ?: throw StructuralFailureException("Empty response from OpenAI")
+                    val parsed = gson.fromJson(bodyStr, OpenAiChatResponse::class.java)
+                    val raw = parsed.choices.firstOrNull()?.message?.content
+                        ?: throw StructuralFailureException("No translation in OpenAI response")
+                    parsed.usage?.let { usageTracker.addTokens(it.prompt_tokens, it.completion_tokens) }
+                    val totalMs = (System.nanoTime() - translateStart) / 1_000_000
+                    Log.i(TAG, "translate ok totalMs=$totalMs outLen=${raw.length}")
+                    cleanLlmOutput(raw)
                 }
-                val bodyStr = response.body?.string()
-                    ?: throw IOException("Empty response from OpenAI")
-                val parsed = gson.fromJson(bodyStr, OpenAiChatResponse::class.java)
-                val raw = parsed.choices.firstOrNull()?.message?.content
-                    ?: throw IOException("No translation in OpenAI response")
-                parsed.usage?.let { usageTracker.addTokens(it.prompt_tokens, it.completion_tokens) }
-                val totalMs = (System.nanoTime() - translateStart) / 1_000_000
-                Log.i(TAG, "translate ok totalMs=$totalMs outLen=${raw.length}")
-                cleanLlmOutput(raw)
+            } catch (e: OpenAiAuthException) { throw e }
+            catch (e: OpenAiRateLimitException) { throw e }
+            catch (e: StructuralFailureException) {
+                // 4xx / 5xx (already recorded above) / empty payload —
+                // deterministic upstream, no network-ladder bump.
+                throw e
+            }
+            catch (e: IOException) {
+                cooldownState?.recordNetworkFailure("Connection failed")
+                throw e
             }
         }
 
@@ -154,6 +199,7 @@ class OpenAiBackend(
         source: String,
         target: String,
     ): List<String> = withContext(Dispatchers.IO) {
+        clearCooldownIfCredentialsChanged()
         val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
             ?: throw IOException("OpenAI API key not configured")
         val baseUrl = baseUrlProvider().trim().trimEnd('/')
@@ -204,53 +250,78 @@ class OpenAiBackend(
             .post(bodyJson.toRequestBody("application/json".toMediaType()))
             .build()
 
-        client.newCall(request).execute().use { response ->
-            when (response.code) {
-                401 -> throw OpenAiAuthException()
-                429 -> {
-                    val retryAfter = response.header("retry-after")
-                    val body = response.body?.string()?.take(500) ?: ""
-                    Log.w(TAG, "429 retryAfter=$retryAfter body=$body")
-                    throw OpenAiRateLimitException()
+        try {
+            client.newCall(request).execute().use { response ->
+                when (response.code) {
+                    401 -> throw OpenAiAuthException()
+                    429 -> {
+                        val retryAfter = response.header("retry-after")
+                        val resetReq   = response.header("x-ratelimit-reset-requests")
+                        val resetTok   = response.header("x-ratelimit-reset-tokens")
+                        val body = response.body?.string() ?: ""
+                        Log.w(TAG, "429 retryAfter=$retryAfter resetReq=$resetReq resetTok=$resetTok body=${body.take(500)}")
+                        recordOpenAi429(body, retryAfter, resetReq, resetTok)
+                        throw OpenAiRateLimitException()
+                    }
+                    400 -> {
+                        // 400 on the batch path is most often
+                        // "this endpoint doesn't support strict json_schema"
+                        // — common on OpenAI-compatible endpoints (older
+                        // OpenRouter / LM Studio / non-`o` model families).
+                        // Surface as BatchParseException so the registry
+                        // retries this same backend's per-text translate()
+                        // (which doesn't send response_format) before
+                        // skipping to a degraded fallback.
+                        val body = response.body?.string()?.take(500) ?: ""
+                        Log.w(TAG, "batch 400 body=$body — retrying per-text on same backend")
+                        throw BatchParseException("OpenAI batch 400: $body")
+                    }
+                    else -> if (!response.isSuccessful) {
+                        if (response.code >= 500) {
+                            cooldownState?.recordLadderFailure(
+                                CooldownLadder.RateLimit, "Server error"
+                            )
+                        }
+                        throw StructuralFailureException("OpenAI error ${response.code}")
+                    }
                 }
-                400 -> {
-                    // 400 on the batch path is most often
-                    // "this endpoint doesn't support strict json_schema"
-                    // — common on OpenAI-compatible endpoints (older
-                    // OpenRouter / LM Studio / non-`o` model families).
-                    // Surface as BatchParseException so the registry
-                    // retries this same backend's per-text translate()
-                    // (which doesn't send response_format) before
-                    // skipping to a degraded fallback.
-                    val body = response.body?.string()?.take(500) ?: ""
-                    Log.w(TAG, "batch 400 body=$body — retrying per-text on same backend")
-                    throw BatchParseException("OpenAI batch 400: $body")
+                val bodyStr = response.body?.string()
+                    ?: throw StructuralFailureException("Empty response from OpenAI")
+                val parsed = gson.fromJson(bodyStr, OpenAiChatResponse::class.java)
+                val rawJson = parsed.choices.firstOrNull()?.message?.content
+                    ?: throw BatchParseException("OpenAI batch: empty message content")
+                parsed.usage?.let { usageTracker.addTokens(it.prompt_tokens, it.completion_tokens) }
+                val wrapper = try {
+                    gson.fromJson(rawJson, BatchTranslationsWrapper::class.java)
+                } catch (e: JsonSyntaxException) {
+                    throw BatchParseException("OpenAI batch: response JSON parse failed", e)
                 }
-                else -> if (!response.isSuccessful) {
-                    throw IOException("OpenAI error ${response.code}")
+                val arr = wrapper?.translations
+                    ?: throw BatchParseException("OpenAI batch: missing translations[]")
+                if (arr.size != texts.size) {
+                    throw BatchParseException(
+                        "OpenAI batch: returned ${arr.size} translations for ${texts.size} inputs"
+                    )
                 }
+                val totalMs = (System.nanoTime() - translateStart) / 1_000_000
+                Log.i(TAG, "translate batch ok totalMs=$totalMs batchSize=${arr.size}")
+                arr.map { cleanLlmOutput(it) }
             }
-            val bodyStr = response.body?.string()
-                ?: throw IOException("Empty response from OpenAI")
-            val parsed = gson.fromJson(bodyStr, OpenAiChatResponse::class.java)
-            val rawJson = parsed.choices.firstOrNull()?.message?.content
-                ?: throw BatchParseException("OpenAI batch: empty message content")
-            parsed.usage?.let { usageTracker.addTokens(it.prompt_tokens, it.completion_tokens) }
-            val wrapper = try {
-                gson.fromJson(rawJson, BatchTranslationsWrapper::class.java)
-            } catch (e: JsonSyntaxException) {
-                throw BatchParseException("OpenAI batch: response JSON parse failed", e)
-            }
-            val arr = wrapper?.translations
-                ?: throw BatchParseException("OpenAI batch: missing translations[]")
-            if (arr.size != texts.size) {
-                throw BatchParseException(
-                    "OpenAI batch: returned ${arr.size} translations for ${texts.size} inputs"
-                )
-            }
-            val totalMs = (System.nanoTime() - translateStart) / 1_000_000
-            Log.i(TAG, "translate batch ok totalMs=$totalMs batchSize=${arr.size}")
-            arr.map { cleanLlmOutput(it) }
+        } catch (e: OpenAiAuthException) { throw e }
+        catch (e: OpenAiRateLimitException) { throw e }
+        catch (e: BatchParseException) {
+            // Intra-backend retry signal — registry re-tries per-text on
+            // this same backend; no cooldown.
+            throw e
+        }
+        catch (e: StructuralFailureException) {
+            // 4xx / 5xx (already recorded above) / empty payload —
+            // deterministic upstream, no network-ladder bump.
+            throw e
+        }
+        catch (e: IOException) {
+            cooldownState?.recordNetworkFailure("Connection failed")
+            throw e
         }
     }
 
@@ -387,6 +458,65 @@ class OpenAiBackend(
         val translations: List<String>? = null,
     )
 
+    /**
+     * Parse OpenAI's 429 response to decide what kind of cooldown to
+     * record. The decision tree is:
+     *
+     *  1. `error.code == "insufficient_quota"` → billing dead, not a
+     *     timer-based rate limit. Fixed 5 min cooldown surfaced as
+     *     "Billing exhausted" so the row stays visible long enough for
+     *     the user to notice and short enough that fixing billing
+     *     doesn't leave them waiting.
+     *  2. Otherwise compute `max(retry-after, reset-requests,
+     *     reset-tokens)` — `retry-after` is integer seconds;
+     *     `x-ratelimit-reset-*` are Go-style duration strings
+     *     ("1s", "6m0s", "4m12.172s"). Azure and the new Responses API
+     *     have been returning `-1` / `0` for these in 2025-2026; the
+     *     sanity guard drops any value ≤ 0 ms so a spurious 0 doesn't
+     *     translate to "ready right now."
+     *  3. Nothing usable → fall through to the rate-limit ladder.
+     *
+     * No-op when [cooldownState] is null (DeepSeek path).
+     */
+    private fun recordOpenAi429(
+        body: String,
+        retryAfter: String?,
+        resetReq: String?,
+        resetTok: String?,
+    ) {
+        val state = cooldownState ?: return
+        val errorCode = try {
+            gson.fromJson(body, OpenAiErrorEnvelope::class.java)?.error?.code
+        } catch (e: JsonSyntaxException) {
+            null
+        }
+        if (errorCode == "insufficient_quota") {
+            state.recordParsedFailure(
+                retryAt = System.currentTimeMillis() + INSUFFICIENT_QUOTA_MS,
+                description = "Billing exhausted",
+            )
+            return
+        }
+        val retryAfterMs = retryAfter?.trim()?.toLongOrNull()?.let { it * 1000 }
+        val resetReqMs = GoDuration.parse(resetReq)?.inWholeMilliseconds
+        val resetTokMs = GoDuration.parse(resetTok)?.inWholeMilliseconds
+        val maxMs = listOfNotNull(retryAfterMs, resetReqMs, resetTokMs)
+            .filter { it > 0 }
+            .maxOrNull()
+        if (maxMs != null) {
+            state.recordParsedFailure(
+                retryAt = System.currentTimeMillis() + maxMs,
+                description = "Rate limited",
+            )
+        } else {
+            state.recordLadderFailure(CooldownLadder.RateLimit, "Rate limited")
+        }
+    }
+
+    private data class OpenAiErrorEnvelope(val error: OpenAiErrorBody? = null) {
+        data class OpenAiErrorBody(val code: String? = null)
+    }
+
     private data class OpenAiModelsResponse(
         val data: List<ModelEntry> = emptyList(),
     ) {
@@ -414,6 +544,11 @@ class OpenAiBackend(
          *  "gpt-4o-2024-05-13" or "gpt-4.1-2025-04-14". We filter
          *  these so the picker shows only the canonical aliases. */
         private val DATED_SNAPSHOT_PATTERN = Regex("""-\d{4}-\d{2}-\d{2}$""")
+
+        /** Cooldown duration for `insufficient_quota` (billing dead).
+         *  Short enough that fixing billing doesn't leave the user
+         *  waiting; long enough not to spam the API. */
+        private const val INSUFFICIENT_QUOTA_MS = 5L * 60 * 1000
 
         // 30s timeouts: gpt-4o on long passages can take 15-20s; OkHttp's
         // default 10s read timeout would spuriously fail those calls.

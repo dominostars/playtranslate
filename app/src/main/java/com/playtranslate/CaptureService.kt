@@ -1892,6 +1892,14 @@ class CaptureService : Service() {
             return groupTexts.map { Pair(it, null) }
         }
 
+        // Reconcile the cache's preferred-backend identity BEFORE the
+        // cache lookup. If a fully-cached batch returns early, the
+        // identity check inside translateBatch never runs, so a backend
+        // toggle / cooldown enter-or-exit since the last call would
+        // leave stale entries serving forever. Cheap (one Map clear on
+        // transition, no-op otherwise).
+        ensureLanguageManagersFor(target)
+
         val keys = groupTexts.map { cacheKey(it, target) }
         val uncached = keys.withIndex()
             .filter { (_, key) -> key !in translationCache }
@@ -1928,6 +1936,13 @@ class CaptureService : Service() {
                 // the same lower-quality result even after memory recovers.
                 // The existing note-based skip (ML Kit degraded fallback)
                 // still applies in parallel.
+                //
+                // Online-backend cooldowns (rate-limit / quota / billing)
+                // are handled at the cache-identity layer instead: the
+                // registry's preferredOnlineId excludes cooled-down
+                // backends, so reconcilePreferredBackend already flips
+                // the cache identity on cooldown enter/exit and drops
+                // stale entries naturally.
                 if (outcome.note == null && outcome.displacedLlmId == null) {
                     translationCache[indexedKey.value] = outcome.text to outcome.note
                 }

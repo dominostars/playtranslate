@@ -19,6 +19,12 @@ class DeepLQuotaExceededException : IOException("DeepL monthly quota exceeded")
 /** Thrown when the API key is rejected (HTTP 403). */
 class DeepLAuthException : IOException("Invalid DeepL API key")
 
+/** Thrown when DeepL rate-limits the call (HTTP 429). DeepL exposes no
+ *  retry-after or X-RateLimit-* headers, so callers fall through silently
+ *  like the other backends' rate-limit exceptions; the [CooldownState]
+ *  ladder governs how long the backend stays skipped. */
+class DeepLRateLimitException : IOException("DeepL rate limit exceeded")
+
 /**
  * DeepL REST API backend.
  *
@@ -43,8 +49,13 @@ class DeepLAuthException : IOException("Invalid DeepL API key")
 class DeepLBackend(
     private val keyProvider: () -> String?,
     private val enabledProvider: () -> Boolean,
+    /** Default is a non-persisting test-mode state; production wiring in
+     *  [com.playtranslate.PlayTranslateApplication] passes a Context-backed
+     *  instance so cooldowns survive process restart. Kept defaulted to
+     *  avoid forcing every unit-test constructor call to pass one. */
+    private val cooldownState: CooldownState = CooldownState(context = null, backendId = "deepl"),
     private val client: OkHttpClient = OkHttpClient(),
-) : TranslationBackend, QuotaAware, BatchTranslator {
+) : TranslationBackend, QuotaAware, BatchTranslator, Cooldownable {
 
     override val id: BackendId = "deepl"
     override val displayName: String = "DeepL"
@@ -54,6 +65,29 @@ class DeepLBackend(
     override val quality: BackendQuality = BackendQuality.Better
 
     private val gson = Gson()
+
+    override fun unavailableUntil(): Long? {
+        clearCooldownIfCredentialsChanged()
+        return cooldownState.unavailableUntil()
+    }
+    override fun unavailableDescription(): String? = cooldownState.unavailableDescription()
+    override fun recordSuccess(attemptStartedAtMs: Long) =
+        cooldownState.recordSuccess(attemptStartedAtMs)
+
+    /** Last-seen key fingerprint. When the user replaces the DeepL key
+     *  (free → pro, or any swap), any persisted cooldown — including
+     *  a Free-tier "Monthly quota used · Retry on Jun 1" that may be
+     *  weeks away — is cleared because it belonged to the prior key. */
+    @Volatile private var lastCredentialsFingerprint: String? = null
+
+    private fun clearCooldownIfCredentialsChanged() {
+        val current = keyProvider() ?: ""
+        val prev = lastCredentialsFingerprint
+        lastCredentialsFingerprint = current
+        if (prev != null && prev != current) {
+            cooldownState.recordSuccess(System.currentTimeMillis())
+        }
+    }
 
     // ── Status state ─────────────────────────────────────────────────────
     //
@@ -159,6 +193,7 @@ class DeepLBackend(
         source: String,
         target: String,
     ): List<String> = withContext(Dispatchers.IO) {
+        clearCooldownIfCredentialsChanged()
         val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
             ?: throw IOException("DeepL API key not configured")
 
@@ -177,14 +212,59 @@ class DeepLBackend(
             .post(body.toRequestBody("application/json".toMediaType()))
             .build()
 
-        client.newCall(request).execute().use { response ->
-            when (response.code) {
-                403 -> throw DeepLAuthException()
-                456 -> throw DeepLQuotaExceededException()
-                else -> if (!response.isSuccessful) throw IOException("DeepL error ${response.code}")
+        try {
+            client.newCall(request).execute().use { response ->
+                when (response.code) {
+                    403 -> throw DeepLAuthException()
+                    429 -> {
+                        // DeepL exposes no Retry-After or X-RateLimit-*
+                        // headers — use a fixed 10s cooldown matching their
+                        // own CLI's lowest backoff rung. Repeated 429s within
+                        // the window are absorbed by the in-cooldown guard.
+                        cooldownState.recordParsedFailure(
+                            retryAt = System.currentTimeMillis() + DEEPL_RATE_LIMIT_MS,
+                            description = "Rate limited",
+                        )
+                        throw DeepLRateLimitException()
+                    }
+                    456 -> {
+                        // Synthesize "first of next month UTC" — DeepL Free
+                        // doesn't return end_time, and we'd rather not block
+                        // postTranslate on a /v2/usage round-trip. The
+                        // refreshStatus path (called on Settings open or
+                        // explicit re-probe) catches drift and updates the
+                        // cached Quota with the real end_time when available.
+                        cooldownState.recordParsedFailure(
+                            retryAt = firstOfNextMonthUtc(),
+                            description = "Monthly quota used",
+                        )
+                        throw DeepLQuotaExceededException()
+                    }
+                    else -> if (!response.isSuccessful) {
+                        if (response.code >= 500) {
+                            cooldownState.recordLadderFailure(
+                                CooldownLadder.RateLimit, "Server error"
+                            )
+                        }
+                        throw StructuralFailureException("DeepL error ${response.code}")
+                    }
+                }
+                val responseBody = response.body?.string()
+                    ?: throw StructuralFailureException("Empty response from DeepL")
+                gson.fromJson(responseBody, DeepLResponse::class.java).translations.map { it.text }
             }
-            val responseBody = response.body?.string() ?: throw IOException("Empty response from DeepL")
-            gson.fromJson(responseBody, DeepLResponse::class.java).translations.map { it.text }
+        } catch (e: DeepLAuthException) { throw e }
+        catch (e: DeepLRateLimitException) { throw e }
+        catch (e: DeepLQuotaExceededException) { throw e }
+        catch (e: BatchParseException) { throw e }
+        catch (e: StructuralFailureException) {
+            // 4xx / 5xx (already recorded above) / empty payload —
+            // deterministic upstream, no network-ladder bump.
+            throw e
+        }
+        catch (e: IOException) {
+            cooldownState.recordNetworkFailure("Connection failed")
+            throw e
         }
     }
 
@@ -247,10 +327,6 @@ class DeepLBackend(
         else -> mlKitCode.uppercase(Locale.ROOT)
     }
 
-    private fun parseIso8601(s: String?): Long? = s?.let {
-        runCatching { java.time.OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull()
-    }
-
     private data class DeepLResponse(val translations: List<Translation>) {
         data class Translation(val text: String = "", val detected_source_language: String = "")
     }
@@ -261,6 +337,10 @@ class DeepLBackend(
          *  pathological capture refuses the batch cleanly rather than
          *  hitting an opaque 4xx from the server. */
         private const val MAX_DEEPL_BATCH = 50
+
+        /** Fixed cooldown for DeepL 429. DeepL exposes no rate-limit
+         *  headers — matches their own CLI's lowest backoff rung. */
+        private const val DEEPL_RATE_LIMIT_MS = 10L * 1000
     }
 
     private data class DeepLUsageResponse(

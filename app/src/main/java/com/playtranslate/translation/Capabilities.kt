@@ -47,6 +47,46 @@ interface QuotaAware {
 }
 
 /**
+ * Backends that participate in the waterfall's skip-when-down policy.
+ * When the provider signals it's unavailable (429 rate limit, 456
+ * monthly quota, OpenAI `insufficient_quota`, persistent network
+ * failure), the backend records a future `retryAt` timestamp via its
+ * own [com.playtranslate.translation.CooldownState] and the registry
+ * waterfall skips this backend in [TranslationBackendRegistry.translate]
+ * / [TranslationBackendRegistry.translateBatch] until then.
+ *
+ * Auth failures (401/403) are NOT cooldown — they stay on the existing
+ * "Invalid Key" path because the user has to fix something, not wait.
+ *
+ * Implementations are pair-agnostic singletons (same as
+ * [TranslationBackend]); the state machine lives in [CooldownState]
+ * which mirrors to SharedPreferences so a future `retryAt` survives
+ * process restarts (no wasted call on every cold launch).
+ */
+interface Cooldownable {
+    /** The epoch-ms timestamp until which the waterfall should skip
+     *  this backend, or null when the backend is ready. The registry
+     *  checks `it > System.currentTimeMillis()`. */
+    fun unavailableUntil(): Long?
+
+    /** Short human-readable reason for the current cooldown
+     *  ("Rate limited", "Billing exhausted", "Monthly quota used", etc.).
+     *  Returned alongside [unavailableUntil] for the Settings renderer;
+     *  null when [unavailableUntil] is null. */
+    fun unavailableDescription(): String?
+
+    /** Called by [TranslationBackendRegistry] when this backend wins
+     *  the waterfall. [attemptStartedAtMs] is the epoch-ms time at
+     *  which the registry began the winning translate call. The
+     *  implementation MUST refuse to clear a cooldown whose `setAt`
+     *  is newer than [attemptStartedAtMs] — otherwise a stale
+     *  in-flight success from a parallel waterfall pass could erase a
+     *  cooldown recorded by a later failure. Idempotent for the
+     *  already-clean case. */
+    fun recordSuccess(attemptStartedAtMs: Long)
+}
+
+/**
  * Backends that can translate a list of strings in ONE remote call.
  * Mirrors the [QuotaAware] side-interface pattern — implementations are
  * smart-cast at call sites (`backend as? BatchTranslator`).
@@ -85,6 +125,21 @@ interface BatchTranslator {
  * catches this and falls through to the next backend.
  */
 class BatchParseException(message: String, cause: Throwable? = null) : java.io.IOException(message, cause)
+
+/**
+ * Thrown by translation backends when a response is deliberately
+ * rejected for a non-transport reason — HTTP 4xx the user has to fix
+ * (bad model id, malformed request), a structurally empty response
+ * body, or a missing required field. The cooldown layer's outer
+ * IOException catch keys off the type to skip recordNetworkFailure
+ * for these throws; only OkHttp-originated connection failures
+ * advance the network ladder.
+ *
+ * Subclass of [java.io.IOException] so the registry's existing
+ * fall-through-to-next-backend behaviour still applies — the
+ * registry doesn't need to know the difference.
+ */
+class StructuralFailureException(message: String, cause: Throwable? = null) : java.io.IOException(message, cause)
 
 /**
  * Backends that can return the list of models the configured API key

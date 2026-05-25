@@ -7,6 +7,7 @@ import android.os.Bundle
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.diagnostics.CrashHandler
 import android.content.Context
+import com.playtranslate.translation.CooldownState
 import com.playtranslate.translation.DeepLBackend
 import com.playtranslate.translation.GemmaE2BMnnBackend
 import com.playtranslate.translation.GeminiBackend
@@ -65,6 +66,7 @@ class PlayTranslateApplication : Application() {
                     enabledProvider = { Prefs(this).geminiEnabled },
                     modelProvider   = { Prefs(this).geminiModel },
                     usageTracker    = UsageTracker(sharedPrefs, "gemini"),
+                    cooldownState   = CooldownState(this, "gemini"),
                 ),
                 OpenAiBackend(
                     id              = "openai",
@@ -77,6 +79,7 @@ class PlayTranslateApplication : Application() {
                     baseUrlProvider = { "https://api.openai.com/v1" },
                     usageTracker    = UsageTracker(sharedPrefs, "openai"),
                     filterFineTunes = true,
+                    cooldownState   = CooldownState(this, "openai"),
                 ),
                 OpenAiBackend(
                     // DeepSeek speaks the OpenAI-compatible chat-completions
@@ -95,10 +98,15 @@ class PlayTranslateApplication : Application() {
                     // DeepSeek's /v1/models entries all have owned_by="deepseek";
                     // the OpenAI fine-tune filter would drop the whole catalog.
                     filterFineTunes = false,
+                    // DeepSeek opts out of v1 cooldown: its 10-min TCP-hold
+                    // makes SocketTimeoutException categorisation ambiguous
+                    // (overload vs dead-key vs slow response). Revisit in v2.
+                    cooldownState   = null,
                 ),
                 DeepLBackend(
                     keyProvider     = { Prefs(this).deeplApiKey },
                     enabledProvider = { Prefs(this).deeplEnabled },
+                    cooldownState   = CooldownState(this, "deepl"),
                 ),
                 LingvaBackend(enabledProvider = { Prefs(this).lingvaEnabled }),
                 GemmaE2BMnnBackend(

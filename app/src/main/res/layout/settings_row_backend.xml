@@ -13,7 +13,7 @@
     android:gravity="center_vertical"
     android:paddingHorizontal="@dimen/pt_row_h_padding"
     android:paddingVertical="9dp"
-    android:background="?attr/selectableItemBackground"
+    android:foreground="?attr/selectableItemBackground"
     android:clickable="true"
     android:focusable="true">
 
@@ -40,6 +40,18 @@
 
         <TextView
             android:id="@+id/tvRowSubtitle2"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:visibility="gone"
+            style="@style/Text.PT.RowSubtitle" />
+
+        <!-- Third line, currently only populated by the cooldown system
+             via SettingsRenderer when BackendStatus.Unavailable is the
+             active state. The row's whole background also picks up the
+             warning-tint recipe at that point. -->
+        <TextView
+            android:id="@+id/tvRowSubtitle3"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"

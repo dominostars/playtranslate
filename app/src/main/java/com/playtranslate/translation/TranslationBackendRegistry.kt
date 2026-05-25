@@ -81,13 +81,24 @@ object TranslationBackendRegistry {
     fun byId(id: BackendId): TranslationBackend? = backends.firstOrNull { it.id == id }
 
     /** Returns the id of the first non-degraded usable backend for the
-     *  pair (which is the backend the cache should treat as "preferred"
-     *  for its identity check), or `"none"` if no online backend is
-     *  configured. Returned to [com.playtranslate.TranslationCache.reconcilePreferredBackend]
-     *  by [com.playtranslate.CaptureService] before each translation. */
+     *  pair that is NOT currently in a cooldown — this is the backend
+     *  the cache should treat as "preferred" for its identity check.
+     *  Returns `"none"` if no online backend is configured.
+     *
+     *  Cooldown awareness here means [TranslationCache.reconcilePreferredBackend]
+     *  flips the preferred id when a cooldown is entered or exited,
+     *  invalidating cache entries naturally so a recovered backend
+     *  doesn't have its translations shadowed by stale fallback entries.
+     *  Trade-off: cache thrashes on cooldown cycles, but cooldowns are
+     *  rare and the cache rebuilds quickly. */
     fun preferredOnlineId(source: String, target: String): BackendId =
         orderedBackends()
-            .firstOrNull { !it.isDegradedFallback && it.isUsable(source, target) }
+            .firstOrNull { backend ->
+                if (backend.isDegradedFallback) return@firstOrNull false
+                if (!backend.isUsable(source, target)) return@firstOrNull false
+                val cool = (backend as? Cooldownable)?.unavailableUntil()
+                cool == null || cool <= System.currentTimeMillis()
+            }
             ?.id
             ?: "none"
 
@@ -111,8 +122,25 @@ object TranslationBackendRegistry {
         var displacedLlmId: BackendId? = null
         for (backend in ordered) {
             if (!backend.isUsable(source, target)) continue
+            // Cooldown skip: backends in a parsed/ladder cooldown stay out
+            // of rotation until retryAt elapses. The cache layer doesn't
+            // need a per-result signal — [preferredOnlineId] excludes
+            // cooled-down backends, so the cache's preferred-backend
+            // reconcile invalidates stale entries on cooldown enter/exit.
+            //
+            // `now` is read per-iteration: an earlier backend may have
+            // hung for many seconds before failing, during which a
+            // shorter cooldown on this one could have elapsed.
+            val now = System.currentTimeMillis()
+            val coolDown = (backend as? Cooldownable)?.unavailableUntil()
+            if (coolDown != null && coolDown > now) {
+                Log.d(TAG, "Backend ${backend.id} skipped (cooldown ${coolDown - now}ms remaining)")
+                continue
+            }
+            val attemptStartedAt = System.currentTimeMillis()
             try {
                 val translated = backend.translate(text, source, target)
+                (backend as? Cooldownable)?.recordSuccess(attemptStartedAt)
                 return WaterfallResult(
                     text = translated,
                     backend = backend,
@@ -190,10 +218,16 @@ object TranslationBackendRegistry {
         for (backend in ordered) {
             if (pendingIndices.isEmpty()) break
             if (!backend.isUsable(source, target)) continue
+            val coolDown = (backend as? Cooldownable)?.unavailableUntil()
+            if (coolDown != null && coolDown > System.currentTimeMillis()) {
+                Log.d(TAG, "Backend ${backend.id} skipped (cooldown ${coolDown - System.currentTimeMillis()}ms remaining)")
+                continue
+            }
 
             val pendingTexts = pendingIndices.map { texts[it] }
 
             if (backend is BatchTranslator && pendingTexts.size > 1) {
+                val batchStartedAt = System.currentTimeMillis()
                 try {
                     val translated = backend.translateBatch(pendingTexts, source, target)
                     if (translated.size != pendingTexts.size) {
@@ -201,6 +235,7 @@ object TranslationBackendRegistry {
                             "Backend ${backend.id} returned ${translated.size} translations for ${pendingTexts.size} inputs"
                         )
                     }
+                    (backend as? Cooldownable)?.recordSuccess(batchStartedAt)
                     pendingIndices.forEachIndexed { i, origIdx ->
                         results[origIdx] = WaterfallResult(
                             text = translated[i],
@@ -247,6 +282,7 @@ object TranslationBackendRegistry {
             // size-1 pending). Mirrors today's single-text waterfall
             // behavior, with the addition of per-index displacement
             // tracking and the LLM-transient backend-wide bailout.
+            val perTextStartedAt = System.currentTimeMillis()
             var transientHit = false
             val perBackend = coroutineScope {
                 pendingTexts.map { t ->
@@ -279,6 +315,17 @@ object TranslationBackendRegistry {
             // and shrink the pending list to just the failures.
             if (transientHit) {
                 continue
+            }
+            // Only clear cooldown when EVERY attempted text succeeded.
+            // Mixed results mean some sibling call recorded a cooldown
+            // (429 / 5xx / etc.) — calling recordSuccess() there would
+            // erase that signal and hammer the throttled provider on
+            // the next waterfall pass. A backend is "healthy" only if
+            // it answered every call in this batch. The start timestamp
+            // additionally protects against a sibling waterfall pass
+            // (different capture, different fan-out) racing this one.
+            if (perBackend.all { it != null }) {
+                (backend as? Cooldownable)?.recordSuccess(perTextStartedAt)
             }
             val stillPending = mutableListOf<Int>()
             pendingIndices.forEachIndexed { i, origIdx ->
