@@ -147,7 +147,6 @@ class OpenAiBackend(
                         mapOf("role" to "system", "content" to system),
                         mapOf("role" to "user", "content" to user),
                     ),
-                    "temperature" to 0.2,
                 )
             )
 
@@ -172,12 +171,15 @@ class OpenAiBackend(
                             throw OpenAiRateLimitException()
                         }
                         else -> if (!response.isSuccessful) {
+                            val errBody = response.body?.string().orEmpty()
+                                .take(300).replace('\n', ' ')
+                            Log.w(TAG, "translate error code=${response.code} body=$errBody")
                             if (response.code >= 500) {
                                 cooldownState?.recordLadderFailure(
                                     CooldownLadder.RateLimit, "Server error"
                                 )
                             }
-                            throw StructuralFailureException("OpenAI error ${response.code}")
+                            throw StructuralFailureException("OpenAI error ${response.code}: $errBody")
                         }
                     }
                     val bodyStr = response.body?.string()
@@ -240,7 +242,6 @@ class OpenAiBackend(
                     mapOf("role" to "system", "content" to system),
                     mapOf("role" to "user", "content" to user),
                 ),
-                "temperature" to 0.2,
                 "response_format" to mapOf(
                     "type" to "json_schema",
                     "json_schema" to mapOf(
@@ -286,12 +287,15 @@ class OpenAiBackend(
                         throw BatchParseException("OpenAI batch 400: $body")
                     }
                     else -> if (!response.isSuccessful) {
+                        val errBody = response.body?.string().orEmpty()
+                            .take(300).replace('\n', ' ')
+                        Log.w(TAG, "translate batch error code=${response.code} body=$errBody")
                         if (response.code >= 500) {
                             cooldownState?.recordLadderFailure(
                                 CooldownLadder.RateLimit, "Server error"
                             )
                         }
-                        throw StructuralFailureException("OpenAI error ${response.code}")
+                        throw StructuralFailureException("OpenAI error ${response.code}: $errBody")
                     }
                 }
                 val bodyStr = response.body?.string()
