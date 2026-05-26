@@ -389,6 +389,22 @@ class OcrGroupingTest {
     }
 
     @Test
+    fun shortAboveLong_horizontal_centeredShortLongLong_splitsThenMerges() {
+        // Centered short-title-style line + two centered long body lines.
+        // The rule isolates the short top, but the two longer lines must
+        // still cluster together via the existing centerAligned block
+        // path — the asymmetry doesn't cascade. Once the short top splits
+        // off, subsequent long-equals-long comparisons fall to existing
+        // geometry, which merges them as a normal centered paragraph.
+        val groups = group(listOf(
+            box(400, 0, 500, 50),      // centerX=450, w=100 (short top)
+            box(50, 80, 850, 130),     // centerX=450, w=800 (long line 1)
+            box(50, 160, 850, 210),    // centerX=450, w=800 (long line 2)
+        ))
+        assertEquals(listOf(listOf(0), listOf(1, 2)), groups)
+    }
+
+    @Test
     fun shortAboveLong_horizontal_centeredWrap_splits_pinnedBehavior() {
         // Behavior pin: a centered first line < 0.5× the centered second
         // line's width is split, even though the existing block path would
