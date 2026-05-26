@@ -117,11 +117,10 @@
                     android:layout_weight="1"
                     android:clickable="true"
                     android:focusable="true"
-                    app:cardBackgroundColor="?attr/ptCard"
+                    app:cardBackgroundColor="?attr/ptSurface"
                     app:cardCornerRadius="@dimen/pt_radius"
                     app:cardElevation="0dp"
-                    app:strokeColor="?attr/ptDivider"
-                    app:strokeWidth="1dp">
+                    app:strokeWidth="0dp">
 
                     <TextView
                         android:id="@+id/tvSourceLangValue"
@@ -130,6 +129,7 @@
                         android:gravity="center"
                         android:paddingHorizontal="8dp"
                         android:fontFamily="sans-serif"
+                        android:textColor="?attr/ptTextMuted"
                         style="@style/Text.PT.RowTitle" />
                 </com.google.android.material.card.MaterialCardView>
 
@@ -148,11 +148,10 @@
                     android:layout_weight="1"
                     android:clickable="true"
                     android:focusable="true"
-                    app:cardBackgroundColor="?attr/ptCard"
+                    app:cardBackgroundColor="?attr/ptSurface"
                     app:cardCornerRadius="@dimen/pt_radius"
                     app:cardElevation="0dp"
-                    app:strokeColor="?attr/ptDivider"
-                    app:strokeWidth="1dp">
+                    app:strokeWidth="0dp">
 
                     <TextView
                         android:id="@+id/tvTargetLangValue"
@@ -161,6 +160,7 @@
                         android:gravity="center"
                         android:paddingHorizontal="8dp"
                         android:fontFamily="sans-serif"
+                        android:textColor="?attr/ptTextMuted"
                         style="@style/Text.PT.RowTitle" />
                 </com.google.android.material.card.MaterialCardView>
 
