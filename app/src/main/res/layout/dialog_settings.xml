@@ -90,6 +90,98 @@
             android:paddingBottom="20dp">
 
             <!-- ══════════════════════════════════════════════════════ -->
+            <!-- LANGUAGE SELECTION — two centered button-cells with a -->
+            <!--   chevron between them; no section header, no per-    -->
+            <!--   cell title. Horizontal margin = pt_section_h_padding -->
+            <!--   on top of the parent's pt_section_h_padding, so the  -->
+            <!--   side buffer is 2× the standard 14dp (28dp from each -->
+            <!--   screen edge).                                       -->
+            <!-- ══════════════════════════════════════════════════════ -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="4dp"
+                android:layout_marginHorizontal="@dimen/pt_section_h_padding"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/rowSourceLang"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:clickable="true"
+                    android:focusable="true"
+                    app:cardBackgroundColor="?attr/ptCard"
+                    app:cardCornerRadius="@dimen/pt_radius"
+                    app:cardElevation="0dp"
+                    app:strokeColor="?attr/ptDivider"
+                    app:strokeWidth="1dp">
+
+                    <TextView
+                        android:id="@+id/tvSourceLangValue"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="center"
+                        android:paddingHorizontal="8dp"
+                        android:fontFamily="sans-serif"
+                        style="@style/Text.PT.RowTitle" />
+                </com.google.android.material.card.MaterialCardView>
+
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_marginHorizontal="12dp"
+                    android:src="@drawable/ic_arrow_forward"
+                    app:tint="?attr/ptTextMuted"
+                    android:importantForAccessibility="no" />
+
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/rowTargetLang"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:clickable="true"
+                    android:focusable="true"
+                    app:cardBackgroundColor="?attr/ptCard"
+                    app:cardCornerRadius="@dimen/pt_radius"
+                    app:cardElevation="0dp"
+                    app:strokeColor="?attr/ptDivider"
+                    app:strokeWidth="1dp">
+
+                    <TextView
+                        android:id="@+id/tvTargetLangValue"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="center"
+                        android:paddingHorizontal="8dp"
+                        android:fontFamily="sans-serif"
+                        style="@style/Text.PT.RowTitle" />
+                </com.google.android.material.card.MaterialCardView>
+
+            </LinearLayout>
+
+            <!-- Update language packs — separate card so warning tint
+                 (when there are stale packs) doesn't bleed onto Source/Target.
+                 Sits with the language buttons (above the power section). -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardUpdateLanguagePacks"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <include layout="@layout/settings_row_value_multiline"
+                    android:id="@+id/rowUpdateLanguagePacks" />
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ══════════════════════════════════════════════════════ -->
             <!-- TOP SECTION — one card containing:                    -->
             <!--   • Power cell (Allow screen capture / status)        -->
             <!--   • Game screen controls (toggle on dual / info+icon  -->
@@ -311,56 +403,6 @@
                     </LinearLayout>
 
                 </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- ══════════════════════════════════════════════════════ -->
-            <!-- LANGUAGE                                              -->
-            <!-- ══════════════════════════════════════════════════════ -->
-
-            <include layout="@layout/settings_group_header"
-                android:id="@+id/headerLanguage" />
-
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:cardBackgroundColor="?attr/ptCard"
-                app:cardCornerRadius="@dimen/pt_radius"
-                app:cardElevation="0dp"
-                app:strokeColor="?attr/ptDivider"
-                app:strokeWidth="1dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical">
-
-                    <include layout="@layout/settings_row_value"
-                        android:id="@+id/rowSourceLang" />
-
-                    <include layout="@layout/settings_row_divider" />
-
-                    <include layout="@layout/settings_row_value"
-                        android:id="@+id/rowTargetLang" />
-
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- Update language packs — separate card so warning tint
-                 (when there are stale packs) doesn't bleed onto Source/Target. -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardUpdateLanguagePacks"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                app:cardBackgroundColor="?attr/ptCard"
-                app:cardCornerRadius="@dimen/pt_radius"
-                app:cardElevation="0dp"
-                app:strokeColor="?attr/ptDivider"
-                app:strokeWidth="1dp">
-
-                <include layout="@layout/settings_row_value_multiline"
-                    android:id="@+id/rowUpdateLanguagePacks" />
-
             </com.google.android.material.card.MaterialCardView>
 
             <!-- ══════════════════════════════════════════════════════ -->

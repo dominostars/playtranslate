@@ -308,7 +308,9 @@ class SettingsRenderer(
     // ── Group headers ────────────────────────────────────────────────────
 
     private fun setupGroupHeaders() {
-        setGroupHeader(R.id.headerLanguage, "LANGUAGE")
+        // LANGUAGE has no header — the two-cell button row sits at the top
+        // of the settings sheet (above the power section, no headerLanguage
+        // in dialog_settings.xml).
         // ON-SCREEN CONTROLS has no header — its card sits directly under
         // the power card as part of the top section (no headerOnScreen in
         // dialog_settings.xml).
@@ -342,14 +344,12 @@ class SettingsRenderer(
         val sourceName = resolveSourceName()
         val targetName = resolveTargetName()
 
-        rowSourceLang.findViewById<TextView>(R.id.tvRowTitle).text = "Game Language"
-        rowSourceLang.findViewById<TextView>(R.id.tvRowValue).text = sourceName
+        rowSourceLang.findViewById<TextView>(R.id.tvSourceLangValue).text = sourceName
         rowSourceLang.setOnClickListener {
             callbacks.openLanguageSetup(LanguageSetupActivity.MODE_SOURCE)
         }
 
-        rowTargetLang.findViewById<TextView>(R.id.tvRowTitle).text = "Your Language"
-        rowTargetLang.findViewById<TextView>(R.id.tvRowValue).text = targetName
+        rowTargetLang.findViewById<TextView>(R.id.tvTargetLangValue).text = targetName
         rowTargetLang.setOnClickListener {
             callbacks.openLanguageSetup(LanguageSetupActivity.MODE_TARGET)
         }
@@ -2616,8 +2616,8 @@ class SettingsRenderer(
     // ── Refresh methods (called externally) ──────────────────────────────
 
     fun refreshLanguageRow() {
-        rowSourceLang.findViewById<TextView>(R.id.tvRowValue).text = resolveSourceName()
-        rowTargetLang.findViewById<TextView>(R.id.tvRowValue).text = resolveTargetName()
+        rowSourceLang.findViewById<TextView>(R.id.tvSourceLangValue).text = resolveSourceName()
+        rowTargetLang.findViewById<TextView>(R.id.tvTargetLangValue).text = resolveTargetName()
     }
 
     /** Settings's response to [Prefs.showOverlayIcon] changing externally
