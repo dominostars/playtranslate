@@ -22,6 +22,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
+/** Inflation ratios for the FAR-suppression proximity check at runCycle step 9b.
+ *  Asymmetric: vertical dominates because typewriter wrapping spills new lines
+ *  above/below the dying overlay. Horizontal is the more likely knob to bump
+ *  for long-line growth where new text exits the right edge well past the
+ *  original width. */
+private const val FAR_SUPPRESS_HORIZONTAL_RATIO = 0.5f
+private const val FAR_SUPPRESS_VERTICAL_RATIO = 1.5f
+
 /**
  * Simple translation overlay mode with Shadow Mask detection.
  *
@@ -343,9 +351,10 @@ class PinholeOverlayMode(
             //    there.
             val ocrBitmapRects: List<Rect>
             val classification: ClassificationResult
+            val classifyCoords: FrameCoordinates?
             if (pipeline != null) {
                 val (ocrResult, _, pipeCropLeft, pipeCropTop, _, _) = pipeline
-                val classifyCoords = FrameCoordinates(
+                classifyCoords = FrameCoordinates(
                     bitmapWidth = raw.width,
                     bitmapHeight = raw.height,
                     viewWidth = overlayDisplaySize?.x ?: 0,
@@ -356,12 +365,13 @@ class PinholeOverlayMode(
                 ocrBitmapRects = boxes.map { classifyCoords.ocrToBitmap(it.bounds) }
                 classification = classifyOcrResults(ocrResult, boxes, ocrBitmapRects, classifyCoords)
             } else {
+                classifyCoords = null
                 ocrBitmapRects = emptyList()
                 classification = ClassificationResult(emptySet(), emptySet(), emptyList())
             }
             val contentMatchRemovals = classification.contentMatchRemovals
             val staleOverlayIndices = classification.staleOverlayIndices
-            val farOcrGroups = classification.farOcrGroups
+            var farOcrGroups = classification.farOcrGroups
 
             // 8. Pinhole change detection — DIRTY moves overlays to dirty window
             val cleanRef = cleanRefBitmap
@@ -400,6 +410,38 @@ class PinholeOverlayMode(
 
             // 9. Resolve: compute final state from immutable snapshot in one pass
             val allRemovals = cascadedRemovals + pinholeRemovals + contentMatchRemovals
+
+            // 9b. Suppress FAR groups near going-away cached overlays. The fill
+            //     rect at step 5 hides the dying box's interior but bleeds
+            //     slivers of new text around its edges; those slivers become
+            //     FAR placeholders that get translated to garbage before the
+            //     next cycle drops them. Drop them now — next cycle's OCR sees
+            //     the full new text uncovered.
+            //
+            //     Subtracting contentMatchRemovals is REQUIRED, not just
+            //     omission: a content-matched box (same text, drifted position)
+            //     is the textbook pinhole REMOVE/DIRTY trigger and can also be
+            //     pulled into cascade, so it can appear in any of the three
+            //     sources above. Its paired replacement FAR sits a few px from
+            //     the old rect (within inflation), so without the subtraction
+            //     every drift-driven content-match stutters.
+            val cc = classifyCoords
+            val goingAwayIndices = (cascadedRemovals + pinholeRemovals + pinholeDirty) - contentMatchRemovals
+            if (cc != null && goingAwayIndices.isNotEmpty() && farOcrGroups.isNotEmpty()) {
+                val goingAwayBitmapRects = goingAwayIndices.mapNotNull { ocrBitmapRects.getOrNull(it) }
+                val before = farOcrGroups.size
+                farOcrGroups = farOcrGroups.filter { far ->
+                    val farBitmap = cc.ocrToBitmap(far.bounds)
+                    goingAwayBitmapRects.none { dying -> intersectsInflated(dying, farBitmap) }
+                }
+                if (debug && before != farOcrGroups.size) {
+                    DetectionLog.log(
+                        "D$displayId c$cycleNum suppressed ${before - farOcrGroups.size} FAR " +
+                            "near ${goingAwayIndices.size} going-away boxes"
+                    )
+                }
+            }
+
             val nextBoxes = boxes.mapIndexedNotNull { i, box ->
                 when {
                     i in allRemovals -> null
@@ -934,5 +976,14 @@ class PinholeOverlayMode(
                 }
             }
         }
+    }
+
+    /** Inflate [dying] by [FAR_SUPPRESS_HORIZONTAL_RATIO] / [FAR_SUPPRESS_VERTICAL_RATIO]
+     *  of its own width/height and test intersection with [far]. Used by step 9b. */
+    private fun intersectsInflated(dying: Rect, far: Rect): Boolean {
+        val dx = (dying.width() * FAR_SUPPRESS_HORIZONTAL_RATIO).toInt()
+        val dy = (dying.height() * FAR_SUPPRESS_VERTICAL_RATIO).toInt()
+        val inflated = Rect(dying).apply { inset(-dx, -dy) }
+        return Rect.intersects(inflated, far)
     }
 }
