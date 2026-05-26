@@ -82,7 +82,7 @@ class TargetPackInstaller(
                 when (result) {
                     is InstallResult.Success -> {
                         activity.runOnUiThread {
-                            dialog.setMessage("Loading")
+                            dialog.setMessage(activity.getString(R.string.lang_setup_preloading_message))
                             dialog.setIndeterminate(true)
                         }
                         runLoadThenFinish(dialog, sourceLangCode, targetCode, onSuccess)

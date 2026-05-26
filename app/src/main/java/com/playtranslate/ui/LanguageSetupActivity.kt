@@ -484,9 +484,8 @@ class LanguageSetupActivity : AppCompatActivity() {
             when (result) {
                 is InstallResult.Success -> {
                     runOnUiThread {
-                        dialog.setMessage("Loading")
+                        dialog.setMessage(getString(R.string.lang_setup_preloading_message))
                         dialog.setIndeterminate(true)
-                        dialog.hideCancel()
                     }
                     try {
                         withContext(Dispatchers.IO) { loadAction() }
@@ -517,9 +516,8 @@ class LanguageSetupActivity : AppCompatActivity() {
         onSuccess: () -> Unit,
     ) {
         val dialog = buildPopupDialog(langName)
-        dialog.setMessage("Loading")
+        dialog.setMessage(getString(R.string.lang_setup_preloading_message))
         dialog.setIndeterminate(true)
-        dialog.hideCancel()
 
         activeJob = lifecycleScope.launch {
             try {
