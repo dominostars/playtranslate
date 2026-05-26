@@ -782,10 +782,13 @@ class SettingsRenderer(
 
     /** Fade the nav-bar ShimmerButton in as the user scrolls past the power
      *  card. The card itself is never faded — it just scrolls naturally with
-     *  the content. */
+     *  the content. The startOffset delays the fade-in until the user has
+     *  scrolled past the language picker and most of the power card. */
     private fun updateCaptureButtonCrossfade(scrollY: Int) {
-        val distance = 72f * ctx.resources.displayMetrics.density
-        val t = (scrollY / distance).coerceIn(0f, 1f)
+        val density = ctx.resources.displayMetrics.density
+        val startOffset = 100f * density
+        val distance = 72f * density
+        val t = ((scrollY - startOffset) / distance).coerceIn(0f, 1f)
         btnCaptureLifecycle.alpha = t
     }
 

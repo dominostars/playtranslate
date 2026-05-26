@@ -10,19 +10,23 @@
          toggling the inner MaterialToolbar (settingsToolbarInner) — setting
          the AppBarLayout itself GONE leaves the CoordinatorLayout's scroll
          child offset by the toolbar's stale measured height. liftOnScroll
-         adds a surface-tint shadow when content scrolls under it. -->
+         is OFF and elevation is pinned to 0 so the bar reads as part of the
+         page background; the inner toolbar pins ptBg to override Material's
+         default surface color. -->
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/settingsToolbar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="?attr/ptBg"
-        app:liftOnScroll="true"
-        app:liftOnScrollTargetViewId="@id/settingsScrollView">
+        android:stateListAnimator="@null"
+        app:elevation="0dp"
+        app:liftOnScroll="false">
 
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/settingsToolbarInner"
             android:layout_width="match_parent"
             android:layout_height="56dp"
+            android:background="?attr/ptBg"
             android:visibility="gone"
             app:titleTextColor="?attr/ptText">
 
