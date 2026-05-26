@@ -6,6 +6,7 @@ import com.playtranslate.OcrManager.Companion.groupBoxesOnePass
 import com.playtranslate.language.TextOrientation
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -292,5 +293,121 @@ class OcrGroupingTest {
                 aLineCount = 4, bLineCount = 1,
             ),
         )
+    }
+
+    // ── shortAboveLongBlock: the 0.5 width/height guard ──────────────────
+
+    @Test
+    fun shortAboveLong_horizontal_speakerName_splits() {
+        // Classic VN/RPG layout: short speaker name (or label) above a
+        // wider dialogue line. The rule must split them so the name keeps
+        // its own overlay/translation context.
+        val name = box(100, 0, 200, 50)        // w=100
+        val dialogue = box(100, 80, 1000, 130) // w=900 → 100*2 < 900 fires
+        val groups = group(listOf(name, dialogue))
+        assertEquals(listOf(listOf(0), listOf(1)), groups)
+    }
+
+    @Test
+    fun shortAboveLong_horizontal_nameAboveTwoLineParagraph() {
+        // Three lines: short name, then a 2-line paragraph. The rule must
+        // isolate the name, but the paragraph's own two lines must still
+        // cluster together (the rule is asymmetric and only fires when the
+        // *earlier* line is the short one).
+        val groups = group(listOf(
+            box(100, 0, 200, 50),         // name, w=100
+            box(100, 80, 1000, 130),      // dialogue line 1, w=900
+            box(100, 160, 1000, 210),     // dialogue line 2, w=900
+        ))
+        assertEquals(listOf(listOf(0), listOf(1, 2)), groups)
+    }
+
+    @Test
+    fun shortAboveLong_horizontal_longAboveShort_merges() {
+        // Inverse direction: long paragraph closing with a short tail line.
+        // Rule must NOT fire — existing geometry merges them as a trailing
+        // wrap. Asymmetric rule by design.
+        val groups = group(listOf(
+            box(100, 0, 1000, 50),        // body line, w=900
+            box(100, 80, 300, 130),       // short tail, w=200, ratio 200/900 below 0.5
+        ))
+        assertEquals(listOf(listOf(0, 1)), groups)
+    }
+
+    @Test
+    fun shortAboveLong_horizontal_exactlyHalfWidth_merges() {
+        // Strict less-than threshold: at exactly 0.5× ratio, the rule does
+        // NOT fire. Existing geometry decides — here heights and alignment
+        // match, so they merge.
+        val groups = group(listOf(
+            box(100, 0, 200, 50),         // earlier, w=100
+            box(100, 80, 300, 130),       // later,   w=200 → 100*2 = 200, NOT < 200
+        ))
+        assertEquals(listOf(listOf(0, 1)), groups)
+    }
+
+    @Test
+    fun shortAboveLong_vertical_rightColumnNarrower_splits() {
+        // Vertical text reads right-to-left. Earlier (rightward) column
+        // is much shorter than the next (leftward) column → split. Height
+        // is the comparison axis.
+        val rightColumn = box(200, 0, 250, 50)    // h=50 (the "earlier" column)
+        val leftColumn = box(50, 0, 100, 500)     // h=500 → 50*2 < 500 fires
+        val groups = group(
+            listOf(rightColumn, leftColumn),
+            orientation = TextOrientation.VERTICAL,
+        )
+        assertEquals(listOf(listOf(0), listOf(1)), groups)
+    }
+
+    @Test
+    fun shortAboveLongBlock_overlappingRects_returnsNull() {
+        // Rule only fires when rects are cleanly separated on the reading
+        // axis. Any overlap defers to the existing geometry (inline path /
+        // block path) so we don't double-judge.
+        val a = Rect(0, 0, 50, 30)
+        val b = Rect(0, 25, 200, 60)   // vertical overlap 25..30
+        assertNull(OcrManager.shortAboveLongBlock(a, b, TextOrientation.HORIZONTAL))
+    }
+
+    @Test
+    fun shortAboveLongBlock_longAboveShort_returnsNull() {
+        // Asymmetric: earlier=long, later=short → rule must not fire.
+        val long = Rect(0, 0, 200, 30)
+        val short = Rect(0, 50, 50, 80)
+        assertNull(OcrManager.shortAboveLongBlock(long, short, TextOrientation.HORIZONTAL))
+    }
+
+    @Test
+    fun shortAboveLongBlock_horizontal_argOrderIndependent() {
+        // Caller may pass rects in either order. The rule determines
+        // earlier/later from spatial position, not argument position.
+        val above = Rect(100, 0, 200, 50)         // w=100
+        val below = Rect(100, 80, 1000, 130)      // w=900
+        assertTrue(OcrManager.shortAboveLongBlock(above, below, TextOrientation.HORIZONTAL) != null)
+        assertTrue(OcrManager.shortAboveLongBlock(below, above, TextOrientation.HORIZONTAL) != null)
+    }
+
+    @Test
+    fun shortAboveLong_horizontal_centeredWrap_splits_pinnedBehavior() {
+        // Behavior pin: a centered first line < 0.5× the centered second
+        // line's width is split, even though the existing block path would
+        // otherwise merge via centerAligned. The size-block runs before
+        // alignment checks.
+        //
+        // Natural center-aligned wrapping (engine fills first line, breaks
+        // when full) overwhelmingly produces long-above-short, NOT
+        // short-above-long; the inverse direction requires an authored
+        // break or punctuation-forced early termination, both of which
+        // signal intent rather than continuation. Splitting matches that
+        // intent for VN/RPG layouts. If a future use case (cutscene-style
+        // subtitling, manga bubbles) requires keeping these centered
+        // short-above-long wraps grouped, refine the rule to consult
+        // alignment + gap evidence and update this test.
+        val groups = group(listOf(
+            box(400, 0, 500, 50),     // centerX=450, w=100
+            box(50, 80, 850, 130),    // centerX=450, w=800 → 100*2 < 800 fires
+        ))
+        assertEquals(listOf(listOf(0), listOf(1)), groups)
     }
 }
