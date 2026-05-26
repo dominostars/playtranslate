@@ -1928,6 +1928,17 @@ class CaptureService : Service() {
                 ?: DegradedWarningKind.None
             setDegraded(aggregateKind)
 
+            // Re-reconcile AFTER translate too. A higher-priority backend
+            // may have cooled down DURING translateBatch — preferredOnlineId
+            // would now return the fallback id, but the pre-call reconcile
+            // didn't see that change. Without this second pass, the new
+            // fallback entry below would be cached under the old
+            // (pre-cooldown) preferred-backend identity; if the user
+            // doesn't translate again before the cooldown expires, identity
+            // never flips and the lower-quality result pins forever. Cheap
+            // (one Map clear on transition, no-op when no cooldown change).
+            ensureLanguageManagersFor(target)
+
             uncached.zip(outcomes).forEach { (indexedKey, outcome) ->
                 // Cache write policy: skip when an on-device LLM was displaced
                 // by transient low memory (outcome.displacedLlmId != null).
@@ -1938,11 +1949,11 @@ class CaptureService : Service() {
                 // still applies in parallel.
                 //
                 // Online-backend cooldowns (rate-limit / quota / billing)
-                // are handled at the cache-identity layer instead: the
-                // registry's preferredOnlineId excludes cooled-down
-                // backends, so reconcilePreferredBackend already flips
-                // the cache identity on cooldown enter/exit and drops
-                // stale entries naturally.
+                // are handled at the cache-identity layer (the
+                // ensureLanguageManagersFor call above ran twice — once
+                // before lookup, once after translate — so any cooldown
+                // entered during this batch is reflected in the identity
+                // before these writes land).
                 if (outcome.note == null && outcome.displacedLlmId == null) {
                     translationCache[indexedKey.value] = outcome.text to outcome.note
                 }
