@@ -631,7 +631,11 @@ class LanguageSetupActivity : AppCompatActivity() {
             tvEndonym.text = highlighted(row.endonymNorm, query)
         }
 
-        view.setOnClickListener { row.onRowClick() }
+        view.setOnClickListener {
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.hideSoftInputFromWindow(view.windowToken, 0)
+            row.onRowClick()
+        }
 
         // The XML layout gives the trailing slot its default state: hidden,
         // clickable, focusable, borderless ripple, trash drawable. We only
