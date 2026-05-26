@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.Gravity
@@ -384,8 +385,17 @@ class TranslationResultFragment : Fragment() {
                 tvOriginal.setSegments(result.segments)
                 tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
                 tvTranslation.text = result.translatedText
-                tvTranslationNote.text = result.note ?: ""
-                tvTranslationNote.visibility = if (result.note != null) View.VISIBLE else View.GONE
+                val warning = result.note
+                val sourceLabel = result.backendDisplayName?.let {
+                    getString(R.string.translation_source_label, it)
+                }
+                val bottomLabel = warning ?: sourceLabel
+                tvTranslationNote.text = bottomLabel ?: ""
+                tvTranslationNote.visibility = if (bottomLabel != null) View.VISIBLE else View.GONE
+                tvTranslationNote.setTypeface(
+                    null,
+                    if (warning == null && sourceLabel != null) Typeface.ITALIC else Typeface.NORMAL,
+                )
                 applyTranslationVisibility()
                 applyOriginalVisibility()
                 applyWordsVisibility()

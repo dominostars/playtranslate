@@ -26,5 +26,10 @@ data class TranslationResult(
     /** Absolute path to the saved screenshot JPEG, or null if saving failed */
     val screenshotPath: String? = null,
     /** Optional inline warning shown below the translation (e.g. offline-mode notice) */
-    val note: String? = null
+    val note: String? = null,
+    /** Display name of the backend that produced [translatedText], used by the
+     *  results view to render "Translated by …" below the translation. Null
+     *  when no backend ran (same-language OCR bypass, Translating placeholder)
+     *  or when the producing path doesn't track backend identity. */
+    val backendDisplayName: String? = null,
 )

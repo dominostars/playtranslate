@@ -21,10 +21,12 @@ class TranslationCache(private val capacity: Int = 500) {
 
     data class Key(val text: String, val source: String, val target: String)
 
-    /** Value is the translated text and an optional inline note. Note is
-     *  non-null only for ML Kit fallback results; callers check
-     *  `note == null` to decide whether an entry is cacheable
-     *  (online-backend-sourced). */
+    /** Value is the translated text and the display name of the backend that
+     *  produced it (used to render "Translated by …" on cache hits). Degraded
+     *  ML Kit fallback results are never written here — the caller's write
+     *  gate (`outcome.note == null && outcome.displacedLlmId == null`) keeps
+     *  this slot to online/on-device-LLM wins so an online backend can
+     *  reclaim the slot when it recovers. */
     private val lru = object : LinkedHashMap<Key, Pair<String, String?>>(capacity, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, Pair<String, String?>>?): Boolean =
             size > capacity

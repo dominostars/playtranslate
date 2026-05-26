@@ -22,6 +22,11 @@ import kotlinx.coroutines.withContext
 object LastSentenceCache {
     var original: String? = null
     var translation: String? = null
+    /** Display name of the backend that produced [translation], surfaced as
+     *  "Translated by …" on the drag-flow cached path so the lens → sentence
+     *  tab transition keeps the same bottom label. Null when the writer
+     *  doesn't track backend identity (e.g. legacy paths). */
+    var translationSource: String? = null
     var wordResults: Map<String, Triple<String, String, Int>>? = null
     /** Maps display-word → surface form as it appears in the sentence (e.g. 分かる → 分からない). */
     var surfaceForms: Map<String, String>? = null
@@ -29,6 +34,7 @@ object LastSentenceCache {
     fun clear() {
         original = null
         translation = null
+        translationSource = null
         wordResults = null
         surfaceForms = null
     }

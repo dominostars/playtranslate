@@ -1225,14 +1225,15 @@ class MainActivity :
             // self-heals language managers on first call.
             lifecycleScope.launch {
                 try {
-                    val (translated, note) = svc.translateOnce(lineText)
+                    val groupTranslation = svc.translateOnce(lineText)
                     val result = TranslationResult(
-                        originalText = lineText,
-                        segments = segments,
-                        translatedText = translated,
-                        timestamp = timestamp,
-                        screenshotPath = screenshotPath,
-                        note = note
+                        originalText       = lineText,
+                        segments           = segments,
+                        translatedText     = groupTranslation.text,
+                        timestamp          = timestamp,
+                        screenshotPath     = screenshotPath,
+                        note               = groupTranslation.note,
+                        backendDisplayName = groupTranslation.backendDisplayName,
                     )
                     resultVm.displayResult(result, applicationContext)
                 } catch (e: Exception) {
@@ -1872,8 +1873,8 @@ class MainActivity :
                     resultVm.updateTranslation("—")
                     return@launch
                 }
-                val (translated, _) = svc.translateOnce(newText)
-                resultVm.updateTranslation(translated)
+                val groupTranslation = svc.translateOnce(newText)
+                resultVm.updateTranslation(groupTranslation.text, groupTranslation.backendDisplayName)
             } catch (_: Exception) {
                 resultVm.updateTranslation("—")
             }

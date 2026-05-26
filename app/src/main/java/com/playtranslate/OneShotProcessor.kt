@@ -37,8 +37,8 @@ class FuriganaOneShotProcessor(
 }
 
 /** Builds color-matched translation overlay boxes. Shows shimmer while translating. */
-class TranslationOneShotProcessor(
-    private val translateFn: suspend (List<String>) -> List<Pair<String, String?>>
+internal class TranslationOneShotProcessor(
+    private val translateFn: suspend (List<String>) -> List<CaptureService.GroupTranslation>
 ) : OneShotProcessor {
     override suspend fun buildBoxes(
         ocrResult: OcrManager.OcrResult,
@@ -79,7 +79,7 @@ class TranslationOneShotProcessor(
         // Build final boxes with translated text
         return if (ocrResult.groupBounds.size == perGroup.size) {
             perGroup.zip(placeholders).map { (tr, ph) ->
-                ph.copy(translatedText = tr.first)
+                ph.copy(translatedText = tr.text)
             }
         } else placeholders
     }

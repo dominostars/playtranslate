@@ -1332,6 +1332,7 @@ class DragLookupController(
         // snapshot that nothing else can overwrite.
         val cached = LastSentenceCache.takeIf { it.original == sentence }
         val cachedTranslation = cached?.translation
+        val cachedTranslationSource = cached?.translationSource
         val cachedWordResults = cached?.wordResults?.takeIf { it.isNotEmpty() }
         // Tell the service to clear the drag-flow's pause obligation if
         // the detail view will cover the live-mode surface. The service
@@ -1357,6 +1358,9 @@ class DragLookupController(
             }
             cachedTranslation?.let {
                 putExtra(TranslationResultActivity.EXTRA_DRAG_SENTENCE_TRANSLATION, it)
+            }
+            cachedTranslationSource?.let {
+                putExtra(TranslationResultActivity.EXTRA_DRAG_SENTENCE_TRANSLATION_SOURCE, it)
             }
             cachedWordResults?.let { wr ->
                 putExtra(TranslationResultActivity.EXTRA_DRAG_SENTENCE_WORDS,

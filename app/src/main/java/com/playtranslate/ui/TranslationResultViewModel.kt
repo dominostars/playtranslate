@@ -197,11 +197,20 @@ class TranslationResultViewModel : ViewModel() {
 
     /** Update the translation text on the current Ready result.
      *  Promotes Translating → Ready when the translation lands; the
-     *  caller-supplied [translated] becomes the result's translation. */
-    fun updateTranslation(translated: String) {
+     *  caller-supplied [translated] becomes the result's translation.
+     *  [backendDisplayName] replaces the backend identity so a re-translate
+     *  via a different backend doesn't leave the previous "Translated by …"
+     *  label glued to the new text. Defaults to null so error-path callers
+     *  ("" / "—") naturally clear the stale label that no longer matches. */
+    fun updateTranslation(translated: String, backendDisplayName: String? = null) {
         when (val cur = _result.value) {
             is ResultState.Ready -> {
-                _result.value = ResultState.Ready(cur.result.copy(translatedText = translated))
+                _result.value = ResultState.Ready(
+                    cur.result.copy(
+                        translatedText = translated,
+                        backendDisplayName = backendDisplayName,
+                    )
+                )
             }
             is ResultState.Translating -> {
                 _result.value = ResultState.Ready(
@@ -212,6 +221,7 @@ class TranslationResultViewModel : ViewModel() {
                         timestamp = "",
                         screenshotPath = null,
                         note = null,
+                        backendDisplayName = backendDisplayName,
                     )
                 )
             }
@@ -246,6 +256,7 @@ class TranslationResultViewModel : ViewModel() {
                 val ready = _result.value as? ResultState.Ready
                 LastSentenceCache.original = ready?.result?.originalText
                 LastSentenceCache.translation = ready?.result?.translatedText
+                LastSentenceCache.translationSource = ready?.result?.backendDisplayName
                 LastSentenceCache.wordResults = data.rows.toLegacyMap()
                 LastSentenceCache.surfaceForms = data.surfaces
             } catch (e: CancellationException) {

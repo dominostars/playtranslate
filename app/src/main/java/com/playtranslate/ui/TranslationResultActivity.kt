@@ -477,15 +477,18 @@ class TranslationResultActivity :
         val cachedTranslation = intent.getStringExtra(EXTRA_DRAG_SENTENCE_TRANSLATION)
             ?.takeIf { it.isNotEmpty() }
         if (cachedTranslation != null) {
+            val cachedSource = intent.getStringExtra(EXTRA_DRAG_SENTENCE_TRANSLATION_SOURCE)
+                ?.takeIf { it.isNotEmpty() }
             val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
             vm.displayResult(
                 TranslationResult(
-                    originalText = sentenceText,
-                    segments = segments,
-                    translatedText = cachedTranslation,
-                    timestamp = timestamp,
-                    screenshotPath = screenshotPath,
-                    note = null,
+                    originalText       = sentenceText,
+                    segments           = segments,
+                    translatedText     = cachedTranslation,
+                    timestamp          = timestamp,
+                    screenshotPath     = screenshotPath,
+                    note               = null,
+                    backendDisplayName = cachedSource,
                 ),
                 applicationContext,
             )
@@ -502,15 +505,16 @@ class TranslationResultActivity :
 
         lifecycleScope.launch {
             try {
-                val (translated, note) = svc.translateOnce(sentenceText)
+                val groupTranslation = svc.translateOnce(sentenceText)
                 val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
                 val result = TranslationResult(
-                    originalText = sentenceText,
-                    segments = segments,
-                    translatedText = translated,
-                    timestamp = timestamp,
-                    screenshotPath = screenshotPath,
-                    note = note
+                    originalText       = sentenceText,
+                    segments           = segments,
+                    translatedText     = groupTranslation.text,
+                    timestamp          = timestamp,
+                    screenshotPath     = screenshotPath,
+                    note               = groupTranslation.note,
+                    backendDisplayName = groupTranslation.backendDisplayName,
                 )
                 vm.displayResult(result, applicationContext)
             } catch (e: Exception) {
@@ -544,6 +548,11 @@ class TranslationResultActivity :
         const val EXTRA_DRAG_WORD = "extra_drag_word"
         const val EXTRA_DRAG_READING = "extra_drag_reading"
         const val EXTRA_DRAG_SENTENCE_TRANSLATION = "extra_drag_sentence_translation"
+        /** Display name of the backend that produced [EXTRA_DRAG_SENTENCE_TRANSLATION]
+         *  in the lens. Surfaces as "Translated by …" below the cached translation
+         *  in the sentence tab so the cached path matches the regular translate
+         *  path's bottom label. Null when the source wasn't captured at lens time. */
+        const val EXTRA_DRAG_SENTENCE_TRANSLATION_SOURCE = "extra_drag_sentence_translation_source"
         /** Sentence's tokenized word lookups, serialized as four parallel
          *  arrays (mirrors [WordDetailBottomSheet]'s args bundle layout).
          *  Captured by the drag controller at lens-dismiss time so the

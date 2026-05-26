@@ -956,7 +956,7 @@ class PinholeOverlayMode(
         if (uncachedTexts.isNotEmpty()) {
             val results = service.translateGroupsSeparately(uncachedTexts)
             for ((i, idx) in uncachedIndices.withIndex()) {
-                translations[idx] = results.getOrNull(i)?.first ?: ""
+                translations[idx] = results.getOrNull(i)?.text ?: ""
             }
         }
 

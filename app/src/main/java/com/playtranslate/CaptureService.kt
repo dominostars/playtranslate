@@ -725,17 +725,18 @@ class CaptureService : Service() {
             }
 
             state.value = CaptureState.InProgress(getString(R.string.status_translating))
-            val (translated, note) = translateGroups(ocrResult.groupTexts)
+            val groupTranslation = translateGroups(ocrResult.groupTexts)
 
             val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
             state.value = CaptureState.Done(
                 TranslationResult(
-                    originalText   = ocrResult.fullText,
-                    segments       = ocrResult.segments,
-                    translatedText = translated,
-                    timestamp      = timestamp,
-                    screenshotPath = screenshotPath,
-                    note           = note
+                    originalText        = ocrResult.fullText,
+                    segments            = ocrResult.segments,
+                    translatedText      = groupTranslation.text,
+                    timestamp           = timestamp,
+                    screenshotPath      = screenshotPath,
+                    note                = groupTranslation.note,
+                    backendDisplayName  = groupTranslation.backendDisplayName,
                 )
             )
         } catch (e: CancellationException) {
@@ -1619,23 +1620,25 @@ class CaptureService : Service() {
         ocrResult: OcrManager.OcrResult,
         screenshotPath: String?,
         forceShow: Boolean = false
-    ): List<Pair<String, String?>>? {
+    ): List<GroupTranslation>? {
         if (!forceShow) {
             val appPanelVisible = !Prefs.isSingleScreen(this) && MainActivity.isInForeground
             if (!appPanelVisible) return null
         }
         val perGroup = translateGroupsSeparately(ocrResult.groupTexts)
-        val translated = perGroup.joinToString("\n\n") { it.first }
-        val note = perGroup.mapNotNull { it.second }.firstOrNull()
+        val translated = perGroup.joinToString("\n\n") { it.text }
+        val note = perGroup.mapNotNull { it.note }.firstOrNull()
+        val backendDisplayName = perGroup.mapNotNull { it.backendDisplayName }.firstOrNull()
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
         emitResult(
             com.playtranslate.model.TranslationResult(
-                originalText   = ocrResult.fullText,
-                segments       = ocrResult.segments,
-                translatedText = translated,
-                timestamp      = timestamp,
-                screenshotPath = screenshotPath,
-                note           = note
+                originalText       = ocrResult.fullText,
+                segments           = ocrResult.segments,
+                translatedText     = translated,
+                timestamp          = timestamp,
+                screenshotPath     = screenshotPath,
+                note               = note,
+                backendDisplayName = backendDisplayName,
             )
         )
         return perGroup
@@ -1790,22 +1793,24 @@ class CaptureService : Service() {
             if (ocrResult == null) return PipelineOutcome.NoText
 
             val perGroup = translateGroupsSeparately(ocrResult.groupTexts)
-            val translated = perGroup.joinToString("\n\n") { it.first }
-            val note = perGroup.mapNotNull { it.second }.firstOrNull()
+            val translated = perGroup.joinToString("\n\n") { it.text }
+            val note = perGroup.mapNotNull { it.note }.firstOrNull()
+            val backendDisplayName = perGroup.mapNotNull { it.backendDisplayName }.firstOrNull()
             val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
 
             return PipelineOutcome.Success(
                 PipelineResult(
                     result = TranslationResult(
-                        originalText   = ocrResult.fullText,
-                        segments       = ocrResult.segments,
-                        translatedText = translated,
-                        timestamp      = timestamp,
-                        screenshotPath = screenshotPath,
-                        note           = note
+                        originalText       = ocrResult.fullText,
+                        segments           = ocrResult.segments,
+                        translatedText     = translated,
+                        timestamp          = timestamp,
+                        screenshotPath     = screenshotPath,
+                        note               = note,
+                        backendDisplayName = backendDisplayName,
                     ),
                     groupBounds = ocrResult.groupBounds,
-                    groupTranslations = perGroup.map { it.first },
+                    groupTranslations = perGroup.map { it.text },
                     cropLeft = left, cropTop = top,
                     screenshotW = raw.width, screenshotH = raw.height,
                     ocrResult = ocrResult
@@ -1878,7 +1883,7 @@ class CaptureService : Service() {
      *     a lower-priority backend, the fallback's output shouldn't outlast
      *     the memory pressure window.
      */
-    internal suspend fun translateGroupsSeparately(groupTexts: List<String>): List<Pair<String, String?>> {
+    internal suspend fun translateGroupsSeparately(groupTexts: List<String>): List<GroupTranslation> {
         val target = snapshotTranslationTarget()
 
         // OCR-only bypass: when source and target language are the same,
@@ -1889,7 +1894,7 @@ class CaptureService : Service() {
         // fallback should drop.
         if (target.source == target.target) {
             setDegraded(false)
-            return groupTexts.map { Pair(it, null) }
+            return groupTexts.map { GroupTranslation(it, null, null) }
         }
 
         // Reconcile the cache's preferred-backend identity BEFORE the
@@ -1904,7 +1909,7 @@ class CaptureService : Service() {
         val uncached = keys.withIndex()
             .filter { (_, key) -> key !in translationCache }
 
-        val freshByKey: Map<TranslationCache.Key, Pair<String, String?>> = if (uncached.isNotEmpty()) {
+        val freshByKey: Map<TranslationCache.Key, GroupTranslation> = if (uncached.isNotEmpty()) {
             // Single batched waterfall (one HTTP request per backend
             // pass when the backend implements BatchTranslator —
             // DeepL, Gemini, OpenAI, Lingva) instead of N parallel
@@ -1955,32 +1960,37 @@ class CaptureService : Service() {
                 // entered during this batch is reflected in the identity
                 // before these writes land).
                 if (outcome.note == null && outcome.displacedLlmId == null) {
-                    translationCache[indexedKey.value] = outcome.text to outcome.note
+                    translationCache[indexedKey.value] = outcome.text to outcome.backendDisplayName
                 }
             }
 
-            uncached.map { it.value }.zip(outcomes.map { it.text to it.note }).toMap()
+            uncached.map { it.value }.zip(
+                outcomes.map { GroupTranslation(it.text, it.note, it.backendDisplayName) }
+            ).toMap()
         } else emptyMap()
 
         return keys.map { key ->
-            translationCache[key]
+            translationCache[key]?.let { (text, backendDisplayName) ->
+                GroupTranslation(text, note = null, backendDisplayName = backendDisplayName)
+            }
                 ?: freshByKey[key]
-                ?: Pair("", null)
+                ?: GroupTranslation("", null, null)
         }
     }
 
-    private suspend fun translateGroups(groupTexts: List<String>): Pair<String, String?> {
+    private suspend fun translateGroups(groupTexts: List<String>): GroupTranslation {
         val results = translateGroupsSeparately(groupTexts)
-        val translated = results.joinToString("\n\n") { it.first }
-        val note = results.mapNotNull { it.second }.firstOrNull()
-        return Pair(translated, note)
+        val translated = results.joinToString("\n\n") { it.text }
+        val note = results.mapNotNull { it.note }.firstOrNull()
+        val backendDisplayName = results.mapNotNull { it.backendDisplayName }.firstOrNull()
+        return GroupTranslation(translated, note, backendDisplayName)
     }
 
     /** On-demand translation for a single text string (used by edit overlay, drag-sentence, etc.). */
-    suspend fun translateOnce(text: String): Pair<String, String?> {
+    internal suspend fun translateOnce(text: String): GroupTranslation {
         val outcome = translate(text, snapshotTranslationTarget())
         setDegraded(outcome.kind)
-        return outcome.text to outcome.note
+        return GroupTranslation(outcome.text, outcome.note, outcome.backendDisplayName)
     }
 
     /**
@@ -2014,6 +2024,16 @@ class CaptureService : Service() {
         val note: String?,
         val kind: DegradedWarningKind,
         val displacedLlmId: com.playtranslate.translation.BackendId?,
+        val backendDisplayName: String?,
+    )
+
+    /** Per-group translation triple returned by the batch / single paths.
+     *  Carries the backend's display name so the results view can render
+     *  "Translated by …" alongside the existing warning [note]. */
+    internal data class GroupTranslation(
+        val text: String,
+        val note: String?,
+        val backendDisplayName: String?,
     )
 
     /** Order DegradedWarningKind by severity so a batch's worst outcome
@@ -2032,7 +2052,7 @@ class CaptureService : Service() {
         // bypass in translateGroupsSeparately is a redundant early-return
         // for the group/cache path.
         if (target.source == target.target) {
-            return TranslateOutcome(text, null, DegradedWarningKind.None, null)
+            return TranslateOutcome(text, null, DegradedWarningKind.None, null, null)
         }
 
         ensureLanguageManagersFor(target)
@@ -2057,7 +2077,7 @@ class CaptureService : Service() {
         target: TranslationTarget,
     ): List<TranslateOutcome> {
         if (target.source == target.target) {
-            return texts.map { TranslateOutcome(it, null, DegradedWarningKind.None, null) }
+            return texts.map { TranslateOutcome(it, null, DegradedWarningKind.None, null, null) }
         }
         ensureLanguageManagersFor(target)
         val results = TranslationBackendRegistry.translateBatch(texts, target.source, target.target)
@@ -2097,7 +2117,7 @@ class CaptureService : Service() {
                 if (isNetworkAvailable()) getString(R.string.note_mlkit_service_unavailable)
                 else getString(R.string.note_mlkit_no_internet)
         }
-        return TranslateOutcome(this.text, note, kind, this.displacedLlmId)
+        return TranslateOutcome(this.text, note, kind, this.displacedLlmId, this.backend.displayName)
     }
 
     /**
