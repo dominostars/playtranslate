@@ -176,18 +176,56 @@ class MainActivity :
 
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) { runOnUiThread {
+            dumpDisplayState("displayAdded:$displayId")
             if (!isFinishing) {
                 checkOnboardingState()
                 CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
             }
         } }
         override fun onDisplayRemoved(displayId: Int) { runOnUiThread {
+            dumpDisplayState("displayRemoved:$displayId")
             if (!isFinishing) {
                 checkOnboardingState()
                 CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
             }
         } }
-        override fun onDisplayChanged(displayId: Int) {}
+        override fun onDisplayChanged(displayId: Int) {
+            runOnUiThread { dumpDisplayState("displayChanged:$displayId") }
+        }
+    }
+
+    /**
+     * Diagnostic dump of the device's display topology and our windowing
+     * state. Lands in the user-facing logcat export (last 5000 lines) so
+     * support reports can confirm whether [Prefs.hasMultipleDisplays] is
+     * seeing the right thing on unusual devices (foldables, dual-screen,
+     * Surface Duo). Tag is fresh so it greps cleanly.
+     */
+    private fun dumpDisplayState(reason: String) {
+        try {
+            val dm = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+            val displays = dm.displays
+            val presentation = dm.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION)
+            val winBounds = windowManager.currentWindowMetrics.bounds
+            android.util.Log.i(TAG_DISPLAY_DUMP,
+                "[$reason] displays=${displays.size} presentation=${presentation.size} " +
+                    "multiWindow=$isInMultiWindowMode " +
+                    "winBounds=${winBounds.width()}x${winBounds.height()}@(${winBounds.left},${winBounds.top}) " +
+                    "device='${Build.MANUFACTURER} ${Build.MODEL}' sdk=${Build.VERSION.SDK_INT}")
+            displays.forEach { d ->
+                val sz = android.graphics.Point().also { d.getRealSize(it) }
+                android.util.Log.i(TAG_DISPLAY_DUMP,
+                    "  id=${d.displayId} name='${d.name}' " +
+                        "flags=0x${Integer.toHexString(d.flags)} state=${d.state} " +
+                        "size=${sz.x}x${sz.y} valid=${d.isValid}")
+            }
+            presentation.forEach { d ->
+                android.util.Log.i(TAG_DISPLAY_DUMP,
+                    "  presentationCat id=${d.displayId} name='${d.name}'")
+            }
+        } catch (t: Throwable) {
+            android.util.Log.w(TAG_DISPLAY_DUMP, "[$reason] dump failed", t)
+        }
     }
 
     // ── State ─────────────────────────────────────────────────────────────
@@ -330,6 +368,7 @@ class MainActivity :
         startAndBindService()
         (getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
             .registerDisplayListener(displayListener, null)
+        dumpDisplayState("onCreate")
 
         // Pack-upgrade gate: scan installed packs against the bundled
         // catalog. If any are stale (catalog packVersion > on-disk
@@ -497,6 +536,7 @@ class MainActivity :
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
         super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
         MainActivity.isInMultiWindowMode = isInMultiWindowMode
+        dumpDisplayState("multiWindow=$isInMultiWindowMode")
         // Let a running live session adapt if the viewport predicate flipped.
         // No-op if live mode isn't active.
         CaptureService.instance?.onMultiWindowChanged()
@@ -504,6 +544,7 @@ class MainActivity :
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        dumpDisplayState("configChanged")
         // Display swap may have happened without onPause/onResume because
         // our manifest swallows screenLayout|smallestScreenSize via
         // configChanges. The live foregroundDisplayId getter returns the
@@ -2279,6 +2320,8 @@ class MainActivity :
     }
 
     companion object {
+        private const val TAG_DISPLAY_DUMP = "DisplayDump"
+
         const val ACTION_DRAG_SENTENCE = "com.playtranslate.ACTION_DRAG_SENTENCE"
         const val EXTRA_DRAG_LINE_TEXT = "extra_drag_line_text"
         const val EXTRA_DRAG_SCREENSHOT_PATH = "extra_drag_screenshot_path"
