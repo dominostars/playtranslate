@@ -295,7 +295,7 @@ class OcrGroupingTest {
         )
     }
 
-    // ── shortAboveLongBlock: the 0.5 width/height guard ──────────────────
+    // ── shortAboveLongBlock: the 1/3 width/height guard ──────────────────
 
     @Test
     fun shortAboveLong_horizontal_speakerName_splits() {
@@ -303,7 +303,7 @@ class OcrGroupingTest {
         // wider dialogue line. The rule must split them so the name keeps
         // its own overlay/translation context.
         val name = box(100, 0, 200, 50)        // w=100
-        val dialogue = box(100, 80, 1000, 130) // w=900 → 100*2 < 900 fires
+        val dialogue = box(100, 80, 1000, 130) // w=900 → 100*3 < 900 fires
         val groups = group(listOf(name, dialogue))
         assertEquals(listOf(listOf(0), listOf(1)), groups)
     }
@@ -329,19 +329,19 @@ class OcrGroupingTest {
         // wrap. Asymmetric rule by design.
         val groups = group(listOf(
             box(100, 0, 1000, 50),        // body line, w=900
-            box(100, 80, 300, 130),       // short tail, w=200, ratio 200/900 below 0.5
+            box(100, 80, 300, 130),       // short tail, w=200, ratio 200/900 below 1/3
         ))
         assertEquals(listOf(listOf(0, 1)), groups)
     }
 
     @Test
-    fun shortAboveLong_horizontal_exactlyHalfWidth_merges() {
-        // Strict less-than threshold: at exactly 0.5× ratio, the rule does
+    fun shortAboveLong_horizontal_exactlyOneThirdWidth_merges() {
+        // Strict less-than threshold: at exactly 1/3× ratio, the rule does
         // NOT fire. Existing geometry decides — here heights and alignment
         // match, so they merge.
         val groups = group(listOf(
             box(100, 0, 200, 50),         // earlier, w=100
-            box(100, 80, 300, 130),       // later,   w=200 → 100*2 = 200, NOT < 200
+            box(100, 80, 400, 130),       // later,   w=300 → 100*3 = 300, NOT < 300
         ))
         assertEquals(listOf(listOf(0, 1)), groups)
     }
@@ -352,7 +352,7 @@ class OcrGroupingTest {
         // is much shorter than the next (leftward) column → split. Height
         // is the comparison axis.
         val rightColumn = box(200, 0, 250, 50)    // h=50 (the "earlier" column)
-        val leftColumn = box(50, 0, 100, 500)     // h=500 → 50*2 < 500 fires
+        val leftColumn = box(50, 0, 100, 500)     // h=500 → 50*3 < 500 fires
         val groups = group(
             listOf(rightColumn, leftColumn),
             orientation = TextOrientation.VERTICAL,
@@ -406,7 +406,7 @@ class OcrGroupingTest {
 
     @Test
     fun shortAboveLong_horizontal_centeredWrap_splits_pinnedBehavior() {
-        // Behavior pin: a centered first line < 0.5× the centered second
+        // Behavior pin: a centered first line < 1/3× the centered second
         // line's width is split, even though the existing block path would
         // otherwise merge via centerAligned. The size-block runs before
         // alignment checks.
@@ -422,7 +422,7 @@ class OcrGroupingTest {
         // alignment + gap evidence and update this test.
         val groups = group(listOf(
             box(400, 0, 500, 50),     // centerX=450, w=100
-            box(50, 80, 850, 130),    // centerX=450, w=800 → 100*2 < 800 fires
+            box(50, 80, 850, 130),    // centerX=450, w=800 → 100*3 < 800 fires
         ))
         assertEquals(listOf(listOf(0), listOf(1)), groups)
     }

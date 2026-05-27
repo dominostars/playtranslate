@@ -944,9 +944,13 @@ class OcrManager private constructor() {
          */
         /**
          * Block-grouping size guard. When the earlier line (in reading order)
-         * is strictly less than half the later line's extent, refuse to group.
-         * Catches speaker-name + dialogue, poem-stanza first lines, and short
-         * headings above body text without affecting same-paragraph wraps.
+         * is strictly less than one-third the later line's extent, refuse to
+         * group. Catches speaker-name + dialogue, poem-stanza first lines,
+         * and short headings above body text without affecting same-paragraph
+         * wraps. The threshold was loosened from one-half to one-third so
+         * subtle short-above-long pairings (e.g. a ~40% intro line above a
+         * long body) cluster instead of splitting — only clearly-short
+         * labels still trip the guard.
          *
          * Asymmetric: long-above-short (a paragraph closing with a short tail)
          * is unaffected. Only fires when the rects are cleanly separated on
@@ -976,8 +980,8 @@ class OcrManager private constructor() {
                     }
                     val eh = earlier.height()
                     val lh = later.height()
-                    if (eh > 0 && eh * 2 < lh)
-                        "size-block (vertical: earlier h=$eh < 0.5× later h=$lh)"
+                    if (eh > 0 && eh * 3 < lh)
+                        "size-block (vertical: earlier h=$eh < ⅓× later h=$lh)"
                     else null
                 }
                 else -> {
@@ -988,8 +992,8 @@ class OcrManager private constructor() {
                     }
                     val ew = earlier.width()
                     val lw = later.width()
-                    if (ew > 0 && ew * 2 < lw)
-                        "size-block (horizontal: earlier w=$ew < 0.5× later w=$lw)"
+                    if (ew > 0 && ew * 3 < lw)
+                        "size-block (horizontal: earlier w=$ew < ⅓× later w=$lw)"
                     else null
                 }
             }
