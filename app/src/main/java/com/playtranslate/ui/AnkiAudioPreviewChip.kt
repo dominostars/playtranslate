@@ -37,6 +37,11 @@ class AnkiAudioPreviewChip(
     private val fragment: Fragment,
     private val lang: SourceLangId,
     private val previewText: () -> String,
+    /** Per-call voice override. Read on every tap so a host that lets
+     *  the user change voice mid-card (Anki per-cell flow) picks up
+     *  the latest pick without needing to swap chips. Null = engine
+     *  default (NOT a pref fallback — the chip's owner controls that). */
+    private val voiceOverride: () -> String? = { null },
 ) {
     private enum class State { IDLE, LOADING, PLAYING }
 
@@ -45,7 +50,11 @@ class AnkiAudioPreviewChip(
     private fun dp(v: Int) = (v * density).toInt()
 
     private val accent = ctx.themeColor(R.attr.ptAccent)
-    private val muted = ctx.themeColor(R.attr.ptTextMuted)
+    /** "Disabled" colour for the chip's ring + icon when the include
+     *  switch is off. Pulled to `ptOutline` so the chip blends further
+     *  into the surface, matching the cell title and the voice pill —
+     *  single muted attr across all three for visual cohesion. */
+    private val muted = ctx.themeColor(R.attr.ptOutline)
 
     private var state = State.IDLE
     private var switchOn = true
@@ -136,8 +145,13 @@ class AnkiAudioPreviewChip(
             state = State.LOADING
             render()
             try {
+                // The chip is an Anki per-cell component — null in
+                // voiceOverride() means "user picked Default for this
+                // cell", and that's exactly what TtsEngine treats null
+                // as (engine default, no pref fallback).
                 val result = TtsEngine.speak(
                     ctx, text, lang, awaitCompletion = true,
+                    voiceNameOverride = voiceOverride(),
                     onStart = {
                         // Fires on the engine thread; marshal to the UI and
                         // ignore it if a newer request has superseded this.

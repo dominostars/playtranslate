@@ -71,6 +71,32 @@ class WordAnkiReviewSheet : DialogFragment() {
     /** Handle to the word-tab Audio card. The switch state is read at
      *  send time; the Voice row text is refreshed in [onResume]. */
     private var wordAudioHandle: AnkiAudioToggleHandle? = null
+
+    /** Per-card voice for the word-tab audio cell. Seeded from
+     *  Prefs.ttsVoiceName at buildWordContent time; null after a "Default"
+     *  pick means explicit engine default (not "fall back to pref"). */
+    private var wordTabVoice: String? = null
+
+    /** True while the word-tab pill's picker launch is in flight. The
+     *  sheet doesn't host SentenceAnkiContentFragment's PickTarget
+     *  machinery, so a simple boolean is enough — there's only one
+     *  pill on the word tab. */
+    private var pendingWordTabPick: Boolean = false
+
+    private val voicePickerLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val wasOurs = pendingWordTabPick.also { pendingWordTabPick = false }
+        if (!wasOurs) return@registerForActivityResult
+        if (result.resultCode != android.app.Activity.RESULT_OK) return@registerForActivityResult
+        val picked = result.data?.getStringExtra(TtsVoiceActivity.EXTRA_PICKED_VOICE)
+        wordTabVoice = picked
+        // The word tab only ever has one sourceLangId — captured by the
+        // outer onViewCreated; safe to read again from args here.
+        val lang = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG))
+            ?: SourceLangId.JA
+        wordAudioHandle?.refreshPillLabel(this, lang, picked)
+    }
     /** First child of the Screenshot group inside [wordContainer] (its
      *  header). Tracked so the lazy More examples group can be inserted
      *  immediately above the Screenshot group rather than appended to
@@ -132,11 +158,6 @@ class WordAnkiReviewSheet : DialogFragment() {
      *  (drag → Anki path). Drives the same Save-button indicator. */
     private var wordsFillInFlight: Boolean = false
 
-    /** Voice row in the top Anki section. Both word and sentence tabs see
-     *  it (the word tab's standalone Audio section keeps its own Voice
-     *  row — same Prefs.ttsVoiceName, so the two stay in sync). Refreshed
-     *  in onResume because TtsVoiceActivity returns no result. */
-    private var topVoiceHandle: AnkiVoiceRowHandle? = null
 
     /** Optional listener called when this sheet is dismissed (used by WordAnkiReviewActivity). */
     var onDismissListener: DialogInterface.OnDismissListener? = null
@@ -177,18 +198,9 @@ class WordAnkiReviewSheet : DialogFragment() {
         currentScreenshotPath = null
         wordAudioHandle?.release()
         wordAudioHandle = null
-        topVoiceHandle = null
         super.onDestroyView()
     }
 
-    override fun onResume() {
-        super.onResume()
-        // TtsVoiceActivity returns no result; re-read the saved voice
-        // when we resume. The top Anki section is the only Voice picker
-        // now (the word tab's Audio section dropped its Voice row to
-        // avoid duplication with the top section).
-        topVoiceHandle?.refreshVoiceLabel()
-    }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -248,13 +260,11 @@ class WordAnkiReviewSheet : DialogFragment() {
         wordContainer.visibility = if (hasSentenceData) View.GONE else View.VISIBLE
 
         deckSubtitleView = view.findViewById(R.id.tvWordAnkiSendSubtitle)
-        topVoiceHandle = addAnkiSection(
+        addAnkiSection(
             parent = deckHost,
             mode = CardMode.WORD,
             onDeckChanged = { refreshDeckSubtitle() },
             onCardTypeChanged = { /* no visible affordance reflects card type */ },
-            includeVoiceRow = true,
-            lang = sourceLangId,
         )
         refreshDeckSubtitle()
 
@@ -448,6 +458,11 @@ class WordAnkiReviewSheet : DialogFragment() {
         parent.addView(header)
 
         // ── Audio group: TTS of the headword, attached as [sound:]. ──
+        // Per-cell voice mirrors the sentence sheet's pattern. Seed
+        // wordTabVoice from the global pref AT view-create so the
+        // picker's "Default" pick (null) means engine default, not
+        // "look up the pref again".
+        wordTabVoice = Prefs(ctx).ttsVoiceName(sourceLangId)
         wordAudioHandle = addAnkiAudioSection(
             parent = parent,
             lang = sourceLangId,
@@ -455,6 +470,13 @@ class WordAnkiReviewSheet : DialogFragment() {
             previewText = { word },
             initialChecked = Prefs(ctx).ankiWordAudioEnabled,
             onCheckedChange = { Prefs(ctx).ankiWordAudioEnabled = it },
+            voiceOverride = { wordTabVoice },
+            onVoicePillTap = {
+                pendingWordTabPick = true
+                voicePickerLauncher.launch(
+                    TtsVoiceActivity.intent(ctx, sourceLangId, wordTabVoice),
+                )
+            },
         )
 
         // ── Definitions group: starts with a loading placeholder. The
@@ -1303,9 +1325,18 @@ class WordAnkiReviewSheet : DialogFragment() {
     ) {
         // Synthesize word audio up front when the switch is on; the temp
         // WAV is uploaded by the dispatcher and deleted once sent.
+        // wordTabVoice carries the per-cell pick (null = engine default,
+        // not the global pref — TtsEngine respects an explicit null as
+        // override).
         val wantAudio = wordAudioHandle?.switch?.isChecked == true
+        // wordTabVoice carries the per-cell pick (null = engine default,
+        // the user's explicit "Default" choice) — that's what TtsEngine
+        // takes null to mean too.
         val audioFile = if (wantAudio) {
-            TtsEngine.synthesizeToFile(requireContext(), word, sourceLangId)
+            TtsEngine.synthesizeToFile(
+                requireContext(), word, sourceLangId,
+                voiceNameOverride = wordTabVoice,
+            )
         } else null
         val result = try {
             dispatchSendToAnki(
@@ -1638,15 +1669,20 @@ class WordAnkiReviewSheet : DialogFragment() {
         // temp WAV is uploaded by the dispatcher and deleted once sent.
         val wantAudio = content.sentenceAudioEnabled
         val audioFile = if (wantAudio) {
-            TtsEngine.synthesizeToFile(requireContext(), data.source, data.sourceLangId)
+            TtsEngine.synthesizeToFile(
+                requireContext(), data.source, data.sourceLangId,
+                voiceNameOverride = data.sentenceVoice,
+            )
         } else null
         // Per-target-word audio. TTS engine serializes utterances anyway,
         // so a simple sequential loop is the same wall-clock cost as
         // parallel coroutines.
         val wordAudioFiles: Map<String, File> = buildMap {
             for (word in data.targetWordAudioWords) {
-                TtsEngine.synthesizeToFile(requireContext(), word, data.sourceLangId)
-                    ?.let { put(word, it) }
+                TtsEngine.synthesizeToFile(
+                    requireContext(), word, data.sourceLangId,
+                    voiceNameOverride = data.wordAudioVoices[word],
+                )?.let { put(word, it) }
             }
         }
         val result = try {

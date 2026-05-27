@@ -193,9 +193,7 @@ fun Fragment.addAnkiSection(
     mode: CardMode,
     onDeckChanged: () -> Unit,
     onCardTypeChanged: () -> Unit,
-    includeVoiceRow: Boolean = false,
-    lang: SourceLangId? = null,
-): AnkiVoiceRowHandle? {
+) {
     val ctx = requireContext()
     val density = ctx.resources.displayMetrics.density
     val inflater = android.view.LayoutInflater.from(ctx)
@@ -261,23 +259,6 @@ fun Fragment.addAnkiSection(
     }
     card.addView(cardTypeRow)
 
-    // -- Optional Voice row (sentence-card flow surfaces it here so the
-    //    Audio section can be removed entirely; the word-flow keeps its
-    //    own Voice row inside the Audio section and passes
-    //    includeVoiceRow = false). --
-    val voiceHandle: AnkiVoiceRowHandle? = if (includeVoiceRow && lang != null) {
-        ankiInsetDivider(card)
-        val voiceRow = inflater.inflate(R.layout.settings_row_value, card, false)
-        voiceRow.findViewById<TextView>(R.id.tvRowTitle).text =
-            ctx.getString(R.string.anki_voice_row_label)
-        val voiceValue = voiceRow.findViewById<TextView>(R.id.tvRowValue)
-        voiceRow.setOnClickListener {
-            startActivity(TtsVoiceActivity.intent(ctx, lang))
-        }
-        card.addView(voiceRow)
-        AnkiVoiceRowHandle(this, lang, voiceValue).also { it.refreshVoiceLabel() }
-    } else null
-
     // -- Healing pass: rectify deck + model selections against
     //    AnkiDroid's live state. Runs once on view-created.
     viewLifecycleOwner.lifecycleScope.launch {
@@ -306,48 +287,55 @@ fun Fragment.addAnkiSection(
             }
         }
     }
-
-    return voiceHandle
 }
 
 /**
- * Handle to a stand-alone Voice row built by [addAnkiSection] when
- * `includeVoiceRow = true`. The hosting sheet calls [refreshVoiceLabel]
- * from its onResume() because [TtsVoiceActivity] returns no result —
- * the saved pref is the source of truth on return.
- */
-class AnkiVoiceRowHandle internal constructor(
-    private val fragment: Fragment,
-    private val lang: SourceLangId,
-    private val voiceValue: TextView,
-) {
-    fun refreshVoiceLabel() {
-        val ctx = voiceValue.context
-        fragment.viewLifecycleOwner.lifecycleScope.launch {
-            val savedName = Prefs(ctx).ttsVoiceName(lang)
-            voiceValue.text = if (savedName == null) {
-                ctx.getString(R.string.anki_voice_default)
-            } else {
-                val voices = TtsEngine.voicesFor(ctx, lang)
-                val idx = voices.indexOfFirst { it.name == savedName }
-                if (idx >= 0) ctx.getString(R.string.anki_voice_numbered, idx + 1)
-                else ctx.getString(R.string.anki_voice_default)
-            }
-        }
-    }
-}
-
-/**
- * Lightweight handle to a 44dp audio toggle row built by
- * [addCompactAudioToggleRow]. The host reads [switch].isChecked at send
- * time and calls [release] from onDestroyView so any in-flight preview
- * stops.
+ * Lightweight handle to an audio toggle row (compact 44dp variant or
+ * the full Audio section). The host reads [switch].isChecked at send
+ * time, calls [refreshPillLabel] after the per-cell voice picker
+ * returns, and calls [release] from onDestroyView so any in-flight
+ * preview stops.
+ *
+ * [pill] is null when the row was built without a voice pill (i.e. the
+ * helper was invoked without `onVoicePillTap`).
  */
 class AnkiAudioToggleHandle internal constructor(
     val switch: MaterialSwitch,
     private val chip: AnkiAudioPreviewChip,
+    val pill: VoicePillView? = null,
 ) {
     fun release() = chip.stop()
+
+    /** Refresh the pill label after a per-cell pick. Async because the
+     *  index → "Voice N" resolution requires [TtsEngine.voicesFor]
+     *  which suspends on engine bind. */
+    fun refreshPillLabel(
+        fragment: Fragment,
+        lang: SourceLangId,
+        voice: String?,
+    ) {
+        val p = pill ?: return
+        fragment.viewLifecycleOwner.lifecycleScope.launch {
+            p.setLabel(computeVoicePillLabel(p.view.context, lang, voice))
+        }
+    }
+}
+
+/** Resolves a per-cell voice override into the pill's display label —
+ *  "Default" or "Voice N", matching the existing Voice-row scheme. The
+ *  index lookup goes through [TtsEngine.voicesFor], which is suspending
+ *  because the engine bind is asynchronous. */
+internal suspend fun computeVoicePillLabel(
+    ctx: android.content.Context,
+    lang: SourceLangId,
+    voice: String?,
+): String = if (voice == null) {
+    ctx.getString(R.string.anki_voice_default)
+} else {
+    val voices = TtsEngine.voicesFor(ctx, lang)
+    val idx = voices.indexOfFirst { it.name == voice }
+    if (idx >= 0) ctx.getString(R.string.anki_voice_numbered, idx + 1)
+    else ctx.getString(R.string.anki_voice_default)
 }
 
 /**
@@ -372,6 +360,12 @@ fun Fragment.addAnkiAudioSection(
     previewText: () -> String,
     initialChecked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    /** Per-cell voice provider — fed to the chip + reflected in the
+     *  pill's initial label. null lambda = "engine default". */
+    voiceOverride: () -> String? = { null },
+    /** Tap handler for the voice pill. When null, no pill is rendered
+     *  (back-compat for callers that don't opt into per-cell voices). */
+    onVoicePillTap: (() -> Unit)? = null,
 ): AnkiAudioToggleHandle {
     val ctx = requireContext()
     val inflater = android.view.LayoutInflater.from(ctx)
@@ -379,9 +373,9 @@ fun Fragment.addAnkiAudioSection(
     ankiGroupHeader(parent, ctx.getString(R.string.anki_group_audio))
     val card = ankiGroupCard(parent)
 
-    // -- Audio row: preview chip + label + include switch --
+    // -- Audio row: preview chip + (optional voice pill) + label + include switch --
     val audioRow = inflater.inflate(R.layout.settings_row_switch, card, false)
-    audioRow.findViewById<TextView>(R.id.tvRowTitle).apply {
+    val titleView = audioRow.findViewById<TextView>(R.id.tvRowTitle).apply {
         text = rowLabel
         // The label is the actual word/sentence being spoken — keep it to
         // one line and let Android ellipsize a long sentence.
@@ -389,19 +383,41 @@ fun Fragment.addAnkiAudioSection(
         ellipsize = TextUtils.TruncateAt.END
     }
     val switch = audioRow.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-    val chip = AnkiAudioPreviewChip(this, lang, previewText)
-    // Seed before wiring the listener so seeding doesn't write the pref.
+    val chip = AnkiAudioPreviewChip(this, lang, previewText, voiceOverride)
+    (audioRow as ViewGroup).addView(chip.view, 0)
+    val pill: VoicePillView? = if (onVoicePillTap != null) {
+        val p = VoicePillView(this, lang)
+        p.setOnTap(onVoicePillTap)
+        // Insert immediately after the chip — index 1, before the title TextView.
+        audioRow.addView(p.view, 1)
+        // Initial label fills in async (engine bind suspends).
+        viewLifecycleOwner.lifecycleScope.launch {
+            p.setLabel(computeVoicePillLabel(ctx, lang, voiceOverride()))
+        }
+        p
+    } else null
+    // Active-state styling: title text-coloured + pill accent-coloured
+    // when the switch is on; muted on both when off. Mirrors the chip's
+    // ring/icon flip in [AnkiAudioPreviewChip.render].
+    val activeTitleColor = ctx.themeColor(R.attr.ptText)
+    val mutedTitleColor = ctx.themeColor(R.attr.ptOutline)
+    fun applyActiveStyling(active: Boolean) {
+        titleView.setTextColor(if (active) activeTitleColor else mutedTitleColor)
+        pill?.setActive(active)
+    }
+    // Seed before wiring the listener so seeding doesn't fire onCheckedChange.
     switch.isChecked = initialChecked
     chip.setSwitchOn(initialChecked)
+    applyActiveStyling(initialChecked)
     switch.setOnCheckedChangeListener { _, checked ->
         onCheckedChange(checked)
         chip.setSwitchOn(checked)
+        applyActiveStyling(checked)
     }
     audioRow.setOnClickListener { switch.toggle() }
-    (audioRow as ViewGroup).addView(chip.view, 0)
     card.addView(audioRow)
 
-    return AnkiAudioToggleHandle(switch, chip)
+    return AnkiAudioToggleHandle(switch, chip, pill)
 }
 
 /**
@@ -423,6 +439,10 @@ fun Fragment.addCompactAudioToggleRow(
     previewText: () -> String,
     initialChecked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    /** See [addAnkiAudioSection]'s `voiceOverride`. */
+    voiceOverride: () -> String? = { null },
+    /** See [addAnkiAudioSection]'s `onVoicePillTap`. */
+    onVoicePillTap: (() -> Unit)? = null,
 ): AnkiAudioToggleHandle {
     val ctx = requireContext()
     val inflater = android.view.LayoutInflater.from(ctx)
@@ -435,25 +455,44 @@ fun Fragment.addCompactAudioToggleRow(
     row.minimumHeight = (44 * density).toInt()
     row.setPadding(row.paddingLeft, (4 * density).toInt(),
         row.paddingRight, (4 * density).toInt())
-    row.findViewById<TextView>(R.id.tvRowTitle).apply {
+    val titleView = row.findViewById<TextView>(R.id.tvRowTitle).apply {
         text = label
         maxLines = 1
         ellipsize = TextUtils.TruncateAt.END
     }
     val switch = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-    val chip = AnkiAudioPreviewChip(this, lang, previewText)
+    val chip = AnkiAudioPreviewChip(this, lang, previewText, voiceOverride)
+    row.addView(chip.view, 0)
+    val pill: VoicePillView? = if (onVoicePillTap != null) {
+        val p = VoicePillView(this, lang)
+        p.setOnTap(onVoicePillTap)
+        row.addView(p.view, 1)
+        viewLifecycleOwner.lifecycleScope.launch {
+            p.setLabel(computeVoicePillLabel(ctx, lang, voiceOverride()))
+        }
+        p
+    } else null
+    // Active-state styling: title + pill follow the chip's switch-driven
+    // colour flip — accent (text) on, muted off.
+    val activeTitleColor = ctx.themeColor(R.attr.ptText)
+    val mutedTitleColor = ctx.themeColor(R.attr.ptOutline)
+    fun applyActiveStyling(active: Boolean) {
+        titleView.setTextColor(if (active) activeTitleColor else mutedTitleColor)
+        pill?.setActive(active)
+    }
     // Seed before wiring the listener so seeding doesn't fire onCheckedChange.
     switch.isChecked = initialChecked
     chip.setSwitchOn(initialChecked)
+    applyActiveStyling(initialChecked)
     switch.setOnCheckedChangeListener { _, checked ->
         onCheckedChange(checked)
         chip.setSwitchOn(checked)
+        applyActiveStyling(checked)
     }
     row.setOnClickListener { switch.toggle() }
-    row.addView(chip.view, 0)
     parent.addView(row)
 
-    return AnkiAudioToggleHandle(switch, chip)
+    return AnkiAudioToggleHandle(switch, chip, pill)
 }
 
 /**

@@ -83,6 +83,22 @@ class SettingsBottomSheet : DialogFragment() {
         if (granted) renderer?.refreshAnkiSection()
     }
 
+    /** Voice picker now returns the choice via setResult rather than
+     *  writing the pref directly — Settings persists from its callback
+     *  and refreshes the TTS row. The pref key is keyed by source lang;
+     *  we snapshot the lang at launch time. */
+    private var ttsVoicePickerLang: com.playtranslate.language.SourceLangId? = null
+    private val ttsVoicePickerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val lang = ttsVoicePickerLang.also { ttsVoicePickerLang = null }
+            ?: return@registerForActivityResult
+        if (result.resultCode != android.app.Activity.RESULT_OK) return@registerForActivityResult
+        val picked = result.data?.getStringExtra(TtsVoiceActivity.EXTRA_PICKED_VOICE)
+        Prefs(requireContext()).setTtsVoiceName(lang, picked)
+        renderer?.refreshTtsSection()
+    }
+
     // ── Lifecycle ────────────────────────────────────────────────────────
 
     override fun getTheme(): Int = fullScreenDialogTheme(requireContext())
@@ -409,7 +425,12 @@ class SettingsBottomSheet : DialogFragment() {
                     startActivity(LlmModelPickerActivity.newIntent(requireContext(), id))
                 }
                 override fun openTtsVoicePicker() {
-                    startActivity(android.content.Intent(requireContext(), TtsVoiceActivity::class.java))
+                    val ctx = requireContext()
+                    val lang = Prefs(ctx).sourceLangId
+                    ttsVoicePickerLang = lang
+                    ttsVoicePickerLauncher.launch(
+                        TtsVoiceActivity.intent(ctx, lang, Prefs(ctx).ttsVoiceName(lang)),
+                    )
                 }
                 override fun openTtsSetup() {
                     val act = activity ?: return

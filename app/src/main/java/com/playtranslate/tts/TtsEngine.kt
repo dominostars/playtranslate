@@ -5,7 +5,6 @@ import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
-import com.playtranslate.Prefs
 import com.playtranslate.language.SourceLangId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -132,9 +131,18 @@ object TtsEngine {
         lang: SourceLangId,
         awaitCompletion: Boolean = false,
         onStart: (() -> Unit)? = null,
+        /** Voice to use for this utterance. null = engine default
+         *  (the bound TTS engine's own default for [lang]). The pref
+         *  is intentionally NOT consulted here: callers that want the
+         *  global pref to drive their TTS (live mode etc.) resolve
+         *  it themselves and pass the result. This keeps the engine's
+         *  contract single-meaning and prevents Anki per-cell flows
+         *  from accidentally inheriting the global voice when the user
+         *  picked "Default" for a specific cell. */
+        voiceNameOverride: String? = null,
     ): SpeakResult {
         val completion: CompletableDeferred<Boolean>? = lock.withLock {
-            val savedVoiceName = Prefs(context).ttsVoiceName(lang)
+            val savedVoiceName = voiceNameOverride
             var engine = currentEngine(context) ?: return SpeakResult.NoEngine
             if (!prepareEngine(engine, lang, savedVoiceName)) {
                 // "Can't serve this" is ambiguous: the engine genuinely lacks
@@ -197,9 +205,11 @@ object TtsEngine {
         context: Context,
         text: String,
         lang: SourceLangId,
+        /** See [speak]'s `voiceNameOverride`. */
+        voiceNameOverride: String? = null,
     ): File? {
         val handle: SynthHandle = lock.withLock {
-            val savedVoiceName = Prefs(context).ttsVoiceName(lang)
+            val savedVoiceName = voiceNameOverride
             var engine = currentEngine(context) ?: return null
             if (!prepareEngine(engine, lang, savedVoiceName)) {
                 // Same dead-binding ambiguity as speak(): rebuild once and

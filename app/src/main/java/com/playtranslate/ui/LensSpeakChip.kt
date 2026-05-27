@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import com.playtranslate.Prefs
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.tts.TtsEngine
 import kotlinx.coroutines.CoroutineScope
@@ -42,7 +43,13 @@ class LensSpeakChip(
         job = scope.launch {
             lens.setSpeakChipLoading(true)
             try {
-                val result = TtsEngine.speak(alertTarget.context, req.word, req.lang)
+                // Live-mode caller — resolve the global voice pref now
+                // that TtsEngine takes null to mean "engine default."
+                val voice = Prefs(alertTarget.context).ttsVoiceName(req.lang)
+                val result = TtsEngine.speak(
+                    alertTarget.context, req.word, req.lang,
+                    voiceNameOverride = voice,
+                )
                 withContext(Dispatchers.Main) {
                     when (result) {
                         TtsEngine.SpeakResult.Spoken -> { /* audio playing */ }

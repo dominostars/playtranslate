@@ -821,7 +821,11 @@ class WordDetailBottomSheet : DialogFragment() {
                     icon.visibility = View.GONE
                     spinner.visibility = View.VISIBLE
                     try {
-                        val failure: String? = when (TtsEngine.speak(ctx, word, lang)) {
+                        // Live-mode caller — resolve the global voice pref
+                        // ourselves now that TtsEngine treats null as
+                        // "engine default" rather than "look up pref."
+                        val voice = Prefs(ctx).ttsVoiceName(lang)
+                        val failure: String? = when (TtsEngine.speak(ctx, word, lang, voiceNameOverride = voice)) {
                             TtsEngine.SpeakResult.Spoken -> null
                             TtsEngine.SpeakResult.NoEngine ->
                                 "No text-to-speech engine is available"

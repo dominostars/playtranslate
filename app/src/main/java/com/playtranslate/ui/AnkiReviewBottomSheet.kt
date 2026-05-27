@@ -30,10 +30,6 @@ class AnkiReviewBottomSheet : DialogFragment() {
     /** Controller for the Save button's idle ↔ loading swap. */
     private var sendButton: AnkiSendButton? = null
 
-    /** Handle to the Voice row in the top Anki section. Refreshed in
-     *  [onResume] because [TtsVoiceActivity] returns no result. */
-    private var topVoiceHandle: AnkiVoiceRowHandle? = null
-
     override fun getTheme(): Int = fullScreenDialogTheme(requireContext())
 
     override fun onCreateDialog(savedInstanceState: Bundle?): android.app.Dialog {
@@ -49,15 +45,7 @@ class AnkiReviewBottomSheet : DialogFragment() {
     override fun onDestroyView() {
         deckSubtitleView = null
         sendButton = null
-        topVoiceHandle = null
         super.onDestroyView()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // TtsVoiceActivity returns no result; re-read the saved voice
-        // on every resume so a freshly picked voice shows up.
-        topVoiceHandle?.refreshVoiceLabel()
     }
 
     override fun onStart() {
@@ -101,13 +89,11 @@ class AnkiReviewBottomSheet : DialogFragment() {
         // inflation and break the restore path.
         val deckHost = view.findViewById<LinearLayout>(R.id.sentenceAnkiDeckHost)
         deckSubtitleView = view.findViewById(R.id.tvAnkiSendSubtitle)
-        topVoiceHandle = addAnkiSection(
+        addAnkiSection(
             parent = deckHost,
             mode = CardMode.SENTENCE,
             onDeckChanged = { refreshDeckSubtitle() },
             onCardTypeChanged = { /* no visible affordance reflects card type */ },
-            includeVoiceRow = true,
-            lang = sourceLangId,
         )
         refreshDeckSubtitle()
 
@@ -155,8 +141,15 @@ class AnkiReviewBottomSheet : DialogFragment() {
         // Synthesize sentence audio up front when the switch is on; the
         // temp WAV is uploaded by the dispatcher and deleted once sent.
         val wantAudio = content.sentenceAudioEnabled
+        // Per-cell sentence + per-target-word voices are explicit (the
+        // sheet's CardData seeds them from the pref at view-create and
+        // tracks user picks after). Null = "user picked Default for
+        // this cell", which is exactly what TtsEngine takes null to mean.
         val audioFile = if (wantAudio) {
-            TtsEngine.synthesizeToFile(requireContext(), data.source, data.sourceLangId)
+            TtsEngine.synthesizeToFile(
+                requireContext(), data.source, data.sourceLangId,
+                voiceNameOverride = data.sentenceVoice,
+            )
         } else null
         // Per-target-word audio. TTS engine serializes utterances anyway,
         // so a simple sequential loop is the same wall-clock cost as
@@ -164,8 +157,10 @@ class AnkiReviewBottomSheet : DialogFragment() {
         // — the rest of the card still lands.
         val wordAudioFiles: Map<String, File> = buildMap {
             for (word in data.targetWordAudioWords) {
-                TtsEngine.synthesizeToFile(requireContext(), word, data.sourceLangId)
-                    ?.let { put(word, it) }
+                TtsEngine.synthesizeToFile(
+                    requireContext(), word, data.sourceLangId,
+                    voiceNameOverride = data.wordAudioVoices[word],
+                )?.let { put(word, it) }
             }
         }
         val result = try {

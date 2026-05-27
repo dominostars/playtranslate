@@ -2,6 +2,7 @@ package com.playtranslate.ui
 
 import android.content.res.ColorStateList
 import android.widget.ImageButton
+import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.themeColor
@@ -57,8 +58,12 @@ class OriginalSpeakButton(
         job = scope.launch {
             setSpeaking(true)
             try {
+                // Live-mode caller — resolve the global voice pref now
+                // that TtsEngine takes null to mean "engine default."
+                val voice = Prefs(alertTarget.context).ttsVoiceName(req.lang)
                 val result = TtsEngine.speak(
                     alertTarget.context, req.text, req.lang, awaitCompletion = true,
+                    voiceNameOverride = voice,
                 )
                 withContext(Dispatchers.Main) {
                     when (result) {

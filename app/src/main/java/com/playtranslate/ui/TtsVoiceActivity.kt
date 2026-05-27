@@ -21,13 +21,18 @@ import com.playtranslate.tts.TtsEngine
 import kotlinx.coroutines.launch
 
 /**
- * Per-game-language Text-to-Speech voice picker.
+ * Per-game-language Text-to-Speech voice picker — pure picker variant.
  *
- * Lists the active engine's voices for the current source language, auditions
- * one when its row is tapped, and persists the choice via the bottom Save
- * button. Mirrors [DeepLSettingsActivity] for navigation/theming: the toolbar
- * X discards, Save commits. The chosen voice is stored per language by
- * [Prefs.setTtsVoiceName] and applied automatically by [TtsEngine.speak].
+ * Lists the active engine's voices for [lang], auditions one when its row
+ * is tapped, and returns the picked voice via `setResult` when the bottom
+ * Save button is pressed. The activity does NOT persist anything itself —
+ * each caller decides what to do with the result:
+ *  - Settings's TTS row writes [Prefs.setTtsVoiceName] from its
+ *    [ActivityResultLauncher] callback.
+ *  - The Anki sheet's per-cell pickers write to the fragment's transient
+ *    per-cell voice state and never touch [Prefs].
+ *
+ * Back press / toolbar X → default [RESULT_CANCELED]; callers ignore.
  */
 class TtsVoiceActivity : AppCompatActivity() {
 
@@ -37,8 +42,9 @@ class TtsVoiceActivity : AppCompatActivity() {
 
     private var voices: List<Voice> = emptyList()
 
-    /** Voice name selected in the picker, or null for the engine default.
-     *  Committed to [Prefs] only when Save is pressed. */
+    /** Voice name currently selected in the picker, or null for the
+     *  engine default. Returned via [setResult] when Save is pressed —
+     *  the activity itself never writes [Prefs.ttsVoiceName]. */
     private var selectedName: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,14 +55,23 @@ class TtsVoiceActivity : AppCompatActivity() {
         setContentView(R.layout.activity_tts_voice)
 
         prefs = Prefs(this)
-        // Prefer the language passed by the launcher — the Anki Audio card
-        // passes the card's language so the picker edits the same voice
-        // preview and synthesis use. Falls back to the global source
-        // language when opened from Settings (no extra).
+        // Prefer the language passed by the launcher — the Anki cell
+        // pickers pass the card's language so the picker shows the right
+        // voice list. Falls back to the global source language for
+        // legacy entries.
         lang = intent.getStringExtra(EXTRA_LANG)
             ?.let { SourceLangId.fromCode(it) }
             ?: prefs.sourceLangId
-        selectedName = prefs.ttsVoiceName(lang)
+        // Seed selection: if the caller passed an initial voice (even
+        // an explicit null, signalled by hasExtra), use it. Otherwise
+        // fall back to the global pref. The Anki per-cell flow always
+        // passes EXTRA_INITIAL_VOICE so the picker opens on the cell's
+        // current voice; Settings can pass it explicitly too.
+        selectedName = if (intent.hasExtra(EXTRA_INITIAL_VOICE)) {
+            intent.getStringExtra(EXTRA_INITIAL_VOICE)
+        } else {
+            prefs.ttsVoiceName(lang)
+        }
         voiceRows = findViewById(R.id.voiceRows)
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
@@ -68,7 +83,10 @@ class TtsVoiceActivity : AppCompatActivity() {
             "${lang.displayName().uppercase()} VOICES"
 
         findViewById<MaterialButton>(R.id.btnSave).setOnClickListener {
-            prefs.setTtsVoiceName(lang, selectedName)
+            setResult(
+                RESULT_OK,
+                Intent().putExtra(EXTRA_PICKED_VOICE, selectedName),
+            )
             finish()
         }
 
@@ -162,11 +180,23 @@ class TtsVoiceActivity : AppCompatActivity() {
     companion object {
         private const val EXTRA_LANG = "lang"
 
-        /** Intent that opens the picker for a specific [lang] — used by the
-         *  Anki Audio card so the picker edits the card's language, not the
-         *  global source language. */
-        fun intent(context: Context, lang: SourceLangId): Intent =
-            Intent(context, TtsVoiceActivity::class.java)
-                .putExtra(EXTRA_LANG, lang.code)
+        /** Optional seed for [selectedName]. When the caller sets this (even
+         *  to null, treated as "Default"), the picker opens with that voice
+         *  selected. When absent, the picker falls back to the global pref. */
+        const val EXTRA_INITIAL_VOICE = "initial_voice"
+
+        /** Result extra: the picked voice name, or null for "Default". */
+        const val EXTRA_PICKED_VOICE = "picked_voice"
+
+        /** Intent that opens the picker for [lang]. [initialVoice] is
+         *  always written into the intent — pass the cell's current
+         *  voice (per-cell flow) or the saved pref (Settings flow). */
+        fun intent(
+            context: Context,
+            lang: SourceLangId,
+            initialVoice: String?,
+        ): Intent = Intent(context, TtsVoiceActivity::class.java)
+            .putExtra(EXTRA_LANG, lang.code)
+            .putExtra(EXTRA_INITIAL_VOICE, initialVoice)
     }
 }
