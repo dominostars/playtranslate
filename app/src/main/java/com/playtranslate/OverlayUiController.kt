@@ -211,55 +211,17 @@ class OverlayUiController(
     // ── Translation overlay registry ─────────────────────────────────────
 
     /**
-     * One display's translation overlay state: a `main` window that holds
-     * the visible (clean) boxes, and (in pinhole live mode only) a `dirty`
-     * companion window that holds boxes flagged for re-OCR.
-     * [PinholeOverlayMode] hides the dirty window's view-alpha to 0 before
-     * a screenshot so the OCR pipeline sees clean game pixels under those
-     * boxes, then restores it after capture. The two-window split is
-     * structural: clean and dirty never share a Surface, so every "what's
-     * currently visible on main?" accessor automatically yields the clean
-     * subset without explicit filtering.
-     *
-     * Furigana live mode and one-shot translation never use the dirty
-     * companion, so we skip its allocation entirely in those modes
-     * ([dirty] is null). That avoids the full-screen mask bitmap, the
-     * extra Surface, and the dirty window's contribution to AOSP's
-     * untrusted-touch combined-obscuring opacity check.
-     *
-     * For pinhole live mode where dirty does exist, the controller toggles
-     * dirty's *window* α between 0 (when no dirty content is parked) and
-     * [intendedAlpha] (when content is parked). This keeps the AOSP
-     * combined-obscuring composite (main + dirty) at exactly main's α in
-     * the steady state — touches pass through to the game — and only
-     * crosses the threshold during the brief window (~250ms) when dirty
-     * actually has content. Per-cycle hide-during-capture rides on top via
-     * dirty's *view* α toggle, which [PinholeOverlayMode] drives directly.
+     * One display's translation overlay: a single full-screen
+     * [TranslationOverlayView] window. Boxes that pinhole detection flags
+     * as changed are removed and re-OCR'd on the next cycle (no smooth-
+     * transition buffer — see [docs/dirty-overlay-archived-design.md] for
+     * the prior two-window design and why it was retired).
      */
-    private data class TranslationOverlayHandle(
-        val main: TranslationOverlayView,
-        val dirty: TranslationOverlayView?,
-        /** WindowManager + params kept so [setDirtyBoxes] can mutate dirty's
-         *  window α. Null when [dirty] is null. */
-        val dirtyWm: WindowManager?,
-        val dirtyParams: WindowManager.LayoutParams?,
-        /** Window α that dirty should have when it carries content. Stored
-         *  so [setDirtyBoxes] doesn't have to recompute the matrix to bump
-         *  the window α back up after an empty→non-empty transition. */
-        val intendedDirtyAlpha: Float,
-    )
+    private val translationOverlayHandles: MutableMap<Int, TranslationOverlayView> = mutableMapOf()
 
-    private val translationOverlayHandles: MutableMap<Int, TranslationOverlayHandle> = mutableMapOf()
-
-    /** Main translation overlay view for [displayId], or null. */
+    /** Translation overlay view for [displayId], or null. */
     fun translationOverlayForDisplay(displayId: Int): TranslationOverlayView? =
-        translationOverlayHandles[displayId]?.main
-
-    /** Persistent dirty companion overlay for [displayId], or null.
-     *  [PinholeOverlayMode] parks dirty boxes here and toggles its view-alpha
-     *  per cycle to hide their pixels during raw capture. */
-    fun dirtyOverlayForDisplay(displayId: Int): TranslationOverlayView? =
-        translationOverlayHandles[displayId]?.dirty
+        translationOverlayHandles[displayId]
 
     /** True iff [displayId] currently has a translation overlay. */
     fun hasTranslationOverlay(displayId: Int): Boolean =
@@ -269,62 +231,32 @@ class OverlayUiController(
     val hasAnyTranslationOverlay: Boolean
         get() = translationOverlayHandles.isNotEmpty()
 
-    /** Screen rects of the main overlay's text-box children on [displayId]
-     *  — pinhole detection samples these for change detection. Dirty boxes
-     *  live on a separate view, so no clean/dirty filtering is needed
-     *  here. */
+    /** Screen rects of the overlay's text-box children on [displayId]
+     *  — pinhole detection samples these for change detection. */
     fun boxScreenRects(displayId: Int): List<Rect> =
-        translationOverlayHandles[displayId]?.main?.getChildScreenRects() ?: emptyList()
+        translationOverlayHandles[displayId]?.getChildScreenRects() ?: emptyList()
 
-    /** Display size cached on the main overlay window (the view's dimensions
+    /** Display size cached on the overlay window (the view's dimensions
      *  match the display because the window is MATCH_PARENT). Returns null
      *  when no overlay is registered. */
     fun translationOverlayDisplaySize(displayId: Int): Point? {
-        val view = translationOverlayHandles[displayId]?.main ?: return null
+        val view = translationOverlayHandles[displayId] ?: return null
         if (view.width <= 0 || view.height <= 0) return null
         return Point(view.width, view.height)
     }
 
-    /** True once the main overlay (and its children) on [displayId] is laid
+    /** True once the overlay (and its children) on [displayId] is laid
      *  out — pinhole detection must defer its offscreen render until then. */
     fun areTranslationBoxesLaidOut(displayId: Int): Boolean =
-        translationOverlayHandles[displayId]?.main?.areChildrenLaidOut() == true
+        translationOverlayHandles[displayId]?.areChildrenLaidOut() == true
 
     /**
-     * Render the main overlay's content (no pinholes) to a bitmap — the
+     * Render the overlay's content (no pinholes) to a bitmap — the
      * "overlay_rendered" reference [PinholeOverlayMode.checkPinholes] needs.
-     * The caller owns the returned bitmap. Dirty boxes are on a separate
-     * window so they are automatically excluded.
+     * The caller owns the returned bitmap.
      */
     fun renderTranslationOverlayOffscreen(displayId: Int): Bitmap? =
-        translationOverlayHandles[displayId]?.main?.renderToOffscreen()
-
-    /**
-     * Park dirty boxes on the dirty companion window for [displayId]. Calls
-     * `dirty.setBoxes(...)` and atomically toggles the dirty window's α
-     * between 0 (empty) and the configured `intendedDirtyAlpha` (content)
-     * via `updateViewLayout`, so empty-dirty steady state doesn't contribute
-     * to AOSP's combined-obscuring check.
-     *
-     * No-op when the handle has no dirty companion (furigana / one-shot).
-     */
-    fun setDirtyBoxes(
-        displayId: Int,
-        boxes: List<TextBox>,
-        cropLeft: Int, cropTop: Int,
-        screenshotW: Int, screenshotH: Int,
-    ) {
-        val handle = translationOverlayHandles[displayId] ?: return
-        val dirty = handle.dirty ?: return
-        val params = handle.dirtyParams
-        val wm = handle.dirtyWm
-        val targetAlpha = if (boxes.isEmpty()) 0f else handle.intendedDirtyAlpha
-        if (params != null && wm != null && params.alpha != targetAlpha) {
-            params.alpha = targetAlpha
-            try { wm.updateViewLayout(dirty, params) } catch (_: Exception) {}
-        }
-        dirty.setBoxes(boxes, cropLeft, cropTop, screenshotW, screenshotH)
-    }
+        translationOverlayHandles[displayId]?.renderToOffscreen()
 
     // ── Backend-aware overlay configuration helpers ─────────────────────
 
@@ -550,7 +482,7 @@ class OverlayUiController(
         setIconsLoading(false)
 
         val displayId = display.displayId
-        // Reuse the existing main view only if BOTH its pinhole mode AND its
+        // Reuse the existing view only if BOTH its pinhole mode AND its
         // oneShot flag match. Either differing means the window flags
         // (FLAG_NOT_TOUCHABLE), params.alpha, mask alpha, or tap-to-dismiss
         // listener would need to change — those are fixed at construction
@@ -559,7 +491,7 @@ class OverlayUiController(
         // this reuse path (beginHoldPreview/endHoldPreview teardown ensures
         // a fresh create), but this guard prevents a future caller from
         // silently inheriting stale touchability.
-        val existing = translationOverlayHandles[displayId]?.main
+        val existing = translationOverlayHandles[displayId]
         if (existing != null && existing.pinholeMode == pinholeMode && existing.oneShot == oneShot) {
             existing.setBoxes(boxes, cropLeft, cropTop, screenshotW, screenshotH)
             return
@@ -645,46 +577,7 @@ class OverlayUiController(
             windowAlpha = mainWindowAlpha,
         )
         if (!overlayHost.addOverlayWindow(mainView, wm, mainParams, displayId)) return
-
-        // Dirty companion window — only created for pinhole live mode. The
-        // companion's purpose is to host transient boxes that need re-OCR
-        // (PinholeOverlayMode parks them, hides via view-alpha during
-        // capture). Furigana live mode and one-shot translation never park
-        // anything here, so the surface + mask bitmap + obscuring-opacity
-        // contribution would all be pure waste.
-        //
-        // Window α starts at 0 so the empty dirty window doesn't contribute
-        // to AOSP's combined-obscuring check against main on MP. [setDirtyBoxes]
-        // bumps α to [mainWindowAlpha] when content is parked and drops it
-        // back to 0 when emptied.
-        var dirtyView: TranslationOverlayView? = null
-        var dirtyParams: WindowManager.LayoutParams? = null
-        if (pinholeMode) {
-            val dv = TranslationOverlayView(
-                themedCtx,
-                pinholeMode = true,
-                maskAlpha = mainMaskAlpha,
-                boostContrast = mainBoostContrast,
-            )
-            val dp = buildOverlayLayoutParams(
-                touchable = false,
-                windowAlpha = 0f,
-            )
-            if (!overlayHost.addOverlayWindow(dv, wm, dp, displayId)) {
-                // Roll back main so we don't leak half a handle.
-                overlayHost.removeOverlayWindow(mainView)
-                return
-            }
-            dirtyView = dv
-            dirtyParams = dp
-        }
-        translationOverlayHandles[displayId] = TranslationOverlayHandle(
-            main = mainView,
-            dirty = dirtyView,
-            dirtyWm = if (dirtyView != null) wm else null,
-            dirtyParams = dirtyParams,
-            intendedDirtyAlpha = mainWindowAlpha,
-        )
+        translationOverlayHandles[displayId] = mainView
 
         // Re-raise the floating icon above any touchable overlay so its
         // tap target stays accessible (one-shot MP cell). Unconditional —
@@ -713,12 +606,10 @@ class OverlayUiController(
         }
     }
 
-    /** Tear down a single display's translation + (optional) dirty overlay.
-     *  Idempotent. */
+    /** Tear down a single display's translation overlay. Idempotent. */
     fun hideTranslationOverlayForDisplay(displayId: Int) {
-        val handle = translationOverlayHandles.remove(displayId) ?: return
-        overlayHost.removeOverlayWindow(handle.main)
-        handle.dirty?.let { overlayHost.removeOverlayWindow(it) }
+        val view = translationOverlayHandles.remove(displayId) ?: return
+        overlayHost.removeOverlayWindow(view)
     }
 
     /** Tear down translation overlays across every display. */
@@ -737,7 +628,7 @@ class OverlayUiController(
      *  the size is unchanged, so non-resize onDisplayChanged events
      *  (refresh rate, HDR) don't churn a live overlay. */
     private fun dropResizedTranslationOverlay(displayId: Int) {
-        val view = translationOverlayHandles[displayId]?.main ?: return
+        val view = translationOverlayHandles[displayId] ?: return
         val display = (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
             ?.getDisplay(displayId) ?: return
         val size = getDisplaySize(display)
@@ -746,14 +637,14 @@ class OverlayUiController(
         }
     }
 
-    /** Remove specific boxes from the main overlay on [displayId] without
+    /** Remove specific boxes from the overlay on [displayId] without
      *  rebuilding the entire view. */
     fun removeOverlayBoxes(
         toRemove: List<TextBox>,
         displayId: Int = CaptureService.instance?.primaryGameDisplayId()
             ?: android.view.Display.DEFAULT_DISPLAY,
     ) {
-        translationOverlayHandles[displayId]?.main?.removeBoxesByContent(toRemove)
+        translationOverlayHandles[displayId]?.removeBoxesByContent(toRemove)
     }
 
     // ── Floating icon ────────────────────────────────────────────────────

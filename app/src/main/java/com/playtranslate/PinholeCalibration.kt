@@ -12,8 +12,8 @@ package com.playtranslate
  *
  * If you're reading this because you want to change how visible the
  * pinhole texture is on screen, you almost certainly need to re-tune
- * [SPLATTER_THRESHOLD], [PINHOLE_DIRTY_PCT], and [PINHOLE_CHANGE_PCT] as
- * well. See the "Detection thresholds" section below.
+ * [SPLATTER_THRESHOLD] and [PINHOLE_CHANGE_PCT] as well. See the
+ * "Detection thresholds" section below.
  *
  * ## Mask parameters
  *
@@ -72,15 +72,17 @@ package com.playtranslate
  *    counted as "changed". Calibrated against the 50/50 blend assumption
  *    above: an honest match sees max channel delta ~20–30 due to JPEG/
  *    texture noise, so 60 leaves comfortable headroom. Increase if
- *    stable-text cycles over-flag as DIRTY; decrease if real changes are
- *    being missed.
- *  - [PINHOLE_DIRTY_PCT] — fraction of pinholes in a box's region that
- *    must exceed [SPLATTER_THRESHOLD] for the box to be classified DIRTY
- *    (minor change: text edit, cursor advance, portrait blink).
- *  - [PINHOLE_CHANGE_PCT] — fraction required to classify REMOVE (major
- *    change: scene swap, menu transition, full text rebuild).
- *
- * DIRTY < CHANGE by construction, so REMOVE implies DIRTY.
+ *    stable-text cycles over-flag as REMOVE; decrease if real changes
+ *    are being missed.
+ *  - [PINHOLE_CHANGE_PCT] — fraction of pinholes in a box's region that
+ *    must exceed [SPLATTER_THRESHOLD] for the box to be removed and
+ *    re-OCR'd on the next cycle. Set to the value that used to be the
+ *    soft DIRTY threshold (0.03) — with the dirty companion overlay
+ *    retired (see [docs/dirty-overlay-archived-design.md]), there's no
+ *    smooth recovery state, so any pinhole change above this fraction
+ *    means the box gets removed immediately. The user-visible delta:
+ *    text transitions show a brief no-overlay gap (~1 OCR cycle) where
+ *    they previously stayed visible until OCR confirmed replacement.
  *
  * ## Scale assumption
  *
@@ -114,9 +116,21 @@ object PinholeCalibration {
     /** Per-channel delta threshold for classifying a pinhole as "changed". */
     const val SPLATTER_THRESHOLD = 60
 
-    /** Fraction of pinholes in a box that must change to mark it DIRTY. */
-    const val PINHOLE_DIRTY_PCT = 0.03f
-
-    /** Fraction of pinholes in a box that must change to mark it REMOVE. */
-    const val PINHOLE_CHANGE_PCT = 0.10f
+    /** Fraction of pinholes in a box that must change to mark it REMOVE.
+     *  Sits between the old soft-DIRTY threshold (0.03) and the old
+     *  confident-REMOVE threshold (0.10), leaning toward the sensitive
+     *  end so single-character / counter-style edits get caught. The
+     *  dirty companion window that used to buffer 0.03–0.10 changes is
+     *  gone (see [docs/dirty-overlay-archived-design.md]); with no
+     *  smooth recovery state, any pinhole change above this fraction
+     *  removes the box immediately and the next OCR cycle re-detects.
+     *  Trade-off in each direction:
+     *    - Too low (≈0.03): transient noise (dialog-advance cursor blinks,
+     *      animated portraits, particle FX under a stable text box) trips
+     *      removal → visible flicker on stable translations.
+     *    - Too high (≈0.10): small but real text edits (single-character
+     *      swaps, score/timer increments under the box) don't trigger
+     *      → stale translations linger past their underlying text.
+     *  Tune empirically per device / game family. */
+    const val PINHOLE_CHANGE_PCT = 0.05f
 }
