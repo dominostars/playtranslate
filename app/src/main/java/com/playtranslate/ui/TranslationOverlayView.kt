@@ -262,7 +262,7 @@ class TranslationOverlayView(
                 val isVertical = box.orientation == TextOrientation.VERTICAL
 
                 val child: View = if (box.translatedText.isEmpty()) {
-                    buildSkeletonView(rectW, rectH, box.lineCount, box.bgColor, box.textColor, box.alignment)
+                    buildSkeletonView(rectW, rectH, box.lineCount, box.bgColor, box.textColor, box.alignment, isVertical)
                 } else {
                     OutlinedTextView(context).apply {
                         text = box.translatedText
@@ -335,45 +335,78 @@ class TranslationOverlayView(
     }
 
     /** Builds a skeleton placeholder with [lineCount] bars evenly spaced within the box.
-     *  When [alignment] is [TextAlignment.CENTER], bars are horizontally centered
-     *  within the box so the short last-row bar visually reflects center-aligned
-     *  source text rather than dropping to the left edge. */
+     *  When [isVertical] is true, bars are drawn as vertical column-stripes in
+     *  right-to-left reading order (first column at the right, last at the left),
+     *  anchored to the top of the box. Horizontal alignment is ignored for
+     *  vertical boxes since [OcrManager] always classifies them as LEFT.
+     *  When [alignment] is [TextAlignment.CENTER] (horizontal only), bars are
+     *  horizontally centered within the box so the short last-row bar visually
+     *  reflects center-aligned source text rather than dropping to the left edge. */
     private fun buildSkeletonView(
         boxW: Int, boxH: Int, lineCount: Int, bgColor: Int, barColor: Int,
         alignment: TextAlignment = TextAlignment.LEFT,
+        isVertical: Boolean = false,
     ): View {
         val container = FrameLayout(context).apply {
             setBackgroundColor(bgColor)
         }
 
         val sideMargin = textMargin * 2
-        val availW = boxW - sideMargin * 2
 
-        for (line in 0 until lineCount) {
-            val widthFraction = if (line == lineCount - 1 && lineCount > 1) 0.6f else 0.85f
-            val barW = (availW * widthFraction).toInt().coerceAtLeast(1)
+        if (isVertical) {
+            val availH = boxH - sideMargin * 2
 
-            // Evenly distribute: bar centers at boxH*(i+1)/(N+1)
-            val centerY = boxH * (line + 1) / (lineCount + 1)
-            val barTop = centerY - skeletonBarHeight / 2
+            for (col in 0 until lineCount) {
+                val heightFraction = if (col == lineCount - 1 && lineCount > 1) 0.6f else 0.85f
+                val barH = (availH * heightFraction).toInt().coerceAtLeast(1)
 
-            val bar = View(context).apply {
-                background = GradientDrawable().apply {
-                    setColor(barColor)
-                    cornerRadius = skeletonCornerRadius
+                // Reading order: col 0 (first) is rightmost; col N-1 (last) is leftmost.
+                val slot = lineCount - 1 - col
+                val centerX = boxW * (slot + 1) / (lineCount + 1)
+                val barLeft = centerX - skeletonBarHeight / 2
+
+                val bar = View(context).apply {
+                    background = GradientDrawable().apply {
+                        setColor(barColor)
+                        cornerRadius = skeletonCornerRadius
+                    }
                 }
+                skeletonBars.add(bar)
+                val barLp = LayoutParams(skeletonBarHeight, barH).apply {
+                    leftMargin = barLeft
+                    topMargin = sideMargin
+                }
+                container.addView(bar, barLp)
             }
-            skeletonBars.add(bar)
-            val barLeft = if (alignment == TextAlignment.CENTER) {
-                ((boxW - barW) / 2).coerceAtLeast(sideMargin)
-            } else {
-                sideMargin
+        } else {
+            val availW = boxW - sideMargin * 2
+
+            for (line in 0 until lineCount) {
+                val widthFraction = if (line == lineCount - 1 && lineCount > 1) 0.6f else 0.85f
+                val barW = (availW * widthFraction).toInt().coerceAtLeast(1)
+
+                // Evenly distribute: bar centers at boxH*(i+1)/(N+1)
+                val centerY = boxH * (line + 1) / (lineCount + 1)
+                val barTop = centerY - skeletonBarHeight / 2
+
+                val bar = View(context).apply {
+                    background = GradientDrawable().apply {
+                        setColor(barColor)
+                        cornerRadius = skeletonCornerRadius
+                    }
+                }
+                skeletonBars.add(bar)
+                val barLeft = if (alignment == TextAlignment.CENTER) {
+                    ((boxW - barW) / 2).coerceAtLeast(sideMargin)
+                } else {
+                    sideMargin
+                }
+                val barLp = LayoutParams(barW, skeletonBarHeight).apply {
+                    leftMargin = barLeft
+                    topMargin = barTop
+                }
+                container.addView(bar, barLp)
             }
-            val barLp = LayoutParams(barW, skeletonBarHeight).apply {
-                leftMargin = barLeft
-                topMargin = barTop
-            }
-            container.addView(bar, barLp)
         }
 
         return container
