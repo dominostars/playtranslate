@@ -199,7 +199,7 @@
          Gated on accessibility — off shows a MaterialSwitch + the
          "More responsive…" pitch; on shows a check mark + "Enabled". -->
     <string name="enhanced_auto_translate_title">Enhanced auto-translate</string>
-    <string name="enhanced_auto_translate_subtitle_off">More responsive translations. Uses accessibility access.</string>
+    <string name="enhanced_auto_translate_subtitle_off">More readable, responsive, stable. Requires accessibility access.</string>
     <string name="enhanced_auto_translate_subtitle_on">Enabled</string>
 
     <!-- Anki integration -->
