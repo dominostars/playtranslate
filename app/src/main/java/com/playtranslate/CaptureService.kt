@@ -1675,6 +1675,7 @@ class CaptureService : Service() {
         screenshotW: Int, screenshotH: Int,
         force: Boolean = false,
         pinholeMode: Boolean = false,
+        oneShot: Boolean = false,
         displayId: Int = primaryGameDisplayId(),
     ) {
         if (!force && holdActive) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: holdActive=true"); return }
@@ -1684,7 +1685,7 @@ class CaptureService : Service() {
         val display = dm.getDisplay(displayId)
         if (display == null) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: display=null for id=$displayId"); return }
         Log.d("FuriganaDbg", "showLiveOverlay: ${boxes.size} boxes, crop=($cropLeft,$cropTop), screen=${screenshotW}x$screenshotH on display $displayId")
-        ui.showTranslationOverlay(display, boxes, cropLeft, cropTop, screenshotW, screenshotH, pinholeMode)
+        ui.showTranslationOverlay(display, boxes, cropLeft, cropTop, screenshotW, screenshotH, pinholeMode, oneShot)
     }
 
     /** Capture a clean screenshot via the active capture backend. */

@@ -47,9 +47,20 @@ class OverlayHost(
     /** Per-display 1×1 touch sentinels — see [addTouchSentinel]. */
     private val touchSentinels = mutableMapOf<Int, View>()
 
+    /** One handle's snapshot for restore: the handle plus the alpha it was
+     *  at before [prepareForCleanCapture] blanked it. Stored because not
+     *  every overlay runs at α=1 — the MediaProjection live-pinhole window
+     *  sits at the system obscuring cap (~0.79) with a compensated pinhole
+     *  mask tuned to that exact alpha; resetting it to 1.0 on restore would
+     *  trip the QTI BSP visual clamp and break the 50/50 blend math. */
+    internal data class SavedHandle(
+        val handle: OverlayHandle,
+        val originalAlpha: Float,
+    )
+
     /** Opaque snapshot returned by [prepareForCleanCapture]. */
     class OverlayState internal constructor(
-        internal val saved: List<OverlayHandle>
+        internal val saved: List<SavedHandle>
     )
 
     /**
@@ -192,28 +203,34 @@ class OverlayHost(
      * re-show overlays another capture still needs hidden.
      */
     fun prepareForCleanCapture(displayId: Int): OverlayState {
-        val saved = mutableListOf<OverlayHandle>()
+        val saved = mutableListOf<SavedHandle>()
         for (handle in overlayWindows) {
             if (handle.displayId != displayId) continue
             if (handle.params.alpha == 0f) continue
+            val originalAlpha = handle.params.alpha
             handle.params.alpha = 0f
             try {
                 handle.wm.updateViewLayout(handle.view, handle.params)
-                saved += handle
+                saved += SavedHandle(handle, originalAlpha)
             } catch (_: Exception) {
-                handle.params.alpha = 1f
+                // Roll back the params mutation so the in-memory state still
+                // reflects what's on screen.
+                handle.params.alpha = originalAlpha
             }
         }
         return OverlayState(saved)
     }
 
-    /** Restores blanked overlays. The "intended visible alpha" is always 1 in
-     *  this app — no overlay uses a non-1 alpha intentionally — so we write 1
-     *  unconditionally and recover from missed prior restores. */
+    /** Restores blanked overlays to the alpha they had before
+     *  [prepareForCleanCapture] blanked them. Most overlays were at α=1.0
+     *  and come back there; the MediaProjection live-pinhole window is the
+     *  only current exception (returns to the system obscuring cap). */
     fun restoreAfterCapture(state: OverlayState) {
-        for (handle in state.saved) {
-            handle.params.alpha = 1f
-            try { handle.wm.updateViewLayout(handle.view, handle.params) } catch (_: Exception) {}
+        for (saved in state.saved) {
+            saved.handle.params.alpha = saved.originalAlpha
+            try {
+                saved.handle.wm.updateViewLayout(saved.handle.view, saved.handle.params)
+            } catch (_: Exception) {}
         }
     }
 

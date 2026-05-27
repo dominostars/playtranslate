@@ -138,7 +138,7 @@ class OneShotManager(private val service: CaptureService) {
                 // Shimmer placeholder callback. Gen-check so a superseded
                 // cycle can't paint over the new generation's overlay.
                 if (cycle.generation == currentGeneration) {
-                    service.showLiveOverlay(intermediate, cropLeft, cropTop, screenshotW, screenshotH, force = true, displayId = displayId)
+                    service.showLiveOverlay(intermediate, cropLeft, cropTop, screenshotW, screenshotH, force = true, oneShot = true, displayId = displayId)
                 }
             }
 
@@ -146,7 +146,7 @@ class OneShotManager(private val service: CaptureService) {
 
             // 6. Show final overlay
             if (boxes.isNotEmpty()) {
-                service.showLiveOverlay(boxes, cropLeft, cropTop, screenshotW, screenshotH, force = true, displayId = displayId)
+                service.showLiveOverlay(boxes, cropLeft, cropTop, screenshotW, screenshotH, force = true, oneShot = true, displayId = displayId)
             }
 
             // 7. Send translation to in-app panel — only the panel-target

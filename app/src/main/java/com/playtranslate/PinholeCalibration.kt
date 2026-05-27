@@ -44,12 +44,27 @@ package com.playtranslate
  *     predicted = (cleanRef + overlay) / 2
  *     delta     = |raw - predicted|  (per channel)
  *
- * If you change [MASK_ALPHA], `checkPinholes` will produce wrong
- * predictions and the thresholds below will stop meaning what they
+ * If you change the default [MASK_ALPHA], `checkPinholes` will produce
+ * wrong predictions and the thresholds below will stop meaning what they
  * currently mean. The fix would be either (a) re-derive the blend
  * prediction with the new alpha (`predicted = lerp(ref, overlay,
  * MASK_ALPHA/255f)`) or (b) keep [MASK_ALPHA] at 0x80 and tune other
  * aspects of the pinhole appearance.
+ *
+ * ### Backend-aware compensation (live + MediaProjection)
+ *
+ * The MediaProjection live cell is the one configuration where the overlay
+ * window does NOT composite at α=1.0: to bypass the QTI BSP visual clamp
+ * and the AOSP untrusted-touch rule, the window is rendered at
+ * approximately the system obscuring cap (default ≈ 0.8). To keep the
+ * *effective* pinhole α at exactly 0.5 in that case,
+ * `OverlayUiController` constructs the live overlay's `TranslationOverlayView`
+ * with a compensated `maskAlpha` (≈ `0x60` at α = 0.8) that satisfies
+ * `(1 − maskAlpha/255) × windowAlpha = 0.5`. The detection thresholds below
+ * stay valid because the sampled pinhole positions still see a 50/50 blend
+ * of game + overlay; the constant here is the default that applies in the
+ * other three matrix cells (accessibility live, MP one-shot, accessibility
+ * one-shot — all at α=1.0).
  *
  * ## Detection thresholds
  *
@@ -80,19 +95,18 @@ package com.playtranslate
 object PinholeCalibration {
 
     /**
-     * Alpha byte of the mask at pinhole positions (out of 255).
-     * 0x80 == 128 → 50% blend, which is what [PinholeOverlayMode.checkPinholes]
-     * assumes in its `predicted = (ref + overlay) / 2` math.
+     * Default alpha byte of the mask at pinhole positions (out of 255).
+     * 0x80 == 128 → 50% blend at window α=1.0, which is what
+     * [PinholeOverlayMode.checkPinholes] assumes in its
+     * `predicted = (ref + overlay) / 2` math.
+     *
+     * Applied unmodified for accessibility live mode and both one-shot
+     * cells. On the MediaProjection backend in live (pinhole) mode,
+     * `OverlayUiController` passes a compensated value to
+     * [com.playtranslate.ui.TranslationOverlayView] so the effective
+     * pinhole α is still 0.5 once the reduced window α multiplies in.
      */
     const val MASK_ALPHA = 0x80
-
-    /**
-     * ARGB pixel color written at each pinhole position in the mask
-     * bitmap: alpha = [MASK_ALPHA], RGB = 0. Pre-computed so
-     * [com.playtranslate.ui.TranslationOverlayView.createPinholeMask] can
-     * just index it into an IntArray instead of bit-shifting per pixel.
-     */
-    const val MASK_PIXEL: Int = MASK_ALPHA shl 24
 
     /** Grid spacing in view pixels between adjacent pinhole positions. */
     const val PINHOLE_SPACING = 3

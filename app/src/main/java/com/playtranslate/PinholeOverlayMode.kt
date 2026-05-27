@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.graphics.Rect
 import android.util.Log
 import android.view.Choreographer
+import android.view.View
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.ui.TextBox
@@ -20,6 +21,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 
 /** Inflation ratios for the FAR-suppression proximity check at runCycle step 9b.
@@ -157,21 +159,38 @@ class PinholeOverlayMode(
         val prefs = Prefs(service)
         if (service.holdActive) return 100L
         val mgr = CaptureBackendResolver.activeLiveCaptureSource ?: return prefs.captureIntervalMs
+        val dirtyView = CaptureBackendResolver.activeOverlayUi?.dirtyOverlayForDisplay(displayId)
         val hasDirty = cachedBoxes?.any { it.dirty } == true
         cycleNum++
         val debug = prefs.debugLiveMode
 
-        // 1. Blank the dirty-flagged box windows before capture so raw shows
-        //    clean game pixels under them — window-alpha blank + a 2-vsync
-        //    wait, the mechanism OverlayHost.prepareForCleanCapture relies on.
-        if (hasDirty) {
-            CaptureBackendResolver.activeOverlayUi?.setDirtyBoxesHidden(displayId, true)
+        // 1. Hide the dirty overlay window before capture so raw shows clean
+        //    game pixels under any dirty-flagged boxes. View-alpha (not
+        //    window-alpha) toggled on the dedicated dirty companion window —
+        //    structural separation: clean boxes on main, dirty boxes on
+        //    dirty view. `hideAndAwaitCommit` blocks on the frame-commit
+        //    callback so we know the transparent frame reached SurfaceFlinger
+        //    before the capture goes; the trailing waitVsync(2) gives
+        //    SurfaceFlinger one more compose window's worth of slack on
+        //    devices where the callback fires before the layer transaction
+        //    actually lands.
+        if (hasDirty && dirtyView != null) {
+            val committed = hideAndAwaitCommit(dirtyView)
+            if (!committed) {
+                // View detached or timed out — skip this capture rather than
+                // sample raw with unknown dirty visibility.
+                return prefs.captureIntervalMs
+            }
             waitVsync(2)
         }
 
-        // 2. Capture — restore the dirty box windows in the callback.
+        // 2. Capture — restore the dirty window in the callback (before
+        //    bitmap copy) so the user sees the dirty boxes again
+        //    immediately. Setting view-alpha = 1f multiplies through the
+        //    window's params.alpha (which itself is capped on MP), so the
+        //    restored effective alpha matches main.
         val raw = mgr.requestRaw(displayId) {
-            if (hasDirty) CaptureBackendResolver.activeOverlayUi?.setDirtyBoxesHidden(displayId, false)
+            if (hasDirty) dirtyView?.alpha = 1f
         }
 
         if (raw == null) {
@@ -296,8 +315,16 @@ class PinholeOverlayMode(
             if (service.holdActive) return 100L
 
             // After OCR, drop dirty boxes from the cache — they have been
-            // captured and will be re-detected as new text below.
+            // captured and will be re-detected as new text below. Clear the
+            // dirty view alongside so its old content doesn't linger across
+            // classifications; if the new classification flags new dirty
+            // boxes, step 10 below repopulates it. The setDirtyBoxes call
+            // drops the dirty window's α to 0 atomically, so it stops
+            // contributing to AOSP's combined-obscuring check.
             cachedBoxes = cachedBoxes?.filter { !it.dirty }?.ifEmpty { null }
+            CaptureBackendResolver.activeOverlayUi?.setDirtyBoxes(
+                displayId, emptyList(), cropLeft, cropTop, screenshotW, screenshotH
+            )
 
             // No text on screen and no overlays → nothing to do
             if (pipeline == null && !hasOverlays()) {
@@ -380,7 +407,8 @@ class PinholeOverlayMode(
             if (cleanRef != null) {
                 for ((idx, box) in boxes.withIndex()) {
                     if (idx >= bitmapRects.size) continue
-                    if (box.dirty) continue
+                    // `boxes` is cachedBoxes after the post-OCR clean filter,
+                    // so it's already clean-only — no need to re-check dirty.
                     if (idx in staleOverlayIndices) continue
                     val outcome = checkPinholes(raw, cleanRef, bitmapRects[idx])
                     when (outcome.result) {
@@ -496,23 +524,34 @@ class PinholeOverlayMode(
                 }
             }
 
-            // 10. Apply to the box windows — single commit point. Dirty boxes
-            //     ride along as box windows; step 1 blanks them before capture.
+            // 10. Apply to views — single commit point. Dirty boxes live on
+            //     the dedicated dirty window; clean boxes go through
+            //     showOverlayAndCapture → main view. Step 1 will blank the
+            //     dirty window before next cycle's capture. setDirtyBoxes
+            //     also bumps the dirty window's α from 0 → cap atomically
+            //     when content arrives, so the empty-dirty steady state
+            //     keeps combined-obscuring at main's α (touches pass
+            //     through to the game).
+            CaptureBackendResolver.activeOverlayUi?.setDirtyBoxes(
+                displayId, dirtyBoxes, cropLeft, cropTop, screenshotW, screenshotH
+            )
             if (anyChanged) {
                 anyRemoved = allRemovals.isNotEmpty()
-                if (nextBoxes.isNotEmpty()) {
-                    showOverlayAndCapture(nextBoxes, cropLeft, cropTop, screenshotW, screenshotH)
+                if (cleanBoxes.isNotEmpty()) {
+                    showOverlayAndCapture(cleanBoxes, cropLeft, cropTop, screenshotW, screenshotH)
                 } else if (farOcrGroups.isEmpty()) {
-                    // No clean boxes AND no replacement coming — clear the
-                    // clean window so stale boxes don't linger. setBoxes
-                    // (not hideTranslationOverlayForDisplay) keeps the
-                    // overlay window alive: tearing it down forces a
-                    // wm.removeView / wm.addView round-trip whose composition
-                    // latency the user sees as a visible "off" period.
+                    // No clean boxes AND no replacement coming — empty the
+                    // main overlay so stale boxes don't linger.
+                    // setBoxes(emptyList()) (not hideTranslationOverlayForDisplay)
+                    // keeps the overlay window alive: tearing it down forces
+                    // a wm.removeView / wm.addView round-trip whose
+                    // composition latency the user sees as a visible "off"
+                    // period.
                     //
-                    // Dirty boxes (when present) live on the dirtyView — we
+                    // Dirty boxes (when present) live on the dirty view — we
                     // never need to set them back into the clean view here.
-                    CaptureBackendResolver.activeOverlayUi?.clearTranslationBoxes(displayId)
+                    CaptureBackendResolver.activeOverlayUi?.translationOverlayForDisplay(displayId)
+                        ?.setBoxes(emptyList(), cropLeft, cropTop, screenshotW, screenshotH)
                 }
                 // else: farOcrGroups is non-empty — the path below will call
                 // setBoxes(merged) which is the actual swap. Calling
@@ -559,6 +598,11 @@ class PinholeOverlayMode(
                     val merged = currentClean + partial
                     cachedBoxes = merged
                     showOverlayAndCapture(merged, cropLeft, cropTop, screenshotW, screenshotH)
+                    // Dirty window cleared — clean window now has the
+                    // replacement placeholders for what was dirty.
+                    CaptureBackendResolver.activeOverlayUi?.setDirtyBoxes(
+                        displayId, emptyList(), cropLeft, cropTop, screenshotW, screenshotH
+                    )
 
                     if (anyUncached) {
                         val translated = translatePlaceholders(placeholders, farTexts)
@@ -695,22 +739,25 @@ class PinholeOverlayMode(
      * 50/50 blend of the clean game background (cleanRef) and the solid
      * overlay rendering (overlayBitmap). That's true because:
      *
-     *   1. [com.playtranslate.ui.BoxOverlayView.createPinholeMask] generates
-     *      a mask with alpha [PinholeCalibration.MASK_ALPHA] (50%) at sparse
-     *      pinhole positions spaced [PinholeCalibration.PINHOLE_SPACING]
-     *      apart, 0 elsewhere.
-     *   2. [com.playtranslate.ui.BoxOverlayView.dispatchDraw] composites that
-     *      mask via DST_OUT on the rendered box, punching 50% holes at the
-     *      mask positions and leaving non-pinhole positions fully opaque.
+     *   1. [com.playtranslate.ui.TranslationOverlayView.createPinholeMask]
+     *      generates a full-view mask with alpha
+     *      [PinholeCalibration.MASK_ALPHA] (50%) at sparse pinhole positions
+     *      spaced [PinholeCalibration.PINHOLE_SPACING] apart, 0 elsewhere.
+     *      On the MediaProjection backend the window α is reduced to the
+     *      system obscuring cap and the mask alpha is compensated so the
+     *      *effective* pinhole α is still 50% — the math below is invariant
+     *      under that compensation.
+     *   2. [com.playtranslate.ui.TranslationOverlayView.dispatchDraw]
+     *      composites that mask via DST_OUT on the rendered overlay,
+     *      punching 50% holes at the mask positions and leaving non-pinhole
+     *      positions fully opaque.
      *   3. The final on-screen pixel at a pinhole is therefore
      *      50% overlay + 50% game.
      *
      * The sampling loop iterates every pixel in the box region and skips
-     * non-pinhole positions via [isPinholePosition] using **box-local**
-     * coordinates (the px/py offset within the box rect). Each box is its
-     * own [com.playtranslate.ui.BoxOverlayView] window whose mask is
-     * generated from that view's own (0,0), so the box-local grid lines up
-     * with the box's actual on-screen holes.
+     * non-pinhole positions via [isPinholePosition] using **view-local**
+     * coordinates derived from the box's on-screen rect, so the box-local
+     * sampling grid lines up with the view's actual on-screen holes.
      *
      * ## Why this breaks at non-identity scale
      *
@@ -779,7 +826,16 @@ class PinholeOverlayMode(
 
         for (py in 0 until regionH) {
             for (px in 0 until regionW) {
-                if (!isPinholePosition(px, py, spacing)) continue
+                // Mask is generated at view-global origin (0,0); test the
+                // pinhole grid in those coordinates, NOT in box-local
+                // coordinates. At identity scale view-space == bitmap-space,
+                // so (left + px, top + py) gives the position to test.
+                // Sampling box-local would miss the actual on-screen holes
+                // for any box whose top-left isn't aligned to the
+                // PINHOLE_SPACING grid — non-pinhole pixels at 100% overlay
+                // would be compared against the 50/50 predicted blend and
+                // produce constant false DIRTY/REMOVE on stable text.
+                if (!isPinholePosition(left + px, top + py, spacing)) continue
                 totalPinholes++
 
                 val refPx = refPixels[py * regionW + px]
@@ -976,6 +1032,55 @@ class PinholeOverlayMode(
                 }
             }
         }
+    }
+
+    /**
+     * Hide the dirty overlay via view-alpha and wait for the RenderThread to
+     * commit the transparent frame to SurfaceFlinger.
+     *
+     * Forces a view invalidation after setting alpha=0 so the VTO callback
+     * actually fires (hardware-layer alpha changes can skip
+     * `performTraversals`, but `registerFrameCommitCallback` requires a
+     * full traversal pass).
+     *
+     * Contract:
+     *   - Returns `true`  → view is at `alpha=0`, ready for the caller to
+     *                       proceed with the screenshot. Caller is expected
+     *                       to restore `alpha=1f` after capture.
+     *   - Returns `false` → commit didn't confirm in time, OR the view was
+     *                       detached. Alpha is restored to `1f` before
+     *                       returning so a failed hide never leaves the
+     *                       dirty overlay invisible across cycles. (Without
+     *                       this restore, a sustained RenderThread backlog
+     *                       could leave dirty content stuck hidden until an
+     *                       external teardown.)
+     */
+    private suspend fun hideAndAwaitCommit(dirtyView: View): Boolean {
+        val committed = withTimeoutOrNull(200L) {
+            suspendCancellableCoroutine { cont ->
+                dirtyView.alpha = 0f
+                dirtyView.invalidate() // Force traversal so VTO callback fires
+
+                val vto = dirtyView.viewTreeObserver
+                if (!vto.isAlive || !dirtyView.isAttachedToWindow) {
+                    cont.resume(false)
+                    return@suspendCancellableCoroutine
+                }
+
+                vto.registerFrameCommitCallback {
+                    if (cont.isActive) cont.resume(true)
+                }
+            }
+        } ?: false
+
+        if (!committed) {
+            // Restore so a failed hide doesn't leave the dirty view stuck
+            // invisible. Posted to the view's handler so the restore lands
+            // on the View's own thread regardless of how this coroutine
+            // resumed; setting alpha while detached is a no-op and safe.
+            dirtyView.post { dirtyView.alpha = 1f }
+        }
+        return committed
     }
 
     /** Inflate [dying] by [FAR_SUPPRESS_HORIZONTAL_RATIO] / [FAR_SUPPRESS_VERTICAL_RATIO]
