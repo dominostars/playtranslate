@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Rect
 import android.graphics.RectF
+import android.util.Log
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CoroutineScope
@@ -189,6 +190,26 @@ class FuriganaMode(
             }
 
             val (ocrResult, dedupKey, left, top, _, _) = pipeline
+
+            // Pipeline drift defense — mirrors PinholeOverlayMode.kt:303-318.
+            // The existing TranslationOverlayView's width/height are frozen at
+            // its initial display dims; silently reusing it with mismatched
+            // pipeline dims flips scaleX off identity and shifts boxes
+            // (statusBarHeight toggling, MP capture-size race, rotation, etc).
+            // Tear down so the next raw frame falls into handleRawFrame's
+            // null-ref branch and rebuilds against a fresh overlay view.
+            if (cleanRefBitmap != null &&
+                (left != cropLeft || top != cropTop ||
+                    raw.width != screenshotW || raw.height != screenshotH)) {
+                Log.w(
+                    TAG,
+                    "Pipeline drift (crop=($cropLeft,$cropTop)→($left,$top), " +
+                        "screen=${screenshotW}x$screenshotH→${raw.width}x${raw.height})"
+                )
+                clearState()
+                CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
+                return
+            }
 
             // Dedup: if text unchanged and we have cached furigana, re-show
             if (lastOcrText != null && !OverlayToolkit.isSignificantChange(lastOcrText!!, dedupKey)) {
