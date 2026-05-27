@@ -54,7 +54,17 @@ class TranslationResultActivity :
     SentenceContextProvider {
 
     private var captureService: CaptureService? = null
+
+    /** True once [onServiceConnected] has fired — gates reads of
+     *  [captureService] for any caller that needs an active binder. */
     private var serviceConnected = false
+
+    /** True once [bindService] returned true in [onCreate]. Separate
+     *  from [serviceConnected] so [onDestroy] can unbind even when
+     *  [finishCurrentIfAny] tears us down before the connection
+     *  callback arrives — otherwise the ServiceConnection leaks and
+     *  Android logs a "leaked ServiceConnection" warning. */
+    private var serviceBindRequested = false
 
     /** Activity-scoped state mirror of the result/lookups pipeline.
      *  Filled by [TranslationResultFragment] as it produces results;
@@ -80,8 +90,15 @@ class TranslationResultActivity :
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
+            // Always record the binding so [onDestroy]'s
+            // unbindService can clean it up, even when we're skipping
+            // the actual translation work below. If [finishCurrentIfAny]
+            // finished us while the bind was in flight, kicking off a
+            // translation cycle on the corpse would burn a capture slot
+            // and surface a result no one would see.
             captureService = (binder as CaptureService.LocalBinder).getService()
             serviceConnected = true
+            if (isFinishing || isDestroyed) return
             onServiceReady()
         }
         override fun onServiceDisconnected(name: ComponentName) {
@@ -168,6 +185,10 @@ class TranslationResultActivity :
         // for the full rationale — prevents OCR feedback loop in multi-window).
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
+        // Register before any other onCreate work so [finishCurrentIfAny]
+        // can reach this instance.
+        tracker.bind(this)
+
         findViewById<ImageButton>(R.id.btnBack).setOnClickListener { finish() }
 
         if (isDragWordMode) setupDragWordTabs(savedInstanceState)
@@ -180,7 +201,7 @@ class TranslationResultActivity :
         // Start and bind CaptureService
         val svcIntent = Intent(this, CaptureService::class.java)
         ContextCompat.startForegroundService(this, svcIntent)
-        bindService(svcIntent, serviceConnection, Context.BIND_AUTO_CREATE)
+        serviceBindRequested = bindService(svcIntent, serviceConnection, Context.BIND_AUTO_CREATE)
     }
 
     override fun onDestroy() {
@@ -188,7 +209,16 @@ class TranslationResultActivity :
         // they're cancelled automatically when the activity is destroyed.
         // No callback nulling — the service no longer exposes mutable
         // callback slots that one activity could clobber for another.
-        if (serviceConnected) unbindService(serviceConnection)
+        // Unbind whenever the bind was *requested*, not whenever it
+        // completed. A rapid replace-and-finish via [finishCurrentIfAny]
+        // can destroy us before onServiceConnected fires; gating on
+        // serviceConnected would leak the ServiceConnection in that
+        // window.
+        if (serviceBindRequested) {
+            unbindService(serviceConnection)
+            serviceBindRequested = false
+        }
+        tracker.unbind(this)
         super.onDestroy()
     }
 
@@ -535,6 +565,12 @@ class TranslationResultActivity :
     private enum class Tab { SENTENCE, WORD }
 
     companion object {
+        /** See [CurrentActivityTracker]. [DragLookupController.openSentenceInApp]
+         *  calls [finishCurrentIfAny] before launching a new instance so
+         *  MULTIPLE_TASK doesn't leave the old one orphaned in a hidden task. */
+        private val tracker = CurrentActivityTracker<TranslationResultActivity>()
+        fun finishCurrentIfAny() = tracker.finishCurrent()
+
         const val EXTRA_TOP_FRAC = "extra_top_frac"
         const val EXTRA_BOTTOM_FRAC = "extra_bottom_frac"
         const val EXTRA_LEFT_FRAC = "extra_left_frac"

@@ -26,6 +26,10 @@ class WordAnkiReviewActivity : AppCompatActivity() {
         // for the full rationale — prevents OCR feedback loop in multi-window).
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
+        // Register before any early-return so [finishCurrentIfAny] can
+        // reach this instance even after a saved-state restore.
+        tracker.bind(this)
+
         if (savedInstanceState != null) {
             // Sheet is already restored by the FragmentManager — attach dismiss listener
             val existing = supportFragmentManager.findFragmentByTag(WordAnkiReviewSheet.TAG)
@@ -72,11 +76,23 @@ class WordAnkiReviewActivity : AppCompatActivity() {
         sheet.show(supportFragmentManager, WordAnkiReviewSheet.TAG)
     }
 
+    override fun onDestroy() {
+        tracker.unbind(this)
+        super.onDestroy()
+    }
+
     private fun applyTheme() {
         com.playtranslate.applyTheme(this)
     }
 
     companion object {
+        /** See [CurrentActivityTracker] — the drag-flow launch path calls
+         *  [finishCurrentIfAny] to dismiss the previous sheet before
+         *  starting a new one, so MULTIPLE_TASK doesn't leave the old
+         *  sheet orphaned in a hidden task. */
+        private val tracker = CurrentActivityTracker<WordAnkiReviewActivity>()
+        fun finishCurrentIfAny() = tracker.finishCurrent()
+
         const val EXTRA_WORD = "extra_word"
         const val EXTRA_READING = "extra_reading"
         const val EXTRA_POS = "extra_pos"

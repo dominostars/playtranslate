@@ -16,6 +16,7 @@ import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.displaySizePx
 import com.playtranslate.MainActivity
 import com.playtranslate.OcrManager
+import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.Prefs
 import com.playtranslate.language.DefinitionResolver
@@ -1342,8 +1343,15 @@ class DragLookupController(
         // the activity. Lens dismiss → onDismiss → onSettled, which is
         // what the service expects post-drag.
         magnifier.dismiss()
+        // Finish any previously launched TranslationResultActivity so the
+        // new launch fully replaces it visually (otherwise FLAG_ACTIVITY_MULTIPLE_TASK
+        // leaves it alive in a hidden task).
+        TranslationResultActivity.finishCurrentIfAny()
         val intent = Intent(context, TranslationResultActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            // MULTIPLE_TASK prevents Android from reusing the previous
+            // activity's task and migrating it (and its stale content)
+            // onto a different display — the bug repro on dual-screen.
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
             putExtra(TranslationResultActivity.EXTRA_SENTENCE_TEXT, sentence)
             putExtra(TranslationResultActivity.EXTRA_SCREENSHOT_PATH, screenshotPath)
             // Word context — when present, the activity surfaces the
@@ -1369,21 +1377,22 @@ class DragLookupController(
                     wr.values.map { it.third }.toIntArray())
             }
         }
-        // App-foregrounded launches land on MainActivity's display, which is
-        // the user's expected target. When the app is backgrounded, no
-        // foreground task pulls the activity onto the user's display, so it
-        // lands wherever Android default-routes (typically DEFAULT_DISPLAY) —
-        // wrong on dual-screen setups where the user just tapped the floating
-        // icon on a non-default display. Force the launch onto the icon's
-        // display in that case.
-        if (!MainActivity.isInForeground) {
-            val opts = android.app.ActivityOptions.makeBasic()
-                .setLaunchDisplayId(displayId)
-                .toBundle()
-            context.startActivity(intent, opts)
-        } else {
-            context.startActivity(intent)
-        }
+        // Always pass an explicit launch display:
+        //   - When any PlayTranslate activity is resumed, route onto its
+        //     display so the new activity replaces it visually (the user
+        //     is already looking there).
+        //   - When nothing is resumed, fall back to the icon's display so
+        //     the activity doesn't land on DEFAULT_DISPLAY on dual-screen
+        //     setups.
+        // The previous `if (!MainActivity.isInForeground)` gate only
+        // tracked MainActivity, so once an Anki/TRA activity was the
+        // resumed one, the gate routed the next launch to the icon's
+        // display — the dual-screen "moved to wrong display" bug.
+        val targetDisplay = PlayTranslateApplication.foregroundDisplayId() ?: displayId
+        val opts = android.app.ActivityOptions.makeBasic()
+            .setLaunchDisplayId(targetDisplay)
+            .toBundle()
+        context.startActivity(intent, opts)
     }
 
     /**
@@ -1425,9 +1434,18 @@ class DragLookupController(
 
         CaptureBackendResolver.activeOverlayUi?.cancelLivePauseObligation()
         magnifier.dismiss()
+        // Finish any previously launched WordAnkiReviewActivity so the
+        // new sheet visibly replaces the old one rather than stacking
+        // behind it in a hidden task. Also cancel any in-flight
+        // permission trampoline — otherwise a rapid second tap (e.g.
+        // during a first-time permission flow) could let an older
+        // trampoline forward its stale intent after the new sheet opens.
+        WordAnkiReviewActivity.finishCurrentIfAny()
+        AnkiPermissionActivity.finishCurrentIfAny()
 
         val intent = Intent(context, AnkiPermissionActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            // MULTIPLE_TASK — see openSentenceInApp for the rationale.
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
             putExtra(WordAnkiReviewActivity.EXTRA_WORD, word)
             putExtra(WordAnkiReviewActivity.EXTRA_READING, reading)
             putExtra(WordAnkiReviewActivity.EXTRA_POS, pos)
@@ -1445,14 +1463,13 @@ class DragLookupController(
             putExtra(WordAnkiReviewActivity.EXTRA_SOURCE_LANG, sourceLangCode)
         }
 
-        if (!MainActivity.isInForeground) {
-            val opts = android.app.ActivityOptions.makeBasic()
-                .setLaunchDisplayId(displayId)
-                .toBundle()
-            context.startActivity(intent, opts)
-        } else {
-            context.startActivity(intent)
-        }
+        // Same routing rule as [openSentenceInApp]: prefer any resumed
+        // PlayTranslate activity's display, fall back to the icon's display.
+        val targetDisplay = PlayTranslateApplication.foregroundDisplayId() ?: displayId
+        val opts = android.app.ActivityOptions.makeBasic()
+            .setLaunchDisplayId(targetDisplay)
+            .toBundle()
+        context.startActivity(intent, opts)
     }
 
     private fun sendLineToMainApp(lineText: String) {
