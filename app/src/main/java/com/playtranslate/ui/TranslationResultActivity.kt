@@ -503,6 +503,11 @@ class TranslationResultActivity :
 
         vm.showTranslatingPlaceholder(sentenceText, segments, applicationContext)
 
+        // TODO: route through LastSentenceCache.awaitOrStartTranslation so
+        //  this caller joins the drag→Anki sheet's in-flight job (and vice
+        //  versa) instead of double-firing translateOnce against the
+        //  backend. Coalescing only pays off when both call sites use the
+        //  cache helper.
         lifecycleScope.launch {
             try {
                 val groupTranslation = svc.translateOnce(sentenceText)

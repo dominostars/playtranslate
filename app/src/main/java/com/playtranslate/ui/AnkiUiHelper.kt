@@ -697,7 +697,31 @@ class AnkiSendButton(private val button: FrameLayout) {
         visibility = View.GONE
     }
 
-    init { button.addView(spinner) }
+    /** Small left-anchored spinner that signals "the sheet is still
+     *  filling async fields in the background" without blocking taps
+     *  on the button — it sits beside the centred icon/label, doesn't
+     *  toggle [button.isEnabled], and is hidden while the during-send
+     *  centred [spinner] is up so the two never compete visually. */
+    private val pendingFillSpinner: ProgressBar = ProgressBar(button.context).apply {
+        isIndeterminate = true
+        indeterminateTintList =
+            ColorStateList.valueOf(button.context.themeColor(R.attr.ptAccentOn))
+        val density = button.resources.displayMetrics.density
+        val size = (18 * density).toInt()
+        layoutParams = FrameLayout.LayoutParams(
+            size, size,
+            Gravity.START or Gravity.CENTER_VERTICAL,
+        ).also { it.marginStart = (16 * density).toInt() }
+        visibility = View.GONE
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+
+    private var fillingPending = false
+
+    init {
+        button.addView(spinner)
+        button.addView(pendingFillSpinner)
+    }
 
     /** Swap the button to its spinner and block taps; pass `false` to
      *  restore the icon + label. The content is hidden with INVISIBLE so
@@ -706,6 +730,23 @@ class AnkiSendButton(private val button: FrameLayout) {
         button.isEnabled = !loading
         content.visibility = if (loading) View.INVISIBLE else View.VISIBLE
         spinner.visibility = if (loading) View.VISIBLE else View.GONE
+        // While the during-send spinner is up, hide the left "fields
+        // loading" indicator so the two don't compete. Restore it on
+        // exit if a fill is still in flight.
+        pendingFillSpinner.visibility =
+            if (!loading && fillingPending) View.VISIBLE else View.GONE
+    }
+
+    /** Toggles the small left "fields loading" indicator. Does not
+     *  affect [button.isEnabled] — by design the user can still send
+     *  while async fills are pending, the indicator is purely a cue. */
+    fun setFillingPending(loading: Boolean) {
+        fillingPending = loading
+        // Don't reveal the small spinner while the centred send spinner
+        // is up; setLoading(false) will restore it if `loading` is still
+        // true at that point.
+        if (spinner.visibility == View.VISIBLE) return
+        pendingFillSpinner.visibility = if (loading) View.VISIBLE else View.GONE
     }
 }
 

@@ -3,7 +3,9 @@ package com.playtranslate.ui
 import android.graphics.BitmapFactory
 import android.graphics.Typeface
 import android.os.Bundle
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -55,6 +57,21 @@ class SentenceAnkiContentFragment : Fragment() {
     private var screenshotGroup: View? = null
     private var ivPhoto: ImageView? = null
     private var audioHandle: AnkiAudioHandle? = null
+
+    /** True while we wait for [applyWords] — drives the "Looking up words…"
+     *  placeholder in the Words card. Flips to false the moment applyWords
+     *  is called, even if the list it carries is empty (definitive empty). */
+    private var wordsLoading: Boolean = false
+
+    /** Set the first time the user types in [etTranslation]. Once true,
+     *  [applyTranslation] becomes a no-op so a late-arriving translation
+     *  doesn't stomp on what the user just typed. */
+    private var translationUserTouched: Boolean = false
+
+    /** Set before any programmatic [EditText.setText] on [etTranslation] so
+     *  the TextWatcher doesn't mistake our own write for user input.
+     *  Cleared by the watcher on the next callback. */
+    private var translationSuppressNextEdit: Boolean = false
 
     data class CardData(
         val source: String,
@@ -159,7 +176,12 @@ class SentenceAnkiContentFragment : Fragment() {
         val translationCard = ankiGroupCard(root)
         etTranslation = buildEditField(initial = translation).apply {
             id = R.id.etAnkiTranslation
+            if (translation.isBlank()) {
+                hint = getString(R.string.status_translating)
+                setHintTextColor(ctx.themeColor(R.attr.ptTextMuted))
+            }
         }
+        attachTranslationTouchWatcher(etTranslation)
         translationCard.addView(buildEditableFrame(etTranslation))
 
         // Audio — TTS of the sentence, attached as [sound:] media.
@@ -175,7 +197,13 @@ class SentenceAnkiContentFragment : Fragment() {
             onCheckedChange = { prefs.ankiSentenceAudioEnabled = it },
         )
 
-        // Words on card
+        // Words on card. The host tells us whether a follow-up
+        // `applyWords` call is coming (drag → Anki path) vs. whether
+        // an empty list is the final answer (sentence-only sheet
+        // tapped while VM lookups are still loading). Inferring
+        // "loading" from `words.isEmpty()` would mis-render the latter
+        // as a permanent placeholder over a zero-word card.
+        wordsLoading = arguments?.getBoolean(ARG_WORDS_LOADING, false) ?: false
         ankiGroupHeader(root, getString(R.string.anki_group_words_count, words.size))
         wordsHeaderTitle = (root.getChildAt(root.childCount - 1) as ViewGroup)
             .findViewById(R.id.tvGroupTitle)
@@ -354,20 +382,39 @@ class SentenceAnkiContentFragment : Fragment() {
     // ── Word rows ────────────────────────────────────────────────────────
 
     private fun rebuildWordRows() {
-        val ctx = requireContext()
         // Strip everything after the helper row + its divider, then
         // re-emit current word rows. Helper row is at index 0; divider
         // at index 1; word rows live from index 2 onward.
         while (wordsCard.childCount > 2) {
             wordsCard.removeViewAt(wordsCard.childCount - 1)
         }
-        words.forEachIndexed { i, entry ->
-            if (i > 0) ankiInsetDivider(wordsCard, indentDp = 16)
-            wordsCard.addView(buildWordRow(entry))
+        if (words.isEmpty() && wordsLoading) {
+            wordsCard.addView(buildWordsLoadingRow())
+        } else {
+            words.forEachIndexed { i, entry ->
+                if (i > 0) ankiInsetDivider(wordsCard, indentDp = 16)
+                wordsCard.addView(buildWordRow(entry))
+            }
         }
         // Live count in the group header.
         wordsHeaderTitle.text = getString(R.string.anki_group_words_count, words.size)
             .uppercase(java.util.Locale.ROOT)
+    }
+
+    private fun buildWordsLoadingRow(): View {
+        val ctx = requireContext()
+        val density = resources.displayMetrics.density
+        return TextView(ctx).apply {
+            text = getString(R.string.words_loading)
+            textSize = 14f
+            setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+            setPadding((16 * density).toInt(), (12 * density).toInt(),
+                (16 * density).toInt(), (12 * density).toInt())
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
     }
 
     private fun buildWordRow(entry: SentenceAnkiHtmlBuilder.WordEntry): View {
@@ -468,6 +515,80 @@ class SentenceAnkiContentFragment : Fragment() {
         return row
     }
 
+    // ── Async fill-in API ────────────────────────────────────────────
+
+    /** Marks [translationUserTouched] the first time the user types anything
+     *  we didn't write ourselves. [translationSuppressNextEdit] is flipped to
+     *  true *immediately before* any programmatic write inside
+     *  [applyTranslation], so the watcher swallows exactly that callback and
+     *  treats the next callback (real user input) as touched. Note: the
+     *  initial setText in [buildEditField] runs before this watcher attaches,
+     *  so there is no callback to suppress at attach time — pre-arming here
+     *  would silently consume the user's first real keystroke. */
+    private fun attachTranslationTouchWatcher(field: EditText) {
+        field.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                if (translationSuppressNextEdit) {
+                    translationSuppressNextEdit = false
+                } else {
+                    translationUserTouched = true
+                }
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
+    }
+
+    /**
+     * Replaces the placeholder Translation field with [text] when an
+     * async fetch lands. [text] = null renders the error variant
+     * ("Couldn't translate") without clobbering anything the user has
+     * typed in the meantime.
+     */
+    fun applyTranslation(text: String?) {
+        if (!::etTranslation.isInitialized) return
+        if (translationUserTouched) return
+        val ctx = context ?: return
+        if (text == null) {
+            etTranslation.hint = getString(R.string.anki_translation_error)
+            etTranslation.setHintTextColor(ctx.themeColor(R.attr.ptTextMuted))
+            return
+        }
+        if (text.isBlank()) return
+        translationSuppressNextEdit = true
+        etTranslation.setText(text)
+        etTranslation.hint = null
+        arguments?.putString(ARG_TRANSLATION, text)
+    }
+
+    /**
+     * Replaces the placeholder Words rows with [entries] when the
+     * sentence's word lookups complete. [targetWord] re-applies the
+     * auto-target highlight from [onViewCreated] so the looked-up word
+     * stays selected when it lands in the list.
+     */
+    fun applyWords(entries: List<SentenceAnkiHtmlBuilder.WordEntry>, targetWord: String?) {
+        if (!::wordsCard.isInitialized) return
+        wordsLoading = false
+        words.clear()
+        words.addAll(entries)
+        if (targetWord != null && words.any { it.word == targetWord }) {
+            selectedWords.add(targetWord)
+        }
+        if (selectedWords.isNotEmpty()) {
+            val sorted = words.sortedByDescending { it.word in selectedWords }
+            words.clear()
+            words.addAll(sorted)
+        }
+        arguments?.let { args ->
+            args.putStringArray(ARG_WORDS, words.map { it.word }.toTypedArray())
+            args.putStringArray(ARG_READINGS, words.map { it.reading }.toTypedArray())
+            args.putStringArray(ARG_MEANINGS, words.map { it.meaning }.toTypedArray())
+            args.putIntArray(ARG_FREQ_SCORES, words.map { it.freqScore }.toIntArray())
+        }
+        rebuildWordRows()
+    }
+
     companion object {
         private const val ARG_ORIGINAL        = "japanese"
         private const val ARG_TRANSLATION     = "translation"
@@ -478,6 +599,7 @@ class SentenceAnkiContentFragment : Fragment() {
         private const val ARG_SCREENSHOT_PATH = "screenshot_path"
         private const val ARG_TARGET_WORD     = "target_word"
         private const val ARG_SOURCE_LANG     = "source_lang"
+        private const val ARG_WORDS_LOADING   = "words_loading"
 
         fun newInstance(
             japanese: String,
@@ -486,6 +608,7 @@ class SentenceAnkiContentFragment : Fragment() {
             screenshotPath: String?,
             targetWord: String? = null,
             sourceLangId: SourceLangId = SourceLangId.JA,
+            wordsLoading: Boolean = false,
         ) = SentenceAnkiContentFragment().apply {
             arguments = Bundle().apply {
                 putString(ARG_ORIGINAL, japanese)
@@ -497,6 +620,7 @@ class SentenceAnkiContentFragment : Fragment() {
                 if (screenshotPath != null) putString(ARG_SCREENSHOT_PATH, screenshotPath)
                 if (targetWord != null) putString(ARG_TARGET_WORD, targetWord)
                 putString(ARG_SOURCE_LANG, sourceLangId.code)
+                putBoolean(ARG_WORDS_LOADING, wordsLoading)
             }
         }
     }

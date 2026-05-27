@@ -21,6 +21,7 @@ import androidx.core.os.bundleOf
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
 import com.playtranslate.AnkiManager
+import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
@@ -121,6 +122,15 @@ class WordAnkiReviewSheet : DialogFragment() {
     /** Tatoeba "More examples" pairs (set after [TatoebaClient.fetch]
      *  resolves). Null = not yet fetched / unsupported / fetch failed. */
     private var tatoebaPairs: List<TatoebaClient.SentencePair>? = null
+
+    /** True while the sheet's lazy sentence-translation fetch is still in
+     *  flight (drag → Anki path). Drives the left "fields loading"
+     *  indicator on the Save button. */
+    private var translationFillInFlight: Boolean = false
+
+    /** True while the sheet's lazy word-lookup fetch is still in flight
+     *  (drag → Anki path). Drives the same Save-button indicator. */
+    private var wordsFillInFlight: Boolean = false
 
     /** Optional listener called when this sheet is dismissed (used by WordAnkiReviewActivity). */
     var onDismissListener: DialogInterface.OnDismissListener? = null
@@ -242,13 +252,32 @@ class WordAnkiReviewSheet : DialogFragment() {
 
         if (hasSentenceData && savedInstanceState == null) {
             val sentenceWords = buildWordEntries(args)
+            // wordsLoading = true tells the fragment "we'll call
+            // applyWords later" so the empty list renders as
+            // "Looking up words…" instead of zero rows. Stays false
+            // when the host already has words in hand.
             val contentFragment = SentenceAnkiContentFragment.newInstance(
                 sentenceOriginal ?: return, sentenceTranslation, sentenceWords,
-                currentScreenshotPath, targetWord = word, sourceLangId = sourceLangId
+                currentScreenshotPath, targetWord = word, sourceLangId = sourceLangId,
+                wordsLoading = sentenceWords.isEmpty(),
             )
             childFragmentManager.beginTransaction()
                 .replace(R.id.wordAnkiSentenceHost, contentFragment, TAG_CONTENT)
                 .commitNow()
+
+            // Fill in any missing pieces asynchronously. Drag → Anki
+            // taps can race the prefetch: a fast tap arrives before
+            // word lookups finish, and the drag flow never runs a
+            // sentence translation. The fragment renders muted
+            // placeholders until these calls land.
+            // (hasSentenceData == (sentenceOriginal != null), so the
+            // outer guard already ensures sentenceOriginal is non-null.)
+            if (sentenceTranslation.isBlank()) {
+                launchTranslationFill(sentenceOriginal)
+            }
+            if (sentenceWords.isEmpty()) {
+                launchWordsFill(sentenceOriginal, word)
+            }
         }
 
         // Kick off the same dictionary lookup the Word Detail sheet does.
@@ -263,6 +292,10 @@ class WordAnkiReviewSheet : DialogFragment() {
 
         val sendBtn = view.findViewById<FrameLayout>(R.id.btnWordAnkiSend)
         sendButton = AnkiSendButton(sendBtn)
+        // launchTranslationFill / launchWordsFill above set the
+        // in-flight flags before sendButton existed; apply them now
+        // so the left indicator reflects current state.
+        refreshFillingPendingIndicator()
         sendBtn.setOnClickListener {
             val deckId = Prefs(requireContext()).ankiDeckId
             if (deckId < 0L) {
@@ -1163,6 +1196,75 @@ class WordAnkiReviewSheet : DialogFragment() {
 
     private fun getContentFragment(): SentenceAnkiContentFragment? =
         childFragmentManager.findFragmentByTag(TAG_CONTENT) as? SentenceAnkiContentFragment
+
+    /** Fetch a sentence translation via the on-demand backend waterfall and
+     *  push the result into the embedded sentence fragment. Routes through
+     *  [LastSentenceCache.awaitOrStartTranslation] so a second open for the
+     *  same sentence joins the in-flight job instead of re-firing.
+     *
+     *  Uses [CaptureService.instance] directly — the sheet is only ever
+     *  reached from the in-process drag flow (AccessibilityService →
+     *  AnkiPermissionActivity → WordAnkiReviewActivity), so the service is
+     *  guaranteed alive. A null instance is treated as a translation
+     *  failure and surfaces the "Couldn't translate" placeholder. */
+    private fun launchTranslationFill(sentence: String) {
+        translationFillInFlight = true
+        refreshFillingPendingIndicator()
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val outcome = LastSentenceCache.awaitOrStartTranslation(sentence) { text ->
+                    val svc = CaptureService.instance
+                        ?: error("CaptureService unavailable")
+                    val gt = svc.translateOnce(text)
+                    LastSentenceCache.TranslationOutcome(gt.text, gt.backendDisplayName)
+                }
+                getContentFragment()?.applyTranslation(outcome?.text)
+            } finally {
+                translationFillInFlight = false
+                refreshFillingPendingIndicator()
+            }
+        }
+    }
+
+    /** Fetch the sentence's per-word breakdown and push it into the
+     *  embedded sentence fragment. Joins any in-flight word-lookup
+     *  started by the drag controller's prefetch.
+     *
+     *  The payload's surfaces map is paired with its results at the
+     *  point the deferred completed — reading
+     *  [LastSentenceCache.surfaceForms] separately would race with
+     *  live mode rotating the cache to a different sentence and
+     *  attach the wrong inflected forms to this sheet's words. */
+    private fun launchWordsFill(sentence: String, targetWord: String) {
+        wordsFillInFlight = true
+        refreshFillingPendingIndicator()
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val payload = LastSentenceCache.awaitOrStartWordLookups(
+                    requireContext().applicationContext,
+                    sentence,
+                )
+                val entries = payload.results.map { (w, triple) ->
+                    SentenceAnkiHtmlBuilder.WordEntry(
+                        w, triple.first, triple.second, triple.third,
+                        surfaceForm = payload.surfaces[w].orEmpty(),
+                    )
+                }
+                getContentFragment()?.applyWords(entries, targetWord)
+            } finally {
+                wordsFillInFlight = false
+                refreshFillingPendingIndicator()
+            }
+        }
+    }
+
+    /** Drives the small left spinner on the Save button. Visible whenever
+     *  either of the async sentence-fill jobs is still running. Safe to
+     *  call after [onDestroyView] — [sendButton] is null and the call
+     *  becomes a no-op. */
+    private fun refreshFillingPendingIndicator() {
+        sendButton?.setFillingPending(translationFillInFlight || wordsFillInFlight)
+    }
 
     private fun buildWordEntries(args: Bundle): List<SentenceAnkiHtmlBuilder.WordEntry> {
         val wordArr    = args.getStringArray(ARG_SENTENCE_WORDS) ?: return emptyList()

@@ -238,6 +238,7 @@
     <string name="anki_group_definitions">Definitions</string>
     <string name="anki_group_screenshot">Screenshot</string>
     <string name="anki_words_helper">These words will be included in the Anki card. Tap a word to highlight them in the card. Tap × to remove it from the card.</string>
+    <string name="anki_translation_error">Couldn\'t translate</string>
     <string name="anki_word_remove_content_description">Remove from card</string>
     <string name="anki_screenshot_remove_content_description">Remove screenshot</string>
     <string name="anki_group_audio">Audio</string>

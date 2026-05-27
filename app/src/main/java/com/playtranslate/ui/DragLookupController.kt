@@ -1299,18 +1299,14 @@ class DragLookupController(
     }
 
     private fun prefetchWordLookups(sentence: String) {
-        val cache = LastSentenceCache
-        // Skip if the cache already has results for this exact sentence
-        if (cache.original == sentence && cache.wordResults != null) return
+        // Fire-and-forget; the cache owns the in-flight Deferred and
+        // the staleness gate. Cancelling the previous job is no longer
+        // our concern — LastSentenceCache.awaitOrStartWordLookups flips
+        // its own `original` and cancels stale pending jobs when the
+        // sentence changes.
         wordLookupJob?.cancel()
         wordLookupJob = scope.launch {
-            val results = LastSentenceCache.lookupWords(context, sentence)
-            // Only write cache if this sentence is still current
-            if (currentSentence == sentence) {
-                cache.original = sentence
-                cache.translation = null  // clear stale translation from previous text
-                cache.wordResults = results
-            }
+            LastSentenceCache.awaitOrStartWordLookups(context, sentence)
         }
     }
 

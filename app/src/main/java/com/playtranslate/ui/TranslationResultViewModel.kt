@@ -254,11 +254,13 @@ class TranslationResultViewModel : ViewModel() {
                 // LastSentenceCache stays in sync — same write target as
                 // before the hoist; only the writer changed (was fragment).
                 val ready = _result.value as? ResultState.Ready
-                LastSentenceCache.original = ready?.result?.originalText
-                LastSentenceCache.translation = ready?.result?.translatedText
-                LastSentenceCache.translationSource = ready?.result?.backendDisplayName
-                LastSentenceCache.wordResults = data.rows.toLegacyMap()
-                LastSentenceCache.surfaceForms = data.surfaces
+                LastSentenceCache.setFromTranslationResult(
+                    original = ready?.result?.originalText,
+                    translation = ready?.result?.translatedText,
+                    translationSource = ready?.result?.backendDisplayName,
+                    wordResults = data.rows.toLegacyMap(),
+                    surfaceForms = data.surfaces,
+                )
             } catch (e: CancellationException) {
                 // Caller cancelled (e.g. new text arrived) — let the next
                 // emission drive state. Don't write Settled here.
