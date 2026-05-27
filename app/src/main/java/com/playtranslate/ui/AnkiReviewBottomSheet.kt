@@ -11,17 +11,12 @@ import android.widget.Toast
 import androidx.core.os.bundleOf
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
-import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
 import com.playtranslate.fullScreenDialogTheme
 import com.playtranslate.language.SourceLangId
-import com.playtranslate.tts.TtsEngine
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
 
 class AnkiReviewBottomSheet : DialogFragment() {
 
@@ -138,71 +133,27 @@ class AnkiReviewBottomSheet : DialogFragment() {
     private suspend fun sendToAnki(deckId: Long) {
         val content = getContentFragment() ?: run { sendButton?.setLoading(false); return }
         val data = content.getCardData()
-        // Synthesize sentence audio up front when the switch is on; the
-        // temp WAV is uploaded by the dispatcher and deleted once sent.
-        val wantAudio = content.sentenceAudioEnabled
-        // Per-cell sentence + per-target-word voices are explicit (the
-        // sheet's CardData seeds them from the pref at view-create and
-        // tracks user picks after). Null = "user picked Default for
-        // this cell", which is exactly what TtsEngine takes null to mean.
-        val audioFile = if (wantAudio) {
-            TtsEngine.synthesizeToFile(
-                requireContext(), data.source, data.sourceLangId,
-                voiceNameOverride = data.sentenceVoice,
-            )
-        } else null
-        // Per-target-word audio. TTS engine serializes utterances anyway,
-        // so a simple sequential loop is the same wall-clock cost as
-        // parallel coroutines. Words whose synth returns null are skipped
-        // — the rest of the card still lands.
-        val wordAudioFiles: Map<String, File> = buildMap {
-            for (word in data.targetWordAudioWords) {
-                TtsEngine.synthesizeToFile(
-                    requireContext(), word, data.sourceLangId,
-                    voiceNameOverride = data.wordAudioVoices[word],
-                )?.let { put(word, it) }
-            }
-        }
-        val result = try {
-            dispatchSendToAnki(
-                deckId = deckId,
-                mode = CardMode.SENTENCE,
-                screenshotPath = data.screenshotPath,
-                audioPath = audioFile?.absolutePath,
-                wordAudioPaths = wordAudioFiles.mapValues { it.value.absolutePath },
-                legacyFront = {
-                    SentenceAnkiHtmlBuilder.buildFrontHtml(
-                        data.source, data.words, data.selectedWords, data.sourceLangId,
-                    )
-                },
-                legacyBack = { imageFilename, audioFilename, wordAudioFilenames ->
-                    SentenceAnkiHtmlBuilder.buildBackHtml(
-                        data.source, data.target, data.words,
-                        imageFilename, data.selectedWords, data.sourceLangId,
-                        audioFilename = audioFilename,
-                        wordAudioFilenames = wordAudioFilenames,
-                    )
-                },
-                structured = { imageFilename, audioFilename, wordAudioFilenames ->
-                    AnkiCardOutputBuilder.forSentence(
-                        data, imageFilename, audioFilename = audioFilename,
-                        wordAudioFilenames = wordAudioFilenames,
-                    )
-                },
-            )
-        } finally {
-            audioFile?.delete()
-            wordAudioFiles.values.forEach { it.delete() }
-        }
-        val audioMissing = wantAudio && (audioFile == null ||
-            (result as? AnkiSendResult.Success)?.audioDropped == true)
-        // Per-word audio: synthesis can fail (skipped from wordAudioFiles)
-        // OR upload can fail (dropped by the dispatcher into wordAudioDropped).
-        // Either way the card is missing audio the user explicitly asked for.
-        val wordAudioMissing = data.targetWordAudioWords.isNotEmpty() && (
-            wordAudioFiles.size < data.targetWordAudioWords.size ||
-            (result as? AnkiSendResult.Success)?.wordAudioDropped == true
+        val input = SentenceSendInput(
+            original = data.source,
+            translation = data.target,
+            words = data.words,
+            selectedWords = data.selectedWords,
+            sourceLangId = data.sourceLangId,
+            screenshotPath = data.screenshotPath,
+            includeSentenceAudio = content.sentenceAudioEnabled,
+            sentenceVoice = data.sentenceVoice,
+            targetWordAudioWords = data.targetWordAudioWords,
+            wordAudioVoices = data.wordAudioVoices,
         )
+        // Fragment receiver so NeedsMapping opens the mapping dialog
+        // (Context.sendSentenceCard would skip it).
+        val result = sendSentenceCard(input, deckId)
+        // The pipeline folds local synth failures into Success.audioDropped
+        // / wordAudioDropped — a single flag here covers both synth-fail and
+        // upload-fail.
+        val success = result as? AnkiSendResult.Success
+        val audioMissing = success?.audioDropped == true
+        val wordAudioMissing = success?.wordAudioDropped == true
         applyAnkiSendResult(
             result,
             onSuccess = {

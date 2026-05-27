@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import android.content.Context
 import android.util.Log
 import android.widget.Toast
 import androidx.annotation.StringRes
@@ -57,27 +58,37 @@ sealed interface AnkiSendResult {
      *  alert and restores the save button. [messageRes] names the cause
      *  where the dispatcher knows it, and is generic otherwise. */
     data class Failed(@StringRes val messageRes: Int) : AnkiSendResult
-    /** Dispatcher diverted to the mapping dialog because the user's
-     *  picked card type had no configured mapping. A Toast was already
-     *  shown by the dispatcher; callers should NOT show another, and
-     *  just restore the save button. */
-    data object NeedsMapping : AnkiSendResult
+    /** The user's picked card type has no configured mapping. The
+     *  dispatcher already showed a Toast pointing this out; callers
+     *  with Fragment infrastructure open the mapping dialog for
+     *  [model], while overlay-context callers re-launch the
+     *  permission/review activity so the sheet's dialog is reachable.
+     *  [model] is the model the dispatcher resolved at decision time —
+     *  threading it through avoids a prefs-race if the user changes
+     *  the card type between dispatch and follow-up. */
+    data class NeedsMapping(val model: AnkiManager.ModelInfo) : AnkiSendResult
 }
 
 /**
- * Shared "send a card to AnkiDroid" pipeline for the two review sheets.
- * Resolves the chosen card type, builds the field array (legacy v004
- * or structured per-mapping), and writes the note. Returns `true` on
- * success.
+ * Shared "send a card to AnkiDroid" pipeline used by the review sheets
+ * (via the [Fragment.dispatchSendToAnki] wrapper) and the one-tap
+ * helpers. Resolves the chosen card type, uploads media, builds the
+ * field array (legacy v004 / Basic / structured per-mapping), and
+ * writes the note. Surface UX (mapping dialog open, button restore,
+ * fragment-result post) is the caller's job — the dispatcher only
+ * shows the explanatory Toast on the NeedsMapping and stale-sort-field
+ * branches.
  *
- * Special return: `false` when the user has picked a non-default card
- * type but never configured a mapping for it — in that case the helper
- * already showed a Toast and re-opened the mapping dialog, so the
- * caller should treat the result as "no further user-visible action".
+ * Returns [AnkiSendResult.NeedsMapping] carrying the resolved model
+ * when the user's picked card type has no configured mapping. Callers
+ * with Fragment infrastructure (the review sheets) open the mapping
+ * dialog for that model; overlay-context callers re-launch the
+ * review activity so the user can configure it inside the sheet.
  *
- * @param mode             Which sheet flow this came from (informs the
- *                         mapping dialog's Basic-shape defaults on the
- *                         re-open path).
+ * @param mode             Which sheet flow this came from — relayed
+ *                         to the mapping dialog by callers that open
+ *                         one (Basic-shape templates rely on `mode`
+ *                         for their defaults).
  * @param screenshotPath   Path to the screenshot to attach to the
  *                         Picture field, or null.
  * @param audioPath        Path to the synthesized TTS audio file to
@@ -90,7 +101,7 @@ sealed interface AnkiSendResult {
  *                         receives the AnkiDroid-side image and audio
  *                         filenames.
  */
-suspend fun Fragment.dispatchSendToAnki(
+suspend fun Context.dispatchSendToAnki(
     deckId: Long,
     mode: CardMode,
     screenshotPath: String?,
@@ -105,7 +116,7 @@ suspend fun Fragment.dispatchSendToAnki(
      *  WORDS_TABLE can carry a `[sound:…]` tag. */
     wordAudioPaths: Map<String, String> = emptyMap(),
 ): AnkiSendResult {
-    val ctx = requireContext()
+    val ctx = this
     val prefs = Prefs(ctx)
     val anki = AnkiManager(ctx)
 
@@ -156,11 +167,12 @@ suspend fun Fragment.dispatchSendToAnki(
                 if (mapping.values.none { it != ContentSource.NONE }) {
                     // User picked a card type but never configured (or
                     // wiped) the mapping. Don't ship an empty note —
-                    // open the mapping dialog so they can wire it up.
+                    // surface NeedsMapping so the caller can open the
+                    // mapping dialog (Fragment wrapper) or fall back to
+                    // the Activity flow (overlay-context callers).
                     Toast.makeText(ctx, R.string.anki_field_mapping_unconfigured,
                         Toast.LENGTH_LONG).show()
-                    showAnkiCardTypeMappingDialog(picked, mode) { _, _ -> }
-                    return AnkiSendResult.NeedsMapping
+                    return AnkiSendResult.NeedsMapping(picked)
                 }
                 ModelTarget.Structured(picked, mapping)
             }
@@ -227,8 +239,7 @@ suspend fun Fragment.dispatchSendToAnki(
                     ctx.getString(R.string.anki_sort_field_empty, sortFieldName),
                     Toast.LENGTH_LONG,
                 ).show()
-                showAnkiCardTypeMappingDialog(target.model, mode) { _, _ -> }
-                return AnkiSendResult.NeedsMapping
+                return AnkiSendResult.NeedsMapping(target.model)
             }
             target.model.id to flds
         }
@@ -242,4 +253,43 @@ suspend fun Fragment.dispatchSendToAnki(
         audioDropped = audioPath != null && audioFilename.isNullOrEmpty(),
         wordAudioDropped = wordAudioPaths.size > wordAudioFilenames.size,
     )
+}
+
+/**
+ * Fragment-flavored wrapper around [Context.dispatchSendToAnki] that
+ * also opens the field-mapping dialog when the dispatcher returns
+ * [AnkiSendResult.NeedsMapping]. Existing review sheets call this so
+ * the user gets the same "configure your mapping" UX they did before
+ * the dispatcher was lifted to a Context extension. Overlay-context
+ * callers call [Context.dispatchSendToAnki] directly and handle the
+ * NeedsMapping result themselves (typically by re-launching the
+ * review activity so the sheet's dialog is reachable).
+ */
+suspend fun Fragment.dispatchSendToAnki(
+    deckId: Long,
+    mode: CardMode,
+    screenshotPath: String?,
+    audioPath: String?,
+    legacyFront: () -> String,
+    legacyBack: (imageFilename: String?, audioFilename: String?, wordAudioFilenames: Map<String, String>) -> String,
+    structured: (imageFilename: String?, audioFilename: String?, wordAudioFilenames: Map<String, String>) -> CardOutputs,
+    wordAudioPaths: Map<String, String> = emptyMap(),
+): AnkiSendResult {
+    val result = requireContext().dispatchSendToAnki(
+        deckId = deckId,
+        mode = mode,
+        screenshotPath = screenshotPath,
+        audioPath = audioPath,
+        legacyFront = legacyFront,
+        legacyBack = legacyBack,
+        structured = structured,
+        wordAudioPaths = wordAudioPaths,
+    )
+    if (result is AnkiSendResult.NeedsMapping) {
+        // Use the model the dispatcher resolved at decision time — no
+        // re-read of prefs, so a card-type change between dispatch and
+        // dialog open can't redirect to the wrong model.
+        showAnkiCardTypeMappingDialog(result.model, mode) { _, _ -> }
+    }
+    return result
 }

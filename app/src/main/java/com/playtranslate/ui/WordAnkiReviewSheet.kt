@@ -37,7 +37,6 @@ import com.playtranslate.language.WordTranslator
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.Example
 import com.playtranslate.themeColor
-import com.playtranslate.tts.TtsEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -1323,53 +1322,40 @@ class WordAnkiReviewSheet : DialogFragment() {
         freqScore: Int, deckId: Long, screenshotPath: String?,
         sourceLangId: SourceLangId,
     ) {
-        // Synthesize word audio up front when the switch is on; the temp
-        // WAV is uploaded by the dispatcher and deleted once sent.
-        // wordTabVoice carries the per-cell pick (null = engine default,
-        // not the global pref — TtsEngine respects an explicit null as
-        // override).
-        val wantAudio = wordAudioHandle?.switch?.isChecked == true
-        // wordTabVoice carries the per-cell pick (null = engine default,
-        // the user's explicit "Default" choice) — that's what TtsEngine
-        // takes null to mean too.
-        val audioFile = if (wantAudio) {
-            TtsEngine.synthesizeToFile(
-                requireContext(), word, sourceLangId,
-                voiceNameOverride = wordTabVoice,
-            )
-        } else null
-        val result = try {
-            dispatchSendToAnki(
-                deckId = deckId,
-                mode = CardMode.WORD,
-                screenshotPath = screenshotPath,
-                audioPath = audioFile?.absolutePath,
-                legacyFront = { buildWordFrontHtml(word) },
-                legacyBack = { imageFilename, audioFilename, _ ->
-                    // Word cards have no per-target-word audio — drop
-                    // the third arg.
-                    buildWordBackHtml(word, reading, pos, fallbackDefinition,
-                        freqScore, imageFilename, audioFilename)
-                },
-                structured = { imageFilename, audioFilename, _ ->
-                    AnkiCardOutputBuilder.forWord(
-                        word = word,
-                        reading = reading,
-                        pos = pos,
-                        definitionHtml = buildWordDefinitionHtml(inlineStyler),
-                        freqScore = freqScore,
-                        imageFilename = imageFilename,
-                        examplesHtml = buildExamplesHtml(inlineStyler),
-                        sourceLangId = sourceLangId,
-                        audioFilename = audioFilename,
-                    )
-                },
-            )
-        } finally {
-            audioFile?.delete()
+        // The legacy back's definition body uses classStyler (its
+        // surrounding <style> block carries the gl-* CSS). The
+        // structured path uses inlineStyler since the structured
+        // outputs ship with no <style>. Build both eagerly so the
+        // pipeline can hand each to the right builder.
+        val classDefinitionHtml = buildString {
+            val entry = resolvedEntry
+            if (entry != null) {
+                appendSensesHtml(entry, fallbackDefinition, classStyler)
+                appendMoreExamplesHtml(classStyler)
+            } else {
+                append(WordAnkiHtmlBuilder.wrapFlatDefinitionHtml(fallbackDefinition))
+            }
         }
-        val audioMissing = wantAudio && (audioFile == null ||
-            (result as? AnkiSendResult.Success)?.audioDropped == true)
+        val input = WordSendInput(
+            word = word,
+            reading = reading,
+            pos = pos,
+            freqScore = freqScore,
+            sourceLangId = sourceLangId,
+            screenshotPath = screenshotPath,
+            includeWordAudio = wordAudioHandle?.switch?.isChecked == true,
+            // wordTabVoice carries the per-cell pick (null = the user's
+            // explicit "Default" choice, which is exactly what
+            // TtsEngine takes null to mean too).
+            wordVoice = wordTabVoice,
+            classDefinitionHtml = classDefinitionHtml,
+            inlineDefinitionHtml = buildWordDefinitionHtml(inlineStyler),
+            inlineExamplesHtml = buildExamplesHtml(inlineStyler),
+        )
+        // Fragment receiver so NeedsMapping opens the mapping dialog
+        // (Context.sendWordCard would skip it).
+        val result = sendWordCard(input, deckId)
+        val audioMissing = (result as? AnkiSendResult.Success)?.audioDropped == true
         applyAnkiSendResult(
             result,
             onSuccess = {
@@ -1381,92 +1367,6 @@ class WordAnkiReviewSheet : DialogFragment() {
             },
             onRestore = { sendButton?.setLoading(false) },
         )
-    }
-
-    private fun buildWordFrontHtml(word: String): String = buildString {
-        append("<style>")
-        append("body{margin:0;padding:0;}")
-        append("</style>")
-        append("<div class=\"gl-front\" style=\"text-align:center;font-size:2.2em;padding:32px 16px;\">")
-        append(htmlEscape(word))
-        append("</div>")
-    }
-
-    /**
-     * Renders the back of the Anki word card. Prefers the resolved
-     * dictionary entry (per-sense glosses + accent-rail example blocks
-     * + Tatoeba "More examples"), filtered by the [removedSenses],
-     * [removedExamples], and [removedTatoebaIdx] sets so what the user
-     * sees on screen is exactly what lands on the card. Falls back to
-     * the flat [fallbackDefinition] string when no entry is resolved.
-     */
-    private fun buildWordBackHtml(
-        word: String, reading: String, pos: String,
-        fallbackDefinition: String, freqScore: Int, imageFilename: String?,
-        audioFilename: String? = null,
-    ): String = buildString {
-        append("<style>")
-        append("body{visibility:hidden!important;white-space:normal!important;}")
-        append(".gl-front{display:none!important;}")
-        append("#answer{display:none!important;}")
-        append(".gl-back{visibility:visible!important;}")
-        append(".gl-sense{margin:14px 4px;}")
-        append(".gl-pos{font-size:0.78em;letter-spacing:0.08em;color:#888;text-transform:uppercase;}")
-        append(".gl-gloss{font-size:1.1em;margin-top:4px;}")
-        append(".gl-misc{font-size:0.85em;color:#888;font-style:italic;margin-top:2px;}")
-        append(".gl-ex{margin:8px 0 0 8px;padding-left:10px;border-left:2px solid #6cd1c2;}")
-        append(".gl-ex-tr{font-size:0.92em;color:#888;margin-top:2px;}")
-        append(".gl-section{font-size:0.78em;letter-spacing:0.08em;color:#888;text-transform:uppercase;margin:18px 4px 6px;}")
-        append("</style>")
-        append("<div class=\"gl-back\">")
-        if (imageFilename != null) {
-            append("<div style=\"text-align:center;margin:12px 0;\">")
-            append("<img src=\"")
-            append(htmlEscape(imageFilename))
-            append("\" style=\"max-width:100%;border-radius:6px;\">")
-            append("</div>")
-        }
-        // [sound:] near the top of the back, under the screenshot. Inside
-        // .gl-back so the replay button inherits the visible-back
-        // visibility (body is hidden!important above).
-        if (audioFilename != null) {
-            append("<div style=\"text-align:center;margin:8px 0;\">")
-            append("[sound:$audioFilename]")
-            append("</div>")
-        }
-        append("<div style=\"text-align:center;font-size:1.8em;padding:12px 4px;\">")
-        append(htmlEscape(word))
-        append("</div>")
-        if (reading.isNotEmpty()) {
-            append("<div style=\"text-align:center;font-size:1.1em;color:#888;\">")
-            append(htmlEscape(reading))
-            append("</div>")
-        }
-        if (pos.isNotEmpty()) {
-            append("<div style=\"text-align:center;font-size:0.85em;color:#888;\">")
-            append(htmlEscape(pos))
-            append("</div>")
-        }
-        if (freqScore > 0) {
-            // starsString emits only ★ glyphs — safe.
-            val stars = SentenceAnkiHtmlBuilder.starsString(freqScore)
-            append("<div style=\"text-align:center;font-size:0.9em;color:#888;margin-top:4px;\">$stars</div>")
-        }
-        append("<div style=\"margin-bottom:12px;\"></div>")
-        append("<hr>")
-
-        val entry = resolvedEntry
-        if (entry != null) {
-            // Legacy v004 path — surrounding <style> block provides the
-            // gl-* CSS, so emit class refs.
-            appendSensesHtml(entry, fallbackDefinition, classStyler)
-            appendMoreExamplesHtml(classStyler)
-        } else {
-            val defHtml = fallbackDefinition.lines().filter { it.isNotBlank() }
-                .joinToString("<br>") { htmlEscape(it.trimStart()) }
-            append("<div style=\"font-size:1.1em;margin:12px 4px;\">$defHtml</div>")
-        }
-        append("</div>")
     }
 
     /**
@@ -1498,11 +1398,12 @@ class WordAnkiReviewSheet : DialogFragment() {
     /**
      * Builds the per-sense Definition HTML for the structured-path
      * word-card send (DEFINITION ContentSource). Mirrors the legacy
-     * branch logic in [buildWordBackHtml] but emits inline styles (no
-     * surrounding `<style>` block ships in the structured path) via
-     * [inlineStyler]. Honors the same curation state
-     * ([removedSenses] / [removedExamples] / [removedTatoebaIdx]) so
-     * what the user sees on the sheet is what lands on the card.
+     * `classStyler` branch in [sendWordToAnki]'s `classDefinitionHtml`
+     * builder but emits inline styles (no surrounding `<style>` block
+     * ships in the structured path) via [inlineStyler]. Honors the
+     * same curation state ([removedSenses] / [removedExamples] /
+     * [removedTatoebaIdx]) so what the user sees on the sheet is
+     * what lands on the card.
      */
     internal fun buildWordDefinitionHtml(styler: HtmlStyler): String {
         val entry = resolvedEntry
@@ -1665,68 +1566,28 @@ class WordAnkiReviewSheet : DialogFragment() {
     private suspend fun sendSentenceToAnki(deckId: Long) {
         val content = getContentFragment() ?: run { sendButton?.setLoading(false); return }
         val data = content.getCardData()
-        // Synthesize sentence audio up front when the switch is on; the
-        // temp WAV is uploaded by the dispatcher and deleted once sent.
-        val wantAudio = content.sentenceAudioEnabled
-        val audioFile = if (wantAudio) {
-            TtsEngine.synthesizeToFile(
-                requireContext(), data.source, data.sourceLangId,
-                voiceNameOverride = data.sentenceVoice,
-            )
-        } else null
-        // Per-target-word audio. TTS engine serializes utterances anyway,
-        // so a simple sequential loop is the same wall-clock cost as
-        // parallel coroutines.
-        val wordAudioFiles: Map<String, File> = buildMap {
-            for (word in data.targetWordAudioWords) {
-                TtsEngine.synthesizeToFile(
-                    requireContext(), word, data.sourceLangId,
-                    voiceNameOverride = data.wordAudioVoices[word],
-                )?.let { put(word, it) }
-            }
-        }
-        val result = try {
-            dispatchSendToAnki(
-                deckId = deckId,
-                mode = CardMode.SENTENCE,
-                screenshotPath = data.screenshotPath,
-                audioPath = audioFile?.absolutePath,
-                wordAudioPaths = wordAudioFiles.mapValues { it.value.absolutePath },
-                legacyFront = {
-                    SentenceAnkiHtmlBuilder.buildFrontHtml(
-                        data.source, data.words, data.selectedWords, data.sourceLangId,
-                    )
-                },
-                legacyBack = { imageFilename, audioFilename, wordAudioFilenames ->
-                    SentenceAnkiHtmlBuilder.buildBackHtml(
-                        data.source, data.target, data.words,
-                        imageFilename, data.selectedWords, data.sourceLangId,
-                        audioFilename = audioFilename,
-                        wordAudioFilenames = wordAudioFilenames,
-                    )
-                },
-                structured = { imageFilename, audioFilename, wordAudioFilenames ->
-                    AnkiCardOutputBuilder.forSentence(
-                        cardData = data,
-                        imageFilename = imageFilename,
-                        examplesHtml = buildExamplesHtml(inlineStyler),
-                        audioFilename = audioFilename,
-                        wordAudioFilenames = wordAudioFilenames,
-                    )
-                },
-            )
-        } finally {
-            audioFile?.delete()
-            wordAudioFiles.values.forEach { it.delete() }
-        }
-        val audioMissing = wantAudio && (audioFile == null ||
-            (result as? AnkiSendResult.Success)?.audioDropped == true)
-        // Per-word audio: synthesis can fail (skipped from wordAudioFiles)
-        // OR upload can fail (dropped by the dispatcher into wordAudioDropped).
-        val wordAudioMissing = data.targetWordAudioWords.isNotEmpty() && (
-            wordAudioFiles.size < data.targetWordAudioWords.size ||
-            (result as? AnkiSendResult.Success)?.wordAudioDropped == true
+        val input = SentenceSendInput(
+            original = data.source,
+            translation = data.target,
+            words = data.words,
+            selectedWords = data.selectedWords,
+            sourceLangId = data.sourceLangId,
+            screenshotPath = data.screenshotPath,
+            includeSentenceAudio = content.sentenceAudioEnabled,
+            sentenceVoice = data.sentenceVoice,
+            targetWordAudioWords = data.targetWordAudioWords,
+            wordAudioVoices = data.wordAudioVoices,
+            // Word-sheet's sentence tab carries Tatoeba "more examples"
+            // for the structured path. Built with inlineStyler since the
+            // structured outputs have no surrounding <style> block.
+            examplesHtml = buildExamplesHtml(inlineStyler),
         )
+        // Fragment receiver so NeedsMapping opens the mapping dialog
+        // (Context.sendSentenceCard would skip it).
+        val result = sendSentenceCard(input, deckId)
+        val success = result as? AnkiSendResult.Success
+        val audioMissing = success?.audioDropped == true
+        val wordAudioMissing = success?.wordAudioDropped == true
         applyAnkiSendResult(
             result,
             onSuccess = {

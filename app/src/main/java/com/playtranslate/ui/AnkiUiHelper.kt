@@ -857,8 +857,9 @@ class AnkiSendButton(private val button: FrameLayout) {
  *    sheet (and signals any fragment result).
  *  - [AnkiSendResult.Failed] shows the error in an [OverlayAlert] layered
  *    over the sheet, then runs [onRestore] to hand the save button back.
- *  - [AnkiSendResult.NeedsMapping] just runs [onRestore]: the dispatcher
- *    has already opened the field-mapping dialog, so no alert is shown.
+ *  - [AnkiSendResult.NeedsMapping] just runs [onRestore]: the Fragment
+ *    wrapper around the dispatcher has already opened the field-mapping
+ *    dialog, so no alert is shown.
  *
  * The alert attaches to the sheet's own dialog window (via
  * [OverlayAlert.Builder.showInDialog]) so it layers above the sheet.
@@ -884,7 +885,7 @@ fun DialogFragment.applyAnkiSendResult(
                 .showInDialog(requireDialog())
             onRestore()
         }
-        AnkiSendResult.NeedsMapping -> onRestore()
+        is AnkiSendResult.NeedsMapping -> onRestore()
     }
 }
 
