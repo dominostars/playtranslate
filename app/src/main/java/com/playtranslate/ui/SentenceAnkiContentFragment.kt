@@ -44,9 +44,9 @@ class SentenceAnkiContentFragment : Fragment() {
         private set
 
     /** Whether the sentence-audio switch is on. Read by the host sheet
-     *  at send time; false when the Audio section wasn't built. */
+     *  at send time; false when the toggle wasn't built. */
     val sentenceAudioEnabled: Boolean
-        get() = audioHandle?.switch?.isChecked == true
+        get() = sentenceAudioHandle?.switch?.isChecked == true
 
     private lateinit var root: LinearLayout
     private lateinit var etOriginal: EditText
@@ -56,7 +56,19 @@ class SentenceAnkiContentFragment : Fragment() {
     private var screenshotHeader: View? = null
     private var screenshotGroup: View? = null
     private var ivPhoto: ImageView? = null
-    private var audioHandle: AnkiAudioHandle? = null
+    private var sentenceAudioHandle: AnkiAudioToggleHandle? = null
+
+    /** Independent per-target-word audio toggle state for THIS card.
+     *  Seeded from [Prefs.ankiWordAudioEnabled] when a word is first
+     *  added to [selectedWords]. Mutated by the word's sub-row toggle;
+     *  pushed back to the pref on every change so the next card defaults
+     *  to whatever the user picked last. */
+    private val wordAudioEnabled = mutableMapOf<String, Boolean>()
+
+    /** Per-word handle map — lets us release preview chips cleanly before
+     *  each [rebuildWordRows] (otherwise an in-flight preview on a
+     *  sub-row that's about to be removed keeps playing for a beat). */
+    private val wordAudioHandles = mutableMapOf<String, AnkiAudioToggleHandle>()
 
     /** True while we wait for [applyWords] — drives the "Looking up words…"
      *  placeholder in the Words card. Flips to false the moment applyWords
@@ -80,6 +92,11 @@ class SentenceAnkiContentFragment : Fragment() {
         val selectedWords: Set<String>,
         val screenshotPath: String?,
         val sourceLangId: SourceLangId,
+        /** Subset of [selectedWords] whose per-target-word audio toggle is
+         *  on. Only enabled, currently-selected words are reported — the
+         *  send path doesn't need false entries or stale ones. Defaults
+         *  to empty for callers/tests that don't care. */
+        val targetWordAudioWords: Set<String> = emptySet(),
     )
 
     fun getCardData(): CardData = CardData(
@@ -89,6 +106,9 @@ class SentenceAnkiContentFragment : Fragment() {
         selectedWords = selectedWords.toSet(),
         screenshotPath = if (includePhoto) arguments?.getString(ARG_SCREENSHOT_PATH) else null,
         sourceLangId = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG)) ?: SourceLangId.JA,
+        targetWordAudioWords = selectedWords
+            .filter { wordAudioEnabled[it] == true }
+            .toSet(),
     )
 
     override fun onCreateView(
@@ -98,15 +118,11 @@ class SentenceAnkiContentFragment : Fragment() {
     override fun onDestroyView() {
         ivPhoto?.setImageBitmap(null)
         ivPhoto = null
-        audioHandle?.release()
-        audioHandle = null
+        sentenceAudioHandle?.release()
+        sentenceAudioHandle = null
+        wordAudioHandles.values.forEach { it.release() }
+        wordAudioHandles.clear()
         super.onDestroyView()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // TtsVoiceActivity returns no result; re-read the saved voice.
-        audioHandle?.refreshVoiceLabel()
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -160,16 +176,30 @@ class SentenceAnkiContentFragment : Fragment() {
         val ctx = requireContext()
         root.removeAllViews()
 
+        val prefs = Prefs(ctx)
+        val lang = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG))
+            ?: SourceLangId.JA
+
         // Original — id is pinned to a resource id (etAnkiOriginal) so
         // Android's automatic view-state save/restore can round-trip
         // the typed text across process death without us writing a
-        // manual onSaveInstanceState pipeline.
+        // manual onSaveInstanceState pipeline. The compact 44dp audio
+        // toggle now sits inside the same card, beneath the edit field.
         ankiGroupHeader(root, getString(R.string.anki_group_original))
         val originalCard = ankiGroupCard(root)
         etOriginal = buildEditField(initial = original).apply {
             id = R.id.etAnkiOriginal
         }
         originalCard.addView(buildEditableFrame(etOriginal))
+        ankiInsetDivider(originalCard)
+        sentenceAudioHandle = addCompactAudioToggleRow(
+            parent = originalCard,
+            lang = lang,
+            label = getString(R.string.anki_include_audio),
+            previewText = { etOriginal.text.toString() },
+            initialChecked = prefs.ankiSentenceAudioEnabled,
+            onCheckedChange = { prefs.ankiSentenceAudioEnabled = it },
+        )
 
         // Translation — same trick with R.id.etAnkiTranslation.
         ankiGroupHeader(root, getString(R.string.anki_group_translation))
@@ -183,19 +213,6 @@ class SentenceAnkiContentFragment : Fragment() {
         }
         attachTranslationTouchWatcher(etTranslation)
         translationCard.addView(buildEditableFrame(etTranslation))
-
-        // Audio — TTS of the sentence, attached as [sound:] media.
-        val prefs = Prefs(ctx)
-        val lang = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG))
-            ?: SourceLangId.JA
-        audioHandle = addAnkiAudioSection(
-            parent = root,
-            lang = lang,
-            rowLabel = original,
-            previewText = { etOriginal.text.toString() },
-            initialChecked = prefs.ankiSentenceAudioEnabled,
-            onCheckedChange = { prefs.ankiSentenceAudioEnabled = it },
-        )
 
         // Words on card. The host tells us whether a follow-up
         // `applyWords` call is coming (drag → Anki path) vs. whether
@@ -382,6 +399,12 @@ class SentenceAnkiContentFragment : Fragment() {
     // ── Word rows ────────────────────────────────────────────────────────
 
     private fun rebuildWordRows() {
+        // Release any in-flight preview audio on sub-rows we're about to
+        // remove — without this, a chip mid-playback would keep playing
+        // for a beat after its row vanishes.
+        wordAudioHandles.values.forEach { it.release() }
+        wordAudioHandles.clear()
+
         // Strip everything after the helper row + its divider, then
         // re-emit current word rows. Helper row is at index 0; divider
         // at index 1; word rows live from index 2 onward.
@@ -391,9 +414,39 @@ class SentenceAnkiContentFragment : Fragment() {
         if (words.isEmpty() && wordsLoading) {
             wordsCard.addView(buildWordsLoadingRow())
         } else {
+            val ctx = requireContext()
+            val prefs = Prefs(ctx)
+            val lang = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG))
+                ?: SourceLangId.JA
             words.forEachIndexed { i, entry ->
                 if (i > 0) ankiInsetDivider(wordsCard, indentDp = 16)
                 wordsCard.addView(buildWordRow(entry))
+                // Per-target-word audio sub-row, only when the user has
+                // selected this word as a target. Inserted BEFORE the
+                // next inter-word divider (handled at the top of the
+                // next iteration), so the divider visually separates
+                // word groups rather than splitting a word from its
+                // own audio sub-row.
+                if (entry.word in selectedWords) {
+                    val seeded = wordAudioEnabled.getOrPut(entry.word) {
+                        prefs.ankiWordAudioEnabled
+                    }
+                    val handle = addCompactAudioToggleRow(
+                        parent = wordsCard,
+                        lang = lang,
+                        label = getString(R.string.anki_include_audio),
+                        previewText = { entry.word },
+                        initialChecked = seeded,
+                        onCheckedChange = { checked ->
+                            wordAudioEnabled[entry.word] = checked
+                            // Mirror the existing sentence-audio pref
+                            // semantics: the last value the user picks
+                            // becomes the default for the next card.
+                            prefs.ankiWordAudioEnabled = checked
+                        },
+                    )
+                    wordAudioHandles[entry.word] = handle
+                }
             }
         }
         // Live count in the group header.
@@ -509,6 +562,11 @@ class SentenceAnkiContentFragment : Fragment() {
             setOnClickListener {
                 words.removeAll { it.word == entry.word }
                 selectedWords.remove(entry.word)
+                // Drop per-word audio state so the map doesn't grow
+                // across remove/re-add cycles. rebuildWordRows would
+                // release the handle anyway, but the state slot needs
+                // explicit cleanup.
+                wordAudioEnabled.remove(entry.word)
                 rebuildWordRows()
             }
         })

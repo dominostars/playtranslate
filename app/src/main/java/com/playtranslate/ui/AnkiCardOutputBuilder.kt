@@ -61,6 +61,13 @@ object AnkiCardOutputBuilder {
         imageFilename: String?,
         examplesHtml: String = "",
         audioFilename: String? = null,
+        /** Per-target-word audio filenames keyed by word. Threaded into
+         *  [SentenceAnkiHtmlBuilder.buildWordsHtmlWith] so each word's row
+         *  in WORDS_TABLE gets a `[sound:…]` tag. [CardOutputs.wordAudio]
+         *  stays empty — it's a single-string field that maps to one
+         *  Anki field via [ContentSource.WORD_AUDIO] and can't carry
+         *  per-word tags meaningfully. */
+        wordAudioFilenames: Map<String, String> = emptyMap(),
     ): CardOutputs {
         val firstHighlighted = cardData.words.firstOrNull {
             it.word in cardData.selectedWords
@@ -128,7 +135,20 @@ object AnkiCardOutputBuilder {
             sortedWords,
             cardData.selectedWords,
             styler = inlineStyler,
+            wordAudioFilenames = wordAudioFilenames,
         )
+        // Mapped audio fields (`ExpressionAudio`, `WordAudio`, `Word Audio`
+        // in Lapis/JPMN/Migaku) bind to `ContentSource.WORD_AUDIO`, which
+        // reads this field. For sentence mode with multiple target words,
+        // concatenate every uploaded per-word sound tag so any template
+        // wiring an audio field gets a play button per target word.
+        // Sentence order (cardData.words is already in source order) so
+        // the buttons mirror the words' position in the sentence — the
+        // inline tags in WORDS_TABLE preserve the same order.
+        val wordAudioBlock = cardData.words
+            .asSequence()
+            .filter { it.word in cardData.selectedWords && it.word in wordAudioFilenames }
+            .joinToString("") { "[sound:${wordAudioFilenames[it.word]}]" }
         return CardOutputs(
             expression = expression,
             expressionFurigana = expressionFurigana,
@@ -137,7 +157,7 @@ object AnkiCardOutputBuilder {
             sentenceFurigana = sentenceFuriganaHtml,
             sentenceTranslation = translationHtml,
             picture = pictureHtml(imageFilename),
-            wordAudio = "",
+            wordAudio = wordAudioBlock,
             sentenceAudio = soundTag(audioFilename),
             definition = definition,
             examples = examplesHtml,

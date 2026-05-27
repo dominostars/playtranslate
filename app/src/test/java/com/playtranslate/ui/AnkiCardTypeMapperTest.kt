@@ -458,6 +458,55 @@ class AnkiCardTypeMapperTest {
         assertEquals("x", outputs.alwaysOnMarker)
     }
 
+    @Test fun `forSentence concatenates per-target-word sound tags into wordAudio`() {
+        // Per-target-word audio is also embedded inline in WORDS_TABLE,
+        // but most structured templates (Lapis / JPMN / Migaku) map
+        // their audio field to ContentSource.WORD_AUDIO — which reads
+        // CardOutputs.wordAudio. If we leave that empty, the user's
+        // audio uploads are silently dropped from the rendered card.
+        // This locks in the routing: every requested word's [sound:…]
+        // tag goes into wordAudio in sentence order.
+        val words = listOf(
+            SentenceAnkiHtmlBuilder.WordEntry("私", "わたし", "I", 0),
+            SentenceAnkiHtmlBuilder.WordEntry("猫", "ねこ", "cat", 0),
+            SentenceAnkiHtmlBuilder.WordEntry("好き", "すき", "fond", 0),
+        )
+        val data = SentenceAnkiContentFragment.CardData(
+            source = "私は猫が好き",
+            target = "I like cats",
+            words = words,
+            selectedWords = setOf("猫", "好き"),
+            screenshotPath = null,
+            sourceLangId = com.playtranslate.language.SourceLangId.JA,
+            targetWordAudioWords = setOf("猫", "好き"),
+        )
+        val outputs = AnkiCardOutputBuilder.forSentence(
+            cardData = data,
+            imageFilename = null,
+            wordAudioFilenames = mapOf("猫" to "cat.mp3", "好き" to "suki.mp3"),
+        )
+        // Sentence-order concatenation: 猫 appears before 好き in the
+        // source, so the tags follow that order regardless of map
+        // iteration.
+        assertEquals("[sound:cat.mp3][sound:suki.mp3]", outputs.wordAudio)
+        // WORDS_TABLE still carries the per-word inline tags too.
+        assertTrue(outputs.wordsTable.contains("[sound:cat.mp3]"))
+        assertTrue(outputs.wordsTable.contains("[sound:suki.mp3]"))
+    }
+
+    @Test fun `forSentence with no wordAudioFilenames leaves wordAudio empty`() {
+        val data = SentenceAnkiContentFragment.CardData(
+            source = "今日はいい天気だ",
+            target = "Nice weather today",
+            words = emptyList(),
+            selectedWords = setOf("天気"),
+            screenshotPath = null,
+            sourceLangId = com.playtranslate.language.SourceLangId.JA,
+        )
+        val outputs = AnkiCardOutputBuilder.forSentence(data, imageFilename = null)
+        assertEquals("", outputs.wordAudio)
+    }
+
     @Test fun `forSentence without selectedWords leaves targeted flag empty`() {
         // No bolded word in the sentence means JPMN's
         // IsTargetedSentenceCard would have nothing to target — the

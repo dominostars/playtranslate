@@ -42,10 +42,17 @@ private sealed interface ModelTarget {
  */
 sealed interface AnkiSendResult {
     /** addNote succeeded — the caller dismisses the sheet.
-     *  [audioDropped] is true when audio was requested (a non-null
+     *  [audioDropped] is true when sentence audio was requested (a non-null
      *  audioPath) but its media upload failed, so the note was added
-     *  without the `[sound:]` tag; callers surface that to the user. */
-    data class Success(val audioDropped: Boolean = false) : AnkiSendResult
+     *  without the `[sound:]` tag.
+     *  [wordAudioDropped] is true when at least one per-target-word audio
+     *  upload failed (requested count > uploaded count), so the
+     *  corresponding word(s) in the card carry no `[sound:]` tag.
+     *  Callers surface either flag to the user. */
+    data class Success(
+        val audioDropped: Boolean = false,
+        val wordAudioDropped: Boolean = false,
+    ) : AnkiSendResult
     /** The send failed — the caller shows [messageRes] in an error
      *  alert and restores the save button. [messageRes] names the cause
      *  where the dispatcher knows it, and is generic otherwise. */
@@ -89,20 +96,27 @@ suspend fun Fragment.dispatchSendToAnki(
     screenshotPath: String?,
     audioPath: String?,
     legacyFront: () -> String,
-    legacyBack: (imageFilename: String?, audioFilename: String?) -> String,
-    structured: (imageFilename: String?, audioFilename: String?) -> CardOutputs,
+    legacyBack: (imageFilename: String?, audioFilename: String?, wordAudioFilenames: Map<String, String>) -> String,
+    structured: (imageFilename: String?, audioFilename: String?, wordAudioFilenames: Map<String, String>) -> CardOutputs,
+    /** Per-target-word audio paths keyed by word. Uploaded individually
+     *  via [AnkiManager.addMediaFromFile] in the same media pass as the
+     *  screenshot and sentence audio. The returned filename map is then
+     *  threaded into [legacyBack] / [structured] so each word's row in
+     *  WORDS_TABLE can carry a `[sound:…]` tag. */
+    wordAudioPaths: Map<String, String> = emptyMap(),
 ): AnkiSendResult {
     val ctx = requireContext()
     val prefs = Prefs(ctx)
     val anki = AnkiManager(ctx)
 
-    val imageFilename = screenshotPath?.let {
-        withContext(Dispatchers.IO) { anki.addMediaFromFile(File(it)) }
-    }
-    val audioFilename = audioPath?.let {
-        withContext(Dispatchers.IO) { anki.addMediaFromFile(File(it)) }
-    }
-
+    // Resolve the target model + mapping FIRST, before uploading any
+    // media. The two common bail paths below — `Failed(models_unavailable)`
+    // and `NeedsMapping` — would otherwise leave the screenshot, sentence
+    // audio, and (now) every per-target-word audio file orphaned in
+    // AnkiDroid's media folder. Sort-field + Legacy `getOrCreateModel`
+    // failures stay after uploads: they need the assembled fields and
+    // would require a more invasive restructure for marginal additional
+    // safety.
     val pickedId = prefs.ankiModelId
     val target: ModelTarget = when {
         pickedId == -1L -> ModelTarget.Legacy
@@ -153,14 +167,35 @@ suspend fun Fragment.dispatchSendToAnki(
         }
     }
 
+    // Target is resolved and the common early-fail paths are past. Now
+    // upload media — anything we upload from here has a real shot at
+    // being attached to a successfully-inserted note (rare sort-field
+    // failures and Legacy `getOrCreateModel` failures still leave
+    // orphans, but those are uncommon and the surface is bounded).
+    val imageFilename = screenshotPath?.let {
+        withContext(Dispatchers.IO) { anki.addMediaFromFile(File(it)) }
+    }
+    val audioFilename = audioPath?.let {
+        withContext(Dispatchers.IO) { anki.addMediaFromFile(File(it)) }
+    }
+    // Per-word media uploads. Words whose upload returns null
+    // (transient failure) are absent from the resulting map; the
+    // wordAudioDropped flag on Success reports the partial-failure
+    // count so callers can surface it.
+    val wordAudioFilenames: Map<String, String> = withContext(Dispatchers.IO) {
+        wordAudioPaths.mapNotNull { (word, path) ->
+            anki.addMediaFromFile(File(path))?.let { word to it }
+        }.toMap()
+    }
+
     val (modelId, fields) = when (target) {
         ModelTarget.Legacy -> {
             val v004 = withContext(Dispatchers.IO) { anki.getOrCreateModel() }
                 ?: return AnkiSendResult.Failed(R.string.anki_send_failed_message)
-            v004 to listOf(legacyFront(), legacyBack(imageFilename, audioFilename))
+            v004 to listOf(legacyFront(), legacyBack(imageFilename, audioFilename, wordAudioFilenames))
         }
         is ModelTarget.Basic -> {
-            val outputs = structured(imageFilename, audioFilename)
+            val outputs = structured(imageFilename, audioFilename, wordAudioFilenames)
             val flds = AnkiCardTypeMapper.assembleBasicNote(
                 target.model.fieldNames, mode, outputs)
             Log.d(TAG, "basic send: model=${target.model.name} mode=$mode " +
@@ -168,7 +203,7 @@ suspend fun Fragment.dispatchSendToAnki(
             target.model.id to flds
         }
         is ModelTarget.Structured -> {
-            val outputs = structured(imageFilename, audioFilename)
+            val outputs = structured(imageFilename, audioFilename, wordAudioFilenames)
             val flds = AnkiCardTypeMapper.assembleNote(
                 target.model.fieldNames, target.mapping, outputs)
             Log.d(TAG, "structured send: model=${target.model.name} " +
@@ -201,10 +236,10 @@ suspend fun Fragment.dispatchSendToAnki(
 
     val ok = withContext(Dispatchers.IO) { anki.addNote(modelId, deckId, fields) }
     if (!ok) return AnkiSendResult.Failed(R.string.anki_send_failed_message)
-    // The note was added. Flag the partial case where audio was requested
-    // but its media upload failed (addMediaFromFile returned null) — the
-    // card carries no [sound:] tag, and the caller should say so.
+    // The note was added. Flag any audio that was requested but didn't
+    // make it onto the card so callers can warn the user.
     return AnkiSendResult.Success(
         audioDropped = audioPath != null && audioFilename.isNullOrEmpty(),
+        wordAudioDropped = wordAudioPaths.size > wordAudioFilenames.size,
     )
 }

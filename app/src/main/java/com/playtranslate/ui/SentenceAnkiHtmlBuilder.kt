@@ -94,6 +94,7 @@ object SentenceAnkiHtmlBuilder {
         imageFilename: String?, highlightedWords: Set<String> = emptySet(),
         sourceLangId: SourceLangId = SourceLangId.JA,
         audioFilename: String? = null,
+        wordAudioFilenames: Map<String, String> = emptyMap(),
     ): String {
         val wordMap = words.associate { it.word to it.reading }
         val furigana = annotateText(japanese, wordMap, newlineAsBr = true, sourceLangId = sourceLangId)
@@ -103,7 +104,7 @@ object SentenceAnkiHtmlBuilder {
         // Legacy back HTML wraps a <style> block that defines the gl-*
         // classes. classStyler emits class refs that the surrounding
         // <style> applies — no inline duplication.
-        val wordsHtml = buildWordsHtmlWith(sorted, highlightedWords, classStyler)
+        val wordsHtml = buildWordsHtmlWith(sorted, highlightedWords, classStyler, wordAudioFilenames)
         return buildString {
             append("<style>")
             append("body{visibility:hidden!important;white-space:normal!important;}")
@@ -622,18 +623,25 @@ object SentenceAnkiHtmlBuilder {
         words: List<WordEntry>,
         highlightedWords: Set<String>,
         styler: HtmlStyler,
+        /** Map of word → Anki media filename for per-target-word audio.
+         *  When present, a `[sound:…]` tag is appended next to the word's
+         *  surface so Anki renders an inline play button. Words absent
+         *  from this map get no audio tag. */
+        wordAudioFilenames: Map<String, String> = emptyMap(),
     ): String {
         if (words.isEmpty()) return ""
         val sb = StringBuilder()
         words.forEach { entry ->
             val isHighlighted = entry.word in highlightedWords
             val safeWord = htmlEscape(entry.word)
+            val audioTag = wordAudioFilenames[entry.word]
+                ?.let { " [sound:$it]" } ?: ""
             if (isHighlighted) {
                 sb.append("<div ${styler("gl-hl-bg", "margin-bottom:14px;border-radius:6px;padding:8px 10px;")}>")
-                sb.append("<div ${styler("gl-hl", "")}><b>").append(safeWord).append("</b></div>")
+                sb.append("<div ${styler("gl-hl", "")}><b>").append(safeWord).append("</b>").append(audioTag).append("</div>")
             } else {
                 sb.append("<div ${styler(null, "margin-bottom:14px;")}>")
-                sb.append("<div><b>").append(safeWord).append("</b></div>")
+                sb.append("<div><b>").append(safeWord).append("</b>").append(audioTag).append("</div>")
             }
             if (entry.reading.isNotEmpty() || entry.freqScore > 0) {
                 sb.append("<div ${styler(null, "font-size:0.85em;")}>")

@@ -193,7 +193,9 @@ fun Fragment.addAnkiSection(
     mode: CardMode,
     onDeckChanged: () -> Unit,
     onCardTypeChanged: () -> Unit,
-) {
+    includeVoiceRow: Boolean = false,
+    lang: SourceLangId? = null,
+): AnkiVoiceRowHandle? {
     val ctx = requireContext()
     val density = ctx.resources.displayMetrics.density
     val inflater = android.view.LayoutInflater.from(ctx)
@@ -259,6 +261,23 @@ fun Fragment.addAnkiSection(
     }
     card.addView(cardTypeRow)
 
+    // -- Optional Voice row (sentence-card flow surfaces it here so the
+    //    Audio section can be removed entirely; the word-flow keeps its
+    //    own Voice row inside the Audio section and passes
+    //    includeVoiceRow = false). --
+    val voiceHandle: AnkiVoiceRowHandle? = if (includeVoiceRow && lang != null) {
+        ankiInsetDivider(card)
+        val voiceRow = inflater.inflate(R.layout.settings_row_value, card, false)
+        voiceRow.findViewById<TextView>(R.id.tvRowTitle).text =
+            ctx.getString(R.string.anki_voice_row_label)
+        val voiceValue = voiceRow.findViewById<TextView>(R.id.tvRowValue)
+        voiceRow.setOnClickListener {
+            startActivity(TtsVoiceActivity.intent(ctx, lang))
+        }
+        card.addView(voiceRow)
+        AnkiVoiceRowHandle(this, lang, voiceValue).also { it.refreshVoiceLabel() }
+    } else null
+
     // -- Healing pass: rectify deck + model selections against
     //    AnkiDroid's live state. Runs once on view-created.
     viewLifecycleOwner.lifecycleScope.launch {
@@ -287,25 +306,21 @@ fun Fragment.addAnkiSection(
             }
         }
     }
+
+    return voiceHandle
 }
 
 /**
- * Handle to an Audio section built by [addAnkiAudioSection]. The hosting
- * sheet reads [switch].isChecked at send time, calls [refreshVoiceLabel]
- * from its onResume() (the Voice row launches [TtsVoiceActivity], which
- * returns no result, so the saved pref is the source of truth on return),
- * and calls [release] from onDestroyView so a running preview stops.
+ * Handle to a stand-alone Voice row built by [addAnkiSection] when
+ * `includeVoiceRow = true`. The hosting sheet calls [refreshVoiceLabel]
+ * from its onResume() because [TtsVoiceActivity] returns no result —
+ * the saved pref is the source of truth on return.
  */
-class AnkiAudioHandle internal constructor(
+class AnkiVoiceRowHandle internal constructor(
     private val fragment: Fragment,
     private val lang: SourceLangId,
-    val switch: MaterialSwitch,
     private val voiceValue: TextView,
-    private val chip: AnkiAudioPreviewChip,
 ) {
-    /** Re-read the saved voice for [lang] and update the Voice row's
-     *  value text. Mirrors the Settings TTS section's "Voice N" /
-     *  "Default" label. */
     fun refreshVoiceLabel() {
         val ctx = voiceValue.context
         fragment.viewLifecycleOwner.lifecycleScope.launch {
@@ -320,23 +335,34 @@ class AnkiAudioHandle internal constructor(
             }
         }
     }
+}
 
-    /** Stop any in-flight preview. Call from the host's onDestroyView so
-     *  audio doesn't outlive the sheet. */
+/**
+ * Lightweight handle to a 44dp audio toggle row built by
+ * [addCompactAudioToggleRow]. The host reads [switch].isChecked at send
+ * time and calls [release] from onDestroyView so any in-flight preview
+ * stops.
+ */
+class AnkiAudioToggleHandle internal constructor(
+    val switch: MaterialSwitch,
+    private val chip: AnkiAudioPreviewChip,
+) {
     fun release() = chip.stop()
 }
 
 /**
- * Inflates an "Audio" section (header + one card) into [parent]: an
- * audio row — a preview chip, [rowLabel], and an include-on-card switch
- * — above a Voice row that opens [TtsVoiceActivity].
+ * Inflates an "Audio" section (header + one card) into [parent]: a
+ * single audio row with a preview chip, [rowLabel], and an
+ * include-on-card switch. The Voice picker lives in the top Anki
+ * section now ([addAnkiSection]'s `includeVoiceRow`), so this helper
+ * no longer owns one.
  *
  * The switch seeds from [initialChecked] and reports flips through
  * [onCheckedChange]; the caller persists the last-used state. The
  * preview chip speaks [previewText] live via [TtsEngine.speak] —
  * evaluated at tap time so an edited sentence previews its current text.
  *
- * @param lang        language for the preview and the Voice picker.
+ * @param lang        language for the preview.
  * @param previewText text to speak when the preview chip is tapped.
  */
 fun Fragment.addAnkiAudioSection(
@@ -346,7 +372,7 @@ fun Fragment.addAnkiAudioSection(
     previewText: () -> String,
     initialChecked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-): AnkiAudioHandle {
+): AnkiAudioToggleHandle {
     val ctx = requireContext()
     val inflater = android.view.LayoutInflater.from(ctx)
 
@@ -375,23 +401,59 @@ fun Fragment.addAnkiAudioSection(
     (audioRow as ViewGroup).addView(chip.view, 0)
     card.addView(audioRow)
 
-    ankiInsetDivider(card)
+    return AnkiAudioToggleHandle(switch, chip)
+}
 
-    // -- Voice row: opens the per-language voice picker --
-    val voiceRow = inflater.inflate(R.layout.settings_row_value, card, false)
-    voiceRow.findViewById<TextView>(R.id.tvRowTitle).text =
-        ctx.getString(R.string.anki_voice_row_label)
-    val voiceValue = voiceRow.findViewById<TextView>(R.id.tvRowValue)
-    voiceRow.setOnClickListener {
-        // Pass the card's language so the picker edits the same voice
-        // preference the preview and synthesis use.
-        startActivity(TtsVoiceActivity.intent(ctx, lang))
+/**
+ * Inflates a single 44dp "Include audio" row — preview chip, [label],
+ * and an include-on-card switch — into [parent] without wrapping it in
+ * its own group card or header. Used by the sentence-card flow to
+ * inline the sentence audio toggle inside the Original group and to
+ * attach per-target-word audio toggles directly beneath their word
+ * rows.
+ *
+ * Stripped-down sibling of [addAnkiAudioSection]: no Voice sub-row
+ * (Voice lives in the top Anki section now via [addAnkiSection]'s
+ * `includeVoiceRow`), no header, no card.
+ */
+fun Fragment.addCompactAudioToggleRow(
+    parent: LinearLayout,
+    lang: SourceLangId,
+    label: String,
+    previewText: () -> String,
+    initialChecked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+): AnkiAudioToggleHandle {
+    val ctx = requireContext()
+    val inflater = android.view.LayoutInflater.from(ctx)
+    val density = ctx.resources.displayMetrics.density
+
+    val row = inflater.inflate(R.layout.settings_row_switch, parent, false) as LinearLayout
+    // Override the default 56dp min-height + 9dp vertical padding so the
+    // row sits at the 44dp the design calls for. Horizontal padding stays
+    // at the dimens-driven default.
+    row.minimumHeight = (44 * density).toInt()
+    row.setPadding(row.paddingLeft, (4 * density).toInt(),
+        row.paddingRight, (4 * density).toInt())
+    row.findViewById<TextView>(R.id.tvRowTitle).apply {
+        text = label
+        maxLines = 1
+        ellipsize = TextUtils.TruncateAt.END
     }
-    card.addView(voiceRow)
+    val switch = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+    val chip = AnkiAudioPreviewChip(this, lang, previewText)
+    // Seed before wiring the listener so seeding doesn't fire onCheckedChange.
+    switch.isChecked = initialChecked
+    chip.setSwitchOn(initialChecked)
+    switch.setOnCheckedChangeListener { _, checked ->
+        onCheckedChange(checked)
+        chip.setSwitchOn(checked)
+    }
+    row.setOnClickListener { switch.toggle() }
+    row.addView(chip.view, 0)
+    parent.addView(row)
 
-    val handle = AnkiAudioHandle(this, lang, switch, voiceValue, chip)
-    handle.refreshVoiceLabel()
-    return handle
+    return AnkiAudioToggleHandle(switch, chip)
 }
 
 /**

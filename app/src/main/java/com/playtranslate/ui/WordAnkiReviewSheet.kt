@@ -70,7 +70,7 @@ class WordAnkiReviewSheet : DialogFragment() {
     private var definitionsCard: LinearLayout? = null
     /** Handle to the word-tab Audio card. The switch state is read at
      *  send time; the Voice row text is refreshed in [onResume]. */
-    private var wordAudioHandle: AnkiAudioHandle? = null
+    private var wordAudioHandle: AnkiAudioToggleHandle? = null
     /** First child of the Screenshot group inside [wordContainer] (its
      *  header). Tracked so the lazy More examples group can be inserted
      *  immediately above the Screenshot group rather than appended to
@@ -132,6 +132,12 @@ class WordAnkiReviewSheet : DialogFragment() {
      *  (drag → Anki path). Drives the same Save-button indicator. */
     private var wordsFillInFlight: Boolean = false
 
+    /** Voice row in the top Anki section. Both word and sentence tabs see
+     *  it (the word tab's standalone Audio section keeps its own Voice
+     *  row — same Prefs.ttsVoiceName, so the two stay in sync). Refreshed
+     *  in onResume because TtsVoiceActivity returns no result. */
+    private var topVoiceHandle: AnkiVoiceRowHandle? = null
+
     /** Optional listener called when this sheet is dismissed (used by WordAnkiReviewActivity). */
     var onDismissListener: DialogInterface.OnDismissListener? = null
 
@@ -171,14 +177,17 @@ class WordAnkiReviewSheet : DialogFragment() {
         currentScreenshotPath = null
         wordAudioHandle?.release()
         wordAudioHandle = null
+        topVoiceHandle = null
         super.onDestroyView()
     }
 
     override fun onResume() {
         super.onResume()
-        // TtsVoiceActivity (opened from the Audio card's Voice row)
-        // returns no result; re-read the saved voice when we resume.
-        wordAudioHandle?.refreshVoiceLabel()
+        // TtsVoiceActivity returns no result; re-read the saved voice
+        // when we resume. The top Anki section is the only Voice picker
+        // now (the word tab's Audio section dropped its Voice row to
+        // avoid duplication with the top section).
+        topVoiceHandle?.refreshVoiceLabel()
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -239,11 +248,13 @@ class WordAnkiReviewSheet : DialogFragment() {
         wordContainer.visibility = if (hasSentenceData) View.GONE else View.VISIBLE
 
         deckSubtitleView = view.findViewById(R.id.tvWordAnkiSendSubtitle)
-        addAnkiSection(
+        topVoiceHandle = addAnkiSection(
             parent = deckHost,
             mode = CardMode.WORD,
             onDeckChanged = { refreshDeckSubtitle() },
             onCardTypeChanged = { /* no visible affordance reflects card type */ },
+            includeVoiceRow = true,
+            lang = sourceLangId,
         )
         refreshDeckSubtitle()
 
@@ -1303,11 +1314,13 @@ class WordAnkiReviewSheet : DialogFragment() {
                 screenshotPath = screenshotPath,
                 audioPath = audioFile?.absolutePath,
                 legacyFront = { buildWordFrontHtml(word) },
-                legacyBack = { imageFilename, audioFilename ->
+                legacyBack = { imageFilename, audioFilename, _ ->
+                    // Word cards have no per-target-word audio — drop
+                    // the third arg.
                     buildWordBackHtml(word, reading, pos, fallbackDefinition,
                         freqScore, imageFilename, audioFilename)
                 },
-                structured = { imageFilename, audioFilename ->
+                structured = { imageFilename, audioFilename, _ ->
                     AnkiCardOutputBuilder.forWord(
                         word = word,
                         reading = reading,
@@ -1627,42 +1640,61 @@ class WordAnkiReviewSheet : DialogFragment() {
         val audioFile = if (wantAudio) {
             TtsEngine.synthesizeToFile(requireContext(), data.source, data.sourceLangId)
         } else null
+        // Per-target-word audio. TTS engine serializes utterances anyway,
+        // so a simple sequential loop is the same wall-clock cost as
+        // parallel coroutines.
+        val wordAudioFiles: Map<String, File> = buildMap {
+            for (word in data.targetWordAudioWords) {
+                TtsEngine.synthesizeToFile(requireContext(), word, data.sourceLangId)
+                    ?.let { put(word, it) }
+            }
+        }
         val result = try {
             dispatchSendToAnki(
                 deckId = deckId,
                 mode = CardMode.SENTENCE,
                 screenshotPath = data.screenshotPath,
                 audioPath = audioFile?.absolutePath,
+                wordAudioPaths = wordAudioFiles.mapValues { it.value.absolutePath },
                 legacyFront = {
                     SentenceAnkiHtmlBuilder.buildFrontHtml(
                         data.source, data.words, data.selectedWords, data.sourceLangId,
                     )
                 },
-                legacyBack = { imageFilename, audioFilename ->
+                legacyBack = { imageFilename, audioFilename, wordAudioFilenames ->
                     SentenceAnkiHtmlBuilder.buildBackHtml(
                         data.source, data.target, data.words,
                         imageFilename, data.selectedWords, data.sourceLangId,
                         audioFilename = audioFilename,
+                        wordAudioFilenames = wordAudioFilenames,
                     )
                 },
-                structured = { imageFilename, audioFilename ->
+                structured = { imageFilename, audioFilename, wordAudioFilenames ->
                     AnkiCardOutputBuilder.forSentence(
                         cardData = data,
                         imageFilename = imageFilename,
                         examplesHtml = buildExamplesHtml(inlineStyler),
                         audioFilename = audioFilename,
+                        wordAudioFilenames = wordAudioFilenames,
                     )
                 },
             )
         } finally {
             audioFile?.delete()
+            wordAudioFiles.values.forEach { it.delete() }
         }
         val audioMissing = wantAudio && (audioFile == null ||
             (result as? AnkiSendResult.Success)?.audioDropped == true)
+        // Per-word audio: synthesis can fail (skipped from wordAudioFiles)
+        // OR upload can fail (dropped by the dispatcher into wordAudioDropped).
+        val wordAudioMissing = data.targetWordAudioWords.isNotEmpty() && (
+            wordAudioFiles.size < data.targetWordAudioWords.size ||
+            (result as? AnkiSendResult.Success)?.wordAudioDropped == true
+        )
         applyAnkiSendResult(
             result,
             onSuccess = {
-                if (audioMissing) {
+                if (audioMissing || wordAudioMissing) {
                     Toast.makeText(requireContext(), R.string.anki_added_no_audio,
                         Toast.LENGTH_SHORT).show()
                 }
