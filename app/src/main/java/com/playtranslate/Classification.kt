@@ -110,6 +110,12 @@ fun classifyOcrResults(
     val staleOverlayIndices = mutableSetOf<Int>()
     val contentMatchRemovals = mutableSetOf<Int>()
     val farOcrGroups = mutableListOf<FarGroup>()
+    // Indices in [farOcrGroups] that originated from a content-match
+    // (i.e. paired FARs queued at step 1 below). The Far branch's
+    // coalesce step at step 3 only considers these as eligible merge
+    // targets — fresh FARs added later in the same loop are NOT
+    // eligible. See the gate kdoc at step 3 for the reasoning.
+    val pairedFarIndices = mutableSetOf<Int>()
 
     for (ocrIdx in ocrResult.groupTexts.indices) {
         if (ocrIdx >= ocrResult.groupBounds.size) continue
@@ -131,6 +137,11 @@ fun classifyOcrResults(
                     val lc = ocrResult.groupLineCounts.getOrElse(ocrIdx) { 1 }
                     val orient = ocrResult.groupOrientations.getOrElse(ocrIdx) { TextOrientation.HORIZONTAL }
                     val align = ocrResult.groupAlignments.getOrElse(ocrIdx) { TextAlignment.LEFT }
+                    // Record the about-to-be index so step 3's coalesce
+                    // step can identify this FAR as the paired-from-
+                    // content-match target a later fresh OCR fragment may
+                    // legitimately stitch onto.
+                    pairedFarIndices.add(farOcrGroups.size)
                     farOcrGroups.add(FarGroup(ocrText, ocrBound, lc, orient, align))
                     contentMatched = true
                     break
@@ -250,7 +261,28 @@ fun classifyOcrResults(
         if (!nearExisting) {
             val lc = ocrLineCount
             val align = ocrResult.groupAlignments.getOrElse(ocrIdx) { TextAlignment.LEFT }
-            val coalesceIdx = farOcrGroups.indexOfFirst { existing ->
+            // Gate: only coalesce INTO a paired FAR (an entry queued by
+            // content-match earlier in this loop). Fresh-FARs added by
+            // an earlier Far-branch iteration are NOT eligible — they
+            // represent OCR groups OCR's intra-pass already decided to
+            // SPLIT, and re-running wouldGroup on whole-group rects +
+            // per-line refH normalization would override that decision
+            // (the epilepsy-warning bug). A cycle-global gate ("did
+            // ANY content-match fire") wouldn't be enough: a totally
+            // unrelated content-match elsewhere on screen would still
+            // open the door for two genuinely-separate fresh paragraphs
+            // to be merged via a fresh-FAR-to-fresh-FAR match. Iterating
+            // pairedFarIndices directly (a LinkedHashSet, so insertion-
+            // order = OCR pass order, matching the original
+            // indexOfFirst-over-farOcrGroups iteration shape) makes the
+            // eligibility per-candidate.
+            //
+            // After a merge, the FarGroup at coalesceIdx is replaced
+            // by the merged result; its index stays in pairedFarIndices
+            // because the merged group's identity is still "paired" —
+            // a later fragment can stitch onto the expanded paired FAR.
+            val coalesceIdx = pairedFarIndices.firstOrNull { idx ->
+                val existing = farOcrGroups[idx]
                 // Hard-skip cross-orientation candidates. Unlike the
                 // proximity path (which falls back to raw heights on
                 // orientation mismatch and merely risks a recoverable
@@ -260,14 +292,14 @@ fun classifyOcrResults(
                 // along the wrong axis. Coalesce is the call site where
                 // the orientation choice has rendering side-effects, so
                 // the more conservative gate is appropriate here.
-                if (existing.orientation != orient) return@indexOfFirst false
+                if (existing.orientation != orient) return@firstOrNull false
                 val existingBitmapRect = coords.ocrToBitmap(existing.bounds)
                 OcrManager.wouldGroup(
                     existingBitmapRect, ocrFullRect, existing.orientation,
                     aLineCount = existing.lineCount,
                     bLineCount = lc,
                 )
-            }
+            } ?: -1
             if (coalesceIdx >= 0) {
                 val existing = farOcrGroups[coalesceIdx]
                 val separator = if (existing.orientation == TextOrientation.VERTICAL) "\n" else " "

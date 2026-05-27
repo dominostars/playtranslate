@@ -529,22 +529,117 @@ class ClassificationTest {
         // style fragment splitting on one row followed by a real next-row
         // continuation in the same OCR pass.
         //
-        // Row 1 left half:  (0, 0, 100, 50)
-        // Row 1 right half: (110, 0, 200, 50)  — inline-coalesces with left
-        // Row 2:            (0, 60, 200, 110)  — block-coalesces onto row 1
+        // The cached box matching OCR group "A" is what opens the coalesce
+        // gate (content-match queues a paired FAR); without a content-match
+        // this cycle, the Far branch trusts OCR's grouping verbatim and
+        // never attempts a re-merge. The lineCount-tracking invariant under
+        // test only fires once that gate is open.
+        //
+        // Row 1 left half:  (0, 0, 100, 50)   — content-matches cached, queues paired FAR
+        // Row 1 right half: (110, 0, 200, 50) — inline-coalesces with paired FAR
+        // Row 2:            (0, 60, 200, 110) — block-coalesces onto row 1
+        val cachedBox = box(Rect(0, 0, 100, 50), sourceText = "A")
         val result = classifyOcrResults(
             ocrResult = ocrResult(
                 "A" to Rect(0, 0, 100, 50),
                 "B" to Rect(110, 0, 200, 50),
                 "C" to Rect(0, 60, 200, 110),
             ),
+            boxes = listOf(cachedBox),
+            ocrBitmapRects = listOf(cachedBox.bounds),
+            coords = identityCoords,
+        )
+        assertEquals(setOf(0), result.contentMatchRemovals)
+        assertEquals(1, result.farOcrGroups.size)
+        assertEquals("A B C", result.farOcrGroups[0].text)
+        assertEquals(2, result.farOcrGroups[0].lineCount)
+    }
+
+    @Test
+    fun classify_farCoalesce_noContentMatch_doesNotRemergeOcrSplits() {
+        // Bug regression (epilepsy-warning screen, v2.2.0): with no cached
+        // boxes (first live-mode cycle), content-match cannot fire, so the
+        // coalesce gate stays closed and the Far branch trusts OCR's
+        // within-frame SPLIT decision verbatim. Previously, the coalesce
+        // ran unconditionally and re-merged genuinely-separate paragraphs
+        // because its per-line refH normalization on whole-group rects
+        // inflated the block-gap threshold past OCR's intra-pass value.
+        //
+        // Geometry mirrors the live capture that exposed the bug:
+        //   group 0: single line at y=0..33   (height 33, lineCount 1)
+        //   group 1: four lines  at y=62..215 (height 153, lineCount 4)
+        // dy = 29; per-line refH would be max(33, 153/4=38) = 38; gated
+        // wouldGroup's block threshold = 38 * 0.8 = 30, so 29 < 30 used
+        // to flip SPLIT → MERGE. The gate now skips that re-evaluation
+        // entirely when no paired FAR exists, leaving OCR's groups as-is.
+        val result = classifyOcrResults(
+            ocrResult = ocrResult(
+                "single line above" to Rect(0, 0, 200, 33),
+                "four-line paragraph below" to Rect(0, 62, 200, 215),
+                lineCounts = listOf(1, 4),
+            ),
             boxes = emptyList(),
             ocrBitmapRects = emptyList(),
             coords = identityCoords,
         )
-        assertEquals(1, result.farOcrGroups.size)
-        assertEquals("A B C", result.farOcrGroups[0].text)
-        assertEquals(2, result.farOcrGroups[0].lineCount)
+        assertTrue(
+            "no content-match → no paired FAR → coalesce gated off → no removals",
+            result.contentMatchRemovals.isEmpty(),
+        )
+        assertEquals(
+            "OCR's two-group split must survive classification when the coalesce gate is closed",
+            2, result.farOcrGroups.size,
+        )
+        assertEquals("single line above", result.farOcrGroups[0].text)
+        assertEquals("four-line paragraph below", result.farOcrGroups[1].text)
+    }
+
+    @Test
+    fun classify_farCoalesce_unrelatedContentMatchElsewhere_doesNotEnableMergeOfFreshSplits() {
+        // Tighter regression for the gate. The earlier "no content-match"
+        // case is necessary but not sufficient — a global gate
+        // (contentMatchRemovals.isNotEmpty()) would still let any unrelated
+        // content-match elsewhere on screen re-open coalescing for fresh
+        // fragments. The gate must be candidate-specific: only paired FARs
+        // (queued by content-match) are eligible coalesce targets, and
+        // fresh-FARs added by an earlier Far-branch iteration are NOT.
+        //
+        // Setup:
+        //   cached "Score" at top-right (1500,50,1700,90)
+        //   group 0: "Score" at the same position — content-matches the
+        //            cached box and queues a paired FAR (top-right)
+        //   group 1: a single-line paragraph at the center top
+        //   group 2: a four-line paragraph just below group 1, with the
+        //            exact epilepsy-warning geometry that the simple
+        //            global gate previously re-merged
+        // With a global gate, group 2 would coalesce with the fresh FAR
+        // from group 1 (since the gate is open because of the score
+        // content-match). With the candidate-specific gate, only the
+        // paired top-right FAR is eligible — and it doesn't match
+        // geometrically — so group 2 stays as its own FAR.
+        val cachedScore = box(Rect(1500, 50, 1700, 90), sourceText = "Score")
+        val result = classifyOcrResults(
+            ocrResult = ocrResult(
+                "Score" to Rect(1500, 50, 1700, 90),
+                "single line above" to Rect(0, 400, 200, 433),
+                "four-line paragraph below" to Rect(0, 462, 200, 615),
+                lineCounts = listOf(1, 1, 4),
+            ),
+            boxes = listOf(cachedScore),
+            ocrBitmapRects = listOf(cachedScore.bounds),
+            coords = identityCoords,
+        )
+        assertEquals(
+            "score content-matches its cached box",
+            setOf(0), result.contentMatchRemovals,
+        )
+        assertEquals(
+            "candidate-specific gate keeps unrelated fresh splits separate even when other content-match opens the cycle's coalesce path",
+            3, result.farOcrGroups.size,
+        )
+        assertEquals("Score", result.farOcrGroups[0].text)
+        assertEquals("single line above", result.farOcrGroups[1].text)
+        assertEquals("four-line paragraph below", result.farOcrGroups[2].text)
     }
 
     // ── classifyOcrResults: mixed end-to-end ─────────────────────────────
