@@ -446,9 +446,9 @@ class MainActivity :
         }
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        when (intent?.action) {
+        when (intent.action) {
             ACTION_DRAG_SENTENCE -> handleDragSentence(intent)
             ACTION_DRAG_WORD -> handleDragWord(intent)
             ACTION_REGION_CAPTURE -> handleRegionCapture(intent)
