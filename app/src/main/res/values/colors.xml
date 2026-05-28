@@ -73,6 +73,4 @@
     <!-- Named colors referenced by vector drawables (tinted at runtime) -->
     <color name="text_secondary">@color/pt_dark_text_muted</color>
 
-    <!-- Status colours -->
-    <color name="status_error">#F44336</color>
 </resources>
