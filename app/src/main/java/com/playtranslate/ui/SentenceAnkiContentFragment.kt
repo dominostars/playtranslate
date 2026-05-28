@@ -271,13 +271,23 @@ class SentenceAnkiContentFragment : Fragment() {
         sentenceAudioHandle = addCompactAudioToggleRow(
             parent = originalCard,
             lang = lang,
-            label = getString(R.string.anki_include_audio),
+            label = original,
             previewText = { etOriginal.text.toString() },
             initialChecked = prefs.ankiSentenceAudioEnabled,
             onCheckedChange = { prefs.ankiSentenceAudioEnabled = it },
             voiceOverride = { sentenceVoice },
             onVoicePillTap = { launchVoicePicker(PickTarget.Sentence, sentenceVoice) },
         )
+        // Track edits — the chip re-reads via its previewText lambda, but
+        // the row's visible label is a one-shot text= and won't follow
+        // keystrokes without an explicit watcher.
+        etOriginal.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                sentenceAudioHandle?.titleView?.text = s?.toString().orEmpty()
+            }
+        })
 
         // Translation — same trick with R.id.etAnkiTranslation.
         ankiGroupHeader(root, getString(R.string.anki_group_translation))
@@ -518,7 +528,7 @@ class SentenceAnkiContentFragment : Fragment() {
                     val handle = addCompactAudioToggleRow(
                         parent = wordsCard,
                         lang = lang,
-                        label = getString(R.string.anki_include_audio),
+                        label = word,
                         previewText = { word },
                         initialChecked = seeded,
                         onCheckedChange = { checked ->

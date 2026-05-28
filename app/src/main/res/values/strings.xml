@@ -249,7 +249,6 @@
     <string name="anki_word_remove_content_description">Remove from card</string>
     <string name="anki_screenshot_remove_content_description">Remove screenshot</string>
     <string name="anki_group_audio">Audio</string>
-    <string name="anki_include_audio">Include audio</string>
     <string name="anki_audio_preview_content_description">Preview audio</string>
     <string name="anki_voice_row_label">Voice</string>
     <string name="anki_voice_default">Default</string>

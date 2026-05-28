@@ -296,11 +296,18 @@ fun Fragment.addAnkiSection(
  * returns, and calls [release] from onDestroyView so any in-flight
  * preview stops.
  *
+ * [titleView] is exposed so callers can re-point the visible label when
+ * the underlying text changes — the chip re-reads via its `previewText`
+ * lambda, but the row's own label is a one-shot `text =` at build time
+ * and needs explicit updates (e.g. the sentence sheet's Original field
+ * is editable, so its audio-row label must track keystrokes).
+ *
  * [pill] is null when the row was built without a voice pill (i.e. the
  * helper was invoked without `onVoicePillTap`).
  */
 class AnkiAudioToggleHandle internal constructor(
     val switch: MaterialSwitch,
+    val titleView: TextView,
     private val chip: AnkiAudioPreviewChip,
     val pill: VoicePillView? = null,
 ) {
@@ -417,16 +424,17 @@ fun Fragment.addAnkiAudioSection(
     audioRow.setOnClickListener { switch.toggle() }
     card.addView(audioRow)
 
-    return AnkiAudioToggleHandle(switch, chip, pill)
+    return AnkiAudioToggleHandle(switch, titleView, chip, pill)
 }
 
 /**
- * Inflates a single 44dp "Include audio" row — preview chip, [label],
- * and an include-on-card switch — into [parent] without wrapping it in
- * its own group card or header. Used by the sentence-card flow to
- * inline the sentence audio toggle inside the Original group and to
- * attach per-target-word audio toggles directly beneath their word
- * rows.
+ * Inflates a single 44dp audio row — preview chip, [label], and an
+ * include-on-card switch — into [parent] without wrapping it in its own
+ * group card or header. Used by the sentence-card flow to inline the
+ * sentence audio toggle inside the Original group and to attach
+ * per-target-word audio toggles directly beneath their word rows.
+ * [label] is the text being spoken (the word or sentence); the switch
+ * itself conveys the "include on card" action.
  *
  * Stripped-down sibling of [addAnkiAudioSection]: no Voice sub-row
  * (Voice lives in the top Anki section now via [addAnkiSection]'s
@@ -492,7 +500,7 @@ fun Fragment.addCompactAudioToggleRow(
     row.setOnClickListener { switch.toggle() }
     parent.addView(row)
 
-    return AnkiAudioToggleHandle(switch, chip, pill)
+    return AnkiAudioToggleHandle(switch, titleView, chip, pill)
 }
 
 /**
