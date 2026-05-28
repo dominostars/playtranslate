@@ -615,7 +615,7 @@ class TranslationResultFragment : Fragment() {
                         ctx.themeColor(R.attr.ptAccent),
                         ctx.themeColor(R.attr.ptAccentOn),
                     ) {}
-                    .showInActivity(requireActivity())
+                    .show()
                 pill.setLoading(false)
             }
             is AnkiSendResult.NeedsMapping -> {

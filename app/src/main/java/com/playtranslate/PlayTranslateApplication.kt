@@ -146,6 +146,7 @@ class PlayTranslateApplication : Application() {
             override fun onActivityResumed(activity: Activity) {
                 resumedActivity = WeakReference(activity)
                 CaptureService.instance?.reconcileLiveModes("activityResumed=${activity.javaClass.simpleName}")
+                drainPendingForegroundOps(activity)
             }
             override fun onActivityPaused(activity: Activity) {
                 if (resumedActivity?.get() === activity) {
@@ -194,6 +195,34 @@ class PlayTranslateApplication : Application() {
          *  runs idempotently afterwards. */
         fun markResumed(activity: Activity) {
             resumedActivity = WeakReference(activity)
+        }
+
+        /** Ops queued by [runWithForegroundActivity] when no PlayTranslate
+         *  activity is currently resumed. Drained on the next
+         *  [ActivityLifecycleCallbacks.onActivityResumed]. Main-thread-only;
+         *  no synchronization. */
+        private val pendingForegroundOps = mutableListOf<(Activity) -> Unit>()
+
+        /** Runs [block] with the currently-resumed PlayTranslate activity,
+         *  or defers it until one resumes. Used by [OverlayAlert] /
+         *  [OverlayProgress] so an alert shown before MainActivity has
+         *  reached RESUMED (e.g. fired from onCreate) still attaches once
+         *  the activity is visible — instead of being lost.
+         *
+         *  Main-thread-only. Multiple deferred ops fire in registration
+         *  order on the same resume.
+         */
+        fun runWithForegroundActivity(block: (Activity) -> Unit) {
+            val activity = resumedActivity?.get()
+            if (activity != null) block(activity)
+            else pendingForegroundOps.add(block)
+        }
+
+        private fun drainPendingForegroundOps(activity: Activity) {
+            if (pendingForegroundOps.isEmpty()) return
+            val drained = pendingForegroundOps.toList()
+            pendingForegroundOps.clear()
+            drained.forEach { it(activity) }
         }
     }
 

@@ -1,11 +1,13 @@
 package com.playtranslate.ui
 
 import android.app.Activity
+import android.app.Application
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -15,9 +17,23 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
+import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.R
 import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
+
+/** Why this dialog went away. Callers branch on this in [OverlayProgress.Builder.setOnDismiss]
+ *  to decide whether to nuke resume state (USER) or just stop using
+ *  bandwidth/CPU (LIFECYCLE_PAUSE). */
+enum class DismissReason {
+    /** User explicitly bailed — cancel-button tap or back-press. */
+    USER,
+    /** Host activity paused — sub-Activity nav, app backgrounded, etc. The
+     *  user did not bail; they may come back. */
+    LIFECYCLE_PAUSE,
+}
 
 /**
  * Reusable progress popup that mirrors [OverlayAlert]'s visual treatment
@@ -29,6 +45,15 @@ import com.playtranslate.themeColor
  * Mutable state — message, progress, indeterminate flag, cancel-button
  * visibility — is exposed on the returned instance so the caller can
  * stream updates from a coroutine.
+ *
+ * Attaches to whichever PlayTranslate activity is currently foregrounded.
+ * Both user cancel (cancel-button tap, back-press) and lifecycle pause
+ * (host activity pauses) detach the view and fire [Builder.setOnDismiss]
+ * with the corresponding [DismissReason]. Callers branch on the reason —
+ * USER typically wipes the partial so a new attempt starts fresh;
+ * LIFECYCLE_PAUSE typically just stops the job so the .partial can be
+ * resumed later. Forgetting to branch defaults to "treat both alike,"
+ * which is loud (visible cancel) rather than silent (orphaned work).
  */
 class OverlayProgress private constructor(
     rawContext: Context,
@@ -36,7 +61,7 @@ class OverlayProgress private constructor(
     private val initialMessage: String,
     private val initialProgress: Int,
     private val cancelLabel: String,
-    private val onCancel: () -> Unit,
+    private val onDismiss: (DismissReason) -> Unit,
 ) {
     private val context: Context = overlayThemedContext(rawContext)
     class Builder(rawContext: Context) {
@@ -45,19 +70,31 @@ class OverlayProgress private constructor(
         private var initialMessage = ""
         private var initialProgress = 0
         private var cancelLabel = "Cancel"
-        private var onCancel: () -> Unit = {}
+        private var onDismiss: (DismissReason) -> Unit = {}
 
         fun setTitle(title: String) = apply { this.title = title }
         fun setMessage(message: String) = apply { this.initialMessage = message }
         fun setProgress(percent: Int) = apply { this.initialProgress = percent }
         fun setCancelLabel(label: String) = apply { this.cancelLabel = label }
-        fun setOnCancel(callback: () -> Unit) = apply { this.onCancel = callback }
 
-        fun showInActivity(activity: Activity): OverlayProgress {
+        /** Fires whenever the dialog is dismissed by user action OR
+         *  lifecycle pause. Branch on [DismissReason] to decide whether
+         *  to wipe partial state (USER) or just stop the job
+         *  (LIFECYCLE_PAUSE). See [OverlayProgress] class doc for the
+         *  full contract. */
+        fun setOnDismiss(callback: (DismissReason) -> Unit) = apply { this.onDismiss = callback }
+
+        /** Attaches to whichever PlayTranslate activity is currently
+         *  foregrounded — or defers attachment to the next [Activity.onResume]
+         *  if none is. See [OverlayProgress] class doc for detach semantics. */
+        fun show(): OverlayProgress {
             val overlay = OverlayProgress(
-                context, title, initialMessage, initialProgress, cancelLabel, onCancel,
+                context, title, initialMessage, initialProgress, cancelLabel, onDismiss,
             )
-            overlay.showInActivity(activity)
+            PlayTranslateApplication.runWithForegroundActivity { activity ->
+                if (overlay.dismissed || activity.isFinishing || activity.isDestroyed) return@runWithForegroundActivity
+                overlay.attachToActivity(activity)
+            }
             return overlay
         }
     }
@@ -67,6 +104,10 @@ class OverlayProgress private constructor(
     private var statusView: TextView? = null
     private var progressView: ProgressBar? = null
     private var cancelButton: Button? = null
+    private var attachedActivity: Activity? = null
+    private var lifecycleCallback: Application.ActivityLifecycleCallbacks? = null
+    private var backPressedCallback: OnBackPressedCallback? = null
+    private var dismissed = false
 
     fun setMessage(message: String) {
         statusView?.text = message
@@ -91,12 +132,25 @@ class OverlayProgress private constructor(
     }
 
     fun dismiss() {
+        dismissed = true
         dismissAction?.invoke()
         dismissAction = null
         scrim = null
+        lifecycleCallback?.let {
+            attachedActivity?.application?.unregisterActivityLifecycleCallbacks(it)
+        }
+        backPressedCallback?.remove()
+        lifecycleCallback = null
+        backPressedCallback = null
+        attachedActivity = null
     }
 
-    private fun showInActivity(activity: Activity) {
+    private fun detachAndDispatch(reason: DismissReason) {
+        dismiss()
+        onDismiss(reason)
+    }
+
+    private fun attachToActivity(activity: Activity) {
         val scrimView = buildScrim()
         val decor = activity.window.decorView as ViewGroup
         val lp = FrameLayout.LayoutParams(
@@ -106,6 +160,30 @@ class OverlayProgress private constructor(
         decor.addView(scrimView, lp)
         scrim = scrimView
         dismissAction = { try { decor.removeView(scrimView) } catch (_: Exception) {} }
+        attachedActivity = activity
+
+        val app = activity.application
+        val lifecycle = object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityPaused(a: Activity) {
+                if (a === attachedActivity) detachAndDispatch(DismissReason.LIFECYCLE_PAUSE)
+            }
+            override fun onActivityCreated(a: Activity, b: Bundle?) {}
+            override fun onActivityStarted(a: Activity) {}
+            override fun onActivityResumed(a: Activity) {}
+            override fun onActivityStopped(a: Activity) {}
+            override fun onActivitySaveInstanceState(a: Activity, b: Bundle) {}
+            override fun onActivityDestroyed(a: Activity) {}
+        }
+        app.registerActivityLifecycleCallbacks(lifecycle)
+        lifecycleCallback = lifecycle
+
+        if (activity is ComponentActivity) {
+            val backCb = object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() { detachAndDispatch(DismissReason.USER) }
+            }
+            activity.onBackPressedDispatcher.addCallback(backCb)
+            backPressedCallback = backCb
+        }
     }
 
     private fun buildScrim(): FrameLayout {
@@ -193,10 +271,7 @@ class OverlayProgress private constructor(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             )
-            setOnClickListener {
-                dismiss()
-                onCancel()
-            }
+            setOnClickListener { detachAndDispatch(DismissReason.USER) }
         }
         card.addView(cancelButton)
 

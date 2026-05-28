@@ -1474,7 +1474,7 @@ class MainActivity :
             // No handler — scrim tap and "Later" tap both just dismiss;
             // files remain on disk and the prompt re-fires next launch.
             .addCancelButton("Later")
-            .showInActivity(this)
+            .show()
     }
 
     /**
@@ -1511,16 +1511,20 @@ class MainActivity :
                     onProceed(skipTargetCodes)
                 }
             }
-            // addCancelButton routes both the button tap AND scrim tap
-            // through this handler, so onProceed always resumes
-            // setupOnboarding/preload/checkTargetPackMigration regardless
-            // of which dismissal path the user took. Re-prompts on next
-            // launch — the staleness scan keeps returning these packs
-            // until the user actually downloads.
-            .addCancelButton(getString(R.string.pack_upgrade_button_later)) {
-                onProceed(skipTargetCodes)
+            // addCancelButton routes button tap, scrim tap, AND back-press
+            // through this handler — those are all explicit user dismissals,
+            // so onProceed resumes setupOnboarding/preload/checkTargetPackMigration.
+            // LIFECYCLE_PAUSE (host activity paused without the user picking
+            // a button) is NOT a decision: skip onProceed so we don't silently
+            // advance past a choice the user never made. The downstream chain
+            // stays gated for this session; next launch's staleness scan
+            // re-prompts.
+            .addCancelButton(getString(R.string.pack_upgrade_button_later)) { reason ->
+                if (reason == com.playtranslate.ui.DismissReason.USER) {
+                    onProceed(skipTargetCodes)
+                }
             }
-            .showInActivity(this)
+            .show()
     }
 
     /**
@@ -1565,10 +1569,14 @@ class MainActivity :
                 openSettingsAtAnchor(com.playtranslate.ui.SettingsAnchor.OfflineTranslation)
                 onProceed()
             }
-            .addCancelButton(getString(R.string.legacy_engines_removed_button_cancel)) {
-                onProceed()
+            // Same USER-only gate as pack-upgrade: don't silently advance
+            // setupOnboarding/preload on a transient lifecycle pause.
+            .addCancelButton(getString(R.string.legacy_engines_removed_button_cancel)) { reason ->
+                if (reason == com.playtranslate.ui.DismissReason.USER) {
+                    onProceed()
+                }
             }
-            .showInActivity(this)
+            .show()
     }
 
     private fun maybeCheckForUpdates() {
@@ -1603,7 +1611,7 @@ class MainActivity :
             // UpdateChecker.maybeCheck — no per-dismissal bookkeeping
             // needed; both cancel-button tap and scrim tap end the alert.
             .addCancelButton("Ask again later")
-            .showInActivity(this)
+            .show()
     }
 
     private fun showRestrictedSettingsDialog() {
@@ -1620,7 +1628,7 @@ class MainActivity :
                 startActivity(intent)
             }
             .addCancelButton()
-            .showInActivity(this)
+            .show()
     }
 
     private fun isSingleScreen(): Boolean = Prefs.isSingleScreen(this)

@@ -123,11 +123,11 @@ private fun showTtsAlert(
         is TtsAlertTarget.Overlay ->
             OverlayAlert.Builder(
                 target.context, target.overlayHost, target.wm, target.displayId,
-            ).apply(configure).show()
+            ).apply(configure).showAsOverlay()
         is TtsAlertTarget.InActivity ->
             OverlayAlert.Builder(target.activity)
                 .apply(configure)
-                .showInActivity(target.activity)
+                .show()
     }
 }
 

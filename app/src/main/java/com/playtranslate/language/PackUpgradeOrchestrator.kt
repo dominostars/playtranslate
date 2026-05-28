@@ -79,8 +79,12 @@ class PackUpgradeOrchestrator(
 
         val dialog = OverlayProgress.Builder(activity)
             .setTitle(activity.getString(R.string.pack_upgrade_progress_title))
-            .setOnCancel { activeJob?.cancel() }
-            .showInActivity(activity)
+            // Same cleanup either way — cancelling the job triggers
+            // LanguagePackStore.install's finally to roll back the in-flight
+            // pack while completed packs stay installed. Next launch's
+            // staleness scan re-prompts for whatever remains.
+            .setOnDismiss { activeJob?.cancel() }
+            .show()
 
         activeJob = scope.launch {
             val outcome = try {

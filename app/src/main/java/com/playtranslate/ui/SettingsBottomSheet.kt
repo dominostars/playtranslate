@@ -846,7 +846,7 @@ class SettingsBottomSheet : DialogFragment() {
             }
         }
         builder.addCancelButton(getString(R.string.llm_low_memory_cancel)) { onCancel() }
-        builder.showInActivity(activity)
+        builder.show()
     }
 
     private fun formatGb(bytes: Long): String {
@@ -969,12 +969,18 @@ class SettingsBottomSheet : DialogFragment() {
             .setTitle(getString(R.string.qwen_mnn_display_name))
             .setMessage(getString(R.string.qwen_mnn_status_downloading, "0 B", sizeStr))
             .setProgress(0)
-            .setOnCancel {
+            .setOnDismiss { reason ->
                 qwenMnnDownloadJob?.cancel()
-                downloader.deletePartial()
+                // USER explicitly bailed → wipe the .partial so a new
+                // attempt starts fresh. LIFECYCLE_PAUSE keeps the .partial
+                // so the next attempt resumes instead of restarting a
+                // multi-GB download from zero.
+                if (reason == com.playtranslate.ui.DismissReason.USER) {
+                    downloader.deletePartial()
+                }
                 renderer?.refreshAllBackendStatuses()
             }
-            .showInActivity(activity)
+            .show()
 
         qwenMnnDownloadJob = viewLifecycleOwner.lifecycleScope.launch {
             try {
@@ -1086,7 +1092,6 @@ class SettingsBottomSheet : DialogFragment() {
      *  deletes via [QwenMnnModel.delete] and unloads the loaded MNN model. */
     private fun showQwenMnnDisableDialog() {
         val ctx = context ?: return
-        val activity = activity ?: return
         val sizeStr = com.playtranslate.translation.qwen.QwenMnnModel.humanSize(ctx)
         OverlayAlert.Builder(ctx)
             .setTitle(getString(R.string.qwen_mnn_disable_title))
@@ -1105,7 +1110,7 @@ class SettingsBottomSheet : DialogFragment() {
                 renderer?.refreshAllBackendStatuses()
             }
             .addCancelButton { renderer?.refreshQwenMnnSwitch() }
-            .showInActivity(activity)
+            .show()
     }
 
     // ── Gemma E2B (MNN, manual-lookup tier) flow ────────────────────────
@@ -1180,7 +1185,6 @@ class SettingsBottomSheet : DialogFragment() {
         ctx: Context,
         downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
     ) {
-        val activity = activity ?: return
         val sizeStr = com.playtranslate.translation.gemma.GemmaE2BMnnModel.humanSize(ctx)
 
         var dialog: OverlayProgress? = null
@@ -1188,12 +1192,14 @@ class SettingsBottomSheet : DialogFragment() {
             .setTitle(getString(R.string.gemma_e2b_mnn_display_name))
             .setMessage(getString(R.string.gemma_e2b_mnn_status_downloading, "0 B", sizeStr))
             .setProgress(0)
-            .setOnCancel {
+            .setOnDismiss { reason ->
                 gemmaE2bDownloadJob?.cancel()
-                downloader.deletePartial()
+                if (reason == com.playtranslate.ui.DismissReason.USER) {
+                    downloader.deletePartial()
+                }
                 renderer?.refreshAllBackendStatuses()
             }
-            .showInActivity(activity)
+            .show()
 
         gemmaE2bDownloadJob = viewLifecycleOwner.lifecycleScope.launch {
             try {
@@ -1288,7 +1294,6 @@ class SettingsBottomSheet : DialogFragment() {
      *  deletes via [GemmaE2BMnnModel.delete] and unloads the loaded MNN model. */
     private fun showGemmaE2bMnnDisableDialog() {
         val ctx = context ?: return
-        val activity = activity ?: return
         val sizeStr = com.playtranslate.translation.gemma.GemmaE2BMnnModel.humanSize(ctx)
         OverlayAlert.Builder(ctx)
             .setTitle(getString(R.string.gemma_e2b_mnn_disable_title))
@@ -1307,7 +1312,7 @@ class SettingsBottomSheet : DialogFragment() {
                 renderer?.refreshAllBackendStatuses()
             }
             .addCancelButton { renderer?.refreshGemmaE2bSwitch() }
-            .showInActivity(activity)
+            .show()
     }
 
     // ── Hunyuan-MT 1.5 (MNN, translation-specialist tier) flow ──────────
@@ -1407,7 +1412,6 @@ class SettingsBottomSheet : DialogFragment() {
         ctx: Context,
         downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
     ) {
-        val activity = activity ?: return
         if (Prefs(ctx).hyMtLegalAccepted) {
             // Already accepted on this device — straight to download.
             runHyMtDownload(ctx, downloader)
@@ -1424,14 +1428,13 @@ class SettingsBottomSheet : DialogFragment() {
             .addCancelButton(getString(R.string.hymt_legal_cancel)) {
                 renderer?.refreshHyMtSwitch()
             }
-            .showInActivity(activity)
+            .show()
     }
 
     private fun runHyMtDownload(
         ctx: Context,
         downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
     ) {
-        val activity = activity ?: return
         val sizeStr = com.playtranslate.translation.hymt.HyMtModel.humanSize(ctx)
 
         var dialog: OverlayProgress? = null
@@ -1439,12 +1442,14 @@ class SettingsBottomSheet : DialogFragment() {
             .setTitle(getString(R.string.hymt_display_name))
             .setMessage(getString(R.string.hymt_status_downloading, "0 B", sizeStr))
             .setProgress(0)
-            .setOnCancel {
+            .setOnDismiss { reason ->
                 hyMtDownloadJob?.cancel()
-                downloader.deletePartial()
+                if (reason == com.playtranslate.ui.DismissReason.USER) {
+                    downloader.deletePartial()
+                }
                 renderer?.refreshAllBackendStatuses()
             }
-            .showInActivity(activity)
+            .show()
 
         hyMtDownloadJob = viewLifecycleOwner.lifecycleScope.launch {
             try {
@@ -1540,7 +1545,6 @@ class SettingsBottomSheet : DialogFragment() {
      *  the loaded MNN engine state. */
     private fun showHyMtDisableDialog() {
         val ctx = context ?: return
-        val activity = activity ?: return
         val sizeStr = com.playtranslate.translation.hymt.HyMtModel.humanSize(ctx)
         OverlayAlert.Builder(ctx)
             .setTitle(getString(R.string.hymt_disable_title))
@@ -1559,7 +1563,7 @@ class SettingsBottomSheet : DialogFragment() {
                 renderer?.refreshAllBackendStatuses()
             }
             .addCancelButton { renderer?.refreshHyMtSwitch() }
-            .showInActivity(activity)
+            .show()
     }
 
     // ── Accessibility-required alert ─────────────────────────────────────
@@ -1571,7 +1575,6 @@ class SettingsBottomSheet : DialogFragment() {
      *  TG / Qwen confirmation dialogs. */
     private fun showAccessibilityRequiredAlert(requirement: AccessibilityRequirement) {
         val ctx = context ?: return
-        val activity = activity ?: return
         val message = when (requirement) {
             AccessibilityRequirement.MULTI_DISPLAY ->
                 getString(R.string.a11y_required_displays_message)
@@ -1593,7 +1596,7 @@ class SettingsBottomSheet : DialogFragment() {
                     android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
             }
             .addCancelButton(getString(android.R.string.cancel))
-            .showInActivity(activity)
+            .show()
     }
 
     // ── MediaProjection controls ─────────────────────────────────────────
@@ -1643,7 +1646,7 @@ class SettingsBottomSheet : DialogFragment() {
                 activity.startActivity(activity.overlayPermissionSettingsIntent())
             }
             .addCancelButton(getString(android.R.string.cancel))
-            .showInActivity(activity)
+            .show()
     }
 
     // ── Companion ───────────────────────────────────────────────────────

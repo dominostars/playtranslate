@@ -701,9 +701,9 @@ fun buildAnkiModeToggle(
 }
 
 /** Configures [builder] with the "AnkiDroid not installed" copy + actions.
- *  Caller picks the show path: [OverlayAlert.Builder.showInActivity] for an
- *  Activity, [OverlayAlert.Builder.show] for an accessibility overlay. The
- *  Play Store intent always carries [Intent.FLAG_ACTIVITY_NEW_TASK] so the
+ *  Caller picks the show path: [OverlayAlert.Builder.show] for an
+ *  Activity, [OverlayAlert.Builder.showAsOverlay] for an accessibility overlay.
+ *  The Play Store intent always carries [Intent.FLAG_ACTIVITY_NEW_TASK] so the
  *  same body works from a service-context (overlay path). */
 private fun configureAnkiNotInstalled(
     context: Context,
@@ -748,7 +748,7 @@ private fun configureAnkiPermissionRationale(
             themed.themeColor(R.attr.ptAccent),
             themed.themeColor(R.attr.ptAccentOn),
         ) { onContinue() }
-        .addCancelButton(themed.getString(android.R.string.cancel), onCancel)
+        .addCancelButton(themed.getString(android.R.string.cancel), onCancel?.let { cb -> { _ -> cb() } })
 }
 
 /**
@@ -758,7 +758,7 @@ private fun configureAnkiPermissionRationale(
  */
 fun showAnkiNotInstalledDialog(activity: Activity) {
     configureAnkiNotInstalled(activity, OverlayAlert.Builder(activity))
-        .showInActivity(activity)
+        .show()
 }
 
 /** Capture-overlay variant — for surfaces that aren't an Activity (e.g. the
@@ -772,7 +772,7 @@ fun showAnkiNotInstalledDialog(
 ) {
     configureAnkiNotInstalled(
         context, OverlayAlert.Builder(context, overlayHost, wm, displayId),
-    ).show()
+    ).showAsOverlay()
 }
 
 /**
@@ -791,7 +791,7 @@ fun showAnkiPermissionRationaleDialog(
 ) {
     configureAnkiPermissionRationale(
         activity, OverlayAlert.Builder(activity), onCancel, onContinue,
-    ).showInActivity(activity)
+    ).show()
 }
 
 /**

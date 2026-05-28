@@ -138,8 +138,8 @@ class TargetPackInstaller(
     private fun buildPopupDialog(title: String): OverlayProgress =
         OverlayProgress.Builder(activity)
             .setTitle(title)
-            .setOnCancel { activeJob?.cancel() }
-            .showInActivity(activity)
+            .setOnDismiss { activeJob?.cancel() }
+            .show()
 
     private fun showErrorPopup(reason: String) {
         AlertDialog.Builder(activity)

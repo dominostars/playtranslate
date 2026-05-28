@@ -1197,7 +1197,7 @@ class OverlayUiController(
                 .addCancelButton()
         }
 
-        builder.show()
+        builder.showAsOverlay()
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────

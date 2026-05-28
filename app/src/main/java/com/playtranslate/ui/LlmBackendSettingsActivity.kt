@@ -177,7 +177,7 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
                 )
             )
             .addCancelButton(getString(R.string.llm_backend_invalid_key_alert_button))
-            .showInActivity(this)
+            .show()
     }
 
     companion object {

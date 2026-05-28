@@ -455,8 +455,8 @@ class LanguageSetupActivity : AppCompatActivity() {
     private fun buildPopupDialog(title: String): OverlayProgress =
         OverlayProgress.Builder(this)
             .setTitle(title)
-            .setOnCancel { activeJob?.cancel() }
-            .showInActivity(this)
+            .setOnDismiss { activeJob?.cancel() }
+            .show()
 
     private fun showDownloadAndLoadPopup(
         langName: String,
@@ -744,7 +744,7 @@ class LanguageSetupActivity : AppCompatActivity() {
                 themeColor(R.attr.ptAccentOn),
             ) { onConfirm() }
             .addCancelButton()
-            .showInActivity(this)
+            .show()
     }
 
     /** [norm].original with the (already-normalized) [query] match spanned
