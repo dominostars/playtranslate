@@ -62,7 +62,7 @@ class TargetPackInstaller(
         val dialog = buildPopupDialog(targetName)
 
         if (needsTargetPack) {
-            dialog.setMessage("Downloading definitions")
+            dialog.setMessage(activity.getString(R.string.install_downloading_definitions))
             dialog.setProgress(0)
             activeJob = scope.launch {
                 val result = LanguagePackStore.installTarget(
@@ -73,8 +73,11 @@ class TargetPackInstaller(
                         activity.runOnUiThread {
                             dialog.setProgress(pct)
                             dialog.setMessage(
-                                "Downloading definitions… " +
-                                    "${humanSize(progress.bytesReceived)} of ${humanSize(progress.totalBytes)}"
+                                activity.getString(
+                                    R.string.install_downloading_definitions_with_bytes,
+                                    humanSize(progress.bytesReceived),
+                                    humanSize(progress.totalBytes)
+                                )
                             )
                         }
                     }
@@ -95,7 +98,7 @@ class TargetPackInstaller(
                 }
             }
         } else {
-            dialog.setMessage("Downloading translation model")
+            dialog.setMessage(activity.getString(R.string.install_downloading_translation_model))
             dialog.setIndeterminate(true)
             activeJob = scope.launch {
                 runLoadThenFinish(dialog, sourceLangCode, targetCode, onSuccess)

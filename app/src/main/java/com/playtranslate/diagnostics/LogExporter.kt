@@ -51,14 +51,14 @@ object LogExporter {
     /** Generic share sheet — used by Settings → Export logs. */
     fun shareFiles(activity: Activity, files: List<File>, subject: String) {
         if (files.isEmpty()) {
-            Toast.makeText(activity, "No logs to share", Toast.LENGTH_SHORT).show()
+            Toast.makeText(activity, activity.getString(R.string.toast_no_logs_to_share), Toast.LENGTH_SHORT).show()
             return
         }
         val uris = files.map { fileToUri(activity, it) }
         val intent = buildSendIntent(uris).apply {
             putExtra(Intent.EXTRA_SUBJECT, subject)
         }
-        startChooser(activity, intent, "Share logs")
+        startChooser(activity, intent, activity.getString(R.string.share_chooser_share_logs))
     }
 
     /**
@@ -72,7 +72,7 @@ object LogExporter {
         body: String
     ) {
         if (files.isEmpty()) {
-            Toast.makeText(activity, "No crash report to send", Toast.LENGTH_SHORT).show()
+            Toast.makeText(activity, activity.getString(R.string.toast_no_crash_report), Toast.LENGTH_SHORT).show()
             return
         }
         val uris = ArrayList(files.map { fileToUri(activity, it) })

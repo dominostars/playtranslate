@@ -1279,6 +1279,6 @@ class TranslationResultFragment : Fragment() {
         val ctx = context ?: return
         val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
         clipboard.setPrimaryClip(android.content.ClipData.newPlainText("PlayTranslate", text))
-        Toast.makeText(ctx, "Copied", Toast.LENGTH_SHORT).show()
+        Toast.makeText(ctx, ctx.getString(R.string.toast_copied), Toast.LENGTH_SHORT).show()
     }
 }

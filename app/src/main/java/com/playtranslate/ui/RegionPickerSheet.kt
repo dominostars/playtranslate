@@ -219,7 +219,7 @@ class RegionPickerSheet : DialogFragment() {
     private fun enterEditMode() {
         isEditMode = true
         btnEdit.text = getString(R.string.label_done)
-        tvTitle.text = "Editing Regions"
+        tvTitle.text = getString(R.string.region_picker_editing_title)
         applyTitleVisibility()
         adapter.submitList()
         itemTouchHelper?.attachToRecyclerView(recyclerView)

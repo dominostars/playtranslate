@@ -75,7 +75,7 @@ class TtsVoiceActivity : AppCompatActivity() {
         voiceRows = findViewById(R.id.voiceRows)
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
-        toolbar.title = "Voice"
+        toolbar.title = getString(R.string.tts_voice_picker_title)
         toolbar.setNavigationOnClickListener { finish() }
 
         findViewById<View>(R.id.headerVoices)
@@ -112,8 +112,8 @@ class TtsVoiceActivity : AppCompatActivity() {
         addRow(
             inflater,
             isFirst = true,
-            title = "Default",
-            subtitle = "The engine's default voice",
+            title = getString(R.string.tts_voice_default),
+            subtitle = getString(R.string.tts_voice_default_subtitle),
             selected = selectedName == null,
         ) { select(null) }
 
@@ -121,7 +121,7 @@ class TtsVoiceActivity : AppCompatActivity() {
             addRow(
                 inflater,
                 isFirst = false,
-                title = "Voice ${index + 1}",
+                title = getString(R.string.tts_voice_numbered, index + 1),
                 subtitle = voiceInfo(voice),
                 selected = selectedName == voice.name,
             ) { select(voice.name) }

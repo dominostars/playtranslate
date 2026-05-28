@@ -246,15 +246,23 @@
     <string name="word_detail_common">Common</string>
 
     <!-- Count line under the dictionary headword. %d = number of senses
-         (definitions). Always plural in current usage. -->
-    <string name="word_detail_senses_count"><xliff:g id="senses_count" example="3">%d</xliff:g> senses</string>
+         (definitions). -->
+    <plurals name="word_detail_senses_count">
+        <!-- Singular variant. -->
+        <item quantity="one"><xliff:g id="senses_count" example="1">%d</xliff:g> sense</item>
+        <!-- Plural variant. -->
+        <item quantity="other"><xliff:g id="senses_count" example="3">%d</xliff:g> senses</item>
+    </plurals>
 
-    <!-- Count line under the Characters section. %d = number of
-         characters (kanji / hanzi). Plural form. -->
-    <string name="word_detail_chars_count"><xliff:g id="char_count" example="3">%d</xliff:g> characters</string>
-
-    <!-- Singular variant of the character count. -->
-    <string name="word_detail_char_count_one">1 character</string>
+    <!-- Count line under the Characters section.  %d = number of
+         characters (kanji / hanzi).  Replaces the older
+         word_detail_chars_count + word_detail_char_count_one pair. -->
+    <plurals name="word_detail_chars_count">
+        <!-- Singular variant. -->
+        <item quantity="one"><xliff:g id="char_count" example="1">%d</xliff:g> character</item>
+        <!-- Plural variant. -->
+        <item quantity="other"><xliff:g id="char_count" example="3">%d</xliff:g> characters</item>
+    </plurals>
 
     <!-- Group header for the Definitions group in the word-detail sheet. -->
     <string name="word_detail_group_definitions">Definitions</string>
@@ -1507,6 +1515,12 @@
     <!-- Overflow-menu Live-mode toggle label, ON state (16sp). -->
     <string name="live_mode_pause_auto_label">Pause Auto</string>
 
+    <!-- Floating-icon overflow Live-mode label when a hint-mode is
+         active (e.g. furigana/pinyin auto-translate). %1$s = the
+         localised hint-mode label ("Furigana" or "Pinyin"). Composed
+         as e.g. "Auto Furigana". -->
+    <string name="live_mode_auto_with_hint">Auto <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
     <!-- Overflow-menu item that opens the Region picker (longer
          variant). -->
     <string name="menu_capture_region">Capture Region</string>
@@ -1561,6 +1575,66 @@
 
     <!-- Decorative "+" glyph on the Add Region button.  Not translated. -->
     <string name="region_picker_add_glyph" translatable="false">+</string>
+
+    <!-- Default-region label assigned to the bundled "whole-screen"
+         region (RegionEntry default). -->
+    <string name="region_default_full_screen">Full screen</string>
+
+    <!-- Region label used for one-shot drag-to-select regions that
+         aren't saved to the list. -->
+    <string name="region_label_drawn">Drawn Region</string>
+
+    <!-- Floating-overlay label drawn over the active capture region. -->
+    <string name="region_label_current_capture">Current capture region</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MAIN-SCREEN BIG TRANSLATE BUTTON — composed as
+         "<prefix> <bold region label>" (e.g. "Translate Full screen").
+         The trailing space on each prefix is intentional, separating
+         the prefix from the bolded region label that follows.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Default-state prefix: tap to translate. Preserve trailing
+         space. -->
+    <string name="translate_button_prefix_translate">Translate </string>
+
+    <!-- Live-mode-active prefix: tap to refresh / re-translate.
+         Preserve trailing space. -->
+    <string name="translate_button_prefix_reload">Reload </string>
+
+    <!-- Subtitle line under the translate button when the floating
+         icon's hold gesture hides translations. -->
+    <string name="translate_button_subtitle_hold_to_hide_translations">Hold to hide translations on game screen</string>
+
+    <!-- Subtitle when the hold gesture shows translations in place
+         of the reading guide (furigana / pinyin). %1$s = lowercase
+         reading-guide label ("pinyin" or "furigana"). -->
+    <string name="translate_button_subtitle_hold_to_show_translations_instead_of_hint">Hold to show translations instead of <xliff:g id="hint_label" example="furigana">%1$s</xliff:g></string>
+
+    <!-- Subtitle when the hold gesture shows the reading guide.
+         %1$s = lowercase reading-guide label. -->
+    <string name="translate_button_subtitle_hold_to_show_hint">Hold to show <xliff:g id="hint_label" example="furigana">%1$s</xliff:g> on game screen</string>
+
+    <!-- Default subtitle. -->
+    <string name="translate_button_subtitle_hold_to_show_translations">Hold to show translations on game screen</string>
+
+    <!-- Lowercase reading-guide labels — used inline in subtitles
+         where Title Case would look wrong. -->
+    <string name="hint_label_pinyin_lower">pinyin</string>
+    <string name="hint_label_furigana_lower">furigana</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING ICON LONG-PRESS MENU — close / hide control.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Label on the floating-icon close button when the icon also
+         toggles the capture-lifecycle "off" (MediaProjection mode and
+         single-screen). -->
+    <string name="floating_icon_close_label_turn_off">Turn Off</string>
+
+    <!-- Label on the floating-icon close button when the icon only
+         hides until next launch (accessibility + dual-screen). -->
+    <string name="floating_icon_close_label_hide">Hide</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          DEEPL SETTINGS — label above the API-key text field.
@@ -1725,6 +1799,9 @@
     <!-- "Skip this version" button on the update dialog. -->
     <string name="update_dialog_skip">Skip this version</string>
 
+    <!-- "Ask again later" cancel button on the update dialog. -->
+    <string name="update_dialog_ask_again_later">Ask again later</string>
+
     <!-- Toast shown if no browser is installed to open the release URL. -->
     <string name="toast_no_browser_available">No browser available</string>
 
@@ -1767,9 +1844,19 @@
     <!-- Body of the generic "downloading" progress dialog. -->
     <string name="install_downloading_generic">Downloading</string>
 
+    <!-- Generic downloading line with bytes progress.  %1$s =
+         bytes-so-far formatted (e.g. "12 MB"); %2$s = total bytes
+         formatted (e.g. "84 MB"). -->
+    <string name="install_downloading_with_bytes">Downloading… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> of <xliff:g id="bytes_total" example="84 MB">%2$s</xliff:g></string>
+
     <!-- Body of the progress dialog while target-language definitions
          are downloading. -->
     <string name="install_downloading_definitions">Downloading definitions</string>
+
+    <!-- Same as install_downloading_definitions but with bytes
+         progress.  %1$s = bytes-so-far (e.g. "12 MB"); %2$s = total
+         bytes (e.g. "84 MB"). -->
+    <string name="install_downloading_definitions_with_bytes">Downloading definitions… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> of <xliff:g id="bytes_total" example="84 MB">%2$s</xliff:g></string>
 
     <!-- Body of the progress dialog while a translation model is being
          downloaded. -->
@@ -1938,6 +2025,11 @@
          space. -->
     <string name="a11y_out_of_5_stars"> out of 5 stars</string>
 
+    <!-- Comma-separated speed clause in the a11y description (the full
+         result is e.g. "Quality 4 out of 5 stars, Speed 2 out of 5
+         stars").  Preserve the leading comma + space. -->
+    <string name="a11y_speed_label_comma">, Speed </string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          LINGVA backend — translatable display name (Lingva is a brand
          name but the display is a sub-row title in settings).  Marked
@@ -1958,6 +2050,10 @@
 
     <!-- Row title — grant the AnkiDroid permission. -->
     <string name="anki_settings_grant_access_title">Grant <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> Access</string>
+
+    <!-- Subtitle below the Grant AnkiDroid Access row.
+         %1$s = app name. -->
+    <string name="anki_settings_grant_access_subtitle">To add flashcards to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>, <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> needs permission to access <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Support section rows.
@@ -1986,6 +2082,7 @@
 
     <string name="settings_debug_force_single_screen">Force single screen</string>
     <string name="settings_debug_show_ocr_boxes">Show OCR boxes</string>
+    <string name="settings_debug_show_detection_log">Show detection log</string>
     <string name="settings_debug_log_pinhole">Log live-mode pinhole metrics</string>
     <string name="settings_debug_save_ocr_seed">Save OCR captures as seeds</string>
     <string name="settings_debug_log_grouping">Log OCR grouping decisions</string>
@@ -2027,5 +2124,8 @@
     <!-- Toast shown when the user taps Send Crash Report but no report
          exists. -->
     <string name="toast_no_crash_report">No crash report to send</string>
+
+    <!-- Share-sheet chooser title used by the Export Logs flow. -->
+    <string name="share_chooser_share_logs">Share logs</string>
 
 </resources>

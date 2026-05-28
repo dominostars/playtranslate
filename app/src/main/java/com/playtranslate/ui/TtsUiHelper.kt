@@ -59,14 +59,10 @@ fun showTtsNoEngineDialog(target: TtsAlertTarget, onActionSelected: () -> Unit) 
     val themed = overlayThemedContext(target.context)
     showTtsAlert(target) {
         hideIcon()
-        setTitle("No Text-to-Speech")
-        setMessage(
-            "No text-to-speech engine is available to read words aloud. " +
-                "Install one — or, if your device already has an engine, " +
-                "enable it in Android's settings."
-        )
+        setTitle(themed.getString(R.string.tts_no_engine_dialog_title))
+        setMessage(themed.getString(R.string.tts_no_engine_dialog_message))
         addButton(
-            "Get Google TTS",
+            themed.getString(R.string.tts_no_engine_get_google),
             themed.themeColor(R.attr.ptAccent),
             themed.themeColor(R.attr.ptAccentOn),
         ) {
@@ -74,14 +70,14 @@ fun showTtsNoEngineDialog(target: TtsAlertTarget, onActionSelected: () -> Unit) 
             onActionSelected()
         }
         addButton(
-            "Open TTS settings",
+            themed.getString(R.string.tts_no_engine_open_settings),
             themed.themeColor(R.attr.ptDivider),
             themed.themeColor(R.attr.ptAccent),
         ) {
             openTtsSettings(themed)
             onActionSelected()
         }
-        addCancelButton("Not now")
+        addCancelButton(themed.getString(R.string.btn_not_now))
     }
 }
 
@@ -95,18 +91,18 @@ fun showTtsLanguageUnsupportedDialog(
     engineLabel: String?,
 ) {
     val langName = lang.displayName()
-    val message = if (engineLabel != null) {
-        "$engineLabel is the active engine, but doesn't support $langName."
-    } else {
-        "The active text-to-speech engine doesn't support $langName."
-    }
     val themed = overlayThemedContext(target.context)
+    val message = if (engineLabel != null) {
+        themed.getString(R.string.tts_language_unsupported_with_engine_message, engineLabel, langName)
+    } else {
+        themed.getString(R.string.tts_language_unsupported_unknown_engine_message, langName)
+    }
     showTtsAlert(target) {
         hideIcon()
-        setTitle("Language Not Supported")
+        setTitle(themed.getString(R.string.tts_language_unsupported_dialog_title))
         setMessage(message)
         addButton(
-            "OK",
+            themed.getString(R.string.btn_ok),
             themed.themeColor(R.attr.ptAccent),
             themed.themeColor(R.attr.ptAccentOn),
         ) { }

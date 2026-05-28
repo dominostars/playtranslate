@@ -712,27 +712,28 @@ class MainActivity :
 
     private fun updateRegionButton() {
         val region = captureService?.activeRegion ?: prefs.primaryDisplayRegion()
-        val label = region.label.ifEmpty { "Full screen" }
+        val label = region.label.ifEmpty { getString(R.string.region_default_full_screen) }
         val isInAppOnly = Prefs.shouldUseInAppOnlyMode(this)
         val overlayLive = isLiveMode && !isInAppOnly
-        val prefix = if (overlayLive) "Reload " else "Translate "
+        val prefix = if (overlayLive) getString(R.string.translate_button_prefix_reload)
+                     else getString(R.string.translate_button_prefix_translate)
         tvTranslateTitle.text = SpannableStringBuilder(prefix + label).apply {
             setSpan(StyleSpan(Typeface.BOLD), prefix.length, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         val hintLabel = when (SourceLanguageProfiles[prefs.sourceLangId].hintTextKind) {
-            HintTextKind.PINYIN -> "pinyin"
-            HintTextKind.FURIGANA -> "furigana"
-            else -> "furigana"
+            HintTextKind.PINYIN -> getString(R.string.hint_label_pinyin_lower)
+            HintTextKind.FURIGANA -> getString(R.string.hint_label_furigana_lower)
+            else -> getString(R.string.hint_label_furigana_lower)
         }
         tvTranslateSubtitle.text = when (captureService?.holdBehavior) {
             CaptureService.HoldBehavior.HIDE_TRANSLATIONS ->
-                "Hold to hide translations on game screen"
+                getString(R.string.translate_button_subtitle_hold_to_hide_translations)
             CaptureService.HoldBehavior.SHOW_TRANSLATIONS_OVER_FURIGANA ->
-                "Hold to show translations instead of $hintLabel"
+                getString(R.string.translate_button_subtitle_hold_to_show_translations_instead_of_hint, hintLabel)
             CaptureService.HoldBehavior.SHOW_FURIGANA ->
-                "Hold to show $hintLabel on game screen"
+                getString(R.string.translate_button_subtitle_hold_to_show_hint, hintLabel)
             else ->
-                "Hold to show translations on game screen"
+                getString(R.string.translate_button_subtitle_hold_to_show_translations)
         }
     }
 
@@ -880,16 +881,16 @@ class MainActivity :
     private fun updateMenuLiveItem() {
         if (isLiveMode) {
             menuItemLiveIcon.setImageResource(R.drawable.ic_pause)
-            menuItemLiveLabel.text = "Pause Auto"
+            menuItemLiveLabel.text = getString(R.string.live_mode_pause_auto_label)
             ivLiveToggle.setImageResource(R.drawable.ic_pause)
-            tvLiveToggle.text = "Pause"
+            tvLiveToggle.text = getString(R.string.live_mode_pause_label)
             ivLiveToggle.imageTintList = android.content.res.ColorStateList.valueOf(liveRedColor)
             tvLiveToggle.setTextColor(liveRedColor)
         } else {
             menuItemLiveIcon.setImageResource(R.drawable.ic_play)
-            menuItemLiveLabel.text = "Auto Translate"
+            menuItemLiveLabel.text = getString(R.string.live_mode_auto_translate_label)
             ivLiveToggle.setImageResource(R.drawable.ic_play)
-            tvLiveToggle.text = "Auto"
+            tvLiveToggle.text = getString(R.string.live_mode_auto_label)
             val normalColor = themeColor(R.attr.ptText)
             ivLiveToggle.imageTintList = android.content.res.ColorStateList.valueOf(normalColor)
             tvLiveToggle.setTextColor(normalColor)
@@ -1453,29 +1454,23 @@ class MainActivity :
         val crashFiles = LogExporter.getCrashFiles(this)
         if (crashFiles.isEmpty()) return
         OverlayAlert.Builder(this)
-            .setTitle("PlayTranslate crashed previously")
-            .setMessage("Send the crash report to the developer? It includes a stack trace, recent app logs, and any text PlayTranslate has recently OCR'd or looked up. No account info.")
-            .addButton("Send", themeColor(R.attr.ptAccent)) {
+            .setTitle(getString(R.string.crash_dialog_title))
+            .setMessage(getString(R.string.crash_dialog_message))
+            .addButton(getString(R.string.crash_dialog_send), themeColor(R.attr.ptAccent)) {
                 lifecycleScope.launch {
                     val files = withContext(Dispatchers.IO) {
                         runCatching {
                             crashFiles + LogExporter.exportLogcat(this@MainActivity)
                         }.getOrElse { crashFiles }
                     }
-                    val subject = "PlayTranslate crash – v${BuildConfig.VERSION_NAME}"
-                    val body = buildString {
-                        appendLine("Steps to reproduce:")
-                        appendLine()
-                        appendLine("(Optional — describe what you were doing when this happened.)")
-                        appendLine()
-                        appendLine("Device info is included in the attached file.")
-                    }
+                    val subject = getString(R.string.crash_email_subject, BuildConfig.VERSION_NAME)
+                    val body = getString(R.string.crash_email_body)
                     LogExporter.emailFiles(this@MainActivity, files, subject, body)
                     LogExporter.deleteCrashFiles(this@MainActivity)
                 }
             }
             .addButton(
-                "Discard",
+                getString(R.string.crash_dialog_discard),
                 themeColor(R.attr.ptDivider),
                 themeColor(R.attr.ptDanger)
             ) {
@@ -1483,7 +1478,7 @@ class MainActivity :
             }
             // No handler — scrim tap and "Later" tap both just dismiss;
             // files remain on disk and the prompt re-fires next launch.
-            .addCancelButton("Later")
+            .addCancelButton(getString(R.string.crash_dialog_later))
             .show()
     }
 
@@ -1601,17 +1596,17 @@ class MainActivity :
 
     private fun showUpdatePopup(release: UpdateChecker.Release) {
         OverlayAlert.Builder(this)
-            .setTitle("Update available")
-            .setMessage("PlayTranslate ${release.tag} is available on GitHub.")
-            .addButton("View release", themeColor(R.attr.ptAccent)) {
+            .setTitle(getString(R.string.update_dialog_title))
+            .setMessage(getString(R.string.update_dialog_message, release.tag))
+            .addButton(getString(R.string.update_dialog_view_release), themeColor(R.attr.ptAccent)) {
                 try {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(release.url)))
                 } catch (_: Exception) {
-                    Toast.makeText(this, "No browser available", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.toast_no_browser_available), Toast.LENGTH_SHORT).show()
                 }
             }
             .addButton(
-                "Skip this version",
+                getString(R.string.update_dialog_skip),
                 themeColor(R.attr.ptDivider),
                 themeColor(R.attr.ptDanger)
             ) {
@@ -1620,7 +1615,7 @@ class MainActivity :
             // 24h debounce timestamp was already committed inside
             // UpdateChecker.maybeCheck — no per-dismissal bookkeeping
             // needed; both cancel-button tap and scrim tap end the alert.
-            .addCancelButton("Ask again later")
+            .addCancelButton(getString(R.string.update_dialog_ask_again_later))
             .show()
     }
 
@@ -1992,7 +1987,7 @@ class MainActivity :
         }
         val rows = mutableListOf<View>()
         ordered.forEach { mode ->
-            val row = buildDropdownRow(mode.displayName, mode == currentMode)
+            val row = buildDropdownRow(getString(mode.displayNameRes), mode == currentMode)
             container.addView(row)
             rows.add(row)
         }
@@ -2322,15 +2317,12 @@ class MainActivity :
         val targetName = targetLocale.getDisplayLanguage(targetLocale)
             .replaceFirstChar { it.uppercase(targetLocale) }
         AlertDialog.Builder(this)
-            .setTitle("$targetName definitions available")
-            .setMessage(
-                "A $targetName definition pack is available. " +
-                "Download it for word definitions in $targetName instead of English?"
-            )
-            .setPositiveButton("Download") { _, _ ->
+            .setTitle(getString(R.string.target_pack_migration_title, targetName))
+            .setMessage(getString(R.string.target_pack_migration_message, targetName, targetName))
+            .setPositiveButton(getString(R.string.lang_download)) { _, _ ->
                 com.playtranslate.ui.LanguageSetupActivity.launch(this, com.playtranslate.ui.LanguageSetupActivity.MODE_TARGET)
             }
-            .setNegativeButton("Not now") { _, _ ->
+            .setNegativeButton(getString(R.string.btn_not_now)) { _, _ ->
                 prefs.targetPackMigrationDismissed = true
             }
             .setCancelable(false)

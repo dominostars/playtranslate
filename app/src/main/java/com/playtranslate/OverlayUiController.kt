@@ -1179,19 +1179,19 @@ class OverlayUiController(
         val exitFlow = CaptureLifecycle.hasActivateControl(context)
 
         if (exitFlow) {
-            builder.setTitle("Turn Off $appName?")
-                .setMessage("Turn back on in $appName app")
-                .addButton("Turn Off", dividerColor, dangerColor) {
+            builder.setTitle(context.getString(R.string.overlay_turn_off_title, appName))
+                .setMessage(context.getString(R.string.overlay_turn_off_message, appName))
+                .addButton(context.getString(R.string.capture_lifecycle_stop), dividerColor, dangerColor) {
                     CaptureLifecycle.deactivate(context)
                 }
                 .addCancelButton()
         } else {
-            builder.setTitle("Hide $appName game screen controls?")
-                .setMessage("“Hide for Now” brings it back next time you open $appName. “Turn Off” disables it until re-enabled in settings.")
-                .addButton("Hide for Now", accentColor) {
+            builder.setTitle(context.getString(R.string.overlay_hide_controls_title, appName))
+                .setMessage(context.getString(R.string.overlay_hide_controls_message, appName))
+                .addButton(context.getString(R.string.overlay_hide_for_now), accentColor) {
                     hideFloatingIcon("confirm_hide_for_now")
                 }
-                .addButton("Turn Off", dividerColor, dangerColor) {
+                .addButton(context.getString(R.string.capture_lifecycle_stop), dividerColor, dangerColor) {
                     PlayTranslateAccessibilityService.disable(context, "confirm_turn_off_multi")
                 }
                 .addCancelButton()

@@ -96,7 +96,7 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         row.setOnLongClickListener {
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("URL", config.getKeyUrl))
-            Toast.makeText(this, "Link copied", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.toast_link_copied), Toast.LENGTH_SHORT).show()
             true
         }
     }

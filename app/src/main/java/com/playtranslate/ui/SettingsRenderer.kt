@@ -321,16 +321,16 @@ class SettingsRenderer(
         // ON-SCREEN CONTROLS has no header — its card sits directly under
         // the power card as part of the top section (no headerOnScreen in
         // dialog_settings.xml).
-        setGroupHeader(R.id.headerAutoTranslate, "AUTO-TRANSLATE")
-        setGroupHeader(R.id.headerHotkeys, "HOTKEYS")
-        setGroupHeader(R.id.headerCaptureDisplay, "CAPTURE DISPLAY")
-        setGroupHeader(R.id.headerOnlineTranslations, "ONLINE TRANSLATIONS")
-        setGroupHeader(R.id.headerOfflineTranslations, "OFFLINE TRANSLATIONS")
-        setGroupHeader(R.id.headerAnki, "ANKI")
-        setGroupHeader(R.id.headerTextToSpeech, "TEXT-TO-SPEECH")
-        setGroupHeader(R.id.headerAppearance, "APPEARANCE")
-        setGroupHeader(R.id.headerSupport, "SUPPORT")
-        setGroupHeader(R.id.headerDebug, "DEBUG")
+        setGroupHeader(R.id.headerAutoTranslate, ctx.getString(R.string.settings_header_auto_translate))
+        setGroupHeader(R.id.headerHotkeys, ctx.getString(R.string.settings_header_hotkeys))
+        setGroupHeader(R.id.headerCaptureDisplay, ctx.getString(R.string.settings_header_capture_display))
+        setGroupHeader(R.id.headerOnlineTranslations, ctx.getString(R.string.settings_header_online_translations))
+        setGroupHeader(R.id.headerOfflineTranslations, ctx.getString(R.string.settings_header_offline_translations))
+        setGroupHeader(R.id.headerAnki, ctx.getString(R.string.settings_header_anki))
+        setGroupHeader(R.id.headerTextToSpeech, ctx.getString(R.string.settings_header_text_to_speech))
+        setGroupHeader(R.id.headerAppearance, ctx.getString(R.string.settings_header_appearance))
+        setGroupHeader(R.id.headerSupport, ctx.getString(R.string.settings_header_support))
+        setGroupHeader(R.id.headerDebug, ctx.getString(R.string.settings_header_debug))
     }
 
     private fun setGroupHeader(id: Int, title: String, badge: String? = null) {
@@ -406,17 +406,18 @@ class SettingsRenderer(
                 val savedName = prefs.ttsVoiceName(lang)
                 val idx = if (savedName == null) -1
                           else voices.indexOfFirst { it.name == savedName }
-                rowVoice.findViewById<TextView>(R.id.tvRowTitle).text = "Voice"
+                rowVoice.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.tts_voice_row_title)
                 rowVoice.findViewById<TextView>(R.id.tvRowValue).text =
-                    if (idx >= 0) "Voice ${idx + 1}" else "Default"
+                    if (idx >= 0) ctx.getString(R.string.tts_voice_numbered, idx + 1)
+                    else ctx.getString(R.string.tts_voice_default)
                 rowVoice.setOnClickListener { callbacks.openTtsVoicePicker() }
                 rowVoice.visibility = View.VISIBLE
                 rowNoEngine.visibility = View.GONE
             } else {
                 rowNoEngine.findViewById<TextView>(R.id.tvRowTitle).text =
-                    "Set up Text-to-Speech"
+                    ctx.getString(R.string.tts_no_engine_row_title)
                 val sub = rowNoEngine.findViewById<TextView>(R.id.tvRowSubtitle)
-                sub.text = "No speech engine is available. Tap to add one."
+                sub.text = ctx.getString(R.string.tts_no_engine_row_subtitle)
                 sub.visibility = View.VISIBLE
                 rowNoEngine.setOnClickListener { callbacks.openTtsSetup() }
                 rowNoEngine.visibility = View.VISIBLE
@@ -491,9 +492,9 @@ class SettingsRenderer(
         if (!visible) return
 
         rowAddQuickTile.findViewById<TextView>(R.id.tvRowTitle).text =
-            "Add Quick Settings tile"
+            ctx.getString(R.string.quick_tile_add_row_title)
         val subtitle = rowAddQuickTile.findViewById<TextView>(R.id.tvRowSubtitle)
-        subtitle.text = "Toggle PlayTranslate from your status bar"
+        subtitle.text = ctx.getString(R.string.quick_tile_add_row_subtitle)
         subtitle.visibility = View.VISIBLE
         rowAddQuickTile.findViewById<ImageView>(R.id.ivRowIcon)
             ?.setImageResource(R.drawable.ic_add)
@@ -925,13 +926,13 @@ class SettingsRenderer(
         if (hasHintText) {
             overlayModeSection.visibility = View.VISIBLE
             val hintLabel = when (hintKind) {
-                HintTextKind.PINYIN -> "Pinyin"
-                else -> "Furigana"
+                HintTextKind.PINYIN -> ctx.getString(R.string.overlay_mode_option_pinyin)
+                else -> ctx.getString(R.string.overlay_mode_option_furigana)
             }
 
             buildPillToggle(
                 container = overlayModeToggleContainer,
-                options = listOf("Translation" to OverlayMode.TRANSLATION, hintLabel to OverlayMode.FURIGANA),
+                options = listOf(ctx.getString(R.string.overlay_mode_option_translation) to OverlayMode.TRANSLATION, hintLabel to OverlayMode.FURIGANA),
                 selected = prefs.overlayMode,
                 onSelect = { mode ->
                     prefs.overlayMode = mode
@@ -961,7 +962,7 @@ class SettingsRenderer(
         if (!isSingle) {
             rowHideOverlays.visibility = View.VISIBLE
             rowHideOverlays.findViewById<TextView>(R.id.tvRowTitle).text =
-                "Hide overlays during auto mode"
+                ctx.getString(R.string.settings_hide_overlays_during_auto_mode)
             // Multi-display selection silently routes around this toggle —
             // the user has explicitly opted into per-display overlays, so
             // we render on every selected display regardless of this
@@ -969,7 +970,7 @@ class SettingsRenderer(
             val subtitleHide = rowHideOverlays.findViewById<TextView>(R.id.tvRowSubtitle)
             if (prefs.captureDisplayIds.size > 1) {
                 subtitleHide.text =
-                    "Ignored when more than one display is selected — overlays render on each."
+                    ctx.getString(R.string.settings_hide_overlays_ignored_multi_display)
                 subtitleHide.visibility = View.VISIBLE
                 subtitleHide.setTextColor(ctx.themeColor(R.attr.ptTextHint))
             } else {
@@ -1046,26 +1047,26 @@ class SettingsRenderer(
         // -- Translation hotkey (always visible) --
         setupSingleHotkeyRow(
             row = rowHotkeyTranslation,
-            title = "Hotkey: hold to show Translations",
+            title = ctx.getString(R.string.hotkey_show_translations_title),
             getHotkey = { prefs.hotkeyTranslation },
             setHotkey = { prefs.hotkeyTranslation = it },
-            dialogTitle = "Show Translations"
+            dialogTitle = ctx.getString(R.string.hotkey_show_translations_dialog_title)
         )
 
         // -- Furigana/Pinyin hotkey (only when source language has hint text) --
         if (hasHintText) {
             val hintLabel = when (hintKind) {
-                HintTextKind.PINYIN -> "Pinyin"
-                else -> "Furigana"
+                HintTextKind.PINYIN -> ctx.getString(R.string.overlay_mode_option_pinyin)
+                else -> ctx.getString(R.string.overlay_mode_option_furigana)
             }
             rowHotkeyFurigana.visibility = View.VISIBLE
             dividerHotkeyFurigana.visibility = View.VISIBLE
             setupSingleHotkeyRow(
                 row = rowHotkeyFurigana,
-                title = "Hotkey: hold to show $hintLabel",
+                title = ctx.getString(R.string.hotkey_show_hint_title, hintLabel),
                 getHotkey = { prefs.hotkeyFurigana },
                 setHotkey = { prefs.hotkeyFurigana = it },
-                dialogTitle = "Show $hintLabel"
+                dialogTitle = ctx.getString(R.string.hotkey_show_hint_dialog_title, hintLabel)
             )
         } else {
             rowHotkeyFurigana.visibility = View.GONE
@@ -1092,7 +1093,7 @@ class SettingsRenderer(
             tvSubtitle.text = formatHotkey(hotkey)
             tvSubtitle.visibility = View.VISIBLE
         } else {
-            tvSubtitle.text = "Not set"
+            tvSubtitle.text = ctx.getString(R.string.hotkey_not_set_subtitle)
             tvSubtitle.visibility = View.VISIBLE
         }
 
@@ -1120,7 +1121,7 @@ class SettingsRenderer(
                 )
             } else {
                 setHotkey("")
-                tvSubtitle.text = "Not set"
+                tvSubtitle.text = ctx.getString(R.string.hotkey_not_set_subtitle)
             }
         }
 
@@ -1247,7 +1248,7 @@ class SettingsRenderer(
         }
 
         val tv = TextView(ctx).apply {
-            text = "Display ${display.displayId}  —  ${display.name}"
+            text = ctx.getString(R.string.capture_display_row_label, display.displayId, display.name)
             setTextColor(ctx.themeColor(if (isSelected) R.attr.ptText else R.attr.ptTextMuted))
             setTextAppearance(R.style.Text_PT_RowTitle)
             layoutParams = LinearLayout.LayoutParams(
@@ -1332,7 +1333,7 @@ class SettingsRenderer(
 
         wireBackendSwitchRow(
             row = rowBackendLingva,
-            title = "Lingva",
+            title = ctx.getString(R.string.lingva_display_name),
             initial = prefs.lingvaEnabled,
             onChanged = { checked -> prefs.lingvaEnabled = checked },
         )
@@ -1385,7 +1386,7 @@ class SettingsRenderer(
         // Quality: <stars>
         appendLabelAndStars(
             builder = builder,
-            label = "Quality: ",
+            label = ctx.getString(R.string.a11y_quality_label_colon),
             rating = backend.qualityStars,
             tone = qualityTone(backend.qualityStars),
         )
@@ -1395,7 +1396,7 @@ class SettingsRenderer(
             builder.append(" · ")
             appendLabelAndStars(
                 builder = builder,
-                label = "Speed: ",
+                label = ctx.getString(R.string.a11y_speed_label),
                 rating = speed,
                 tone = speedTone(speed),
             )
@@ -1408,13 +1409,13 @@ class SettingsRenderer(
         // contentDescription overrides that with a parallel readable
         // form like "Quality 4 out of 5 stars, Speed 2 out of 5 stars".
         tv.contentDescription = buildString {
-            append("Quality ")
+            append(ctx.getString(R.string.a11y_quality_label))
             append(formatStars(backend.qualityStars))
-            append(" out of 5 stars")
+            append(ctx.getString(R.string.a11y_out_of_5_stars))
             backend.speedStars?.let { speed ->
-                append(", Speed ")
+                append(ctx.getString(R.string.a11y_speed_label_comma))
                 append(formatStars(speed))
-                append(" out of 5 stars")
+                append(ctx.getString(R.string.a11y_out_of_5_stars))
             }
         }
         tv.visibility = View.VISIBLE
@@ -1718,7 +1719,8 @@ class SettingsRenderer(
             clearRowWarningTint(row)
             return
         }
-        val description = cooldownable.unavailableDescription() ?: "Unavailable"
+        val description = cooldownable.unavailableDescription()
+            ?: ctx.getString(R.string.backend_status_unavailable_default)
         tv.text = formatCooldownLine(description, until)
         applyTone(tv, Tone.Warning)
         applyItalic(tv, false)
@@ -1738,8 +1740,9 @@ class SettingsRenderer(
         } else {
             SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(retryAt))
         }
-        val word = if (withinDay) "Retry at" else "Retry on"
-        return "$description · $word $formatted"
+        val word = if (withinDay) ctx.getString(R.string.backend_cooldown_retry_at)
+                   else ctx.getString(R.string.backend_cooldown_retry_on)
+        return ctx.getString(R.string.backend_cooldown_status_fmt, description, word, formatted)
     }
 
     private fun applyRowWarningTint(row: View) {
@@ -2184,7 +2187,7 @@ class SettingsRenderer(
     }
 
     private fun wireDeeplBackendRow() {
-        rowBackendDeepl.findViewById<TextView>(R.id.tvRowTitle).text = "DeepL"
+        rowBackendDeepl.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.deepl_settings_title)
 
         val switch = rowBackendDeepl.findViewById<MaterialSwitch>(R.id.switchRowToggle)
         switch.isChecked = prefs.deeplEnabled
@@ -2343,7 +2346,7 @@ class SettingsRenderer(
     private fun setupAnkiSection() {
         addLinkRow(
             llAnkiGetApp,
-            "Get AnkiDroid free on Google Play",
+            ctx.getString(R.string.anki_settings_get_ankidroid_title),
             ctx.getString(R.string.anki_section_description, ctx.getString(R.string.app_name)),
             ctx.getString(R.string.anki_play_store_url)
         )
@@ -2368,9 +2371,8 @@ class SettingsRenderer(
                 llAnkiPermission.removeAllViews()
                 addClickableRow(
                     llAnkiPermission,
-                    "Grant AnkiDroid Access",
-                    "To add flashcards to Anki, ${ctx.getString(R.string.app_name)} needs " +
-                        "permission to access AnkiDroid.",
+                    ctx.getString(R.string.anki_settings_grant_access_title),
+                    ctx.getString(R.string.anki_settings_grant_access_subtitle, ctx.getString(R.string.app_name)),
                     R.drawable.ic_lock,
                     onClick = { callbacks.requestAnkiPermission() }
                 )
@@ -2399,8 +2401,8 @@ class SettingsRenderer(
     }
 
     private fun setupAnkiDeckRow() {
-        rowAnkiDeck.findViewById<TextView>(R.id.tvRowTitle).text = "Deck"
-        val deckName = prefs.ankiDeckName.ifEmpty { "Not selected" }
+        rowAnkiDeck.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.anki_deck_row_label)
+        val deckName = prefs.ankiDeckName.ifEmpty { ctx.getString(R.string.anki_deck_not_selected_subtitle) }
         rowAnkiDeck.findViewById<TextView>(R.id.tvRowValue).text = deckName
         rowAnkiDeck.setOnClickListener {
             callbacks.showAnkiDeckPicker { refreshAnkiDeckValue() }
@@ -2428,12 +2430,12 @@ class SettingsRenderer(
 
     private fun refreshAnkiDeckValue() {
         val freshPrefs = Prefs(ctx)
-        val deckName = freshPrefs.ankiDeckName.ifEmpty { "Not selected" }
+        val deckName = freshPrefs.ankiDeckName.ifEmpty { ctx.getString(R.string.anki_deck_not_selected_subtitle) }
         rowAnkiDeck.findViewById<TextView>(R.id.tvRowValue).text = deckName
     }
 
     private fun setupAnkiCardTypeRow() {
-        rowAnkiCardType.findViewById<TextView>(R.id.tvRowTitle).text = "Card Type"
+        rowAnkiCardType.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.anki_card_type_row_label)
         refreshAnkiCardTypeValue()
         rowAnkiCardType.setOnClickListener {
             callbacks.showAnkiCardTypePicker { refreshAnkiCardTypeValue() }
@@ -2692,15 +2694,15 @@ class SettingsRenderer(
     // ── Support ──────────────────────────────────────────────────────────
 
     private fun setupSupportSection() {
-        wireLinkRow(rowDiscord, "Join Discord",
-            "Get help and chat with other players.",
+        wireLinkRow(rowDiscord, ctx.getString(R.string.settings_support_discord_title),
+            ctx.getString(R.string.settings_support_discord_subtitle),
             "https://go.playtranslate.com/discord")
 
         // Export logs row
         val rowExportLogs = root.findViewById<View>(R.id.rowExportLogs)
-        rowExportLogs.findViewById<TextView>(R.id.tvRowTitle).text = "Export logs"
+        rowExportLogs.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.settings_debug_export_logs_title)
         val tvExportSub = rowExportLogs.findViewById<TextView>(R.id.tvRowSubtitle)
-        tvExportSub.text = "Share recent logs for a bug report"
+        tvExportSub.text = ctx.getString(R.string.settings_debug_export_logs_subtitle)
         tvExportSub.visibility = View.VISIBLE
         rowExportLogs.setOnClickListener {
             lifecycleScope.launch {
@@ -2713,20 +2715,23 @@ class SettingsRenderer(
                 files.fold(
                     onSuccess = {
                         if (ctx is android.app.Activity) {
-                            LogExporter.shareFiles(ctx, it, "PlayTranslate logs")
+                            LogExporter.shareFiles(ctx, it,
+                                ctx.getString(R.string.settings_debug_export_logs_subject))
                         }
                     },
                     onFailure = {
                         Toast.makeText(ctx,
-                            "Failed to export logs: ${it.javaClass.simpleName}",
+                            ctx.getString(R.string.settings_debug_export_logs_failed,
+                                it.javaClass.simpleName),
                             Toast.LENGTH_LONG).show()
                     }
                 )
             }
         }
 
-        wireLinkRow(rowDonate, "Buy me a coffee",
-            "PlayTranslate is free, support development on Ko-Fi",
+        wireLinkRow(rowDonate, ctx.getString(R.string.settings_support_donate_title),
+            ctx.getString(R.string.settings_support_donate_subtitle,
+                ctx.getString(R.string.app_name)),
             "https://go.playtranslate.com/donate")
         applyDonateRowTint()
     }
@@ -2776,7 +2781,7 @@ class SettingsRenderer(
         // Force single screen
         val rowForceSingleScreen = root.findViewById<View>(R.id.rowForceSingleScreen)
         val switchForceSingle = rowForceSingleScreen.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-        rowForceSingleScreen.findViewById<TextView>(R.id.tvRowTitle).text = "Force single screen"
+        rowForceSingleScreen.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.settings_debug_force_single_screen)
         switchForceSingle.isChecked = prefs.debugForceSingleScreen
         switchForceSingle.setOnCheckedChangeListener { _, checked ->
             prefs.debugForceSingleScreen = checked
@@ -2787,7 +2792,7 @@ class SettingsRenderer(
         // Show OCR boxes
         val rowShowOcrBoxes = root.findViewById<View>(R.id.rowShowOcrBoxes)
         val switchOcrBoxes = rowShowOcrBoxes.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-        rowShowOcrBoxes.findViewById<TextView>(R.id.tvRowTitle).text = "Show OCR boxes"
+        rowShowOcrBoxes.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.settings_debug_show_ocr_boxes)
         switchOcrBoxes.isChecked = prefs.debugShowOcrBoxes
         switchOcrBoxes.setOnCheckedChangeListener { _, checked ->
             prefs.debugShowOcrBoxes = checked
@@ -2800,7 +2805,7 @@ class SettingsRenderer(
         // Detection log
         val rowDetectionLog = root.findViewById<View>(R.id.rowDetectionLog)
         val switchDetLog = rowDetectionLog.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-        rowDetectionLog.findViewById<TextView>(R.id.tvRowTitle).text = "Show detection log"
+        rowDetectionLog.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.settings_debug_show_detection_log)
         switchDetLog.isChecked = prefs.debugShowDetectionLog
         switchDetLog.setOnCheckedChangeListener { _, checked ->
             prefs.debugShowDetectionLog = checked
@@ -2810,7 +2815,7 @@ class SettingsRenderer(
         // Live-mode debug logging
         val rowLiveModeDebug = root.findViewById<View>(R.id.rowLiveModeDebug)
         val switchLiveModeDebug = rowLiveModeDebug.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-        rowLiveModeDebug.findViewById<TextView>(R.id.tvRowTitle).text = "Log live-mode pinhole metrics"
+        rowLiveModeDebug.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.settings_debug_log_pinhole)
         switchLiveModeDebug.isChecked = prefs.debugLiveMode
         switchLiveModeDebug.setOnCheckedChangeListener { _, checked ->
             prefs.debugLiveMode = checked
@@ -2820,7 +2825,7 @@ class SettingsRenderer(
         // Save OCR captures as seeds (for golden-set curation)
         val rowSaveOcrSeed = root.findViewById<View>(R.id.rowSaveOcrSeed)
         val switchSaveOcrSeed = rowSaveOcrSeed.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-        rowSaveOcrSeed.findViewById<TextView>(R.id.tvRowTitle).text = "Save OCR captures as seeds"
+        rowSaveOcrSeed.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.settings_debug_save_ocr_seed)
         switchSaveOcrSeed.isChecked = prefs.debugSaveOcrSeed
         switchSaveOcrSeed.setOnCheckedChangeListener { _, checked ->
             prefs.debugSaveOcrSeed = checked
@@ -2830,7 +2835,7 @@ class SettingsRenderer(
         // Log OCR grouping decisions (per-pair MERGE/SPLIT + numeric reason)
         val rowLogGrouping = root.findViewById<View>(R.id.rowLogGrouping)
         val switchLogGrouping = rowLogGrouping.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-        rowLogGrouping.findViewById<TextView>(R.id.tvRowTitle).text = "Log OCR grouping decisions"
+        rowLogGrouping.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.settings_debug_log_grouping)
         switchLogGrouping.isChecked = prefs.debugLogGrouping
         switchLogGrouping.setOnCheckedChangeListener { _, checked ->
             prefs.debugLogGrouping = checked
@@ -2840,9 +2845,9 @@ class SettingsRenderer(
 
         // Force crash
         val rowForceCrash = root.findViewById<View>(R.id.rowForceCrash)
-        rowForceCrash.findViewById<TextView>(R.id.tvRowTitle).text = "Force crash"
+        rowForceCrash.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.settings_debug_force_crash_title)
         val btnCrash = rowForceCrash.findViewById<MaterialButton>(R.id.btnRowAction)
-        btnCrash.text = "Crash"
+        btnCrash.text = ctx.getString(R.string.settings_debug_force_crash_button)
         val crashClick = View.OnClickListener {
             throw RuntimeException("Forced crash from Settings -> Debug -> Force crash")
         }
@@ -2855,7 +2860,7 @@ class SettingsRenderer(
     private fun setupFooter() {
         val tvFooter = root.findViewById<TextView>(R.id.tvFooterVersion) ?: return
         val appName = ctx.getString(R.string.app_name)
-        tvFooter.text = "$appName v${BuildConfig.VERSION_NAME}"
+        tvFooter.text = ctx.getString(R.string.settings_footer_version, appName, BuildConfig.VERSION_NAME)
     }
 
     // ── Refresh methods (called externally) ──────────────────────────────
@@ -2946,7 +2951,7 @@ class SettingsRenderer(
             val clipboard =
                 ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("URL", url))
-            Toast.makeText(ctx, "Link copied", Toast.LENGTH_SHORT).show()
+            Toast.makeText(ctx, ctx.getString(R.string.toast_link_copied), Toast.LENGTH_SHORT).show()
             true
         }
     }

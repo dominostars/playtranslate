@@ -152,7 +152,7 @@ class HotkeySetupDialog : DialogFragment() {
     }
 
     private fun showInstruction() {
-        tvInstruction.text = "Hold down key(s) for 2 seconds"
+        tvInstruction.text = getString(R.string.dialog_hotkey_setup_instruction)
         tvTimer.visibility = View.GONE
         btnCancel.visibility = View.VISIBLE
     }
@@ -162,7 +162,10 @@ class HotkeySetupDialog : DialogFragment() {
         tvTimer.visibility = View.VISIBLE
         countdownTimer = object : CountDownTimer(HOLD_DURATION_MS, 100) {
             override fun onTick(remaining: Long) {
-                tvTimer.text = "Hold %.1f".format(remaining / 1000f)
+                tvTimer.text = getString(
+                    R.string.dialog_hotkey_setup_countdown,
+                    "%.1f".format(remaining / 1000f)
+                )
             }
             override fun onFinish() {
                 resultDelivered = true

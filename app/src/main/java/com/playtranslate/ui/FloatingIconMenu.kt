@@ -69,7 +69,10 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     var exitFlow: Boolean = false
         set(value) {
             field = value
-            hideLabel.text = if (value) "Turn Off" else "Hide"
+            hideLabel.text = context.getString(
+                if (value) R.string.floating_icon_close_label_turn_off
+                else R.string.floating_icon_close_label_hide
+            )
             hideIcon.setImageResource(
                 if (value) R.drawable.ic_mode_off_on else R.drawable.ic_exit_to_app
             )
@@ -240,7 +243,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             ViewGroup.LayoutParams.MATCH_PARENT
         ))
         liveLabel = TextView(context).apply {
-            text = "Auto Translate"
+            text = context.getString(R.string.live_mode_auto_translate_label)
             setTextColor(textColor)
             textSize = 9f
             gravity = Gravity.CENTER_HORIZONTAL
@@ -448,14 +451,16 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             liveIcon.textSize = 20f
             liveIcon.setTextColor(Color.parseColor("#E8E8E8"))
             liveIcon.setPadding(0, 0, 0, 0)
-            liveLabel.text = "Pause Auto"
+            liveLabel.text = context.getString(R.string.live_mode_pause_auto_label)
             (liveBtn.background as? GradientDrawable)?.setColor(dangerColor)
         } else {
             liveIcon.text = "\u25B6" // ▶ play
             liveIcon.textSize = 26f
             liveIcon.setTextColor(onAccentColor)
             liveIcon.setPadding((2 * dp).toInt(), 0, 0, (1 * dp).toInt())
-            liveLabel.text = hintModeLabel?.let { "Auto $it" } ?: "Auto Translate"
+            liveLabel.text = hintModeLabel
+                ?.let { context.getString(R.string.live_mode_auto_with_hint, it) }
+                ?: context.getString(R.string.live_mode_auto_translate_label)
             (liveBtn.background as? GradientDrawable)?.setColor(accentColor)
         }
     }
@@ -491,7 +496,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 canvas.drawRect(regionRect, regionFillPaint)
                 canvas.drawRect(regionRect, regionStrokePaint)
                 // Label centered in the region (shadow provides contrast)
-                val label = "Current capture region"
+                val label = context.getString(R.string.region_label_current_capture)
                 val labelCx = regionRect.centerX()
                 val labelCy = regionRect.centerY()
                 canvas.drawText(label, labelCx,

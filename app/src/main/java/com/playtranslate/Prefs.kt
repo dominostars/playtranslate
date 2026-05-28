@@ -18,9 +18,9 @@ import org.json.JSONObject
  * the old ordinal-based `auto_translation_mode` pref is handled in
  * [Prefs.migrateLegacyPrefs].
  */
-enum class OverlayMode(val displayName: String) {
-    TRANSLATION("Translation"),
-    FURIGANA("Furigana");
+enum class OverlayMode(@androidx.annotation.StringRes val displayNameRes: Int) {
+    TRANSLATION(R.string.overlay_mode_option_translation),
+    FURIGANA(R.string.overlay_mode_option_furigana);
 
     companion object {
         fun fromStorageName(name: String?): OverlayMode =

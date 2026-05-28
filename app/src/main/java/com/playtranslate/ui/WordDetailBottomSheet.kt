@@ -676,7 +676,7 @@ class WordDetailBottomSheet : DialogFragment() {
         if (mtBannerText != null) addMachineTranslatedBanner(content, mtBannerText)
 
         val definitionsSuffix = if (numSenses > 1)
-            getString(R.string.word_detail_senses_count, numSenses) else null
+            resources.getQuantityString(R.plurals.word_detail_senses_count, numSenses, numSenses) else null
         addGroupHeader(content, getString(R.string.word_detail_group_definitions), definitionsSuffix)
         val definitionsCard = addGroupCard(content)
 
@@ -772,10 +772,11 @@ class WordDetailBottomSheet : DialogFragment() {
                 val needsMt = targetLangCode != "en" && characterDetails.any {
                     it.meaningsLang != targetLangCode
                 }
-                val countLabel = if (characterDetails.size == 1)
-                    getString(R.string.word_detail_char_count_one)
-                else
-                    getString(R.string.word_detail_chars_count, characterDetails.size)
+                val countLabel = resources.getQuantityString(
+                    R.plurals.word_detail_chars_count,
+                    characterDetails.size,
+                    characterDetails.size
+                )
                 val suffix = if (needsMt && enToTargetTranslator != null)
                     getString(R.string.word_detail_char_meanings_mt, countLabel)
                 else

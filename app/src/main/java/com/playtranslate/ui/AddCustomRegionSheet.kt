@@ -81,7 +81,7 @@ class AddCustomRegionSheet : DialogFragment() {
             leftFraction = init.left
             rightFraction = init.right
             if (isEditMode) {
-                tvTitle.text = "Edit ${init.label}"
+                tvTitle.text = getString(R.string.custom_region_edit_title, init.label)
                 etName.setText(init.label)
             }
         }

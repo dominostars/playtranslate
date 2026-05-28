@@ -465,7 +465,7 @@ class LanguageSetupActivity : AppCompatActivity() {
         onSuccess: () -> Unit,
     ) {
         val dialog = buildPopupDialog(langName)
-        dialog.setMessage("Downloading")
+        dialog.setMessage(getString(R.string.install_downloading_generic))
         dialog.setProgress(0)
 
         activeJob = lifecycleScope.launch {
@@ -475,8 +475,11 @@ class LanguageSetupActivity : AppCompatActivity() {
                     runOnUiThread {
                         dialog.setProgress(pct)
                         dialog.setMessage(
-                            "Downloading… " +
-                                "${humanSize(progress.bytesReceived)} of ${humanSize(progress.totalBytes)}"
+                            getString(
+                                R.string.install_downloading_with_bytes,
+                                humanSize(progress.bytesReceived),
+                                humanSize(progress.totalBytes)
+                            )
                         )
                     }
                 }
