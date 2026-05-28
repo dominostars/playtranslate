@@ -105,18 +105,18 @@
     </style>
 
     <!-- ── Full-screen dialog overlays ──────────────────────────────────── -->
+    <!-- windowBackground / statusBarColor inherit ptBg from the parent
+         theme, matching what the dialog content layouts paint — so the
+         layouts can leave their root android:background unset and avoid
+         the redundant fill the lint Overdraw check flagged. -->
     <style name="Theme.PlayTranslate.FullScreenDialog" parent="Theme.PlayTranslate">
         <item name="android:windowIsFloating">false</item>
         <item name="android:windowSoftInputMode">adjustResize</item>
-        <item name="android:windowBackground">?attr/ptSurface</item>
-        <item name="android:statusBarColor">?attr/ptSurface</item>
     </style>
 
     <style name="Theme.PlayTranslate.White.FullScreenDialog" parent="Theme.PlayTranslate.White">
         <item name="android:windowIsFloating">false</item>
         <item name="android:windowSoftInputMode">adjustResize</item>
-        <item name="android:windowBackground">?attr/ptSurface</item>
-        <item name="android:statusBarColor">?attr/ptSurface</item>
     </style>
 
     <!-- ══════════════════════════════════════════════════════════════════ -->

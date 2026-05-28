@@ -677,12 +677,16 @@ class SettingsBottomSheet : DialogFragment() {
         parent.addView(newView, index)
         currentView = newView
         setupViews(newView)
-        val ctx = requireActivity()
-        val bgColor = ctx.themeColor(R.attr.ptBg)
+        // After an in-place theme switch the dialog window's
+        // statusBarColor / navigationBarColor were resolved at dialog
+        // construction and the framework doesn't re-resolve them on
+        // setTheme. Re-apply them from the new theme so the system bars
+        // match the freshly-inflated content. windowBackground isn't
+        // touched because the content view covers it anyway.
+        val bgColor = requireActivity().themeColor(R.attr.ptBg)
         dialog?.window?.apply {
             statusBarColor = bgColor
             navigationBarColor = bgColor
-            setBackgroundDrawable(ctx.themeColor(R.attr.ptSurface).toDrawable())
         }
     }
 
