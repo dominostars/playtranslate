@@ -275,11 +275,11 @@
     <string name="anki_card_type_basic_no_mapping">Basic card types don\'t need a field mapping — Front and Back are filled automatically based on whether you\'re saving a word or a sentence.</string>
     <string name="anki_content_source_pick_title">Map \"%1$s\"</string>
 
-    <!-- One-tap card creation toggle (Settings → Anki section). Subtitle
-         doubles as documentation for the long-press affordance, since
-         hold-to-edit isn't otherwise discoverable. -->
-    <string name="anki_one_tap_title">One-tap card creation</string>
-    <string name="anki_one_tap_subtitle">Automatically creates an anki card when tapping any add-to-anki button. When active, you can hold any button to edit fields before saving.</string>
+    <!-- Footer below the Anki Settings card. Documents the long-press
+         shortcut, which is otherwise undiscoverable since tapping
+         opens the editable review sheet. Styled like the Translation
+         Service footers ("Translations try each enabled service…"). -->
+    <string name="anki_long_press_footer">PRO TIP: If you want to instantly create a card without editing, press and hold on any button that would normally take you to anki card creation page</string>
 
     <!-- ContentSource labels (dropdown options). Names persist in prefs,
          so re-labeling here is safe but renaming enum constants is not.

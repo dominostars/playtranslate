@@ -273,21 +273,16 @@ class TranslationResultFragment : Fragment() {
             // to idle status; the fragment will re-render from the VM.
             vm.showStatus(getString(R.string.status_idle), showHint = true)
         }
-        // Long-press always opens the review sheet (the "edit before
-        // saving" gesture documented in the one-tap subtitle). The
-        // listener is attached unconditionally so the gesture works
-        // regardless of pref state — when one-tap is off it's just a
-        // redundant path to the same sheet.
-        btnResultAnki.setOnLongClickListener {
-            onAnkiClicked()
-            true
-        }
+        // Tap opens the editable review sheet — the default and
+        // discoverable action. Long-press is the power-user shortcut
+        // that auto-creates the card with no review, documented by the
+        // pro-tip footer in Settings → Anki.
         btnResultAnki.setOnClickListener {
-            if (!prefs.ankiOneTapEnabled) {
-                onAnkiClicked()
-                return@setOnClickListener
-            }
+            onAnkiClicked()
+        }
+        btnResultAnki.setOnLongClickListener {
             oneTapSentenceFromResult()
+            true
         }
         pillAnkiButton = PillAnkiButton(btnResultAnki)
         speakButton = OriginalSpeakButton(
@@ -976,22 +971,16 @@ class TranslationResultFragment : Fragment() {
                             )
                         }
                     }
-                    // Tap routes through the one-tap branch when the
-                    // user has opted in; pref is read at click time so
-                    // the latest setting takes effect. Long-press
-                    // always opens the editable sheet via the existing
-                    // Activity launch.
+                    // Tap opens the editable review sheet (default).
+                    // Long-press is the headless one-tap shortcut —
+                    // documented by the pro-tip footer in Settings.
                     onAnkiTap = {
                         host?.onInteraction()
-                        if (prefs.ankiOneTapEnabled) {
-                            oneTapWordFromPopup(activity, word, popupReading, displayEntry)
-                        } else {
-                            launchWordAnki(activity, word, popupReading, displayEntry)
-                        }
+                        launchWordAnki(activity, word, popupReading, displayEntry)
                     }
                     onAnkiLongPress = {
                         host?.onInteraction()
-                        launchWordAnki(activity, word, popupReading, displayEntry)
+                        oneTapWordFromPopup(activity, word, popupReading, displayEntry)
                     }
                     // onDismiss is the single funnel for every teardown path
                     // (tap-outside, LensSpeakChip's no-engine action,

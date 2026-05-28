@@ -6,8 +6,8 @@ import com.playtranslate.Prefs
 import com.playtranslate.language.SourceLangId
 
 /**
- * "Headless" one-tap card-creation helpers — entry points used when the
- * `ankiOneTapEnabled` toggle is on, so the user can add a card without
+ * "Headless" card-creation helpers — entry points used when the user
+ * long-presses any Add-to-Anki button, so a card lands without
  * passing through the review sheet. They layer **preloading awaits**
  * on top of [Context.sendSentenceCard] / [Context.sendWordCard]:
  * either reuse the data the caller hands them, or await the same

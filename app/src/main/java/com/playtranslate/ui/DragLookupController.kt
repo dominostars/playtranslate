@@ -149,19 +149,11 @@ class DragLookupController(
         // single- or dual-screen mode, so the user lands on a consistent
         // surface with the switch available.
         magnifier.onOpenTap = { openSentenceInApp() }
-        // Anki chip → either headless one-tap (pref on) or the
-        // standard "Add to Anki" review flow (pref off / long-press).
-        // The pref is read at click time so flipping the toggle in
-        // settings takes effect on the next tap. Long-press always
-        // routes to the review sheet — the documented edit gesture.
-        magnifier.onAnkiTap = {
-            if (Prefs(context).ankiOneTapEnabled) {
-                oneTapFromLens()
-            } else {
-                openAnkiReviewForLens()
-            }
-        }
-        magnifier.onAnkiLongPress = { openAnkiReviewForLens() }
+        // Anki chip: tap opens the editable review sheet (default).
+        // Long-press is the headless one-tap shortcut — documented by
+        // the pro-tip footer in Settings → Anki.
+        magnifier.onAnkiTap = { openAnkiReviewForLens() }
+        magnifier.onAnkiLongPress = { oneTapFromLens() }
         // Speak chip → pronounce the looked-up headword via the system TTS
         // engine. LensSpeakChip installs the lens's onSpeakTap handler and
         // owns the speak coroutine + alert routing.

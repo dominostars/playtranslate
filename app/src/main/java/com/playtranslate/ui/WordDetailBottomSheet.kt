@@ -274,27 +274,23 @@ class WordDetailBottomSheet : DialogFragment() {
             val ankiManager = AnkiManager(requireContext())
             btnAddAnki.visibility = View.VISIBLE
             val pill = PillAnkiButton(btnAddAnki)
-            // Long-press always opens the review sheet — the
-            // hold-to-edit gesture documented in the one-tap subtitle.
-            btnAddAnki.setOnLongClickListener {
+            // Tap opens the editable review sheet (default action).
+            // Long-press is the headless one-tap shortcut — documented
+            // by the pro-tip footer in Settings → Anki.
+            btnAddAnki.setOnClickListener {
                 if (!ankiManager.isAnkiDroidInstalled()) {
                     showAnkiNotInstalledDialog(requireActivity())
                 } else {
                     openWordAnkiReview(word, primary, screenshotPath, defResult)
                 }
-                true
             }
-            btnAddAnki.setOnClickListener {
+            btnAddAnki.setOnLongClickListener {
                 if (!ankiManager.isAnkiDroidInstalled()) {
                     showAnkiNotInstalledDialog(requireActivity())
-                    return@setOnClickListener
+                } else {
+                    oneTapWordFromDetail(pill, word, primary, screenshotPath, defResult)
                 }
-                val oneTapPrefs = Prefs(requireContext().applicationContext)
-                if (!oneTapPrefs.ankiOneTapEnabled) {
-                    openWordAnkiReview(word, primary, screenshotPath, defResult)
-                    return@setOnClickListener
-                }
-                oneTapWordFromDetail(pill, word, primary, screenshotPath, defResult)
+                true
             }
 
             if (targetLangCode != "en") {

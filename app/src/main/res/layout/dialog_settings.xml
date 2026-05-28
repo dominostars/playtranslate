@@ -943,14 +943,16 @@
                         android:layout_height="wrap_content"
                         android:visibility="gone" />
 
-                    <include layout="@layout/settings_row_divider"
-                        android:id="@+id/dividerAnkiOneTap"
-                        android:visibility="gone" />
-
-                    <include layout="@layout/settings_row_switch"
-                        android:id="@+id/rowAnkiOneTap"
+                    <TextView
+                        android:id="@+id/tvAnkiLongPressFooter"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:background="@drawable/bg_word_tatoeba_attribution"
+                        android:paddingHorizontal="16dp"
+                        android:paddingVertical="10dp"
+                        android:text="@string/anki_long_press_footer"
+                        android:textColor="?attr/ptTextHint"
+                        android:textSize="11sp"
                         android:visibility="gone" />
 
                 </LinearLayout>
