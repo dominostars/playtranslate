@@ -1,364 +1,1020 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">PlayTranslate</string>
+<!--
+    PlayTranslate user-facing strings.
 
-    <!-- Support -->
-    <string name="support_donate_subtitle">You can support %1$s on Ko-Fi</string>
+    Conventions for translators:
+      • <xliff:g id="..." example="...">…</xliff:g> wraps content that
+        should NOT be translated (placeholders, brand names) and shows an
+        example of what the runtime will substitute in.
+      • Strings marked translatable="false" are brand names, URLs,
+        debug-only labels, or universal units; they are not surfaced to
+        translation tools.
+      • Inline <b>…</b> markup is rendered as bold via HtmlCompat.
+        Preserve it exactly.
+      • \n is a literal newline in the rendered UI. \' is an escaped
+        apostrophe. Preserve both.
+      • % literal needs %% in format strings; placeholders are positional
+        (%1$s, %2$s, %1$d, …) so reordering them is fine.
+-->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
 
-    <!-- Actions -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         APP IDENTITY
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Brand name of the app. Displayed in the launcher, system Settings,
+         the notification shade, and many in-app surfaces. Not translated. -->
+    <string name="app_name" translatable="false">PlayTranslate</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SUPPORT (Settings → SUPPORT card)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Subtitle on the Support → Ko-Fi cell encouraging tips.
+         %1$s = the app name ("PlayTranslate"). Ko-Fi is a brand
+         (the donation platform); leave its spelling intact. -->
+    <string name="support_donate_subtitle">You can support <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> on <xliff:g id="brand_kofi" example="Ko-Fi">Ko-Fi</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ACTIONS — generic button labels reused in multiple places.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Button label on the language-pack onboarding flow: dismiss the
+         download prompt and translate this one time without persisting
+         the language pack to disk. "Saving" here means saving the pack,
+         not saving the translation. -->
     <string name="btn_translate_once">Use Without Saving</string>
 
-    <!-- Languages -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         ACCESSIBILITY SERVICE
+         Strings shown in the system Accessibility Settings list (read by
+         users BEFORE the app is opened — translate these first) and the
+         in-app prompt that explains the permission.
+         ═══════════════════════════════════════════════════════════════ -->
 
-    <!-- Accessibility service -->
-    <string name="accessibility_service_description">PlayTranslate uses the Accessibility Service to take screenshots of the game screen and show a floating overlay icon. No UI content, input events, or personal data are read or monitored.</string>
+    <!-- Description shown under "PlayTranslate" in the system
+         Accessibility Settings list. Must reassure users that the app
+         does NOT read any UI content, monitor input, or access personal
+         data — this is required by the Play Store policy disclosure. -->
+    <string name="accessibility_service_description"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uses the Accessibility Service to take screenshots of the game screen and show a floating overlay icon. No UI content, input events, or personal data are read or monitored.</string>
+
+    <!-- One-line summary shown next to the app name in the Accessibility
+         Settings list, ABOVE the longer description. -->
     <string name="accessibility_service_summary">For translating game text on screen</string>
-    <string name="accessibility_dialog_title">Accessibility permission needed</string>
-    <string name="accessibility_dialog_message">PlayTranslate needs the Accessibility permission to capture screenshots of the game screen on the top display while staying open on the bottom display.\n\nPlayTranslate does not read any UI content, monitor input, or access any personal data — it only takes screenshots when you tap Translate or start live mode.\n\nGo to Settings → Accessibility → Installed apps → PlayTranslate → Enable.</string>
-    <string name="accessibility_dialog_open">Open Accessibility Settings</string>
-    <string name="status_accessibility_needed">Enable PlayTranslate in Accessibility Settings first</string>
 
-    <!-- Quick Settings tile -->
-    <string name="tile_label">PlayTranslate</string>
+    <!-- Title of the in-app dialog that prompts the user to enable the
+         Accessibility permission. -->
+    <string name="accessibility_dialog_title">Accessibility permission needed</string>
+
+    <!-- Body of the in-app dialog that prompts the user to enable the
+         Accessibility permission. Explains why the permission is
+         requested (dual-screen capture) and reassures about data
+         handling. The trailing line is a step-by-step nav path through
+         Android Settings; keep the arrows (→) and the app name. -->
+    <string name="accessibility_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> needs the Accessibility permission to capture screenshots of the game screen on the top display while staying open on the bottom display.\n\n<xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> does not read any UI content, monitor input, or access any personal data — it only takes screenshots when you tap Translate or start live mode.\n\nGo to Settings → Accessibility → Installed apps → <xliff:g id="app_name3" example="PlayTranslate">PlayTranslate</xliff:g> → Enable.</string>
+
+    <!-- Positive button on the Accessibility-needed dialog: opens the
+         system Accessibility Settings activity. -->
+    <string name="accessibility_dialog_open">Open Accessibility Settings</string>
+
+    <!-- Status line shown on the main screen when the user tries to
+         translate before enabling Accessibility. -->
+    <string name="status_accessibility_needed">Enable <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> in Accessibility Settings first</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         QUICK SETTINGS TILE (Android system status-bar tile)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Label of the PlayTranslate tile in the Android Quick Settings
+         panel (the pull-down from the status bar). Kept identical to
+         the app name so users recognise it. -->
+    <string name="tile_label" translatable="false">PlayTranslate</string>
+
+    <!-- Subtitle of the Quick Settings tile when Accessibility is
+         disabled — invites the user to enable it. -->
     <string name="tile_subtitle_a11y_required">Enable accessibility</string>
 
-    <!-- Status messages -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         STATUS MESSAGES (main screen status line and pipeline progress)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Idle status — shown when nothing has been captured yet. -->
     <string name="status_idle">Tap Translate to capture the game screen</string>
+
+    <!-- Hint shown beneath the action buttons explaining that
+         long-pressing reveals additional menus. "Regions" and "Auto" are
+         the names of two on-screen buttons. -->
     <string name="status_hold_hint">Long-press Regions or Auto for quick-select menus</string>
+
+    <!-- Shown in the Words section after OCR succeeds but no individual
+         words could be tokenized. -->
     <string name="words_none">No words were detected</string>
+
+    <!-- Status line shown while the screenshot is being captured. The
+         ellipsis is one character (U+2026). -->
     <string name="status_capturing">Capturing screen…</string>
+
+    <!-- Status line shown while OCR (text recognition) runs. British
+         "Recognising" — match the locale's preferred spelling. -->
     <string name="status_ocr">Recognising text…</string>
+
+    <!-- Status line shown while the captured text is being translated. -->
     <string name="status_translating">Translating…</string>
-    <string name="status_no_text">No %1$s text detected in "%2$s"</string>
-    <string name="status_error">Error: %1$s</string>
 
-    <!-- Notification -->
+    <!-- Shown when OCR returns no source-language text. %1$s = source
+         language name (e.g. "Japanese"). %2$s = the user-visible label
+         of the OCR region that was captured (e.g. "Dialogue box"). -->
+    <string name="status_no_text">No <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> text detected in \"<xliff:g id="region_label" example="Dialogue box">%2$s</xliff:g>\"</string>
+
+    <!-- Status line shown on a general pipeline error. %1$s = the
+         underlying error description. -->
+    <string name="status_error">Error: <xliff:g id="error_message" example="Network timeout">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         NOTIFICATION (foreground-service status notification)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Name of the notification channel shown in Android's per-app
+         notification settings. -->
     <string name="notif_channel_name">Screen Capture</string>
-    <string name="notif_title">PlayTranslate is active</string>
-    <string name="notif_text">Tap to return to PlayTranslate</string>
 
-    <!-- Permission / Onboarding -->
-    <string name="onboarding_welcome_title">Welcome to PlayTranslate!</string>
+    <!-- Title line of the persistent notification while the
+         foreground service is running. -->
+    <string name="notif_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> is active</string>
+
+    <!-- Body line of the persistent notification — tapping it returns
+         to the app. -->
+    <string name="notif_text">Tap to return to <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ONBOARDING (first-run permission wizard)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Welcome card title on the first-run onboarding screen. -->
+    <string name="onboarding_welcome_title">Welcome to <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>!</string>
+
+    <!-- Tagline shown under the welcome title. -->
     <string name="onboarding_welcome_tagline">Your companion app for playing games in other languages.</string>
-    <string name="onboarding_welcome_body">Playing something you don\'t understand? Turn on-screen text into translations instantly.\n\nLearning a language? Word-by-word definitions, reading guides (furigana, pinyin), and one-tap Anki flashcards.</string>
+
+    <!-- Body copy under the tagline — describes core features. \n\n is
+         a blank line between paragraphs. "Anki" is a brand name (the
+         spaced-repetition flashcard app). -->
+    <string name="onboarding_welcome_body">Playing something you don\'t understand? Turn on-screen text into translations instantly.\n\nLearning a language? Word-by-word definitions, reading guides (furigana, pinyin), and one-tap <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> flashcards.</string>
+
+    <!-- Placeholder text inside the language-selection row before the
+         user has picked anything. -->
     <string name="onboarding_welcome_row_placeholder">Tap to choose</string>
+
+    <!-- Primary button at the bottom of the welcome step. -->
     <string name="onboarding_welcome_continue">Continue</string>
+
+    <!-- Section header above the source-language picker on the welcome
+         step. -->
     <string name="onboarding_welcome_select_source">Select game language</string>
+
+    <!-- Title of the notification-permission card. -->
     <string name="onboarding_notif_title">Allow Notifications</string>
-    <string name="onboarding_notif_body">Android requires apps that run in the background to display a status bar notification while active.\n\nThis will never send alerts, sounds, or banners — only a quiet persistent indicator that PlayTranslate is running.</string>
-    <string name="onboarding_a11y_hint">Look for <b>PlayTranslate</b></string>
+
+    <!-- Body of the notification-permission card explaining why Android
+         requires the permission for foreground services. -->
+    <string name="onboarding_notif_body">Android requires apps that run in the background to display a status bar notification while active.\n\nThis will never send alerts, sounds, or banners — only a quiet persistent indicator that <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> is running.</string>
+
+    <!-- Hint shown on the accessibility-permission card directing the
+         user where to look in the system Accessibility list. <b> is
+         rendered as bold. -->
+    <string name="onboarding_a11y_hint">Look for <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
+
+    <!-- Title of the "Display over other apps" overlay-permission card. -->
     <string name="onboarding_a11y_title">Display over other apps</string>
-    <string name="onboarding_a11y_body"><b>PlayTranslate</b> needs to display over other apps to:\n• Show translated text over your game\n• Show the game screen controls\n• Look up words by dragging over game text</string>
+
+    <!-- Body of the "Display over other apps" overlay-permission card.
+         The bullets use • (U+2022) as the list glyph. <b> renders as
+         bold; preserve the markup exactly. -->
+    <string name="onboarding_a11y_body"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> needs to display over other apps to:\n• Show translated text over your game\n• Show the game screen controls\n• Look up words by dragging over game text</string>
+
+    <!-- Generic "Grant Permission" button (onboarding + later prompts). -->
     <string name="btn_grant_permission">Grant Permission</string>
+
+    <!-- Button that takes the user to system Accessibility Settings. -->
     <string name="btn_open_a11y_settings">Open Accessibility Settings</string>
+
+    <!-- Button that takes the user to system Overlay (Display over other
+         apps) Settings. -->
     <string name="btn_open_overlay_settings">Open Settings</string>
+
+    <!-- Title of the "Restricted Settings" dialog shown on Android 13+
+         when the OS has blocked the Accessibility toggle for sideloaded
+         apps. -->
     <string name="restricted_settings_title">Allow Restricted Settings</string>
-    <string name="restricted_settings_message">From PlayTranslate\'s Android settings page, select the button on the top right with three dots (⋮) and then select \"Allow restricted settings\". After authenticating, you should be able to turn on accessibility permissions.</string>
-    <string name="btn_open_app_settings">Open PlayTranslate Settings</string>
 
-    <!-- Word detail -->
-    <string name="word_detail_not_found">No dictionary entry found for \"%1$s\"</string>
+    <!-- Body of the "Restricted Settings" dialog — walks the user
+         through enabling restricted settings via the three-dot (⋮) menu
+         on the app's system Settings page. -->
+    <string name="restricted_settings_message">From <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>\'s Android settings page, select the button on the top right with three dots (⋮) and then select \"Allow restricted settings\". After authenticating, you should be able to turn on accessibility permissions.</string>
+
+    <!-- Button that opens the system App Info / Settings page for
+         PlayTranslate. -->
+    <string name="btn_open_app_settings">Open <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> Settings</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         WORD DETAIL (bottom-sheet shown when tapping a tokenized word)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Empty-state message inside the word-detail sheet. %1$s = the
+         word that was looked up (passed through verbatim, in the source
+         script, e.g. "聞く"). -->
+    <string name="word_detail_not_found">No dictionary entry found for \"<xliff:g id="word" example="聞く">%1$s</xliff:g>\"</string>
+
+    <!-- Section title above the example-sentences list. -->
     <string name="word_detail_more_examples">More examples</string>
+
+    <!-- Placeholder line shown while the example-sentences list is
+         loading from Tatoeba. -->
     <string name="word_detail_more_examples_loading">Loading examples…</string>
+
+    <!-- Error line shown if loading example sentences failed. The
+         apostrophe is escaped. -->
     <string name="word_detail_more_examples_error">Couldn\'t load examples.</string>
-    <string name="word_detail_tatoeba_attribution">Sentences from Tatoeba · CC BY 2.0 FR</string>
+
+    <!-- Attribution line at the bottom of the example sentences list.
+         "Tatoeba" is the brand of the corpus; the licence ("CC BY 2.0
+         FR") is a legal text and must NOT be reworded — but the leading
+         phrase ("Sentences from") may be translated. -->
+    <string name="word_detail_tatoeba_attribution">Sentences from <xliff:g id="brand_tatoeba" example="Tatoeba">Tatoeba</xliff:g> · <xliff:g id="license_cc_by_2_fr" example="CC BY 2.0 FR">CC BY 2.0 FR</xliff:g></string>
+
+    <!-- Badge label shown beside common dictionary entries. -->
     <string name="word_detail_common">Common</string>
-    <string name="word_detail_senses_count">%d senses</string>
-    <string name="word_detail_chars_count">%d characters</string>
+
+    <!-- Count line under the dictionary headword. %d = number of senses
+         (definitions). Always plural in current usage. -->
+    <string name="word_detail_senses_count"><xliff:g id="senses_count" example="3">%d</xliff:g> senses</string>
+
+    <!-- Count line under the Characters section. %d = number of
+         characters (kanji / hanzi). Plural form. -->
+    <string name="word_detail_chars_count"><xliff:g id="char_count" example="3">%d</xliff:g> characters</string>
+
+    <!-- Singular variant of the character count. -->
     <string name="word_detail_char_count_one">1 character</string>
+
+    <!-- Group header for the Definitions group in the word-detail sheet. -->
     <string name="word_detail_group_definitions">Definitions</string>
+
+    <!-- Group header for the per-kanji breakdown group (Japanese). -->
     <string name="word_detail_group_kanji">Kanji</string>
+
+    <!-- Group header for the per-hanzi breakdown group (Chinese). -->
     <string name="word_detail_group_hanzi">Hanzi</string>
-    <string name="word_detail_group_tatoeba">Tatoeba</string>
+
+    <!-- Group header for the Tatoeba example-sentences group. -->
+    <string name="word_detail_group_tatoeba" translatable="false">Tatoeba</string>
+
+    <!-- Banner shown above sentence/definition translations that came
+         from a machine translation backend (rather than the bundled
+         dictionary). Plain variant — no backend name. -->
     <string name="word_detail_mt_banner">Machine translated</string>
-    <string name="word_detail_mt_banner_named">Machine translated: %1$s</string>
-    <string name="word_detail_char_meanings_mt">Machine translated · %1$s</string>
 
-    <!-- Banner / language pair -->
+    <!-- Same banner but including the backend that produced the
+         translation. %1$s = backend display name (e.g. "DeepL"). -->
+    <string name="word_detail_mt_banner_named">Machine translated: <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
 
-    <!-- Settings -->
+    <!-- Char-meanings attribution line. %1$s = backend display name. -->
+    <string name="word_detail_char_meanings_mt">Machine translated · <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — general
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Title of the Settings screen. -->
     <string name="settings_title">Settings</string>
+
+    <!-- Hint cell beneath the language-pair selector on Settings,
+         inviting a tap to change languages. -->
     <string name="settings_language_hint">Tap to change translation languages.</string>
+
+    <!-- Row title for the source-language picker — the language IN the
+         game being translated. -->
     <string name="lang_translate_from">Game Language</string>
+
+    <!-- Row title for the target-language picker — the language the
+         user wants translations rendered in. -->
     <string name="lang_translate_to">Your Language</string>
+
+    <!-- Button to start downloading a language pack. -->
     <string name="lang_download">Download</string>
+
+    <!-- Button to confirm the selected language pair after install. -->
     <string name="lang_confirm">Confirm</string>
+
+    <!-- Title of the dialog shown when a language-pack download fails. -->
     <string name="lang_download_error_title">Download failed</string>
+
+    <!-- Status line shown while the language pack is being preloaded
+         into the in-memory dictionary (first run after install). -->
     <string name="lang_setup_preloading_message">Preloading, please wait a minute</string>
+
+    <!-- Button to delete an installed language pack from disk. -->
     <string name="lang_delete_pack">Delete language pack</string>
+
+    <!-- Per-row state labels in the language picker. Shown as the
+         right-aligned subtitle. -->
     <string name="lang_state_installed">Installed</string>
     <string name="lang_state_not_installed">Not installed</string>
     <string name="lang_state_selected">Selected</string>
-    <string name="lang_state_download">Download %1$s</string>
-    <string name="lang_state_downloading">Downloading… %1$d%%</string>
-    <string name="lang_state_verifying">Verifying…</string>
-    <string name="lang_state_extracting">Extracting…</string>
-    <string name="lang_state_failed">Failed — retry</string>
-    <string name="lang_size_mb">%1$d MB</string>
 
-    <!-- Language picker search/filter -->
+    <!-- CTA shown on rows whose pack hasn't been downloaded yet.
+         %1$s = approximate download size (e.g. "12 MB"). -->
+    <string name="lang_state_download">Download <xliff:g id="download_size" example="12 MB">%1$s</xliff:g></string>
+
+    <!-- Status shown while a language pack is downloading.
+         %1$d = integer percent complete (0–100, no % sign — the trailing
+         %% is the literal percent symbol). -->
+    <string name="lang_state_downloading">Downloading… <xliff:g id="percent" example="42">%1$d</xliff:g>%%</string>
+
+    <!-- Status shown while the downloaded archive is being verified. -->
+    <string name="lang_state_verifying">Verifying…</string>
+
+    <!-- Status shown while the verified archive is being extracted to
+         disk. -->
+    <string name="lang_state_extracting">Extracting…</string>
+
+    <!-- Status shown when a download failed and the user can retry. -->
+    <string name="lang_state_failed">Failed — retry</string>
+
+    <!-- Compact size suffix for a language pack.
+         %1$d = integer megabytes. "MB" is the universal abbreviation
+         and should not be re-spelled. -->
+    <string name="lang_size_mb"><xliff:g id="size_mb" example="42">%1$d</xliff:g> MB</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         LANGUAGE PICKER — search and filter
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Hint text inside the search field on the language-picker
+         screen. -->
     <string name="lang_search_hint">Search languages</string>
+
+    <!-- contentDescription for the × clear-search button. -->
     <string name="lang_search_clear_cd">Clear search</string>
+
+    <!-- Empty-state line shown when the search query matches no
+         languages. -->
     <string name="lang_search_no_results">No results</string>
+
+    <!-- Section header for languages we recommend or have detected as
+         relevant for the user. -->
     <string name="lang_section_suggested">Suggested</string>
+
+    <!-- Section header for the full alphabetical list of languages. -->
     <string name="lang_section_all">All</string>
+
+    <!-- Plural form of the count of search matches. %d = number of
+         matched languages. -->
     <plurals name="lang_search_match_count">
-        <item quantity="one">%d match</item>
-        <item quantity="other">%d matches</item>
+        <!-- Singular variant. -->
+        <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> match</item>
+        <!-- Plural variant. -->
+        <item quantity="other"><xliff:g id="count" example="5">%d</xliff:g> matches</item>
     </plurals>
 
-    <!-- Pack-upgrade flow (launch-time staleness scan + Settings cell) -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         PACK-UPGRADE FLOW
+         Cold-launch staleness scan + Settings cell that prompt the user
+         to update installed language packs. The progress dialog is
+         shared between the launch-time and the Settings-initiated flow.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Title of the OverlayAlert shown at cold launch when stale packs
+         are detected. -->
     <string name="pack_upgrade_title">Language Pack Updates Available</string>
+
+    <!-- Primary button on the pack-upgrade alert. -->
     <string name="pack_upgrade_button_now">Update Now</string>
+
+    <!-- Secondary button on the pack-upgrade alert — postpones; the cell
+         remains in Settings for later. -->
     <string name="pack_upgrade_button_later">Update Later</string>
+
+    <!-- Title of the progress dialog while the upgrade orchestrator
+         runs. -->
     <string name="pack_upgrade_progress_title">Updating language packs</string>
-    <string name="pack_upgrade_progress_format">Downloading %1$s…</string>
-    <string name="pack_upgrade_progress_format_with_bytes">Downloading %1$s… %2$s of %3$s</string>
+
+    <!-- Per-pack status line. %1$s = the pack's display name
+         (e.g. "Japanese"). -->
+    <string name="pack_upgrade_progress_format">Downloading <xliff:g id="pack_name" example="Japanese">%1$s</xliff:g>…</string>
+
+    <!-- Same as pack_upgrade_progress_format but adds a byte-count
+         progress indicator.
+         %1$s = pack display name; %2$s = bytes-so-far formatted with
+         unit (e.g. "12 MB"); %3$s = total bytes formatted (e.g. "84 MB"). -->
+    <string name="pack_upgrade_progress_format_with_bytes">Downloading <xliff:g id="pack_name" example="Japanese">%1$s</xliff:g>… <xliff:g id="bytes_so_far" example="12 MB">%2$s</xliff:g> of <xliff:g id="bytes_total" example="84 MB">%3$s</xliff:g></string>
+
+    <!-- Status line while the post-upgrade translator is being warmed
+         (first inference after install). -->
     <string name="pack_upgrade_priming_models">Loading translation models…</string>
-    <string name="pack_upgrade_label_source">Game Language (%1$s)</string>
-    <string name="pack_upgrade_label_target">Your Language (%1$s)</string>
+
+    <!-- Game-language label inside the upgrade alert listing.
+         %1$s = language display name. -->
+    <string name="pack_upgrade_label_source">Game Language (<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>)</string>
+
+    <!-- Target-language label inside the upgrade alert listing.
+         %1$s = language display name. -->
+    <string name="pack_upgrade_label_target">Your Language (<xliff:g id="target_language" example="English">%1$s</xliff:g>)</string>
+
+    <!-- Title of the "Update language packs" cell inside the Language
+         section of Settings, shown when staleInstalledPacks() is
+         non-empty. -->
     <string name="lang_section_update_packs_title">Update language packs</string>
+
+    <!-- Hint cell shown above the multi-display picker. -->
     <string name="settings_display_hint">Select the display that shows the game. Usually Display 0 is the main/top screen.</string>
+
+    <!-- Empty-state when MediaProjection reports no eligible displays. -->
     <string name="settings_no_displays_found">No displays found</string>
-    <string name="settings_capture_display_footer">Select one or more screens. The screen you\'re viewing PlayTranslate on is skipped.</string>
-    <string name="hint_deepl_key">Paste your DeepL API key here</string>
+
+    <!-- Footer hint under the Capture Display picker explaining that
+         the display the user is currently viewing is filtered out. -->
+    <string name="settings_capture_display_footer">Select one or more screens. The screen you\'re viewing <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> on is skipped.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         DEEPL — settings hints and warnings.  DeepL itself is a brand;
+         see the OpenAI/Gemini section below for the per-backend title
+         and display strings.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Hint inside the DeepL API-key text field. -->
+    <string name="hint_deepl_key">Paste your <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> API key here</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION FALLBACK NOTES — banners shown above translation
+         output when the online backend chain fell back to offline.  ⚠ is
+         a glyph (U+26A0); keep it.  "ML Kit" / "offline translation" is
+         described to the user without naming a specific backend.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Shown when online backends are unreachable due to no network. -->
     <string name="note_mlkit_no_internet">⚠ No internet connection — showing offline translation (lower quality).</string>
+
+    <!-- Shown when online backends are reachable but returning errors. -->
     <string name="note_mlkit_service_unavailable">⚠ Translation service unavailable — showing offline translation (lower quality).</string>
+
+    <!-- Shown when a TG / Qwen / Gemma backend OOMed and we fell
+         through to a lighter backend. -->
     <string name="note_low_memory_fallback">⚠ Low memory — showing offline translation (lower quality).</string>
-    <string name="translation_source_label">Translated by %1$s</string>
+
+    <!-- Attribution line on the translation result, below the
+         translated text. %1$s = backend display name (e.g. "DeepL"). -->
+    <string name="translation_source_label">Translated by <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
+
+    <!-- Error toast shown when the user tries to start live mode but
+         the active capture backend doesn't support it. -->
     <string name="error_live_mode_unsupported_backend">Live mode isn\'t available with the current screen-capture method.</string>
+
+    <!-- Error toast shown when MediaProjection was revoked mid-session
+         and live mode was forced to stop. -->
     <string name="error_screen_capture_denied">Live mode stopped — screen capture permission was denied.</string>
 
-    <!-- Section headers -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         SECTION HEADERS on the translation-result screen.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Header above the source-text section. -->
     <string name="section_original">Original</string>
+
+    <!-- Header above the translated-text section. -->
     <string name="section_translation">Translation</string>
+
+    <!-- Header above the per-word tokenization list. -->
     <string name="section_words">Words</string>
+
+    <!-- Skeleton/placeholder line under the Words header while
+         tokenization is in flight. -->
     <string name="words_loading">Looking up words…</string>
+
+    <!-- Skeleton/placeholder line on the drag-lens word view while the
+         lookup is in flight. -->
     <string name="lens_loading">Looking up…</string>
+
+    <!-- Badge above a definition that came from a machine translation
+         (rather than a curated dictionary). -->
     <string name="def_source_machine_translated">⚠ Machine translated</string>
 
-    <!-- Region labels -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         REGION PICKER — buttons and labels on the OCR-region UI.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Sheet title when picking which on-screen region to capture. -->
     <string name="label_select_region">Select Region</string>
+
+    <!-- "Edit" button — enters the region-edit mode. -->
     <string name="label_edit">Edit</string>
+
+    <!-- "Done" button — exits edit/picker mode. -->
     <string name="label_done">Done</string>
+
+    <!-- Row label for "+ Add custom region" inside the region-picker
+         sheet. The leading "+" is part of the visual; keep it. -->
     <string name="label_add_custom_region">+ Add custom region</string>
+
+    <!-- Title of the Add Custom Region sheet. -->
     <string name="label_add_custom_region_title">Add Custom Region</string>
+
+    <!-- Footer copy under the live-on-game region selector explaining
+         how to drag the box. -->
     <string name="label_region_drag_hint">Drag the region box on the game screen to select your desired area. Drag the top or bottom edge, or drag the middle to move the whole box.</string>
+
+    <!-- TextInputLayout label for the region-name text field. -->
     <string name="label_region_name">Region name</string>
+
+    <!-- Hint inside the region-name text field. -->
     <string name="hint_region_name">e.g. Dialogue box</string>
 
-    <!-- Overlay icon — informational cell in the top section. Rendered ALL
-         CAPS via the Text.PT.GroupHeader style. -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING ICON CELL (Settings → top section)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Informational cell title. Rendered ALL CAPS by the
+         Text.PT.GroupHeader style — keep normal case here. -->
     <string name="settings_show_overlay_icon">On the floating icon</string>
 
-    <!-- Turn On / Turn Off PlayTranslate button (capture lifecycle) -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         CAPTURE LIFECYCLE — power button + state strings shown on the
+         "Turn On / Turn Off PlayTranslate" card at the top of Settings.
+         Title and subtitle vary with state.  OFF strings carry the CTA
+         ("Allow…", "Required…"); ON strings describe the resulting
+         permission state WITHOUT claiming any capture is currently
+         happening.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Button label that activates the capture pipeline. -->
     <string name="capture_lifecycle_start">Turn On</string>
+
+    <!-- Button label that deactivates the capture pipeline. -->
     <string name="capture_lifecycle_stop">Turn Off</string>
-    <!-- Power status card (top of Settings). Both title and subtitle vary
-         with state — the OFF strings carry the CTA ("Allow…", "Required…")
-         while the ON strings describe the resulting permission + capability
-         WITHOUT claiming any active capture/translation happens (capture
-         only runs when the user triggers a translation). -->
+
+    <!-- ALL-CAPS state badge ("ON") shown next to the title when the
+         capture permission is granted. -->
     <string name="capture_lifecycle_state_on">On</string>
+
+    <!-- ALL-CAPS state badge ("OFF") shown next to the title when the
+         capture permission is not granted. -->
     <string name="capture_lifecycle_state_off">Off</string>
+
+    <!-- Card title shown when capture permission has been granted. -->
     <string name="capture_lifecycle_on_title">Screen capture permitted</string>
+
+    <!-- Card title shown when capture permission has not been granted —
+         this is the CTA. -->
     <string name="capture_lifecycle_off_title">Allow screen capture</string>
+
+    <!-- Card subtitle when capture permission has been granted. -->
     <string name="capture_lifecycle_on_subtitle">Ready to translate</string>
+
+    <!-- Card subtitle when capture permission has not been granted —
+         explains why this is required. -->
     <string name="capture_lifecycle_off_subtitle">Required to read game text</string>
-    <!-- Floating-icon visibility toggle. Takes the power cell's slot on the
-         accessibility backend in dual-screen, where capture is always on and
-         the icon is the only thing left to control. -->
+
+    <!-- Card title shown on the accessibility-backed power cell in
+         dual-screen mode, where capture is always on and the floating
+         icon is the only thing left to control. -->
     <string name="game_screen_controls_title">Game Screen Controls</string>
 
-    <!-- MediaProjection floating-controls overlay permission -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         MEDIAPROJECTION OVERLAY-PERMISSION DIALOG
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Title of the overlay-permission prompt shown the first time the
+         user enables the floating game-screen controls under the
+         MediaProjection capture backend. -->
     <string name="mp_overlay_permission_title">Display over other apps</string>
-    <string name="mp_overlay_permission_message">PlayTranslate needs permission to display over other apps so the floating game-screen controls can show on top of your game.</string>
+
+    <!-- Body of the overlay-permission prompt. -->
+    <string name="mp_overlay_permission_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> needs permission to display over other apps so the floating game-screen controls can show on top of your game.</string>
+
+    <!-- Positive button — opens the system Overlay Settings. -->
     <string name="mp_overlay_permission_button">Open settings</string>
-    <!-- Floating-icon gesture hints in the top section's "On the floating
-         icon" row. Each line is a leading Material Symbol + bold verb +
-         em-dash + explanation. The bold span is baked into the resource via
-         inline <b>; the icon comes from the layout (ic_touch_triple etc.). -->
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING-ICON GESTURE HINTS
+         Each string is a short verb + em-dash + explanation, rendered
+         in the "On the floating icon" cell with a leading Material
+         Symbol from the layout.  <b> is rendered as bold via HtmlCompat;
+         preserve the markup.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Drag gesture hint. -->
     <string name="overlay_icon_gesture_drag"><b>Drag</b> over words for quick definitions</string>
+
+    <!-- Hold gesture hint. -->
     <string name="overlay_icon_gesture_hold"><b>Hold</b> to preview translations</string>
+
+    <!-- Tap gesture hint. -->
     <string name="overlay_icon_gesture_tap"><b>Tap</b> to open the quick menu</string>
+
+    <!-- Title of the alert shown when the floating icon is enabled but
+         accessibility has been turned off externally. -->
     <string name="overlay_icon_a11y_required_title">Accessibility required</string>
-    <string name="overlay_icon_a11y_required_message">The floating overlay icon requires the Accessibility permission to draw on the game screen.\n\nGo to Settings → Accessibility → Installed apps → PlayTranslate → Enable.</string>
 
-    <!-- Accessibility-required alert (capture-display picker, hotkey setup) -->
+    <!-- Body of the same alert. The trailing nav path uses → as the
+         separator; keep the app name. -->
+    <string name="overlay_icon_a11y_required_message">The floating overlay icon requires the Accessibility permission to draw on the game screen.\n\nGo to Settings → Accessibility → Installed apps → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → Enable.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ACCESSIBILITY-REQUIRED ALERT (capture-display picker, hotkeys,
+         enhanced auto-translate).  One title, three body variants for
+         different contexts.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Title of the alert. -->
     <string name="a11y_required_alert_title">Accessibility required</string>
-    <string name="a11y_required_displays_message">Changing screens or translating multiple screens at once requires the Accessibility permission. It lets PlayTranslate capture any display, not just the main one.</string>
-    <string name="a11y_required_hotkey_message">Setting hotkeys requires the Accessibility permission. It lets PlayTranslate detect the keys you press while gaming.</string>
-    <!-- Vague-on-purpose alert message for the "Enhanced auto-translate"
-         row — sells the user-experience improvement without listing the
-         underlying mechanisms (button-press refresh, touch-through
-         overlays, hotkeys, multi-display). The toggle's subtitle already
-         carries the elevator pitch; this is the confirm dialog. -->
-    <string name="a11y_required_enhanced_message">PlayTranslate uses these enhanced controls to improve the auto-translate experience.</string>
 
-    <!-- Enhanced auto-translate row (top of AUTO-TRANSLATE section).
-         Gated on accessibility — off shows a MaterialSwitch + the
-         "More responsive…" pitch; on shows a check mark + "Enabled". -->
+    <!-- Body shown when the user tried to change which display(s) are
+         captured. -->
+    <string name="a11y_required_displays_message">Changing screens or translating multiple screens at once requires the Accessibility permission. It lets <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> capture any display, not just the main one.</string>
+
+    <!-- Body shown when the user tried to set a global hotkey. -->
+    <string name="a11y_required_hotkey_message">Setting hotkeys requires the Accessibility permission. It lets <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> detect the keys you press while gaming.</string>
+
+    <!-- Body shown when the user toggled the "Enhanced auto-translate"
+         row on. Deliberately vague — sells the experience improvement
+         without listing the underlying mechanisms (button-press
+         refresh, touch-through overlays, hotkeys, multi-display). -->
+    <string name="a11y_required_enhanced_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uses these enhanced controls to improve the auto-translate experience.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ENHANCED AUTO-TRANSLATE ROW (top of AUTO-TRANSLATE section).
+         Gated on accessibility.  Off shows a MaterialSwitch + the
+         "More responsive…" pitch; on shows a check mark + "Enabled".
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Row title. -->
     <string name="enhanced_auto_translate_title">Enhanced auto-translate</string>
+
+    <!-- Subtitle when the toggle is OFF — sells the feature. -->
     <string name="enhanced_auto_translate_subtitle_off">More readable, responsive, stable. Requires accessibility access.</string>
+
+    <!-- Subtitle when the toggle is ON. -->
     <string name="enhanced_auto_translate_subtitle_on">Enabled</string>
 
-    <!-- Anki integration -->
-    <string name="section_anki_deck">Anki Deck</string>
+    <!-- ═══════════════════════════════════════════════════════════════
+         ANKI INTEGRATION — header, install gate, permission rationale,
+         and post-add toasts.  "Anki" and "AnkiDroid" are brand names of
+         the third-party spaced-repetition flashcard app; do not
+         translate the brand spelling, but the surrounding copy is
+         translatable.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Settings section header (rendered ALL CAPS). -->
+    <string name="section_anki_deck"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g> Deck</string>
+
+    <!-- Title of the dialog shown when the user taps "Add to Anki" but
+         AnkiDroid isn't installed. -->
     <string name="anki_not_installed_title">Create flashcard for review</string>
-    <string name="anki_not_installed_message">Save words you discover while playing and review them later.\n\nPlayTranslate can save translated sentences, vocabulary, and screenshots directly to AnkiDroid, a free spaced-repetition flashcard app.</string>
-    <string name="anki_not_installed_get">Get AnkiDroid</string>
-    <string name="anki_section_description">Are you a language learner? Create flashcards in %1$s from unknown words and sentences, and review them later using AnkiDroid, a free and popular spaced-repetition flashcard app.</string>
-    <string name="anki_play_store_url">https://play.google.com/store/apps/details?id=com.ichi2.anki</string>
-    <string name="anki_permission_rationale_title">AnkiDroid permission needed</string>
-    <string name="anki_permission_rationale_message">To add flashcards to Anki, PlayTranslate needs permission to access AnkiDroid.\n\nTap Continue to grant this permission.</string>
+
+    <!-- Body of the AnkiDroid-not-installed dialog. -->
+    <string name="anki_not_installed_message">Save words you discover while playing and review them later.\n\n<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> can save translated sentences, vocabulary, and screenshots directly to <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>, a free spaced-repetition flashcard app.</string>
+
+    <!-- Positive button on the not-installed dialog — opens the Play
+         Store listing. -->
+    <string name="anki_not_installed_get">Get <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <!-- Footer / section description above the Anki Settings card.
+         %1$s = the user's target language display name. -->
+    <string name="anki_section_description">Are you a language learner? Create flashcards in <xliff:g id="target_language" example="English">%1$s</xliff:g> from unknown words and sentences, and review them later using <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>, a free and popular spaced-repetition flashcard app.</string>
+
+    <!-- Play-store URL for AnkiDroid. Never translated. -->
+    <string name="anki_play_store_url" translatable="false">https://play.google.com/store/apps/details?id=com.ichi2.anki</string>
+
+    <!-- Title of the permission-rationale dialog before requesting the
+         AnkiDroid AddApi permission. -->
+    <string name="anki_permission_rationale_title"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> permission needed</string>
+
+    <!-- Body of the permission-rationale dialog. -->
+    <string name="anki_permission_rationale_message">To add flashcards to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>, <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> needs permission to access <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>.\n\nTap Continue to grant this permission.</string>
+
+    <!-- Generic Continue button (also used elsewhere). -->
     <string name="btn_continue">Continue</string>
-    <string name="anki_permission_denied">Permission denied — grant it in AnkiDroid settings</string>
-    <string name="anki_no_deck_selected">No decks found in AnkiDroid</string>
-    <string name="anki_added_no_audio">Added to Anki (audio unavailable)</string>
+
+    <!-- Toast shown if the user denied the AnkiDroid permission. -->
+    <string name="anki_permission_denied">Permission denied — grant it in <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> settings</string>
+
+    <!-- Status row shown in the deck picker when AnkiDroid is installed
+         but has no decks. -->
+    <string name="anki_no_deck_selected">No decks found in <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <!-- Success toast shown after adding a card when no TTS audio could
+         be attached. -->
+    <string name="anki_added_no_audio">Added to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (audio unavailable)</string>
+
     <!-- Success toast for one-tap card creation. Shown on the result
          screen / word-detail sheet immediately after the card lands. -->
-    <string name="anki_added_success">Added to Anki</string>
+    <string name="anki_added_success">Added to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
     <!-- Progress toast shown immediately on one-tap from the drag-lens
          flow (the lens dismisses on tap, so the user needs feedback
          that something is happening while audio synth + upload runs). -->
-    <string name="anki_adding_in_progress">Adding to Anki…</string>
+    <string name="anki_adding_in_progress">Adding to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>…</string>
+
+    <!-- Title of the dialog shown when AnkiDroid rejected the card. -->
     <string name="anki_send_failed_title">Couldn\'t add card</string>
-    <string name="anki_send_failed_message">AnkiDroid didn\'t accept the card. Make sure AnkiDroid is running, then try again.</string>
-    <string name="btn_add_to_anki">Add to Anki</string>
+
+    <!-- Body of the same dialog. -->
+    <string name="anki_send_failed_message"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> didn\'t accept the card. Make sure <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g> is running, then try again.</string>
+
+    <!-- Primary "Add to Anki" button on the translation-result screen
+         and word-detail sheet. -->
+    <string name="btn_add_to_anki">Add to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <!-- "Remove" button on the Anki-card-preview row that contains a
+         screenshot. -->
     <string name="btn_remove_photo">Remove</string>
+
+    <!-- Section header for the screenshot row of the Anki-card review
+         sheet. -->
     <string name="label_screenshot">Screenshot</string>
+
+    <!-- Mode chip on the Anki-card review sheet — sentence mode. -->
     <string name="anki_mode_sentence">Sentence</string>
+
+    <!-- Mode chip on the Anki-card review sheet — word mode. -->
     <string name="anki_mode_word">Word</string>
 
-    <!-- Anki review redesign -->
-    <string name="anki_sheet_title_default">Add to Anki</string>
-    <string name="anki_sheet_add_to_deck">Add to %1$s</string>
-    <string name="anki_sheet_title_new_card">New Anki card</string>
+    <!-- ═══════════════════════════════════════════════════════════════
+         ANKI REVIEW SHEET — redesigned bottom-sheet card editor.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Sheet title when no deck name is available yet. -->
+    <string name="anki_sheet_title_default">Add to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <!-- Sheet title once a deck has been selected.
+         %1$s = deck name (free-form, user-defined in AnkiDroid). -->
+    <string name="anki_sheet_add_to_deck">Add to <xliff:g id="deck_name" example="Vocabulary">%1$s</xliff:g></string>
+
+    <!-- Alternative sheet title for new-card mode. -->
+    <string name="anki_sheet_title_new_card">New <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> card</string>
+
+    <!-- Deck row label inside the review sheet. -->
     <string name="anki_deck_row_label">Deck</string>
+
+    <!-- Deck row right-side text when no deck has been picked yet. -->
     <string name="anki_deck_row_empty">Pick a deck</string>
-    <string name="anki_deck_label_format">Deck: %1$s</string>
-    <string name="anki_save_button_label">Save Anki Card</string>
+
+    <!-- Formatted "Deck: $name" label.
+         %1$s = the deck name. -->
+    <string name="anki_deck_label_format">Deck: <xliff:g id="deck_name" example="Vocabulary">%1$s</xliff:g></string>
+
+    <!-- Primary "Save Anki Card" button at the bottom of the review
+         sheet. -->
+    <string name="anki_save_button_label">Save <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> Card</string>
+
+    <!-- Group header inside the review sheet — source text group. -->
     <string name="anki_group_original">Original</string>
+
+    <!-- Group header — translated text group. -->
     <string name="anki_group_translation">Translation</string>
+
+    <!-- Group header — list of words on the card. -->
     <string name="anki_group_words">Words on card</string>
-    <string name="anki_group_words_count">Words on card · %d</string>
+
+    <!-- Group header with count suffix. %d = number of words on card. -->
+    <string name="anki_group_words_count">Words on card · <xliff:g id="words_count" example="3">%d</xliff:g></string>
+
+    <!-- Group header — dictionary definitions of the words on the
+         card. -->
     <string name="anki_group_definitions">Definitions</string>
+
+    <!-- Group header — screenshot group. -->
     <string name="anki_group_screenshot">Screenshot</string>
-    <string name="anki_words_helper">These words will be included in the Anki card. Tap a word to highlight them in the card. Tap × to remove it from the card.</string>
+
+    <!-- Helper line under the Words group explaining the tap targets.
+         × is a literal multiplication-sign glyph; preserve it. -->
+    <string name="anki_words_helper">These words will be included in the <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> card. Tap a word to highlight them in the card. Tap × to remove it from the card.</string>
+
+    <!-- Fallback label shown on the Translation row when the
+         translation failed. -->
     <string name="anki_translation_error">Couldn\'t translate</string>
+
+    <!-- contentDescription for the × button beside each word chip in
+         the words group. -->
     <string name="anki_word_remove_content_description">Remove from card</string>
+
+    <!-- contentDescription for the screenshot's remove button. -->
     <string name="anki_screenshot_remove_content_description">Remove screenshot</string>
+
+    <!-- Group header — TTS audio row. -->
     <string name="anki_group_audio">Audio</string>
+
+    <!-- contentDescription for the audio-preview play button. -->
     <string name="anki_audio_preview_content_description">Preview audio</string>
+
+    <!-- Row label for the voice picker on the audio row. -->
     <string name="anki_voice_row_label">Voice</string>
+
+    <!-- Value shown when the engine's default voice is in use. -->
     <string name="anki_voice_default">Default</string>
-    <string name="anki_voice_numbered">Voice %1$d</string>
+
+    <!-- Value shown when a numbered voice is selected.
+         %1$d = the 1-based index of the voice in the picker list. -->
+    <string name="anki_voice_numbered">Voice <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
+
+    <!-- Title of the deck-picker sheet. -->
     <string name="anki_pick_deck_title">Pick a deck</string>
 
-    <!-- Card Type picker + field mapping -->
-    <string name="anki_section_header">Anki</string>
+    <!-- ═══════════════════════════════════════════════════════════════
+         CARD TYPE PICKER + FIELD MAPPING (Settings → Anki → Card Type).
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Section header in Settings (rendered ALL CAPS). -->
+    <string name="anki_section_header" translatable="false">Anki</string>
+
+    <!-- Row label for the card-type picker. -->
     <string name="anki_card_type_row_label">Card Type</string>
-    <string name="anki_card_type_row_empty">Default (PlayTranslate)</string>
+
+    <!-- Right-side text when no card type has been picked — falls back
+         to the bundled default template. -->
+    <string name="anki_card_type_row_empty">Default (<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>)</string>
+
+    <!-- Sheet title for the card-type picker. -->
     <string name="anki_card_type_pick_title">Select Card Type</string>
-    <string name="anki_card_type_no_models">No card types found in AnkiDroid</string>
+
+    <!-- Empty-state shown if AnkiDroid returns no card models. -->
+    <string name="anki_card_type_no_models">No card types found in <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <!-- Warning shown when the previously-selected card model has been
+         deleted in AnkiDroid. -->
     <string name="anki_card_type_stale_fallback">Card type no longer exists; using default</string>
+
+    <!-- Section header for the bundled "Default" card type in the
+         picker list. -->
     <string name="anki_card_type_section_default">Default</string>
+
+    <!-- Section header for user-defined card types. -->
     <string name="anki_card_type_section_custom">Card Types</string>
+
+    <!-- Row label for the "Edit field mapping" cell inside the
+         per-card-type detail page. -->
     <string name="anki_card_type_edit_mapping_row_label">Edit field mapping</string>
 
-    <string name="anki_field_mapping_title">Configure %1$s</string>
+    <!-- Title of the field-mapping screen.
+         %1$s = the card-type display name. -->
+    <string name="anki_field_mapping_title">Configure <xliff:g id="card_type_name" example="Lapis sentence">%1$s</xliff:g></string>
+
+    <!-- Save button at the top of the field-mapping screen. -->
     <string name="anki_field_mapping_save">Save</string>
+
+    <!-- Hint shown above the Save button when the user hasn't mapped
+         any fields yet. -->
     <string name="anki_field_mapping_unconfigured">Configure fields for this card type before sending</string>
-    <string name="anki_sort_field_empty">Map a value to “%1$s” — Anki uses this field to identify the note, and empty values cause duplicate-rejection errors on send.</string>
-    <string name="anki_models_unavailable">Couldn\'t reach AnkiDroid to look up card types. Try again in a moment.</string>
+
+    <!-- Error line shown when the user left the AnkiDroid "sort field"
+         (used for duplicate detection) empty.
+         %1$s = the AnkiDroid field name (free-form, user-defined; we
+         render it as-is including any quotes the user picked).
+         The “ ” curly quotes are intentional typography. -->
+    <string name="anki_sort_field_empty">Map a value to “<xliff:g id="sort_field_name" example="Expression">%1$s</xliff:g>” — <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> uses this field to identify the note, and empty values cause duplicate-rejection errors on send.</string>
+
+    <!-- Error toast shown when the AnkiDroid AddApi can't be reached
+         while loading card types. -->
+    <string name="anki_models_unavailable">Couldn\'t reach <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> to look up card types. Try again in a moment.</string>
+
+    <!-- Helper shown when the user selected a Basic-like card type. -->
     <string name="anki_card_type_basic_no_mapping">Basic card types don\'t need a field mapping — Front and Back are filled automatically based on whether you\'re saving a word or a sentence.</string>
-    <string name="anki_content_source_pick_title">Map \"%1$s\"</string>
+
+    <!-- Title of the "Map this field to a content source" sheet.
+         %1$s = the AnkiDroid field name being mapped. -->
+    <string name="anki_content_source_pick_title">Map \"<xliff:g id="field_name" example="Expression">%1$s</xliff:g>\"</string>
 
     <!-- Footer below the Anki Settings card. Documents the long-press
          shortcut, which is otherwise undiscoverable since tapping
          opens the editable review sheet. Styled like the Translation
-         Service footers ("Translations try each enabled service…"). -->
-    <string name="anki_long_press_footer">PRO TIP: If you want to instantly create a card without editing, press and hold on any button that would normally take you to anki card creation page</string>
+         Service footers. -->
+    <string name="anki_long_press_footer">PRO TIP: If you want to instantly create a card without editing, press and hold on any button that would normally take you to <xliff:g id="brand_anki" example="anki">anki</xliff:g> card creation page</string>
 
-    <!-- ContentSource labels (dropdown options). Names persist in prefs,
-         so re-labeling here is safe but renaming enum constants is not.
-         The `*_desc` variants appear as the second-line subtitle in the
-         source picker; they include a concrete example of what PT
-         writes into the field. `<b>` markers are rendered via
-         HtmlCompat so the example shows what the user will actually
-         see on the card. -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         CONTENT SOURCE LABELS — items in the "Map field" dropdown.
+         Each entry is a name + a "*_desc" subtitle that includes a
+         concrete example of the value PlayTranslate writes into the
+         field.  The example strings (after "Example:") are language
+         samples in Japanese — they illustrate the shape of the output;
+         translators may leave them as-is (the value at runtime is the
+         user's source-language word, not this example).  <b> markup
+         is rendered as bold.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Sentinel "do nothing" option in the dropdown. -->
     <string name="anki_content_none">Empty</string>
-    <string name="anki_content_none_desc">Sends nothing — the Anki field stays empty.</string>
+    <string name="anki_content_none_desc">Sends nothing — the <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> field stays empty.</string>
 
+    <!-- Headword / dictionary form of the selected word. -->
     <string name="anki_content_expression">Word / headword</string>
     <string name="anki_content_expression_desc">The dictionary form of the highlighted word, no brackets. Example: 聞く</string>
 
+    <!-- Same word + per-kanji furigana brackets.  \{\{furigana:\}\} is an
+         AnkiDroid template helper; the backslashes escape the curly
+         braces inside the XML string. -->
     <string name="anki_content_expression_furigana">Word / headword with furigana</string>
     <string name="anki_content_expression_furigana_desc">The dictionary form with per-kanji furigana brackets, for fields rendered through \{\{furigana:\}\}. Example: 聞[き]く</string>
 
+    <!-- Pure-kana reading of the selected word. -->
     <string name="anki_content_reading">Word reading (kana)</string>
     <string name="anki_content_reading_desc">The pure-kana reading of the highlighted word. Example: きく</string>
 
+    <!-- Whole source sentence, with the selected word bolded. -->
     <string name="anki_content_sentence">Source sentence</string>
     <string name="anki_content_sentence_desc">The source sentence with the highlighted word bolded. Example: 友達に<b>聞いた</b></string>
 
+    <!-- Whole source sentence + per-kanji furigana brackets. -->
     <string name="anki_content_sentence_furigana">Source sentence with furigana</string>
     <string name="anki_content_sentence_furigana_desc">The source sentence with per-kanji furigana brackets, for fields rendered through \{\{furigana:\}\}. Example: 友達[ともだち]に<b>聞[き]いた</b></string>
 
+    <!-- Translated sentence. -->
     <string name="anki_content_sentence_translation">Translated sentence</string>
     <string name="anki_content_sentence_translation_desc">The translation of the source sentence in your selected target language.</string>
 
+    <!-- Dictionary definition. -->
     <string name="anki_content_definition">Definition</string>
     <string name="anki_content_definition_desc">The dictionary definition(s) of the highlighted word, formatted as HTML.</string>
 
+    <!-- Tatoeba example-sentence list. -->
     <string name="anki_content_examples">Example sentences</string>
-    <string name="anki_content_examples_desc">Tatoeba example sentences for the highlighted word, when available.</string>
+    <string name="anki_content_examples_desc"><xliff:g id="brand_tatoeba" example="Tatoeba">Tatoeba</xliff:g> example sentences for the highlighted word, when available.</string>
 
+    <!-- Screenshot (game capture).  &lt;img&gt; is the literal HTML tag
+         (escaped here for XML); keep the entity escapes. -->
     <string name="anki_content_picture">Screenshot</string>
     <string name="anki_content_picture_desc">A screenshot of the game screen, wrapped in &lt;img&gt; markup ready for a Picture / Screenshot field.</string>
 
+    <!-- TTS audio of the word alone. -->
     <string name="anki_content_word_audio">Word audio</string>
     <string name="anki_content_word_audio_desc">Text-to-speech audio of the word, ready for a Word Audio field.</string>
 
+    <!-- TTS audio of the full sentence. -->
     <string name="anki_content_sentence_audio">Sentence audio</string>
     <string name="anki_content_sentence_audio_desc">Text-to-speech audio of the sentence, ready for a Sentence Audio field.</string>
 
+    <!-- Frequency stars.  ★ is the literal star glyph (U+2605). -->
     <string name="anki_content_frequency">Frequency stars</string>
     <string name="anki_content_frequency_desc">Frequency rating of the highlighted word as stars. Example: ★★★</string>
 
+    <!-- Part-of-speech tag (word mode only). -->
     <string name="anki_content_part_of_speech">Part of speech</string>
     <string name="anki_content_part_of_speech_desc">Part-of-speech tag for the highlighted word (word-mode cards only). Example: noun</string>
 
+    <!-- Full words-table HTML (for sentence cards). -->
     <string name="anki_content_words_table">Words list (sentence cards)</string>
-    <string name="anki_content_words_table_desc">A formatted list of every word PlayTranslate detected in the sentence, with readings and definitions.</string>
+    <string name="anki_content_words_table_desc">A formatted list of every word <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> detected in the sentence, with readings and definitions.</string>
 
-    <!-- Card-type state flags. The "(x)" suffix discloses the literal
-         value the flag emits when it fires — visible reminder that
-         these go into Mustache section-gate fields, not regular
-         content fields. -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         CARD-TYPE STATE FLAGS — Mustache section-gate fields.  The "(x)"
+         suffix discloses the literal value the flag emits when it fires
+         — visible reminder that these go into Mustache gate fields, not
+         regular content fields.  "Migaku", "Lapis", "JPMN" are the
+         well-known community card-template brands.
+         ═══════════════════════════════════════════════════════════════ -->
+
     <string name="anki_content_flag_vocabulary">Vocabulary card marker (x)</string>
-    <string name="anki_content_flag_vocabulary_desc">Emits \"x\" on word-mode sends only — use for template fields like Migaku\'s “Is Vocabulary Card”.</string>
+    <string name="anki_content_flag_vocabulary_desc">Emits \"x\" on word-mode sends only — use for template fields like <xliff:g id="brand_migaku" example="Migaku">Migaku</xliff:g>\'s “Is Vocabulary Card”.</string>
 
     <string name="anki_content_flag_sentence">Sentence card marker (x)</string>
-    <string name="anki_content_flag_sentence_desc">Emits \"x\" on sentence-mode sends only — use for template fields like Lapis\'s or JPMN\'s “IsSentenceCard”.</string>
+    <string name="anki_content_flag_sentence_desc">Emits \"x\" on sentence-mode sends only — use for template fields like <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>\'s or <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>\'s “IsSentenceCard”.</string>
 
     <string name="anki_content_flag_targeted_sentence">Targeted sentence card marker (x)</string>
-    <string name="anki_content_flag_targeted_sentence_desc">Emits \"x\" on sentence sends that have a highlighted target word — use for JPMN\'s “IsTargetedSentenceCard”.</string>
+    <string name="anki_content_flag_targeted_sentence_desc">Emits \"x\" on sentence sends that have a highlighted target word — use for <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>\'s “IsTargetedSentenceCard”.</string>
 
     <string name="anki_content_flag_always_on">Always-on marker (x)</string>
     <string name="anki_content_flag_always_on_desc">Always emits \"x\". Use for template fields you want unconditionally enabled.</string>
 
-    <!-- Section headers for the source picker. -->
+    <!-- Section headers inside the "Map field" picker — separate the
+         Content options (above) from the Card-type-flag options. -->
     <string name="anki_content_section_content">Content</string>
     <string name="anki_content_section_flag">Card type flag</string>
 
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC CHROME
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- contentDescription for the universal back arrow at the top of
+         various screens. -->
     <string name="cd_back">Back</string>
 
-    <!-- Appearance — theme mode + accent picker -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         APPEARANCE — theme mode and accent picker.
+         The accent labels are common colour names; translators may pick
+         the most natural rendering in their language.  We do NOT mark
+         them translatable="false" because most locales have natural
+         words for these colours.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Theme-mode choice — follow the system setting. -->
     <string name="pt_theme_mode_system">System</string>
+    <!-- Theme-mode choice — always dark. -->
     <string name="pt_theme_mode_dark">Dark</string>
+    <!-- Theme-mode choice — always light. -->
     <string name="pt_theme_mode_light">Light</string>
+
+    <!-- Accent picker section label. -->
     <string name="pt_accent_label">Accent</string>
+
+    <!-- Accent colour names. -->
     <string name="pt_accent_coral">Coral</string>
     <string name="pt_accent_amber">Amber</string>
     <string name="pt_accent_lime">Lime</string>
@@ -370,202 +1026,458 @@
     <string name="pt_accent_orchid">Orchid</string>
     <string name="pt_accent_rose">Rose</string>
 
-    <!-- Translation Service section -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION SERVICE — section labels common to both online and
+         offline backend rows in Settings.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Subtitle clause shown on online (cloud) backend rows. -->
     <string name="tr_service_requires_internet">Requires internet</string>
+
+    <!-- Subtitle clause shown on offline (on-device) backend rows. -->
     <string name="tr_service_works_offline">Works offline</string>
 
-    <!-- DeepL detail screen -->
-    <string name="deepl_settings_title">DeepL</string>
+    <!-- ═══════════════════════════════════════════════════════════════
+         DEEPL — detail screen (Settings → Online translations → DeepL).
+         DeepL is a brand; keep spelling.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Toolbar title.  Brand name, not translated. -->
+    <string name="deepl_settings_title" translatable="false">DeepL</string>
+
+    <!-- Save button at the top of the DeepL settings activity. -->
     <string name="deepl_settings_save">Save</string>
+
+    <!-- contentDescription for the × close button. -->
     <string name="deepl_settings_close_cd">Close</string>
-    <string name="deepl_settings_get_key_title">Get free DeepL API key</string>
+
+    <!-- Title of the "Get a free DeepL API key" cell that links to the
+         DeepL sign-up flow. -->
+    <string name="deepl_settings_get_key_title">Get free <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> API key</string>
+
+    <!-- Subtitle of the same cell — sets expectations about quota and
+         payment-method requirement. -->
     <string name="deepl_settings_get_key_subtitle">The free plan includes 500,000 characters per month, but requires a credit card to sign up</string>
-    <string name="deepl_settings_about">DeepL is a translation service known for high-quality output, especially in European languages.</string>
 
-    <!-- OpenAI / Gemini backend display names + sub-screen titles -->
-    <string name="openai_display_name">OpenAI</string>
-    <string name="gemini_display_name">Gemini</string>
-    <string name="deepseek_display_name">DeepSeek</string>
-    <string name="openai_settings_title">OpenAI</string>
-    <string name="gemini_settings_title">Gemini</string>
-    <string name="deepseek_settings_title">DeepSeek</string>
+    <!-- Description cell explaining the DeepL service. -->
+    <string name="deepl_settings_about"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> is a translation service known for high-quality output, especially in European languages.</string>
 
-    <!-- Shared labels and messages for the generic LLM backend sub-screen -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         OPENAI / GEMINI / DEEPSEEK — brand display names and per-backend
+         sub-screen titles.  All brand names; not translated.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="openai_display_name" translatable="false">OpenAI</string>
+    <string name="gemini_display_name" translatable="false">Gemini</string>
+    <string name="deepseek_display_name" translatable="false">DeepSeek</string>
+    <string name="openai_settings_title" translatable="false">OpenAI</string>
+    <string name="gemini_settings_title" translatable="false">Gemini</string>
+    <string name="deepseek_settings_title" translatable="false">DeepSeek</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC LLM BACKEND SETTINGS (OpenAI / Gemini / DeepSeek).
+         Shared labels and dialogs on the per-backend detail screen.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Row label for the API-key text field. -->
     <string name="llm_backend_api_key_label">API Key</string>
+
+    <!-- Row label for the model picker. -->
     <string name="llm_backend_model_label">Model</string>
-    <string name="llm_backend_get_key_title_fmt">Get a %1$s API key</string>
+
+    <!-- "Get API key" cell title.  %1$s = backend display name
+         (e.g. "OpenAI"). -->
+    <string name="llm_backend_get_key_title_fmt">Get a <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> API key</string>
+
+    <!-- Row label for today's usage stat. -->
     <string name="llm_backend_today_usage_label">Today\'s usage</string>
+
+    <!-- Dropdown option in the model picker for entering a custom model
+         id by hand. -->
     <string name="llm_backend_model_custom_entry">Custom…</string>
+
+    <!-- Placeholder shown while the model list is fetched from the
+         backend. -->
     <string name="llm_model_picker_loading">Loading models…</string>
+
+    <!-- Error line shown if the model-list fetch failed. -->
     <string name="llm_model_picker_fetch_failed">Couldn\'t fetch the model list. Check the API key, or type a model id via Custom….</string>
+
+    <!-- Title of the dialog shown when the API responded that the
+         entered key is invalid. -->
     <string name="llm_backend_invalid_key_alert_title">Couldn\'t verify API key</string>
-    <string name="llm_backend_invalid_key_alert_message_fmt">%1$s rejected the key you entered. Double-check it at %2$s and try again.</string>
+
+    <!-- Body of the same dialog.  %1$s = backend display name
+         (e.g. "OpenAI"); %2$s = the backend's developer console URL
+         (e.g. "platform.openai.com"). -->
+    <string name="llm_backend_invalid_key_alert_message_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> rejected the key you entered. Double-check it at <xliff:g id="dev_console_url" example="platform.openai.com">%2$s</xliff:g> and try again.</string>
+
+    <!-- Dismiss button on the same dialog. -->
     <string name="llm_backend_invalid_key_alert_button">OK</string>
-    <string name="llm_status_today_tokens_fmt">%s tokens</string>
 
-    <!-- Translation Service section footers in Settings -->
+    <!-- Today's-usage stat line.  %s = formatted token count
+         (e.g. "12,345"). "tokens" is the API unit; usually kept
+         lowercase. -->
+    <string name="llm_status_today_tokens_fmt"><xliff:g id="token_count" example="12,345">%s</xliff:g> tokens</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS FOOTERS for the Translation Service sections.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Footer below the online (cloud) backends list, explaining the
+         waterfall order and the privacy implication. -->
     <string name="tr_service_order_footer">Translations try each enabled service in the order shown, falling back when one is unavailable. Online translation services receive the captured text. Review each provider\'s privacy policy before enabling.</string>
-    <string name="tr_service_offline_footer">Offline translations are used as a fallback when online translations are unavailable. MLKit translations are bad, but the other options can be very slow and taxing, be weary of using them for auto translation.</string>
 
-    <!-- Translation Service per-backend status line (line 2) -->
+    <!-- Footer below the offline (on-device) backends list — sets
+         expectations about quality vs speed. -->
+    <string name="tr_service_offline_footer">Offline translations are used as a fallback when online translations are unavailable. <xliff:g id="brand_mlkit" example="MLKit">MLKit</xliff:g> translations are bad, but the other options can be very slow and taxing, be weary of using them for auto translation.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         PER-BACKEND STATUS LINE on the cloud-backend rows.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Placeholder shown while the per-backend quota is fetched. -->
     <string name="tr_service_status_loading">Checking usage…</string>
-    <string name="tr_service_status_quota_fmt">%1$s / %2$s characters used</string>
-    <string name="tr_service_status_quota_with_reset_fmt">%1$s · resets %2$s</string>
 
-    <!-- Backend quality labels (used for the offline-row stat-grid
-         contentDescription and also for the deprecated line-1 prose
-         label on online rows when applicable). -->
+    <!-- Quota line.  %1$s = formatted used-count; %2$s = formatted
+         quota total. -->
+    <string name="tr_service_status_quota_fmt"><xliff:g id="used" example="120,345">%1$s</xliff:g> / <xliff:g id="total" example="500,000">%2$s</xliff:g> characters used</string>
+
+    <!-- Quota line with reset clause appended.  %1$s = the line
+         already containing the used / total counts; %2$s = the reset
+         date or duration (formatted by the runtime). -->
+    <string name="tr_service_status_quota_with_reset_fmt"><xliff:g id="quota_line" example="120,345 / 500,000 characters used">%1$s</xliff:g> · resets <xliff:g id="reset_date" example="Jun 1">%2$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         BACKEND QUALITY / SPEED LABELS — used in the offline-row
+         stat-grid contentDescription AND in the deprecated line-1 prose
+         label on online rows where applicable.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Quality bucket — bottom of the scale. -->
     <string name="tr_service_quality_bad">Bad quality</string>
+    <!-- Quality bucket — mid. -->
     <string name="tr_service_quality_okay">Okay quality</string>
+    <!-- Quality bucket — top. -->
     <string name="tr_service_quality_good">Good quality</string>
+    <!-- Quality bucket — premium tier (Gemma 4 E2B / HyMt). -->
     <string name="tr_service_quality_better">Better quality</string>
 
-    <!-- Backend speed labels (used for the offline-row stat-grid
-         contentDescription). -->
+    <!-- Speed bucket — slowest. -->
     <string name="tr_service_speed_very_slow">Very slow</string>
+    <!-- Speed bucket — slow. -->
     <string name="tr_service_speed_slow">Slow</string>
+    <!-- Speed bucket — average. -->
     <string name="tr_service_speed_okay">Okay speed</string>
+    <!-- Speed bucket — fast. -->
     <string name="tr_service_speed_fast">Fast</string>
 
-    <!-- Offline backend row (settings_row_backend_offline) — stat-grid
-         column headers and ML Kit literal RAM/disk values. -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         OFFLINE BACKEND ROW (settings_row_backend_offline)
+         Stat-grid column headers + ML Kit literal RAM / disk values.
+         ═══════════════════════════════════════════════════════════════ -->
+
     <string name="offline_backend_quality_label">Quality</string>
     <string name="offline_backend_speed_label">Speed</string>
     <string name="offline_backend_ram_label">RAM</string>
     <string name="offline_backend_disk_label">Disk</string>
-    <string name="offline_backend_mlkit_ram">&lt; 1 GB</string>
-    <string name="offline_backend_mlkit_disk">~30 MB</string>
-    <!-- Composed contentDescription suffix tokens for the offline row. -->
+
+    <!-- ML Kit literal RAM / disk values.  "< 1 GB" / "~30 MB" use the
+         universal SI-ish byte abbreviations, kept as-is. -->
+    <string name="offline_backend_mlkit_ram" translatable="false">&lt; 1 GB</string>
+    <string name="offline_backend_mlkit_disk" translatable="false">~30 MB</string>
+
+    <!-- contentDescription suffix tokens for the offline row. -->
     <string name="offline_backend_downloaded_cd">Downloaded</string>
     <string name="offline_backend_not_downloaded_cd">Not downloaded</string>
     <string name="offline_backend_enabled_cd">Enabled</string>
     <string name="offline_backend_disabled_cd">Disabled</string>
-    <!-- Full row contentDescription template. Args: title, quality label,
-         speed label, ram, disk, downloaded/not-downloaded, enabled/disabled. -->
-    <string name="offline_backend_row_a11y_fmt">%1$s. Quality: %2$s. Speed: %3$s. Requires %4$s memory. %5$s on disk. %6$s. %7$s.</string>
-    <!-- Same template, minus the speed clause (for backends with no speedStars). -->
-    <string name="offline_backend_row_a11y_no_speed_fmt">%1$s. Quality: %2$s. Requires %3$s memory. %4$s on disk. %5$s. %6$s.</string>
 
-    <!-- Download UI: shown between SHA verify and ready for directory-mode
-         (zip-extract) engine entries like the MNN Qwen. -->
+    <!-- Full row contentDescription template (for TalkBack).
+         %1$s = backend display name; %2$s = quality label; %3$s = speed
+         label; %4$s = required RAM (e.g. "4 GB"); %5$s = on-disk size
+         (e.g. "1.2 GB"); %6$s = Downloaded/Not downloaded; %7$s =
+         Enabled/Disabled. -->
+    <string name="offline_backend_row_a11y_fmt"><xliff:g id="title" example="Qwen 2.5 1.5B">%1$s</xliff:g>. Quality: <xliff:g id="quality" example="Good quality">%2$s</xliff:g>. Speed: <xliff:g id="speed" example="Okay speed">%3$s</xliff:g>. Requires <xliff:g id="ram" example="4 GB">%4$s</xliff:g> memory. <xliff:g id="disk_size" example="1.2 GB">%5$s</xliff:g> on disk. <xliff:g id="downloaded_state" example="Downloaded">%6$s</xliff:g>. <xliff:g id="enabled_state" example="Enabled">%7$s</xliff:g>.</string>
+
+    <!-- Same template, minus the speed clause (for backends with no
+         speedStars). -->
+    <string name="offline_backend_row_a11y_no_speed_fmt"><xliff:g id="title" example="ML Kit">%1$s</xliff:g>. Quality: <xliff:g id="quality" example="Bad quality">%2$s</xliff:g>. Requires <xliff:g id="ram" example="&lt; 1 GB">%3$s</xliff:g> memory. <xliff:g id="disk_size" example="~30 MB">%4$s</xliff:g> on disk. <xliff:g id="downloaded_state" example="Downloaded">%5$s</xliff:g>. <xliff:g id="enabled_state" example="Enabled">%6$s</xliff:g>.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC DOWNLOAD UI — shown between SHA verify and ready for
+         directory-mode (zip-extract) engine entries like the MNN Qwen.
+         ═══════════════════════════════════════════════════════════════ -->
+
     <string name="model_download_extracting">Extracting…</string>
 
-    <!-- MNN-backed Qwen 2.5 1.5B (live-mode tier — see :mnn module +
-         mnn-spike/SPIKE_REPORT.md). -->
-    <string name="qwen_mnn_display_name">Qwen 2.5 1.5B</string>
-    <string name="qwen_mnn_status_not_downloaded">Requires %1$s memory, %2$s on disk</string>
-    <string name="qwen_mnn_status_downloaded_disabled">Downloaded but disabled (%1$s on disk)</string>
-    <string name="qwen_mnn_status_ready">Requires %1$s memory, %2$s on disk</string>
-    <string name="qwen_mnn_status_downloading">Downloading… %1$s of %2$s</string>
+    <!-- ═══════════════════════════════════════════════════════════════
+         ON-DEVICE LLM TRANSLATION MODELS (MNN-backed).
+         The Qwen, Gemma 4 E2B, and Hunyuan-MT sections all share the
+         same shape: display_name + per-row status line + disable-dialog
+         + pre-download error/warning messages.  In each section,
+         %1$s = required RAM (e.g. "4 GB"); %2$s = on-disk size
+         (e.g. "1.2 GB"); except where noted.
+
+         Brand strings (display names) are translatable="false".
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- ── MNN-backed Qwen 2.5 1.5B (live-mode tier) ──────────────── -->
+
+    <string name="qwen_mnn_display_name" translatable="false">Qwen 2.5 1.5B</string>
+
+    <!-- Status line before download. -->
+    <string name="qwen_mnn_status_not_downloaded">Requires <xliff:g id="ram" example="4 GB">%1$s</xliff:g> memory, <xliff:g id="disk_size" example="1.2 GB">%2$s</xliff:g> on disk</string>
+
+    <!-- Status line shown when the model is on disk but the user
+         toggled it off.  %1$s = on-disk size. -->
+    <string name="qwen_mnn_status_downloaded_disabled">Downloaded but disabled (<xliff:g id="disk_size" example="1.2 GB">%1$s</xliff:g> on disk)</string>
+
+    <!-- Status line once download is complete AND the model is
+         enabled.  %1$s / %2$s identical to status_not_downloaded. -->
+    <string name="qwen_mnn_status_ready">Requires <xliff:g id="ram" example="4 GB">%1$s</xliff:g> memory, <xliff:g id="disk_size" example="1.2 GB">%2$s</xliff:g> on disk</string>
+
+    <!-- In-flight download status.  %1$s = bytes-so-far formatted with
+         unit; %2$s = total bytes formatted. -->
+    <string name="qwen_mnn_status_downloading">Downloading… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> of <xliff:g id="bytes_total" example="1.2 GB">%2$s</xliff:g></string>
+
+    <!-- Status line during SHA verification. -->
     <string name="qwen_mnn_status_verifying">Verifying download…</string>
-    <string name="qwen_mnn_disable_title">Disable Qwen (MNN)?</string>
-    <string name="qwen_mnn_disable_message">The %1$s model is installed. You can keep it for later or delete it to free up space.</string>
-    <string name="qwen_mnn_download_failed">Download failed: %1$s</string>
-    <string name="qwen_mnn_insufficient_memory">This device doesn\'t have enough memory to run Qwen.</string>
-    <string name="qwen_mnn_insufficient_storage">Not enough free storage. Qwen needs %1$s free.</string>
+
+    <!-- Title of the disable-Qwen confirmation dialog. -->
+    <string name="qwen_mnn_disable_title">Disable <xliff:g id="brand_qwen" example="Qwen">Qwen</xliff:g> (MNN)?</string>
+
+    <!-- Body of the same dialog.  %1$s = on-disk size (so the user
+         knows what they'd reclaim by deleting). -->
+    <string name="qwen_mnn_disable_message">The <xliff:g id="disk_size" example="1.2 GB">%1$s</xliff:g> model is installed. You can keep it for later or delete it to free up space.</string>
+
+    <!-- Error toast on download failure.  %1$s = error description. -->
+    <string name="qwen_mnn_download_failed">Download failed: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <!-- Disable-and-hide status shown on devices that don't meet the
+         memory requirement to run Qwen at all. -->
+    <string name="qwen_mnn_insufficient_memory">This device doesn\'t have enough memory to run <xliff:g id="brand_qwen" example="Qwen">Qwen</xliff:g>.</string>
+
+    <!-- Error shown when the device lacks free storage to download.
+         %1$s = required free space (formatted with unit). -->
+    <string name="qwen_mnn_insufficient_storage">Not enough free storage. <xliff:g id="brand_qwen" example="Qwen">Qwen</xliff:g> needs <xliff:g id="free_space" example="1.5 GB">%1$s</xliff:g> free.</string>
+
+    <!-- Title of the metered-connection confirmation dialog. -->
     <string name="qwen_mnn_metered_warning_title">Download on cellular?</string>
-    <string name="qwen_mnn_metered_warning_message">Qwen 2.5 1.5B (MNN) is %1$s. Continue on cellular?</string>
+
+    <!-- Body of the metered-connection confirmation dialog.  %1$s = the
+         human-readable file size of the model (e.g. "1.2 GB"). -->
+    <string name="qwen_mnn_metered_warning_message"><xliff:g id="brand_qwen" example="Qwen 2.5 1.5B (MNN)">Qwen 2.5 1.5B (MNN)</xliff:g> is <xliff:g id="download_size" example="1.2 GB">%1$s</xliff:g>. Continue on cellular?</string>
+
+    <!-- Status line during model warm-up (first inference). -->
     <string name="qwen_mnn_status_loading_model">Loading model…</string>
+
+    <!-- Status line shown when a download was paused (e.g. activity
+         backgrounded) and won't resume until Settings is reopened. -->
     <string name="qwen_mnn_download_paused">Download paused. Reopen Settings to resume.</string>
+
+    <!-- Disable-dialog buttons. -->
     <string name="qwen_mnn_disable_keep">Disable only</string>
     <string name="qwen_mnn_disable_delete">Delete model</string>
     <string name="qwen_mnn_disable_cancel">Cancel</string>
 
-    <!-- MNN-backed Gemma 4 E2B (premium-quality manual-lookup tier — replaces
-         the legacy TranslateGemma 4B). 1.48× faster than TG with identical
-         failure rate per the Gemma 4 follow-up spike. -->
-    <string name="gemma_e2b_mnn_display_name">Gemma 4 E2B</string>
-    <string name="gemma_e2b_mnn_status_not_downloaded">Requires %1$s memory, %2$s on disk</string>
-    <string name="gemma_e2b_mnn_status_downloaded_disabled">Downloaded but disabled (%1$s on disk)</string>
-    <string name="gemma_e2b_mnn_status_ready">Requires %1$s memory, %2$s on disk</string>
-    <string name="gemma_e2b_mnn_status_downloading">Downloading… %1$s of %2$s</string>
+    <!-- ── MNN-backed Gemma 4 E2B (premium-quality manual-lookup tier) ── -->
+
+    <string name="gemma_e2b_mnn_display_name" translatable="false">Gemma 4 E2B</string>
+
+    <!-- Status line before download. -->
+    <string name="gemma_e2b_mnn_status_not_downloaded">Requires <xliff:g id="ram" example="6 GB">%1$s</xliff:g> memory, <xliff:g id="disk_size" example="2.1 GB">%2$s</xliff:g> on disk</string>
+
+    <!-- Status line when on disk but disabled.  %1$s = on-disk size. -->
+    <string name="gemma_e2b_mnn_status_downloaded_disabled">Downloaded but disabled (<xliff:g id="disk_size" example="2.1 GB">%1$s</xliff:g> on disk)</string>
+
+    <!-- Status line when downloaded AND enabled. -->
+    <string name="gemma_e2b_mnn_status_ready">Requires <xliff:g id="ram" example="6 GB">%1$s</xliff:g> memory, <xliff:g id="disk_size" example="2.1 GB">%2$s</xliff:g> on disk</string>
+
+    <!-- In-flight download status. -->
+    <string name="gemma_e2b_mnn_status_downloading">Downloading… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> of <xliff:g id="bytes_total" example="2.1 GB">%2$s</xliff:g></string>
+
+    <!-- Status during SHA verification. -->
     <string name="gemma_e2b_mnn_status_verifying">Verifying download…</string>
-    <string name="gemma_e2b_mnn_disable_title">Disable Gemma 4 E2B?</string>
-    <string name="gemma_e2b_mnn_disable_message">The %1$s model is installed. You can keep it for later or delete it to free up space.</string>
-    <string name="gemma_e2b_mnn_download_failed">Download failed: %1$s</string>
-    <string name="gemma_e2b_mnn_insufficient_memory">This device doesn\'t have enough memory to run Gemma 4 E2B.</string>
-    <string name="gemma_e2b_mnn_insufficient_storage">Not enough free storage. Gemma 4 E2B needs %1$s free.</string>
+
+    <!-- Disable-confirm title. -->
+    <string name="gemma_e2b_mnn_disable_title">Disable <xliff:g id="brand_gemma" example="Gemma 4 E2B">Gemma 4 E2B</xliff:g>?</string>
+
+    <!-- Disable-confirm body.  %1$s = on-disk size. -->
+    <string name="gemma_e2b_mnn_disable_message">The <xliff:g id="disk_size" example="2.1 GB">%1$s</xliff:g> model is installed. You can keep it for later or delete it to free up space.</string>
+
+    <!-- Error toast on download failure.  %1$s = error description. -->
+    <string name="gemma_e2b_mnn_download_failed">Download failed: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <!-- Hide-on-incompatible message. -->
+    <string name="gemma_e2b_mnn_insufficient_memory">This device doesn\'t have enough memory to run <xliff:g id="brand_gemma" example="Gemma 4 E2B">Gemma 4 E2B</xliff:g>.</string>
+
+    <!-- Insufficient storage.  %1$s = required free size. -->
+    <string name="gemma_e2b_mnn_insufficient_storage">Not enough free storage. <xliff:g id="brand_gemma" example="Gemma 4 E2B">Gemma 4 E2B</xliff:g> needs <xliff:g id="free_space" example="2.5 GB">%1$s</xliff:g> free.</string>
+
+    <!-- Metered-connection warning title. -->
     <string name="gemma_e2b_mnn_metered_warning_title">Download on cellular?</string>
-    <string name="gemma_e2b_mnn_metered_warning_message">Gemma 4 E2B is %1$s. Continue on cellular?</string>
+
+    <!-- Metered-connection warning body.  %1$s = human file size. -->
+    <string name="gemma_e2b_mnn_metered_warning_message"><xliff:g id="brand_gemma" example="Gemma 4 E2B">Gemma 4 E2B</xliff:g> is <xliff:g id="download_size" example="2.1 GB">%1$s</xliff:g>. Continue on cellular?</string>
+
+    <!-- Status during warm-up. -->
     <string name="gemma_e2b_mnn_status_loading_model">Loading model…</string>
+
+    <!-- Download paused. -->
     <string name="gemma_e2b_mnn_download_paused">Download paused. Reopen Settings to resume.</string>
+
+    <!-- Disable-dialog buttons. -->
     <string name="gemma_e2b_mnn_disable_keep">Disable only</string>
     <string name="gemma_e2b_mnn_disable_delete">Delete model</string>
     <string name="gemma_e2b_mnn_disable_cancel">Cancel</string>
 
-    <!-- MNN-backed Tencent Hunyuan-MT 1.5 1.8B (translation-specialist tier;
-         see mnn-spike/HYMT_SPIKE_REPORT.md). Region-gated by RegionPolicy
-         (hidden in EU/UK/SK) and behind a one-time legal-attestation
-         click-through (Tencent HY Community License). -->
-    <string name="hymt_display_name">Hunyuan-MT 1.5 1.8B</string>
-    <string name="hymt_status_not_downloaded">Requires %1$s memory, %2$s on disk</string>
-    <string name="hymt_status_downloaded_disabled">Downloaded but disabled (%1$s on disk)</string>
-    <string name="hymt_status_ready">Requires %1$s memory, %2$s on disk</string>
-    <string name="hymt_status_downloading">Downloading… %1$s of %2$s</string>
+    <!-- ── MNN-backed Tencent Hunyuan-MT 1.5 1.8B (translation
+            specialist).  Region-gated by RegionPolicy (hidden in EU /
+            UK / SK) and behind a one-time legal-attestation
+            click-through.  See mnn-spike/HYMT_SPIKE_REPORT.md. ─────── -->
+
+    <string name="hymt_display_name" translatable="false">Hunyuan-MT 1.5 1.8B</string>
+
+    <!-- Status line before download. -->
+    <string name="hymt_status_not_downloaded">Requires <xliff:g id="ram" example="4 GB">%1$s</xliff:g> memory, <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g> on disk</string>
+
+    <!-- Status line when on disk but disabled.  %1$s = on-disk size. -->
+    <string name="hymt_status_downloaded_disabled">Downloaded but disabled (<xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> on disk)</string>
+
+    <!-- Status line when downloaded AND enabled. -->
+    <string name="hymt_status_ready">Requires <xliff:g id="ram" example="4 GB">%1$s</xliff:g> memory, <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g> on disk</string>
+
+    <!-- In-flight download status. -->
+    <string name="hymt_status_downloading">Downloading… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> of <xliff:g id="bytes_total" example="1.5 GB">%2$s</xliff:g></string>
+
+    <!-- Status during SHA verification. -->
     <string name="hymt_status_verifying">Verifying download…</string>
-    <string name="hymt_disable_title">Disable Hunyuan-MT?</string>
-    <string name="hymt_disable_message">The %1$s model is installed. You can keep it for later or delete it to free up space.</string>
-    <string name="hymt_download_failed">Download failed: %1$s</string>
-    <string name="hymt_insufficient_memory">This device doesn\'t have enough memory to run Hunyuan-MT.</string>
-    <string name="hymt_insufficient_storage">Not enough free storage. Hunyuan-MT needs %1$s free.</string>
+
+    <!-- Disable-confirm title. -->
+    <string name="hymt_disable_title">Disable <xliff:g id="brand_hunyuan" example="Hunyuan-MT">Hunyuan-MT</xliff:g>?</string>
+
+    <!-- Disable-confirm body.  %1$s = on-disk size. -->
+    <string name="hymt_disable_message">The <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> model is installed. You can keep it for later or delete it to free up space.</string>
+
+    <!-- Error toast on download failure.  %1$s = error description. -->
+    <string name="hymt_download_failed">Download failed: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <!-- Hide-on-incompatible message. -->
+    <string name="hymt_insufficient_memory">This device doesn\'t have enough memory to run <xliff:g id="brand_hunyuan" example="Hunyuan-MT">Hunyuan-MT</xliff:g>.</string>
+
+    <!-- Insufficient storage.  %1$s = required free size. -->
+    <string name="hymt_insufficient_storage">Not enough free storage. <xliff:g id="brand_hunyuan" example="Hunyuan-MT">Hunyuan-MT</xliff:g> needs <xliff:g id="free_space" example="2 GB">%1$s</xliff:g> free.</string>
+
+    <!-- Metered-connection warning title. -->
     <string name="hymt_metered_warning_title">Download on cellular?</string>
-    <string name="hymt_metered_warning_message">Hunyuan-MT 1.5 is %1$s. Continue on cellular?</string>
+
+    <!-- Metered-connection warning body.  %1$s = human file size. -->
+    <string name="hymt_metered_warning_message"><xliff:g id="brand_hunyuan15" example="Hunyuan-MT 1.5">Hunyuan-MT 1.5</xliff:g> is <xliff:g id="download_size" example="1.5 GB">%1$s</xliff:g>. Continue on cellular?</string>
+
+    <!-- Status during warm-up. -->
     <string name="hymt_status_loading_model">Loading model…</string>
+
+    <!-- Download paused. -->
     <string name="hymt_download_paused">Download paused. Reopen Settings to resume.</string>
+
+    <!-- Disable-dialog buttons. -->
     <string name="hymt_disable_keep">Disable only</string>
     <string name="hymt_disable_delete">Delete model</string>
     <string name="hymt_disable_cancel">Cancel</string>
 
-    <!-- Click-through legal attestation dialog shown once before the first
-         enable of Hunyuan-MT. Tencent HY Community License excludes
-         EU/UK/SK from the "Territory" definition (§1(l), §5(c)); §5(b)
-         forbids using outputs to improve other AI models. Editorial choices
-         (per legal review): geographic-only (no nationality clause), the
-         output-use clause cites §5(b) directly, "affirm and warrant"
-         language. -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         HUNYUAN-MT LEGAL ATTESTATION — click-through dialog shown once
+         before the first enable.  This is LEGAL TEXT.  Translate
+         carefully and faithfully — section numbers (§5(b)), the
+         "EU / UK / South Korea" enumeration, and the "affirm and
+         warrant" framing were chosen specifically by legal review and
+         must not be reworded loosely.  Tencent's HY Community License
+         is the authoritative document.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Dialog title.  &amp; is the literal ampersand entity. -->
     <string name="hymt_legal_title">Legal Notice &amp; Regional Restriction</string>
-    <string name="hymt_legal_message">Tencent\'s Hunyuan-MT 1.5 model is licensed under the Tencent HY Community License Agreement. This license excludes use within the European Union, United Kingdom, and South Korea.\n\nBy tapping Agree, you affirm and warrant that:\n\n(1) You are not currently residing or located within the EU, UK, or South Korea.\n\n(2) You will not use the outputs of this model to improve any other AI model (per §5(b) of the license).</string>
-    <string name="hymt_legal_agree">I Agree — Enable Hunyuan</string>
+
+    <!-- Dialog body — see translator caveat above. -->
+    <string name="hymt_legal_message"><xliff:g id="brand_tencent" example="Tencent">Tencent</xliff:g>\'s <xliff:g id="brand_hunyuan15" example="Hunyuan-MT 1.5">Hunyuan-MT 1.5</xliff:g> model is licensed under the <xliff:g id="license_name" example="Tencent HY Community License Agreement">Tencent HY Community License Agreement</xliff:g>. This license excludes use within the European Union, United Kingdom, and South Korea.\n\nBy tapping Agree, you affirm and warrant that:\n\n(1) You are not currently residing or located within the EU, UK, or South Korea.\n\n(2) You will not use the outputs of this model to improve any other AI model (per <xliff:g id="license_section" example="§5(b)">§5(b)</xliff:g> of the license).</string>
+
+    <!-- Agree (proceed) button.  Brand stays. -->
+    <string name="hymt_legal_agree">I Agree — Enable <xliff:g id="brand_hunyuan" example="Hunyuan">Hunyuan</xliff:g></string>
+
+    <!-- Cancel button on the legal dialog. -->
     <string name="hymt_legal_cancel">Cancel</string>
 
-    <!-- Cold-launch OverlayAlert (MainActivity.maybePromptForLegacyEnginesRemoved).
-         Fires once per device when legacy GGUF translators (TranslateGemma
-         and/or the legacy llama.cpp Qwen) are found on disk during cold
-         launch; those files are auto-deleted just before the alert is
-         shown. Self-gates on "is there still anything to delete" so it
-         doesn't re-fire on subsequent launches. -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         COLD-LAUNCH MIGRATION ALERT — fires once when legacy GGUF
+         translators (TranslateGemma and/or the legacy llama.cpp Qwen)
+         are auto-deleted on cold launch.  See
+         MainActivity.maybePromptForLegacyEnginesRemoved.
+         ═══════════════════════════════════════════════════════════════ -->
+
     <string name="legacy_engines_removed_title">Offline translation updated</string>
-    <string name="legacy_engines_removed_message">Your older offline translators (Qwen and TranslateGemma) have been removed and replaced with faster MNN-based versions. Open Settings to enable the new translator.</string>
+    <string name="legacy_engines_removed_message">Your older offline translators (<xliff:g id="brand_qwen" example="Qwen">Qwen</xliff:g> and <xliff:g id="brand_translategemma" example="TranslateGemma">TranslateGemma</xliff:g>) have been removed and replaced with faster MNN-based versions. Open Settings to enable the new translator.</string>
     <string name="legacy_engines_removed_button_settings">Settings</string>
     <string name="legacy_engines_removed_button_cancel">Cancel</string>
 
-    <!-- Status line shown on a TG / Qwen row when the device's hardware can't
-         run on-device LLMs. The row stays visible (so the user understands
-         which feature is disabled and why) but the toggle switch is hidden
-         and the row is not interactive. -->
-    <string name="llm_hardware_unsupported_arm64">Not supported on this device (requires an arm64 CPU)</string>
-    <string name="llm_hardware_unsupported_ram">Not supported on this device (requires at least %1$d GB RAM)</string>
+    <!-- ═══════════════════════════════════════════════════════════════
+         LLM HARDWARE-UNSUPPORTED STATUS LINES — shown on a TG / Qwen
+         row when the device can't run on-device LLMs.  The row stays
+         visible (so the user understands what's disabled and why) but
+         the toggle is hidden.
+         ═══════════════════════════════════════════════════════════════ -->
 
-    <!-- Pre-toggle availMem gate. Args: %1$s model name, %2$s needed GB,
-         %3$s currently-free GB. Shown before download (uninstalled) and
-         before flipping the switch on (re-enable of a downloaded model). -->
+    <!-- Architecture-mismatch variant. -->
+    <string name="llm_hardware_unsupported_arm64">Not supported on this device (requires an arm64 CPU)</string>
+
+    <!-- Insufficient-RAM variant.  %1$d = minimum required RAM in GB. -->
+    <string name="llm_hardware_unsupported_ram">Not supported on this device (requires at least <xliff:g id="min_ram_gb" example="4">%1$d</xliff:g> GB RAM)</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         PRE-TOGGLE LOW-MEMORY GATE — shown before download
+         (uninstalled) and before flipping the switch on (re-enable of
+         a downloaded model).
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Dialog title. -->
     <string name="llm_low_memory_title">Not enough free memory</string>
-    <string name="llm_low_memory_message">%1$s needs about %2$s of free memory to run. Right now only %3$s is free.\n\nClose other apps to free up memory, or cancel if this model isn\'t right for your device.</string>
+
+    <!-- Dialog body.
+         %1$s = model name (e.g. "Qwen 2.5 1.5B");
+         %2$s = required free memory (e.g. "4 GB");
+         %3$s = currently-free memory (e.g. "1.2 GB"). -->
+    <string name="llm_low_memory_message"><xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> needs about <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g> of free memory to run. Right now only <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g> is free.\n\nClose other apps to free up memory, or cancel if this model isn\'t right for your device.</string>
+
+    <!-- Re-check memory button — re-reads ActivityManager.MemoryInfo
+         without dismissing. -->
     <string name="llm_low_memory_recheck">Check memory again</string>
+
+    <!-- Delete model button. -->
     <string name="llm_low_memory_delete">Delete model</string>
+
+    <!-- Cancel button. -->
     <string name="llm_low_memory_cancel">Cancel</string>
 
-    <!-- Warning-tone status line shown on a TG / Qwen row when its most
-         recent translate() threw a transient low-memory exception and the
-         waterfall fell through to another backend. Cleared by the next
-         successful translation on this backend. -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         WARNING-TONE LLM STATUS LINE — shown on a TG / Qwen row when
+         its most recent translate() threw a transient low-memory
+         exception and the waterfall fell through to another backend.
+         Cleared by the next successful translation on this backend.
+         ═══════════════════════════════════════════════════════════════ -->
+
     <string name="llm_status_low_memory_badge">Low memory — translations using fallback</string>
 
-    <!-- Floating-icon menu warning pill. Two strings cover the same pill
-         depending on cause: network/service degradation falls back to ML
-         Kit (offline label); a TG/Qwen displacement caused by transient
-         memory pressure shows the low-memory label even when the chain
-         also bottomed out at ML Kit (memory is the actionable cause). -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING-ICON MENU WARNING PILL.  Two strings cover the same
+         pill, depending on the cause: network/service degradation
+         falls back to ML Kit (offline label); a TG / Qwen displacement
+         caused by transient memory pressure shows the low-memory label
+         even when the chain also bottomed out at ML Kit (memory is the
+         actionable cause).  The leading two spaces are intentional —
+         they reserve room for a leading icon glyph.
+         ═══════════════════════════════════════════════════════════════ -->
+
     <string name="degraded_warning_offline">  Offline — translation quality is reduced</string>
     <string name="degraded_warning_low_memory">  Low memory — translation quality is reduced</string>
+
 </resources>
