@@ -148,14 +148,18 @@ class WordAnkiReviewSheet : DialogFragment() {
      *  resolves). Null = not yet fetched / unsupported / fetch failed. */
     private var tatoebaPairs: List<TatoebaClient.SentencePair>? = null
 
-    /** True while the sheet's lazy sentence-translation fetch is still in
-     *  flight (drag → Anki path). Drives the left "fields loading"
+    /** Number of sentence-translation fetches currently in flight.
+     *  A counter (rather than a boolean) because the user can commit an
+     *  edit to Original while the prior sentence's fetch is still
+     *  running, overlapping two coroutines — a boolean would clear on
+     *  the stale one's finally and hide the indicator while the live
+     *  request is still loading. Drives the left "fields loading"
      *  indicator on the Save button. */
-    private var translationFillInFlight: Boolean = false
+    private var translationFillCount: Int = 0
 
-    /** True while the sheet's lazy word-lookup fetch is still in flight
-     *  (drag → Anki path). Drives the same Save-button indicator. */
-    private var wordsFillInFlight: Boolean = false
+    /** Number of word-lookup fetches currently in flight. Same
+     *  overlap reasoning as [translationFillCount]. */
+    private var wordsFillCount: Int = 0
 
 
     /** Optional listener called when this sheet is dismissed (used by WordAnkiReviewActivity). */
@@ -300,6 +304,46 @@ class WordAnkiReviewSheet : DialogFragment() {
             }
         }
 
+        // Re-run the translation + words pipeline whenever the user
+        // edits the Original sentence and commits (focus loss / Done).
+        // The fragment has already reset its Translation field and Words
+        // card to a loading state by the time this fires; we just kick
+        // the same fills again. Empty target word: a prior pick may not
+        // exist in the new sentence.
+        //
+        // Wired through getContentFragment() (rather than on the freshly-
+        // created instance inside the `savedInstanceState == null` block)
+        // so the callback also reattaches to a fragment restored by the
+        // FragmentManager after a configuration change — otherwise the
+        // restored fragment would have a null callback and edits would
+        // leave the sheet stuck in its post-commit loading state.
+        if (hasSentenceData) {
+            getContentFragment()?.onOriginalCommitted = { newOriginal ->
+                launchTranslationFill(newOriginal)
+                launchWordsFill(newOriginal, "")
+            }
+        }
+
+        // Recover any fill jobs that were in flight when a configuration
+        // change cancelled the sheet's lifecycleScope. The original
+        // `savedInstanceState == null` block above doesn't run on restore,
+        // so without this re-launch the restored fragment can sit on its
+        // "Translating…" / "Looking up words…" placeholders forever (the
+        // LastSentenceCache job may continue running, but no one is
+        // awaiting it). Both the needs-fill check and the sentence to
+        // refetch for come from the fragment: the sheet's launch-time
+        // `sentenceOriginal` is stale after a committed edit + rotation,
+        // whereas the fragment's [currentOriginal] reflects the
+        // committed Original we actually want results for.
+        if (hasSentenceData && savedInstanceState != null) {
+            val content = getContentFragment()
+            if (content != null) {
+                val current = content.currentOriginal()
+                if (content.needsTranslationFill()) launchTranslationFill(current)
+                if (content.needsWordsFill())       launchWordsFill(current, word)
+            }
+        }
+
         // Kick off the same dictionary lookup the Word Detail sheet does.
         // Once it lands we replace the loading placeholder in the
         // Definitions card with per-sense rows, including ML-Kit-translated
@@ -312,9 +356,9 @@ class WordAnkiReviewSheet : DialogFragment() {
 
         val sendBtn = view.findViewById<FrameLayout>(R.id.btnWordAnkiSend)
         sendButton = AnkiSendButton(sendBtn)
-        // launchTranslationFill / launchWordsFill above set the
-        // in-flight flags before sendButton existed; apply them now
-        // so the left indicator reflects current state.
+        // launchTranslationFill / launchWordsFill above incremented
+        // the in-flight counters before sendButton existed; apply them
+        // now so the left indicator reflects current state.
         refreshFillingPendingIndicator()
         sendBtn.setOnClickListener {
             val deckId = Prefs(requireContext()).ankiDeckId
@@ -1240,7 +1284,7 @@ class WordAnkiReviewSheet : DialogFragment() {
      *  guaranteed alive. A null instance is treated as a translation
      *  failure and surfaces the "Couldn't translate" placeholder. */
     private fun launchTranslationFill(sentence: String) {
-        translationFillInFlight = true
+        translationFillCount++
         refreshFillingPendingIndicator()
         viewLifecycleOwner.lifecycleScope.launch {
             try {
@@ -1250,9 +1294,9 @@ class WordAnkiReviewSheet : DialogFragment() {
                     val gt = svc.translateOnce(text)
                     LastSentenceCache.TranslationOutcome(gt.text, gt.backendDisplayName)
                 }
-                getContentFragment()?.applyTranslation(outcome?.text)
+                getContentFragment()?.applyTranslation(sentence, outcome?.text)
             } finally {
-                translationFillInFlight = false
+                translationFillCount--
                 refreshFillingPendingIndicator()
             }
         }
@@ -1268,7 +1312,7 @@ class WordAnkiReviewSheet : DialogFragment() {
      *  live mode rotating the cache to a different sentence and
      *  attach the wrong inflected forms to this sheet's words. */
     private fun launchWordsFill(sentence: String, targetWord: String) {
-        wordsFillInFlight = true
+        wordsFillCount++
         refreshFillingPendingIndicator()
         viewLifecycleOwner.lifecycleScope.launch {
             try {
@@ -1282,9 +1326,9 @@ class WordAnkiReviewSheet : DialogFragment() {
                         surfaceForm = payload.surfaces[w].orEmpty(),
                     )
                 }
-                getContentFragment()?.applyWords(entries, targetWord)
+                getContentFragment()?.applyWords(sentence, entries, targetWord)
             } finally {
-                wordsFillInFlight = false
+                wordsFillCount--
                 refreshFillingPendingIndicator()
             }
         }
@@ -1295,7 +1339,7 @@ class WordAnkiReviewSheet : DialogFragment() {
      *  call after [onDestroyView] — [sendButton] is null and the call
      *  becomes a no-op. */
     private fun refreshFillingPendingIndicator() {
-        sendButton?.setFillingPending(translationFillInFlight || wordsFillInFlight)
+        sendButton?.setFillingPending(translationFillCount > 0 || wordsFillCount > 0)
     }
 
     private fun buildWordEntries(args: Bundle): List<SentenceAnkiHtmlBuilder.WordEntry> {

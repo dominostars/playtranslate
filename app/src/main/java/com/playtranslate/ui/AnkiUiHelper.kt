@@ -381,7 +381,12 @@ fun Fragment.addAnkiAudioSection(
     val card = ankiGroupCard(parent)
 
     // -- Audio row: preview chip + (optional voice pill) + label + include switch --
-    val audioRow = inflater.inflate(R.layout.settings_row_switch, card, false)
+    val audioRow = inflater.inflate(R.layout.settings_row_switch, card, false) as LinearLayout
+    // The preview chip overhangs the row's left padding via a negative
+    // marginStart so its 44dp touch cell can be centred on its 30dp
+    // visible circle. clipToPadding=false lets its ripple draw into
+    // that overhang region.
+    audioRow.clipToPadding = false
     val titleView = audioRow.findViewById<TextView>(R.id.tvRowTitle).apply {
         text = rowLabel
         // The label is the actual word/sentence being spoken — keep it to
@@ -391,7 +396,7 @@ fun Fragment.addAnkiAudioSection(
     }
     val switch = audioRow.findViewById<MaterialSwitch>(R.id.switchRowToggle)
     val chip = AnkiAudioPreviewChip(this, lang, previewText, voiceOverride)
-    (audioRow as ViewGroup).addView(chip.view, 0)
+    audioRow.addView(chip.view, 0)
     val pill: VoicePillView? = if (onVoicePillTap != null) {
         val p = VoicePillView(this, lang)
         p.setOnTap(onVoicePillTap)
@@ -463,6 +468,11 @@ fun Fragment.addCompactAudioToggleRow(
     row.minimumHeight = (44 * density).toInt()
     row.setPadding(row.paddingLeft, (4 * density).toInt(),
         row.paddingRight, (4 * density).toInt())
+    // The preview chip overhangs the row's left padding via a negative
+    // marginStart so its 44dp touch cell can be centred on its 30dp
+    // visible circle. clipToPadding=false lets its ripple draw into
+    // that overhang region.
+    row.clipToPadding = false
     val titleView = row.findViewById<TextView>(R.id.tvRowTitle).apply {
         text = label
         maxLines = 1

@@ -86,19 +86,31 @@ class AnkiAudioPreviewChip(
     }
     private val circle = FrameLayout(ctx).apply {
         background = circleBg
-        // START so the circle sits flush with the row's content edge
-        // rather than indented by the tap target's slack.
         layoutParams = FrameLayout.LayoutParams(
-            dp(30), dp(30), Gravity.START or Gravity.CENTER_VERTICAL,
+            dp(30), dp(30), Gravity.CENTER,
         )
         addView(icon)
         addView(spinner)
     }
 
-    /** The chip view — a 44dp tap cell with the 30dp circle pinned to its
-     *  start. Add it at index 0 of the audio row. */
+    /** The chip view — a 44dp tap cell with the 30dp visible circle
+     *  centred inside it, hung over the row's left padding via
+     *  `marginStart = -7dp` and balanced with `marginEnd = 7dp` so the
+     *  row's spacing to the next element (and the visible circle's
+     *  position within the row) stays identical to the original
+     *  layout. Net effect:
+     *   - visible circle: unchanged
+     *   - touch region: 44dp, centred on the visible circle
+     *   - 14dp visual gap to the next element: unchanged
+     *
+     *  The row sets `clipToPadding = false` so the chip's ripple
+     *  draws naturally into the left padding slack on a tap there.
+     *  Add the view at index 0 of the audio row. */
     val view: FrameLayout = FrameLayout(ctx).apply {
-        layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
+        layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).also {
+            it.marginStart = -dp(7)
+            it.marginEnd = dp(7)
+        }
         isClickable = true
         val ripple = TypedValue().also {
             ctx.theme.resolveAttribute(
