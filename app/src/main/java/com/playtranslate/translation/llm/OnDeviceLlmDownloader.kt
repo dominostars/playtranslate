@@ -619,12 +619,54 @@ class OnDeviceLlmDownloader(
         return null
     }
 
-    /** Returns true if the active default network is metered (cellular, hotspot, etc). */
+    /**
+     * Returns true if the active default network is metered (cellular,
+     * tethered hotspot, or a Wi-Fi the user / OEM / carrier has marked
+     * metered in Android Settings).
+     *
+     * Logs the active transports and the four capabilities that tend to
+     * matter for the "why is this prompting me on Wi-Fi?" support
+     * question. The classifier is the system's — there is no in-app fix
+     * for a misclassified network — so the log line exists to let an
+     * exported log answer the diagnosis question without the user having
+     * to dig through Network usage settings. Read the line as:
+     *
+     *   transports=[WIFI] NOT_METERED=false → Wi-Fi marked metered
+     *     (Settings → Network usage, hotspot, or carrier flag).
+     *   transports=[CELLULAR] → actually on cellular.
+     *   transports=[VPN, …] → a VPN is masking the underlying transport.
+     */
     fun isCurrentNetworkMetered(): Boolean {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val active = cm.activeNetwork ?: return false
-        val caps = cm.getNetworkCapabilities(active) ?: return false
-        return !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+        val active = cm.activeNetwork
+        if (active == null) {
+            Log.i(TAG, "Metered check: no active default network → unmetered")
+            return false
+        }
+        val caps = cm.getNetworkCapabilities(active)
+        if (caps == null) {
+            Log.i(TAG, "Metered check: active network but no NetworkCapabilities → unmetered")
+            return false
+        }
+        val transports = buildList {
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) add("WIFI")
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) add("CELLULAR")
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) add("ETHERNET")
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) add("VPN")
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH)) add("BLUETOOTH")
+        }
+        val notMetered = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+        val tempNotMetered = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED)
+        val notVpn = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+        val notRoaming = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING)
+        val metered = !notMetered
+        Log.i(
+            TAG,
+            "Metered check: transports=$transports NOT_METERED=$notMetered " +
+                "TEMP_NOT_METERED=$tempNotMetered NOT_VPN=$notVpn NOT_ROAMING=$notRoaming " +
+                "→ isMetered=$metered",
+        )
+        return metered
     }
 
     private suspend fun computeSha256(file: File): String = withContext(Dispatchers.IO) {

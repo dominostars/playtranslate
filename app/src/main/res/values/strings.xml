@@ -1271,11 +1271,11 @@
     <string name="qwen_mnn_insufficient_storage">Not enough free storage. <xliff:g id="brand_qwen" example="Qwen">Qwen</xliff:g> needs <xliff:g id="free_space" example="1.5 GB">%1$s</xliff:g> free.</string>
 
     <!-- Title of the metered-connection confirmation dialog. -->
-    <string name="qwen_mnn_metered_warning_title">Download on cellular?</string>
+    <string name="qwen_mnn_metered_warning_title">Download on metered network?</string>
 
     <!-- Body of the metered-connection confirmation dialog.  %1$s = the
          human-readable file size of the model (e.g. "1.2 GB"). -->
-    <string name="qwen_mnn_metered_warning_message"><xliff:g id="brand_qwen" example="Qwen 2.5 1.5B (MNN)">Qwen 2.5 1.5B (MNN)</xliff:g> is <xliff:g id="download_size" example="1.2 GB">%1$s</xliff:g>. Continue on cellular?</string>
+    <string name="qwen_mnn_metered_warning_message"><xliff:g id="brand_qwen" example="Qwen 2.5 1.5B (MNN)">Qwen 2.5 1.5B (MNN)</xliff:g> is <xliff:g id="download_size" example="1.2 GB">%1$s</xliff:g>. This network is marked as metered. Continue?</string>
 
     <!-- Status line during model warm-up (first inference). -->
     <string name="qwen_mnn_status_loading_model">Loading model…</string>
@@ -1324,10 +1324,10 @@
     <string name="gemma_e2b_mnn_insufficient_storage">Not enough free storage. <xliff:g id="brand_gemma" example="Gemma 4 E2B">Gemma 4 E2B</xliff:g> needs <xliff:g id="free_space" example="2.5 GB">%1$s</xliff:g> free.</string>
 
     <!-- Metered-connection warning title. -->
-    <string name="gemma_e2b_mnn_metered_warning_title">Download on cellular?</string>
+    <string name="gemma_e2b_mnn_metered_warning_title">Download on metered network?</string>
 
     <!-- Metered-connection warning body.  %1$s = human file size. -->
-    <string name="gemma_e2b_mnn_metered_warning_message"><xliff:g id="brand_gemma" example="Gemma 4 E2B">Gemma 4 E2B</xliff:g> is <xliff:g id="download_size" example="2.1 GB">%1$s</xliff:g>. Continue on cellular?</string>
+    <string name="gemma_e2b_mnn_metered_warning_message"><xliff:g id="brand_gemma" example="Gemma 4 E2B">Gemma 4 E2B</xliff:g> is <xliff:g id="download_size" example="2.1 GB">%1$s</xliff:g>. This network is marked as metered. Continue?</string>
 
     <!-- Status during warm-up. -->
     <string name="gemma_e2b_mnn_status_loading_model">Loading model…</string>
@@ -1378,10 +1378,10 @@
     <string name="hymt_insufficient_storage">Not enough free storage. <xliff:g id="brand_hunyuan" example="Hunyuan-MT">Hunyuan-MT</xliff:g> needs <xliff:g id="free_space" example="2 GB">%1$s</xliff:g> free.</string>
 
     <!-- Metered-connection warning title. -->
-    <string name="hymt_metered_warning_title">Download on cellular?</string>
+    <string name="hymt_metered_warning_title">Download on metered network?</string>
 
     <!-- Metered-connection warning body.  %1$s = human file size. -->
-    <string name="hymt_metered_warning_message"><xliff:g id="brand_hunyuan15" example="Hunyuan-MT 1.5">Hunyuan-MT 1.5</xliff:g> is <xliff:g id="download_size" example="1.5 GB">%1$s</xliff:g>. Continue on cellular?</string>
+    <string name="hymt_metered_warning_message"><xliff:g id="brand_hunyuan15" example="Hunyuan-MT 1.5">Hunyuan-MT 1.5</xliff:g> is <xliff:g id="download_size" example="1.5 GB">%1$s</xliff:g>. This network is marked as metered. Continue?</string>
 
     <!-- Status during warm-up. -->
     <string name="hymt_status_loading_model">Loading model…</string>
