@@ -8,6 +8,7 @@ import android.os.Build
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.playtranslate.BuildConfig
+import com.playtranslate.R
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
