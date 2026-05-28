@@ -75,7 +75,7 @@ class AnkiCardTypePickerDialog : DialogFragment() {
         val density = resources.displayMetrics.density
 
         container.addView(TextView(ctx).apply {
-            text = "Loading card types…"
+            text = getString(R.string.anki_card_type_picker_loading)
             setTextColor(ctx.themeColor(R.attr.ptTextMuted))
             textSize = 14f
             setPadding(0, (16 * density).toInt(), 0, 0)

@@ -71,7 +71,7 @@ class AnkiDeckPickerDialog : DialogFragment() {
 
             if (decks.isEmpty()) {
                 container.addView(TextView(requireContext()).apply {
-                    text = "No decks found"
+                    text = getString(R.string.anki_deck_picker_empty)
                     setTextColor(requireContext().themeColor(R.attr.ptTextMuted))
                     textSize = 14f
                 })
@@ -85,7 +85,7 @@ class AnkiDeckPickerDialog : DialogFragment() {
     private fun buildLoadingTextView(): TextView {
         val ctx = requireContext()
         return TextView(ctx).apply {
-            text = "Loading decks…"
+            text = getString(R.string.anki_deck_picker_loading)
             setTextColor(ctx.themeColor(R.attr.ptTextMuted))
             textSize = 14f
             setPadding(0, (16 * resources.displayMetrics.density).toInt(), 0, 0)

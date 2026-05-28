@@ -1009,7 +1009,7 @@ class SettingsRenderer(
         else "%.1f".format(minSec)
 
         root.findViewById<TextView>(R.id.tvCaptureIntervalHint)?.text =
-            "How often the game screen is captured during auto translation. Minimum $minLabel seconds."
+            ctx.getString(R.string.settings_capture_interval_hint, minLabel)
 
         val etCaptureInterval = root.findViewById<EditText>(R.id.etCaptureInterval)
         etCaptureInterval.setText(prefs.captureIntervalSec.let {
@@ -2931,7 +2931,7 @@ class SettingsRenderer(
             rowHotkeyFurigana.isVisible = true
             dividerHotkeyFurigana.isVisible = true
             rowHotkeyFurigana.findViewById<TextView>(R.id.tvRowTitle)?.text =
-                "Hotkey: hold to show $hintLabel"
+                ctx.getString(R.string.hotkey_show_hint_title, hintLabel)
         } else {
             rowHotkeyFurigana.isGone = true
             dividerHotkeyFurigana.isGone = true

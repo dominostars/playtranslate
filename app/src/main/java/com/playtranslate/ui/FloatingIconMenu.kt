@@ -292,7 +292,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             ViewGroup.LayoutParams.MATCH_PARENT
         ))
         val regionLabel = TextView(context).apply {
-            text = "Capture\nRegion"
+            text = context.getString(R.string.floating_menu_btn_capture_region)
             setTextColor(textColor)
             textSize = 9f
             gravity = Gravity.CENTER_HORIZONTAL
@@ -334,7 +334,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             ViewGroup.LayoutParams.MATCH_PARENT
         ))
         hideLabel = TextView(context).apply {
-            text = "Hide"
+            text = context.getString(R.string.floating_icon_close_label_hide)
             setTextColor(textColor)
             textSize = 9f
             gravity = Gravity.CENTER_HORIZONTAL
@@ -365,7 +365,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             }
         }
         val instructionLabel = TextView(context).apply {
-            text = "Drag finger to capture a specific area"
+            text = context.getString(R.string.floating_menu_drag_instruction)
             setTextColor(textColor)
             textSize = 14f
         }
@@ -459,7 +459,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
 
     private fun updateLiveButton() {
         if (isLiveMode) {
-            liveIcon.text = "\u275A\u275A" // ❚❚ pause
+            liveIcon.text = context.getString(R.string.floating_menu_live_pause_glyph)
             liveIcon.textSize = 20f
             liveIcon.setTextColor("#E8E8E8".toColorInt())
             liveIcon.setPadding(0, 0, 0, 0)

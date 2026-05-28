@@ -336,7 +336,7 @@ class WordLookupPopup(
             }
             if (isCommon) {
                 val badge = TextView(ctx).apply {
-                    text = "common"
+                    text = ctx.getString(R.string.word_detail_common)
                     setTextColor("#A0A0A0".toColorInt())
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
                     typeface = Typeface.DEFAULT_BOLD
@@ -380,7 +380,7 @@ class WordLookupPopup(
                 })
             }
             rightCol.addView(TextView(ctx).apply {
-                text = "${i + 1}. ${sense.definition}"
+                text = ctx.getString(R.string.word_detail_numbered_definition, i + 1, sense.definition)
                 setTextColor("#EFEFEF".toColorInt())
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             })

@@ -1369,7 +1369,7 @@ class MagnifierLens(
                 }
                 if (data.isCommon) {
                     metaRow.addView(TextView(ctx).apply {
-                        text = "common"
+                        text = ctx.getString(R.string.word_detail_common)
                         setTextColor(panelSecondaryText)
                         setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
                         typeface = Typeface.DEFAULT_BOLD
@@ -1435,7 +1435,7 @@ class MagnifierLens(
                     previousPos = sense.pos
                 }
                 definitionsContent.addView(TextView(ctx).apply {
-                    text = "${i + 1}. ${sense.definition}"
+                    text = ctx.getString(R.string.word_detail_numbered_definition, i + 1, sense.definition)
                     setTextColor(panelPrimaryText)
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
                 })

@@ -245,6 +245,23 @@
     <!-- Badge label shown beside common dictionary entries. -->
     <string name="word_detail_common">Common</string>
 
+    <!-- Stroke-count abbreviation shown inside a small badge next to a
+         kanji's numeric stroke count (e.g. "12 STR"). Short enough to fit
+         a three-glyph pill. Japanese builds may prefer "画" (kaku). -->
+    <string name="word_detail_stroke_abbr">STR</string>
+
+    <!-- Numbered definition row used in the word-lookup popup and in the
+         drag-magnifier's definitions list. %1$d = the 1-based row number,
+         %2$s = the definition text from the dictionary (already in the
+         user's target language where a translation is available). -->
+    <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
+
+    <!-- ALL-CAPS label heading inside the word-detail sheet
+         (e.g. "READING:", "MEANING:"). %1$s = the uppercased label.
+         The trailing colon is part of the row style; locales that prefer
+         full-width "：" may swap it in. -->
+    <string name="word_detail_label_format"><xliff:g id="label" example="READING">%1$s</xliff:g>:</string>
+
     <!-- Count line under the dictionary headword. %d = number of senses
          (definitions). -->
     <plurals name="word_detail_senses_count">
@@ -513,6 +530,11 @@
     <!-- Sheet title when picking which on-screen region to capture. -->
     <string name="label_select_region">Select Region</string>
 
+    <!-- Instruction banner shown above the region-editor overlay (drag
+         handles visible) while the user is restricting captures to a
+         specific screen area. -->
+    <string name="region_overlay_drag_instruction">Drag edges to restrict screen captures to this region</string>
+
     <!-- "Edit" button — enters the region-edit mode. -->
     <string name="label_edit">Edit</string>
 
@@ -673,6 +695,19 @@
 
     <!-- Settings section header (rendered ALL CAPS). -->
     <string name="section_anki_deck"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g> Deck</string>
+
+    <!-- Empty-state placeholder shown in the Anki deck-picker dialog
+         when AnkiDroid reports no decks. -->
+    <string name="anki_deck_picker_empty">No decks found</string>
+
+    <!-- Loading indicator shown while the Anki deck-picker queries
+         AnkiDroid in the background. The trailing ellipsis is a single
+         character (…), not three dots. -->
+    <string name="anki_deck_picker_loading">Loading decks…</string>
+
+    <!-- Loading indicator shown while the Anki card-type picker queries
+         AnkiDroid for available card types. -->
+    <string name="anki_card_type_picker_loading">Loading card types…</string>
 
     <!-- Title of the dialog shown when the user taps "Add to Anki" but
          AnkiDroid isn't installed. -->
@@ -1637,6 +1672,23 @@
          hides until next launch (accessibility + dual-screen). -->
     <string name="floating_icon_close_label_hide">Hide</string>
 
+    <!-- Multi-line label under the "Capture Region" button in the
+         floating-icon menu, drawn at 9sp under a 54dp icon. The literal
+         \n forces a consistent two-line break to match the button's
+         square footprint; translators may remove the break if their
+         translation fits on one line. -->
+    <string name="floating_menu_btn_capture_region">Capture\nRegion</string>
+
+    <!-- Instruction pill shown at the bottom of the floating-icon menu
+         while no custom region is active, prompting the user to
+         drag-select an area on screen. -->
+    <string name="floating_menu_drag_instruction">Drag finger to capture a specific area</string>
+
+    <!-- Unicode pause glyph (❚❚) rendered on the floating-icon menu's
+         Live-Mode button while live mode is active. translatable="false"
+         because it's a pure typographic symbol. -->
+    <string name="floating_menu_live_pause_glyph" translatable="false">❚❚</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          DEEPL SETTINGS — label above the API-key text field.
          "DeepL" is a brand name; preserve spelling.
@@ -1662,6 +1714,11 @@
          ("s" = seconds).  Some locales may prefer their localised
          abbreviation (e.g. Japanese "秒"). -->
     <string name="settings_capture_interval_seconds_suffix">s</string>
+
+    <!-- Subtitle hint below the "Capture interval" row, showing the
+         minimum allowed value. %1$s = the formatted minimum in seconds
+         (may have a decimal, e.g. "0.5", or be an integer, e.g. "1"). -->
+    <string name="settings_capture_interval_hint">How often the game screen is captured during auto translation. Minimum <xliff:g id="min_seconds" example="1">%1$s</xliff:g> seconds.</string>
 
     <!-- Overlay mode chooser option — show the translated text. -->
     <string name="overlay_mode_option_translation">Translation</string>
@@ -1906,6 +1963,12 @@
 
     <!-- Toolbar title on the TTS Voice picker activity. -->
     <string name="tts_voice_picker_title">Voice</string>
+
+    <!-- Section header on the TTS Voice picker activity, displayed in
+         ALL CAPS above the list of voices for a single source language.
+         %1$s = the uppercased display name of the source language
+         (already locale-aware via Locale.displayName().uppercase()). -->
+    <string name="tts_voices_section_header"><xliff:g id="language" example="JAPANESE">%1$s</xliff:g> VOICES</string>
 
     <!-- Title of the dialog shown when the user tries to read a word
          aloud but no TTS engine is installed. -->

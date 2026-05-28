@@ -877,7 +877,7 @@ class WordAnkiReviewSheet : DialogFragment() {
         }
         if (senseNumber != null) {
             row.addView(TextView(ctx).apply {
-                text = senseNumber.toString()
+                text = String.format(Locale.getDefault(), "%d", senseNumber)
                 textSize = 12f
                 typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
                 setTextColor(ctx.themeColor(R.attr.ptAccent))

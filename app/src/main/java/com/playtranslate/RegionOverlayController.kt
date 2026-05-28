@@ -430,7 +430,7 @@ class RegionOverlayController(
         regionEditorBar = bar
 
         val label = android.widget.TextView(ctx).apply {
-            text = "Drag edges to restrict screen captures to this region"
+            text = ctx.getString(R.string.region_overlay_drag_instruction)
             setTextColor(textColor)
             textSize = 14f
             gravity = Gravity.CENTER

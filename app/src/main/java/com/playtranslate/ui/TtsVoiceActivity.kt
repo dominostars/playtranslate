@@ -80,7 +80,7 @@ class TtsVoiceActivity : AppCompatActivity() {
 
         findViewById<View>(R.id.headerVoices)
             .findViewById<TextView>(R.id.tvGroupTitle).text =
-            "${lang.displayName().uppercase()} VOICES"
+            getString(R.string.tts_voices_section_header, lang.displayName().uppercase())
 
         findViewById<MaterialButton>(R.id.btnSave).setOnClickListener {
             setResult(

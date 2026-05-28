@@ -1359,7 +1359,7 @@ class WordDetailBottomSheet : DialogFragment() {
 
         if (senseNumber != null) {
             row.addView(TextView(ctx).apply {
-                text = senseNumber.toString()
+                text = String.format(Locale.getDefault(), "%d", senseNumber)
                 textSize = 12f
                 typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
                 setTextColor(ctx.themeColor(R.attr.ptAccent))
@@ -1601,7 +1601,7 @@ class WordDetailBottomSheet : DialogFragment() {
                     })
                 }
                 readingsView.addView(TextView(ctx).apply {
-                    text = label.uppercase(Locale.ROOT) + ":"
+                    text = ctx.getString(R.string.word_detail_label_format, label.uppercase(Locale.ROOT))
                     textSize = 10f
                     isAllCaps = true
                     letterSpacing = 0.08f
@@ -1679,14 +1679,14 @@ class WordDetailBottomSheet : DialogFragment() {
             }
         }
         pill.addView(TextView(ctx).apply {
-            text = strokeCount.toString()
+            text = String.format(Locale.getDefault(), "%d", strokeCount)
             textSize = 13f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
             setTextColor(ctx.themeColor(R.attr.ptAccent))
             gravity = Gravity.CENTER
         })
         pill.addView(TextView(ctx).apply {
-            text = "STR"
+            text = ctx.getString(R.string.word_detail_stroke_abbr)
             textSize = 7f
             letterSpacing = 0.12f
             setTextColor(ctx.themeColor(R.attr.ptAccent))
