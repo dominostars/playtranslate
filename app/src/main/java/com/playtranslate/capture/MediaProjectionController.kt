@@ -141,10 +141,15 @@ class MediaProjectionController(private val service: CaptureService) {
             mgr.getMediaProjection(resultCode, data)
         } catch (e: Exception) {
             Log.e(TAG, "getMediaProjection failed: ${e.message}")
+            null
+        }
+        if (proj == null) {
             // The held consent token couldn't be turned into a session and is
             // now useless. Drop it (and refresh the UI) so the next capture
             // re-prompts, instead of looping forever on a dead token that
-            // still reads as hasConsent == true.
+            // still reads as hasConsent == true. getMediaProjection returns
+            // nullable on API 35+ (the signature was annotated nullable in
+            // compileSdk 35); pre-35 it only signaled failure via exception.
             onProjectionLost()
             return false
         }

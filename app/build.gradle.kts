@@ -11,7 +11,7 @@ if (localPropsFile.exists()) localPropsFile.inputStream().use { localProps.load(
 
 android {
     namespace = "com.playtranslate"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.playtranslate"

@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.playtranslate.mnn"
-    compileSdk = 34
+    compileSdk = 36
 
     ndkVersion = "28.2.13676358"
 

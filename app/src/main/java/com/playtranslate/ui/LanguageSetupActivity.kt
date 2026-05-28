@@ -119,7 +119,7 @@ class LanguageSetupActivity : AppCompatActivity() {
         }
         if (pageStack.size <= 1) finish()
         else {
-            pageStack.removeLast()
+            pageStack.removeAt(pageStack.lastIndex)
             showCurrentPage()
         }
     }

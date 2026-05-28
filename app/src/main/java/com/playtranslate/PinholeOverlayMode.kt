@@ -265,7 +265,7 @@ class PinholeOverlayMode(
             // 5. Prepare OCR image: fill overlay regions with bgColor
             val ocrImage: Bitmap
             if (hasOverlays()) {
-                ocrImage = raw.copy(raw.config, true)
+                ocrImage = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
                 fillOverlayRegions(ocrImage, bitmapRects)
             } else {
                 ocrImage = raw
@@ -516,7 +516,7 @@ class PinholeOverlayMode(
             //     full-bitmap copy per idle cycle where the view is empty
             //     and there's nothing to place.
             if (cleanRefBitmap == null && (farOcrGroups.isNotEmpty() || nextBoxes.isNotEmpty())) {
-                cleanRefBitmap = raw.copy(raw.config, true)
+                cleanRefBitmap = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
             }
 
             // 12. Show new text (with skeletons for uncached, instant for cached)

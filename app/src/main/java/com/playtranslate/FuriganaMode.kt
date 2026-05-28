@@ -217,7 +217,7 @@ class FuriganaMode(
                 if (boxes != null) {
                     service.showLiveOverlay(boxes, cropLeft, cropTop, screenshotW, screenshotH, displayId = displayId)
                     if (cleanRefBitmap == null) {
-                        cleanRefBitmap = raw.copy(raw.config, true)
+                        cleanRefBitmap = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
                     }
                     return
                 }
@@ -241,7 +241,7 @@ class FuriganaMode(
 
             // Save clean reference for patching raw frames (mutable for updateCleanRef)
             cleanRefBitmap?.recycle()
-            cleanRefBitmap = raw.copy(raw.config, true)
+            cleanRefBitmap = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
 
             // Save screenshot for Anki + send translation to in-app panel.
             // Per-display filename — see ScreenshotManager.saveToCache.
@@ -338,7 +338,7 @@ class FuriganaMode(
         // doesn't read the rendered furigana text. Uses Canvas.drawBitmap (hardware-
         // accelerated when possible) to avoid full-frame pixel array allocations.
         val patched = if (bitmap.isMutable) bitmap
-            else bitmap.copy(bitmap.config, true).also { bitmap.recycle() }
+            else bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, true).also { bitmap.recycle() }
         try {
             val canvas = Canvas(patched)
             val margin = 12  // covers stroke/shadow extension beyond view bounds
