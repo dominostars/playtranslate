@@ -313,34 +313,14 @@ class WordAnkiReviewSheet : DialogFragment() {
         //
         // Wired through getContentFragment() (rather than on the freshly-
         // created instance inside the `savedInstanceState == null` block)
-        // so the callback also reattaches to a fragment restored by the
-        // FragmentManager after a configuration change — otherwise the
-        // restored fragment would have a null callback and edits would
-        // leave the sheet stuck in its post-commit loading state.
+        // so a fragment restored after a non-orientation configuration
+        // change (locale / font-scale / etc.) still gets the callback.
+        // Orientation itself is handled by the activity via the
+        // manifest's `configChanges`, so rotation never lands here.
         if (hasSentenceData) {
             getContentFragment()?.onOriginalCommitted = { newOriginal ->
                 launchTranslationFill(newOriginal)
                 launchWordsFill(newOriginal, "")
-            }
-        }
-
-        // Recover any fill jobs that were in flight when a configuration
-        // change cancelled the sheet's lifecycleScope. The original
-        // `savedInstanceState == null` block above doesn't run on restore,
-        // so without this re-launch the restored fragment can sit on its
-        // "Translating…" / "Looking up words…" placeholders forever (the
-        // LastSentenceCache job may continue running, but no one is
-        // awaiting it). Both the needs-fill check and the sentence to
-        // refetch for come from the fragment: the sheet's launch-time
-        // `sentenceOriginal` is stale after a committed edit + rotation,
-        // whereas the fragment's [currentOriginal] reflects the
-        // committed Original we actually want results for.
-        if (hasSentenceData && savedInstanceState != null) {
-            val content = getContentFragment()
-            if (content != null) {
-                val current = content.currentOriginal()
-                if (content.needsTranslationFill()) launchTranslationFill(current)
-                if (content.needsWordsFill())       launchWordsFill(current, word)
             }
         }
 

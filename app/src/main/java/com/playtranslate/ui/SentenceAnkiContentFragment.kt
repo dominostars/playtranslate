@@ -143,26 +143,13 @@ class SentenceAnkiContentFragment : Fragment() {
      *  Cleared by the watcher on the next callback. */
     private var translationSuppressNextEdit: Boolean = false
 
-    /** The currently-committed Original sentence — the one the
-     *  Translation field and Words card belong to. Seeded from
-     *  [ARG_ORIGINAL] in [buildContent], updated on every focus-loss
-     *  commit, and persisted back to [ARG_ORIGINAL] so a configuration-
-     *  change restore re-seeds correctly.
-     *
-     *  Two roles:
-     *  - Dedupe: focus losses where [etOriginal] still matches this
-     *    don't re-fetch.
-     *  - Stale-result guard: [applyTranslation] / [applyWords] drop
-     *    results whose `forOriginal` no longer matches, so an in-flight
-     *    fetch for a superseded sentence can't stomp the current one. */
+    /** The Original sentence as of the most recent focus-loss commit.
+     *  Used only for the dedup check in [onOriginalEditCommitted] so a
+     *  focus loss with no actual text change doesn't churn the fetch
+     *  pipeline. The stale-result guard now lives in [applyTranslation]
+     *  / [applyWords] and reads [etOriginal] directly, since the live
+     *  EditText is the source of truth for "what's visible". */
     private var committedOriginal: String = ""
-
-    /** The currently-committed Original sentence — see
-     *  [committedOriginal]. Public read-only accessor for the host to
-     *  use when it needs to know what sentence the fragment is
-     *  showing, rather than reading its own (potentially stale)
-     *  launch-time arg. */
-    fun currentOriginal(): String = committedOriginal
 
     /** Host-provided callback fired when the user finishes editing the
      *  Original field with a different sentence than the one whose
@@ -777,14 +764,6 @@ class SentenceAnkiContentFragment : Fragment() {
         if (newText == committedOriginal || newText.isBlank()) return
         val callback = onOriginalCommitted ?: return
         committedOriginal = newText
-        // Persist back to the fragment arg so a configuration-change
-        // rebuild re-seeds [committedOriginal] to this edited value.
-        // Without this, the rebuilt fragment would seed from the
-        // launch-time arg while [etOriginal]'s text was view-state-
-        // restored to the edit — putting [committedOriginal] and the
-        // visible text out of sync, and tricking the apply-guard into
-        // accepting stale fetches for the old sentence.
-        arguments?.putString(ARG_ORIGINAL, newText)
         val ctx = requireContext()
 
         // Translation: clear back to the loading hint only if the user
@@ -815,50 +794,20 @@ class SentenceAnkiContentFragment : Fragment() {
     }
 
     /**
-     * True when the Translation field is empty and the user hasn't
-     * typed their own. The host calls this on a configuration-change
-     * restore to decide whether a translation fetch interrupted by the
-     * old lifecycleScope's cancellation needs to be re-launched.
-     *
-     * `translationUserTouched` stays false through a normal restore
-     * because [attachTranslationTouchWatcher] is wired *after*
-     * [buildEditField] applies the EditText's restored text, so the
-     * watcher never sees that initial value.
-     */
-    fun needsTranslationFill(): Boolean =
-        ::etTranslation.isInitialized &&
-            etTranslation.text.toString().isBlank() &&
-            !translationUserTouched
-
-    /**
-     * True when the Words card is in its loading state with no rows
-     * yet. Same rotation-recovery purpose as [needsTranslationFill].
-     * [applyWords] persists results to args, so a restore after a
-     * completed fetch repopulates [words] and this returns false.
-     */
-    fun needsWordsFill(): Boolean =
-        ::wordsCard.isInitialized && words.isEmpty() && wordsLoading
-
-    /**
      * Replaces the placeholder Translation field with [text] when an
      * async fetch lands. [text] = null renders the error variant
      * ("Couldn't translate") without clobbering anything the user has
      * typed in the meantime.
      *
-     * [forOriginal] is the sentence whose translation [text] is — used
-     * to discard stale results from a prior sentence when the user has
-     * since edited Original. Without this guard the initial fetch can
-     * race the first edit (or one edit can race another) and stomp the
-     * field with a translation that no longer matches the source.
+     * [forOriginal] is the sentence whose translation [text] is —
+     * compared against the visible [etOriginal] text to discard
+     * results that no longer match what's on screen (superseded
+     * fetches, or fetches whose original was edited without focus
+     * loss). Without this guard Save could ship a card whose source
+     * and translation disagree.
      */
     fun applyTranslation(forOriginal: String, text: String?) {
         if (!::etTranslation.isInitialized) return
-        if (forOriginal != committedOriginal) return
-        // Also guard against the live Original — the user can edit
-        // [etOriginal] *without* losing focus (and so without bumping
-        // [committedOriginal]), and applying a result for a sentence
-        // that no longer matches the visible text would let Save build
-        // a card whose source and translation disagree.
         if (forOriginal != etOriginal.text.toString()) return
         if (translationUserTouched) return
         val ctx = context ?: return
@@ -881,8 +830,8 @@ class SentenceAnkiContentFragment : Fragment() {
      * stays selected when it lands in the list.
      *
      * [forOriginal] is the sentence whose word breakdown [entries] is —
-     * used to discard stale results when the user has edited Original
-     * since this fetch was launched. Mirrors [applyTranslation]'s guard.
+     * compared against the visible [etOriginal] text. Mirrors
+     * [applyTranslation]'s guard.
      */
     fun applyWords(
         forOriginal: String,
@@ -890,10 +839,6 @@ class SentenceAnkiContentFragment : Fragment() {
         targetWord: String?,
     ) {
         if (!::wordsCard.isInitialized) return
-        if (forOriginal != committedOriginal) return
-        // Mirrors [applyTranslation]'s live-text guard: uncommitted
-        // edits would otherwise leave us with word rows tied to a
-        // sentence no longer on screen.
         if (forOriginal != etOriginal.text.toString()) return
         wordsLoading = false
         words.clear()
