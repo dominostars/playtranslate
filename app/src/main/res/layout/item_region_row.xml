@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Region picker list-item row. android:background is the ripple
+     state-list, not a static fill — see settings_row_hotkey for the
+     full Overdraw note. -->
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
@@ -9,7 +13,8 @@
     android:minHeight="@dimen/pt_row_min_height"
     android:paddingHorizontal="@dimen/pt_row_h_padding"
     android:paddingVertical="@dimen/pt_row_v_padding"
-    android:background="?attr/selectableItemBackground">
+    android:background="?attr/selectableItemBackground"
+    tools:ignore="Overdraw">
 
     <!-- Drag handle (visible in edit mode, replaces radio button) -->
     <ImageView

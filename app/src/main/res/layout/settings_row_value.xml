@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Reusable value row: title on left, current value + chevron on right. Tappable. -->
+<!-- Reusable value row: title on left, current value + chevron on right.
+     Tappable. android:background is the ripple state-list, not a static
+     fill — see settings_row_hotkey for the full Overdraw note. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:minHeight="66dp"
@@ -11,7 +14,8 @@
     android:paddingVertical="@dimen/pt_row_v_padding"
     android:background="?attr/selectableItemBackground"
     android:clickable="true"
-    android:focusable="true">
+    android:focusable="true"
+    tools:ignore="Overdraw">
 
     <TextView
         android:id="@+id/tvRowTitle"

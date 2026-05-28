@@ -18,7 +18,8 @@
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:paddingHorizontal="16dp"
-    android:paddingVertical="16dp">
+    android:paddingVertical="16dp"
+    tools:ignore="Overdraw">
 
     <!-- Icon block: 48dp rounded square. Background drawable + glyph tint
          are set programmatically — they swap between Off (elevated + muted

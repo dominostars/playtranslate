@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Inset divider between rows inside a card. -->
+<!-- Inset divider between rows inside a card. The android:background IS
+     the visible 1dp line — not a redundant fill on top of content, so
+     the lint Overdraw warning is structurally wrong for this view shape. -->
 <View xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="1dp"
     android:layout_marginStart="@dimen/pt_row_h_padding"
-    android:background="?attr/ptDivider" />
+    android:background="?attr/ptDivider"
+    tools:ignore="Overdraw" />
