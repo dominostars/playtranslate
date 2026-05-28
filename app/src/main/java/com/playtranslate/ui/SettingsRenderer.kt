@@ -29,10 +29,13 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
+import androidx.core.widget.ImageViewCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.materialswitch.MaterialSwitch
@@ -55,10 +58,13 @@ import com.playtranslate.themeColor
 import com.playtranslate.translation.BackendId
 import com.playtranslate.translation.BackendStatus
 import com.playtranslate.translation.Cooldownable
+import com.playtranslate.translation.MlKitBackend
 import com.playtranslate.translation.StarRating
 import com.playtranslate.translation.Tone
 import com.playtranslate.translation.TranslationBackend
 import com.playtranslate.translation.TranslationBackendRegistry
+import com.playtranslate.translation.llm.OnDeviceLlmBackend
+import com.playtranslate.translation.llm.toGbDisplay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -1318,9 +1324,11 @@ class SettingsRenderer(
     private val backendRefreshJobs: MutableMap<BackendId, Job> = mutableMapOf()
 
     private fun setupTranslationServiceSection() {
-        // ML Kit row: no toggle. Hide the switch from the shared layout.
-        rowBackendMlkit.findViewById<MaterialSwitch>(R.id.switchRowToggle).visibility = View.GONE
-        wireBackendStaticRow(row = rowBackendMlkit, title = "ML Kit")
+        // ML Kit row: bundled, always-on fallback. No switch, not tappable.
+        // The C7 offline layout's `switchOfflineToggle` stays GONE (set by
+        // renderOfflineBackendRow during refreshAllBackendStatuses); the
+        // stat grid + downloaded-check icon are bound there too.
+        wireMlKitBackendRow()
 
         wireBackendSwitchRow(
             row = rowBackendLingva,
@@ -1340,15 +1348,20 @@ class SettingsRenderer(
         wireQwenMnnBackendRow()
         wireHyMtBackendRow()
 
-        // Compose line 1 for each backend from its metadata
+        // Compose line 1 for each ONLINE backend from its metadata
         // (requiresInternet + quality), styled with mixed-color spans.
+        // Offline backends use the C7 stat-grid layout instead — their
+        // line-1 TextView doesn't exist; renderOfflineBackendRow binds
+        // the quality/speed stars directly.
         for (backend in TranslationBackendRegistry.orderedBackends()) {
             val row = backendRowById(backend.id) ?: continue
+            if (isOfflineRowBackend(backend)) continue
             setBackendLine1(row, backend)
         }
 
         // Render every backend's status line, kicking off async refreshes
-        // for ones in Loading state.
+        // for ones in Loading state. For offline backends this fully binds
+        // the C7 row (title, stat grid, icon, switch, warning sub-row).
         refreshAllBackendStatuses()
     }
 
@@ -1581,30 +1594,27 @@ class SettingsRenderer(
         }
     }
 
-    /** Refresh the MNN-Qwen switch from the current pref value. Driven by the
-     *  SP-listener observer after the Cancel branch of the disable dialog
-     *  (which needs to revert the optimistic toggle) and after a successful
-     *  download (which flips the pref to true). */
+    /** Refresh the MNN-Qwen row's switch + status icon from current pref +
+     *  install state + busy state. Driven by the SP-listener observer
+     *  after the Cancel branch of the disable dialog (which needs to
+     *  revert the optimistic toggle) and after a successful download
+     *  (which flips the pref to true). Delegates to the shared offline
+     *  binder so the icon stays in sync with the switch. */
     fun refreshQwenMnnSwitch() {
-        rowBackendQwenMnn.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
-            it.isChecked = prefs.qwenMnnEnabled
-        }
+        val backend = TranslationBackendRegistry.byId("qwen_mnn") ?: return
+        updateOfflineStatusIconAndSwitch(rowBackendQwenMnn, backend)
     }
 
-    /** Refresh the Gemma E2B switch from the current pref value. Mirrors
-     *  [refreshQwenMnnSwitch]. */
+    /** Refresh the Gemma E2B row. Mirrors [refreshQwenMnnSwitch]. */
     fun refreshGemmaE2bSwitch() {
-        rowBackendGemmaE2bMnn.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
-            it.isChecked = prefs.gemmaE2bEnabled
-        }
+        val backend = TranslationBackendRegistry.byId("gemma_e2b_mnn") ?: return
+        updateOfflineStatusIconAndSwitch(rowBackendGemmaE2bMnn, backend)
     }
 
-    /** Refresh the Hunyuan-MT switch from the current pref value. Mirrors
-     *  [refreshQwenMnnSwitch]. */
+    /** Refresh the Hunyuan-MT row. Mirrors [refreshQwenMnnSwitch]. */
     fun refreshHyMtSwitch() {
-        rowBackendHyMt.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
-            it.isChecked = prefs.hyMtEnabled
-        }
+        val backend = TranslationBackendRegistry.byId("hymt_mnn") ?: return
+        updateOfflineStatusIconAndSwitch(rowBackendHyMt, backend)
     }
 
     /** Re-render every backend row's secondary subtitle line and kick off
@@ -1621,13 +1631,22 @@ class SettingsRenderer(
     fun refreshAllBackendStatuses() {
         for (backend in TranslationBackendRegistry.orderedBackends()) {
             val row = backendRowById(backend.id) ?: continue
-            renderBackendStatusLine(row, backend.status)
-            renderBackendCooldownLine(row, backend)
+            if (isOfflineRowBackend(backend)) {
+                // C7 layout — single entry point owns title/grid/icon/switch/warning.
+                renderOfflineBackendRow(row, backend)
+            } else {
+                renderBackendStatusLine(row, backend.status)
+                renderBackendCooldownLine(row, backend)
+            }
             backendRefreshJobs[backend.id]?.cancel()
             backendRefreshJobs[backend.id] = lifecycleScope.launch {
                 val fresh = backend.refreshStatus()
-                renderBackendStatusLine(row, fresh)
-                renderBackendCooldownLine(row, backend)
+                if (isOfflineRowBackend(backend)) {
+                    renderOfflineBackendRow(row, backend)
+                } else {
+                    renderBackendStatusLine(row, fresh)
+                    renderBackendCooldownLine(row, backend)
+                }
             }
         }
     }
@@ -1784,164 +1803,384 @@ class SettingsRenderer(
      *      the switch + retriggers status refresh.
      *    - on  → tap: directly disable (preserving the saved DeepL key
      *      so a later re-enable can prepopulate it). */
-    /** Wire the Gemma E2B (MNN) row — premium-quality manual-lookup tier
-     *  that replaces the legacy TranslateGemma 4B.
-     *
-     *    - off (model not installed) → tap: callbacks.startGemmaE2bMnnDownload().
-     *    - off (model installed but disabled) → tap: enable directly via
-     *      callbacks.enableInstalledGemmaE2bMnn().
-     *    - on  → tap: callbacks.showGemmaE2bMnnDisableDialog(); the Cancel
-     *      branch must call refreshGemmaE2bSwitch() to revert the optimistic
-     *      switch flip. */
-    private fun wireGemmaE2bMnnBackendRow() {
-        rowBackendGemmaE2bMnn.findViewById<TextView>(R.id.tvRowTitle).text =
-            ctx.getString(R.string.gemma_e2b_mnn_display_name)
+    /** ML Kit row — bundled, always-on fallback. The C7 offline layout
+     *  shows the title + stat grid + downloaded-check icon via
+     *  [renderOfflineBackendRow]; the switch stays GONE (user-confirmed
+     *  deviation from the C7 design) and the row is not tappable. */
+    private fun wireMlKitBackendRow() {
+        rowBackendMlkit.isClickable = false
+        rowBackendMlkit.isFocusable = false
+        rowBackendMlkit.setOnClickListener(null)
+    }
 
-        val backend = com.playtranslate.translation.TranslationBackendRegistry
-            .byId("gemma_e2b_mnn") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
-        if (backend != null && configureIncompatibleHardwareRow(rowBackendGemmaE2bMnn, backend)) {
+    /** Attach the click handler for an offline on-device-LLM row. All three
+     *  callers (Qwen, Gemma E2B, Hunyuan-MT) share the same three-state
+     *  branch (enabled → disable dialog · installed-disabled → enable
+     *  directly · not-installed → start download); each callback is supplied
+     *  by the caller. Visual binding (title, stat grid, status icon, switch
+     *  state, warning sub-row, hardware-incompat replacement) lives in
+     *  [renderOfflineBackendRow] and runs via [refreshAllBackendStatuses];
+     *  this method only owns the row's `onClickListener`. On
+     *  hardware-incompatible devices the row is left inert (the renderer
+     *  hides the switch and shows the incompat reason in place of the
+     *  stat grid).
+     *
+     *  HyMt's region gate and Cancel-revert behavior are unchanged — the
+     *  caller handles the region gate before invoking this, and the
+     *  Cancel branch of [onDisable] is still responsible for calling
+     *  [refreshQwenMnnSwitch] / [refreshGemmaE2bSwitch] / [refreshHyMtSwitch]
+     *  to revert the optimistic switch flip. */
+    private fun wireOfflineLlmRow(
+        row: View,
+        backendId: BackendId,
+        isEnabled: () -> Boolean,
+        onDisable: () -> Unit,
+        onEnableInstalled: () -> Unit,
+        onDownload: () -> Unit,
+    ) {
+        val backend = TranslationBackendRegistry.byId(backendId) as? OnDeviceLlmBackend
+        // Only early-return when we have a definite hardware-incompat
+        // signal. If the registry can't find the backend (unexpected — but
+        // historically the wiring didn't depend on it), still attach the
+        // tap handler; the install check inside the click handler falls
+        // back to "not installed" → download path.
+        if (backend != null && !backend.meetsHardwareRequirements()) {
+            row.setOnClickListener(null)
+            row.isClickable = false
             return
         }
-
-        val switch = rowBackendGemmaE2bMnn.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-        switch.isChecked = prefs.gemmaE2bEnabled
-
-        rowBackendGemmaE2bMnn.setOnClickListener {
-            if (prefs.gemmaE2bEnabled) {
+        row.setOnClickListener {
+            val switch = row.findViewById<MaterialSwitch>(R.id.switchOfflineToggle)
+            val installed = backend?.isInstalled() == true
+            if (isEnabled()) {
                 switch.isChecked = false
-                callbacks.showGemmaE2bMnnDisableDialog()
+                onDisable()
+            } else if (installed) {
+                switch.isChecked = true
+                onEnableInstalled()
             } else {
-                val installed = com.playtranslate.translation.gemma
-                    .GemmaE2BMnnModel.isInstalled(ctx)
-                if (installed) {
-                    switch.isChecked = true
-                    callbacks.enableInstalledGemmaE2bMnn()
-                } else {
-                    callbacks.startGemmaE2bMnnDownload()
-                }
+                onDownload()
             }
         }
     }
 
-    /** Wire the MNN-backed Hunyuan-MT 1.5 row (translation-specialist tier).
-     *  Routes to the `hymt_mnn` backend +
-     *  [com.playtranslate.translation.hymt.HyMtModel] + `prefs.hyMtEnabled`.
-     *
-     *  **Region-gated**: if [com.playtranslate.region.RegionPolicy.isHunyuanRestricted]
-     *  is true (any device-region signal indicates EU/UK/SK), the row + its
-     *  preceding divider are hidden entirely and the method returns
-     *  immediately — the user in a restricted region never sees the catalog
-     *  row, never gets the legal-attestation dialog, never downloads the
-     *  model. The Tencent HY Community License (§1(l), §5(c)) excludes these
-     *  regions from its Territory definition.
-     *
-     *    - off (model not installed) → tap: callbacks.startHyMtDownload();
-     *      the bottom sheet shows the legal-attestation dialog before
-     *      starting the actual download.
-     *    - off (model installed but disabled) → tap: enable directly via
-     *      callbacks.enableInstalledHyMt() — the legal dialog only fires
-     *      pre-download, not on subsequent enables.
-     *    - on  → tap: callbacks.showHyMtDisableDialog(); the Cancel branch
-     *      must call refreshHyMtSwitch() to revert the optimistic flip. */
+    private fun wireGemmaE2bMnnBackendRow() = wireOfflineLlmRow(
+        row = rowBackendGemmaE2bMnn,
+        backendId = "gemma_e2b_mnn",
+        isEnabled = { prefs.gemmaE2bEnabled },
+        onDisable = callbacks::showGemmaE2bMnnDisableDialog,
+        onEnableInstalled = callbacks::enableInstalledGemmaE2bMnn,
+        onDownload = callbacks::startGemmaE2bMnnDownload,
+    )
+
+    /** Hunyuan-MT 1.5 has an extra **region gate** before the standard
+     *  wiring: if [com.playtranslate.region.RegionPolicy.isHunyuanRestricted]
+     *  reports true (any device-region signal indicates EU/UK/SK per the
+     *  Tencent HY Community License Territory definition), the row + its
+     *  preceding divider are hidden entirely so the user never sees the
+     *  catalog row, never gets the legal-attestation dialog, and never
+     *  downloads. The legal-attestation dialog inside the download flow
+     *  is the second-line gate for cases where region signals don't catch
+     *  it (default-open). */
     private fun wireHyMtBackendRow() {
-        // Region gate: hide the row + its preceding divider in restricted
-        // regions, before touching anything else. License-compliance gate
-        // — the legal-attestation dialog in the bottom sheet is the
-        // second-line gate for cases where region signals don't catch it
-        // (default-open).
         if (com.playtranslate.region.RegionPolicy.isHunyuanRestricted(ctx)) {
             rowBackendHyMt.visibility = View.GONE
             dividerBackendHyMt.visibility = View.GONE
             return
         }
+        wireOfflineLlmRow(
+            row = rowBackendHyMt,
+            backendId = "hymt_mnn",
+            isEnabled = { prefs.hyMtEnabled },
+            onDisable = callbacks::showHyMtDisableDialog,
+            // Legal-attestation dialog does NOT re-fire when enabling an
+            // already-downloaded model — once hyMtLegalAccepted is true
+            // it stays true, mirroring how Meta handles the Llama ToS.
+            onEnableInstalled = callbacks::enableInstalledHyMt,
+            onDownload = callbacks::startHyMtDownload,
+        )
+    }
 
-        rowBackendHyMt.findViewById<TextView>(R.id.tvRowTitle).text =
-            ctx.getString(R.string.hymt_display_name)
+    private fun wireQwenMnnBackendRow() = wireOfflineLlmRow(
+        row = rowBackendQwenMnn,
+        backendId = "qwen_mnn",
+        isEnabled = { prefs.qwenMnnEnabled },
+        onDisable = callbacks::showQwenMnnDisableDialog,
+        onEnableInstalled = callbacks::enableInstalledQwenMnn,
+        onDownload = callbacks::startQwenMnnDownload,
+    )
 
-        val backend = com.playtranslate.translation.TranslationBackendRegistry
-            .byId("hymt_mnn") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
-        if (backend != null && configureIncompatibleHardwareRow(rowBackendHyMt, backend)) {
+    // ─────────────────────────────────────────────────────────────────────
+    // Offline backend row (settings_row_backend_offline) — C7 redesign.
+    // Header row with title + status icon + switch, then a 4-column stat
+    // grid (Quality | Speed | RAM | Disk). Used by MlKit + every
+    // OnDeviceLlmBackend; online backends keep settings_row_backend.xml.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /** Backend IDs whose download is in flight; the row swaps its status
+     *  icon to an indeterminate ProgressBar while present in this set.
+     *  Mutated by [setBackendDownloading], called from [SettingsBottomSheet]
+     *  at download job start/end. */
+    private val offlineDownloadingIds = mutableSetOf<BackendId>()
+
+    /** True iff [backend] uses the C7 `settings_row_backend_offline` layout.
+     *  Today: any [OnDeviceLlmBackend] subclass plus [MlKitBackend]. */
+    private fun isOfflineRowBackend(backend: TranslationBackend): Boolean =
+        backend is OnDeviceLlmBackend || backend is MlKitBackend
+
+    /** Round the half-step [StarRating] (0.0–5.0) into the [1, 5] integer
+     *  bucket used for the a11y label mapping (Bad / Okay / Good / Better).
+     *  Half-up rounding: 1.0→1, 2.5→3, 3.5→4, 5.0→5. Clamped to [1, 5] so
+     *  we never surface "0 stars" in the spoken description (the 4 existing
+     *  offline backends never emit ratings below 1.0; the clamp is
+     *  defense-in-depth for a future low-rated backend). The visible stars
+     *  use [toHalfSteps5] for half-step resolution; this is only the label. */
+    private fun StarRating.toIntStars5(): Int =
+        (this + 0.5f).toInt().coerceIn(1, 5)
+
+    /** Convert the [StarRating] to an integer count of half-steps in [0, 10]
+     *  for visible rendering. 1.0→2, 2.5→5, 3.5→7, 5.0→10. Each star slot
+     *  consumes 2 half-steps (one for the left half, one for the right);
+     *  [bindStarCell] maps the count to filled/half/outline drawables. */
+    private fun StarRating.toHalfSteps5(): Int =
+        (this * 2f).toInt().coerceIn(0, 10)
+
+    /** Map the 1–5 star count to the existing four-label scale for the
+     *  composed row contentDescription. The label set has four buckets
+     *  (Bad / Okay / Good / Better), so 4 and 5 stars both surface as
+     *  "Better quality" — TalkBack still reads the full numeric form via
+     *  the visible stars; this is just the prose adjective. */
+    @StringRes private fun qualityLabelRes(stars5: Int): Int = when (stars5) {
+        1 -> R.string.tr_service_quality_bad
+        2 -> R.string.tr_service_quality_okay
+        3 -> R.string.tr_service_quality_good
+        else -> R.string.tr_service_quality_better
+    }
+
+    @StringRes private fun speedLabelRes(stars5: Int): Int = when (stars5) {
+        1 -> R.string.tr_service_speed_very_slow
+        2 -> R.string.tr_service_speed_slow
+        3 -> R.string.tr_service_speed_okay
+        else -> R.string.tr_service_speed_fast
+    }
+
+    /** Read the per-backend `*Enabled` pref. Null for ML Kit (no pref —
+     *  it's the always-on fallback). */
+    private fun enabledPrefFor(backendId: BackendId): Boolean? = when (backendId) {
+        "qwen_mnn"       -> prefs.qwenMnnEnabled
+        "gemma_e2b_mnn"  -> prefs.gemmaE2bEnabled
+        "hymt_mnn"       -> prefs.hyMtEnabled
+        else             -> null
+    }
+
+    /** Full visual bind for an offline backend row. Idempotent — called on
+     *  initial bind, on Settings resume, and after
+     *  [TranslationBackend.refreshStatus] returns. Owns the entire layout:
+     *  title, stat grid (or hardware-incompat replacement), status icon
+     *  (or busy ProgressBar), switch state, warning sub-row, and the
+     *  composed row [View.setContentDescription]. */
+    private fun renderOfflineBackendRow(row: View, backend: TranslationBackend) {
+        row.findViewById<TextView>(R.id.tvOfflineTitle).text = backend.displayName
+
+        val onDeviceLlm = backend as? OnDeviceLlmBackend
+        val isMlKit = backend is MlKitBackend
+
+        val grid = row.findViewById<View>(R.id.cardStatGrid)
+        val incompat = row.findViewById<TextView>(R.id.tvOfflineHardwareIncompat)
+        val iconWrap = row.findViewById<View>(R.id.ivStatusIconWrap)
+        val switch = row.findViewById<MaterialSwitch>(R.id.switchOfflineToggle)
+        val warning = row.findViewById<TextView>(R.id.tvOfflineWarningLine)
+
+        // Hardware-incompat branch — preserves the legacy "visible but
+        // inert" contract: row stays, grid + icon + switch hidden,
+        // single-line reason shown in their place.
+        val incompatReason = onDeviceLlm?.takeIf { !it.meetsHardwareRequirements() }
+            ?.hardwareIncompatibilityReason()
+        if (incompatReason != null) {
+            grid.visibility = View.GONE
+            incompat.text = incompatReason
+            incompat.visibility = View.VISIBLE
+            iconWrap.visibility = View.GONE
+            switch.visibility = View.GONE
+            warning.visibility = View.GONE
+            row.contentDescription = "${backend.displayName}. $incompatReason"
             return
         }
 
-        val switch = rowBackendHyMt.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-        switch.isChecked = prefs.hyMtEnabled
+        grid.visibility = View.VISIBLE
+        incompat.visibility = View.GONE
+        iconWrap.visibility = View.VISIBLE
 
-        rowBackendHyMt.setOnClickListener {
-            if (prefs.hyMtEnabled) {
-                switch.isChecked = false
-                callbacks.showHyMtDisableDialog()
-            } else {
-                val installed = com.playtranslate.translation.hymt
-                    .HyMtModel.isInstalled(ctx)
-                if (installed) {
-                    // Optimistic flip; the bottom sheet runs the availMem
-                    // gate and either flips the pref or reverts via
-                    // refreshHyMtSwitch(). The legal dialog does NOT
-                    // re-fire here — once hyMtLegalAccepted is true it
-                    // stays true, mirroring how Meta handles Llama ToS.
-                    switch.isChecked = true
-                    callbacks.enableInstalledHyMt()
-                } else {
-                    callbacks.startHyMtDownload()
+        val qualityStars5 = backend.qualityStars.toIntStars5()
+        bindStarCell(row.findViewById(R.id.cellQuality),
+            R.string.offline_backend_quality_label,
+            backend.qualityStars.toHalfSteps5())
+        val speedStars5 = backend.speedStars?.toIntStars5()
+        bindStarCell(row.findViewById(R.id.cellSpeed),
+            R.string.offline_backend_speed_label,
+            backend.speedStars?.toHalfSteps5() ?: 0)
+
+        val ramText = onDeviceLlm?.availMemFloorBytes?.toGbDisplay()
+            ?: ctx.getString(R.string.offline_backend_mlkit_ram)
+        val diskText = onDeviceLlm?.humanSize()
+            ?: ctx.getString(R.string.offline_backend_mlkit_disk)
+        bindMonoCell(row.findViewById(R.id.cellRam),
+            R.string.offline_backend_ram_label, ramText)
+        bindMonoCell(row.findViewById(R.id.cellDisk),
+            R.string.offline_backend_disk_label, diskText)
+
+        updateOfflineStatusIconAndSwitch(row, backend)
+        // ML Kit gets no switch — user-confirmed deviation from C7. GONE
+        // (not INVISIBLE) so the status icon slides to the right edge
+        // instead of leaving a switch-shaped gap to its right. The header
+        // row's minHeight (48dp = MaterialSwitch's touch-target height)
+        // keeps every offline row the same height regardless of whether a
+        // switch is drawn.
+        if (isMlKit) switch.visibility = View.GONE
+
+        bindOfflineWarningLine(row, backend)
+        row.contentDescription = composeOfflineRowA11y(
+            backend, qualityStars5, speedStars5, ramText, diskText)
+    }
+
+    /** Render [halfSteps] (0–10) across the 5 star slots. Each slot consumes
+     *  2 half-steps: if the rating reaches the slot's upper edge, render the
+     *  filled drawable in ptText; if it lands on the lower edge, render the
+     *  half drawable (its own two-tone colors take over — tint cleared);
+     *  otherwise render the outline in ptTextDim. */
+    private fun bindStarCell(cell: View, @StringRes labelRes: Int, halfSteps: Int) {
+        cell.findViewById<TextView>(R.id.tvStatLabel).setText(labelRes)
+        val filledTint = ColorStateList.valueOf(ctx.themeColor(R.attr.ptText))
+        val emptyTint = ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextDim))
+        val starIds = intArrayOf(R.id.star1, R.id.star2, R.id.star3, R.id.star4, R.id.star5)
+        for ((idx, id) in starIds.withIndex()) {
+            val iv = cell.findViewById<ImageView>(id)
+            val slotStart = idx * 2
+            when {
+                halfSteps >= slotStart + 2 -> {
+                    iv.setImageResource(R.drawable.ic_offline_star_filled)
+                    ImageViewCompat.setImageTintList(iv, filledTint)
+                }
+                halfSteps >= slotStart + 1 -> {
+                    iv.setImageResource(R.drawable.ic_offline_star_half)
+                    // Half-star drawable owns its own colors (ptText for the
+                    // filled side, ptTextDim for the outline). Clear the tint
+                    // so neither side is recolored to a single value.
+                    ImageViewCompat.setImageTintList(iv, null)
+                }
+                else -> {
+                    iv.setImageResource(R.drawable.ic_offline_star_outline)
+                    ImageViewCompat.setImageTintList(iv, emptyTint)
                 }
             }
         }
     }
 
-    /** Wire the MNN-backed Qwen row (live-mode tier). Routes to the
-     *  `qwen_mnn` backend + [com.playtranslate.translation.qwen.QwenMnnModel]
-     *  + `prefs.qwenMnnEnabled`. */
-    private fun wireQwenMnnBackendRow() {
-        rowBackendQwenMnn.findViewById<TextView>(R.id.tvRowTitle).text =
-            ctx.getString(R.string.qwen_mnn_display_name)
+    private fun bindMonoCell(cell: View, @StringRes labelRes: Int, value: String) {
+        cell.findViewById<TextView>(R.id.tvStatLabel).setText(labelRes)
+        cell.findViewById<TextView>(R.id.tvStatValue).text = value
+    }
 
-        val backend = com.playtranslate.translation.TranslationBackendRegistry
-            .byId("qwen_mnn") as? com.playtranslate.translation.llm.OnDeviceLlmBackend
-        if (backend != null && configureIncompatibleHardwareRow(rowBackendQwenMnn, backend)) {
-            return
+    /** Status icon (downloaded-check / cloud-down / busy spinner) plus the
+     *  switch checked state, derived from install state + busy state +
+     *  pref. Called by [renderOfflineBackendRow] for the full bind and by
+     *  [setBackendDownloading] / refresh*Switch for targeted updates. */
+    private fun updateOfflineStatusIconAndSwitch(row: View, backend: TranslationBackend) {
+        val isMlKit = backend is MlKitBackend
+        val onDeviceLlm = backend as? OnDeviceLlmBackend
+        val installed = isMlKit || (onDeviceLlm?.isInstalled() == true)
+        val downloading = backend.id in offlineDownloadingIds
+
+        val icon = row.findViewById<ImageView>(R.id.ivStatusIcon)
+        val progress = row.findViewById<ProgressBar>(R.id.pbStatusDownloading)
+        if (downloading) {
+            icon.visibility = View.GONE
+            progress.visibility = View.VISIBLE
+        } else {
+            progress.visibility = View.GONE
+            icon.setImageResource(
+                if (installed) R.drawable.ic_status_downloaded
+                else R.drawable.ic_status_cloud_down
+            )
+            // Downloaded badge: the drawable owns its own colors (accent
+            // disc + card-colored check), so clear the tint that the
+            // layout applies for the cloud-down case. Cloud-down stays
+            // muted via setImageTintList.
+            ImageViewCompat.setImageTintList(
+                icon,
+                if (installed) null
+                else ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextMuted))
+            )
+            icon.contentDescription = ctx.getString(
+                if (installed) R.string.offline_backend_downloaded_cd
+                else R.string.offline_backend_not_downloaded_cd
+            )
+            icon.visibility = View.VISIBLE
         }
 
-        val switch = rowBackendQwenMnn.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-        switch.isChecked = prefs.qwenMnnEnabled
-
-        rowBackendQwenMnn.setOnClickListener {
-            if (prefs.qwenMnnEnabled) {
-                switch.isChecked = false
-                callbacks.showQwenMnnDisableDialog()
-            } else {
-                val installed = com.playtranslate.translation.qwen
-                    .QwenMnnModel.isInstalled(ctx)
-                if (installed) {
-                    // Optimistic flip; the bottom sheet runs the availMem gate
-                    // and either flips the pref or reverts via refreshQwenMnnSwitch().
-                    switch.isChecked = true
-                    callbacks.enableInstalledQwenMnn()
-                } else {
-                    callbacks.startQwenMnnDownload()
-                }
-            }
+        if (!isMlKit) {
+            val switch = row.findViewById<MaterialSwitch>(R.id.switchOfflineToggle)
+            val enabledPref = enabledPrefFor(backend.id) ?: false
+            switch.isChecked = installed && enabledPref
+            switch.visibility = View.VISIBLE
         }
     }
 
-    /**
-     * If [backend] reports [com.playtranslate.translation.llm.OnDeviceLlmBackend.meetsHardwareRequirements]
-     * = false, configure [row] in a "visible but inert" state: hide the
-     * toggle switch and disable click handling. Title and status line are
-     * left to the caller / [refreshAllBackendStatuses] — the status getter
-     * on the backend surfaces [com.playtranslate.translation.llm.OnDeviceLlmBackend.hardwareIncompatibilityReason]
-     * as the line-2 explanation. Returns true if the row was configured as
-     * incompatible (caller should early-return).
-     */
-    private fun configureIncompatibleHardwareRow(
-        row: View,
-        backend: com.playtranslate.translation.llm.OnDeviceLlmBackend,
-    ): Boolean {
-        if (backend.meetsHardwareRequirements()) return false
-        row.findViewById<MaterialSwitch>(R.id.switchRowToggle).visibility = View.GONE
-        row.setOnClickListener(null)
-        row.isClickable = false
-        return true
+    private fun bindOfflineWarningLine(row: View, backend: TranslationBackend) {
+        val tv = row.findViewById<TextView>(R.id.tvOfflineWarningLine)
+        val status = backend.status
+        if (status is BackendStatus.Info && status.tone == Tone.Warning) {
+            tv.text = status.text
+            tv.visibility = View.VISIBLE
+        } else {
+            tv.visibility = View.GONE
+        }
+    }
+
+    private fun composeOfflineRowA11y(
+        backend: TranslationBackend,
+        qualityStars5: Int,
+        speedStars5: Int?,
+        ramText: String,
+        diskText: String,
+    ): String {
+        val isMlKit = backend is MlKitBackend
+        val onDeviceLlm = backend as? OnDeviceLlmBackend
+        val installed = isMlKit || (onDeviceLlm?.isInstalled() == true)
+        val downloadedLabel = ctx.getString(
+            if (installed) R.string.offline_backend_downloaded_cd
+            else R.string.offline_backend_not_downloaded_cd
+        )
+        // ML Kit has no enabled pref — treat as always-enabled fallback.
+        val enabledPref = enabledPrefFor(backend.id) ?: isMlKit
+        val enabledLabel = ctx.getString(
+            if (enabledPref && installed) R.string.offline_backend_enabled_cd
+            else R.string.offline_backend_disabled_cd
+        )
+        val quality = ctx.getString(qualityLabelRes(qualityStars5))
+        val speed = speedStars5?.let { ctx.getString(speedLabelRes(it)) }
+        return if (speed != null) {
+            ctx.getString(R.string.offline_backend_row_a11y_fmt,
+                backend.displayName, quality, speed, ramText, diskText,
+                downloadedLabel, enabledLabel)
+        } else {
+            ctx.getString(R.string.offline_backend_row_a11y_no_speed_fmt,
+                backend.displayName, quality, ramText, diskText,
+                downloadedLabel, enabledLabel)
+        }
+    }
+
+    /** Called by [SettingsBottomSheet] at download job start/end. While the
+     *  ID is in [offlineDownloadingIds], the row's status icon renders as
+     *  an indeterminate spinner; otherwise it falls back to the
+     *  downloaded-check / cloud-down vector based on install state. */
+    fun setBackendDownloading(backendId: BackendId, downloading: Boolean) {
+        val changed = if (downloading) offlineDownloadingIds.add(backendId)
+                      else offlineDownloadingIds.remove(backendId)
+        if (!changed) return
+        val row = backendRowById(backendId) ?: return
+        val backend = TranslationBackendRegistry.byId(backendId) ?: return
+        updateOfflineStatusIconAndSwitch(row, backend)
     }
 
     private fun wireDeeplBackendRow() {

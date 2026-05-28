@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Offline backend row (C7 redesign). Header row with title + status icon
+     + switch, then a 4-column stat grid (Quality | Speed | RAM | Disk).
+     Used for MlKitBackend and every OnDeviceLlmBackend subclass; online
+     backends keep settings_row_backend.xml. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingHorizontal="@dimen/pt_row_h_padding"
+    android:paddingTop="0dp"
+    android:paddingBottom="10dp"
+    android:foreground="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true">
+
+    <!-- Header row: title (flex=1) + status icon (22dp wrapper) + switch.
+         minHeight matches MaterialSwitch's touch-target height (48dp,
+         inherited from Widget.Material3.CompoundButton.MaterialSwitch via
+         @dimen/m3_minTouchTargetSize) so the header row stays the same
+         height across all four offline backends — including ML Kit,
+         whose switch is GONE. The 32dp track is centered inside that
+         48dp; without this floor the ML Kit row collapses ~16dp shorter. -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:minHeight="48dp">
+
+        <TextView
+            android:id="@+id/tvOfflineTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:singleLine="true"
+            android:ellipsize="end"
+            style="@style/Text.PT.RowTitle" />
+
+        <FrameLayout
+            android:id="@+id/ivStatusIconWrap"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_marginStart="12dp">
+
+            <ImageView
+                android:id="@+id/ivStatusIcon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                app:tint="?attr/ptTextMuted" />
+
+            <ProgressBar
+                android:id="@+id/pbStatusDownloading"
+                style="?android:attr/progressBarStyleSmall"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_gravity="center"
+                android:visibility="gone"
+                android:indeterminate="true"
+                android:indeterminateTint="?attr/ptTextMuted" />
+        </FrameLayout>
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchOfflineToggle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:clickable="false"
+            android:focusable="false"
+            app:materialThemeOverlay="@style/Widget.PlayTranslate.MaterialSwitch" />
+    </LinearLayout>
+
+    <!-- Stat grid: 4 weighted cells separated by 1dp ?attr/ptDivider; wrapped
+         in a MaterialCardView for the 10dp radius + 1dp ?attr/ptDivider stroke
+         + ?attr/ptElevated fill. -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cardStatGrid"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="0dp"
+        android:clickable="false"
+        android:focusable="false"
+        app:cardBackgroundColor="?attr/ptElevated"
+        app:cardCornerRadius="10dp"
+        app:cardElevation="0dp"
+        app:strokeColor="?attr/ptDivider"
+        app:strokeWidth="1dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:baselineAligned="false"
+            android:weightSum="4"
+            android:divider="@drawable/divider_vertical_1dp_ptdivider"
+            android:showDividers="middle">
+
+            <include
+                android:id="@+id/cellQuality"
+                layout="@layout/settings_offline_stat_cell_stars" />
+
+            <include
+                android:id="@+id/cellSpeed"
+                layout="@layout/settings_offline_stat_cell_stars" />
+
+            <include
+                android:id="@+id/cellRam"
+                layout="@layout/settings_offline_stat_cell_mono" />
+
+            <include
+                android:id="@+id/cellDisk"
+                layout="@layout/settings_offline_stat_cell_mono" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Hardware-incompat replacement for the stat grid. Shown instead of
+         cardStatGrid when OnDeviceLlmBackend.meetsHardwareRequirements()=false. -->
+    <TextView
+        android:id="@+id/tvOfflineHardwareIncompat"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:textSize="13sp"
+        android:textColor="?attr/ptTextMuted"
+        android:visibility="gone" />
+
+    <!-- Optional warning sub-row (e.g. "Low memory — translations using
+         fallback") below the grid. Visibility driven by BackendStatus.Info
+         with Tone.Warning. -->
+    <TextView
+        android:id="@+id/tvOfflineWarningLine"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:textSize="12sp"
+        android:fontFamily="sans-serif-medium"
+        android:textColor="?attr/ptWarning"
+        android:visibility="gone" />
+
+</LinearLayout>

@@ -982,6 +982,7 @@ class SettingsBottomSheet : DialogFragment() {
             }
             .show()
 
+        renderer?.setBackendDownloading("qwen_mnn", true)
         qwenMnnDownloadJob = viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val outcome = downloader.run { progress ->
@@ -1083,6 +1084,7 @@ class SettingsBottomSheet : DialogFragment() {
                 // branches above already dismissed. Codex review
                 // (2026-05-22, [P2]).
                 dialog?.dismiss()
+                renderer?.setBackendDownloading("qwen_mnn", false)
                 qwenMnnDownloadJob = null
             }
         }
@@ -1201,6 +1203,7 @@ class SettingsBottomSheet : DialogFragment() {
             }
             .show()
 
+        renderer?.setBackendDownloading("gemma_e2b_mnn", true)
         gemmaE2bDownloadJob = viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val outcome = downloader.run { progress ->
@@ -1285,6 +1288,7 @@ class SettingsBottomSheet : DialogFragment() {
                 }
             } finally {
                 dialog?.dismiss()
+                renderer?.setBackendDownloading("gemma_e2b_mnn", false)
                 gemmaE2bDownloadJob = null
             }
         }
@@ -1451,6 +1455,7 @@ class SettingsBottomSheet : DialogFragment() {
             }
             .show()
 
+        renderer?.setBackendDownloading("hymt_mnn", true)
         hyMtDownloadJob = viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val outcome = downloader.run { progress ->
@@ -1535,6 +1540,7 @@ class SettingsBottomSheet : DialogFragment() {
                 }
             } finally {
                 dialog?.dismiss()
+                renderer?.setBackendDownloading("hymt_mnn", false)
                 hyMtDownloadJob = null
             }
         }

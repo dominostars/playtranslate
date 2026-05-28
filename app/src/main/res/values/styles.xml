@@ -28,6 +28,7 @@
         <item name="ptText">@color/pt_dark_text</item>
         <item name="ptTextMuted">@color/pt_dark_text_muted</item>
         <item name="ptTextHint">@color/pt_dark_text_hint</item>
+        <item name="ptTextDim">@color/pt_dark_text_dim</item>
         <item name="ptTextTranslation">@color/pt_dark_translation</item>
         <item name="ptAccentOn">@color/pt_dark_text_on_accent</item>
         <item name="ptDanger">@color/pt_dark_danger</item>
@@ -73,6 +74,7 @@
         <item name="ptText">@color/pt_light_text</item>
         <item name="ptTextMuted">@color/pt_light_text_muted</item>
         <item name="ptTextHint">@color/pt_light_text_hint</item>
+        <item name="ptTextDim">@color/pt_light_text_dim</item>
         <item name="ptTextTranslation">@color/pt_light_translation</item>
         <item name="ptAccentOn">@color/pt_light_text_on_accent</item>
         <item name="ptDanger">@color/pt_light_danger</item>

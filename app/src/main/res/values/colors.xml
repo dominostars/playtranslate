@@ -12,6 +12,7 @@
     <color name="pt_dark_text">#FFECEFF1</color>
     <color name="pt_dark_text_muted">#FF9AA1A8</color>
     <color name="pt_dark_text_hint">#FF5F6770</color>
+    <color name="pt_dark_text_dim">#FF4A5158</color>
     <color name="pt_dark_text_on_accent">#FF0B1412</color>
     <color name="pt_dark_danger">#FFE05D5D</color>
     <color name="pt_dark_warning">#FFD4A84A</color>
@@ -29,6 +30,7 @@
     <color name="pt_light_text">#FF14171A</color>
     <color name="pt_light_text_muted">#FF5A6168</color>
     <color name="pt_light_text_hint">#FF8A9199</color>
+    <color name="pt_light_text_dim">#FFC8CCD0</color>
     <color name="pt_light_text_on_accent">#FFFFFFFF</color>
     <color name="pt_light_danger">#FFC8383D</color>
     <color name="pt_light_warning">#FFA67A11</color>

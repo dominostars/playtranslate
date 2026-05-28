@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Half-filled star for the C7 offline-row stat grid. Two layered paths:
+     a full-star outline in ?attr/ptTextDim (the empty-star color) and a
+     left-half-only filled polygon in ?attr/ptText (the filled-star color).
+     ImageView consumers must clear the tint (setImageTintList(null)) so the
+     drawable's own theme-attr-driven colors render. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="16dp"
+    android:height="16dp"
+    android:viewportWidth="16"
+    android:viewportHeight="16">
+    <!-- Full outline (right side stays visible as dim "empty" stroke). -->
+    <path
+        android:pathData="M8,1.5 L9.94,5.8 L14.5,6.26 L11.07,9.44 L12.06,14 L8,11.6 L3.94,14 L4.93,9.44 L1.5,6.26 L6.06,5.8 Z"
+        android:fillColor="#00000000"
+        android:strokeColor="?attr/ptTextDim"
+        android:strokeWidth="1.2"
+        android:strokeLineJoin="round" />
+    <!-- Left half filled in the bright color, with matching stroke so the
+         filled region's edge stays crisp against the outline. -->
+    <path
+        android:pathData="M8,1.5 L6.06,5.8 L1.5,6.26 L4.93,9.44 L3.94,14 L8,11.6 Z"
+        android:fillColor="?attr/ptText"
+        android:strokeColor="?attr/ptText"
+        android:strokeWidth="1.2"
+        android:strokeLineJoin="round" />
+</vector>

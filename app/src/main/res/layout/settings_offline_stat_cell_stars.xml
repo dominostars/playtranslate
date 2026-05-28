@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="0dp"
+    android:layout_height="wrap_content"
+    android:layout_weight="1"
+    android:orientation="vertical"
+    android:gravity="center_horizontal"
+    android:paddingTop="10dp"
+    android:paddingBottom="11dp"
+    android:paddingHorizontal="8dp">
+
+    <TextView
+        android:id="@+id/tvStatLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="9sp"
+        android:textColor="?attr/ptTextHint"
+        android:fontFamily="sans-serif-medium"
+        android:textStyle="bold"
+        android:letterSpacing="0.12"
+        android:textAllCaps="true"
+        android:lineSpacingMultiplier="1.0" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:id="@+id/star1"
+            android:layout_width="11dp"
+            android:layout_height="11dp"
+            android:importantForAccessibility="no" />
+
+        <ImageView
+            android:id="@+id/star2"
+            android:layout_width="11dp"
+            android:layout_height="11dp"
+            android:layout_marginStart="2dp"
+            android:importantForAccessibility="no" />
+
+        <ImageView
+            android:id="@+id/star3"
+            android:layout_width="11dp"
+            android:layout_height="11dp"
+            android:layout_marginStart="2dp"
+            android:importantForAccessibility="no" />
+
+        <ImageView
+            android:id="@+id/star4"
+            android:layout_width="11dp"
+            android:layout_height="11dp"
+            android:layout_marginStart="2dp"
+            android:importantForAccessibility="no" />
+
+        <ImageView
+            android:id="@+id/star5"
+            android:layout_width="11dp"
+            android:layout_height="11dp"
+            android:layout_marginStart="2dp"
+            android:importantForAccessibility="no" />
+    </LinearLayout>
+</LinearLayout>

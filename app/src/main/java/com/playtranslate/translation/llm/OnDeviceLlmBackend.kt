@@ -48,6 +48,15 @@ abstract class OnDeviceLlmBackend(
 
     protected abstract val statusStringIds: StatusStringIds
 
+    /** Public read-through for the settings UI: is the model committed to
+     *  disk and ready to load? Wraps [ModelHelper.isInstalled] so the
+     *  Settings renderer doesn't have to reach into the protected helper. */
+    fun isInstalled(): Boolean = modelHelper.isInstalled(context)
+
+    /** Public read-through for the settings UI: pretty-formatted on-disk
+     *  size (e.g. "1.48 GB"). Wraps [ModelHelper.humanSize]. */
+    fun humanSize(): String = modelHelper.humanSize(context)
+
     final override val requiresInternet: Boolean = false
     // false matches the abstraction (users opt into the on-device tier; they
     // aren't "degraded"). When an on-device LLM produces a translation because
@@ -193,9 +202,7 @@ abstract class OnDeviceLlmBackend(
             // if a translation transiently fails). Devices below
             // totalMemFloorBytes never see this string — they get the
             // hardware-incompatibility reason from hardwareIncompatibilityReason().
-            val memGb = availMemFloorBytes / 1_000_000_000.0
-            val memStr = if (memGb == memGb.toLong().toDouble()) "${memGb.toLong()} GB"
-                         else "%.1f GB".format(memGb)
+            val memStr = availMemFloorBytes.toGbDisplay()
             return when {
                 !modelHelper.isInstalled(context) ->
                     BackendStatus.Info(

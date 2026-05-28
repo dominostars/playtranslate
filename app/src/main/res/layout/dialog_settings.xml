@@ -833,7 +833,7 @@
 
                     <!-- Premium-quality manual-lookup tier (replaces the
                          legacy TranslateGemma). -->
-                    <include layout="@layout/settings_row_backend"
+                    <include layout="@layout/settings_row_backend_offline"
                         android:id="@+id/rowBackendGemmaE2bMnn" />
 
                     <!-- Divider above the Hunyuan-MT 1.5 row (translation-
@@ -845,19 +845,19 @@
                     <include layout="@layout/settings_row_divider"
                         android:id="@+id/dividerBackendHyMt" />
 
-                    <include layout="@layout/settings_row_backend"
+                    <include layout="@layout/settings_row_backend_offline"
                         android:id="@+id/rowBackendHyMt" />
 
                     <!-- Divider above the live-mode Qwen-MNN tier. -->
                     <include layout="@layout/settings_row_divider"
                         android:id="@+id/dividerBackendQwenMnn" />
 
-                    <include layout="@layout/settings_row_backend"
+                    <include layout="@layout/settings_row_backend_offline"
                         android:id="@+id/rowBackendQwenMnn" />
 
                     <include layout="@layout/settings_row_divider" />
 
-                    <include layout="@layout/settings_row_backend"
+                    <include layout="@layout/settings_row_backend_offline"
                         android:id="@+id/rowBackendMlkit" />
 
                     <TextView

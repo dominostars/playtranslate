@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Downloaded" status badge for the offline backend row. The outer
+     circle is filled and stroked in the user's accent color; the check
+     mark is stroked in the row's card color so it reads as cut out of
+     the accent disc. Vector theme-attr references resolve against the
+     ImageView's context (Theme.PlayTranslate / .White / accent overlays). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M12,12m-9,0a9,9 0,1 1,18 0a9,9 0,1 1,-18 0"
+        android:fillColor="?attr/ptAccent"
+        android:strokeColor="?attr/ptAccent"
+        android:strokeWidth="1.6" />
+    <path
+        android:pathData="M8,12.5 L10.5,15 L16,9"
+        android:strokeColor="?attr/ptCard"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+</vector>

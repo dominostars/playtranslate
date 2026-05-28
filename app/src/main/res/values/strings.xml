@@ -412,17 +412,39 @@
     <string name="tr_service_status_quota_fmt">%1$s / %2$s characters used</string>
     <string name="tr_service_status_quota_with_reset_fmt">%1$s · resets %2$s</string>
 
-    <!-- Backend quality labels (line 1 second half) -->
+    <!-- Backend quality labels (used for the offline-row stat-grid
+         contentDescription and also for the deprecated line-1 prose
+         label on online rows when applicable). -->
     <string name="tr_service_quality_bad">Bad quality</string>
     <string name="tr_service_quality_okay">Okay quality</string>
     <string name="tr_service_quality_good">Good quality</string>
     <string name="tr_service_quality_better">Better quality</string>
 
-    <!-- Backend speed labels (line 1 third part — offline backends only) -->
+    <!-- Backend speed labels (used for the offline-row stat-grid
+         contentDescription). -->
     <string name="tr_service_speed_very_slow">Very slow</string>
     <string name="tr_service_speed_slow">Slow</string>
     <string name="tr_service_speed_okay">Okay speed</string>
     <string name="tr_service_speed_fast">Fast</string>
+
+    <!-- Offline backend row (settings_row_backend_offline) — stat-grid
+         column headers and ML Kit literal RAM/disk values. -->
+    <string name="offline_backend_quality_label">Quality</string>
+    <string name="offline_backend_speed_label">Speed</string>
+    <string name="offline_backend_ram_label">RAM</string>
+    <string name="offline_backend_disk_label">Disk</string>
+    <string name="offline_backend_mlkit_ram">&lt; 1 GB</string>
+    <string name="offline_backend_mlkit_disk">~30 MB</string>
+    <!-- Composed contentDescription suffix tokens for the offline row. -->
+    <string name="offline_backend_downloaded_cd">Downloaded</string>
+    <string name="offline_backend_not_downloaded_cd">Not downloaded</string>
+    <string name="offline_backend_enabled_cd">Enabled</string>
+    <string name="offline_backend_disabled_cd">Disabled</string>
+    <!-- Full row contentDescription template. Args: title, quality label,
+         speed label, ram, disk, downloaded/not-downloaded, enabled/disabled. -->
+    <string name="offline_backend_row_a11y_fmt">%1$s. Quality: %2$s. Speed: %3$s. Requires %4$s memory. %5$s on disk. %6$s. %7$s.</string>
+    <!-- Same template, minus the speed clause (for backends with no speedStars). -->
+    <string name="offline_backend_row_a11y_no_speed_fmt">%1$s. Quality: %2$s. Requires %3$s memory. %4$s on disk. %5$s. %6$s.</string>
 
     <!-- Download UI: shown between SHA verify and ready for directory-mode
          (zip-extract) engine entries like the MNN Qwen. -->

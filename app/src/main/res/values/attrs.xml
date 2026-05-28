@@ -10,6 +10,7 @@
     <attr name="ptText"            format="color" />  <!-- primary body text -->
     <attr name="ptTextMuted"       format="color" />  <!-- secondary / subtitle text -->
     <attr name="ptTextHint"        format="color" />  <!-- tertiary / placeholder -->
+    <attr name="ptTextDim"         format="color" />  <!-- empty-star stroke / quaternary -->
     <attr name="ptTextTranslation" format="color" />  <!-- translation output text -->
     <attr name="ptTextLink"        format="color" />  <!-- tappable links -->
     <attr name="ptAccent"          format="color" />  <!-- primary accent -->
