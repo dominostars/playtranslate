@@ -95,7 +95,7 @@ class AnkiContentSourcePickerDialog : DialogFragment() {
     ) {
         if (options.isEmpty()) return
         val ctx = requireContext()
-        val inflater = LayoutInflater.from(ctx)
+        val inflater = layoutInflater
 
         val header = inflater.inflate(R.layout.settings_group_header, parent, false)
         header.findViewById<TextView>(R.id.tvGroupTitle).text =
@@ -133,7 +133,7 @@ class AnkiContentSourcePickerDialog : DialogFragment() {
         // carries through. The subtitle shows each source's description
         // + example so users mapping a field don't have to guess what
         // PT will write into it.
-        val view = LayoutInflater.from(ctx)
+        val view = layoutInflater
             .inflate(R.layout.anki_card_type_picker_row, container, false)
         val titleTv    = view.findViewById<TextView>(R.id.tvRowTitle)
         val subtitleTv = view.findViewById<TextView>(R.id.tvRowSubtitle)

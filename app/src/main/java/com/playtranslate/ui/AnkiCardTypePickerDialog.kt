@@ -185,7 +185,7 @@ class AnkiCardTypePickerDialog : DialogFragment() {
     ) {
         if (rows.isEmpty()) return
         val ctx = requireContext()
-        val inflater = LayoutInflater.from(ctx)
+        val inflater = layoutInflater
 
         val header = inflater.inflate(R.layout.settings_group_header, parent, false)
         header.findViewById<TextView>(R.id.tvGroupTitle).text = title.uppercase()
@@ -211,7 +211,7 @@ class AnkiCardTypePickerDialog : DialogFragment() {
         bottomCornerRadius: Float,
     ): View {
         val ctx = requireContext()
-        val view = LayoutInflater.from(ctx)
+        val view = layoutInflater
             .inflate(R.layout.anki_card_type_picker_row, container, false)
         view.findViewById<TextView>(R.id.tvRowTitle).apply {
             text = row.title
@@ -234,7 +234,7 @@ class AnkiCardTypePickerDialog : DialogFragment() {
     }
 
     private fun insetDivider(container: ViewGroup): View =
-        LayoutInflater.from(requireContext())
+        layoutInflater
             .inflate(R.layout.settings_row_divider, container, false)
 
     companion object {

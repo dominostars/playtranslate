@@ -1091,7 +1091,7 @@ class WordDetailBottomSheet : DialogFragment() {
      * this helper just routes the suffix into the existing badge slot.
      */
     private fun addGroupHeader(parent: LinearLayout, title: String, suffix: String? = null) {
-        val header = LayoutInflater.from(requireContext())
+        val header = layoutInflater
             .inflate(R.layout.settings_group_header, parent, false)
         header.findViewById<TextView>(R.id.tvGroupTitle).text = title.uppercase(Locale.ROOT)
         val badge = header.findViewById<TextView>(R.id.tvGroupBadge)

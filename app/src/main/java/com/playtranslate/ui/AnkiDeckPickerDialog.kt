@@ -98,7 +98,7 @@ class AnkiDeckPickerDialog : DialogFragment() {
         prefs: Prefs,
     ) {
         val ctx = requireContext()
-        val inflater = LayoutInflater.from(ctx)
+        val inflater = layoutInflater
 
         val card = inflater.inflate(R.layout.language_list_section, parent, false) as MaterialCardView
         val rowContainer = card.findViewById<LinearLayout>(R.id.sectionRows)
@@ -122,7 +122,7 @@ class AnkiDeckPickerDialog : DialogFragment() {
     ): View {
         val ctx = requireContext()
         val isSelected = entry.key == prefs.ankiDeckId
-        val view = LayoutInflater.from(ctx)
+        val view = layoutInflater
             .inflate(R.layout.language_list_row, container, false)
         view.findViewById<TextView>(R.id.tvRowTitle).apply {
             text = entry.value
@@ -155,7 +155,7 @@ class AnkiDeckPickerDialog : DialogFragment() {
     }
 
     private fun insetDivider(container: ViewGroup): View =
-        LayoutInflater.from(requireContext())
+        layoutInflater
             .inflate(R.layout.settings_row_divider, container, false)
 
     companion object {

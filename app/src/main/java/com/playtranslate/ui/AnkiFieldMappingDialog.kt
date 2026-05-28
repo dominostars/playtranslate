@@ -116,7 +116,7 @@ class AnkiFieldMappingDialog : DialogFragment() {
     private fun renderRows(container: LinearLayout) {
         if (fieldNames.isEmpty()) return
         val ctx = requireContext()
-        val inflater = LayoutInflater.from(ctx)
+        val inflater = layoutInflater
 
         // Group all fields inside a single MaterialCardView, with inset
         // dividers between rows — same grouped-card look as the Anki

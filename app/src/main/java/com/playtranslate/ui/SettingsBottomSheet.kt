@@ -672,7 +672,7 @@ class SettingsBottomSheet : DialogFragment() {
         renderer?.destroyOverlayIconPreview()
         val index = parent.indexOfChild(old)
         parent.removeView(old)
-        val newView = LayoutInflater.from(requireActivity())
+        val newView = layoutInflater
             .inflate(R.layout.dialog_settings, parent, false)
         parent.addView(newView, index)
         currentView = newView
