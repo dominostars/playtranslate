@@ -377,7 +377,7 @@ object LastSentenceCache {
                         ?.takeIf { it.isNotEmpty() }
                     val isTargetDriven = prefs.targetLang != "en" && nativeTargetSenses != null
                     val meaning = if (isTargetDriven) {
-                        nativeTargetSenses!!.mapIndexed { i, target ->
+                        nativeTargetSenses.mapIndexed { i, target ->
                             val glosses = target.glosses.joinToString("; ")
                             if (nativeTargetSenses.size > 1) "${i + 1}. $glosses" else glosses
                         }.joinToString("\n")

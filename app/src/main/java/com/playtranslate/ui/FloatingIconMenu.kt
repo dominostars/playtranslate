@@ -172,11 +172,11 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private val instructionPill: LinearLayout
     private val appName: String = context.getString(R.string.app_name)
 
-    private lateinit var liveIcon: TextView
-    private lateinit var liveLabel: TextView
-    private lateinit var liveBtn: FrameLayout
-    private lateinit var hideIcon: ImageView
-    private lateinit var hideLabel: TextView
+    private val liveIcon: TextView
+    private val liveLabel: TextView
+    private val liveBtn: FrameLayout
+    private val hideIcon: ImageView
+    private val hideLabel: TextView
 
     // ── Drag state ────────────────────────────────────────────────────────
     private var isDragging = false

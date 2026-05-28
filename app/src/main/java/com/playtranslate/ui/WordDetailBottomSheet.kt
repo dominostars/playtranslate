@@ -384,7 +384,7 @@ class WordDetailBottomSheet : DialogFragment() {
         val isTargetDriven = targetLangCode != "en" && nativeTargetSenses != null
 
         val definition = if (isTargetDriven) {
-            nativeTargetSenses!!.mapIndexed { i, target ->
+            nativeTargetSenses.mapIndexed { i, target ->
                 val prefix = if (nativeTargetSenses.size > 1) "${i + 1}. " else ""
                 prefix + target.glosses.joinToString("; ")
             }.joinToString("\n")
@@ -652,7 +652,7 @@ class WordDetailBottomSheet : DialogFragment() {
         }
         val targetByOrd = if (!isTargetDriven && defResult is DefinitionResult.Native)
             defResult.targetSenses.associateBy { it.senseOrd } else null
-        val numSenses = if (isTargetDriven) nativeTargetSenses!!.size
+        val numSenses = if (isTargetDriven) nativeTargetSenses.size
             else flatSenses.count { it.targetDefinitions.isNotEmpty() }
 
         // "Machine translated" banner fires when the user will actually
@@ -691,7 +691,7 @@ class WordDetailBottomSheet : DialogFragment() {
             // suppress the label rather than mislabel verb/intj rows as
             // the primary entry's POS.
             val fallbackPos = unambiguousFallbackPos(entries)
-            nativeTargetSenses!!.forEachIndexed { idx, target ->
+            nativeTargetSenses.forEachIndexed { idx, target ->
                 val senseNumber = if (nativeTargetSenses.size > 1) idx + 1 else null
                 if (idx > 0) {
                     addInsetDivider(

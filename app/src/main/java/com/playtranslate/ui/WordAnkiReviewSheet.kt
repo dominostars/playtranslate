@@ -281,7 +281,7 @@ class WordAnkiReviewSheet : DialogFragment() {
             // "Looking up words…" instead of zero rows. Stays false
             // when the host already has words in hand.
             val contentFragment = SentenceAnkiContentFragment.newInstance(
-                sentenceOriginal ?: return, sentenceTranslation, sentenceWords,
+                sentenceOriginal, sentenceTranslation, sentenceWords,
                 currentScreenshotPath, targetWord = word, sourceLangId = sourceLangId,
                 wordsLoading = sentenceWords.isEmpty(),
             )
@@ -772,7 +772,7 @@ class WordAnkiReviewSheet : DialogFragment() {
             // an empty fallback so blank rows render without a label.
             val fallbackPos = com.playtranslate.model
                 .unambiguousFallbackPos(resolvedEntries)
-            val visibleTarget = nativeTargetSenses!!.withIndex()
+            val visibleTarget = nativeTargetSenses.withIndex()
                 .filter { (idx, _) -> idx !in removedSenses }
             val numVisible = visibleTarget.size
             visibleTarget.forEachIndexed { displayIdx, (idx, target) ->
@@ -1465,7 +1465,7 @@ class WordAnkiReviewSheet : DialogFragment() {
             // See rebuildDefinitions for the unambiguous-fallback rationale.
             val fallbackPos = com.playtranslate.model
                 .unambiguousFallbackPos(resolvedEntries)
-            val visibleTarget = nativeTargetSenses!!.withIndex()
+            val visibleTarget = nativeTargetSenses.withIndex()
                 .filter { (idx, _) -> idx !in removedSenses }
             if (visibleTarget.isEmpty()) {
                 val defHtml = fallback.lines().filter { it.isNotBlank() }

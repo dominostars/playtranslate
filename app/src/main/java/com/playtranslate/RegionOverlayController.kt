@@ -184,7 +184,7 @@ class RegionOverlayController(
 
                 // Outside-only shadow + accent glow
                 canvas.save()
-                canvas.clipRect(l, t, r, b, android.graphics.Region.Op.DIFFERENCE)
+                canvas.clipOutRect(l, t, r, b)
                 val shadowOffset = regionShadowPaint.strokeWidth / 2f
                 canvas.drawRect(l - shadowOffset, t - shadowOffset, r + shadowOffset, b + shadowOffset, regionShadowPaint)
                 val glowOffset = glowPaint.strokeWidth / 2f

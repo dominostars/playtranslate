@@ -964,8 +964,7 @@ class SettingsBottomSheet : DialogFragment() {
         val activity = activity ?: return
         val sizeStr = com.playtranslate.translation.qwen.QwenMnnModel.humanSize(ctx)
 
-        var dialog: OverlayProgress? = null
-        dialog = OverlayProgress.Builder(ctx)
+        val progressDialog = OverlayProgress.Builder(ctx)
             .setTitle(getString(R.string.qwen_mnn_display_name))
             .setMessage(getString(R.string.qwen_mnn_status_downloading, "0 B", sizeStr))
             .setProgress(0)
@@ -994,20 +993,20 @@ class SettingsBottomSheet : DialogFragment() {
                                     .humanSize(progress.received)
                                 val total = com.playtranslate.translation.llm
                                     .humanSize(progress.total)
-                                dialog?.setMessage(getString(
+                                progressDialog.setMessage(getString(
                                     R.string.qwen_mnn_status_downloading,
                                     recv, total,
                                 ))
                                 if (progress.total > 0) {
-                                    dialog?.setProgress(
+                                    progressDialog.setProgress(
                                         ((progress.received * 100) / progress.total).toInt()
                                     )
                                 }
                             }
                             is com.playtranslate.translation.llm
                                 .OnDeviceLlmDownloader.Progress.Verifying -> {
-                                dialog?.setMessage(getString(R.string.qwen_mnn_status_verifying))
-                                dialog?.setProgress(100)
+                                progressDialog.setMessage(getString(R.string.qwen_mnn_status_verifying))
+                                progressDialog.setProgress(100)
                             }
                             is com.playtranslate.translation.llm
                                 .OnDeviceLlmDownloader.Progress.Extracting -> {
@@ -1016,15 +1015,15 @@ class SettingsBottomSheet : DialogFragment() {
                                 // files (.mnn / .mnn.weight / tokenizer.txt /
                                 // config.json / ...) over a few seconds on
                                 // Thor; indeterminate spinner is fine.
-                                dialog?.setMessage(getString(R.string.model_download_extracting))
-                                dialog?.setProgress(100)
+                                progressDialog.setMessage(getString(R.string.model_download_extracting))
+                                progressDialog.setProgress(100)
                             }
                         }
                     }
                 }
                 if (!isAdded) return@launch
                 requireActivity().runOnUiThread {
-                    dialog?.dismiss()
+                    progressDialog.dismiss()
                     when (outcome) {
                         is com.playtranslate.translation.llm
                             .OnDeviceLlmDownloader.Outcome.Success -> {
@@ -1065,7 +1064,7 @@ class SettingsBottomSheet : DialogFragment() {
             } catch (e: Exception) {
                 if (isAdded) {
                     requireActivity().runOnUiThread {
-                        dialog?.dismiss()
+                        progressDialog.dismiss()
                         android.widget.Toast.makeText(
                             ctx,
                             getString(R.string.qwen_mnn_download_failed,
@@ -1083,7 +1082,7 @@ class SettingsBottomSheet : DialogFragment() {
                 // idempotent so this is safe even after the success/outcome
                 // branches above already dismissed. Codex review
                 // (2026-05-22, [P2]).
-                dialog?.dismiss()
+                progressDialog.dismiss()
                 renderer?.setBackendDownloading("qwen_mnn", false)
                 qwenMnnDownloadJob = null
             }
@@ -1189,8 +1188,7 @@ class SettingsBottomSheet : DialogFragment() {
     ) {
         val sizeStr = com.playtranslate.translation.gemma.GemmaE2BMnnModel.humanSize(ctx)
 
-        var dialog: OverlayProgress? = null
-        dialog = OverlayProgress.Builder(ctx)
+        val progressDialog = OverlayProgress.Builder(ctx)
             .setTitle(getString(R.string.gemma_e2b_mnn_display_name))
             .setMessage(getString(R.string.gemma_e2b_mnn_status_downloading, "0 B", sizeStr))
             .setProgress(0)
@@ -1215,32 +1213,32 @@ class SettingsBottomSheet : DialogFragment() {
                                     .humanSize(progress.received)
                                 val total = com.playtranslate.translation.llm
                                     .humanSize(progress.total)
-                                dialog?.setMessage(getString(
+                                progressDialog.setMessage(getString(
                                     R.string.gemma_e2b_mnn_status_downloading,
                                     recv, total,
                                 ))
                                 if (progress.total > 0) {
-                                    dialog?.setProgress(
+                                    progressDialog.setProgress(
                                         ((progress.received * 100) / progress.total).toInt()
                                     )
                                 }
                             }
                             is com.playtranslate.translation.llm
                                 .OnDeviceLlmDownloader.Progress.Verifying -> {
-                                dialog?.setMessage(getString(R.string.gemma_e2b_mnn_status_verifying))
-                                dialog?.setProgress(100)
+                                progressDialog.setMessage(getString(R.string.gemma_e2b_mnn_status_verifying))
+                                progressDialog.setProgress(100)
                             }
                             is com.playtranslate.translation.llm
                                 .OnDeviceLlmDownloader.Progress.Extracting -> {
-                                dialog?.setMessage(getString(R.string.model_download_extracting))
-                                dialog?.setProgress(100)
+                                progressDialog.setMessage(getString(R.string.model_download_extracting))
+                                progressDialog.setProgress(100)
                             }
                         }
                     }
                 }
                 if (!isAdded) return@launch
                 requireActivity().runOnUiThread {
-                    dialog?.dismiss()
+                    progressDialog.dismiss()
                     when (outcome) {
                         is com.playtranslate.translation.llm
                             .OnDeviceLlmDownloader.Outcome.Success -> {
@@ -1276,7 +1274,7 @@ class SettingsBottomSheet : DialogFragment() {
             } catch (e: Exception) {
                 if (isAdded) {
                     requireActivity().runOnUiThread {
-                        dialog?.dismiss()
+                        progressDialog.dismiss()
                         android.widget.Toast.makeText(
                             ctx,
                             getString(R.string.gemma_e2b_mnn_download_failed,
@@ -1287,7 +1285,7 @@ class SettingsBottomSheet : DialogFragment() {
                     }
                 }
             } finally {
-                dialog?.dismiss()
+                progressDialog.dismiss()
                 renderer?.setBackendDownloading("gemma_e2b_mnn", false)
                 gemmaE2bDownloadJob = null
             }
@@ -1441,8 +1439,7 @@ class SettingsBottomSheet : DialogFragment() {
     ) {
         val sizeStr = com.playtranslate.translation.hymt.HyMtModel.humanSize(ctx)
 
-        var dialog: OverlayProgress? = null
-        dialog = OverlayProgress.Builder(ctx)
+        val progressDialog = OverlayProgress.Builder(ctx)
             .setTitle(getString(R.string.hymt_display_name))
             .setMessage(getString(R.string.hymt_status_downloading, "0 B", sizeStr))
             .setProgress(0)
@@ -1467,32 +1464,32 @@ class SettingsBottomSheet : DialogFragment() {
                                     .humanSize(progress.received)
                                 val total = com.playtranslate.translation.llm
                                     .humanSize(progress.total)
-                                dialog?.setMessage(getString(
+                                progressDialog.setMessage(getString(
                                     R.string.hymt_status_downloading,
                                     recv, total,
                                 ))
                                 if (progress.total > 0) {
-                                    dialog?.setProgress(
+                                    progressDialog.setProgress(
                                         ((progress.received * 100) / progress.total).toInt()
                                     )
                                 }
                             }
                             is com.playtranslate.translation.llm
                                 .OnDeviceLlmDownloader.Progress.Verifying -> {
-                                dialog?.setMessage(getString(R.string.hymt_status_verifying))
-                                dialog?.setProgress(100)
+                                progressDialog.setMessage(getString(R.string.hymt_status_verifying))
+                                progressDialog.setProgress(100)
                             }
                             is com.playtranslate.translation.llm
                                 .OnDeviceLlmDownloader.Progress.Extracting -> {
-                                dialog?.setMessage(getString(R.string.model_download_extracting))
-                                dialog?.setProgress(100)
+                                progressDialog.setMessage(getString(R.string.model_download_extracting))
+                                progressDialog.setProgress(100)
                             }
                         }
                     }
                 }
                 if (!isAdded) return@launch
                 requireActivity().runOnUiThread {
-                    dialog?.dismiss()
+                    progressDialog.dismiss()
                     when (outcome) {
                         is com.playtranslate.translation.llm
                             .OnDeviceLlmDownloader.Outcome.Success -> {
@@ -1528,7 +1525,7 @@ class SettingsBottomSheet : DialogFragment() {
             } catch (e: Exception) {
                 if (isAdded) {
                     requireActivity().runOnUiThread {
-                        dialog?.dismiss()
+                        progressDialog.dismiss()
                         android.widget.Toast.makeText(
                             ctx,
                             getString(R.string.hymt_download_failed,
@@ -1539,7 +1536,7 @@ class SettingsBottomSheet : DialogFragment() {
                     }
                 }
             } finally {
-                dialog?.dismiss()
+                progressDialog.dismiss()
                 renderer?.setBackendDownloading("hymt_mnn", false)
                 hyMtDownloadJob = null
             }

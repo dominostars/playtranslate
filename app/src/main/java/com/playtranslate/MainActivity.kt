@@ -223,11 +223,11 @@ class MainActivity :
                     "winBounds=${winBounds.width()}x${winBounds.height()}@(${winBounds.left},${winBounds.top}) " +
                     "device='${Build.MANUFACTURER} ${Build.MODEL}' sdk=${Build.VERSION.SDK_INT}")
             displays.forEach { d ->
-                val sz = android.graphics.Point().also { d.getRealSize(it) }
+                val mode = d.mode
                 android.util.Log.i(TAG_DISPLAY_DUMP,
                     "  id=${d.displayId} name='${d.name}' " +
                         "flags=0x${Integer.toHexString(d.flags)} state=${d.state} " +
-                        "size=${sz.x}x${sz.y} valid=${d.isValid}")
+                        "size=${mode.physicalWidth}x${mode.physicalHeight} valid=${d.isValid}")
             }
             presentation.forEach { d ->
                 android.util.Log.i(TAG_DISPLAY_DUMP,
@@ -1870,7 +1870,9 @@ class MainActivity :
         val frag = resultFragment ?: return
         val icon = ContextCompat.getDrawable(this, R.drawable.ic_play)?.mutate() ?: return
         icon.setTint(themeColor(R.attr.ptTextHint))
-        val textSize = 24f * resources.displayMetrics.scaledDensity
+        val textSize = android.util.TypedValue.applyDimension(
+            android.util.TypedValue.COMPLEX_UNIT_SP, 24f, resources.displayMetrics
+        )
         val size = (textSize * 1.1f).toInt()
         icon.setBounds(0, 0, size, size)
         val span = android.text.style.ImageSpan(icon, android.text.style.ImageSpan.ALIGN_BASELINE)
