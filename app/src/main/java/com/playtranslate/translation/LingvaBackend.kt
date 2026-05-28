@@ -130,7 +130,7 @@ class LingvaBackend(
         val request = Request.Builder().url(url).build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw IOException("Translate error ${response.code}")
-            return response.body?.string() ?: throw IOException("Empty response")
+            return response.body.string()
         }
     }
 

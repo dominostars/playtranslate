@@ -249,8 +249,7 @@ class DeepLBackend(
                         throw StructuralFailureException("DeepL error ${response.code}")
                     }
                 }
-                val responseBody = response.body?.string()
-                    ?: throw StructuralFailureException("Empty response from DeepL")
+                val responseBody = response.body.string()
                 gson.fromJson(responseBody, DeepLResponse::class.java).translations.map { it.text }
             }
         } catch (e: DeepLAuthException) { throw e }
@@ -293,7 +292,7 @@ class DeepLBackend(
                     403 -> throw DeepLAuthException()
                     else -> if (!response.isSuccessful) throw IOException("DeepL usage error ${response.code}")
                 }
-                val body = response.body?.string() ?: throw IOException("Empty usage response")
+                val body = response.body.string()
                 gson.fromJson(body, DeepLUsageResponse::class.java)
             }
         }

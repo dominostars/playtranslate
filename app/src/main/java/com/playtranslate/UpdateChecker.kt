@@ -72,7 +72,7 @@ object UpdateChecker {
             .build()
         client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return null
-            val body = resp.body?.string() ?: return null
+            val body = resp.body.string()
             val json = JSONObject(body)
             val tag = json.optString("tag_name", "").takeIf { it.isNotEmpty() }
                 ?: return null

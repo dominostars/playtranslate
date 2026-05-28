@@ -165,13 +165,13 @@ class OpenAiBackend(
                             val retryAfter = response.header("retry-after")
                             val resetReq   = response.header("x-ratelimit-reset-requests")
                             val resetTok   = response.header("x-ratelimit-reset-tokens")
-                            val body = response.body?.string() ?: ""
+                            val body = response.body.string()
                             Log.w(TAG, "429 retryAfter=$retryAfter resetReq=$resetReq resetTok=$resetTok body=${body.take(500)}")
                             recordOpenAi429(body, retryAfter, resetReq, resetTok)
                             throw OpenAiRateLimitException()
                         }
                         else -> if (!response.isSuccessful) {
-                            val errBody = response.body?.string().orEmpty()
+                            val errBody = response.body.string()
                                 .take(300).replace('\n', ' ')
                             Log.w(TAG, "translate error code=${response.code} body=$errBody")
                             if (response.code >= 500) {
@@ -182,8 +182,7 @@ class OpenAiBackend(
                             throw StructuralFailureException("OpenAI error ${response.code}: $errBody")
                         }
                     }
-                    val bodyStr = response.body?.string()
-                        ?: throw StructuralFailureException("Empty response from OpenAI")
+                    val bodyStr = response.body.string()
                     val parsed = gson.fromJson(bodyStr, OpenAiChatResponse::class.java)
                     val raw = parsed.choices.firstOrNull()?.message?.content
                         ?: throw StructuralFailureException("No translation in OpenAI response")
@@ -268,7 +267,7 @@ class OpenAiBackend(
                         val retryAfter = response.header("retry-after")
                         val resetReq   = response.header("x-ratelimit-reset-requests")
                         val resetTok   = response.header("x-ratelimit-reset-tokens")
-                        val body = response.body?.string() ?: ""
+                        val body = response.body.string()
                         Log.w(TAG, "429 retryAfter=$retryAfter resetReq=$resetReq resetTok=$resetTok body=${body.take(500)}")
                         recordOpenAi429(body, retryAfter, resetReq, resetTok)
                         throw OpenAiRateLimitException()
@@ -282,12 +281,12 @@ class OpenAiBackend(
                         // retries this same backend's per-text translate()
                         // (which doesn't send response_format) before
                         // skipping to a degraded fallback.
-                        val body = response.body?.string()?.take(500) ?: ""
+                        val body = response.body.string().take(500)
                         Log.w(TAG, "batch 400 body=$body — retrying per-text on same backend")
                         throw BatchParseException("OpenAI batch 400: $body")
                     }
                     else -> if (!response.isSuccessful) {
-                        val errBody = response.body?.string().orEmpty()
+                        val errBody = response.body.string()
                             .take(300).replace('\n', ' ')
                         Log.w(TAG, "translate batch error code=${response.code} body=$errBody")
                         if (response.code >= 500) {
@@ -298,8 +297,7 @@ class OpenAiBackend(
                         throw StructuralFailureException("OpenAI error ${response.code}: $errBody")
                     }
                 }
-                val bodyStr = response.body?.string()
-                    ?: throw StructuralFailureException("Empty response from OpenAI")
+                val bodyStr = response.body.string()
                 val parsed = gson.fromJson(bodyStr, OpenAiChatResponse::class.java)
                 val rawJson = parsed.choices.firstOrNull()?.message?.content
                     ?: throw BatchParseException("OpenAI batch: empty message content")
@@ -400,8 +398,7 @@ class OpenAiBackend(
                     throw IOException("OpenAI /models error ${response.code}")
                 }
             }
-            val body = response.body?.string()
-                ?: throw IOException("Empty /models response")
+            val body = response.body.string()
             if (body.isBlank()) throw IOException("Blank /models response")
             // Gson can return null on malformed/unrecognized JSON.
             // Defends against provider quirks like DeepSeek's old

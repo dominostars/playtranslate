@@ -95,13 +95,13 @@ class LanguagePackDownloader(
                 200 -> {
                     // Server ignored Range (or we sent none). Truncate any partial file
                     // and start over from byte 0.
-                    val body = response.body ?: error("null response body for $url")
+                    val body = response.body
                     val total = body.contentLength().coerceAtLeast(0L)
                     streamToFile(body, destination, append = false, startBytes = 0L, totalBytes = total, onProgress)
                 }
                 206 -> {
                     // Partial Content. Validate Content-Range and append.
-                    val body = response.body ?: error("null response body for $url")
+                    val body = response.body
                     val cr = response.header("Content-Range")
                         ?: error("206 with no Content-Range for $url")
                     val total = parseContentRangeTotal(cr)

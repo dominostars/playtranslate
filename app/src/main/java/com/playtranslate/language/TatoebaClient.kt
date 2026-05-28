@@ -114,7 +114,7 @@ object TatoebaClient {
                         Log.d(TAG, "fetch($word): HTTP ${resp.code}")
                         return@withContext null
                     }
-                    val body = resp.body?.string() ?: return@withContext null
+                    val body = resp.body.string()
                     val parsed = gson.fromJson(body, ApiResponse::class.java)
                     val sentences = parsed?.data ?: return@withContext emptyList()
                     sentences.mapNotNull { s ->

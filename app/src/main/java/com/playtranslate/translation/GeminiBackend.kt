@@ -134,7 +134,7 @@ class GeminiBackend(
 
             try {
                 client.newCall(request).execute().use { response ->
-                    val bodyStr = response.body?.string() ?: ""
+                    val bodyStr = response.body.string()
                     when (response.code) {
                         400 -> {
                             // Gemini reports invalid keys as 400 with
@@ -243,7 +243,7 @@ class GeminiBackend(
 
         try {
             client.newCall(request).execute().use { response ->
-                val bodyStr = response.body?.string() ?: ""
+                val bodyStr = response.body.string()
                 when (response.code) {
                     400 -> {
                         if (bodyStr.contains("API_KEY_INVALID") ||
@@ -351,7 +351,7 @@ class GeminiBackend(
                         // with "API key not valid" / "API_KEY_INVALID" in the
                         // body — distinguish from other 400s (which would be
                         // backend issues we shouldn't block on).
-                        val body = response.body?.string() ?: ""
+                        val body = response.body.string()
                         if (body.contains("API_KEY_INVALID") ||
                             body.contains("API key not valid")) {
                             KeyStatus.Invalid("HTTP 400 (invalid key)")
@@ -382,8 +382,7 @@ class GeminiBackend(
             if (!response.isSuccessful) {
                 throw IOException("Gemini /models error ${response.code}")
             }
-            val body = response.body?.string()
-                ?: throw IOException("Empty /models response")
+            val body = response.body.string()
             val parsed = gson.fromJson(body, GeminiModelsResponse::class.java)
             val sorted = parsed.models
                 .asSequence()
