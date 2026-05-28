@@ -2,7 +2,7 @@
 agp = "8.13.2"
 kotlin = "2.3.21"
 coreKtx = "1.18.0"
-appcompat = "1.6.1"
+appcompat = "1.7.1"
 material = "1.14.0"
 constraintlayout = "2.2.1"
 lifecycle = "2.7.0"
