@@ -69,16 +69,17 @@
     </LinearLayout>
 
     <!-- Floating Anki pill button — matches the sentence-screen design
-         (bottom|end pill, alpha 0.85, 6dp elevation). -->
-    <LinearLayout
+         (bottom|end pill, alpha 0.85, 6dp elevation). FrameLayout +
+         inner LinearLayout so PillAnkiButton can overlay a centered
+         spinner during one-tap sends; see fragment_translation_result.xml
+         for the matching shape. -->
+    <FrameLayout
         android:id="@+id/btnWordAddToAnki"
         android:layout_width="wrap_content"
         android:layout_height="40dp"
         android:layout_gravity="bottom|end"
         android:layout_marginEnd="16dp"
         android:layout_marginBottom="16dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
         android:background="@drawable/bg_anki_pill"
         android:paddingStart="12dp"
         android:paddingEnd="16dp"
@@ -88,23 +89,31 @@
         android:focusable="true"
         android:visibility="gone">
 
-        <ImageView
-            android:layout_width="20dp"
-            android:layout_height="20dp"
-            android:src="@drawable/ic_card_stack"
-            app:tint="?attr/ptAccentOn"
-            android:scaleType="centerInside" />
-
-        <TextView
+        <LinearLayout
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Anki"
-            android:textColor="?attr/ptAccentOn"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:layout_marginStart="2dp" />
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
-    </LinearLayout>
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_card_stack"
+                app:tint="?attr/ptAccentOn"
+                android:scaleType="centerInside" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Anki"
+                android:textColor="?attr/ptAccentOn"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginStart="2dp" />
+
+        </LinearLayout>
+
+    </FrameLayout>
 
     <!-- Headword overlay. Lives ABOVE the toolbar in z-order so the
          in-place scale-down can render inside the toolbar slot. The

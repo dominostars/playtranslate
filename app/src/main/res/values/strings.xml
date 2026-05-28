@@ -215,6 +215,13 @@
     <string name="anki_permission_denied">Permission denied — grant it in AnkiDroid settings</string>
     <string name="anki_no_deck_selected">No decks found in AnkiDroid</string>
     <string name="anki_added_no_audio">Added to Anki (audio unavailable)</string>
+    <!-- Success toast for one-tap card creation. Shown on the result
+         screen / word-detail sheet immediately after the card lands. -->
+    <string name="anki_added_success">Added to Anki</string>
+    <!-- Progress toast shown immediately on one-tap from the drag-lens
+         flow (the lens dismisses on tap, so the user needs feedback
+         that something is happening while audio synth + upload runs). -->
+    <string name="anki_adding_in_progress">Adding to Anki…</string>
     <string name="anki_send_failed_title">Couldn\'t add card</string>
     <string name="anki_send_failed_message">AnkiDroid didn\'t accept the card. Make sure AnkiDroid is running, then try again.</string>
     <string name="btn_add_to_anki">Add to Anki</string>
@@ -267,6 +274,12 @@
     <string name="anki_models_unavailable">Couldn\'t reach AnkiDroid to look up card types. Try again in a moment.</string>
     <string name="anki_card_type_basic_no_mapping">Basic card types don\'t need a field mapping — Front and Back are filled automatically based on whether you\'re saving a word or a sentence.</string>
     <string name="anki_content_source_pick_title">Map \"%1$s\"</string>
+
+    <!-- One-tap card creation toggle (Settings → Anki section). Subtitle
+         doubles as documentation for the long-press affordance, since
+         hold-to-edit isn't otherwise discoverable. -->
+    <string name="anki_one_tap_title">One-tap card creation</string>
+    <string name="anki_one_tap_subtitle">Automatically creates an anki card when tapping any add-to-anki button. When active, you can hold any button to edit fields before saving.</string>
 
     <!-- ContentSource labels (dropdown options). Names persist in prefs,
          so re-labeling here is safe but renaming enum constants is not.

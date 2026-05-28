@@ -852,6 +852,39 @@ class AnkiSendButton(private val button: FrameLayout) {
 }
 
 /**
+ * Drives the floating entry-point Anki pill button (the small bottom-
+ * end pill on the translation-result screen and the word-detail sheet)
+ * through a one-tap send. Same idle ↔ loading swap pattern as
+ * [AnkiSendButton] but designed for the pill shape: the FrameLayout
+ * [button]'s first child is the icon+label LinearLayout, hidden with
+ * INVISIBLE during loading (so the pill keeps its width), and a
+ * centred 18dp ProgressBar overlays in its place.
+ */
+class PillAnkiButton(private val button: FrameLayout) {
+    private val content: View = button.getChildAt(0)
+    private val spinner: ProgressBar = ProgressBar(button.context).apply {
+        isIndeterminate = true
+        indeterminateTintList =
+            ColorStateList.valueOf(button.context.themeColor(R.attr.ptAccentOn))
+        val size = (18 * button.resources.displayMetrics.density).toInt()
+        layoutParams = FrameLayout.LayoutParams(size, size, Gravity.CENTER)
+        visibility = View.GONE
+    }
+
+    init {
+        button.addView(spinner)
+    }
+
+    /** Swap the pill to its spinner and block taps; pass `false` to
+     *  restore the icon + label. */
+    fun setLoading(loading: Boolean) {
+        button.isEnabled = !loading
+        content.visibility = if (loading) View.INVISIBLE else View.VISIBLE
+        spinner.visibility = if (loading) View.VISIBLE else View.GONE
+    }
+}
+
+/**
  * Applies an [AnkiSendResult] to a review sheet's UI:
  *  - [AnkiSendResult.Success] runs [onSuccess] — the caller dismisses the
  *    sheet (and signals any fragment result).

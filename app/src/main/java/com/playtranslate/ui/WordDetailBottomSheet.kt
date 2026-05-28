@@ -157,7 +157,9 @@ class WordDetailBottomSheet : DialogFragment() {
 
         val content     = view.findViewById<LinearLayout>(R.id.detailContent)
         val scrollView  = view.findViewById<NestedScrollView>(R.id.detailScrollView)
-        val btnAddAnki  = view.findViewById<View>(R.id.btnWordAddToAnki)
+        // FrameLayout so PillAnkiButton can overlay a centered spinner
+        // during one-tap sends.
+        val btnAddAnki  = view.findViewById<FrameLayout>(R.id.btnWordAddToAnki)
         val tvHeadword  = view.findViewById<TextView>(R.id.tvDetailHeadword)
         // The detailContent paddingTop math below reserves the toolbar's
         // 56dp slot so the headword overlay can shrink into it on scroll.
@@ -271,12 +273,28 @@ class WordDetailBottomSheet : DialogFragment() {
 
             val ankiManager = AnkiManager(requireContext())
             btnAddAnki.visibility = View.VISIBLE
-            btnAddAnki.setOnClickListener {
+            val pill = PillAnkiButton(btnAddAnki)
+            // Long-press always opens the review sheet — the
+            // hold-to-edit gesture documented in the one-tap subtitle.
+            btnAddAnki.setOnLongClickListener {
                 if (!ankiManager.isAnkiDroidInstalled()) {
                     showAnkiNotInstalledDialog(requireActivity())
                 } else {
                     openWordAnkiReview(word, primary, screenshotPath, defResult)
                 }
+                true
+            }
+            btnAddAnki.setOnClickListener {
+                if (!ankiManager.isAnkiDroidInstalled()) {
+                    showAnkiNotInstalledDialog(requireActivity())
+                    return@setOnClickListener
+                }
+                val oneTapPrefs = Prefs(requireContext().applicationContext)
+                if (!oneTapPrefs.ankiOneTapEnabled) {
+                    openWordAnkiReview(word, primary, screenshotPath, defResult)
+                    return@setOnClickListener
+                }
+                oneTapWordFromDetail(pill, word, primary, screenshotPath, defResult)
             }
 
             if (targetLangCode != "en") {
@@ -345,17 +363,17 @@ class WordDetailBottomSheet : DialogFragment() {
         }
     }
 
-    private fun openWordAnkiReview(word: String, entry: DictionaryEntry, screenshotPath: String?, defResult: DefinitionResult?) {
-        if (!AnkiManager(requireContext()).hasPermission()) {
-            showAnkiPermissionRationaleDialog(requireActivity()) {
-                androidx.core.app.ActivityCompat.requestPermissions(
-                    requireActivity(),
-                    arrayOf(AnkiManager.PERMISSION), 0
-                )
-            }
-            return
-        }
-
+    /**
+     * Computes the (reading, pos, definition) triple shared by both
+     * the sheet-open path ([openWordAnkiReview]) and the one-tap path
+     * ([oneTapWordFromDetail]). Pulling this out keeps the two paths
+     * in lockstep on which definition the user sees and what lands on
+     * the card.
+     */
+    private fun buildAnkiWordFields(
+        entry: DictionaryEntry,
+        defResult: DefinitionResult?,
+    ): Triple<String, String, String> {
         val reading = entry.headwords.firstOrNull()?.reading
             ?.takeIf { it != entry.headwords.firstOrNull()?.written } ?: ""
 
@@ -396,6 +414,138 @@ class WordDetailBottomSheet : DialogFragment() {
                 }
                 .joinToString("\n")
         }
+        return Triple(reading, pos, definition)
+    }
+
+    /**
+     * One-tap card-send from the word-detail Anki button. Mirrors the
+     * sheet's mode default: when sentence context is available
+     * (host implements [SentenceContextProvider] or args carry
+     * sentence extras), the sheet opens in sentence mode with the
+     * looked-up word as target — one-tap matches that by routing to
+     * the sentence pipeline with `targetWord = word`. Otherwise sends
+     * a word card. Falls back to the sheet on permission gates /
+     * missing deck. NeedsMapping opens the mapping dialog inline.
+     */
+    private fun oneTapWordFromDetail(
+        pill: PillAnkiButton,
+        word: String,
+        entry: DictionaryEntry,
+        screenshotPath: String?,
+        defResult: DefinitionResult?,
+    ) {
+        val ankiManager = AnkiManager(requireContext())
+        if (!ankiManager.hasPermission()) {
+            openWordAnkiReview(word, entry, screenshotPath, defResult)
+            return
+        }
+        val prefs = Prefs(requireContext().applicationContext)
+        if (prefs.ankiDeckId < 0L) {
+            openWordAnkiReview(word, entry, screenshotPath, defResult)
+            return
+        }
+        val sourceLangId = prefs.sourceLangId
+
+        // Read sentence context the same way openWordAnkiReview does
+        // (embedded host activity OR launch-time args). When present,
+        // route to a sentence card with the word as target.
+        val args = arguments
+        val hostContext = (activity as? SentenceContextProvider)?.currentSentenceContext()
+        val sentenceOriginal = hostContext?.original
+            ?: args?.getString(ARG_SENTENCE_ORIGINAL)
+        val sentenceTranslation = hostContext?.translation
+            ?: args?.getString(ARG_SENTENCE_TRANSLATION)
+        // Build a WordsPayload only when both halves come from the
+        // same atomic source (the host's SentenceContext, populated
+        // from a single Settled emission). Args-only fallback has no
+        // surfaces — pass null and let oneTapSendSentence await the
+        // per-sentence cache lookup, which is atomic.
+        val sentenceWordsPayload: LastSentenceCache.WordsPayload? = run {
+            val hostWords = hostContext?.wordResults
+            val hostSurfaces = hostContext?.surfaceForms
+            if (hostWords != null && hostSurfaces != null) {
+                LastSentenceCache.WordsPayload(hostWords, hostSurfaces)
+            } else null
+        }
+
+        pill.setLoading(true)
+        viewLifecycleOwner.lifecycleScope.launch {
+            val result = if (sentenceOriginal != null) {
+                requireContext().oneTapSendSentence(
+                    original = sentenceOriginal,
+                    translation = sentenceTranslation,
+                    wordsPayload = sentenceWordsPayload,
+                    screenshotPath = screenshotPath,
+                    sourceLangId = sourceLangId,
+                    targetWord = word,
+                )
+            } else {
+                val (reading, pos, definition) = buildAnkiWordFields(entry, defResult)
+                requireContext().oneTapSendWord(
+                    word = word,
+                    reading = reading,
+                    pos = pos,
+                    fallbackDefinition = definition,
+                    freqScore = entry.freqScore,
+                    screenshotPath = screenshotPath,
+                    sourceLangId = sourceLangId,
+                )
+            }
+            // CardMode informs the NeedsMapping dialog's defaults; pick
+            // the same mode the user just saw the card go out as.
+            val mode = if (sentenceOriginal != null) CardMode.SENTENCE else CardMode.WORD
+            handleOneTapWordResult(result, pill, mode)
+        }
+    }
+
+    private fun handleOneTapWordResult(
+        result: AnkiSendResult,
+        pill: PillAnkiButton,
+        mode: CardMode,
+    ) {
+        when (result) {
+            is AnkiSendResult.Success -> {
+                val msgRes = if (result.audioDropped || result.wordAudioDropped)
+                    R.string.anki_added_no_audio
+                else
+                    R.string.anki_added_success
+                Toast.makeText(requireContext(), msgRes, Toast.LENGTH_SHORT).show()
+                pill.setLoading(false)
+            }
+            is AnkiSendResult.Failed -> {
+                val ctx = requireContext()
+                OverlayAlert.Builder(requireActivity())
+                    .hideIcon()
+                    .setTitle(getString(R.string.anki_send_failed_title))
+                    .setMessage(getString(result.messageRes))
+                    .addButton(
+                        getString(android.R.string.ok),
+                        ctx.themeColor(R.attr.ptAccent),
+                        ctx.themeColor(R.attr.ptAccentOn),
+                    ) {}
+                    .showInActivity(requireActivity())
+                pill.setLoading(false)
+            }
+            is AnkiSendResult.NeedsMapping -> {
+                // Dispatcher already toasted; open the mapping dialog.
+                showAnkiCardTypeMappingDialog(result.model, mode) { _, _ -> }
+                pill.setLoading(false)
+            }
+        }
+    }
+
+    private fun openWordAnkiReview(word: String, entry: DictionaryEntry, screenshotPath: String?, defResult: DefinitionResult?) {
+        if (!AnkiManager(requireContext()).hasPermission()) {
+            showAnkiPermissionRationaleDialog(requireActivity()) {
+                androidx.core.app.ActivityCompat.requestPermissions(
+                    requireActivity(),
+                    arrayOf(AnkiManager.PERMISSION), 0
+                )
+            }
+            return
+        }
+
+        val (reading, pos, definition) = buildAnkiWordFields(entry, defResult)
 
         val args = arguments
         // Embedded mode (drag-flow Sentence/Word tab): the host activity

@@ -271,6 +271,10 @@ class SettingsRenderer(
     private val rowAnkiCardType: View = root.findViewById(R.id.rowAnkiCardType)
     private val dividerAnkiEditMapping: View = root.findViewById(R.id.dividerAnkiEditMapping)
     private val rowAnkiEditMapping: View = root.findViewById(R.id.rowAnkiEditMapping)
+    private val dividerAnkiOneTap: View = root.findViewById(R.id.dividerAnkiOneTap)
+    private val rowAnkiOneTap: View = root.findViewById(R.id.rowAnkiOneTap)
+    private val switchAnkiOneTap: MaterialSwitch =
+        rowAnkiOneTap.findViewById(R.id.switchRowToggle)
     private val tvAnkiSectionTitle: TextView = root.findViewById(R.id.tvAnkiSectionTitle)
 
     private val llThemeModePicker: LinearLayout = root.findViewById(R.id.llThemeModePicker)
@@ -2144,6 +2148,7 @@ class SettingsRenderer(
                 setupAnkiDeckRow()
                 setupAnkiCardTypeRow()
                 refreshAnkiEditMappingRow()
+                setupAnkiOneTapRow()
             }
         }
     }
@@ -2154,6 +2159,8 @@ class SettingsRenderer(
         dividerAnkiCardType.visibility = View.GONE
         rowAnkiEditMapping.visibility = View.GONE
         dividerAnkiEditMapping.visibility = View.GONE
+        rowAnkiOneTap.visibility = View.GONE
+        dividerAnkiOneTap.visibility = View.GONE
     }
 
     private fun setupAnkiDeckRow() {
@@ -2231,6 +2238,26 @@ class SettingsRenderer(
         }
         rowAnkiCardType.findViewById<TextView>(R.id.tvRowValue).text = label
         refreshAnkiEditMappingRow()
+    }
+
+    private fun setupAnkiOneTapRow() {
+        rowAnkiOneTap.findViewById<TextView>(R.id.tvRowTitle).text =
+            ctx.getString(R.string.anki_one_tap_title)
+        rowAnkiOneTap.findViewById<TextView>(R.id.tvRowSubtitle).apply {
+            text = ctx.getString(R.string.anki_one_tap_subtitle)
+            visibility = View.VISIBLE
+        }
+        // Seed before wiring the listener so the seed itself doesn't
+        // write the pref (no-op in this case, but keeps the pattern
+        // identical to rowHideOverlays).
+        switchAnkiOneTap.setOnCheckedChangeListener(null)
+        switchAnkiOneTap.isChecked = prefs.ankiOneTapEnabled
+        switchAnkiOneTap.setOnCheckedChangeListener { _, checked ->
+            prefs.ankiOneTapEnabled = checked
+        }
+        rowAnkiOneTap.setOnClickListener { switchAnkiOneTap.toggle() }
+        dividerAnkiOneTap.visibility = View.VISIBLE
+        rowAnkiOneTap.visibility = View.VISIBLE
     }
 
     /**

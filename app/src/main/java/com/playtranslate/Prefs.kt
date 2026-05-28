@@ -479,6 +479,16 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_ANKI_SENTENCE_AUDIO, true)
         set(v) = sp.edit().putBoolean(KEY_ANKI_SENTENCE_AUDIO, v).apply()
 
+    /** When true, tapping any Add-to-Anki button creates a card
+     *  immediately using the user's saved defaults (deck, card type,
+     *  audio prefs). Long-pressing the same button always opens the
+     *  editable review sheet. Off by default — the user opts in via
+     *  Settings. Read at click time on every entry-point button so
+     *  flipping the toggle takes effect on the next tap. */
+    var ankiOneTapEnabled: Boolean
+        get() = sp.getBoolean(KEY_ANKI_ONE_TAP_ENABLED, false)
+        set(v) = sp.edit().putBoolean(KEY_ANKI_ONE_TAP_ENABLED, v).apply()
+
     var showTransliteration: Boolean
         get() = sp.getBoolean(KEY_SHOW_TRANSLITERATION, false)
         set(v) = sp.edit().putBoolean(KEY_SHOW_TRANSLITERATION, v).apply()
@@ -857,6 +867,7 @@ class Prefs(context: Context) {
         private const val KEY_ANKI_WORD_AUDIO      = "anki_word_audio_enabled"
         private const val KEY_ANKI_SENTENCE_AUDIO  = "anki_sentence_audio_enabled"
         private const val KEY_ANKI_AUDIO_MAPPING_MIGRATED = "anki_audio_mapping_migrated"
+        private const val KEY_ANKI_ONE_TAP_ENABLED = "anki_one_tap_enabled"
         private const val KEY_REGION_LIST    = "region_list"
         private const val KEY_DEEPL_KEY      = "deepl_api_key"
         const val KEY_DEEPL_ENABLED          = "deepl_enabled"

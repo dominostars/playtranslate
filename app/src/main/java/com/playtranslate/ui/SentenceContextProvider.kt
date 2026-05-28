@@ -20,4 +20,12 @@ data class SentenceContext(
     val original: String?,
     val translation: String?,
     val wordResults: Map<String, Triple<String, String, Int>>?,
+    /** Word → surface form, snapshotted atomically with
+     *  [wordResults]. Required for one-tap Anki sends so the card
+     *  doesn't pair the current sentence's words with stale surface
+     *  forms from a different sentence sitting in
+     *  [LastSentenceCache.surfaceForms]. Null when [wordResults] is
+     *  null OR when the host can't supply matching surfaces from the
+     *  same source. */
+    val surfaceForms: Map<String, String>? = null,
 )

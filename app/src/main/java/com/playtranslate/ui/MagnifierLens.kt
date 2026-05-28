@@ -154,6 +154,10 @@ class MagnifierLens(
     var onOpenTap: (() -> Unit)? = null
     /** Fires when the right chip (Anki) is tapped in sticky mode. */
     var onAnkiTap: (() -> Unit)? = null
+    /** Fires when the right chip (Anki) is long-pressed in sticky mode.
+     *  Used by the one-tap feature to open the editable review sheet
+     *  while a short tap performs the headless send. */
+    var onAnkiLongPress: (() -> Unit)? = null
     /** Fires when the left chip (Speak) is tapped in sticky mode. */
     var onSpeakTap: (() -> Unit)? = null
 
@@ -404,6 +408,7 @@ class MagnifierLens(
             density = density,
             onOpenTap = { onOpenTap?.invoke() },
             onAnkiTap = { onAnkiTap?.invoke() },
+            onAnkiLongPress = { onAnkiLongPress?.invoke() },
             onSpeakTap = { onSpeakTap?.invoke() },
         )
         val windowType = if (useActivityWindow)
@@ -460,6 +465,7 @@ class MagnifierLens(
         private val density: Float,
         private val onOpenTap: () -> Unit,
         private val onAnkiTap: () -> Unit,
+        private val onAnkiLongPress: () -> Unit,
         private val onSpeakTap: () -> Unit,
     ) : FrameLayout(ctx) {
         private fun dp(v: Float): Int = (density * v).toInt()
@@ -729,16 +735,39 @@ class MagnifierLens(
             visibility = GONE
         }
         private val leftChipIcon = makeChipIcon(R.drawable.ic_lens_speak)
-        private val leftChip = makeChip({ onSpeakTap() }, leftChipIcon, leftChipSpinner)
-        private val rightChip = makeChip({ onAnkiTap() }, makeChipIcon(R.drawable.ic_card_stack))
+        private val leftChip = makeChip(
+            { onSpeakTap() },
+            null,
+            leftChipIcon, leftChipSpinner,
+        )
+        // Anki chip: tap fires onAnkiTap (which one-tap or sheet-open),
+        // long-press always fires onAnkiLongPress (which opens the
+        // editable review sheet) — wired to whichever callback the
+        // surrounding flow supplies.
+        private val rightChip = makeChip(
+            { onAnkiTap() },
+            { onAnkiLongPress() },
+            makeChipIcon(R.drawable.ic_card_stack),
+        )
 
         /** Build a chip: a clickable disk with [content] views centered on it.
          *  Content (icon, optional spinner) is supplied so the caller can keep
-         *  references for state swaps. */
-        private fun makeChip(onClick: () -> Unit, vararg content: View): FrameLayout {
+         *  references for state swaps. [onLongClick], when non-null, fires
+         *  on long-press and consumes the gesture (returns true). */
+        private fun makeChip(
+            onClick: () -> Unit,
+            onLongClick: (() -> Unit)? = null,
+            vararg content: View,
+        ): FrameLayout {
             val chip = FrameLayout(context).apply {
                 isClickable = true
                 setOnClickListener { onClick() }
+                if (onLongClick != null) {
+                    setOnLongClickListener {
+                        onLongClick()
+                        true
+                    }
+                }
                 visibility = GONE
             }
             val disk = View(context).apply {

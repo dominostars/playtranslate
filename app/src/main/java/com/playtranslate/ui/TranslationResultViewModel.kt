@@ -495,3 +495,13 @@ data class RowState(
  *  consume for Anki field building. */
 fun List<RowState>.toLegacyMap(): Map<String, Triple<String, String, Int>> =
     associate { it.displayWord to Triple(it.reading, it.meaning, it.freqScore) }
+
+/** Surface-form map paired with [toLegacyMap]. Both extensions read
+ *  the same in-memory [RowState] list, so callers that snapshot both
+ *  in a single pass keep word→surface alignment intact — important
+ *  for one-tap card sends, which can't rely on reading
+ *  `LastSentenceCache.surfaceForms` separately (the cache is
+ *  process-global and may have rotated to a different sentence by
+ *  the time a downstream consumer reads it). */
+fun List<RowState>.toSurfaceMap(): Map<String, String> =
+    associate { it.displayWord to it.surface }

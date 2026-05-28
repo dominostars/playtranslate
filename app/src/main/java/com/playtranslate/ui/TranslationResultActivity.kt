@@ -158,19 +158,30 @@ class TranslationResultActivity :
      *  intent extras during the loading window so a fast Anki tap still
      *  carries the prefetched sentence-word context. */
     override fun currentSentenceContext(): SentenceContext {
-        // All three fields read VM-then-fallback so they're symmetric.
-        // Without VM-first on `original`, the field would be null for
-        // region-capture launches even though the VM has a valid result
-        // — the embedded sheet's `?: args` chain would still recover,
-        // but keeping the read patterns aligned avoids future drift.
+        // All three text fields read VM-then-fallback so they're
+        // symmetric. Without VM-first on `original`, the field would
+        // be null for region-capture launches even though the VM has
+        // a valid result — the embedded sheet's `?: args` chain would
+        // still recover, but keeping the read patterns aligned avoids
+        // future drift.
         val ready = vm.result.value as? ResultState.Ready
+        // Snapshot the settled rows ONCE so the legacy map and the
+        // surface map are guaranteed to come from the same emission.
+        // Reading WordLookupsState twice would risk a fresh emission
+        // sliding in between, and reading surfaces from
+        // LastSentenceCache later (as oneTapSendSentence used to do)
+        // races against live-mode rotating the cache.
+        val settledRows = (vm.wordLookups.value as? WordLookupsState.Settled)?.rows
         return SentenceContext(
             original = ready?.result?.originalText
                 ?: intent.getStringExtra(EXTRA_SENTENCE_TEXT),
             translation = ready?.result?.translatedText
                 ?: intentSeededTranslation,
-            wordResults = (vm.wordLookups.value as? WordLookupsState.Settled)?.rows?.toLegacyMap()
-                ?: intentSeededWordResults,
+            wordResults = settledRows?.toLegacyMap() ?: intentSeededWordResults,
+            // Args fallback has no surfaces — pass null so the
+            // one-tap helper awaits LastSentenceCache, which is
+            // atomic per sentence.
+            surfaceForms = settledRows?.toSurfaceMap(),
         )
     }
 

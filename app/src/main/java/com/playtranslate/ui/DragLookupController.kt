@@ -10,8 +10,10 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.util.TypedValue
+import android.widget.Toast
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
+import com.playtranslate.R
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.displaySizePx
 import com.playtranslate.MainActivity
@@ -147,11 +149,19 @@ class DragLookupController(
         // single- or dual-screen mode, so the user lands on a consistent
         // surface with the switch available.
         magnifier.onOpenTap = { openSentenceInApp() }
-        // Anki chip → standard "Add to Anki" review flow. Gates on
-        // AnkiDroid being installed via an overlay alert (the service
-        // context has no Activity to attach to); permission gating is
-        // handled by AnkiPermissionActivity once the flow launches.
-        magnifier.onAnkiTap = { openAnkiReviewForLens() }
+        // Anki chip → either headless one-tap (pref on) or the
+        // standard "Add to Anki" review flow (pref off / long-press).
+        // The pref is read at click time so flipping the toggle in
+        // settings takes effect on the next tap. Long-press always
+        // routes to the review sheet — the documented edit gesture.
+        magnifier.onAnkiTap = {
+            if (Prefs(context).ankiOneTapEnabled) {
+                oneTapFromLens()
+            } else {
+                openAnkiReviewForLens()
+            }
+        }
+        magnifier.onAnkiLongPress = { openAnkiReviewForLens() }
         // Speak chip → pronounce the looked-up headword via the system TTS
         // engine. LensSpeakChip installs the lens's onSpeakTap handler and
         // owns the speak coroutine + alert routing.
@@ -1396,6 +1406,101 @@ class DragLookupController(
     }
 
     /**
+     * Headless one-tap counterpart to [openAnkiReviewForLens]. When the
+     * user has the one-tap pref on, the lens's Anki chip dismisses the
+     * lens, fires off a [Context.oneTapSendWord] in [scope], and toasts
+     * the result. Falls back to [openAnkiReviewForLens] (the existing
+     * Activity launch) on any prerequisite failure so the user can
+     * still resolve it from inside the sheet.
+     *
+     * Critically, the NeedsMapping recovery path launches the review
+     * Activity from the pre-dismiss [LensAnkiSnapshot] — not via
+     * [openAnkiReviewForLens] — because by the time the dispatcher
+     * returns, the lens has been dismissed and `lastWord` /
+     * `currentEntry` are null. Calling back into
+     * [openAnkiReviewForLens] would silently return on those null
+     * checks, leaving users with an unmapped custom card type stuck
+     * with only the dispatcher's toast and no path to the mapping UI.
+     */
+    private fun oneTapFromLens() {
+        val word = lastWord ?: return
+        val entry = currentEntry ?: return
+        val ankiManager = AnkiManager(context)
+        if (!ankiManager.isAnkiDroidInstalled() || !ankiManager.hasPermission()) {
+            openAnkiReviewForLens()
+            return
+        }
+        val prefs = Prefs(context)
+        if (prefs.ankiDeckId < 0L) {
+            openAnkiReviewForLens()
+            return
+        }
+
+        // Snapshot the lens's word context BEFORE dismiss (onDismiss
+        // nulls lastWord / currentEntry) — same precaution
+        // openAnkiReviewForLens takes. The snapshot is the only data
+        // the Activity-launch fallback below can rely on.
+        val snap = snapshotLensFieldsForAnki(word, entry)
+        val sourceLangId = prefs.sourceLangId
+
+        CaptureBackendResolver.activeOverlayUi?.cancelLivePauseObligation()
+        magnifier.dismiss()
+        // Initial "Adding to Anki…" toast so the user has feedback
+        // while the send runs. Result toast follows on completion.
+        Toast.makeText(
+            context, R.string.anki_adding_in_progress, Toast.LENGTH_SHORT,
+        ).show()
+        scope.launch {
+            // When the lens was dragged out of a sentence, the existing
+            // sheet defaults to sentence mode with the dragged word
+            // bolded (SentenceAnkiContentFragment.kt:227-231). Match
+            // that default in one-tap: send a sentence card with the
+            // target word selected. Without sentence context, fall
+            // back to a word card.
+            val sentence = snap.sentence
+            val result = if (sentence != null) {
+                context.oneTapSendSentence(
+                    original = sentence,
+                    translation = snap.sentenceTranslation,
+                    wordsPayload = null,        // await the cache (atomic)
+                    screenshotPath = snap.screenshotPath,
+                    sourceLangId = sourceLangId,
+                    targetWord = snap.word,
+                )
+            } else {
+                context.oneTapSendWord(
+                    word = snap.word,
+                    reading = snap.reading,
+                    pos = snap.pos,
+                    fallbackDefinition = snap.definition,
+                    freqScore = snap.freqScore,
+                    screenshotPath = snap.screenshotPath,
+                    sourceLangId = sourceLangId,
+                )
+            }
+            when (result) {
+                is AnkiSendResult.Success -> {
+                    val msgRes = if (result.audioDropped || result.wordAudioDropped)
+                        R.string.anki_added_no_audio
+                    else
+                        R.string.anki_added_success
+                    Toast.makeText(context, msgRes, Toast.LENGTH_SHORT).show()
+                }
+                is AnkiSendResult.Failed -> {
+                    Toast.makeText(context, result.messageRes, Toast.LENGTH_LONG).show()
+                }
+                is AnkiSendResult.NeedsMapping -> {
+                    // Dispatcher already toasted "Configure fields…".
+                    // Launch the review Activity from the snapshot —
+                    // openAnkiReviewForLens reads now-null instance
+                    // state and would no-op, stranding the user.
+                    launchWordAnkiActivity(snap)
+                }
+            }
+        }
+    }
+
+    /**
      * Launches the Anki word-review flow with the lens's current word
      * context. Snapshots state before dismissing the lens (onDismiss
      * nulls lastWord / currentEntry, so reads after dismiss would lose
@@ -1416,6 +1521,36 @@ class DragLookupController(
             return
         }
 
+        val snap = snapshotLensFieldsForAnki(word, entry)
+        CaptureBackendResolver.activeOverlayUi?.cancelLivePauseObligation()
+        magnifier.dismiss()
+        launchWordAnkiActivity(snap)
+    }
+
+    /**
+     * Snapshot of all the data needed to launch
+     * [AnkiPermissionActivity] for this lens session, captured before
+     * [magnifier.dismiss] is allowed to null the source-of-truth fields
+     * (`lastWord`, `currentEntry`, `currentSentence`, `screenshotPath`).
+     */
+    private data class LensAnkiSnapshot(
+        val word: String,
+        val reading: String,
+        val pos: String,
+        val definition: String,
+        val freqScore: Int,
+        val screenshotPath: String?,
+        val sentence: String?,
+        val sentenceTranslation: String?,
+        val sourceLangCode: String,
+    )
+
+    /** Build a [LensAnkiSnapshot] from the supplied word + entry plus
+     *  the controller's current session fields. Call BEFORE
+     *  [magnifier.dismiss]. */
+    private fun snapshotLensFieldsForAnki(
+        word: String, entry: DictionaryEntry,
+    ): LensAnkiSnapshot {
         val primaryHeadword = entry.headwords.firstOrNull()
         val reading = primaryHeadword?.reading
             ?.takeIf { it != primaryHeadword.written } ?: ""
@@ -1429,11 +1564,27 @@ class DragLookupController(
         val sentence = currentSentence
         val sentenceTranslation = LastSentenceCache
             .takeIf { it.original == sentence }?.translation
-        val capturedScreenshot = screenshotPath
-        val sourceLangCode = Prefs(context).sourceLangId.code
+        return LensAnkiSnapshot(
+            word = word,
+            reading = reading,
+            pos = pos,
+            definition = definition,
+            freqScore = entry.freqScore,
+            screenshotPath = screenshotPath,
+            sentence = sentence,
+            sentenceTranslation = sentenceTranslation,
+            sourceLangCode = Prefs(context).sourceLangId.code,
+        )
+    }
 
-        CaptureBackendResolver.activeOverlayUi?.cancelLivePauseObligation()
-        magnifier.dismiss()
+    /**
+     * Launches the [AnkiPermissionActivity] → [WordAnkiReviewActivity]
+     * flow from a pre-captured [LensAnkiSnapshot]. Decoupled from
+     * `lastWord` / `currentEntry` so the one-tap fallback path can
+     * still launch the sheet after `magnifier.dismiss()` has cleared
+     * those fields.
+     */
+    private fun launchWordAnkiActivity(snap: LensAnkiSnapshot) {
         // Finish any previously launched WordAnkiReviewActivity so the
         // new sheet visibly replaces the old one rather than stacking
         // behind it in a hidden task. Also cancel any in-flight
@@ -1446,21 +1597,21 @@ class DragLookupController(
         val intent = Intent(context, AnkiPermissionActivity::class.java).apply {
             // MULTIPLE_TASK — see openSentenceInApp for the rationale.
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
-            putExtra(WordAnkiReviewActivity.EXTRA_WORD, word)
-            putExtra(WordAnkiReviewActivity.EXTRA_READING, reading)
-            putExtra(WordAnkiReviewActivity.EXTRA_POS, pos)
-            putExtra(WordAnkiReviewActivity.EXTRA_DEFINITION, definition)
-            putExtra(WordAnkiReviewActivity.EXTRA_FREQ_SCORE, entry.freqScore)
-            capturedScreenshot?.let {
+            putExtra(WordAnkiReviewActivity.EXTRA_WORD, snap.word)
+            putExtra(WordAnkiReviewActivity.EXTRA_READING, snap.reading)
+            putExtra(WordAnkiReviewActivity.EXTRA_POS, snap.pos)
+            putExtra(WordAnkiReviewActivity.EXTRA_DEFINITION, snap.definition)
+            putExtra(WordAnkiReviewActivity.EXTRA_FREQ_SCORE, snap.freqScore)
+            snap.screenshotPath?.let {
                 putExtra(WordAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, it)
             }
-            sentence?.let {
+            snap.sentence?.let {
                 putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_ORIGINAL, it)
             }
-            sentenceTranslation?.let {
+            snap.sentenceTranslation?.let {
                 putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_TRANSLATION, it)
             }
-            putExtra(WordAnkiReviewActivity.EXTRA_SOURCE_LANG, sourceLangCode)
+            putExtra(WordAnkiReviewActivity.EXTRA_SOURCE_LANG, snap.sourceLangCode)
         }
 
         // Same routing rule as [openSentenceInApp]: prefer any resumed

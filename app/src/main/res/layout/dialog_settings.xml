@@ -943,6 +943,16 @@
                         android:layout_height="wrap_content"
                         android:visibility="gone" />
 
+                    <include layout="@layout/settings_row_divider"
+                        android:id="@+id/dividerAnkiOneTap"
+                        android:visibility="gone" />
+
+                    <include layout="@layout/settings_row_switch"
+                        android:id="@+id/rowAnkiOneTap"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:visibility="gone" />
+
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
