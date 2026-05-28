@@ -21,7 +21,7 @@
         app:tint="?attr/ptTextHint"
         android:scaleType="center"
         android:visibility="gone"
-        android:contentDescription="Drag to reorder" />
+        android:contentDescription="@string/cd_drag_to_reorder" />
 
     <RadioButton
         android:id="@+id/radioRegion"
@@ -58,6 +58,6 @@
         android:scaleType="centerInside"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:visibility="gone"
-        android:contentDescription="Delete region" />
+        android:contentDescription="@string/cd_delete_region" />
 
 </LinearLayout>

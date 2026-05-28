@@ -39,7 +39,7 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:src="@drawable/ic_close"
                 app:tint="?attr/ptText"
-                android:contentDescription="Close" />
+                android:contentDescription="@string/cd_close" />
 
         </LinearLayout>
 
@@ -105,7 +105,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Anki"
+                android:text="@string/anki_section_header"
                 android:textColor="?attr/ptAccentOn"
                 android:textSize="14sp"
                 android:textStyle="bold"

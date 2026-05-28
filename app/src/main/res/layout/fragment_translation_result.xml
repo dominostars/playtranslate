@@ -91,7 +91,7 @@
                     android:layout_height="32dp"
                     android:layout_marginEnd="16dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="Copy translation"
+                    android:contentDescription="@string/cd_copy_translation"
                     android:src="@drawable/ic_copy"
                     app:tint="?attr/ptTextMuted" />
 
@@ -100,7 +100,7 @@
                     android:layout_width="36dp"
                     android:layout_height="32dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="Toggle translation visibility"
+                    android:contentDescription="@string/cd_toggle_translation_visibility"
                     android:src="@drawable/ic_visibility"
                     app:tint="?attr/ptTextMuted" />
 
@@ -172,7 +172,7 @@
                     android:layout_height="32dp"
                     android:layout_marginEnd="16dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="Toggle inline furigana"
+                    android:contentDescription="@string/cd_toggle_inline_furigana"
                     android:src="@drawable/ic_furigana"
                     app:tint="?attr/ptTextMuted" />
 
@@ -182,7 +182,7 @@
                     android:layout_height="32dp"
                     android:layout_marginEnd="16dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="Read original text aloud"
+                    android:contentDescription="@string/cd_read_original_aloud"
                     android:src="@drawable/ic_lens_speak"
                     app:tint="?attr/ptTextMuted" />
 
@@ -192,7 +192,7 @@
                     android:layout_height="32dp"
                     android:layout_marginEnd="16dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="Edit original text"
+                    android:contentDescription="@string/cd_edit_original"
                     android:src="@drawable/ic_edit"
                     app:tint="?attr/ptTextMuted" />
 
@@ -202,7 +202,7 @@
                     android:layout_height="32dp"
                     android:layout_marginEnd="16dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="Copy original"
+                    android:contentDescription="@string/cd_copy_original"
                     android:src="@drawable/ic_copy"
                     app:tint="?attr/ptTextMuted" />
 
@@ -211,7 +211,7 @@
                     android:layout_width="36dp"
                     android:layout_height="32dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="Toggle original visibility"
+                    android:contentDescription="@string/cd_toggle_original_visibility"
                     android:src="@drawable/ic_visibility"
                     app:tint="?attr/ptTextMuted" />
 
@@ -273,7 +273,7 @@
                     android:layout_width="36dp"
                     android:layout_height="32dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="Toggle words visibility"
+                    android:contentDescription="@string/cd_toggle_words_visibility"
                     android:src="@drawable/ic_visibility"
                     app:tint="?attr/ptTextMuted" />
 
@@ -344,7 +344,7 @@
                     android:layout_height="48dp"
                     android:layout_weight="1"
                     android:layout_marginEnd="8dp"
-                    android:text="Clear"
+                    android:text="@string/btn_clear"
                     android:textAllCaps="false"
                     android:textSize="14sp"
                     android:insetTop="0dp"
@@ -395,7 +395,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Anki"
+                android:text="@string/anki_section_header"
                 android:textColor="?attr/ptAccentOn"
                 android:textSize="14sp"
                 android:textStyle="bold"

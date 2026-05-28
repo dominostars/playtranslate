@@ -45,7 +45,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:layout_gravity="end"
-                android:text="&#x2715;"
+                android:text="@string/dialog_close_glyph"
                 android:textColor="?attr/ptText"
                 android:textSize="18sp"
                 android:minWidth="0dp"
@@ -517,14 +517,14 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Overlay Mode"
+                            android:text="@string/settings_overlay_mode_title"
                             style="@style/Text.PT.RowTitle" />
 
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
-                            android:text="What overlays to show during auto mode or hold-to-preview."
+                            android:text="@string/settings_overlay_mode_subtitle"
                             style="@style/Text.PT.RowSubtitle" />
 
                         <!-- Pill segmented control (built programmatically) -->
@@ -579,7 +579,7 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Capture interval"
+                                android:text="@string/settings_capture_interval_title"
                                 style="@style/Text.PT.RowTitle" />
 
                             <TextView
@@ -606,7 +606,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="s"
+                            android:text="@string/settings_capture_interval_seconds_suffix"
                             android:layout_marginEnd="4dp"
                             style="@style/Text.PT.RowValue" />
 

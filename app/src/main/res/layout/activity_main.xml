@@ -95,7 +95,7 @@
                     android:id="@+id/tvSettings"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Settings"
+                    android:text="@string/nav_settings"
                     android:textColor="?attr/ptText"
                     android:textSize="8sp"
                     android:layout_marginTop="2dp" />
@@ -126,7 +126,7 @@
                     android:id="@+id/tvRegions"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Regions"
+                    android:text="@string/nav_regions"
                     android:textColor="?attr/ptText"
                     android:textSize="8sp"
                     android:layout_marginTop="2dp" />
@@ -189,7 +189,7 @@
                     android:id="@+id/tvLiveToggle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Auto"
+                    android:text="@string/live_mode_auto_label"
                     android:textColor="?attr/ptText"
                     android:textSize="8sp"
                     android:layout_marginTop="2dp" />
@@ -510,7 +510,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="20dp"
-                    android:text="Settings"
+                    android:text="@string/nav_settings"
                     android:textColor="?attr/ptText"
                     android:textSize="16sp" />
 
@@ -546,7 +546,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="20dp"
-                    android:text="Auto Translate"
+                    android:text="@string/live_mode_auto_translate_label"
                     android:textColor="?attr/ptText"
                     android:textSize="16sp" />
 
@@ -574,7 +574,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="20dp"
-                    android:text="Capture Region"
+                    android:text="@string/menu_capture_region"
                     android:textColor="?attr/ptText"
                     android:textSize="16sp" />
 
@@ -602,7 +602,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="20dp"
-                    android:text="Translations"
+                    android:text="@string/menu_translations"
                     android:textColor="?attr/ptText"
                     android:textSize="16sp" />
 
@@ -630,7 +630,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="20dp"
-                    android:text="Close"
+                    android:text="@string/menu_close"
                     android:textColor="?attr/ptText"
                     android:textSize="16sp" />
 

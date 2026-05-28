@@ -58,7 +58,7 @@
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="72dp"
             android:layout_height="wrap_content"
-            android:text="+"
+            android:text="@string/region_picker_add_glyph"
             android:textColor="?attr/ptAccent"
             android:textSize="22sp"
             android:minWidth="0dp"

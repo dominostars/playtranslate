@@ -1480,4 +1480,552 @@
     <string name="degraded_warning_offline">  Offline — translation quality is reduced</string>
     <string name="degraded_warning_low_memory">  Low memory — translation quality is reduced</string>
 
+    <!-- ═══════════════════════════════════════════════════════════════
+         MAIN SCREEN — bottom-bar and overflow-menu items.
+         The bottom-bar items use small (8sp) labels; the same words
+         appear in the overflow menu at full size (16sp), so we share
+         the same resources. The Live-mode toggle has four labels:
+         "Auto" / "Pause" on the bottom bar (short form) and
+         "Auto Translate" / "Pause Auto" inside the overflow menu.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Bottom-bar / overflow-menu item that opens the Settings tab. -->
+    <string name="nav_settings">Settings</string>
+
+    <!-- Bottom-bar item that opens the Region picker. -->
+    <string name="nav_regions">Regions</string>
+
+    <!-- Bottom-bar Live-mode toggle label, OFF state (8sp). -->
+    <string name="live_mode_auto_label">Auto</string>
+
+    <!-- Bottom-bar Live-mode toggle label, ON state (8sp). -->
+    <string name="live_mode_pause_label">Pause</string>
+
+    <!-- Overflow-menu Live-mode toggle label, OFF state (16sp). -->
+    <string name="live_mode_auto_translate_label">Auto Translate</string>
+
+    <!-- Overflow-menu Live-mode toggle label, ON state (16sp). -->
+    <string name="live_mode_pause_auto_label">Pause Auto</string>
+
+    <!-- Overflow-menu item that opens the Region picker (longer
+         variant). -->
+    <string name="menu_capture_region">Capture Region</string>
+
+    <!-- Overflow-menu item that opens the Translations history. -->
+    <string name="menu_translations">Translations</string>
+
+    <!-- Overflow-menu item that closes the menu without a navigation. -->
+    <string name="menu_close">Close</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC BUTTON LABELS — reused across multiple dialogs and
+         sheets.  Some specialised variants exist elsewhere (e.g.
+         `anki_field_mapping_save`); these are the generic fallbacks.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Generic Save button. -->
+    <string name="btn_save">Save</string>
+
+    <!-- Generic Cancel button (dialogs, sheets). -->
+    <string name="btn_cancel">Cancel</string>
+
+    <!-- Generic Clear button — used on the Anki review sheet to wipe a
+         field. -->
+    <string name="btn_clear">Clear</string>
+
+    <!-- Generic OK button — used on the LLM "invalid key" alert. -->
+    <string name="btn_ok">OK</string>
+
+    <!-- Generic "Not now" button used to defer optional prompts. -->
+    <string name="btn_not_now">Not now</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CUSTOM-REGION SHEET (Settings → Regions → +Add custom region)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Bottom action button on the Add Custom Region sheet — commits
+         the in-progress region to the saved regions list. -->
+    <string name="btn_save_to_list">Save to List</string>
+
+    <!-- Edit-mode sheet title.  %1$s = the existing region's label
+         (free-form, e.g. "Dialogue box"). -->
+    <string name="custom_region_edit_title">Edit <xliff:g id="region_label" example="Dialogue box">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         REGION PICKER SHEET
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Title shown in the region-picker sheet while the user is in
+         edit mode (deleting / reordering regions). -->
+    <string name="region_picker_editing_title">Editing Regions</string>
+
+    <!-- Decorative "+" glyph on the Add Region button.  Not translated. -->
+    <string name="region_picker_add_glyph" translatable="false">+</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         DEEPL SETTINGS — label above the API-key text field.
+         "DeepL" is a brand name; preserve spelling.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- TextInputLayout label above the DeepL API-key field. -->
+    <string name="deepl_api_key_field_label"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> API Key</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         AUTO-TRANSLATE DIALOG (overlay-mode + capture-interval row)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Section title above the Overlay Mode chooser. -->
+    <string name="settings_overlay_mode_title">Overlay Mode</string>
+
+    <!-- Subtitle below the Overlay Mode title. -->
+    <string name="settings_overlay_mode_subtitle">What overlays to show during auto mode or hold-to-preview.</string>
+
+    <!-- Row title for the capture-interval input. -->
+    <string name="settings_capture_interval_title">Capture interval</string>
+
+    <!-- Trailing unit suffix on the capture-interval input
+         ("s" = seconds).  Some locales may prefer their localised
+         abbreviation (e.g. Japanese "秒"). -->
+    <string name="settings_capture_interval_seconds_suffix">s</string>
+
+    <!-- Overlay mode chooser option — show the translated text. -->
+    <string name="overlay_mode_option_translation">Translation</string>
+
+    <!-- Overlay mode chooser option — show Japanese furigana (the
+         per-kanji reading guide). -->
+    <string name="overlay_mode_option_furigana">Furigana</string>
+
+    <!-- Overlay mode chooser option — show Mandarin pinyin (the
+         per-hanzi pronunciation). -->
+    <string name="overlay_mode_option_pinyin">Pinyin</string>
+
+    <!-- Subtitle on the "Hide overlays" toggle. -->
+    <string name="settings_hide_overlays_during_auto_mode">Hide overlays during auto mode</string>
+
+    <!-- Subtitle clause shown when more than one capture display is
+         selected — discloses that the toggle is overridden. -->
+    <string name="settings_hide_overlays_ignored_multi_display">Ignored when more than one display is selected — overlays render on each.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         HOTKEY SETUP DIALOG
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Dialog title — captures the key combination the user wants to
+         bind. -->
+    <string name="dialog_hotkey_setup_title">Set Hotkey</string>
+
+    <!-- Instruction line shown while the dialog waits for the user to
+         hold a key combination. -->
+    <string name="dialog_hotkey_setup_instruction">Hold down key(s) for 2 seconds</string>
+
+    <!-- Countdown line shown once a key is being held — counts up to 2
+         seconds.  %1$s = remaining seconds (one decimal, e.g. "1.4"). -->
+    <string name="dialog_hotkey_setup_countdown">Hold <xliff:g id="remaining_seconds" example="1.4">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         DIALOG CHROME — decorative glyphs that aren't translated.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- × (multiplication sign, U+2715) used as a close button. -->
+    <string name="dialog_close_glyph" translatable="false">✕</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION-RESULT SCREEN — toolbar + per-row buttons.
+         "Anki" is a brand; we reuse `anki_section_header` (already
+         translatable="false") for the "Add to Anki" footer button.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- contentDescription for the toolbar back arrow on the
+         translation-result activity. -->
+    <string name="cd_translation_result_back">Back</string>
+
+    <!-- contentDescription for the "copy translation" icon button. -->
+    <string name="cd_copy_translation">Copy translation</string>
+
+    <!-- contentDescription for the eye-toggle that hides / shows the
+         translated text. -->
+    <string name="cd_toggle_translation_visibility">Toggle translation visibility</string>
+
+    <!-- contentDescription for the toggle that turns inline furigana
+         on / off above the source text. -->
+    <string name="cd_toggle_inline_furigana">Toggle inline furigana</string>
+
+    <!-- contentDescription for the speaker button that reads the
+         original text aloud. -->
+    <string name="cd_read_original_aloud">Read original text aloud</string>
+
+    <!-- contentDescription for the pencil button that opens the
+         edit-original sheet. -->
+    <string name="cd_edit_original">Edit original text</string>
+
+    <!-- contentDescription for the "copy original" icon button. -->
+    <string name="cd_copy_original">Copy original</string>
+
+    <!-- contentDescription for the eye-toggle on the original-text
+         row. -->
+    <string name="cd_toggle_original_visibility">Toggle original visibility</string>
+
+    <!-- contentDescription for the eye-toggle on the words section. -->
+    <string name="cd_toggle_words_visibility">Toggle words visibility</string>
+
+    <!-- contentDescription for the × close button on the word-detail
+         bottom sheet. -->
+    <string name="cd_close">Close</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         REGION-PICKER ROW — per-row icon contentDescriptions.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- contentDescription for the drag-handle icon. -->
+    <string name="cd_drag_to_reorder">Drag to reorder</string>
+
+    <!-- contentDescription for the trash icon. -->
+    <string name="cd_delete_region">Delete region</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MAIN ACTIVITY DIALOGS (crash / update / target-pack migration)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Title of the dialog shown at cold launch when a previous-session
+         crash report was found on disk. -->
+    <string name="crash_dialog_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> crashed previously</string>
+
+    <!-- Body of the crash-report dialog — discloses what's in the
+         report. -->
+    <string name="crash_dialog_message">Send the crash report to the developer? It includes a stack trace, recent app logs, and any text <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> has recently OCR\'d or looked up. No account info.</string>
+
+    <!-- "Send" button on the crash-report dialog. -->
+    <string name="crash_dialog_send">Send</string>
+
+    <!-- "Discard" button — deletes the crash files without emailing. -->
+    <string name="crash_dialog_discard">Discard</string>
+
+    <!-- "Later" button — keeps the crash files on disk and re-prompts on
+         next launch. -->
+    <string name="crash_dialog_later">Later</string>
+
+    <!-- Crash-report email subject line. %1$s = the app version
+         (e.g. "2.2.0").  "PlayTranslate" is the app name; do not
+         translate. -->
+    <string name="crash_email_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> crash – v<xliff:g id="version" example="2.2.0">%1$s</xliff:g></string>
+
+    <!-- Crash-report email body. -->
+    <string name="crash_email_body">Steps to reproduce:\n\n(Optional — describe what you were doing when this happened.)\n\nDevice info is included in the attached file.</string>
+
+    <!-- Title of the "new version available" dialog. -->
+    <string name="update_dialog_title">Update available</string>
+
+    <!-- Body of the new-version dialog.  %1$s = the new version tag
+         (e.g. "v2.3.0"). -->
+    <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> is available on <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <!-- "View release" button on the update dialog. -->
+    <string name="update_dialog_view_release">View release</string>
+
+    <!-- "Skip this version" button on the update dialog. -->
+    <string name="update_dialog_skip">Skip this version</string>
+
+    <!-- Toast shown if no browser is installed to open the release URL. -->
+    <string name="toast_no_browser_available">No browser available</string>
+
+    <!-- Title of the dialog that prompts the user to download a fresh
+         target-language definition pack.  %1$s = target language
+         display name (e.g. "Spanish"). -->
+    <string name="target_pack_migration_title"><xliff:g id="target_language" example="Spanish">%1$s</xliff:g> definitions available</string>
+
+    <!-- Body of the same dialog.  Both placeholders are the target
+         language name. -->
+    <string name="target_pack_migration_message">A <xliff:g id="target_language" example="Spanish">%1$s</xliff:g> definition pack is available. Download it for word definitions in <xliff:g id="target_language2" example="Spanish">%2$s</xliff:g> instead of English?</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         OVERLAY UI CONTROLLER — confirmation dialogs from the floating
+         icon's long-press menu.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Title of the floating-icon "Turn Off" confirmation dialog,
+         single-screen / MediaProjection mode.  %1$s = app name. -->
+    <string name="overlay_turn_off_title">Turn Off <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g>?</string>
+
+    <!-- Body of the same dialog (single-screen / MediaProjection). -->
+    <string name="overlay_turn_off_message">Turn back on in <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> app</string>
+
+    <!-- Title of the floating-icon "Turn Off" confirmation dialog in
+         accessibility + dual-screen mode (hide-for-now wording).
+         %1$s = app name. -->
+    <string name="overlay_hide_controls_title">Hide <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> game screen controls?</string>
+
+    <!-- Body of the same dialog.  The curly quotes “…” are intentional. -->
+    <string name="overlay_hide_controls_message">“Hide for Now” brings it back next time you open <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g>. “Turn Off” disables it until re-enabled in settings.</string>
+
+    <!-- "Hide for Now" button on the hide-controls dialog. -->
+    <string name="overlay_hide_for_now">Hide for Now</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         LANGUAGE PACK / TARGET-PACK INSTALLER DIALOGS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Body of the generic "downloading" progress dialog. -->
+    <string name="install_downloading_generic">Downloading</string>
+
+    <!-- Body of the progress dialog while target-language definitions
+         are downloading. -->
+    <string name="install_downloading_definitions">Downloading definitions</string>
+
+    <!-- Body of the progress dialog while a translation model is being
+         downloaded. -->
+    <string name="install_downloading_translation_model">Downloading translation model</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — section group headers (rendered ALL-CAPS by the
+         Text.PT.GroupHeader style; we keep normal case in the resource
+         so locales without case mappings handle it correctly).
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_header_auto_translate">Auto-translate</string>
+    <string name="settings_header_hotkeys">Hotkeys</string>
+    <string name="settings_header_capture_display">Capture display</string>
+    <string name="settings_header_online_translations">Online translations</string>
+    <string name="settings_header_offline_translations">Offline translations</string>
+    <string name="settings_header_anki" translatable="false">Anki</string>
+    <string name="settings_header_text_to_speech">Text-to-speech</string>
+    <string name="settings_header_appearance">Appearance</string>
+    <string name="settings_header_support">Support</string>
+    <string name="settings_header_debug" translatable="false">Debug</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Text-to-Speech section
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Row title for the per-language voice picker. -->
+    <string name="tts_voice_row_title">Voice</string>
+
+    <!-- Right-side value for the voice row when a numbered voice has
+         been picked.  %1$d = the 1-based index. -->
+    <string name="tts_voice_numbered">Voice <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
+
+    <!-- Right-side value when the engine's default voice is in use. -->
+    <string name="tts_voice_default">Default</string>
+
+    <!-- Subtitle shown on the voice picker activity row for the
+         engine-default option. -->
+    <string name="tts_voice_default_subtitle">The engine\'s default voice</string>
+
+    <!-- Row title shown in Settings when no TTS engine is installed. -->
+    <string name="tts_no_engine_row_title">Set up Text-to-Speech</string>
+
+    <!-- Subtitle on the same row. -->
+    <string name="tts_no_engine_row_subtitle">No speech engine is available. Tap to add one.</string>
+
+    <!-- Toolbar title on the TTS Voice picker activity. -->
+    <string name="tts_voice_picker_title">Voice</string>
+
+    <!-- Title of the dialog shown when the user tries to read a word
+         aloud but no TTS engine is installed. -->
+    <string name="tts_no_engine_dialog_title">No Text-to-Speech</string>
+
+    <!-- Body of the same dialog. -->
+    <string name="tts_no_engine_dialog_message">No text-to-speech engine is available to read words aloud. Install one — or, if your device already has an engine, enable it in Android\'s settings.</string>
+
+    <!-- Button on the no-engine dialog that opens Google's TTS Play
+         Store listing. -->
+    <string name="tts_no_engine_get_google">Get Google TTS</string>
+
+    <!-- Button on the no-engine dialog that opens the system TTS
+         settings activity. -->
+    <string name="tts_no_engine_open_settings">Open TTS settings</string>
+
+    <!-- Title of the dialog shown when a TTS engine is installed but
+         doesn't support the source language. -->
+    <string name="tts_language_unsupported_dialog_title">Language Not Supported</string>
+
+    <!-- Body when the active engine is known.  %1$s = engine label
+         (e.g. "Google TTS"); %2$s = source language name. -->
+    <string name="tts_language_unsupported_with_engine_message"><xliff:g id="engine_name" example="Google TTS">%1$s</xliff:g> is the active engine, but doesn\'t support <xliff:g id="source_language" example="Japanese">%2$s</xliff:g>.</string>
+
+    <!-- Body when the active engine is unknown.  %1$s = source language
+         name. -->
+    <string name="tts_language_unsupported_unknown_engine_message">The active text-to-speech engine doesn\'t support <xliff:g id="source_language" example="Japanese">%1$s</xliff:g>.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Quick Settings tile row (Android 13+).
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Row title — adds the PlayTranslate tile to the system Quick
+         Settings panel. -->
+    <string name="quick_tile_add_row_title">Add Quick Settings tile</string>
+
+    <!-- Subtitle on the same row. -->
+    <string name="quick_tile_add_row_subtitle">Toggle <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> from your status bar</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Hotkeys section
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Placeholder shown below a hotkey row that has not been bound
+         yet. -->
+    <string name="hotkey_not_set_subtitle">Not set</string>
+
+    <!-- Hotkey row title — translation-overlay variant.  Used when the
+         source language has no per-character reading guide. -->
+    <string name="hotkey_show_translations_title">Hotkey: hold to show Translations</string>
+
+    <!-- Dialog title prompting the user to record a hotkey for the
+         translation overlay. -->
+    <string name="hotkey_show_translations_dialog_title">Show Translations</string>
+
+    <!-- Hotkey row title — reading-hint variant.  %1$s = the localised
+         reading-guide name (e.g. "Furigana" for Japanese, "Pinyin" for
+         Mandarin). -->
+    <string name="hotkey_show_hint_title">Hotkey: hold to show <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <!-- Dialog title prompting the user to record a hotkey for the
+         reading-guide overlay. -->
+    <string name="hotkey_show_hint_dialog_title">Show <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Capture Display section
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Row label for a captureable display.  %1$d = the integer
+         display id assigned by Android; %2$s = the display's name
+         (free-form, often the panel marketing name). -->
+    <string name="capture_display_row_label">Display <xliff:g id="display_id" example="0">%1$d</xliff:g>  —  <xliff:g id="display_name" example="Built-in screen">%2$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Online Translations (cooldown / unavailable states).
+         The cooldown message is composed: "$description · $word $time".
+         Translators may need to reorder the clauses; we document each
+         piece separately.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Fallback "Unavailable" description used when a backend reports
+         no specific failure cause. -->
+    <string name="backend_status_unavailable_default">Unavailable</string>
+
+    <!-- Connector word used inside the cooldown line when the retry is
+         within 24 hours (composed as "Retry at 3:42 PM"). -->
+    <string name="backend_cooldown_retry_at">Retry at</string>
+
+    <!-- Connector word used inside the cooldown line when the retry is
+         more than ~24 hours out (composed as "Retry on Jun 1"). -->
+    <string name="backend_cooldown_retry_on">Retry on</string>
+
+    <!-- Fully composed cooldown status line.
+         %1$s = unavailability description (e.g. "Rate limited");
+         %2$s = the localised connector ("Retry at" or "Retry on");
+         %3$s = the formatted time or date. -->
+    <string name="backend_cooldown_status_fmt"><xliff:g id="description" example="Rate limited">%1$s</xliff:g> · <xliff:g id="retry_word" example="Retry at">%2$s</xliff:g> <xliff:g id="retry_time" example="3:42 PM">%3$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Offline Translations / accessibility numeric labels.
+         The full TalkBack form looks like "Quality 4 out of 5 stars".
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- "Quality " label for the per-backend a11y description (note
+         trailing space — preserve it). -->
+    <string name="a11y_quality_label">Quality </string>
+
+    <!-- "Speed: " label used in the per-backend a11y description
+         (preserve trailing space). -->
+    <string name="a11y_speed_label">Speed: </string>
+
+    <!-- "Quality: " label (with colon) used as a row-label prefix
+         (preserve trailing space). -->
+    <string name="a11y_quality_label_colon">Quality: </string>
+
+    <!-- Trailing clause appended to a star count in a11y descriptions
+         (e.g. "Quality 4 out of 5 stars").  Preserve the leading
+         space. -->
+    <string name="a11y_out_of_5_stars"> out of 5 stars</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         LINGVA backend — translatable display name (Lingva is a brand
+         name but the display is a sub-row title in settings).  Marked
+         non-translatable.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="lingva_display_name" translatable="false">Lingva</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Anki rows + deck/card-type fallback labels.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Fallback right-side value when no deck has been picked. -->
+    <string name="anki_deck_not_selected_subtitle">Not selected</string>
+
+    <!-- Row title — install / get AnkiDroid. -->
+    <string name="anki_settings_get_ankidroid_title">Get <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> free on Google Play</string>
+
+    <!-- Row title — grant the AnkiDroid permission. -->
+    <string name="anki_settings_grant_access_title">Grant <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> Access</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Support section rows.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Row title — Discord community. -->
+    <string name="settings_support_discord_title">Join <xliff:g id="brand_discord" example="Discord">Discord</xliff:g></string>
+
+    <!-- Subtitle on the Discord row. -->
+    <string name="settings_support_discord_subtitle">Get help and chat with other players.</string>
+
+    <!-- Row title — donation link. -->
+    <string name="settings_support_donate_title">Buy me a coffee</string>
+
+    <!-- Subtitle on the donation row.  %1$s = app name; "Ko-Fi" is the
+         donation platform brand. -->
+    <string name="settings_support_donate_subtitle"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> is free, support development on <xliff:g id="brand_kofi" example="Ko-Fi">Ko-Fi</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Debug section (developer-only; visible in debug
+         builds and on devices where Debug toggle is enabled).
+         All strings here are dev-tooling labels — left translatable
+         because some QA users do localise their devices, but they are
+         low-priority for translators.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_debug_force_single_screen">Force single screen</string>
+    <string name="settings_debug_show_ocr_boxes">Show OCR boxes</string>
+    <string name="settings_debug_log_pinhole">Log live-mode pinhole metrics</string>
+    <string name="settings_debug_save_ocr_seed">Save OCR captures as seeds</string>
+    <string name="settings_debug_log_grouping">Log OCR grouping decisions</string>
+    <string name="settings_debug_force_crash_title">Force crash</string>
+
+    <!-- Button on the force-crash row.  Dev-only. -->
+    <string name="settings_debug_force_crash_button" translatable="false">Crash</string>
+
+    <!-- Row title in Debug — share recent logs for a bug report. -->
+    <string name="settings_debug_export_logs_title">Export logs</string>
+
+    <!-- Subtitle on the export-logs row. -->
+    <string name="settings_debug_export_logs_subtitle">Share recent logs for a bug report</string>
+
+    <!-- Share-sheet subject when sending log files. -->
+    <string name="settings_debug_export_logs_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> logs</string>
+
+    <!-- Error toast shown if log export failed. %1$s = exception
+         class name (e.g. "FileNotFoundException"). -->
+    <string name="settings_debug_export_logs_failed">Failed to export logs: <xliff:g id="exception_class" example="FileNotFoundException">%1$s</xliff:g></string>
+
+    <!-- Settings footer — app name + version.  %1$s = app name;
+         %2$s = build version (e.g. "2.2.0"). -->
+    <string name="settings_footer_version"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> v<xliff:g id="version" example="2.2.0">%2$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC TOASTS reused in several places.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Toast after copying a URL to the clipboard. -->
+    <string name="toast_link_copied">Link copied</string>
+
+    <!-- Toast after copying translated text to the clipboard. -->
+    <string name="toast_copied">Copied</string>
+
+    <!-- Toast shown when the user taps Export Logs but no logs exist. -->
+    <string name="toast_no_logs_to_share">No logs to share</string>
+
+    <!-- Toast shown when the user taps Send Crash Report but no report
+         exists. -->
+    <string name="toast_no_crash_report">No crash report to send</string>
+
 </resources>
