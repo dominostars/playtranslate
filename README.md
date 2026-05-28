@@ -15,12 +15,14 @@ To report issues, receive support, or make requests, please join the [Discord se
 - **Hotkey hold-to-preview**: Configure a physical key to hold-to-preview translations or furigana, great for handhelds with dedicated buttons
 - **Dual Screen & Split Screen**: Works across both screens on dual-display devices like the Ayn Thor, or in Android split-screen alongside windowed games
 - **Capture regions**: Crop to just the dialogue box, subtitles, or any custom area
-- **Anki export**: Save sentences to AnkiDroid with the original text, translation, word list, target words, and a screenshot. Card type selection with presets for popular decks.
+- **Text-to-speech**: Hear the original text spoken aloud from the lens, the result screen, or the word detail view, with a per-language voice picker
+- **Anki export**: Save sentences to AnkiDroid with the original text, translation, word list, target words, audio, and a screenshot. Card type selection with presets for popular decks.
 - **Offline**: OCR and translation work without an internet connection, with optional on-device translation models
+- **No accessibility required**: PlayTranslate runs on a screen-recording permission by default, so it works even on devices that block accessibility for sideloaded apps
 
 ## How to Use
 
-1. [Download the latest release by clicking here](../../releases/download/v2.1.0-hotfix1/PlayTranslate-2.1.0-hotfix1.apk)
+1. [Download the latest release by clicking here](../../releases/download/v2.2.0/PlayTranslate-2.2.0.apk)
 2. On your Android, enable **Settings → Security → Install unknown apps** for your file manager or browser
 3. Open the APK and tap Install
 4. On first launch, follow the onboarding steps to grant the necessary permissions
@@ -39,7 +41,9 @@ Install the APK, then re-enable Play Protect afterward to keep scanning your oth
 
 ### Can't enable accessibility?
 
-Some Android OEMs block sideloaded apps from receiving accessibility permissions by default. The toggle in Settings is grayed out or shows a "Restricted setting" message. To unblock it:
+PlayTranslate's core features run on a screen-recording permission, so most users never need to enable accessibility. A few advanced features (like hotkey hold-to-preview) will prompt you for it when you turn them on.
+
+Some Android OEMs block sideloaded apps from receiving accessibility permissions by default — the toggle in Settings is grayed out or shows a "Restricted setting" message. To unblock it:
 
 1. Open **Settings → Apps → PlayTranslate**
 2. Tap the **⋮** menu (top right)
@@ -148,9 +152,14 @@ PlayTranslate translates from **21 game languages** (the text it can read off th
 | Irish          | Gaeilge            | ga   |
 | Esperanto      | Esperanto          | eo   |
 
-## Optional: DeepL API Key
+## Optional: Online Translation Backends
 
-By default, translation uses [Lingva](https://github.com/thedaviddelta/lingva-translate) with ML Kit as an offline fallback. For higher quality translations, get a free DeepL API key at [deepl.com/en/pro#developer](https://www.deepl.com/en/pro#developer) and enter it in **Settings → DeepL API Key**.
+By default, translation uses [Lingva](https://github.com/thedaviddelta/lingva-translate) with ML Kit as an offline fallback. For higher quality translations, you can plug in an API key for any of the following under **Settings → Translation**:
+
+- **DeepL**: free tier at [deepl.com/en/pro#developer](https://www.deepl.com/en/pro#developer)
+- **OpenAI**: [platform.openai.com](https://platform.openai.com/) — pick a model at runtime
+- **Gemini**: [aistudio.google.com](https://aistudio.google.com/) — pick a model at runtime
+- **DeepSeek**: [platform.deepseek.com](https://platform.deepseek.com/) — pick a model at runtime
 
 ## Optional: Anki Flashcards
 
@@ -167,14 +176,14 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 - [Snowball stemmers](https://snowballstem.org/) via [Apache Lucene](https://lucene.apache.org/): Latin/European stemming
 - [Lingva](https://github.com/thedaviddelta/lingva-translate): online translation
 - [AnkiDroid](https://github.com/ankidroid/Anki-Android): flashcard integration
-- [llama.cpp](https://github.com/ggerganov/llama.cpp): on-device LLM inference engine (MIT)
-- Arm AI Chat: Android wrapper around llama.cpp
-- [OpenCL Headers](https://github.com/KhronosGroup/OpenCL-Headers) and [ICD Loader](https://github.com/KhronosGroup/OpenCL-ICD-Loader): GPU backend (Apache 2.0)
+- [MNN](https://github.com/alibaba/MNN): on-device LLM inference engine (Apache 2.0)
 
 ### (Optional) Downloadable Offline Models
 
 - TranslateGemma 4B (Google): translation-tuned Gemma 3, downloadable as an optional offline pack (Gemma terms of use)
 - Qwen 2.5 1.5B Instruct (Alibaba): downloadable as an optional offline pack (Apache 2.0)
+- Gemma 4 E2B (Google): downloadable as an optional offline pack (Gemma terms of use)
+- Hunyuan-MT 1.5 1.8B (Tencent): translation-specialised model, downloadable as an optional offline pack (Tencent HY Community License — not available in the EU, UK, or South Korea)
 
 ### Linguistic data
 
