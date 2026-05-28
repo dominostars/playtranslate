@@ -28,6 +28,10 @@ import com.playtranslate.fullScreenDialogTheme
 import com.playtranslate.overlayPermissionSettingsIntent
 import com.playtranslate.themeColor
 import kotlinx.coroutines.launch
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.drawable.toDrawable
+import androidx.core.graphics.scale
+import androidx.core.view.isGone
 
 /**
  * Full-screen settings dialog. Works in two modes:
@@ -345,9 +349,9 @@ class SettingsBottomSheet : DialogFragment() {
             .text = getString(R.string.app_name)
         val closeBtn = view.findViewById<View>(R.id.btnCloseSettings)
         when {
-            !isDialog -> closeBtn.visibility = View.GONE
+            !isDialog -> closeBtn.isGone = true
             hideDismiss -> {
-                closeBtn.visibility = View.GONE
+                closeBtn.isGone = true
                 dialog?.setOnKeyListener { _, keyCode, event ->
                     if (keyCode == android.view.KeyEvent.KEYCODE_BACK &&
                         event.action == android.view.KeyEvent.ACTION_UP) {
@@ -678,8 +682,7 @@ class SettingsBottomSheet : DialogFragment() {
         dialog?.window?.apply {
             statusBarColor = bgColor
             navigationBarColor = bgColor
-            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(
-                ctx.themeColor(R.attr.ptSurface)))
+            setBackgroundDrawable(ctx.themeColor(R.attr.ptSurface).toDrawable())
         }
     }
 
@@ -703,9 +706,7 @@ class SettingsBottomSheet : DialogFragment() {
     private fun scaleThumbnail(bitmap: Bitmap): Bitmap {
         val targetW = 192
         val scale = targetW.toFloat() / bitmap.width
-        val scaled = Bitmap.createScaledBitmap(
-            bitmap, targetW, (bitmap.height * scale).toInt(), true
-        )
+        val scaled = bitmap.scale(targetW, (bitmap.height * scale).toInt(), true)
         if (scaled !== bitmap) bitmap.recycle()
         return scaled
     }
@@ -715,7 +716,7 @@ class SettingsBottomSheet : DialogFragment() {
         val decorView = activity.window.decorView
         val w = decorView.width.takeIf { it > 0 } ?: run { onReady(null); return }
         val h = decorView.height.takeIf { it > 0 } ?: run { onReady(null); return }
-        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val bmp = createBitmap(w, h, Bitmap.Config.ARGB_8888)
         try {
             PixelCopy.request(activity.window, bmp, { result ->
                 if (result == PixelCopy.SUCCESS) onReady(scaleThumbnail(bmp))

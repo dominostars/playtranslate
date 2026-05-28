@@ -21,6 +21,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
+import androidx.core.graphics.scale
 
 /** Inflation ratios for the FAR-suppression proximity check at runCycle step 9b.
  *  Asymmetric: vertical dominates because typewriter wrapping spills new lines
@@ -906,7 +907,7 @@ class PinholeOverlayMode(
         alignments: List<com.playtranslate.language.TextAlignment> = emptyList()
     ): List<TextBox> {
         val colorScale = 4
-        val colorRef = Bitmap.createScaledBitmap(raw, raw.width / colorScale, raw.height / colorScale, false)
+        val colorRef = raw.scale(raw.width / colorScale, raw.height / colorScale, false)
         val colors: List<Pair<Int, Int>>
         try {
             colors = OverlayToolkit.sampleGroupColors(colorRef, bounds, left, top, colorScale)

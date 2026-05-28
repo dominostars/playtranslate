@@ -43,6 +43,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import androidx.core.graphics.drawable.toDrawable
+import androidx.core.view.isVisible
+import androidx.core.view.isGone
 
 /**
  * Reset [ScrollView] scroll to (0, 0) without firing the registered
@@ -383,13 +386,13 @@ class TranslationResultFragment : Fragment() {
                 tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
                 labelOriginal.text = sourceLangLocalizedDisplayName()
                 labelTranslation.text = targetLangDisplayName()
-                statusContainer.visibility = View.GONE
-                resultsContent.visibility = View.VISIBLE
-                resultActionButtons.visibility = View.VISIBLE
+                statusContainer.isGone = true
+                resultsContent.isVisible = true
+                resultActionButtons.isVisible = true
                 resultsContent.scrollToTopSilently(scrollListener)
                 tvTranslation.text = getString(R.string.status_translating)
                 tvTranslationNote.text = ""
-                tvTranslationNote.visibility = View.GONE
+                tvTranslationNote.isGone = true
                 applyTranslationVisibility()
                 applyOriginalVisibility()
                 applyWordsVisibility()
@@ -415,14 +418,14 @@ class TranslationResultFragment : Fragment() {
                 applyWordsVisibility()
                 labelOriginal.text = sourceLangLocalizedDisplayName()
                 labelTranslation.text = targetLangDisplayName()
-                statusContainer.visibility = View.GONE
+                statusContainer.isGone = true
                 resultsContent.visibility = View.INVISIBLE
-                resultActionButtons.visibility = View.VISIBLE
-                btnResultAnki.visibility = View.VISIBLE
+                resultActionButtons.isVisible = true
+                btnResultAnki.isVisible = true
                 resultsContent.scrollToTopSilently(scrollListener)
                 resultsContent.post {
                     fitTextSizes()
-                    if (view != null) resultsContent.visibility = View.VISIBLE
+                    if (view != null) resultsContent.isVisible = true
                 }
             }
         }
@@ -434,10 +437,10 @@ class TranslationResultFragment : Fragment() {
     private fun showStatusUi(message: String, showHint: Boolean) {
         tvStatus.text = message
         tvStatusHint.visibility = if (showHint) View.VISIBLE else View.GONE
-        tvLiveHint.visibility = View.GONE
-        statusContainer.visibility = View.VISIBLE
-        resultsContent.visibility = View.GONE
-        btnResultAnki.visibility = View.GONE
+        tvLiveHint.isGone = true
+        statusContainer.isVisible = true
+        resultsContent.isGone = true
+        btnResultAnki.isGone = true
     }
 
     /** True iff the activity is currently showing a translation result
@@ -1116,7 +1119,7 @@ class TranslationResultFragment : Fragment() {
         }
 
         val popup = PopupWindow(container, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            setBackgroundDrawable(Color.TRANSPARENT.toDrawable())
             isOutsideTouchable = true
             setOnDismissListener { furiganaPopup = null }
         }
@@ -1166,8 +1169,8 @@ class TranslationResultFragment : Fragment() {
         if (view == null) return
         when (state) {
             is WordLookupsState.Idle -> {
-                tvMainWordsLoading.visibility = View.GONE
-                tvNoWords.visibility = View.GONE
+                tvMainWordsLoading.isGone = true
+                tvNoWords.isGone = true
                 mainWordsContainer.removeAllViews()
                 wordSpans.clear()
             }
@@ -1176,17 +1179,17 @@ class TranslationResultFragment : Fragment() {
                 dismissWordPopup()
                 mainWordsContainer.removeAllViews()
                 wordSpans.clear()
-                tvMainWordsLoading.visibility = View.VISIBLE
+                tvMainWordsLoading.isVisible = true
                 tvMainWordsLoading.text = getString(R.string.words_loading)
-                tvNoWords.visibility = View.GONE
+                tvNoWords.isGone = true
             }
             is WordLookupsState.Settled -> {
                 renderWordRows(state.rows)
                 recomputeWordSpans(state.tokenSpans, state.lookupToReading)
                 applyFurigana()
-                tvMainWordsLoading.visibility = View.GONE
+                tvMainWordsLoading.isGone = true
                 tvNoWords.visibility = if (state.rows.isEmpty()) View.VISIBLE else View.GONE
-                btnResultAnki.visibility = View.VISIBLE
+                btnResultAnki.isVisible = true
             }
         }
     }
@@ -1210,9 +1213,9 @@ class TranslationResultFragment : Fragment() {
         val tvFreq = row.findViewById<TextView>(R.id.tvItemFreq)
         if (rowState.freqScore > 0) {
             tvFreq.text = "★".repeat(rowState.freqScore)
-            tvFreq.visibility = View.VISIBLE
+            tvFreq.isVisible = true
         } else {
-            tvFreq.visibility = View.GONE
+            tvFreq.isGone = true
         }
         row.setOnClickListener {
             host?.onInteraction()

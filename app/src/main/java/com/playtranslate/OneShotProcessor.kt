@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.text.TextPaint
 import com.playtranslate.language.SourceLanguageEngine
 import com.playtranslate.ui.TextBox
+import androidx.core.graphics.scale
 
 /**
  * Builds overlay boxes from a single OCR result.
@@ -49,9 +50,7 @@ internal class TranslationOneShotProcessor(
     ): List<TextBox> {
         // Color sample from scaled reference
         val colorScale = 4
-        val colorRef = Bitmap.createScaledBitmap(
-            raw, raw.width / colorScale, raw.height / colorScale, false
-        )
+        val colorRef = raw.scale(raw.width / colorScale, raw.height / colorScale, false)
         val colors: List<Pair<Int, Int>>
         try {
             colors = OverlayToolkit.sampleGroupColors(

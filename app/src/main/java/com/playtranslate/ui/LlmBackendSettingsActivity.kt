@@ -20,6 +20,9 @@ import com.playtranslate.applyTheme
 import com.playtranslate.translation.KeyStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import androidx.core.view.isVisible
+import androidx.core.net.toUri
+import androidx.core.view.isGone
 
 /**
  * Generic settings sub-screen for the OpenAI-, Gemini-, and DeepSeek-
@@ -89,9 +92,9 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
             getString(R.string.llm_backend_get_key_title_fmt, config.displayName)
         val tvSub = row.findViewById<TextView>(R.id.tvRowSubtitle)
         tvSub.text = config.getKeyUrl
-        tvSub.visibility = View.VISIBLE
+        tvSub.isVisible = true
         row.setOnClickListener {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(config.getKeyUrl)))
+            startActivity(Intent(Intent.ACTION_VIEW, config.getKeyUrl.toUri()))
         }
         row.setOnLongClickListener {
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -109,12 +112,12 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         if (loading) {
             btnSave.text = ""
             btnSave.isEnabled = false
-            progressSave.visibility = View.VISIBLE
+            progressSave.isVisible = true
             etApiKey.isEnabled = false
         } else {
             btnSave.text = getString(R.string.deepl_settings_save)
             btnSave.isEnabled = true
-            progressSave.visibility = View.GONE
+            progressSave.isGone = true
             etApiKey.isEnabled = true
         }
     }

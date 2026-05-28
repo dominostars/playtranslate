@@ -24,6 +24,7 @@ import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.graphics.drawable.DrawableCompat
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.R
+import androidx.core.graphics.toColorInt
 
 /**
  * Overlay popup showing a Japanese word lookup result.
@@ -70,7 +71,7 @@ class WordLookupPopup(
 
     private val arrowSizePx = dp(10)
     private val popupCornerRadius = dp(12).toFloat()
-    private val bgColor = Color.parseColor("#242424")
+    private val bgColor = "#242424".toColorInt()
     private val ankiColumnW = dp(44)
 
     /** Returns true if a popup is attached after this call (newly added or
@@ -279,7 +280,7 @@ class WordLookupPopup(
         if (reading != null && reading != word) {
             leftCol.addView(TextView(ctx).apply {
                 text = reading
-                setTextColor(Color.parseColor("#A0A0A0"))
+                setTextColor("#A0A0A0".toColorInt())
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
                 gravity = Gravity.CENTER
                 maxLines = 2
@@ -289,7 +290,7 @@ class WordLookupPopup(
 
         leftCol.addView(TextView(ctx).apply {
             text = word
-            setTextColor(Color.parseColor("#EFEFEF"))
+            setTextColor("#EFEFEF".toColorInt())
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
@@ -303,7 +304,7 @@ class WordLookupPopup(
 
         // Divider
         hLayout.addView(View(ctx).apply {
-            setBackgroundColor(Color.parseColor("#2E2E2E"))
+            setBackgroundColor("#2E2E2E".toColorInt())
             layoutParams = LinearLayout.LayoutParams(dp(1), LinearLayout.LayoutParams.MATCH_PARENT).apply {
                 setMargins(dp(8), 0, dp(8), 0)
             }
@@ -331,12 +332,12 @@ class WordLookupPopup(
             if (isCommon) {
                 val badge = TextView(ctx).apply {
                     text = "common"
-                    setTextColor(Color.parseColor("#A0A0A0"))
+                    setTextColor("#A0A0A0".toColorInt())
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
                     typeface = Typeface.DEFAULT_BOLD
                     setPadding(dp(5), dp(1), dp(5), dp(1))
                     background = GradientDrawable().apply {
-                        setColor(Color.parseColor("#383838"))
+                        setColor("#383838".toColorInt())
                         cornerRadius = dp(4).toFloat()
                     }
                 }
@@ -345,7 +346,7 @@ class WordLookupPopup(
             if (freqScore > 0) {
                 metaRow.addView(TextView(ctx).apply {
                     text = "★".repeat(freqScore.coerceAtMost(5))
-                    setTextColor(Color.parseColor("#606060"))
+                    setTextColor("#606060".toColorInt())
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
                     if (isCommon) setPadding(dp(6), 0, 0, 0)
                 })
@@ -356,7 +357,7 @@ class WordLookupPopup(
         if (label != null) {
             rightCol.addView(TextView(ctx).apply {
                 text = label
-                setTextColor(Color.parseColor("#D4A017"))
+                setTextColor("#D4A017".toColorInt())
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
                 typeface = Typeface.DEFAULT_BOLD
                 setPadding(0, 0, 0, dp(4))
@@ -367,7 +368,7 @@ class WordLookupPopup(
             if (sense.pos.isNotBlank()) {
                 rightCol.addView(TextView(ctx).apply {
                     text = sense.pos
-                    setTextColor(Color.parseColor("#A0A0A0"))
+                    setTextColor("#A0A0A0".toColorInt())
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
                     typeface = Typeface.DEFAULT_BOLD
                     if (i > 0) setPadding(0, dp(6), 0, 0)
@@ -375,7 +376,7 @@ class WordLookupPopup(
             }
             rightCol.addView(TextView(ctx).apply {
                 text = "${i + 1}. ${sense.definition}"
-                setTextColor(Color.parseColor("#EFEFEF"))
+                setTextColor("#EFEFEF".toColorInt())
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             })
         }
@@ -387,7 +388,7 @@ class WordLookupPopup(
         if (showAnkiButton || showOpenButton) {
             // Divider before button
             hLayout.addView(View(ctx).apply {
-                setBackgroundColor(Color.parseColor("#2E2E2E"))
+                setBackgroundColor("#2E2E2E".toColorInt())
                 layoutParams = LinearLayout.LayoutParams(dp(1), LinearLayout.LayoutParams.MATCH_PARENT).apply {
                     setMargins(dp(8), 0, dp(4), 0)
                 }
@@ -398,7 +399,7 @@ class WordLookupPopup(
             val icon = ImageView(ctx).apply {
                 val drawable = AppCompatResources.getDrawable(ctx, iconRes)?.mutate()
                 if (drawable != null) {
-                    DrawableCompat.setTint(drawable, Color.parseColor("#A0A0A0"))
+                    DrawableCompat.setTint(drawable, "#A0A0A0".toColorInt())
                     setImageDrawable(drawable)
                 }
                 setPadding(dp(7), dp(4), dp(1), dp(4))

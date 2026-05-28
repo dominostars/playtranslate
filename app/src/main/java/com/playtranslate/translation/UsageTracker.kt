@@ -7,6 +7,7 @@ import java.text.NumberFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import androidx.core.content.edit
 
 /**
  * Per-backend daily token counter for cloud LLM translation backends.
@@ -43,10 +44,10 @@ class UsageTracker(
         val storedDay = prefs.getString(keyDay, null)
         val base = if (storedDay == today) prefs.getLong(keyTokens, 0L) else 0L
         val newTotal = base + promptTokens.coerceAtLeast(0) + completionTokens.coerceAtLeast(0)
-        prefs.edit()
-            .putString(keyDay, today)
-            .putLong(keyTokens, newTotal)
-            .apply()
+        prefs.edit {
+            putString(keyDay, today)
+            putLong(keyTokens, newTotal)
+        }
     }
 
     fun todayTotal(): Long {

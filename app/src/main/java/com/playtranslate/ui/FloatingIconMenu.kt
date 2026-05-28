@@ -23,6 +23,9 @@ import android.widget.TextView
 import com.playtranslate.R
 import com.playtranslate.RegionEntry
 import com.playtranslate.themeColor
+import androidx.core.view.isGone
+import androidx.core.view.isVisible
+import androidx.core.graphics.toColorInt
 
 /** Reason the floating-icon menu's warning pill is shown. None hides the
  *  pill; the other two pick the corresponding label string. Set by the
@@ -44,13 +47,13 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     // Theme colors resolved from the user's selected palette
-    private val accentColor: Int = context.themeColor(R.attr.ptAccent).takeIf { it != 0 } ?: Color.parseColor("#4DD0C2")
+    private val accentColor: Int = context.themeColor(R.attr.ptAccent).takeIf { it != 0 } ?: "#4DD0C2".toColorInt()
     private val onAccentColor: Int = context.themeColor(R.attr.ptAccentOn).takeIf { it != 0 } ?: Color.BLACK
-    private val cardColor: Int = context.themeColor(R.attr.ptCard).takeIf { it != 0 } ?: Color.parseColor("#1C1F22")
-    private val textColor: Int = context.themeColor(R.attr.ptText).takeIf { it != 0 } ?: Color.parseColor("#ECEFF1")
-    private val mutedColor: Int = context.themeColor(R.attr.ptTextMuted).takeIf { it != 0 } ?: Color.parseColor("#9AA1A8")
-    private val bgColor: Int = context.themeColor(R.attr.ptBg).takeIf { it != 0 } ?: Color.parseColor("#0B0D0E")
-    private val dangerColor: Int = context.themeColor(R.attr.ptDanger).takeIf { it != 0 } ?: Color.parseColor("#E05D5D")
+    private val cardColor: Int = context.themeColor(R.attr.ptCard).takeIf { it != 0 } ?: "#1C1F22".toColorInt()
+    private val textColor: Int = context.themeColor(R.attr.ptText).takeIf { it != 0 } ?: "#ECEFF1".toColorInt()
+    private val mutedColor: Int = context.themeColor(R.attr.ptTextMuted).takeIf { it != 0 } ?: "#9AA1A8".toColorInt()
+    private val bgColor: Int = context.themeColor(R.attr.ptBg).takeIf { it != 0 } ?: "#0B0D0E".toColorInt()
+    private val dangerColor: Int = context.themeColor(R.attr.ptDanger).takeIf { it != 0 } ?: "#E05D5D".toColorInt()
 
     var onHideIcon: (() -> Unit)? = null
     var onHideTemporary: (() -> Unit)? = null
@@ -458,7 +461,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         if (isLiveMode) {
             liveIcon.text = "\u275A\u275A" // ❚❚ pause
             liveIcon.textSize = 20f
-            liveIcon.setTextColor(Color.parseColor("#E8E8E8"))
+            liveIcon.setTextColor("#E8E8E8".toColorInt())
             liveIcon.setPadding(0, 0, 0, 0)
             liveLabel.text = context.getString(R.string.live_mode_pause_auto_label)
             (liveBtn.background as? GradientDrawable)?.setColor(dangerColor)
@@ -540,8 +543,8 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 val dy = event.y - dragStartY
                 if (!isDragging && (dx * dx + dy * dy > touchSlop * touchSlop)) {
                     isDragging = true
-                    menuCard.visibility = View.GONE
-                    instructionPill.visibility = View.GONE
+                    menuCard.isGone = true
+                    instructionPill.isGone = true
                     clearRegionButton?.visibility = View.GONE
                 }
                 if (isDragging) {
@@ -641,7 +644,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             lp.leftMargin = menuX
             lp.topMargin = menuY
             menuCard.layoutParams = lp
-            menuCard.visibility = View.VISIBLE
+            menuCard.isVisible = true
 
             menuCard.alpha = 0f
             menuCard.scaleX = 0.8f
@@ -666,7 +669,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             glp.leftMargin = gearX
             glp.topMargin = gearY
             settingsBtn.layoutParams = glp
-            settingsBtn.visibility = View.VISIBLE
+            settingsBtn.isVisible = true
             settingsBtn.alpha = 0f
             settingsBtn.scaleX = 0.8f
             settingsBtn.scaleY = 0.8f

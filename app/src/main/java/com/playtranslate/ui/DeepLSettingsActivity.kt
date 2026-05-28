@@ -16,6 +16,8 @@ import com.google.android.material.button.MaterialButton
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.applyTheme
+import androidx.core.view.isVisible
+import androidx.core.net.toUri
 
 /**
  * Sub-screen for entering / editing the DeepL API key.
@@ -66,10 +68,10 @@ class DeepLSettingsActivity : AppCompatActivity() {
             getString(R.string.deepl_settings_get_key_title)
         val tvSub = row.findViewById<TextView>(R.id.tvRowSubtitle)
         tvSub.text = getString(R.string.deepl_settings_get_key_subtitle)
-        tvSub.visibility = View.VISIBLE
+        tvSub.isVisible = true
         val url = "https://www.deepl.com/en/pro#developer"
         row.setOnClickListener {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
         }
         row.setOnLongClickListener {
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

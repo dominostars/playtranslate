@@ -17,11 +17,14 @@ import android.view.View
 import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import androidx.core.view.doOnLayout
+import androidx.core.view.isEmpty
+import androidx.core.view.isVisible
 import androidx.core.widget.TextViewCompat
 import com.playtranslate.PinholeCalibration
 import com.playtranslate.R
 import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
+import androidx.core.graphics.createBitmap
 
 /**
  * Transparent overlay that positions auto-sizing TextViews inside bounding
@@ -498,7 +501,7 @@ class TranslationOverlayView(
     fun areChildrenLaidOut(): Boolean {
         if (width <= 0 || height <= 0) return false
         if (isLayoutRequested) return false
-        if (childCount == 0) return boxes.isEmpty()
+        if (isEmpty()) return boxes.isEmpty()
         for (i in 0 until childCount) {
             val c = getChildAt(i)
             if (c.width <= 0 || c.height <= 0) return false
@@ -524,7 +527,7 @@ class TranslationOverlayView(
      */
     fun renderToOffscreen(): Bitmap? {
         if (width <= 0 || height <= 0) return null
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val bitmap = createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         // Draw each child directly. This deliberately sidesteps our own
         // [dispatchDraw] override (which would punch pinhole holes when
@@ -540,7 +543,7 @@ class TranslationOverlayView(
         val drawingTime = drawingTime
         for (i in 0 until childCount) {
             val child = getChildAt(i)
-            if (child.visibility == VISIBLE) {
+            if (child.isVisible) {
                 drawChild(canvas, child, drawingTime)
             }
         }

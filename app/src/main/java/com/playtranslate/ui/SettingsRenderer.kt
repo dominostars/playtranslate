@@ -74,6 +74,9 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.core.view.isVisible
+import androidx.core.net.toUri
+import androidx.core.view.isGone
 
 /** Which accessibility-gated Settings action raised the "accessibility
  *  required" alert — selects the alert's explanatory copy. */
@@ -373,9 +376,9 @@ class SettingsRenderer(
             emptyList()
         }
         if (stalePacks.isEmpty() || activity == null) {
-            cardUpdateLanguagePacks.visibility = View.GONE
+            cardUpdateLanguagePacks.isGone = true
         } else {
-            cardUpdateLanguagePacks.visibility = View.VISIBLE
+            cardUpdateLanguagePacks.isVisible = true
             rowUpdateLanguagePacks.findViewById<TextView>(R.id.tvRowTitle).text =
                 root.context.getString(R.string.lang_section_update_packs_title)
             rowUpdateLanguagePacks.findViewById<TextView>(R.id.tvRowSubtitle).text =
@@ -411,19 +414,19 @@ class SettingsRenderer(
                     if (idx >= 0) ctx.getString(R.string.tts_voice_numbered, idx + 1)
                     else ctx.getString(R.string.tts_voice_default)
                 rowVoice.setOnClickListener { callbacks.openTtsVoicePicker() }
-                rowVoice.visibility = View.VISIBLE
-                rowNoEngine.visibility = View.GONE
+                rowVoice.isVisible = true
+                rowNoEngine.isGone = true
             } else {
                 rowNoEngine.findViewById<TextView>(R.id.tvRowTitle).text =
                     ctx.getString(R.string.tts_no_engine_row_title)
                 val sub = rowNoEngine.findViewById<TextView>(R.id.tvRowSubtitle)
                 sub.text = ctx.getString(R.string.tts_no_engine_row_subtitle)
-                sub.visibility = View.VISIBLE
+                sub.isVisible = true
                 rowNoEngine.setOnClickListener { callbacks.openTtsSetup() }
-                rowNoEngine.visibility = View.VISIBLE
-                rowVoice.visibility = View.GONE
+                rowNoEngine.isVisible = true
+                rowVoice.isGone = true
             }
-            section.visibility = View.VISIBLE
+            section.isVisible = true
         }
     }
 
@@ -466,7 +469,7 @@ class SettingsRenderer(
         // — this row just teaches the user about the icon and its gestures.
         // Gesture text + icon tints come from refreshCaptureLifecycleButton().
         tvOverlayIconTitle.setText(R.string.settings_show_overlay_icon)
-        overlayIconPreviewSlot.visibility = View.VISIBLE
+        overlayIconPreviewSlot.isVisible = true
         buildOverlayIconPreview()
 
         setupAddQuickTileRow()
@@ -486,7 +489,7 @@ class SettingsRenderer(
      *  the separation duty). */
     private fun setupAddQuickTileRow() {
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) {
-            rowAddQuickTile.visibility = View.GONE
+            rowAddQuickTile.isGone = true
             refreshDividerPowerCellVisibility()
             return
         }
@@ -504,7 +507,7 @@ class SettingsRenderer(
             ctx.getString(R.string.quick_tile_add_row_title)
         val subtitle = rowAddQuickTile.findViewById<TextView>(R.id.tvRowSubtitle)
         subtitle.text = ctx.getString(R.string.quick_tile_add_row_subtitle)
-        subtitle.visibility = View.VISIBLE
+        subtitle.isVisible = true
         rowAddQuickTile.findViewById<ImageView>(R.id.ivRowIcon)
             ?.setImageResource(R.drawable.ic_add)
         rowAddQuickTile.setOnClickListener { requestAddQuickTile() }
@@ -522,11 +525,8 @@ class SettingsRenderer(
      *  quick-tile row) so the rule stays in sync with whichever changed
      *  last. */
     private fun refreshDividerPowerCellVisibility() {
-        val cellAbove = powerCard.visibility == View.VISIBLE ||
-            rowGameScreenControls.visibility == View.VISIBLE
-        dividerPowerCell.visibility =
-            if (cellAbove && rowAddQuickTile.visibility == View.VISIBLE) View.VISIBLE
-            else View.GONE
+        val cellAbove = powerCard.isVisible || rowGameScreenControls.isVisible
+        dividerPowerCell.isVisible = cellAbove && rowAddQuickTile.isVisible
     }
 
     /** Pulls the gesture string [stringRes] (which carries an inline `<b>`
@@ -776,7 +776,7 @@ class SettingsRenderer(
                 shape = GradientDrawable.OVAL
                 setColor(ctx.themeColor(R.attr.ptAccentTint))
             }
-            powerStateHalo.visibility = View.VISIBLE
+            powerStateHalo.isVisible = true
         } else {
             powerStateHalo.visibility = View.INVISIBLE
         }
@@ -902,8 +902,8 @@ class SettingsRenderer(
             tvEnhancedAutoTranslateSubtitle.setText(
                 R.string.enhanced_auto_translate_subtitle_on
             )
-            switchEnhancedAutoTranslate.visibility = View.GONE
-            checkEnhancedAutoTranslate.visibility = View.VISIBLE
+            switchEnhancedAutoTranslate.isGone = true
+            checkEnhancedAutoTranslate.isVisible = true
             // Non-clickable while on — the row is a status indicator at
             // that point; selectableItemBackground also suppresses its
             // ripple when isClickable is false, so no stray feedback.
@@ -913,13 +913,13 @@ class SettingsRenderer(
             tvEnhancedAutoTranslateSubtitle.setText(
                 R.string.enhanced_auto_translate_subtitle_off
             )
-            switchEnhancedAutoTranslate.visibility = View.VISIBLE
+            switchEnhancedAutoTranslate.isVisible = true
             // Switch stays unchecked — the user grants accessibility via
             // system Settings, not by flipping this switch. The grant
             // path then routes back through refreshEnhancedAutoTranslateRow
             // and the switch is replaced by the check mark.
             switchEnhancedAutoTranslate.isChecked = false
-            checkEnhancedAutoTranslate.visibility = View.GONE
+            checkEnhancedAutoTranslate.isGone = true
             rowEnhancedAutoTranslate.isClickable = true
             rowEnhancedAutoTranslate.isFocusable = true
         }
@@ -933,7 +933,7 @@ class SettingsRenderer(
 
         // -- Overlay mode toggle (Translation / Furigana-Pinyin) --
         if (hasHintText) {
-            overlayModeSection.visibility = View.VISIBLE
+            overlayModeSection.isVisible = true
             val hintLabel = when (hintKind) {
                 HintTextKind.PINYIN -> ctx.getString(R.string.overlay_mode_option_pinyin)
                 else -> ctx.getString(R.string.overlay_mode_option_furigana)
@@ -958,7 +958,7 @@ class SettingsRenderer(
 
             root.findViewById<View>(R.id.dividerOverlayMode)?.visibility = View.VISIBLE
         } else {
-            overlayModeSection.visibility = View.GONE
+            overlayModeSection.isGone = true
             root.findViewById<View>(R.id.dividerOverlayMode)?.visibility = View.GONE
             if (prefs.overlayMode == OverlayMode.FURIGANA) {
                 prefs.overlayMode = OverlayMode.TRANSLATION
@@ -969,7 +969,7 @@ class SettingsRenderer(
         // -- Hide game screen overlays toggle (multi-screen only) --
         val isSingle = Prefs.isSingleScreen(ctx)
         if (!isSingle) {
-            rowHideOverlays.visibility = View.VISIBLE
+            rowHideOverlays.isVisible = true
             rowHideOverlays.findViewById<TextView>(R.id.tvRowTitle).text =
                 ctx.getString(R.string.settings_hide_overlays_during_auto_mode)
             // Multi-display selection silently routes around this toggle —
@@ -980,10 +980,10 @@ class SettingsRenderer(
             if (prefs.captureDisplayIds.size > 1) {
                 subtitleHide.text =
                     ctx.getString(R.string.settings_hide_overlays_ignored_multi_display)
-                subtitleHide.visibility = View.VISIBLE
+                subtitleHide.isVisible = true
                 subtitleHide.setTextColor(ctx.themeColor(R.attr.ptTextHint))
             } else {
-                subtitleHide.visibility = View.GONE
+                subtitleHide.isGone = true
             }
             switchHideOverlays.isChecked = prefs.hideGameOverlays
             switchHideOverlays.setOnCheckedChangeListener { _, checked ->
@@ -1051,7 +1051,7 @@ class SettingsRenderer(
         // Section is always available — the translation hotkey is useful
         // regardless of source language (handheld users want hold-to-translate
         // even when there's no furigana/pinyin layer to surface).
-        hotkeySection.visibility = View.VISIBLE
+        hotkeySection.isVisible = true
 
         // -- Translation hotkey (always visible) --
         setupSingleHotkeyRow(
@@ -1068,8 +1068,8 @@ class SettingsRenderer(
                 HintTextKind.PINYIN -> ctx.getString(R.string.overlay_mode_option_pinyin)
                 else -> ctx.getString(R.string.overlay_mode_option_furigana)
             }
-            rowHotkeyFurigana.visibility = View.VISIBLE
-            dividerHotkeyFurigana.visibility = View.VISIBLE
+            rowHotkeyFurigana.isVisible = true
+            dividerHotkeyFurigana.isVisible = true
             setupSingleHotkeyRow(
                 row = rowHotkeyFurigana,
                 title = ctx.getString(R.string.hotkey_show_hint_title, hintLabel),
@@ -1078,8 +1078,8 @@ class SettingsRenderer(
                 dialogTitle = ctx.getString(R.string.hotkey_show_hint_dialog_title, hintLabel)
             )
         } else {
-            rowHotkeyFurigana.visibility = View.GONE
-            dividerHotkeyFurigana.visibility = View.GONE
+            rowHotkeyFurigana.isGone = true
+            dividerHotkeyFurigana.isGone = true
         }
     }
 
@@ -1100,10 +1100,10 @@ class SettingsRenderer(
         switch.isChecked = hotkey.isNotEmpty()
         if (hotkey.isNotEmpty()) {
             tvSubtitle.text = formatHotkey(hotkey)
-            tvSubtitle.visibility = View.VISIBLE
+            tvSubtitle.isVisible = true
         } else {
             tvSubtitle.text = ctx.getString(R.string.hotkey_not_set_subtitle)
-            tvSubtitle.visibility = View.VISIBLE
+            tvSubtitle.isVisible = true
         }
 
         switch.setOnCheckedChangeListener { _, checked ->
@@ -1122,7 +1122,7 @@ class SettingsRenderer(
                         val combo = keyCodes.joinToString("+")
                         setHotkey(combo)
                         tvSubtitle.text = formatHotkey(combo)
-                        tvSubtitle.visibility = View.VISIBLE
+                        tvSubtitle.isVisible = true
                     },
                     onCancel = {
                         switch.isChecked = false
@@ -1386,7 +1386,7 @@ class SettingsRenderer(
     private fun setBackendLine1(row: View, backend: TranslationBackend) {
         val tv = row.findViewById<TextView>(R.id.tvRowSubtitle)
         if (backend.requiresInternet) {
-            tv.visibility = View.GONE
+            tv.isGone = true
             tv.contentDescription = null
             return
         }
@@ -1432,7 +1432,7 @@ class SettingsRenderer(
                 append(ctx.getString(R.string.a11y_out_of_5_stars))
             }
         }
-        tv.visibility = View.VISIBLE
+        tv.isVisible = true
     }
 
     /** Half-step star formatter for accessibility text:
@@ -1686,18 +1686,18 @@ class SettingsRenderer(
     private fun renderBackendStatusLine(row: View, status: BackendStatus) {
         val tv = row.findViewById<TextView>(R.id.tvRowSubtitle2) ?: return
         when (status) {
-            is BackendStatus.Hidden -> tv.visibility = View.GONE
+            is BackendStatus.Hidden -> tv.isGone = true
             is BackendStatus.Loading -> {
                 tv.text = ctx.getString(R.string.tr_service_status_loading)
                 applyTone(tv, Tone.Neutral)
                 applyItalic(tv, true)
-                tv.visibility = View.VISIBLE
+                tv.isVisible = true
             }
             is BackendStatus.Info -> {
                 tv.text = status.text
                 applyTone(tv, status.tone)
                 applyItalic(tv, status.italic)
-                tv.visibility = View.VISIBLE
+                tv.isVisible = true
             }
             is BackendStatus.Quota -> {
                 tv.text = formatQuota(status)
@@ -1707,7 +1707,7 @@ class SettingsRenderer(
                 val exhausted = status.used >= status.limit
                 applyTone(tv, if (exhausted) Tone.Danger else Tone.Neutral)
                 applyItalic(tv, false)
-                tv.visibility = View.VISIBLE
+                tv.isVisible = true
             }
         }
     }
@@ -1730,7 +1730,7 @@ class SettingsRenderer(
         val cooldownable = backend as? Cooldownable
         val until = cooldownable?.unavailableUntil()
         if (until == null) {
-            tv.visibility = View.GONE
+            tv.isGone = true
             clearRowWarningTint(row)
             return
         }
@@ -1739,7 +1739,7 @@ class SettingsRenderer(
         tv.text = formatCooldownLine(description, until)
         applyTone(tv, Tone.Warning)
         applyItalic(tv, false)
-        tv.visibility = View.VISIBLE
+        tv.isVisible = true
         applyRowWarningTint(row)
     }
 
@@ -1902,8 +1902,8 @@ class SettingsRenderer(
      *  it (default-open). */
     private fun wireHyMtBackendRow() {
         if (com.playtranslate.region.RegionPolicy.isHunyuanRestricted(ctx)) {
-            rowBackendHyMt.visibility = View.GONE
-            dividerBackendHyMt.visibility = View.GONE
+            rowBackendHyMt.isGone = true
+            dividerBackendHyMt.isGone = true
             return
         }
         wireOfflineLlmRow(
@@ -2015,19 +2015,19 @@ class SettingsRenderer(
         val incompatReason = onDeviceLlm?.takeIf { !it.meetsHardwareRequirements() }
             ?.hardwareIncompatibilityReason()
         if (incompatReason != null) {
-            grid.visibility = View.GONE
+            grid.isGone = true
             incompat.text = incompatReason
-            incompat.visibility = View.VISIBLE
-            iconWrap.visibility = View.GONE
-            switch.visibility = View.GONE
-            warning.visibility = View.GONE
+            incompat.isVisible = true
+            iconWrap.isGone = true
+            switch.isGone = true
+            warning.isGone = true
             row.contentDescription = "${backend.displayName}. $incompatReason"
             return
         }
 
-        grid.visibility = View.VISIBLE
-        incompat.visibility = View.GONE
-        iconWrap.visibility = View.VISIBLE
+        grid.isVisible = true
+        incompat.isGone = true
+        iconWrap.isVisible = true
 
         val qualityStars5 = backend.qualityStars.toIntStars5()
         bindStarCell(row.findViewById(R.id.cellQuality),
@@ -2054,7 +2054,7 @@ class SettingsRenderer(
         // row's minHeight (48dp = MaterialSwitch's touch-target height)
         // keeps every offline row the same height regardless of whether a
         // switch is drawn.
-        if (isMlKit) switch.visibility = View.GONE
+        if (isMlKit) switch.isGone = true
 
         bindOfflineWarningLine(row, backend)
         row.contentDescription = composeOfflineRowA11y(
@@ -2112,10 +2112,10 @@ class SettingsRenderer(
         val icon = row.findViewById<ImageView>(R.id.ivStatusIcon)
         val progress = row.findViewById<ProgressBar>(R.id.pbStatusDownloading)
         if (downloading) {
-            icon.visibility = View.GONE
-            progress.visibility = View.VISIBLE
+            icon.isGone = true
+            progress.isVisible = true
         } else {
-            progress.visibility = View.GONE
+            progress.isGone = true
             icon.setImageResource(
                 if (installed) R.drawable.ic_status_downloaded
                 else R.drawable.ic_status_cloud_down
@@ -2133,14 +2133,14 @@ class SettingsRenderer(
                 if (installed) R.string.offline_backend_downloaded_cd
                 else R.string.offline_backend_not_downloaded_cd
             )
-            icon.visibility = View.VISIBLE
+            icon.isVisible = true
         }
 
         if (!isMlKit) {
             val switch = row.findViewById<MaterialSwitch>(R.id.switchOfflineToggle)
             val enabledPref = enabledPrefFor(backend.id) ?: false
             switch.isChecked = installed && enabledPref
-            switch.visibility = View.VISIBLE
+            switch.isVisible = true
         }
     }
 
@@ -2149,9 +2149,9 @@ class SettingsRenderer(
         val status = backend.status
         if (status is BackendStatus.Info && status.tone == Tone.Warning) {
             tv.text = status.text
-            tv.visibility = View.VISIBLE
+            tv.isVisible = true
         } else {
-            tv.visibility = View.GONE
+            tv.isGone = true
         }
     }
 
@@ -2376,13 +2376,13 @@ class SettingsRenderer(
 
         when {
             !installed -> {
-                tvAnkiSectionTitle.visibility = View.GONE
-                llAnkiPermission.visibility = View.GONE
+                tvAnkiSectionTitle.isGone = true
+                llAnkiPermission.isGone = true
                 hideAllAnkiRows()
             }
 
             !ankiManager.hasPermission() -> {
-                tvAnkiSectionTitle.visibility = View.GONE
+                tvAnkiSectionTitle.isGone = true
                 llAnkiPermission.removeAllViews()
                 addClickableRow(
                     llAnkiPermission,
@@ -2391,28 +2391,28 @@ class SettingsRenderer(
                     R.drawable.ic_lock,
                     onClick = { callbacks.requestAnkiPermission() }
                 )
-                llAnkiPermission.visibility = View.VISIBLE
+                llAnkiPermission.isVisible = true
                 hideAllAnkiRows()
             }
 
             else -> {
-                tvAnkiSectionTitle.visibility = View.GONE
-                llAnkiPermission.visibility = View.GONE
+                tvAnkiSectionTitle.isGone = true
+                llAnkiPermission.isGone = true
                 setupAnkiDeckRow()
                 setupAnkiCardTypeRow()
                 refreshAnkiEditMappingRow()
-                tvAnkiLongPressFooter.visibility = View.VISIBLE
+                tvAnkiLongPressFooter.isVisible = true
             }
         }
     }
 
     private fun hideAllAnkiRows() {
-        rowAnkiDeck.visibility = View.GONE
-        rowAnkiCardType.visibility = View.GONE
-        dividerAnkiCardType.visibility = View.GONE
-        rowAnkiEditMapping.visibility = View.GONE
-        dividerAnkiEditMapping.visibility = View.GONE
-        tvAnkiLongPressFooter.visibility = View.GONE
+        rowAnkiDeck.isGone = true
+        rowAnkiCardType.isGone = true
+        dividerAnkiCardType.isGone = true
+        rowAnkiEditMapping.isGone = true
+        dividerAnkiEditMapping.isGone = true
+        tvAnkiLongPressFooter.isGone = true
     }
 
     private fun setupAnkiDeckRow() {
@@ -2422,7 +2422,7 @@ class SettingsRenderer(
         rowAnkiDeck.setOnClickListener {
             callbacks.showAnkiDeckPicker { refreshAnkiDeckValue() }
         }
-        rowAnkiDeck.visibility = View.VISIBLE
+        rowAnkiDeck.isVisible = true
 
         // Validate saved deck still exists in AnkiDroid
         validateAnkiDeck()
@@ -2455,8 +2455,8 @@ class SettingsRenderer(
         rowAnkiCardType.setOnClickListener {
             callbacks.showAnkiCardTypePicker { refreshAnkiCardTypeValue() }
         }
-        rowAnkiCardType.visibility = View.VISIBLE
-        dividerAnkiCardType.visibility = View.VISIBLE
+        rowAnkiCardType.isVisible = true
+        dividerAnkiCardType.isVisible = true
         validateAnkiCardType()
     }
 
@@ -2500,8 +2500,8 @@ class SettingsRenderer(
     private fun refreshAnkiEditMappingRow() {
         val hasCustom = prefs.ankiModelId != -1L
         if (!hasCustom) {
-            rowAnkiEditMapping.visibility = View.GONE
-            dividerAnkiEditMapping.visibility = View.GONE
+            rowAnkiEditMapping.isGone = true
+            dividerAnkiEditMapping.isGone = true
             return
         }
         rowAnkiEditMapping.findViewById<TextView>(R.id.tvRowTitle).text =
@@ -2510,8 +2510,8 @@ class SettingsRenderer(
         rowAnkiEditMapping.setOnClickListener {
             callbacks.showAnkiCardTypeMapping { refreshAnkiCardTypeValue() }
         }
-        rowAnkiEditMapping.visibility = View.VISIBLE
-        dividerAnkiEditMapping.visibility = View.VISIBLE
+        rowAnkiEditMapping.isVisible = true
+        dividerAnkiEditMapping.isVisible = true
     }
 
     // ── Appearance ───────────────────────────────────────────────────────
@@ -2718,7 +2718,7 @@ class SettingsRenderer(
         rowExportLogs.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.settings_debug_export_logs_title)
         val tvExportSub = rowExportLogs.findViewById<TextView>(R.id.tvRowSubtitle)
         tvExportSub.text = ctx.getString(R.string.settings_debug_export_logs_subtitle)
-        tvExportSub.visibility = View.VISIBLE
+        tvExportSub.isVisible = true
         rowExportLogs.setOnClickListener {
             lifecycleScope.launch {
                 val files = withContext(Dispatchers.IO) {
@@ -2791,7 +2791,7 @@ class SettingsRenderer(
 
     private fun setupDebugSection() {
         if (!BuildConfig.DEBUG) return
-        llDebugSection.visibility = View.VISIBLE
+        llDebugSection.isVisible = true
 
         // Force single screen
         val rowForceSingleScreen = root.findViewById<View>(R.id.rowForceSingleScreen)
@@ -2926,15 +2926,15 @@ class SettingsRenderer(
         // Hotkey section is always visible (translation hotkey is useful
         // regardless of source language). Only the Furigana/Pinyin row
         // toggles with hasHintText.
-        hotkeySection.visibility = View.VISIBLE
+        hotkeySection.isVisible = true
         if (hasHintText) {
-            rowHotkeyFurigana.visibility = View.VISIBLE
-            dividerHotkeyFurigana.visibility = View.VISIBLE
+            rowHotkeyFurigana.isVisible = true
+            dividerHotkeyFurigana.isVisible = true
             rowHotkeyFurigana.findViewById<TextView>(R.id.tvRowTitle)?.text =
                 "Hotkey: hold to show $hintLabel"
         } else {
-            rowHotkeyFurigana.visibility = View.GONE
-            dividerHotkeyFurigana.visibility = View.GONE
+            rowHotkeyFurigana.isGone = true
+            dividerHotkeyFurigana.isGone = true
         }
     }
 
@@ -2957,10 +2957,10 @@ class SettingsRenderer(
         val tvSub = row.findViewById<TextView>(R.id.tvRowSubtitle)
         if (subtitle.isNotEmpty()) {
             tvSub.text = subtitle
-            tvSub.visibility = View.VISIBLE
+            tvSub.isVisible = true
         }
         row.setOnClickListener {
-            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            ctx.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
         }
         row.setOnLongClickListener {
             val clipboard =
@@ -2993,7 +2993,7 @@ class SettingsRenderer(
         val tvSub = row.findViewById<TextView>(R.id.tvRowSubtitle)
         if (subtitle.isNotEmpty()) {
             tvSub.text = subtitle
-            tvSub.visibility = View.VISIBLE
+            tvSub.isVisible = true
         }
         row.findViewById<ImageView>(R.id.ivRowIcon)?.setImageResource(iconRes)
         row.setOnClickListener { onClick() }

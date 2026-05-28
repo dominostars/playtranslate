@@ -13,6 +13,7 @@ import com.playtranslate.language.SourceLangId
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
+import androidx.core.net.toUri
 
 private const val TAG = "TtsUiHelper"
 private const val GOOGLE_TTS_PACKAGE = "com.google.android.tts"
@@ -149,7 +150,7 @@ private fun openTtsSettings(context: Context) {
 private fun openPlayStore(context: Context, packageName: String) {
     val intent = Intent(
         Intent.ACTION_VIEW,
-        Uri.parse("https://play.google.com/store/apps/details?id=$packageName"),
+        "https://play.google.com/store/apps/details?id=$packageName".toUri(),
     ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     try {
         context.startActivity(intent)

@@ -34,6 +34,9 @@ import com.playtranslate.tts.TtsEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.core.net.toUri
+import androidx.core.view.isVisible
+import androidx.core.view.isGone
 
 /**
  * Loads AnkiDroid decks into [spinner] and auto-saves the selection to [Prefs].
@@ -122,9 +125,9 @@ fun ankiGroupHeader(parent: LinearLayout, title: String, suffix: String? = null)
     if (!suffix.isNullOrBlank()) {
         badge.text = suffix
         badge.textSize = 10f
-        badge.visibility = View.VISIBLE
+        badge.isVisible = true
     } else {
-        badge.visibility = View.GONE
+        badge.isGone = true
     }
     parent.addView(header)
 }
@@ -725,7 +728,7 @@ private fun configureAnkiNotInstalled(
         ) {
             val intent = Intent(
                 Intent.ACTION_VIEW,
-                Uri.parse(themed.getString(R.string.anki_play_store_url)),
+                themed.getString(R.string.anki_play_store_url).toUri(),
             ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             themed.startActivity(intent)
         }
@@ -864,7 +867,7 @@ class AnkiSendButton(private val button: FrameLayout) {
         // Don't reveal the small spinner while the centred send spinner
         // is up; setLoading(false) will restore it if `loading` is still
         // true at that point.
-        if (spinner.visibility == View.VISIBLE) return
+        if (spinner.isVisible) return
         pendingFillSpinner.visibility = if (loading) View.VISIBLE else View.GONE
     }
 }

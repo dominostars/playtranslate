@@ -8,6 +8,7 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.view.View
 import com.playtranslate.OcrManager
+import androidx.core.graphics.toColorInt
 
 /**
  * Transparent overlay that draws OCR bounding boxes on the game screen.
@@ -27,7 +28,7 @@ class OcrDebugOverlayView(context: Context) : View(context) {
     }
 
     private val groupPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#4488FF")
+        color = "#4488FF".toColorInt()
         style = Paint.Style.STROKE
         strokeWidth = 4f * dp
     }

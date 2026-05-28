@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
+import androidx.core.graphics.createBitmap
 
 /**
  * Whether OCR preprocessing should invert luminance for light-on-dark text.
@@ -143,7 +144,7 @@ internal fun renderWithMatrix(
     outH: Int,
     matrix: ColorMatrix?
 ): Bitmap {
-    val out = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+    val out = createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
     val paint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
         if (matrix != null) colorFilter = ColorMatrixColorFilter(matrix)
     }

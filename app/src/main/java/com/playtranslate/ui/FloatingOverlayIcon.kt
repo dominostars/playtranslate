@@ -17,6 +17,7 @@ import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.displaySizePx
 import com.playtranslate.displayWindowMetrics
 import kotlin.math.abs
+import androidx.core.graphics.toColorInt
 
 /**
  * A circular floating icon that snaps to left/right screen edges, pushed off-
@@ -51,15 +52,15 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         set(value) { field = value; invalidate() }
 
     // ── Normal mode paints ──────────────────────────────────────────────
-    private val defaultCircleColor = Color.parseColor("#CC000000")
-    private val liveCircleColor = Color.parseColor("#CC990000")
-    private val liveDegradedCircleColor = Color.parseColor("#CC999900")
+    private val defaultCircleColor = "#CC000000".toColorInt()
+    private val liveCircleColor = "#CC990000".toColorInt()
+    private val liveDegradedCircleColor = "#CC999900".toColorInt()
     private val circlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = defaultCircleColor
         style = Paint.Style.FILL
     }
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#66888888")
+        color = "#66888888".toColorInt()
         style = Paint.Style.STROKE
         strokeWidth = 1.5f * resources.displayMetrics.density
     }
@@ -152,12 +153,12 @@ class FloatingOverlayIcon(context: Context) : View(context) {
 
     // ── Drag mode paints (ring + magnifying glass) ──────────────────────
     private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#CCFFFFFF")
+        color = "#CCFFFFFF".toColorInt()
         style = Paint.Style.STROKE
         strokeWidth = 3 * resources.displayMetrics.density
     }
     private val magGlassPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#CCFFFFFF")
+        color = "#CCFFFFFF".toColorInt()
         style = Paint.Style.STROKE
         strokeWidth = 2.5f * resources.displayMetrics.density
         strokeCap = Paint.Cap.ROUND

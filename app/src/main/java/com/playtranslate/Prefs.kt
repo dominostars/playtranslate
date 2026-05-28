@@ -10,6 +10,7 @@ import com.playtranslate.ui.AccentColor
 import com.playtranslate.ui.ThemeMode
 import org.json.JSONArray
 import org.json.JSONObject
+import androidx.core.content.edit
 
 /**
  * Which overlay the live-mode loop and hold-to-preview gesture should render
@@ -70,11 +71,11 @@ class Prefs(context: Context) {
 
     var sourceLang: String
         get() = sp.getString(KEY_SOURCE_LANG, TranslateLanguage.JAPANESE) ?: TranslateLanguage.JAPANESE
-        set(v) = sp.edit().putString(KEY_SOURCE_LANG, v).apply()
+        set(v) = sp.edit { putString(KEY_SOURCE_LANG, v) }
 
     var targetLang: String
         get() = sp.getString(KEY_TARGET_LANG, TranslateLanguage.ENGLISH) ?: TranslateLanguage.ENGLISH
-        set(v) = sp.edit().putString(KEY_TARGET_LANG, v).apply()
+        set(v) = sp.edit { putString(KEY_TARGET_LANG, v) }
 
     /** True iff the user has explicitly picked a target language at least once.
      *  The [targetLang] getter returns an English fallback for unsaved values,
@@ -108,10 +109,10 @@ class Prefs(context: Context) {
         sp.getString("tts_voice_${lang.code}", null)
 
     fun setTtsVoiceName(lang: SourceLangId, voiceName: String?) {
-        sp.edit().apply {
+        sp.edit {
             if (voiceName == null) remove("tts_voice_${lang.code}")
             else putString("tts_voice_${lang.code}", voiceName)
-        }.apply()
+        }
     }
 
     /**
@@ -136,7 +137,7 @@ class Prefs(context: Context) {
                 .toCollection(LinkedHashSet())
         }
         set(v) {
-            sp.edit().putString(KEY_DISPLAY_IDS, v.joinToString(",")).apply()
+            sp.edit { putString(KEY_DISPLAY_IDS, v.joinToString(",")) }
         }
 
     /** True iff the user (or the legacy-key migration in [migrateLegacyPrefs])
@@ -191,7 +192,7 @@ class Prefs(context: Context) {
     private fun writeSelectedRegionMap(map: Map<Int, String>) {
         val obj = JSONObject()
         for ((id, regionId) in map) obj.put(id.toString(), regionId)
-        sp.edit().putString(KEY_SELECTED_REGION_BY_DISPLAY, obj.toString()).apply()
+        sp.edit { putString(KEY_SELECTED_REGION_BY_DISPLAY, obj.toString()) }
     }
 
     /**
@@ -239,7 +240,7 @@ class Prefs(context: Context) {
                 put("fraction", pos.fraction.toDouble())
             })
         }
-        sp.edit().putString(KEY_ICON_POSITION_BY_DISPLAY, obj.toString()).apply()
+        sp.edit { putString(KEY_ICON_POSITION_BY_DISPLAY, obj.toString()) }
     }
 
     /**
@@ -265,7 +266,7 @@ class Prefs(context: Context) {
      */
     var deeplApiKey: String
         get() = sp.getString(KEY_DEEPL_KEY, BuildConfig.DEEPL_API_KEY) ?: ""
-        set(v) = sp.edit().putString(KEY_DEEPL_KEY, v).apply()
+        set(v) = sp.edit { putString(KEY_DEEPL_KEY, v) }
 
     /** User's explicit "use DeepL?" toggle. Independent of [deeplApiKey]
      *  presence — disabling DeepL preserves the saved key so a later
@@ -274,19 +275,19 @@ class Prefs(context: Context) {
      *  first launch for users who already had a stored key. */
     var deeplEnabled: Boolean
         get() = sp.getBoolean(KEY_DEEPL_ENABLED, false)
-        set(v) = sp.edit().putBoolean(KEY_DEEPL_ENABLED, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_DEEPL_ENABLED, v) }
 
     /** User's explicit "use Lingva?" toggle. Default true so out-of-the-box
      *  the free online backend is on. */
     var lingvaEnabled: Boolean
         get() = sp.getBoolean(KEY_LINGVA_ENABLED, true)
-        set(v) = sp.edit().putBoolean(KEY_LINGVA_ENABLED, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_LINGVA_ENABLED, v) }
 
     /** Gemini API key from AI Studio (https://aistudio.google.com/app/apikey).
      *  Empty by default — users must enter their own key in Settings. */
     var geminiApiKey: String
         get() = sp.getString(KEY_GEMINI_KEY, "") ?: ""
-        set(v) = sp.edit().putString(KEY_GEMINI_KEY, v).apply()
+        set(v) = sp.edit { putString(KEY_GEMINI_KEY, v) }
 
     /** User's explicit "use Gemini?" toggle. Independent of [geminiApiKey]
      *  presence — disabling Gemini preserves the saved key so a later
@@ -295,46 +296,46 @@ class Prefs(context: Context) {
      *  the user must opt into deliberately. */
     var geminiEnabled: Boolean
         get() = sp.getBoolean(KEY_GEMINI_ENABLED, false)
-        set(v) = sp.edit().putBoolean(KEY_GEMINI_ENABLED, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_GEMINI_ENABLED, v) }
 
     /** Gemini model id. The picker in Settings stores a curated id; the
      *  "Custom…" entry persists any user-typed string. */
     var geminiModel: String
         get() = sp.getString(KEY_GEMINI_MODEL, DEFAULT_GEMINI_MODEL) ?: DEFAULT_GEMINI_MODEL
-        set(v) = sp.edit().putString(KEY_GEMINI_MODEL, v).apply()
+        set(v) = sp.edit { putString(KEY_GEMINI_MODEL, v) }
 
     /** OpenAI API key from https://platform.openai.com/api-keys. */
     var openaiApiKey: String
         get() = sp.getString(KEY_OPENAI_KEY, "") ?: ""
-        set(v) = sp.edit().putString(KEY_OPENAI_KEY, v).apply()
+        set(v) = sp.edit { putString(KEY_OPENAI_KEY, v) }
 
     /** User's explicit "use OpenAI?" toggle. See [geminiEnabled] for the
      *  no-auto-enable rationale. */
     var openaiEnabled: Boolean
         get() = sp.getBoolean(KEY_OPENAI_ENABLED, false)
-        set(v) = sp.edit().putBoolean(KEY_OPENAI_ENABLED, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_OPENAI_ENABLED, v) }
 
     /** OpenAI model id; "Custom…" entry persists arbitrary strings. */
     var openaiModel: String
         get() = sp.getString(KEY_OPENAI_MODEL, DEFAULT_OPENAI_MODEL) ?: DEFAULT_OPENAI_MODEL
-        set(v) = sp.edit().putString(KEY_OPENAI_MODEL, v).apply()
+        set(v) = sp.edit { putString(KEY_OPENAI_MODEL, v) }
 
     /** DeepSeek API key from https://platform.deepseek.com/api_keys. */
     var deepseekApiKey: String
         get() = sp.getString(KEY_DEEPSEEK_KEY, "") ?: ""
-        set(v) = sp.edit().putString(KEY_DEEPSEEK_KEY, v).apply()
+        set(v) = sp.edit { putString(KEY_DEEPSEEK_KEY, v) }
 
     /** User's explicit "use DeepSeek?" toggle. Default false; explicit
      *  opt-in like every other paid LLM backend. */
     var deepseekEnabled: Boolean
         get() = sp.getBoolean(KEY_DEEPSEEK_ENABLED, false)
-        set(v) = sp.edit().putBoolean(KEY_DEEPSEEK_ENABLED, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_DEEPSEEK_ENABLED, v) }
 
     /** DeepSeek model id. The picker fetches the live list from
      *  api.deepseek.com/v1/models; "Custom…" persists arbitrary strings. */
     var deepseekModel: String
         get() = sp.getString(KEY_DEEPSEEK_MODEL, DEFAULT_DEEPSEEK_MODEL) ?: DEFAULT_DEEPSEEK_MODEL
-        set(v) = sp.edit().putString(KEY_DEEPSEEK_MODEL, v).apply()
+        set(v) = sp.edit { putString(KEY_DEEPSEEK_MODEL, v) }
 
     /** User-controlled toggle for the MNN-backed Qwen 2.5 1.5B (live-mode tier).
      *  Default false — Settings flips this on after a successful download or
@@ -343,7 +344,7 @@ class Prefs(context: Context) {
      *  [com.playtranslate.translation.qwen.QwenMnnModel.isInstalled]. */
     var qwenMnnEnabled: Boolean
         get() = sp.getBoolean(KEY_QWEN_MNN_ENABLED, false)
-        set(v) = sp.edit().putBoolean(KEY_QWEN_MNN_ENABLED, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_QWEN_MNN_ENABLED, v) }
 
     /** User-controlled toggle for the MNN-backed Gemma 4 E2B (premium-quality
      *  manual-lookup tier — replaces the legacy TranslateGemma 4B). Default
@@ -352,7 +353,7 @@ class Prefs(context: Context) {
      *  [com.playtranslate.translation.gemma.GemmaE2BMnnModel.isInstalled]. */
     var gemmaE2bEnabled: Boolean
         get() = sp.getBoolean(KEY_GEMMA_E2B_ENABLED, false)
-        set(v) = sp.edit().putBoolean(KEY_GEMMA_E2B_ENABLED, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_GEMMA_E2B_ENABLED, v) }
 
     /** User-controlled toggle for the MNN-backed Hunyuan-MT 1.5 1.8B —
      *  translation-specialist tier (Tencent HY Community License, restricted
@@ -362,7 +363,7 @@ class Prefs(context: Context) {
      *  via [com.playtranslate.translation.hymt.HyMtModel.isInstalled]. */
     var hyMtEnabled: Boolean
         get() = sp.getBoolean(KEY_HYMT_ENABLED, false)
-        set(v) = sp.edit().putBoolean(KEY_HYMT_ENABLED, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_HYMT_ENABLED, v) }
 
     /** Persisted acknowledgement of the Hunyuan-MT 1.5 click-through legal
      *  attestation dialog. Set to true after the user taps "Agree" the first
@@ -370,15 +371,15 @@ class Prefs(context: Context) {
      *  Mirrors how Meta handles Llama ToS acceptance: one-time, persisted. */
     var hyMtLegalAccepted: Boolean
         get() = sp.getBoolean(KEY_HYMT_LEGAL_ACCEPTED, false)
-        set(v) = sp.edit().putBoolean(KEY_HYMT_LEGAL_ACCEPTED, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_HYMT_LEGAL_ACCEPTED, v) }
 
     var ankiDeckId: Long
         get() = sp.getLong(KEY_ANKI_DECK_ID, -1L)
-        set(v) = sp.edit().putLong(KEY_ANKI_DECK_ID, v).apply()
+        set(v) = sp.edit { putLong(KEY_ANKI_DECK_ID, v) }
 
     var ankiDeckName: String
         get() = sp.getString(KEY_ANKI_DECK_NAME, "") ?: ""
-        set(v) = sp.edit().putString(KEY_ANKI_DECK_NAME, v).apply()
+        set(v) = sp.edit { putString(KEY_ANKI_DECK_NAME, v) }
 
     /**
      * The user-selected AnkiDroid note type id. `-1L` (the default) is a
@@ -389,14 +390,14 @@ class Prefs(context: Context) {
      */
     var ankiModelId: Long
         get() = sp.getLong(KEY_ANKI_MODEL_ID, -1L)
-        set(v) = sp.edit().putLong(KEY_ANKI_MODEL_ID, v).apply()
+        set(v) = sp.edit { putLong(KEY_ANKI_MODEL_ID, v) }
 
     /** Display label for the chosen card type. Empty when using the
      *  Default (PlayTranslate) sentinel. Refreshed by the section's
      *  healing pass when the model is renamed in AnkiDroid. */
     var ankiModelName: String
         get() = sp.getString(KEY_ANKI_MODEL_NAME, "") ?: ""
-        set(v) = sp.edit().putString(KEY_ANKI_MODEL_NAME, v).apply()
+        set(v) = sp.edit { putString(KEY_ANKI_MODEL_NAME, v) }
 
     /**
      * Returns the saved field mapping for [modelId], or empty when no
@@ -461,7 +462,7 @@ class Prefs(context: Context) {
             mapping.forEach { (k, v) -> obj.put(k, v.name) }
             root.put(modelId.toString(), obj)
         }
-        sp.edit().putString(KEY_ANKI_FIELD_MAPPINGS, root.toString()).apply()
+        sp.edit { putString(KEY_ANKI_FIELD_MAPPINGS, root.toString()) }
     }
 
     /** Whether new word cards include synthesized word audio. Mirrors the
@@ -470,47 +471,47 @@ class Prefs(context: Context) {
      *  deliberately no Settings UI; the last-used state is the default. */
     var ankiWordAudioEnabled: Boolean
         get() = sp.getBoolean(KEY_ANKI_WORD_AUDIO, true)
-        set(v) = sp.edit().putBoolean(KEY_ANKI_WORD_AUDIO, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_ANKI_WORD_AUDIO, v) }
 
     /** Whether new sentence cards include synthesized sentence audio.
      *  See [ankiWordAudioEnabled] — same last-used-state-is-the-default
      *  behavior, for the sentence review surface. */
     var ankiSentenceAudioEnabled: Boolean
         get() = sp.getBoolean(KEY_ANKI_SENTENCE_AUDIO, true)
-        set(v) = sp.edit().putBoolean(KEY_ANKI_SENTENCE_AUDIO, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_ANKI_SENTENCE_AUDIO, v) }
 
     var showTransliteration: Boolean
         get() = sp.getBoolean(KEY_SHOW_TRANSLITERATION, false)
-        set(v) = sp.edit().putBoolean(KEY_SHOW_TRANSLITERATION, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_SHOW_TRANSLITERATION, v) }
 
     var hideTranslationSection: Boolean
         get() = sp.getBoolean(KEY_HIDE_TRANSLATION_SECTION, false)
-        set(v) = sp.edit().putBoolean(KEY_HIDE_TRANSLATION_SECTION, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_HIDE_TRANSLATION_SECTION, v) }
 
     var hideOriginalSection: Boolean
         get() = sp.getBoolean(KEY_HIDE_ORIGINAL_SECTION, false)
-        set(v) = sp.edit().putBoolean(KEY_HIDE_ORIGINAL_SECTION, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_HIDE_ORIGINAL_SECTION, v) }
 
     var hideWordsSection: Boolean
         get() = sp.getBoolean(KEY_HIDE_WORDS_SECTION, false)
-        set(v) = sp.edit().putBoolean(KEY_HIDE_WORDS_SECTION, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_HIDE_WORDS_SECTION, v) }
 
     var showFuriganaInline: Boolean
         get() = sp.getBoolean(KEY_SHOW_FURIGANA_INLINE, false)
-        set(v) = sp.edit().putBoolean(KEY_SHOW_FURIGANA_INLINE, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_SHOW_FURIGANA_INLINE, v) }
 
     /** Capture method chosen during onboarding: "" = not set, "accessibility", "media_projection" */
     var captureMethod: String
         get() = sp.getString(KEY_CAPTURE_METHOD, "") ?: ""
-        set(v) = sp.edit().putString(KEY_CAPTURE_METHOD, v).apply()
+        set(v) = sp.edit { putString(KEY_CAPTURE_METHOD, v) }
 
     var overlayMode: OverlayMode
         get() = OverlayMode.fromStorageName(sp.getString(KEY_OVERLAY_MODE, null))
-        set(v) = sp.edit().putString(KEY_OVERLAY_MODE, v.name).apply()
+        set(v) = sp.edit { putString(KEY_OVERLAY_MODE, v.name) }
 
     var hideGameOverlays: Boolean
         get() = sp.getBoolean("hide_game_overlays", false)
-        set(v) = sp.edit().putBoolean("hide_game_overlays", v).apply()
+        set(v) = sp.edit { putBoolean("hide_game_overlays", v) }
 
     /**
      * One-shot migration of the legacy `auto_translation_mode` ordinal pref
@@ -538,7 +539,7 @@ class Prefs(context: Context) {
             if (legacyOrdinal == 1) {
                 hideGameOverlays = true
             }
-            sp.edit().remove(legacyKey).apply()
+            sp.edit { remove(legacyKey) }
         }
 
         // Migrate the pre-redesign 4-theme picker (Black/White/Rainbow/Purple)
@@ -556,11 +557,11 @@ class Prefs(context: Context) {
                 3 -> ThemeMode.DARK  to AccentColor.Violet   // Purple
                 else -> ThemeMode.DARK to AccentColor.Teal   // Black
             }
-            sp.edit()
-                .putString(KEY_THEME_MODE, mode.storageKey)
-                .putString(KEY_ACCENT_NAME, accent.name)
-                .remove(KEY_LEGACY_THEME_INDEX)
-                .apply()
+            sp.edit {
+                putString(KEY_THEME_MODE, mode.storageKey)
+                putString(KEY_ACCENT_NAME, accent.name)
+                remove(KEY_LEGACY_THEME_INDEX)
+            }
         }
 
         // Multi-display migration: seed the new per-display schemas from the
@@ -573,9 +574,7 @@ class Prefs(context: Context) {
         val legacyDisplayId = sp.getInt(KEY_DISPLAY_ID, 0)
 
         if (sp.contains(KEY_DISPLAY_ID) && !sp.contains(KEY_DISPLAY_IDS)) {
-            sp.edit()
-                .putString(KEY_DISPLAY_IDS, legacyDisplayId.toString())
-                .apply()
+            sp.edit { putString(KEY_DISPLAY_IDS, legacyDisplayId.toString()) }
             // KEY_DISPLAY_ID stays in SharedPreferences as harmless bytes —
             // [captureDisplayIds] only consults it as a fresh-install
             // fallback before the new key has been written.
@@ -591,13 +590,13 @@ class Prefs(context: Context) {
                         put("fraction", legacyFraction.toDouble())
                     })
                 }
-                sp.edit().putString(KEY_ICON_POSITION_BY_DISPLAY, obj.toString()).apply()
+                sp.edit { putString(KEY_ICON_POSITION_BY_DISPLAY, obj.toString()) }
             }
             // Nothing reads the legacy icon-position keys after this point — drop them.
-            sp.edit()
-                .remove(KEY_OVERLAY_ICON_EDGE)
-                .remove(KEY_OVERLAY_ICON_FRACTION)
-                .apply()
+            sp.edit {
+                remove(KEY_OVERLAY_ICON_EDGE)
+                remove(KEY_OVERLAY_ICON_FRACTION)
+            }
         }
 
         if (sp.contains(KEY_SELECTED_REGION_ID)) {
@@ -607,11 +606,11 @@ class Prefs(context: Context) {
                     val obj = JSONObject().apply {
                         put(legacyDisplayId.toString(), legacyRegionId)
                     }
-                    sp.edit().putString(KEY_SELECTED_REGION_BY_DISPLAY, obj.toString()).apply()
+                    sp.edit { putString(KEY_SELECTED_REGION_BY_DISPLAY, obj.toString()) }
                 }
             }
             // Nothing reads KEY_SELECTED_REGION_ID after this point — drop it.
-            sp.edit().remove(KEY_SELECTED_REGION_ID).apply()
+            sp.edit { remove(KEY_SELECTED_REGION_ID) }
         }
 
         // First launch under the per-backend toggle UI: existing users with
@@ -621,7 +620,7 @@ class Prefs(context: Context) {
         // new key so a deliberate user choice is never clobbered.
         if (!sp.contains(KEY_DEEPL_ENABLED) &&
             (sp.getString(KEY_DEEPL_KEY, "") ?: "").isNotBlank()) {
-            sp.edit().putBoolean(KEY_DEEPL_ENABLED, true).apply()
+            sp.edit { putBoolean(KEY_DEEPL_ENABLED, true) }
         }
 
         // Back-fill TTS-audio field mappings for non-default card types
@@ -681,7 +680,7 @@ class Prefs(context: Context) {
                     }
                 }
                 if (changed) {
-                    sp.edit().putString(KEY_ANKI_FIELD_MAPPINGS, root.toString()).apply()
+                    sp.edit { putString(KEY_ANKI_FIELD_MAPPINGS, root.toString()) }
                 }
             } catch (_: Exception) {
                 // Corrupt JSON — getAnkiFieldMapping already degrades it
@@ -691,23 +690,23 @@ class Prefs(context: Context) {
             }
         }
 
-        sp.edit().putBoolean(KEY_ANKI_AUDIO_MAPPING_MIGRATED, true).apply()
+        sp.edit { putBoolean(KEY_ANKI_AUDIO_MAPPING_MIGRATED, true) }
     }
 
     /** Hotkey combo for hold-to-show translations. Empty = not set. Format: keyCodes joined by "+". */
     var hotkeyTranslation: String
         get() = sp.getString(KEY_HOTKEY_TRANSLATION, "") ?: ""
-        set(v) = sp.edit().putString(KEY_HOTKEY_TRANSLATION, v).apply()
+        set(v) = sp.edit { putString(KEY_HOTKEY_TRANSLATION, v) }
 
     /** Hotkey combo for hold-to-show furigana. Empty = not set. Format: keyCodes joined by "+". */
     var hotkeyFurigana: String
         get() = sp.getString(KEY_HOTKEY_FURIGANA, "") ?: ""
-        set(v) = sp.edit().putString(KEY_HOTKEY_FURIGANA, v).apply()
+        set(v) = sp.edit { putString(KEY_HOTKEY_FURIGANA, v) }
 
     /** Capture interval for live mode in seconds. */
     var captureIntervalSec: Float
         get() = sp.getFloat(KEY_CAPTURE_INTERVAL_SEC, DEFAULT_CAPTURE_INTERVAL_SEC).coerceAtLeast(MIN_CAPTURE_INTERVAL_SEC)
-        set(v) = sp.edit().putFloat(KEY_CAPTURE_INTERVAL_SEC, v.coerceAtLeast(MIN_CAPTURE_INTERVAL_SEC)).apply()
+        set(v) = sp.edit { putFloat(KEY_CAPTURE_INTERVAL_SEC, v.coerceAtLeast(MIN_CAPTURE_INTERVAL_SEC)) }
 
     /** Capture interval in milliseconds. */
     val captureIntervalMs: Long get() = (captureIntervalSec * 1000).toLong()
@@ -715,40 +714,40 @@ class Prefs(context: Context) {
     /** Saved scroll position for the settings sheet (restored after theme recreate). */
     var settingsScrollY: Int
         get() = sp.getInt(KEY_SETTINGS_SCROLL_Y, 0)
-        set(v) = sp.edit().putInt(KEY_SETTINGS_SCROLL_Y, v).apply()
+        set(v) = sp.edit { putInt(KEY_SETTINGS_SCROLL_Y, v) }
 
     /** Whether the floating overlay icon is shown on the game screen. */
     var showOverlayIcon: Boolean
         get() = sp.getBoolean(KEY_SHOW_OVERLAY_ICON, true)
-        set(v) = sp.edit().putBoolean(KEY_SHOW_OVERLAY_ICON, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_SHOW_OVERLAY_ICON, v) }
 
     /** Set to true once StatusBarManager.requestAddTileService reports the
      *  PlayTranslate tile is added (or already added). Drives whether the
      *  Settings "Add Quick Settings tile" row is offered. */
     var quickTileAdded: Boolean
         get() = sp.getBoolean("quick_tile_added", false)
-        set(v) = sp.edit().putBoolean("quick_tile_added", v).apply()
+        set(v) = sp.edit { putBoolean("quick_tile_added", v) }
 
     /** Debug-only: forces isSingleScreen() to return true regardless of actual display count. */
     var debugForceSingleScreen: Boolean
         get() = sp.getBoolean(KEY_DEBUG_FORCE_SINGLE_SCREEN, false)
-        set(v) = sp.edit().putBoolean(KEY_DEBUG_FORCE_SINGLE_SCREEN, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_DEBUG_FORCE_SINGLE_SCREEN, v) }
 
     /** Debug-only: show OCR bounding boxes overlaid on the game screen after each capture. */
     var debugShowOcrBoxes: Boolean
         get() = sp.getBoolean(KEY_DEBUG_SHOW_OCR_BOXES, false)
-        set(v) = sp.edit().putBoolean(KEY_DEBUG_SHOW_OCR_BOXES, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_DEBUG_SHOW_OCR_BOXES, v) }
 
     var debugShowDetectionLog: Boolean
         get() = sp.getBoolean(KEY_DEBUG_SHOW_DETECTION_LOG, false)
-        set(v) = sp.edit().putBoolean(KEY_DEBUG_SHOW_DETECTION_LOG, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_DEBUG_SHOW_DETECTION_LOG, v) }
 
     /** Debug-only: log per-cycle pinhole detection metrics + box transitions
      *  + render-offscreen layout-settle stats. Used to diagnose live-mode
      *  flicker; off in steady-state to keep logcat quiet. */
     var debugLiveMode: Boolean
         get() = sp.getBoolean(KEY_DEBUG_LIVE_MODE, false)
-        set(v) = sp.edit().putBoolean(KEY_DEBUG_LIVE_MODE, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_DEBUG_LIVE_MODE, v) }
 
     /** Debug-only: when on, [com.playtranslate.OcrSeedWriter] writes the
      *  bitmap that was fed to OCR plus a transcription of the result to
@@ -757,7 +756,7 @@ class Prefs(context: Context) {
      *  not free). See [com.playtranslate.OcrSeedWriter]. */
     var debugSaveOcrSeed: Boolean
         get() = sp.getBoolean(KEY_DEBUG_SAVE_OCR_SEED, false)
-        set(v) = sp.edit().putBoolean(KEY_DEBUG_SAVE_OCR_SEED, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_DEBUG_SAVE_OCR_SEED, v) }
 
     /** Debug-only: log every candidate line's grouping decision during OCR
      *  with the previous group's bounds, the candidate's bounds + text, and
@@ -765,39 +764,39 @@ class Prefs(context: Context) {
      *  fail to combine — see [OcrManager.wouldGroup]. */
     var debugLogGrouping: Boolean
         get() = sp.getBoolean(KEY_DEBUG_LOG_GROUPING, false)
-        set(v) = sp.edit().putBoolean(KEY_DEBUG_LOG_GROUPING, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_DEBUG_LOG_GROUPING, v) }
 
     /** Set to true after the user dismisses the target-pack migration dialog. */
     var targetPackMigrationDismissed: Boolean
         get() = sp.getBoolean(KEY_TARGET_PACK_MIGRATION_DISMISSED, false)
-        set(v) = sp.edit().putBoolean(KEY_TARGET_PACK_MIGRATION_DISMISSED, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_TARGET_PACK_MIGRATION_DISMISSED, v) }
 
     /** Set before recreate() so MainActivity suppresses the window transition animation. */
     var suppressNextTransition: Boolean
         get() = sp.getBoolean(KEY_SUPPRESS_TRANSITION, false)
-        set(v) = sp.edit().putBoolean(KEY_SUPPRESS_TRANSITION, v).apply()
+        set(v) = sp.edit { putBoolean(KEY_SUPPRESS_TRANSITION, v) }
 
     /** Timestamp (ms) of the most recent GitHub release check. Debounced to 24h. */
     var lastUpdateCheckTime: Long
         get() = sp.getLong(KEY_LAST_UPDATE_CHECK, 0L)
-        set(v) = sp.edit().putLong(KEY_LAST_UPDATE_CHECK, v).apply()
+        set(v) = sp.edit { putLong(KEY_LAST_UPDATE_CHECK, v) }
 
     /** Tag (e.g. "v1.2.0") the user explicitly skipped; suppresses re-prompting
      *  until a newer tag is published. */
     var updateCheckSkippedTag: String
         get() = sp.getString(KEY_UPDATE_SKIP_TAG, "") ?: ""
-        set(v) = sp.edit().putString(KEY_UPDATE_SKIP_TAG, v).apply()
+        set(v) = sp.edit { putString(KEY_UPDATE_SKIP_TAG, v) }
 
 
     /** SYSTEM follows the OS uiMode; DARK/LIGHT are explicit overrides. */
     var themeMode: ThemeMode
         get() = ThemeMode.fromKey(sp.getString(KEY_THEME_MODE, null))
-        set(v) = sp.edit().putString(KEY_THEME_MODE, v.storageKey).apply()
+        set(v) = sp.edit { putString(KEY_THEME_MODE, v.storageKey) }
 
     /** Name of the active accent (matches [AccentColor] enum constant name). */
     var accentName: String
         get() = sp.getString(KEY_ACCENT_NAME, AccentColor.Default.name) ?: AccentColor.Default.name
-        set(v) = sp.edit().putString(KEY_ACCENT_NAME, v).apply()
+        set(v) = sp.edit { putString(KEY_ACCENT_NAME, v) }
 
     /** Resolved accent — falls back to [AccentColor.Default] for unknown names. */
     val accent: AccentColor get() = AccentColor.byName(accentName)
@@ -835,7 +834,7 @@ class Prefs(context: Context) {
                 put("id",     e.id)
             })
         }
-        sp.edit().putString(KEY_REGION_LIST, arr.toString()).apply()
+        sp.edit { putString(KEY_REGION_LIST, arr.toString()) }
     }
 
     companion object {

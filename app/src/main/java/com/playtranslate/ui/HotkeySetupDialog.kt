@@ -17,6 +17,9 @@ import android.widget.TextView
 import androidx.fragment.app.DialogFragment
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.R
+import androidx.core.graphics.drawable.toDrawable
+import androidx.core.view.isVisible
+import androidx.core.view.isGone
 
 /**
  * Reusable dialog for capturing a hotkey combo. Shows a timed hold prompt —
@@ -62,7 +65,7 @@ class HotkeySetupDialog : DialogFragment() {
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val dialog = Dialog(requireContext())
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dialog.window?.setBackgroundDrawable(Color.TRANSPARENT.toDrawable())
         return dialog
     }
 
@@ -147,19 +150,19 @@ class HotkeySetupDialog : DialogFragment() {
             .joinToString(" + ") {
                 KeyEvent.keyCodeToString(it).removePrefix("KEYCODE_")
             }
-        tvTimer.visibility = View.VISIBLE
-        btnCancel.visibility = View.GONE
+        tvTimer.isVisible = true
+        btnCancel.isGone = true
     }
 
     private fun showInstruction() {
         tvInstruction.text = getString(R.string.dialog_hotkey_setup_instruction)
-        tvTimer.visibility = View.GONE
-        btnCancel.visibility = View.VISIBLE
+        tvTimer.isGone = true
+        btnCancel.isVisible = true
     }
 
     private fun restartTimer() {
         countdownTimer?.cancel()
-        tvTimer.visibility = View.VISIBLE
+        tvTimer.isVisible = true
         countdownTimer = object : CountDownTimer(HOLD_DURATION_MS, 100) {
             override fun onTick(remaining: Long) {
                 tvTimer.text = getString(

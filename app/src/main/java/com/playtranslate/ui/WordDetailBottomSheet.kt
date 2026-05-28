@@ -52,6 +52,9 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import androidx.core.view.isVisible
+import androidx.core.net.toUri
+import androidx.core.view.isGone
 
 class WordDetailBottomSheet : DialogFragment() {
 
@@ -143,7 +146,7 @@ class WordDetailBottomSheet : DialogFragment() {
         val embedded = arguments?.getBoolean(ARG_EMBEDDED, false) == true
         val toolbar = view.findViewById<View>(R.id.wordDetailToolbar)
         if (embedded) {
-            toolbar.visibility = View.GONE
+            toolbar.isGone = true
         } else {
             view.findViewById<View>(R.id.btnBackDetail).setOnClickListener { dismiss() }
         }
@@ -272,7 +275,7 @@ class WordDetailBottomSheet : DialogFragment() {
             scrollView?.scrollTo(0, 0)
 
             val ankiManager = AnkiManager(requireContext())
-            btnAddAnki.visibility = View.VISIBLE
+            btnAddAnki.isVisible = true
             val pill = PillAnkiButton(btnAddAnki)
             // Tap opens the editable review sheet (default action).
             // Long-press is the headless one-tap shortcut — documented
@@ -304,7 +307,7 @@ class WordDetailBottomSheet : DialogFragment() {
                             if (tr.isBlank()) return@forEachIndexed
                             translationRegistry[sIdx to eIdx]?.let { tv ->
                                 tv.text = tr
-                                tv.visibility = View.VISIBLE
+                                tv.isVisible = true
                             }
                         }
                     }
@@ -965,8 +968,8 @@ class WordDetailBottomSheet : DialogFragment() {
             setOnClickListener {
                 if (speakJob?.isActive == true) return@setOnClickListener
                 speakJob = viewLifecycleOwner.lifecycleScope.launch {
-                    icon.visibility = View.GONE
-                    spinner.visibility = View.VISIBLE
+                    icon.isGone = true
+                    spinner.isVisible = true
                     try {
                         // Live-mode caller — resolve the global voice pref
                         // ourselves now that TtsEngine treats null as
@@ -983,8 +986,8 @@ class WordDetailBottomSheet : DialogFragment() {
                             Toast.makeText(ctx, failure, Toast.LENGTH_SHORT).show()
                         }
                     } finally {
-                        icon.visibility = View.VISIBLE
-                        spinner.visibility = View.GONE
+                        icon.isVisible = true
+                        spinner.isGone = true
                     }
                 }
             }
@@ -1095,9 +1098,9 @@ class WordDetailBottomSheet : DialogFragment() {
         if (!suffix.isNullOrBlank()) {
             badge.text = suffix
             badge.textSize = 10f
-            badge.visibility = View.VISIBLE
+            badge.isVisible = true
         } else {
-            badge.visibility = View.GONE
+            badge.isGone = true
         }
         parent.addView(header)
     }
@@ -1208,7 +1211,7 @@ class WordDetailBottomSheet : DialogFragment() {
                 runCatching {
                     val i = android.content.Intent(
                         android.content.Intent.ACTION_VIEW,
-                        android.net.Uri.parse("https://tatoeba.org/")
+                        "https://tatoeba.org/".toUri()
                     )
                     startActivity(i)
                 }
@@ -1282,7 +1285,7 @@ class WordDetailBottomSheet : DialogFragment() {
                     setTextColor(ctx.themeColor(R.attr.ptTextHint))
                 })
             }
-            else -> group.visibility = View.GONE
+            else -> group.isGone = true
         }
     }
 

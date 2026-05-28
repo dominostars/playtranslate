@@ -12,6 +12,7 @@ import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.model.TextSegment
 import java.util.concurrent.ConcurrentHashMap
+import androidx.core.graphics.get
 
 /**
  * Wraps ML Kit's Japanese text recogniser.
@@ -426,7 +427,7 @@ class OcrManager private constructor() {
         )
         var brightnessSum = 0
         for ((x, y) in points) {
-            val px = bitmap.getPixel(x.coerceIn(0, w - 1), y.coerceIn(0, h - 1))
+            val px = bitmap[x.coerceIn(0, w - 1), y.coerceIn(0, h - 1)]
             brightnessSum += (android.graphics.Color.red(px) +
                 android.graphics.Color.green(px) +
                 android.graphics.Color.blue(px)) / 3

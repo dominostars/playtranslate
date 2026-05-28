@@ -38,6 +38,9 @@ import com.playtranslate.R
 import com.playtranslate.isEffectivelyDark
 import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
+import androidx.core.view.isVisible
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.withClip
 
 /**
  * Floating magnifier lens shown while the user drags on a JP/ZH/Latin token
@@ -333,7 +336,7 @@ class MagnifierLens(
         val flipped = aboveY < flipThreshold + flipBiasPx
         view.setSourcePoint(fingerX.toFloat(), fingerY.toFloat(), screenW, screenH)
         view.setLensFlipped(flipped)
-        view.visibility = View.VISIBLE
+        view.isVisible = true
 
         lastFingerX = fingerX
 
@@ -561,7 +564,7 @@ class MagnifierLens(
          *  source of the lightly-translucent ghost that previously
          *  followed the lens during drag. */
         private val insetShadowBitmap: Bitmap = run {
-            val bitmap = Bitmap.createBitmap(cardW, lensH, Bitmap.Config.ARGB_8888)
+            val bitmap = createBitmap(cardW, lensH, Bitmap.Config.ARGB_8888)
             val bmCanvas = Canvas(bitmap)
             val shadowClip = Path().apply {
                 addRoundRect(
@@ -1468,11 +1471,10 @@ class MagnifierLens(
             canvas.drawRoundRect(cardRect, cardCornerR, cardCornerR, cardBgPaint)
 
             if (mode == Mode.ZOOM) {
-                canvas.save()
-                canvas.clipPath(clipPath)
-                canvas.translate(cardLeftInView.toFloat(), bodyTopOffset.toFloat())
-                drawZoom(canvas, cardW.toFloat(), lensH.toFloat())
-                canvas.restore()
+                canvas.withClip(clipPath) {
+                    translate(cardLeftInView.toFloat(), bodyTopOffset.toFloat())
+                    drawZoom(this, cardW.toFloat(), lensH.toFloat())
+                }
                 // The inset shadow bitmap is already pre-clipped to the
                 // rounded card shape; transparent pixels outside the
                 // rounded edges composite as transparent.

@@ -82,6 +82,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import androidx.core.view.isVisible
+import androidx.core.net.toUri
+import androidx.core.view.isGone
 
 class MainActivity :
     AppCompatActivity(),
@@ -526,7 +529,7 @@ class MainActivity :
         CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
         checkOnboardingState()
         maybeCheckForUpdates()
-        if (onboardingContainer.visibility == View.VISIBLE) return
+        if (onboardingContainer.isVisible) return
         if (isSingleScreen()) return
         initLiveHintText()
         updateRegionButton()
@@ -845,7 +848,7 @@ class MainActivity :
 
     private fun showMenu() {
         updateMenuLiveItem()
-        menuOverlay.visibility = View.VISIBLE
+        menuOverlay.isVisible = true
         menuScrim.alpha = 0f
         menuPanel.translationX = menuPanel.width.toFloat().takeIf { it > 0f } ?: 400f
         val slideIn = ObjectAnimator.ofFloat(menuPanel, View.TRANSLATION_X, 0f).apply {
@@ -870,7 +873,7 @@ class MainActivity :
             playTogether(slideOut, fadeOut)
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
-                    menuOverlay.visibility = View.GONE
+                    menuOverlay.isGone = true
                 }
             })
             start()
@@ -1586,11 +1589,11 @@ class MainActivity :
     }
 
     private fun maybeCheckForUpdates() {
-        if (onboardingContainer.visibility == View.VISIBLE) return
+        if (onboardingContainer.isVisible) return
         lifecycleScope.launch {
             val release = UpdateChecker.maybeCheck(this@MainActivity) ?: return@launch
             if (!isInForeground || isFinishing || isDestroyed) return@launch
-            if (onboardingContainer.visibility == View.VISIBLE) return@launch
+            if (onboardingContainer.isVisible) return@launch
             showUpdatePopup(release)
         }
     }
@@ -1601,7 +1604,7 @@ class MainActivity :
             .setMessage(getString(R.string.update_dialog_message, release.tag))
             .addButton(getString(R.string.update_dialog_view_release), themeColor(R.attr.ptAccent)) {
                 try {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(release.url)))
+                    startActivity(Intent(Intent.ACTION_VIEW, release.url.toUri()))
                 } catch (_: Exception) {
                     Toast.makeText(this, getString(R.string.toast_no_browser_available), Toast.LENGTH_SHORT).show()
                 }
@@ -1687,7 +1690,7 @@ class MainActivity :
                 showOnboardingPage(pageA11y)
                 return
             }
-            onboardingContainer.visibility = View.GONE
+            onboardingContainer.isGone = true
                 val isAlreadySingleScreenSheet = existingSheet != null &&
                 existingSheet.arguments?.getBoolean("hide_dismiss", false) == true
             if (!isAlreadySingleScreenSheet) {
@@ -1705,8 +1708,8 @@ class MainActivity :
             // Finishing onboarding by granting the overlay permission (the
             // MediaProjection backend, accessibility off) drops the user on
             // Settings, where the Turn On control lives.
-            val leavingOnboarding = onboardingContainer.visibility == View.VISIBLE
-            onboardingContainer.visibility = View.GONE
+            val leavingOnboarding = onboardingContainer.isVisible
+            onboardingContainer.isGone = true
             if (leavingOnboarding &&
                 !CaptureBackendResolver.active().requiresAccessibilityService) {
                 selectTab(Tab.SETTINGS)
@@ -1769,7 +1772,7 @@ class MainActivity :
     }
 
     private fun showOnboardingPage(page: View) {
-        onboardingContainer.visibility = View.VISIBLE
+        onboardingContainer.isVisible = true
         pageWelcome.visibility    = if (page == pageWelcome)    View.VISIBLE else View.GONE
         pageNotif.visibility      = if (page == pageNotif)      View.VISIBLE else View.GONE
         pageA11y.visibility       = if (page == pageA11y)       View.VISIBLE else View.GONE
@@ -1902,7 +1905,7 @@ class MainActivity :
             ?: return
         etEditOriginal.setText(currentText)
         etEditOriginal.setSelection(currentText.length)
-        editOverlay.visibility = View.VISIBLE
+        editOverlay.isVisible = true
         etEditOriginal.requestFocus()
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
         imm.showSoftInput(etEditOriginal, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
@@ -1910,7 +1913,7 @@ class MainActivity :
 
     private fun commitEdit() {
         if (editOverlay.visibility != View.VISIBLE) return
-        editOverlay.visibility = View.GONE
+        editOverlay.isGone = true
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
         imm.hideSoftInputFromWindow(etEditOriginal.windowToken, 0)
         val newText = etEditOriginal.text?.toString()?.trim() ?: return
@@ -1963,7 +1966,7 @@ class MainActivity :
             window.decorView.getWindowVisibleDisplayFrame(rect)
             val screenHeight = window.decorView.height
             val keyboardVisible = (screenHeight - rect.bottom) > screenHeight * 0.15f
-            if (wasKeyboardVisible && !keyboardVisible && editOverlay.visibility == View.VISIBLE) {
+            if (wasKeyboardVisible && !keyboardVisible && editOverlay.isVisible) {
                 commitEdit()
             }
             wasKeyboardVisible = keyboardVisible

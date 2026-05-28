@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.AttributeSet
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.isGone
 
 /**
  * A horizontal flow `ViewGroup` that lays children left-to-right and wraps to
@@ -36,7 +37,7 @@ class WrappingLinearLayout @JvmOverloads constructor(
 
         for (i in 0 until childCount) {
             val child = getChildAt(i)
-            if (child.visibility == View.GONE) continue
+            if (child.isGone) continue
             // Honor each child's own LayoutParams (e.g. fixed-size swatch FrameLayouts).
             val lp = child.layoutParams ?: generateDefaultLayoutParams()
             val childWidthSpec = getChildMeasureSpec(
@@ -76,7 +77,7 @@ class WrappingLinearLayout @JvmOverloads constructor(
 
         for (i in 0 until childCount) {
             val child = getChildAt(i)
-            if (child.visibility == View.GONE) continue
+            if (child.isGone) continue
             val cw = child.measuredWidth
             val ch = child.measuredHeight
 

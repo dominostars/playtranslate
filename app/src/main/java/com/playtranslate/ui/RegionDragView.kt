@@ -11,6 +11,7 @@ import com.playtranslate.R
 import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
 import kotlin.math.abs
+import androidx.core.graphics.toColorInt
 
 /**
  * Full-screen view placed on the game display via TYPE_ACCESSIBILITY_OVERLAY.
@@ -54,7 +55,7 @@ class RegionDragView(context: Context) : View(context) {
         strokeCap = Paint.Cap.ROUND
     }
     private val dotFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#E8E8E8")
+        color = "#E8E8E8".toColorInt()
         style = Paint.Style.FILL
     }
     private val dotStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {

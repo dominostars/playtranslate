@@ -8,6 +8,8 @@ import android.text.TextPaint
 import com.playtranslate.language.HintTextAnnotation
 import com.playtranslate.language.SourceLanguageEngine
 import com.playtranslate.ui.TextBox
+import androidx.core.graphics.get
+import androidx.core.graphics.createBitmap
 
 /**
  * Pure, stateless functions for building overlay boxes, sampling colors, and
@@ -99,7 +101,7 @@ object OverlayToolkit {
         for (y in top until bottom step 4) {
             for (x in left until right step 4) {
                 if (excludeInner != null && excludeInner.contains(x, y)) continue
-                val pixel = bitmap.getPixel(x, y)
+                val pixel = bitmap[x, y]
                 rSum += Color.red(pixel)
                 gSum += Color.green(pixel)
                 bSum += Color.blue(pixel)
@@ -460,7 +462,7 @@ object OverlayToolkit {
      * truth for the status-bar clamp — both [runOcrPipeline] (production) and
      * [PlayTranslateAccessibilityService.runDebugCapture] (debug overlay) call
      * this so they exclude the same pixel rows from ML Kit. Callers do their
-     * own [Bitmap.createBitmap] afterward to keep recycle ownership local.
+     * own [createBitmap] afterward to keep recycle ownership local.
      */
     fun computeOcrCrop(
         rawWidth: Int,

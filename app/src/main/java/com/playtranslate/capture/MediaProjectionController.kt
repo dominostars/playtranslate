@@ -21,6 +21,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import androidx.core.graphics.createBitmap
 
 private const val TAG = "MediaProjectionCtl"
 
@@ -255,7 +256,7 @@ class MediaProjectionController(private val service: CaptureService) {
         val rowStride = plane.rowStride
         val rowPadding = rowStride - pixelStride * width
         // A row-padded buffer needs a wider bitmap; crop back to width after.
-        val padded = Bitmap.createBitmap(
+        val padded = createBitmap(
             width + rowPadding / pixelStride, height, Bitmap.Config.ARGB_8888,
         )
         padded.copyPixelsFromBuffer(plane.buffer)

@@ -2,6 +2,7 @@ package com.playtranslate
 
 import android.content.Context
 import android.graphics.PixelFormat
+import androidx.core.graphics.withSave
 import android.os.Handler
 import android.os.Looper
 import android.view.Display
@@ -183,13 +184,13 @@ class RegionOverlayController(
                 }
 
                 // Outside-only shadow + accent glow
-                canvas.save()
-                canvas.clipOutRect(l, t, r, b)
-                val shadowOffset = regionShadowPaint.strokeWidth / 2f
-                canvas.drawRect(l - shadowOffset, t - shadowOffset, r + shadowOffset, b + shadowOffset, regionShadowPaint)
-                val glowOffset = glowPaint.strokeWidth / 2f
-                canvas.drawRect(l - glowOffset, t - glowOffset, r + glowOffset, b + glowOffset, glowPaint)
-                canvas.restore()
+                canvas.withSave {
+                    clipOutRect(l, t, r, b)
+                    val shadowOffset = regionShadowPaint.strokeWidth / 2f
+                    drawRect(l - shadowOffset, t - shadowOffset, r + shadowOffset, b + shadowOffset, regionShadowPaint)
+                    val glowOffset = glowPaint.strokeWidth / 2f
+                    drawRect(l - glowOffset, t - glowOffset, r + glowOffset, b + glowOffset, glowPaint)
+                }
 
                 // Accent border outside the capture region
                 val half = borderPaint.strokeWidth / 2f

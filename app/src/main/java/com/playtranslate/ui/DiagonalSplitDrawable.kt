@@ -2,6 +2,7 @@ package com.playtranslate.ui
 
 import android.graphics.Canvas
 import android.graphics.ColorFilter
+import androidx.core.graphics.withSave
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
@@ -35,21 +36,20 @@ class DiagonalSplitDrawable(
         canvas.drawRoundRect(rectF, cornerRadius, cornerRadius, paint)
 
         // Clip to the rounded rect so the diagonal triangle inherits the corner.
-        canvas.save()
-        clipPath.reset()
-        clipPath.addRoundRect(rectF, cornerRadius, cornerRadius, Path.Direction.CW)
-        canvas.clipPath(clipPath)
+        canvas.withSave {
+            clipPath.reset()
+            clipPath.addRoundRect(rectF, cornerRadius, cornerRadius, Path.Direction.CW)
+            clipPath(clipPath)
 
-        // Top-left triangle on top: from top-left → top-right → bottom-left.
-        path.reset()
-        path.moveTo(rectF.left, rectF.top)
-        path.lineTo(rectF.right, rectF.top)
-        path.lineTo(rectF.left, rectF.bottom)
-        path.close()
-        paint.color = topLeftColor
-        canvas.drawPath(path, paint)
-
-        canvas.restore()
+            // Top-left triangle on top: from top-left → top-right → bottom-left.
+            path.reset()
+            path.moveTo(rectF.left, rectF.top)
+            path.lineTo(rectF.right, rectF.top)
+            path.lineTo(rectF.left, rectF.bottom)
+            path.close()
+            paint.color = topLeftColor
+            drawPath(path, paint)
+        }
     }
 
     override fun setAlpha(alpha: Int) { paint.alpha = alpha }

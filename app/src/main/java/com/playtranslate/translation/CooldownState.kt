@@ -2,6 +2,7 @@ package com.playtranslate.translation
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
@@ -176,21 +177,21 @@ class CooldownState(
         // call.
         untilMs = null
         descriptionText = null
-        sp?.edit()
-            ?.remove(keyUntil())
-            ?.remove(keyDescription())
-            ?.apply()
+        sp?.edit {
+            remove(keyUntil())
+            remove(keyDescription())
+        }
     }
 
     private fun persist() {
         val sp = sp ?: return
-        val editor = sp.edit()
-        val u = untilMs
-        if (u == null) editor.remove(keyUntil()) else editor.putLong(keyUntil(), u)
-        val d = descriptionText
-        if (d.isNullOrBlank()) editor.remove(keyDescription()) else editor.putString(keyDescription(), d)
-        if (rung == 0) editor.remove(keyRung()) else editor.putInt(keyRung(), rung)
-        editor.apply()
+        sp.edit {
+            val u = untilMs
+            if (u == null) remove(keyUntil()) else putLong(keyUntil(), u)
+            val d = descriptionText
+            if (d.isNullOrBlank()) remove(keyDescription()) else putString(keyDescription(), d)
+            if (rung == 0) remove(keyRung()) else putInt(keyRung(), rung)
+        }
     }
 
     private fun keyUntil() = "$backendId.until"

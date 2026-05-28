@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.core.net.toUri
 
 /**
  * Intent that opens the system "Display over other apps" permission screen
@@ -13,5 +14,5 @@ import android.provider.Settings
 fun Context.overlayPermissionSettingsIntent(): Intent =
     Intent(
         Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-        Uri.parse("package:$packageName"),
+        "package:$packageName".toUri(),
     )

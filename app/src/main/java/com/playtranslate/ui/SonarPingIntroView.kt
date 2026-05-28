@@ -17,6 +17,9 @@ import android.view.View
 import android.view.animation.Interpolator
 import android.view.animation.PathInterpolator
 import com.playtranslate.R
+import androidx.core.graphics.toColorInt
+import androidx.core.graphics.withClip
+import androidx.core.graphics.withTranslation
 
 /**
  * One-shot "sonar ping" intro animation that draws the user's eye to the
@@ -100,12 +103,12 @@ class SonarPingIntroView(
 
     /** Nub fill — matches [FloatingOverlayIcon]'s `defaultCircleColor`. */
     private val nubFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#CC000000")
+        color = "#CC000000".toColorInt()
     }
     /** Nub border — matches [FloatingOverlayIcon]'s borderPaint (1.5 dp
      *  stroke, soft grey at 40% alpha). */
     private val nubBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#66888888")
+        color = "#66888888".toColorInt()
         style = Paint.Style.STROKE
         strokeWidth = 1.5f * density
     }
@@ -126,7 +129,7 @@ class SonarPingIntroView(
      *  the white ring. Same alpha curve as the white ring. */
     private val ringBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        color = Color.parseColor("#555555")
+        color = "#555555".toColorInt()
     }
 
     // ── Animation state ──────────────────────────────────────────────────
@@ -235,19 +238,17 @@ class SonarPingIntroView(
         val carrierOpacity = carrierOpacityAt(timeMs)
         if (carrierOpacity <= 0f) return
 
-        canvas.save()
-        canvas.translate(carrierX, anchorY)
-        canvas.scale(carrier.scaleX, carrier.scaleY)
+        canvas.withTranslation(carrierX, anchorY) {
+            scale(carrier.scaleX, carrier.scaleY)
 
-        // The renderer cross-fades the app-icon art into the compact nub
-        // mid-travel — both compositions are drawn centred at (0, 0) in the
-        // scaled local space.
-        val appAlpha = appIconOpacityAt(timeMs) * carrierOpacity
-        val nubAlpha = nubOpacityAt(timeMs) * carrierOpacity
-        if (appAlpha > 0f) drawAppIcon(canvas, appAlpha)
-        if (nubAlpha > 0f) drawNub(canvas, nubAlpha, mirror)
-
-        canvas.restore()
+            // The renderer cross-fades the app-icon art into the compact nub
+            // mid-travel — both compositions are drawn centred at (0, 0) in the
+            // scaled local space.
+            val appAlpha = appIconOpacityAt(timeMs) * carrierOpacity
+            val nubAlpha = nubOpacityAt(timeMs) * carrierOpacity
+            if (appAlpha > 0f) drawAppIcon(this, appAlpha)
+            if (nubAlpha > 0f) drawNub(this, nubAlpha, mirror)
+        }
     }
 
     /** Draws the launcher art centred at (0, 0), clipped to the carrier
@@ -262,15 +263,12 @@ class SonarPingIntroView(
 
         appIconClip.reset()
         appIconClip.addCircle(0f, 0f, circleRadiusPx, Path.Direction.CW)
-        val saved = canvas.save()
-        canvas.clipPath(appIconClip)
-
-        val side = APP_ICON_FILL_RATIO * 2f * circleRadiusPx
-        val half = side / 2f
-        val rect = RectF(-half, -half, half, half)
-        canvas.drawBitmap(launcherBitmap, null, rect, appIconBitmapPaint)
-
-        canvas.restoreToCount(saved)
+        canvas.withClip(appIconClip) {
+            val side = APP_ICON_FILL_RATIO * 2f * circleRadiusPx
+            val half = side / 2f
+            val rect = RectF(-half, -half, half, half)
+            drawBitmap(launcherBitmap, null, rect, appIconBitmapPaint)
+        }
     }
 
     /** Draws the compact nub (1/4-visible black circle with a small arrow)

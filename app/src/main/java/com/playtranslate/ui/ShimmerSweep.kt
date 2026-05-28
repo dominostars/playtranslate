@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.graphics.Canvas
 import android.graphics.Color
+import androidx.core.graphics.withClip
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
@@ -96,10 +97,9 @@ internal class ShimmerSweep(private val host: View) {
         val r = if (cornerRadius < 0f) h / 2f else cornerRadius
         clipPath.reset()
         clipPath.addRoundRect(0f, 0f, w, h, r, r, Path.Direction.CW)
-        val saved = canvas.save()
-        canvas.clipPath(clipPath)
-        canvas.drawRect(0f, 0f, w, h, paint)
-        canvas.restoreToCount(saved)
+        canvas.withClip(clipPath) {
+            drawRect(0f, 0f, w, h, paint)
+        }
     }
 
     private companion object {

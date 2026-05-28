@@ -9,6 +9,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import java.io.File
+import androidx.core.net.toUri
 
 private const val TAG = "AnkiManager"
 
@@ -44,10 +45,10 @@ class AnkiManager(private val context: Context) {
         /** AnkiDroid field separator (ASCII 31, unit separator) */
         private const val SEP = "\u001f"
 
-        private val DECK_URI  = Uri.parse("content://$AUTHORITY/decks")
-        private val NOTE_URI  = Uri.parse("content://$AUTHORITY/notes")
-        private val MODEL_URI = Uri.parse("content://$AUTHORITY/models")
-        private val MEDIA_URI = Uri.parse("content://$AUTHORITY/media")
+        private val DECK_URI  = "content://$AUTHORITY/decks".toUri()
+        private val NOTE_URI  = "content://$AUTHORITY/notes".toUri()
+        private val MODEL_URI = "content://$AUTHORITY/models".toUri()
+        private val MEDIA_URI = "content://$AUTHORITY/media".toUri()
     }
 
     fun isAnkiDroidInstalled(): Boolean = try {

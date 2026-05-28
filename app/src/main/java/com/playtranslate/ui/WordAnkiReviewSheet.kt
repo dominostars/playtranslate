@@ -44,6 +44,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
+import androidx.core.view.isVisible
+import androidx.core.net.toUri
+import androidx.core.view.isGone
 
 class WordAnkiReviewSheet : DialogFragment() {
 
@@ -241,8 +244,8 @@ class WordAnkiReviewSheet : DialogFragment() {
         toggleHost = view.findViewById(R.id.wordAnkiToolbarToggle)
 
         if (hasSentenceData) {
-            titleView.visibility = View.GONE
-            toggleHost.visibility = View.VISIBLE
+            titleView.isGone = true
+            toggleHost.isVisible = true
             buildAnkiModeToggle(
                 container = toggleHost,
                 leftLabel = getString(R.string.anki_mode_sentence),
@@ -1123,7 +1126,7 @@ class WordAnkiReviewSheet : DialogFragment() {
                 runCatching {
                     val i = android.content.Intent(
                         android.content.Intent.ACTION_VIEW,
-                        android.net.Uri.parse("https://tatoeba.org/")
+                        "https://tatoeba.org/".toUri()
                     )
                     startActivity(i)
                 }
@@ -1172,13 +1175,13 @@ class WordAnkiReviewSheet : DialogFragment() {
                 })
             }
             pairs.isEmpty() -> {
-                group.visibility = View.GONE
+                group.isGone = true
             }
             else -> {
                 val visible = pairs.withIndex()
                     .filter { (idx, _) -> idx !in removedTatoebaIdx }
                 if (visible.isEmpty()) {
-                    group.visibility = View.GONE
+                    group.isGone = true
                     return
                 }
                 visible.forEachIndexed { displayIdx, indexed ->
