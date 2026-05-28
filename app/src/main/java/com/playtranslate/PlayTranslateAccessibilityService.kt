@@ -16,6 +16,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.Display
 import android.view.Gravity
+import android.hardware.input.InputManager
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.View
@@ -104,6 +105,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         Log.i(TAG, "onServiceConnected")
+        logInputDeviceCensus()
         instance = this
         screenshotManager = ScreenshotManager(this)
         serviceInfo = serviceInfo.apply {
@@ -134,6 +136,28 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val svc = CaptureService.instance ?: return
         onHotkeyActivated = { mode -> svc.hotkeyHoldStart(mode) }
         onHotkeyReleased = { svc.hotkeyHoldEnd() }
+    }
+
+    /**
+     * One-shot dump of every connected [InputDevice] at service connect. Fires
+     * once per bind. Field reports of controller / D-pad / IME issues hinge on
+     * how the device's HID is classified (source mask, keyboard type, vendor /
+     * product); without this dump we have to ask the reporter to run adb.
+     */
+    private fun logInputDeviceCensus() {
+        val im = getSystemService(InputManager::class.java) ?: return
+        val ids = im.inputDeviceIds
+        Log.i(TAG, "InputDevice census: ${ids.size} device(s)")
+        for (id in ids) {
+            val d = im.getInputDevice(id) ?: continue
+            Log.i(
+                TAG,
+                "InputDevice id=$id name='${d.name}' " +
+                    "sources=0x${d.sources.toString(16)} " +
+                    "vendor=0x${d.vendorId.toString(16)} product=0x${d.productId.toString(16)} " +
+                    "keyboardType=${d.keyboardType} virtual=${d.isVirtual} external=${d.isExternal}"
+            )
+        }
     }
 
     override fun onUnbind(intent: Intent?): Boolean {

@@ -87,11 +87,31 @@ class OverlayHost(
             wm.addView(view, params)
             overlayWindows += OverlayHandle(view, wm, params, displayId)
             logOverlayGeometry(view, params, displayId)
+            logFocusableOverlay("add", view, params, displayId)
             true
         } catch (e: Exception) {
             Log.w(TAG, "addOverlayWindow failed: ${e.message}")
             false
         }
+    }
+
+    /**
+     * Log only when a focusable overlay is added/removed — every other overlay
+     * the app paints (icon, sentinel, box overlays, lens-zoom) is
+     * NOT_FOCUSABLE and shouldn't intercept input. The rare focusable ones
+     * (WordLookupPopup, interactive MagnifierLens) DO intercept key + motion
+     * events while up, and we want a paper trail when investigating "the
+     * controller stopped working" reports.
+     */
+    private fun logFocusableOverlay(
+        kind: String,
+        view: View,
+        params: WindowManager.LayoutParams,
+        displayId: Int,
+    ) {
+        if (params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE != 0) return
+        val name = view.javaClass.simpleName.ifBlank { "anon-View@${view.hashCode().toString(16)}" }
+        Log.i(TAG, "[FocusableOverlay $kind] $name displayId=$displayId flags=0x${params.flags.toString(16)}")
     }
 
     // One-shot diagnostic: verifies whether MATCH_PARENT overlay windows
@@ -138,6 +158,7 @@ class OverlayHost(
         val handle = overlayWindows.firstOrNull { it.view === view } ?: return false
         overlayWindows -= handle
         try { handle.wm.removeView(view) } catch (_: Exception) {}
+        logFocusableOverlay("remove", view, handle.params, handle.displayId)
         return true
     }
 
