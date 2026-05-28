@@ -4,10 +4,10 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.widget.TextView
+import androidx.appcompat.widget.AppCompatTextView
 
 /** TextView that draws a stroke outline behind the text for readability without a background. */
-internal class OutlinedTextView(context: Context) : TextView(context) {
+internal class OutlinedTextView(context: Context) : AppCompatTextView(context) {
     var outlineColor: Int = Color.argb(220, 34, 34, 34)
     var outlineWidth: Float = 0f
 

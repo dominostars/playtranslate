@@ -1,5 +1,6 @@
 package com.playtranslate
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
@@ -96,15 +97,7 @@ class PlayTranslateTileService : TileService() {
             else -> {
                 val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                if (Build.VERSION.SDK_INT >= 34) {
-                    val pi = PendingIntent.getActivity(
-                        this, 0, intent, PendingIntent.FLAG_IMMUTABLE
-                    )
-                    startActivityAndCollapse(pi)
-                } else {
-                    @Suppress("DEPRECATION")
-                    startActivityAndCollapse(intent)
-                }
+                startActivityAndCollapseCompat(intent)
             }
         }
     }
@@ -114,13 +107,7 @@ class PlayTranslateTileService : TileService() {
     private fun openOverlayPermissionSettings() {
         val intent = overlayPermissionSettingsIntent()
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        if (Build.VERSION.SDK_INT >= 34) {
-            startActivityAndCollapse(
-                PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
-            )
-        } else {
-            @Suppress("DEPRECATION") startActivityAndCollapse(intent)
-        }
+        startActivityAndCollapseCompat(intent)
     }
 
     /** Open MainActivity (and collapse the shade) so the user can complete
@@ -130,12 +117,24 @@ class PlayTranslateTileService : TileService() {
     private fun openMainActivityOnboarding() {
         val intent = Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        startActivityAndCollapseCompat(intent)
+    }
+
+    // On API 34+ the PendingIntent overload signals SystemUI to dismiss
+    // the shade. Pre-34 uses the deprecated Intent overload — it's the
+    // only way to signal an explicit collapse on those API levels (the
+    // PendingIntent overload only exists from API 34+, where the Intent
+    // overload throws). Lint's StartActivityAndCollapseDeprecated check
+    // is reachability-blind to SDK_INT guards and flags the literal call
+    // regardless, hence the file-scoped suppression here.
+    @SuppressLint("StartActivityAndCollapseDeprecated")
+    private fun startActivityAndCollapseCompat(intent: Intent) {
         if (Build.VERSION.SDK_INT >= 34) {
-            startActivityAndCollapse(
-                PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
-            )
+            val pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+            startActivityAndCollapse(pi)
         } else {
-            @Suppress("DEPRECATION") startActivityAndCollapse(intent)
+            @Suppress("DEPRECATION")
+            startActivityAndCollapse(intent)
         }
     }
 

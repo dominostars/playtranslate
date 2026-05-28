@@ -485,8 +485,17 @@ class SettingsRenderer(
      *  quick-tile row is hidden (the footer's own top divider takes over
      *  the separation duty). */
     private fun setupAddQuickTileRow() {
-        val apiSupported = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU
-        val visible = apiSupported && !prefs.quickTileAdded
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) {
+            rowAddQuickTile.visibility = View.GONE
+            refreshDividerPowerCellVisibility()
+            return
+        }
+        setupAddQuickTileRowTiramisu()
+    }
+
+    @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.TIRAMISU)
+    private fun setupAddQuickTileRowTiramisu() {
+        val visible = !prefs.quickTileAdded
         rowAddQuickTile.visibility = if (visible) View.VISIBLE else View.GONE
         refreshDividerPowerCellVisibility()
         if (!visible) return

@@ -31,6 +31,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import androidx.activity.addCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -91,6 +92,7 @@ class LanguageSetupActivity : AppCompatActivity() {
         // returns to the welcome page (via MainActivity.onResume re-check);
         // in normal mode, it finishes / pops the page stack.
         toolbar.setNavigationOnClickListener { handleBack() }
+        onBackPressedDispatcher.addCallback(this) { handleBack() }
 
         when (intent.getStringExtra(EXTRA_MODE)) {
             MODE_TARGET -> {
@@ -104,11 +106,6 @@ class LanguageSetupActivity : AppCompatActivity() {
     override fun onDestroy() {
         activeJob?.cancel()
         super.onDestroy()
-    }
-
-    @Deprecated("Deprecated in API level 33")
-    override fun onBackPressed() {
-        handleBack()
     }
 
     private fun handleBack() {
