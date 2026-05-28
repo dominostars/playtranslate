@@ -412,7 +412,16 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             }
             degradedWarningLabel = label
             addView(icon)
-            addView(label)
+            addView(label, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                // Visual gap between the ⚠ icon glyph and the label.
+                // Previously the resource strings carried two leading
+                // spaces; consolidated to a marginStart so translators
+                // don't have to preserve invisible whitespace.
+                marginStart = (6 * dp).toInt()
+            })
         }
         addView(degradedWarningView, LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,

@@ -715,8 +715,9 @@ class MainActivity :
         val label = region.label.ifEmpty { getString(R.string.region_default_full_screen) }
         val isInAppOnly = Prefs.shouldUseInAppOnlyMode(this)
         val overlayLive = isLiveMode && !isInAppOnly
-        val prefix = if (overlayLive) getString(R.string.translate_button_prefix_reload)
-                     else getString(R.string.translate_button_prefix_translate)
+        val prefixWord = if (overlayLive) getString(R.string.translate_button_prefix_reload)
+                         else getString(R.string.translate_button_prefix_translate)
+        val prefix = "$prefixWord "
         tvTranslateTitle.text = SpannableStringBuilder(prefix + label).apply {
             setSpan(StyleSpan(Typeface.BOLD), prefix.length, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         }

@@ -1410,11 +1410,16 @@ class SettingsRenderer(
         // form like "Quality 4 out of 5 stars, Speed 2 out of 5 stars".
         tv.contentDescription = buildString {
             append(ctx.getString(R.string.a11y_quality_label))
+            append(' ')
             append(formatStars(backend.qualityStars))
+            append(' ')
             append(ctx.getString(R.string.a11y_out_of_5_stars))
             backend.speedStars?.let { speed ->
+                append(", ")
                 append(ctx.getString(R.string.a11y_speed_label_comma))
+                append(' ')
                 append(formatStars(speed))
+                append(' ')
                 append(ctx.getString(R.string.a11y_out_of_5_stars))
             }
         }
@@ -1460,6 +1465,7 @@ class SettingsRenderer(
         val color: Int? = tone?.let { ctx.themeColor(toneAttr(it)) }
         val segStart = builder.length
         builder.append(label)
+        builder.append(' ')
         appendStars(builder, rating, color)
         if (color != null) {
             // Cover the whole "Quality: ★★★☆☆" run so the label text

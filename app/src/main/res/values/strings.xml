@@ -114,9 +114,9 @@
          ellipsis is one character (U+2026). -->
     <string name="status_capturing">Capturing screen…</string>
 
-    <!-- Status line shown while OCR (text recognition) runs. British
-         "Recognising" — match the locale's preferred spelling. -->
-    <string name="status_ocr">Recognising text…</string>
+    <!-- Status line shown while OCR (text recognition) runs.  Translators
+         may match the locale's preferred spelling. -->
+    <string name="status_ocr">Recognizing text…</string>
 
     <!-- Status line shown while the captured text is being translated. -->
     <string name="status_translating">Translating…</string>
@@ -1481,12 +1481,12 @@
          falls back to ML Kit (offline label); a TG / Qwen displacement
          caused by transient memory pressure shows the low-memory label
          even when the chain also bottomed out at ML Kit (memory is the
-         actionable cause).  The leading two spaces are intentional —
-         they reserve room for a leading icon glyph.
+         actionable cause).  The composing code prepends a leading
+         double-space icon-glyph slot.
          ═══════════════════════════════════════════════════════════════ -->
 
-    <string name="degraded_warning_offline">  Offline — translation quality is reduced</string>
-    <string name="degraded_warning_low_memory">  Low memory — translation quality is reduced</string>
+    <string name="degraded_warning_offline">Offline — translation quality is reduced</string>
+    <string name="degraded_warning_low_memory">Low memory — translation quality is reduced</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          MAIN SCREEN — bottom-bar and overflow-menu items.
@@ -1594,13 +1594,14 @@
          the prefix from the bolded region label that follows.
          ═══════════════════════════════════════════════════════════════ -->
 
-    <!-- Default-state prefix: tap to translate. Preserve trailing
-         space. -->
-    <string name="translate_button_prefix_translate">Translate </string>
+    <!-- Default-state prefix: tap to translate.  The composing code
+         joins this with the region label using a literal space. -->
+    <string name="translate_button_prefix_translate">Translate</string>
 
-    <!-- Live-mode-active prefix: tap to refresh / re-translate.
-         Preserve trailing space. -->
-    <string name="translate_button_prefix_reload">Reload </string>
+    <!-- Live-mode-active prefix: tap to refresh / re-translate.  The
+         composing code joins this with the region label using a
+         literal space. -->
+    <string name="translate_button_prefix_reload">Reload</string>
 
     <!-- Subtitle line under the translate button when the floating
          icon's hold gesture hides translations. -->
@@ -2008,27 +2009,31 @@
          The full TalkBack form looks like "Quality 4 out of 5 stars".
          ═══════════════════════════════════════════════════════════════ -->
 
-    <!-- "Quality " label for the per-backend a11y description (note
-         trailing space — preserve it). -->
-    <string name="a11y_quality_label">Quality </string>
+    <!-- "Quality" label for the per-backend a11y description.  The
+         composing code joins it with the rating using a literal
+         space. -->
+    <string name="a11y_quality_label">Quality</string>
 
-    <!-- "Speed: " label used in the per-backend a11y description
-         (preserve trailing space). -->
-    <string name="a11y_speed_label">Speed: </string>
+    <!-- "Speed:" label used in the per-backend a11y description.
+         The composing code joins it with the rating using a literal
+         space. -->
+    <string name="a11y_speed_label">Speed:</string>
 
-    <!-- "Quality: " label (with colon) used as a row-label prefix
-         (preserve trailing space). -->
-    <string name="a11y_quality_label_colon">Quality: </string>
+    <!-- "Quality:" label (with colon) used as a row-label prefix.
+         The composing code joins it with the value using a literal
+         space. -->
+    <string name="a11y_quality_label_colon">Quality:</string>
 
     <!-- Trailing clause appended to a star count in a11y descriptions
-         (e.g. "Quality 4 out of 5 stars").  Preserve the leading
-         space. -->
-    <string name="a11y_out_of_5_stars"> out of 5 stars</string>
+         (e.g. "Quality 4 out of 5 stars").  The composing code adds
+         the leading space. -->
+    <string name="a11y_out_of_5_stars">out of 5 stars</string>
 
-    <!-- Comma-separated speed clause in the a11y description (the full
-         result is e.g. "Quality 4 out of 5 stars, Speed 2 out of 5
-         stars").  Preserve the leading comma + space. -->
-    <string name="a11y_speed_label_comma">, Speed </string>
+    <!-- "Speed" word used as the second clause in the a11y description
+         (the full result is e.g. "Quality 4 out of 5 stars, Speed 2
+         out of 5 stars").  The composing code prepends ", " and
+         appends a space before the rating. -->
+    <string name="a11y_speed_label_comma">Speed</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          LINGVA backend — translatable display name (Lingva is a brand
