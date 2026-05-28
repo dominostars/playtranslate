@@ -394,6 +394,16 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         onDragMove?.invoke(rawX, rawY)
     }
 
+    /** TalkBack double-tap path. Maps to the same callback a short tap
+     *  fires through the gesture machinery in [onTouchEvent] — drag/hold
+     *  aren't reachable without continuous motion, so [onTap] is the only
+     *  sensible accessibility-click action on a floating icon. */
+    override fun performClick(): Boolean {
+        super.performClick()
+        onTap?.invoke()
+        return true
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         onAnyTouch?.invoke()
         parent?.requestDisallowInterceptTouchEvent(true)
@@ -492,7 +502,7 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                     }
                     onHoldEnd?.invoke()
                 } else if (totalMovement < tapThresholdPx) {
-                    onTap?.invoke()
+                    performClick()
                 }
                 return true
             }

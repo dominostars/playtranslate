@@ -13,6 +13,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
@@ -76,7 +77,36 @@ class TranslationOverlayView(
      *  actually renders) and in any cell where the overlay composites at
      *  full opacity. */
     private val boostContrast: Boolean = false,
+    /** When non-null, this overlay handles its own dismissal. ACTION_DOWN
+     *  touches dismiss immediately (race-safe against the hold-release
+     *  callback and second-finger taps during a hold), and TalkBack's
+     *  performClick dispatches to the same path so the overlay is
+     *  reachable with the screen reader on. */
+    private val onDismiss: (() -> Unit)? = null,
 ) : FrameLayout(context) {
+
+    // Dismisses on ACTION_DOWN (race-safe — see the [onDismiss] kdoc).
+    // That's deliberately not a "click" (DOWN→UP without movement), so
+    // there's nothing to route through performClick from onTouchEvent; the
+    // performClick override below is the TalkBack entry point and goes
+    // through the same handleDismiss().
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (onDismiss != null && event.actionMasked == MotionEvent.ACTION_DOWN) {
+            handleDismiss()
+        }
+        return super.onTouchEvent(event)
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        handleDismiss()
+        return true
+    }
+
+    private fun handleDismiss() {
+        onDismiss?.invoke()
+    }
 
     init {
         clipChildren = false

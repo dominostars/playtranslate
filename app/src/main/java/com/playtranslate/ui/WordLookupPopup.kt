@@ -140,6 +140,11 @@ class WordLookupPopup(
         val container = FrameLayout(ctx).apply {
             isFocusable = true
             isFocusableInTouchMode = true
+            // ACTION_OUTSIDE is the system's "user touched outside this
+            // window" notification — not a click on this view. There's no
+            // accessibility-click action to mirror; TalkBack users dismiss
+            // via the back gesture (which fires Popup#setOnDismissListener).
+            @android.annotation.SuppressLint("ClickableViewAccessibility")
             setOnTouchListener { _, event ->
                 when (event.actionMasked) {
                     MotionEvent.ACTION_OUTSIDE -> {

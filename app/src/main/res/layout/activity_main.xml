@@ -89,6 +89,7 @@
                     android:layout_height="20dp"
                     android:src="@drawable/ic_settings"
                     app:tint="?attr/ptText"
+                    android:contentDescription="@null"
                     android:scaleType="centerInside" />
 
                 <TextView
@@ -120,6 +121,7 @@
                     android:layout_height="20dp"
                     android:src="@drawable/ic_crop"
                     app:tint="?attr/ptText"
+                    android:contentDescription="@null"
                     android:scaleType="centerInside" />
 
                 <TextView
@@ -183,6 +185,7 @@
                     android:layout_height="22dp"
                     android:src="@drawable/ic_play"
                     app:tint="?attr/ptText"
+                    android:contentDescription="@null"
                     android:scaleType="centerInside" />
 
                 <TextView
@@ -227,6 +230,8 @@
             android:background="@null"
             android:inputType="textMultiLine"
             android:imeOptions="actionGo"
+            android:hint="@string/cd_edit_original"
+            android:importantForAutofill="no"
             android:scrollbars="vertical" />
 
     </LinearLayout>
@@ -504,6 +509,7 @@
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:src="@drawable/ic_settings"
+                    android:contentDescription="@null"
                     app:tint="?attr/ptText" />
 
                 <TextView
@@ -539,6 +545,7 @@
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:src="@drawable/ic_play"
+                    android:contentDescription="@null"
                     app:tint="?attr/ptText" />
 
                 <TextView
@@ -568,6 +575,7 @@
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:src="@drawable/ic_crop"
+                    android:contentDescription="@null"
                     app:tint="?attr/ptText" />
 
                 <TextView
@@ -596,6 +604,7 @@
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:src="@drawable/ic_history"
+                    android:contentDescription="@null"
                     app:tint="?attr/ptText" />
 
                 <TextView
@@ -624,6 +633,7 @@
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:src="@drawable/ic_close"
+                    android:contentDescription="@null"
                     app:tint="?attr/ptText" />
 
                 <TextView

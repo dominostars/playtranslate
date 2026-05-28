@@ -191,6 +191,18 @@ class RegionDragView(context: Context) : View(context) {
         }
     }
 
+    /** Required by ClickableViewAccessibility — this view is drag-only, no
+     *  single-tap action. Drag handles aren't a meaningful accessibility
+     *  surface; the region picker exposes its actions via separate
+     *  buttons. */
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
+    }
+
+    // onTouchEvent runs the drag state machine; there is no "click"
+    // outcome to route through performClick. See performClick comment.
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val w  = width.toFloat()
         val h  = height.toFloat()

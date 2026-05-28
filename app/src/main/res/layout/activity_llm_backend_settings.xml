@@ -64,6 +64,7 @@
                             android:id="@+id/tvApiKeyLabel"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
+                            android:labelFor="@+id/etApiKey"
                             android:text="@string/llm_backend_api_key_label"
                             style="@style/Text.PT.RowTitle" />
 

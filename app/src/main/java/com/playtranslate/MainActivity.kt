@@ -653,6 +653,12 @@ class MainActivity :
             showDropdown(btn)
             true
         }
+        // Listener is drag-mode only — entered via the long-press above. On
+        // normal taps it returns false and the framework's regular click
+        // path runs (btn.setOnClickListener elsewhere), so the button stays
+        // TalkBack-accessible through that path. No accessibility click to
+        // wire into this listener.
+        @android.annotation.SuppressLint("ClickableViewAccessibility")
         btn.setOnTouchListener { _, event ->
             if (!inDragMode) return@setOnTouchListener false
             when (event.actionMasked) {

@@ -1233,6 +1233,12 @@ class MagnifierLens(
             private set
 
         fun attachInteractiveListeners(onDismissRequest: () -> Unit) {
+            // ACTION_OUTSIDE delivers the system's "user touched outside the
+            // window" notification; this listener doesn't observe clicks on
+            // the lens itself, so there's no click semantic for
+            // View.performClick to mirror. TalkBack users dismiss the lens
+            // via the back gesture.
+            @android.annotation.SuppressLint("ClickableViewAccessibility")
             setOnTouchListener { _, event ->
                 if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) {
                     onDismissRequest()

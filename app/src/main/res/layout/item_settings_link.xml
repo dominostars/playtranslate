@@ -44,6 +44,7 @@
         android:src="@drawable/ic_open_in_new"
         app:tint="?attr/ptAccent"
         android:scaleType="centerInside"
+        android:contentDescription="@null"
         android:layout_marginStart="8dp" />
 
 </LinearLayout>

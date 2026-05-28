@@ -520,6 +520,20 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
     }
 
+    /** Required by ClickableViewAccessibility — the menu intercepts touches
+     *  to detect tap-outside-the-card dismissal, not "click on the menu
+     *  itself". No accessibility-click action to expose; the menu's row
+     *  buttons (which use setOnClickListener) are the actionable items
+     *  TalkBack should focus and activate. */
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
+    }
+
+    // onTouchEvent detects tap-outside-the-card dismissal, not clicks on
+    // this view — no click semantic to wire through performClick. The
+    // inner row buttons have their own setOnClickListener.
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {

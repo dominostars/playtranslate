@@ -547,30 +547,25 @@ class OverlayUiController(
         // boost; accessibility stays at α=1.0, no boost.
         val mainBoostContrast = mainWindowAlpha < 1f
 
+        // One-shot MP cell only — the full-screen touchable window captures
+        // every touch in its frame. The normal teardown path is the hold
+        // release (icon/hotkey/button); the view's own onTouchEvent below
+        // is a backup so any tap that lands on the overlay (e.g. a second
+        // finger during hold, or a tap that races the hold-release
+        // callback) still dismisses instead of being silently swallowed.
+        // ACTION_DOWN is what dismisses; super.onTouchEvent leaves the
+        // window in its touchable state.
         val mainView = TranslationOverlayView(
             themedCtx,
             pinholeMode = pinholeMode,
             maskAlpha = mainMaskAlpha,
             oneShot = oneShot,
             boostContrast = mainBoostContrast,
+            onDismiss = if (mainTouchable) {
+                { CaptureService.instance?.dismissLiveOverlay(displayId) }
+            } else null,
         ).apply {
             setBoxes(boxes, cropLeft, cropTop, screenshotW, screenshotH)
-        }
-        if (mainTouchable) {
-            // One-shot MP cell only — the full-screen touchable window
-            // captures every touch in its frame. The normal teardown path is
-            // the hold release (icon/hotkey/button); this listener is a
-            // backup so any tap that lands on the overlay (e.g. a second
-            // finger during hold, or a tap that races the hold-release
-            // callback) still dismisses instead of being silently swallowed.
-            // Returning false leaves the window in its touchable state; we
-            // only act on ACTION_DOWN.
-            mainView.setOnTouchListener { _, event ->
-                if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
-                    CaptureService.instance?.dismissLiveOverlay(displayId)
-                }
-                false
-            }
         }
         val mainParams = buildOverlayLayoutParams(
             touchable = mainTouchable,
