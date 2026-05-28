@@ -189,9 +189,19 @@ class MainActivity :
                 CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
             }
         } }
-        override fun onDisplayChanged(displayId: Int) {
-            runOnUiThread { dumpDisplayState("displayChanged:$displayId") }
-        }
+        override fun onDisplayChanged(displayId: Int) { runOnUiThread {
+            dumpDisplayState("displayChanged:$displayId")
+            if (!isFinishing) {
+                // Treat doze/un-doze as topology changes: capturableDisplays()
+                // filters on STATE_ON, so isSingleScreen() flips when a
+                // secondary display dims, and the onboarding/floating-icon
+                // state has to reconcile the same way it does on add/remove.
+                // Both handlers are idempotent — brightness changes and
+                // rotations that don't flip the predicates are no-ops.
+                checkOnboardingState()
+                CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
+            }
+        } }
     }
 
     /**
