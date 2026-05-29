@@ -89,11 +89,16 @@ class LanguageSetupActivity : AppCompatActivity() {
         applyEdgeToEdge(this)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_language_setup)
+        // Pad for system chrome only; return the original `insets` (not
+        // CONSUMED) so any IME-aware child inside contentFrame (page_language
+        // _list's etSearch ScrollView) can receive ime() insets via its own
+        // dispatch. etSearch itself sits at the top of its ScrollView so the
+        // keyboard never covers it, but keeping insets propagating is the
+        // architecturally correct shape and matches MainActivity.
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { v, insets ->
             val sys = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
-            v.setPadding(sys.left, sys.top, sys.right, maxOf(sys.bottom, ime.bottom))
-            WindowInsetsCompat.CONSUMED
+            v.setPadding(sys.left, sys.top, sys.right, sys.bottom)
+            insets
         }
 
         toolbar = findViewById(R.id.toolbar)

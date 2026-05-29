@@ -343,11 +343,17 @@ class MainActivity :
             }
         }
         setContentView(R.layout.activity_main)
+        // Pad for system chrome only (status bar top, cutout sides, nav bar
+        // bottom). IME insets are deliberately NOT folded in here and the
+        // listener returns the original `insets` rather than CONSUMED —
+        // SettingsBottomSheet is hosted inline via openSettingsInline /
+        // setShowsDialog(false), and its settingsScrollView listener has to
+        // receive ime() insets to handle keyboard avoidance for
+        // etCaptureInterval. Consuming at this level would starve it.
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { v, insets ->
             val sys = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
-            v.setPadding(sys.left, sys.top, sys.right, maxOf(sys.bottom, ime.bottom))
-            WindowInsetsCompat.CONSUMED
+            v.setPadding(sys.left, sys.top, sys.right, sys.bottom)
+            insets
         }
 
         // Prevent PlayTranslate's own UI from appearing in screenshots
