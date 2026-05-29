@@ -15,7 +15,10 @@ import com.playtranslate.Prefs
 import com.playtranslate.RegionEntry
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
+import com.playtranslate.applyDialogEdgeToEdge
 import com.playtranslate.fullScreenDialogTheme
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 class AddCustomRegionSheet : DialogFragment() {
 
@@ -62,11 +65,18 @@ class AddCustomRegionSheet : DialogFragment() {
         dialog?.window?.apply {
             setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             setWindowAnimations(R.style.AnimSlideBottom)
+            applyDialogEdgeToEdge(this, requireContext())
         }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        ViewCompat.setOnApplyWindowInsetsListener(view) { v, insets ->
+            val sys = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            v.setPadding(sys.left, sys.top, sys.right, maxOf(sys.bottom, ime.bottom))
+            WindowInsetsCompat.CONSUMED
+        }
 
         val tvTitle          = view.findViewById<android.widget.TextView>(R.id.tvCustomRegionTitle)
         val etName           = view.findViewById<EditText>(R.id.etRegionName)

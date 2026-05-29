@@ -24,7 +24,12 @@ import com.playtranslate.capturableDisplays
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
+import com.playtranslate.applyDialogEdgeToEdge
+import com.playtranslate.applySystemBarAppearance
 import com.playtranslate.fullScreenDialogTheme
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import com.playtranslate.overlayPermissionSettingsIntent
 import com.playtranslate.themeColor
 import kotlinx.coroutines.launch
@@ -122,11 +127,22 @@ class SettingsBottomSheet : DialogFragment() {
         dialog?.window?.apply {
             setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             setWindowAnimations(R.style.AnimSlideRight)
+            applyDialogEdgeToEdge(this, requireContext())
         }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        // CoordinatorLayout + fitsSystemWindows handles the top status-bar
+        // inset; this listener adds the IME + nav-bar inset to the scroll
+        // view's bottom padding so etCaptureInterval (mid-scroll) isn't
+        // covered by the keyboard under edge-to-edge.
+        ViewCompat.setOnApplyWindowInsetsListener(view.findViewById(R.id.settingsScrollView)) { v, insets ->
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+            v.updatePadding(bottom = maxOf(ime.bottom, nav.bottom))
+            WindowInsetsCompat.CONSUMED
+        }
         currentView = view
         setupViews(view)
     }
@@ -677,17 +693,13 @@ class SettingsBottomSheet : DialogFragment() {
         parent.addView(newView, index)
         currentView = newView
         setupViews(newView)
-        // After an in-place theme switch the dialog window's
-        // statusBarColor / navigationBarColor were resolved at dialog
-        // construction and the framework doesn't re-resolve them on
-        // setTheme. Re-apply them from the new theme so the system bars
-        // match the freshly-inflated content. windowBackground isn't
-        // touched because the content view covers it anyway.
-        val bgColor = requireActivity().themeColor(R.attr.ptBg)
-        dialog?.window?.apply {
-            statusBarColor = bgColor
-            navigationBarColor = bgColor
-        }
+        // After an in-place theme switch, refresh the system-bar icon tint
+        // to match the new palette. Under edge-to-edge the bars are
+        // transparent, so the only thing that flips is the appearance flag —
+        // no statusBarColor/navigationBarColor writes (deprecated, no-op on
+        // API 35+). windowBackground isn't touched because the content view
+        // covers it anyway.
+        dialog?.window?.let { applySystemBarAppearance(it, requireContext()) }
     }
 
     // ── Language delegate ────────────────────────────────────────────────

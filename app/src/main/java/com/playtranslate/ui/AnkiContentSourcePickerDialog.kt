@@ -13,7 +13,10 @@ import androidx.fragment.app.DialogFragment
 import com.google.android.material.card.MaterialCardView
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
+import com.playtranslate.applyDialogEdgeToEdge
 import com.playtranslate.fullScreenDialogTheme
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.playtranslate.themeColor
 
 /**
@@ -65,11 +68,18 @@ class AnkiContentSourcePickerDialog : DialogFragment() {
         dialog?.window?.apply {
             setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             setWindowAnimations(R.style.AnimSlideRight)
+            applyDialogEdgeToEdge(this, requireContext())
         }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        ViewCompat.setOnApplyWindowInsetsListener(view) { v, insets ->
+            val sys = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            v.setPadding(sys.left, sys.top, sys.right, maxOf(sys.bottom, ime.bottom))
+            WindowInsetsCompat.CONSUMED
+        }
         val args = arguments ?: run { dismiss(); return }
         fieldName = args.getString(ARG_FIELD_NAME).orEmpty()
         current = ContentSource.values()
