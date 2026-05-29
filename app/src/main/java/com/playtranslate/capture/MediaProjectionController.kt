@@ -176,24 +176,41 @@ class MediaProjectionController(private val service: CaptureService) {
         val newReader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
         val oldReader = imageReader
         val vd = virtualDisplay
-        if (vd == null) {
-            // First use of this projection — build the VirtualDisplay around
-            // the new ImageReader's surface.
-            virtualDisplay = proj.createVirtualDisplay(
-                "PlayTranslateCapture", w, h, dpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                newReader.surface, null, mainHandler,
-            )
-        } else {
-            // Resolution changed (rotation / reconfig). API 34+ allows a
-            // MediaProjection to create only ONE VirtualDisplay per token —
-            // a second proj.createVirtualDisplay throws SecurityException
-            // ("Cannot create more than one VirtualDisplay"). So reuse the
-            // existing VirtualDisplay: resize it and swap its output Surface
-            // to the new reader. setSurface first, then close the old reader
-            // so the VD never targets a closed surface.
-            vd.resize(w, h, dpi)
-            vd.setSurface(newReader.surface)
+        // Android 15 (targetSdk ≥ 35) enforces stricter MediaProjection token
+        // staleness — a token that getMediaProjection succeeded on can still
+        // throw at createVirtualDisplay time, and the resize/setSurface
+        // reuse branch can throw IllegalStateException / IllegalArgumentException
+        // on a VirtualDisplay the platform has released out from under us.
+        // Mirror the getMediaProjection catch above: broad Exception, log,
+        // tear down so the next attempt re-prompts cleanly instead of
+        // looping on a dead session.
+        try {
+            if (vd == null) {
+                // First use of this projection — build the VirtualDisplay around
+                // the new ImageReader's surface.
+                virtualDisplay = proj.createVirtualDisplay(
+                    "PlayTranslateCapture", w, h, dpi,
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                    newReader.surface, null, mainHandler,
+                )
+            } else {
+                // Resolution changed (rotation / reconfig). API 34+ allows a
+                // MediaProjection to create only ONE VirtualDisplay per token —
+                // a second proj.createVirtualDisplay throws SecurityException
+                // ("Cannot create more than one VirtualDisplay"). So reuse the
+                // existing VirtualDisplay: resize it and swap its output Surface
+                // to the new reader. setSurface first, then close the old reader
+                // so the VD never targets a closed surface.
+                vd.resize(w, h, dpi)
+                vd.setSurface(newReader.surface)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "VirtualDisplay creation/update failed: ${e.message}")
+            // newReader was allocated before the try block and never installed
+            // — close it explicitly so a failed setup doesn't leak the reader.
+            newReader.close()
+            onProjectionLost()
+            return null
         }
         imageReader = newReader
         readerW = w
