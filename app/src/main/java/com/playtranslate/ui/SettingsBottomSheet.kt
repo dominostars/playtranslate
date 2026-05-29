@@ -152,6 +152,12 @@ class SettingsBottomSheet : DialogFragment() {
             v.updatePadding(bottom = maxOf(ime.bottom, nav.bottom))
             WindowInsetsCompat.CONSUMED
         }
+        // Platform doesn't replay the current WindowInsets to a listener
+        // installed after the attach-time dispatch has already fired. If the
+        // keyboard is up when reinflateContent runs (or even at first attach
+        // in inline mode, where the parent is already laid out), the new
+        // listener would otherwise sit silent until the next inset change.
+        ViewCompat.requestApplyInsets(scroll)
     }
 
     override fun onDestroyView() {
