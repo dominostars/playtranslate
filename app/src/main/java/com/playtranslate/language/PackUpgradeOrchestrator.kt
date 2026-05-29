@@ -5,7 +5,7 @@ import android.util.Log
 import androidx.appcompat.app.AlertDialog
 import com.playtranslate.Prefs
 import com.playtranslate.R
-import com.playtranslate.TranslationManager
+import com.playtranslate.preloadMlKitFallbackModels
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.translation.llm.humanSize
 import com.playtranslate.ui.OverlayProgress
@@ -153,10 +153,13 @@ class PackUpgradeOrchestrator(
         }
         try {
             withContext(Dispatchers.IO) { primeMlKit() }
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
         } catch (e: Exception) {
             // Priming failure isn't worth blocking on — the packs are
             // installed, the user can still use them. ML Kit will retry
-            // lazily on first translate. Log and proceed.
+            // lazily on first translate. (The helper logs ML Kit download
+            // failures per-pair; this only catches the unexpected.)
             Log.w(TAG, "ML Kit priming failed (non-fatal): ${e.message}")
         }
 
@@ -285,19 +288,14 @@ class PackUpgradeOrchestrator(
     }
 
     private suspend fun primeMlKit() {
+        // Delegates to the shared best-effort warm-up. A failed ML Kit download
+        // must not block a pack upgrade — the packs are installed and the
+        // dictionary / online backends don't need ML Kit. The helper skips the
+        // same-language OCR-only pair and attempts source→target and the
+        // EN→target definition-translation pivot independently (the old inline
+        // version bailed out of the second model if the first threw).
         val prefs = Prefs(activity.applicationContext)
-        val sourceLang = prefs.sourceLang
-        val targetLang = prefs.targetLang
-
-        // Mirrors TargetPackInstaller.ensureModels (line 128-135). The
-        // (en, target) preload covers the definition-translation fallback
-        // path the dictionary uses for non-English target languages.
-        val tm = TranslationManager(sourceLang, targetLang)
-        try { tm.ensureModelReady() } finally { tm.close() }
-        if (targetLang != "en") {
-            val enTm = TranslationManager("en", targetLang)
-            try { enTm.ensureModelReady() } finally { enTm.close() }
-        }
+        preloadMlKitFallbackModels(prefs.sourceLang, prefs.targetLang)
     }
 
     private fun labelFor(pack: StalePack): String = when (pack.kind) {
