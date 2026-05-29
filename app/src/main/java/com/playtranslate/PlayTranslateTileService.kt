@@ -69,6 +69,21 @@ class PlayTranslateTileService : TileService() {
             } else {
                 // Activate routes through the service (ACTION_MP_ACTIVATE) so
                 // it works even from a cold start.
+                //
+                // Android 15+ FGS-BG-start: this call is the foreground-credited
+                // path. A tile click is recorded by the platform as a foreground
+                // UI event and the system extends a 15-second `tempAllowList`
+                // window to subsequent FGS starts from the same UID — verified
+                // on the API 36 emulator at targetSdk=36:
+                //   ActivityManager: Background started FGS: Allowed
+                //     callingPackage: com.playtranslate
+                //     intent: com.playtranslate.action.MP_ACTIVATE
+                //     tempAllowListReason:<tile onclick, duration:15000>
+                //     targetSdkVersion:36
+                // No SYSTEM_ALERT_WINDOW exemption is involved at this step —
+                // SAW only kicks in when [MediaProjectionConsentActivity]
+                // launches itself from the now-foreground service (the BAL
+                // exemption documented in that activity).
                 startForegroundService(
                     Intent(this, CaptureService::class.java)
                         .setAction(CaptureService.ACTION_MP_ACTIVATE)

@@ -352,6 +352,15 @@ class CaptureService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i(TAG, "onStartCommand action=${intent?.action}")
         // Android requires startForeground() within 5s of startForegroundService()
+        //
+        // ACTION_MP_ACTIVATE entry: on a cold-start tile click, enterForeground
+        // below is invoked synchronously with no live overlay window and no
+        // held consent. enterForeground promotes to FOREGROUND_SERVICE_TYPE_
+        // SPECIAL_USE (NOT mediaProjection — that type would assert consent
+        // we don't yet have). API 35+ verification on emulator confirms this
+        // succeeds under the tile-onclick tempAllowList grant; the
+        // SPECIAL_USE → SPECIAL_USE|MEDIA_PROJECTION promotion happens later
+        // in ensureMediaProjectionForegroundType once the user has granted.
         enterForeground()
         // Immediately evaluate — may stopForeground if no game-screen presence yet
         updateForegroundState()
