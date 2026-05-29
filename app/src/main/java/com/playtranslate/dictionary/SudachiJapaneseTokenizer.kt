@@ -6,6 +6,9 @@ import com.worksap.nlp.sudachi.Dictionary
 import com.worksap.nlp.sudachi.DictionaryFactory
 import com.worksap.nlp.sudachi.Tokenizer
 import java.io.File
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.read
+import kotlin.concurrent.write
 
 /**
  * Sudachi-backed [JapaneseTokenizer]. Owns a long-lived Sudachi [Dictionary]
@@ -69,47 +72,71 @@ class SudachiJapaneseTokenizer private constructor(
      * [Dictionary] on [initPackDir] / [close] because Sudachi's dict is an
      * mmap'd file handle that must be released before the pack's `.dic` is
      * swapped — `PackUpgradeOrchestrator` calls [close] at its teardown points.
+     *
+     * Lifetime safety: [analyze] holds the READ lock for the whole tokenize and
+     * [close]/[initPackDir] take the WRITE lock, so the [Dictionary] is never
+     * closed while a tokenization is in flight (kuromoji never `close()`d, so the
+     * swap introduced this hazard; an in-flight `tokenize` on an unmapped dict
+     * would fault or, via a catch-all, silently return empty). This mirrors
+     * `DictionaryManager.withRefcount` (SQLite acquire/releaseReference).
      */
     object Provider : JapaneseTokenizer {
         @Volatile private var packDir: File? = null
         @Volatile private var current: SudachiJapaneseTokenizer? = null
-        private val lock = Any()
+        private val rw = ReentrantReadWriteLock()
 
         /** Point at the pack's `tokenizer/` dir; closes any previously-open dict
          *  so the next [analyze] lazily loads whatever is on disk now (handles
-         *  install's safeSwap reusing the same directory path). Any thread. */
-        fun initPackDir(dir: File?) = synchronized(lock) {
+         *  install's safeSwap reusing the same directory path). Waits for any
+         *  in-flight [analyze] before closing. Any thread. */
+        fun initPackDir(dir: File?) = rw.write {
             packDir = dir
             current?.close()
             current = null
         }
 
-        /** Warm on a background thread to avoid first-use latency. Throws if the
-         *  pack has no `system_*.dic`. */
+        /** Build + warm now. Throws if the pack has no `system_*.dic` (caller
+         *  maps that to PreloadResult.TokenizerInitFailed). */
         fun preload() {
-            instance().analyze("テスト")
+            rw.write { if (current == null) current = build() }
+            analyze("テスト")
         }
 
-        /** Release the mmap'd dict (pack swap / shutdown). */
-        fun close() = synchronized(lock) {
+        /** Release the mmap'd dict (pack swap / shutdown), after any in-flight
+         *  [analyze] completes (write lock). */
+        fun close() = rw.write {
             current?.close()
             current = null
         }
 
-        override fun analyze(text: String): List<JaToken> = try {
-            instance().analyze(text)
-        } catch (e: Throwable) {
-            // No system_*.dic in the pack (pre-ja-v3) or init failure. Degrade
-            // gracefully — empty token list (no furigana / word lookups) rather
-            // than crashing a synchronous UI caller (annotateForHintText).
-            // preload() still throws so JapaneseEngine reports TokenizerInitFailed
-            // and the launch-time orchestrator drives the ja-v3 upgrade.
-            Log.w(TAG, "Sudachi analyze failed (tokenizer unavailable): ${e.message}")
-            emptyList()
+        override fun analyze(text: String): List<JaToken> {
+            // Build outside the read lock (rare; can't upgrade read -> write). A
+            // missing / un-buildable dict degrades to empty tokens — no furigana
+            // or lookups — rather than crashing; see [ensureBuilt].
+            if (ensureBuilt() == null) return emptyList()
+            return rw.read {
+                // The read lock blocks close()/initPackDir(), so the Dictionary
+                // stays open for the whole tokenize. `current` can still be null
+                // if a close() landed between ensureBuilt and here -> empty. We do
+                // NOT catch tokenize exceptions: with the close race gone, those
+                // are real bugs and should surface, not become "successful empty".
+                (current ?: return@read emptyList()).analyze(text)
+            }
         }
 
-        private fun instance(): SudachiJapaneseTokenizer =
-            current ?: synchronized(lock) { current ?: build().also { current = it } }
+        /** Ensure [current] is built; returns it, or null when there is no
+         *  `system_*.dic` / the build failed (graceful — only pre-ja-v3 when JA
+         *  is gated, so retry cost is bounded). Build failure is logged, not
+         *  swallowed into a successful-looking empty tokenization. */
+        private fun ensureBuilt(): SudachiJapaneseTokenizer? {
+            current?.let { return it }
+            return rw.write {
+                current ?: runCatching { build() }
+                    .onFailure { Log.w(TAG, "Sudachi build failed (no system_*.dic / pre-ja-v3): ${it.message}") }
+                    .getOrNull()
+                    ?.also { current = it }
+            }
+        }
 
         private fun build(): SudachiJapaneseTokenizer {
             val dir = packDir ?: error("SudachiJapaneseTokenizer.Provider: pack dir not set")

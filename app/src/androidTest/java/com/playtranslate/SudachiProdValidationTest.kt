@@ -3,6 +3,7 @@ package com.playtranslate
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.playtranslate.dictionary.SudachiJapaneseTokenizer
 import com.playtranslate.language.InstallResult
 import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.PreloadResult
@@ -88,5 +89,63 @@ class SudachiProdValidationTest {
         Log.i(TAG, "SUDACHI_PROD_DONE: $out")
         println("SUDACHI_PROD_DONE: $out")
         assertTrue("expected JMdict lookup hits through the production pipeline", hits > 0)
+    }
+
+    /**
+     * Phase 4: concurrency stress for the Provider lifetime guard. Hammers
+     * Provider.analyze from several threads while close()/initPackDir() churn —
+     * the interleaving Codex flagged (Dictionary closed during an in-flight
+     * tokenize). Pre-fix this faulted / threw (then got masked as empty); the
+     * read/write lock must keep it crash-free and still working after the storm.
+     */
+    @Test
+    fun concurrentAnalyzeVsClose() {
+        val appCtx = InstrumentationRegistry.getInstrumentation().targetContext
+        val src = File(appCtx.getExternalFilesDir(null), "sudachi/system_small.dic")
+        assertTrue("Push system_small.dic to ${src.absolutePath} first.", src.isFile)
+        val tokDir = LanguagePackStore.dirFor(appCtx, SourceLangId.JA).resolve("tokenizer").apply { mkdirs() }
+        val dest = File(tokDir, "system_small.dic")
+        if (!dest.isFile || dest.length() != src.length()) src.copyTo(dest, overwrite = true)
+
+        SudachiJapaneseTokenizer.Provider.initPackDir(tokDir)
+        SudachiJapaneseTokenizer.Provider.preload()
+
+        val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+        val stop = java.util.concurrent.atomic.AtomicBoolean(false)
+        val samples = listOf("使わないでください", "友達に聞いた", "鴨志田の聖域だ", "取り出す")
+        val readers = (1..6).map {
+            Thread {
+                try {
+                    while (!stop.get()) for (s in samples) SudachiJapaneseTokenizer.Provider.analyze(s)
+                } catch (t: Throwable) {
+                    errors.add(t)
+                }
+            }.apply { start() }
+        }
+        // Churn close + re-init (forces close-while-tokenizing + rebuilds) for ~2s.
+        val end = System.nanoTime() + 2_000_000_000L
+        var churns = 0
+        try {
+            while (System.nanoTime() < end) {
+                SudachiJapaneseTokenizer.Provider.close()
+                SudachiJapaneseTokenizer.Provider.initPackDir(tokDir)
+                churns++
+                Thread.sleep(3)
+            }
+        } catch (t: Throwable) {
+            errors.add(t)
+        }
+        stop.set(true)
+        readers.forEach { it.join(10_000) }
+
+        SudachiJapaneseTokenizer.Provider.initPackDir(tokDir)
+        val after = SudachiJapaneseTokenizer.Provider.analyze("友達に聞いた")
+
+        Log.i(TAG, "concurrentAnalyzeVsClose: churns=$churns errors=${errors.size} afterTokens=${after.size}")
+        assertTrue(
+            "Concurrency errors during the analyze/close storm: ${errors.take(3).map { it.toString() }}",
+            errors.isEmpty(),
+        )
+        assertTrue("analyze should still work after the storm", after.isNotEmpty())
     }
 }
