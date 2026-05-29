@@ -5,7 +5,12 @@ import android.content.Context
 import android.content.res.Configuration
 import android.content.res.Resources
 import android.graphics.Color
+import android.view.Window
+import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.annotation.AttrRes
+import androidx.core.view.WindowCompat
 import com.playtranslate.ui.ThemeMode
 
 /** Resolves a theme colour attribute to an ARGB int. */
@@ -41,6 +46,40 @@ fun baseActivityTheme(context: Context): Int =
 fun applyTheme(activity: Activity) {
     activity.setTheme(baseActivityTheme(activity))
     activity.theme.applyStyle(Prefs(activity).accent.overlay, true)
+}
+
+/** Activity-level edge-to-edge: SystemBarStyle keyed to our in-app theme
+ *  (not the system uiMode the `auto()` variant keys off), plus appearance
+ *  flags. Call AFTER [applyTheme] and BEFORE `super.onCreate()`.
+ *
+ *  `SystemBarStyle.dark` ⇒ light icons; `.light` ⇒ dark icons (the API names
+ *  by theme palette, not by icon color). */
+fun applyEdgeToEdge(activity: ComponentActivity) {
+    val dark = isEffectivelyDark(activity)
+    val style = if (dark) SystemBarStyle.dark(Color.TRANSPARENT)
+                else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+    activity.enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+    applySystemBarAppearance(activity.window, activity)
+}
+
+/** Dialog/fragment edge-to-edge: turn off decor-fits-system-windows and set
+ *  appearance flags. Call in `onStart`. Idempotent — safe to re-call from
+ *  [com.playtranslate.ui.SettingsBottomSheet.reinflateContent] after a theme
+ *  toggle. */
+fun applyDialogEdgeToEdge(window: Window, context: Context) {
+    WindowCompat.setDecorFitsSystemWindows(window, false)
+    applySystemBarAppearance(window, context)
+}
+
+/** Bare appearance-flag update — refresh status- and navigation-bar icon
+ *  tint to match the current in-app theme. The in-place re-themer in
+ *  `SettingsBottomSheet.reinflateContent` calls this when the user toggles
+ *  theme inside dialog-mode Settings. */
+fun applySystemBarAppearance(window: Window, context: Context) {
+    val light = !isEffectivelyDark(context)
+    val controller = WindowCompat.getInsetsController(window, window.decorView)
+    controller.isAppearanceLightStatusBars = light
+    controller.isAppearanceLightNavigationBars = light
 }
 
 /** Apply the user's accent overlay onto an arbitrary theme — used by dialog
