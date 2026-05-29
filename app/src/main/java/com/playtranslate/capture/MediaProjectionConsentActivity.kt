@@ -3,7 +3,9 @@ package com.playtranslate.capture
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
@@ -40,7 +42,21 @@ class MediaProjectionConsentActivity : ComponentActivity() {
             finish()
             return
         }
-        launcher.launch(mgr.createScreenCaptureIntent())
+        // API 34+ added single-app capture mode to the system consent dialog.
+        // Pass createConfigForDefaultDisplay so the dialog only offers
+        // "Start now / Cancel" against the full default display, not a
+        // single-app choice. PlayTranslate's overlay/coord-space assumes
+        // it's mirroring the full display (see [MediaProjectionController.
+        // captureSize] sourcing from displaySizePx), and live mode would
+        // pause whenever the user switched apps to view translations in
+        // single-app mode — both broken UX. API ≤ 33 has no single-app
+        // mode anyway, so the no-arg call is equivalent there.
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            mgr.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay())
+        } else {
+            mgr.createScreenCaptureIntent()
+        }
+        launcher.launch(intent)
     }
 
     companion object {
