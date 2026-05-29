@@ -18,6 +18,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.activity.ComponentDialog
 import androidx.activity.OnBackPressedCallback
 import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.R
@@ -84,16 +85,19 @@ class OverlayProgress private constructor(
          *  full contract. */
         fun setOnDismiss(callback: (DismissReason) -> Unit) = apply { this.onDismiss = callback }
 
-        /** Attaches to whichever PlayTranslate activity is currently
-         *  foregrounded — or defers attachment to the next [Activity.onResume]
-         *  if none is. See [OverlayProgress] class doc for detach semantics. */
+        /** Attaches above whichever PlayTranslate surface is currently on top
+         *  — a showing DialogFragment's own window (the full-screen Settings
+         *  sheet that launches downloads, its nested dialogs) if one is up,
+         *  else the foregrounded activity's decorView — or defers attachment
+         *  to the next [Activity.onResume] if none is resumed. See
+         *  [OverlayProgress] class doc for detach semantics. */
         fun show(): OverlayProgress {
             val overlay = OverlayProgress(
                 context, title, initialMessage, initialProgress, cancelLabel, onDismiss,
             )
             PlayTranslateApplication.runWithForegroundActivity { activity ->
                 if (overlay.dismissed || activity.isFinishing || activity.isDestroyed) return@runWithForegroundActivity
-                overlay.attachToActivity(activity)
+                overlay.attachToForeground(activity)
             }
             return overlay
         }
@@ -146,13 +150,28 @@ class OverlayProgress private constructor(
     }
 
     private fun detachAndDispatch(reason: DismissReason) {
+        // Idempotent: cancel / back / activity-pause / the detach-listener can
+        // all race to dismiss. First one wins; the rest (including the
+        // removeView that fires the detach listener) no-op so onDismiss isn't
+        // invoked twice.
+        if (dismissed) return
         dismiss()
         onDismiss(reason)
     }
 
-    private fun attachToActivity(activity: Activity) {
+    /**
+     * Attach above whatever PlayTranslate surface is currently on top of
+     * [activity] — a showing DialogFragment's own window if one is up (the
+     * Settings sheet that launches downloads, its nested dialogs), otherwise
+     * the activity's decorView. Attaching to the activity decor while a dialog
+     * window sits above it z-orders the progress scrim behind the dialog and
+     * leaves it invisible; resolving the top dialog ([topmostDialogWindow]) is
+     * what keeps a settings-initiated download's progress visible.
+     */
+    private fun attachToForeground(activity: Activity) {
+        val topDialog = topmostDialogWindow(activity)
         val scrimView = buildScrim()
-        val decor = activity.window.decorView as ViewGroup
+        val decor = (topDialog?.window?.decorView ?: activity.window.decorView) as ViewGroup
         val lp = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -177,11 +196,26 @@ class OverlayProgress private constructor(
         app.registerActivityLifecycleCallbacks(lifecycle)
         lifecycleCallback = lifecycle
 
-        if (activity is ComponentActivity) {
+        // Host window torn down independently of our own dismiss (the dialog
+        // we're parented to is dismissed): detach cleanly + branch the caller
+        // on LIFECYCLE_PAUSE (stop the job, keep partial). Guarded by
+        // [dismissed] in detachAndDispatch against our own removeView.
+        scrimView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {}
+            override fun onViewDetachedFromWindow(v: View) {
+                detachAndDispatch(DismissReason.LIFECYCLE_PAUSE)
+            }
+        })
+
+        // Back-press cancels. Parented to a dialog window → register on that
+        // window's dispatcher so back hits the progress popup, not the sheet.
+        val backDispatcher = (topDialog as? ComponentDialog)?.onBackPressedDispatcher
+            ?: (activity as? ComponentActivity)?.onBackPressedDispatcher
+        backDispatcher?.let { dispatcher ->
             val backCb = object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() { detachAndDispatch(DismissReason.USER) }
             }
-            activity.onBackPressedDispatcher.addCallback(backCb)
+            dispatcher.addCallback(backCb)
             backPressedCallback = backCb
         }
     }

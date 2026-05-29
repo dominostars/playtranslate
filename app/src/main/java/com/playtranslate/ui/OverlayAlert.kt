@@ -19,6 +19,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.activity.ComponentDialog
 import androidx.activity.OnBackPressedCallback
 import androidx.core.content.ContextCompat
 import com.playtranslate.PlayTranslateApplication
@@ -30,11 +31,12 @@ import com.playtranslate.themeColor
 /**
  * A reusable alert dialog that can be attached either to a capture-overlay
  * window (via the (context, overlayHost, wm, displayId) [Builder] constructor
- * + [Builder.showAsOverlay]) or to whichever PlayTranslate activity is
- * currently foregrounded (via [Builder.show]). Matches the visual style of
- * the floating icon hide confirmation dialog.
+ * + [Builder.showAsOverlay]) or above whichever PlayTranslate surface is on
+ * top — a showing dialog's own window, else the foregrounded activity (via
+ * [Builder.show]). Matches the visual style of the floating icon hide
+ * confirmation dialog.
  *
- * The activity-attached path detaches itself when its host activity pauses
+ * The foreground-attached path detaches itself when its host activity pauses
  * (sub-Activity nav, app backgrounded, etc.) so the alert dies cleanly
  * instead of becoming a hidden ghost behind the new top window. Back-press
  * dismisses the same way. The cancel handler ([Builder.addCancelButton]'s
@@ -139,10 +141,12 @@ class OverlayAlert private constructor(
             return alert
         }
 
-        /** Shows attached to whichever PlayTranslate activity is currently
-         *  foregrounded. If none is resumed yet (e.g. called from
-         *  MainActivity.onCreate before its first onResume), the attach is
-         *  deferred to the next [Activity.onResume] via
+        /** Shows above whichever PlayTranslate surface is currently on top: a
+         *  showing DialogFragment's own window if one is up (the full-screen
+         *  Settings sheet and its nested dialogs included), otherwise the
+         *  foregrounded activity's decorView. If no activity is resumed yet
+         *  (e.g. called from MainActivity.onCreate before its first onResume),
+         *  the attach is deferred to the next [Activity.onResume] via
          *  [PlayTranslateApplication.runWithForegroundActivity].
          *
          *  Detaches and invokes the cancel handler if the host activity
@@ -153,15 +157,16 @@ class OverlayAlert private constructor(
             val alert = OverlayAlert(context, title, message, buttons, showIcon, onCancel)
             PlayTranslateApplication.runWithForegroundActivity { activity ->
                 if (alert.dismissed || activity.isFinishing || activity.isDestroyed) return@runWithForegroundActivity
-                alert.attachToActivity(activity)
+                alert.attachToForeground(activity)
             }
             return alert
         }
 
-        /** Shows attached to the decorView of [dialog]'s own window. Use
-         *  from a DialogFragment so the alert layers above the dialog;
-         *  [show] would attach to the Activity window beneath
-         *  the dialog, where the alert would stay hidden. */
+        /** Shows attached to the decorView of [dialog]'s own window, for an
+         *  explicit dialog target. [show] now auto-detects a showing
+         *  DialogFragment and layers above it, so prefer [show] unless you
+         *  must pin the alert to a specific [dialog] not reachable from the
+         *  foreground activity's fragment tree. */
         fun showInDialog(dialog: Dialog): OverlayAlert {
             val alert = OverlayAlert(context, title, message, buttons, showIcon, onCancel)
             alert.showInDialog(dialog)
@@ -338,14 +343,26 @@ class OverlayAlert private constructor(
         dismissAction = { overlayHost.removeOverlayWindow(scrimView) }
     }
 
-    private fun attachToActivity(activity: Activity) {
-        attachToDecor(activity.window.decorView as ViewGroup)
+    /**
+     * Attach above whatever PlayTranslate surface is currently on top of
+     * [activity] — a showing DialogFragment's own window if one is up (the
+     * full-screen Settings sheet, its nested pickers, the Anki sheet…),
+     * otherwise the activity's decorView. Attaching to the activity decor
+     * while a dialog window sits above it z-orders the alert behind the dialog
+     * and leaves it invisible; resolving the top dialog here ([topmostDialogWindow])
+     * is what lets a single [Builder.show] cover both cases without callers
+     * choosing between [Builder.show] and [Builder.showInDialog].
+     */
+    private fun attachToForeground(activity: Activity) {
+        val topDialog = topmostDialogWindow(activity)
+        attachToDecor((topDialog?.window?.decorView ?: activity.window.decorView) as ViewGroup)
         attachedActivity = activity
 
         // Detach + cancel if the host activity leaves the foreground —
         // sub-Activity navigation, app backgrounding, anything that fires
-        // onPause. Without this the alert sits as an invisible child of a
-        // covered window. See OverlayAlert class doc.
+        // onPause. A dialog pauses together with its host activity, so this
+        // covers the dialog-host case too. Without it the alert sits as an
+        // invisible child of a covered window. See OverlayAlert class doc.
         val app = activity.application
         val lifecycle = object : Application.ActivityLifecycleCallbacks {
             override fun onActivityPaused(a: Activity) {
@@ -361,11 +378,31 @@ class OverlayAlert private constructor(
         app.registerActivityLifecycleCallbacks(lifecycle)
         lifecycleCallback = lifecycle
 
-        if (activity is ComponentActivity) {
+        // If the host window is torn down independently of our own dismiss
+        // (e.g. the dialog we're parented to is dismissed) our scrim leaves
+        // the hierarchy without onActivityPaused firing. Treat that as a
+        // non-user dismissal so the lifecycle callback is unregistered and any
+        // control-flow caller branches on LIFECYCLE_PAUSE, not USER. Guarded
+        // by [dismissed] in detachAndDispatch so our own removeView — which
+        // also fires this — doesn't re-dispatch.
+        scrim?.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {}
+            override fun onViewDetachedFromWindow(v: View) {
+                detachAndDispatch(DismissReason.LIFECYCLE_PAUSE)
+            }
+        })
+
+        // Back-press dismisses the alert, matching scrim-tap. When parented to
+        // a dialog window, back is dispatched to that window's dispatcher —
+        // register there so back closes the alert rather than the sheet
+        // beneath it. Activity-host alerts use the activity dispatcher.
+        val backDispatcher = (topDialog as? ComponentDialog)?.onBackPressedDispatcher
+            ?: (activity as? ComponentActivity)?.onBackPressedDispatcher
+        backDispatcher?.let { dispatcher ->
             val backCb = object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() { detachAndDispatch(DismissReason.USER) }
             }
-            activity.onBackPressedDispatcher.addCallback(backCb)
+            dispatcher.addCallback(backCb)
             backPressedCallback = backCb
         }
     }
@@ -389,6 +426,11 @@ class OverlayAlert private constructor(
     }
 
     private fun detachAndDispatch(reason: DismissReason) {
+        // Idempotent: scrim-tap / back / activity-pause / the
+        // detach-listener can all race to dismiss. First one wins; the rest
+        // (including the removeView that fires the detach listener) no-op so
+        // onCancel isn't invoked twice.
+        if (dismissed) return
         dismiss()
         onCancel?.invoke(reason)
     }
