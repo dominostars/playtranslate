@@ -165,7 +165,20 @@ class MediaProjectionController(private val service: CaptureService) {
         consentGate?.let { return it.await() }
         val gate = CompletableDeferred<Boolean>()
         consentGate = gate
-        MediaProjectionConsentActivity.launch(service)
+        // If startActivity throws (e.g. a future BAL tightening blocks the
+        // launch, or some OEM-specific restriction kicks in), the exception
+        // would otherwise leave consentGate set on a never-completed gate,
+        // wedging every subsequent ensureConsent caller on it.await(). Clear
+        // the field and complete the gate=false so concurrent waiters return
+        // cleanly and the NEXT activate attempt can install a fresh gate.
+        try {
+            MediaProjectionConsentActivity.launch(service)
+        } catch (e: Exception) {
+            Log.e(TAG, "MediaProjectionConsentActivity launch failed: ${e.message}")
+            consentGate = null
+            gate.complete(false)
+            return false
+        }
         return gate.await()
     }
 
