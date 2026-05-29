@@ -58,6 +58,8 @@
         <item name="android:windowBackground">?attr/ptBg</item>
         <item name="android:statusBarColor">?attr/ptBg</item>
         <item name="android:navigationBarColor">?attr/ptBg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
         <item name="android:textColor">?attr/ptText</item>
         <item name="android:fontFamily">sans-serif</item>
         <item name="materialSwitchStyle">@style/Widget.PlayTranslate.MaterialSwitch</item>
@@ -99,6 +101,8 @@
         <item name="android:windowBackground">?attr/ptBg</item>
         <item name="android:statusBarColor">?attr/ptBg</item>
         <item name="android:navigationBarColor">?attr/ptBg</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
         <item name="android:textColor">?attr/ptText</item>
         <item name="android:fontFamily">sans-serif</item>
         <item name="materialSwitchStyle">@style/Widget.PlayTranslate.MaterialSwitch</item>
