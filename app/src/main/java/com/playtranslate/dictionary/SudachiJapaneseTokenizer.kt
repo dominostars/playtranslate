@@ -95,11 +95,11 @@ class SudachiJapaneseTokenizer private constructor(
             current = null
         }
 
-        /** Build + warm now. Throws if the pack has no `system_*.dic` (caller
-         *  maps that to PreloadResult.TokenizerInitFailed). */
+        /** Build + warm now via the STRICT path, PROPAGATING any failure so
+         *  JapaneseEngine.preload can map it to PreloadResult.TokenizerInitFailed.
+         *  (Unlike the public [analyze], this does not swallow failures.) */
         fun preload() {
-            rw.write { if (current == null) current = build() }
-            analyze("テスト")
+            tokenizeStrict("テスト")
         }
 
         /** Release the mmap'd dict (pack swap / shutdown), after any in-flight
@@ -109,34 +109,49 @@ class SudachiJapaneseTokenizer private constructor(
             current = null
         }
 
-        override fun analyze(text: String): List<JaToken> {
-            // Build outside the read lock (rare; can't upgrade read -> write). A
-            // missing / un-buildable dict degrades to empty tokens — no furigana
-            // or lookups — rather than crashing; see [ensureBuilt].
-            if (ensureBuilt() == null) return emptyList()
+        /**
+         * Public, FAIL-SOFT entry point: never throws. annotateForHintText runs
+         * this synchronously on the main thread, and the SourceLanguageEngine
+         * contract requires non-preload callers to degrade to empty on tokenizer
+         * failure rather than crash the UI. The close-during-tokenize race is
+         * prevented by the read lock in [tokenizeStrict] (NOT by this catch), so
+         * this only absorbs genuine build / runtime-tokenize failures — logged
+         * WITH the stack (not silently dropped), so real bugs stay visible.
+         */
+        override fun analyze(text: String): List<JaToken> = try {
+            tokenizeStrict(text)
+        } catch (e: Exception) {
+            Log.w(TAG, "Sudachi analyze failed; degrading to empty tokens", e)
+            emptyList()
+        }
+
+        /** Strict tokenize: builds if needed, then tokenizes under the read lock,
+         *  PROPAGATING build/tokenize failures. Shared by [preload] (which surfaces
+         *  them) and [analyze] (which absorbs them into empty tokens). */
+        private fun tokenizeStrict(text: String): List<JaToken> {
+            tokenizerOverrideForTest?.let { return it.analyze(text) }
+            ensureBuilt()
             return rw.read {
                 // The read lock blocks close()/initPackDir(), so the Dictionary
-                // stays open for the whole tokenize. `current` can still be null
-                // if a close() landed between ensureBuilt and here -> empty. We do
-                // NOT catch tokenize exceptions: with the close race gone, those
-                // are real bugs and should surface, not become "successful empty".
-                (current ?: return@read emptyList()).analyze(text)
+                // stays open for the whole tokenize. `current` is null only if a
+                // close() landed between ensureBuilt and here -> empty (not a fault).
+                current?.analyze(text) ?: emptyList()
             }
         }
 
-        /** Ensure [current] is built; returns it, or null when there is no
-         *  `system_*.dic` / the build failed (graceful — only pre-ja-v3 when JA
-         *  is gated, so retry cost is bounded). Build failure is logged, not
-         *  swallowed into a successful-looking empty tokenization. */
-        private fun ensureBuilt(): SudachiJapaneseTokenizer? {
-            current?.let { return it }
-            return rw.write {
-                current ?: runCatching { build() }
-                    .onFailure { Log.w(TAG, "Sudachi build failed (no system_*.dic / pre-ja-v3): ${it.message}") }
-                    .getOrNull()
-                    ?.also { current = it }
-            }
+        /** Build [current] if absent, PROPAGATING build failure (no `system_*.dic`,
+         *  I/O, etc.). The caller decides whether to surface it ([preload]) or
+         *  absorb it into empty tokens ([analyze]). */
+        private fun ensureBuilt() {
+            if (current != null) return
+            rw.write { if (current == null) current = build() }
         }
+
+        /** Test-only seam: when non-null, [tokenizeStrict] delegates here instead
+         *  of the real [Dictionary], so unit tests can exercise the contract
+         *  (analyze degrades to empty, preload propagates) without a packaged
+         *  `.dic`. Never set in production. */
+        @Volatile internal var tokenizerOverrideForTest: JapaneseTokenizer? = null
 
         private fun build(): SudachiJapaneseTokenizer {
             val dir = packDir ?: error("SudachiJapaneseTokenizer.Provider: pack dir not set")
