@@ -110,13 +110,15 @@ class SudachiJapaneseTokenizer private constructor(
         }
 
         /**
-         * Public, FAIL-SOFT entry point: never throws. annotateForHintText runs
-         * this synchronously on the main thread, and the SourceLanguageEngine
-         * contract requires non-preload callers to degrade to empty on tokenizer
-         * failure rather than crash the UI. The close-during-tokenize race is
-         * prevented by the read lock in [tokenizeStrict] (NOT by this catch), so
-         * this only absorbs genuine build / runtime-tokenize failures — logged
-         * WITH the stack (not silently dropped), so real bugs stay visible.
+         * Public, FAIL-SOFT entry point: never throws. The SourceLanguageEngine
+         * contract requires non-preload callers (annotateForHintText, furigana,
+         * lookup) to degrade to empty on tokenizer failure rather than crash.
+         * Those callers run analyze off the main thread inside a lifecycleScope
+         * coroutine, where an uncaught throw would still tear the app down — so
+         * analyze stays TOTAL. The close-during-tokenize race is prevented by the
+         * read lock in [tokenizeStrict] (NOT by this catch), so this only absorbs
+         * genuine build / runtime-tokenize failures — logged WITH the stack (not
+         * silently dropped), so real bugs stay visible.
          */
         override fun analyze(text: String): List<JaToken> = try {
             tokenizeStrict(text)
@@ -129,11 +131,11 @@ class SudachiJapaneseTokenizer private constructor(
         } catch (t: Throwable) {
             // Unexpected: a built dict threw at tokenize time (corrupt dict, OOM,
             // Sudachi-internal error). Contract: analyze is TOTAL / never-throws —
-            // annotateForHintText runs it synchronously on the main thread, so it
-            // must degrade rather than crash the UI. We catch Throwable (incl.
-            // Error) deliberately, but log LOUDLY (ERROR + stack) so the failure
-            // is visible, never silently dropped. preload() does NOT take this
-            // path, so init failures still surface.
+            // callers run it inside a lifecycleScope coroutine where an uncaught
+            // throw would still crash the app, so it must degrade rather than
+            // propagate. We catch Throwable (incl. Error) deliberately, but log
+            // LOUDLY (ERROR + stack) so the failure is visible, never silently
+            // dropped. preload() does NOT take this path, so init failures surface.
             Log.e(TAG, "Sudachi analyze failed unexpectedly; degrading to empty tokens", t)
             emptyList()
         }

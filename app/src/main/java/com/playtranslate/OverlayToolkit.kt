@@ -127,7 +127,7 @@ object OverlayToolkit {
      * Each group carries its source text and bounds so FuriganaMode can track
      * which groups changed and remove only their furigana.
      */
-    fun buildFuriganaBoxesByGroup(
+    suspend fun buildFuriganaBoxesByGroup(
         ocrResult: OcrManager.OcrResult,
         engine: SourceLanguageEngine,
         furiganaPaint: TextPaint
@@ -262,7 +262,7 @@ object OverlayToolkit {
     }
 
     /** Convenience: build flat list of furigana boxes (for callers that don't need group tracking). */
-    fun buildFuriganaBoxes(
+    suspend fun buildFuriganaBoxes(
         ocrResult: OcrManager.OcrResult,
         engine: SourceLanguageEngine,
         furiganaPaint: TextPaint

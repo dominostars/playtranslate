@@ -155,6 +155,11 @@ class TranslationResultFragment : Fragment() {
      *  spannable. */
     private var highlightedWordRange: IntRange? = null
 
+    /** Bumped on every [applyFurigana] call so an in-flight async render can tell
+     *  it's been superseded (e.g. user toggled furigana off, or a newer render
+     *  started) and bail before stamping stale spans. Main-thread-only. */
+    private var furiganaRenderToken = 0
+
     /** Reified scroll listener so [scrollToTopSilently] can detach + reattach
      *  it around programmatic scrolls — otherwise the framework's
      *  onScrollChanged callback for our own [resultsContent.scrollTo] would
@@ -341,31 +346,42 @@ class TranslationResultFragment : Fragment() {
             if (active) accentColor else secondaryColor
         )
 
+        // Every call represents the latest desired furigana state; bump the token
+        // so any async render still in flight from a prior call bails out.
+        val token = ++furiganaRenderToken
         val plainText = tvOriginal.text.toString()
-        if (active && plainText.isNotEmpty()) {
+        if (!active || plainText.isEmpty()) {
+            tvOriginal.text = plainText
+            // The text reference just got swapped, so any active accent highlight
+            // span was dropped — re-attach it from the tracked range.
+            highlightedWordRange?.let { setWordHighlight(it) }
+            return
+        }
+        // annotateForHintText tokenizes off the main thread (it's suspend); apply
+        // the furigana spans back on the main thread. Bail if a newer applyFurigana
+        // superseded us (toggle-off / re-render → token), or the displayed text
+        // changed out from under us (new result → text guard).
+        viewLifecycleOwner.lifecycleScope.launch {
             val engine = SourceLanguageEngines.get(ctx.applicationContext, prefs.sourceLangId)
             val annotations = engine.annotateForHintText(plainText)
+            if (token != furiganaRenderToken || tvOriginal.text.toString() != plainText) return@launch
             if (annotations.isEmpty()) {
                 tvOriginal.text = plainText
-                return
+            } else {
+                val spannable = android.text.SpannableString(plainText)
+                for (ann in annotations) {
+                    if (ann.baseEnd > plainText.length) continue
+                    spannable.setSpan(
+                        FuriganaSpan(ann.hintText),
+                        ann.baseStart, ann.baseEnd,
+                        android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                }
+                tvOriginal.text = spannable
             }
-            val spannable = android.text.SpannableString(plainText)
-            for (ann in annotations) {
-                if (ann.baseEnd > plainText.length) continue
-                spannable.setSpan(
-                    FuriganaSpan(ann.hintText),
-                    ann.baseStart, ann.baseEnd,
-                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-            tvOriginal.text = spannable
-        } else {
-            tvOriginal.text = plainText
+            // Re-attach the accent highlight dropped by the text swap.
+            highlightedWordRange?.let { setWordHighlight(it) }
         }
-        // The text reference just got swapped, so any active accent
-        // highlight span was dropped on the floor — re-attach it from the
-        // tracked range so toggling furigana mid-popup doesn't lose it.
-        highlightedWordRange?.let { setWordHighlight(it) }
     }
 
     // ── Result render (driven by vm.result observation) ──────────────────

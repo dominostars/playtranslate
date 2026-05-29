@@ -73,13 +73,15 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
     override suspend fun lookupCharacter(literal: Char, targetLang: String): CharacterDetail? =
         dict.lookupKanji(literal, targetLang)
 
-    override fun annotateForHintText(text: String): List<HintTextAnnotation> =
-        dict.tokenizeForFurigana(text).map {
-            HintTextAnnotation(
-                baseStart = it.startOffset,
-                baseEnd = it.endOffset,
-                hintText = it.reading,
-            )
+    override suspend fun annotateForHintText(text: String): List<HintTextAnnotation> =
+        withContext(Dispatchers.Default) {
+            dict.tokenizeForFurigana(text).map {
+                HintTextAnnotation(
+                    baseStart = it.startOffset,
+                    baseEnd = it.endOffset,
+                    hintText = it.reading,
+                )
+            }
         }
 
     override suspend fun spokenForm(text: String): String =

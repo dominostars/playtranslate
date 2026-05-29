@@ -133,17 +133,18 @@ class ChineseEngine(
         )
     }
 
-    override fun annotateForHintText(text: String): List<HintTextAnnotation> {
-        val pinyinList = HanLP.convertToPinyinList(text)
-        val annotations = mutableListOf<HintTextAnnotation>()
-        for (i in text.indices) {
-            val pinyin = pinyinList.getOrNull(i) ?: continue
-            if (pinyin == Pinyin.none5) continue
-            val pinyinStr = pinyin.pinyinWithToneMark ?: continue
-            annotations.add(HintTextAnnotation(baseStart = i, baseEnd = i + 1, hintText = pinyinStr))
+    override suspend fun annotateForHintText(text: String): List<HintTextAnnotation> =
+        withContext(Dispatchers.Default) {
+            val pinyinList = HanLP.convertToPinyinList(text)
+            val annotations = mutableListOf<HintTextAnnotation>()
+            for (i in text.indices) {
+                val pinyin = pinyinList.getOrNull(i) ?: continue
+                if (pinyin == Pinyin.none5) continue
+                val pinyinStr = pinyin.pinyinWithToneMark ?: continue
+                annotations.add(HintTextAnnotation(baseStart = i, baseEnd = i + 1, hintText = pinyinStr))
+            }
+            annotations
         }
-        return annotations
-    }
 
     override fun close() {
         dict.close()

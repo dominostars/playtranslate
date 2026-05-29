@@ -88,8 +88,10 @@ interface SourceLanguageEngine {
      */
     suspend fun lookupCharacter(literal: Char, targetLang: String = "en"): CharacterDetail? = null
 
-    /** Hint-text annotations. Only JA returns non-empty (furigana) in Phase 1. */
-    fun annotateForHintText(text: String): List<HintTextAnnotation> = emptyList()
+    /** Hint-text annotations (JA furigana / ZH pinyin). `suspend` like the other
+     *  tokenizer-backed calls: implementations tokenize off the main thread, so
+     *  callers must invoke it from a coroutine rather than blocking the UI. */
+    suspend fun annotateForHintText(text: String): List<HintTextAnnotation> = emptyList()
 
     /** The text to feed a TTS engine to speak [text] aloud. Default returns
      *  [text] unchanged. Japanese overrides it with a kana rendering so the
