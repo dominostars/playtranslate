@@ -45,6 +45,7 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -345,15 +346,23 @@ class MainActivity :
         setContentView(R.layout.activity_main)
         // Pad for system chrome only (status bar top, cutout sides, nav bar
         // bottom). IME insets are deliberately NOT folded in here and the
-        // listener returns the original `insets` rather than CONSUMED —
+        // listener returns a NON-CONSUMED but STRIPPED WindowInsetsCompat —
         // SettingsBottomSheet is hosted inline via openSettingsInline /
         // setShowsDialog(false), and its settingsScrollView listener has to
         // receive ime() insets to handle keyboard avoidance for
-        // etCaptureInterval. Consuming at this level would starve it.
+        // etCaptureInterval. Consuming would starve it; passing the
+        // original insets would let dialog_settings's
+        // fitsSystemWindows="true" re-apply the status-bar inset to
+        // AppBarLayout (correct in dialog mode where the dialog's own window
+        // dispatches insets, doubled in inline mode). Strip the inset types
+        // we just consumed so children only see what's left (notably ime).
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { v, insets ->
             val sys = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             v.setPadding(sys.left, sys.top, sys.right, sys.bottom)
-            insets
+            WindowInsetsCompat.Builder(insets)
+                .setInsets(WindowInsetsCompat.Type.systemBars(), Insets.NONE)
+                .setInsets(WindowInsetsCompat.Type.displayCutout(), Insets.NONE)
+                .build()
         }
 
         // Prevent PlayTranslate's own UI from appearing in screenshots

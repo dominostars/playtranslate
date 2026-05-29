@@ -55,6 +55,7 @@ import com.playtranslate.blendColors
 import com.playtranslate.compositeOver
 import com.playtranslate.applyTheme
 import com.playtranslate.themeColor
+import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import kotlinx.coroutines.Dispatchers
@@ -89,16 +90,19 @@ class LanguageSetupActivity : AppCompatActivity() {
         applyEdgeToEdge(this)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_language_setup)
-        // Pad for system chrome only; return the original `insets` (not
-        // CONSUMED) so any IME-aware child inside contentFrame (page_language
-        // _list's etSearch ScrollView) can receive ime() insets via its own
-        // dispatch. etSearch itself sits at the top of its ScrollView so the
-        // keyboard never covers it, but keeping insets propagating is the
-        // architecturally correct shape and matches MainActivity.
+        // Pad for system chrome only; pass IME-and-friends through to
+        // contentFrame children (currently page_language_list, whose etSearch
+        // sits at the top of its ScrollView and isn't covered by the
+        // keyboard, but the architecture stays correct for any future
+        // mid-scroll editable field). Strip the inset types we consumed so
+        // children don't re-apply them. Matches MainActivity.
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { v, insets ->
             val sys = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             v.setPadding(sys.left, sys.top, sys.right, sys.bottom)
-            insets
+            WindowInsetsCompat.Builder(insets)
+                .setInsets(WindowInsetsCompat.Type.systemBars(), Insets.NONE)
+                .setInsets(WindowInsetsCompat.Type.displayCutout(), Insets.NONE)
+                .build()
         }
 
         toolbar = findViewById(R.id.toolbar)
