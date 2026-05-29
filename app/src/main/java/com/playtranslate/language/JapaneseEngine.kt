@@ -14,9 +14,11 @@ import kotlinx.coroutines.withContext
  * runtime state here, just an interface-matching façade that Phase 1+ can
  * route calls through without touching the underlying implementation.
  *
- * Note: [close] is a no-op. [DictionaryManager] is a process-scoped singleton
- * that survives engine lifecycle changes; closing the dict here would break
- * any other caller that still reaches into [DictionaryManager.get] directly.
+ * [close] releases JA's process-scoped native handles — the Sudachi Provider
+ * mmap and the [DictionaryManager] SQLite handle. Pack uninstall evicts the
+ * engine via [SourceLanguageEngines.releaseForPack] and then deletes the pack
+ * dir, so close() is the contract point that has to drop those handles first.
+ * Both reopen lazily, so closing is safe even if another reference survives.
  */
 class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
 
@@ -92,6 +94,19 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
         }
 
     override fun close() {
-        // Intentionally empty — see class doc.
+        // Release JA's process-scoped native handles so pack uninstall doesn't
+        // leak them. The engine cache only evicts (SourceLanguageEngines.
+        // releaseForPack, via LanguagePackStore.uninstall) when the pack is
+        // going away, and uninstall() closes through here and THEN deletes the
+        // pack dir — so without these closes the Sudachi mmap and the JMdict
+        // SQLite handle stay bound to the unlinked files until process death,
+        // and already-resolved engine references keep serving stale tokens /
+        // lookups. Both reopen lazily (Provider on the next engine's
+        // initPackDir, DictionaryManager on the next ensureOpen; refcounting
+        // keeps any in-flight query valid), so closing is safe even if a
+        // reference survives. PackUpgradeOrchestrator still closes both at its
+        // teardown points — now idempotent belt-and-suspenders.
+        SudachiJapaneseTokenizer.Provider.close()
+        dict.close()
     }
 }
