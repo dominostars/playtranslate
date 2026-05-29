@@ -1028,27 +1028,6 @@ def build_sqlite(db_path: Path) -> None:
     conn.close()
 
 
-# The 8 IPADIC binary files Kuromoji loads from its JAR classpath. Extracted
-# from kuromoji-ipadic-*.jar into the pack's tokenizer/ subdir so the APK
-# can strip them via packagingOptions.resources.excludes. Names must match
-# exactly what SimpleResourceResolver asks for (bare filenames, no prefix).
-KUROMOJI_IPADIC_BINS = (
-    "characterDefinitions.bin",
-    "connectionCosts.bin",
-    "doubleArrayTrie.bin",
-    "tokenInfoDictionary.bin",
-    "tokenInfoFeaturesMap.bin",
-    "tokenInfoPartOfSpeechMap.bin",
-    "tokenInfoTargetMap.bin",
-    "unknownDictionary.bin",
-)
-
-# Resource path prefix inside the JAR. `SimpleResourceResolver` calls
-# `Tokenizer.class.getResourceAsStream(basename)`, which resolves to
-# "/com/atilika/kuromoji/ipadic/<basename>" at the JAR root.
-KUROMOJI_IPADIC_JAR_PREFIX = "com/atilika/kuromoji/ipadic/"
-
-
 def _sha256_of(path: Path) -> str:
     import hashlib
     h = hashlib.sha256()
@@ -1058,36 +1037,34 @@ def _sha256_of(path: Path) -> str:
     return h.hexdigest()
 
 
-def extract_kuromoji_bins(jar_path: Path, tokenizer_dir: Path) -> list[dict]:
-    """Extract the IPADIC bin files from `kuromoji-ipadic-*.jar` into
-    [tokenizer_dir]. Returns a list of manifest-shape dicts (path relative
-    to the pack root, size, sha256) for appending to manifest.files."""
+def stage_sudachi_dic(dic_path: Path, tokenizer_dir: Path) -> list[dict]:
+    """Copy the Sudachi system dictionary into [tokenizer_dir] so the JA pack
+    ships it under tokenizer/system_small.dic. SudachiJapaneseTokenizer.Provider
+    loads the first system_*.dic it finds there. Returns a single manifest-shape
+    dict (path/size/sha256).
+
+    Get the .dic from the SudachiDict-small wheel:
+      pip download SudachiDict-small --no-deps -d /tmp/sd
+      unzip -o /tmp/sd/*.whl -d /tmp/sd_x
+      # -> /tmp/sd_x/sudachidict_small/resources/system.dic  (~117 MB)
+    Edition choice (small vs core): see docs/sudachi-spike-report.md."""
+    if not dic_path.is_file():
+        raise RuntimeError(f"--sudachi-dic not a file: {dic_path}")
     tokenizer_dir.mkdir(parents=True, exist_ok=True)
-    entries: list[dict] = []
-    with zipfile.ZipFile(jar_path, "r") as jar:
-        names = set(jar.namelist())
-        for basename in KUROMOJI_IPADIC_BINS:
-            jar_entry = KUROMOJI_IPADIC_JAR_PREFIX + basename
-            if jar_entry not in names:
-                raise RuntimeError(
-                    f"Kuromoji JAR at {jar_path} is missing entry {jar_entry}. "
-                    "Pass --kuromoji-jar pointing at kuromoji-ipadic-0.9.0.jar "
-                    "(typically under ~/.gradle/caches/modules-2/files-2.1/"
-                    "com.atilika.kuromoji/kuromoji-ipadic/0.9.0/).")
-            out_path = tokenizer_dir / basename
-            with jar.open(jar_entry) as src, out_path.open("wb") as dst:
-                while True:
-                    chunk = src.read(1 << 20)
-                    if not chunk:
-                        break
-                    dst.write(chunk)
-            entries.append({
-                "path": f"tokenizer/{basename}",
-                "size": out_path.stat().st_size,
-                "sha256": _sha256_of(out_path),
-            })
-    print(f"Extracted {len(entries)} Kuromoji files to {tokenizer_dir}")
-    return entries
+    out_path = tokenizer_dir / "system_small.dic"
+    with dic_path.open("rb") as src, out_path.open("wb") as dst:
+        while True:
+            chunk = src.read(1 << 20)
+            if not chunk:
+                break
+            dst.write(chunk)
+    entry = {
+        "path": "tokenizer/system_small.dic",
+        "size": out_path.stat().st_size,
+        "sha256": _sha256_of(out_path),
+    }
+    print(f"Staged Sudachi dict ({entry['size']:,} bytes) to {out_path}")
+    return [entry]
 
 
 def build_manifest(
@@ -1096,6 +1073,7 @@ def build_manifest(
     pack_version: int,
     tokenizer_entries: list[dict] | None = None,
     include_tatoeba_license: bool = False,
+    app_min_version: int = 0,
 ) -> None:
     size = db_path.stat().st_size
     files: list[dict] = [{"path": "dict.sqlite", "size": size, "sha256": None}]
@@ -1115,9 +1093,9 @@ def build_manifest(
             "attribution": "© EDRDG",
         },
         {
-            "component": "Kuromoji IPADIC",
+            "component": "SudachiDict (small)",
             "license": "Apache-2.0",
-            "attribution": "© Atilika Inc. (IPADIC: IPA Dictionary, © ICOT)",
+            "attribution": "© Works Applications Co., Ltd.; includes UniDic (© NINJAL) and part of mecab-ipadic-NEologd",
         },
     ]
     if include_tatoeba_license:
@@ -1132,7 +1110,7 @@ def build_manifest(
         "langId": "ja",
         "schemaVersion": 1,
         "packVersion": pack_version,
-        "appMinVersion": 0,
+        "appMinVersion": app_min_version,
         "files": files,
         "totalSize": total,
         "licenses": licenses,
@@ -1163,13 +1141,21 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Build the Japanese language pack")
     parser.add_argument("--output", type=Path, required=True, help="Output directory")
     parser.add_argument(
-        "--kuromoji-jar",
+        "--sudachi-dic",
         type=Path,
         required=False,
-        help="Path to kuromoji-ipadic-*.jar. When provided, its 8 IPADIC "
-             "bin files are extracted into tokenizer/ in the pack so the "
-             "APK can strip them. Omit to produce a tokenizer-less pack "
-             "(dict.sqlite only, classpath-Kuromoji dependency).",
+        help="Path to a SudachiDict system_*.dic. When provided, it is staged "
+             "into tokenizer/ in the pack (ja-v3). Get it from the "
+             "SudachiDict-small wheel (see stage_sudachi_dic). Omit to produce "
+             "a tokenizer-less pack (dict.sqlite only).",
+    )
+    parser.add_argument(
+        "--app-min-version",
+        type=int,
+        default=0,
+        help="manifest.appMinVersion. For ja-v3 set this to the Sudachi-capable "
+             "APK's versionCode so older (kuromoji) APKs decline the pack via "
+             "LanguagePackStore.validateManifest and keep working on ja-v2.",
     )
     parser.add_argument(
         "--rebuild-sqlite",
@@ -1232,17 +1218,18 @@ def main() -> int:
             conn.close()
 
     tokenizer_entries = None
-    if args.kuromoji_jar is not None:
-        if not args.kuromoji_jar.is_file():
-            print(f"error: --kuromoji-jar not a file: {args.kuromoji_jar}", file=sys.stderr)
+    if args.sudachi_dic is not None:
+        if not args.sudachi_dic.is_file():
+            print(f"error: --sudachi-dic not a file: {args.sudachi_dic}", file=sys.stderr)
             return 1
-        tokenizer_entries = extract_kuromoji_bins(args.kuromoji_jar, tokenizer_dir)
+        tokenizer_entries = stage_sudachi_dic(args.sudachi_dic, tokenizer_dir)
     build_manifest(
         db_path,
         manifest_path,
         args.pack_version,
         tokenizer_entries,
         include_tatoeba_license=args.tatoeba_dir is not None,
+        app_min_version=args.app_min_version,
     )
     build_zip(
         db_path,
