@@ -21,7 +21,6 @@ gson = "2.14.0"
 recyclerview = "1.4.0"
 activityKtx = "1.13.0"
 fragmentKtx = "1.8.9"
-kuromoji = "0.9.0"
 sudachi = "0.7.4"
 sqliteJdbc = "3.53.1.0"
 junit = "4.13.2"
@@ -56,7 +55,6 @@ mlkit-text-recognition-chinese = { group = "com.google.mlkit", name = "text-reco
 mlkit-text-recognition-korean = { group = "com.google.mlkit", name = "text-recognition-korean", version.ref = "mlkitTextRecognitionKorean" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
-kuromoji-ipadic = { group = "com.atilika.kuromoji", name = "kuromoji-ipadic", version.ref = "kuromoji" }
 sudachi = { group = "com.worksap.nlp", name = "sudachi", version.ref = "sudachi" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }

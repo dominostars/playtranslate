@@ -84,11 +84,6 @@ android {
             excludes += "/META-INF/CONTRIBUTORS.md"
             excludes += "/META-INF/LICENSE"
             excludes += "/META-INF/NOTICE"
-            // Kuromoji IPADIC binary dictionary. Now shipped inside the JA
-            // source pack (see scripts/build_jmdict.py --kuromoji-jar); the
-            // runtime path is PackAwareKuromojiBuilder reading from the
-            // installed pack dir. Dropping these ~33 MB from every APK.
-            excludes += "com/atilika/kuromoji/ipadic/*.bin"
             // KOMORAN model. Now shipped inside the KO source pack (see
             // scripts/build_latin_dict.py --komoran-jar); KoreanEngine
             // constructs Komoran(String modelPath) pointed at the
@@ -147,10 +142,8 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.gson)
 
-    // Japanese morphological analysis (Sudachi/UniDic — replaces the abandoned
-    // kuromoji-ipadic 2007 IPADIC; see docs/sudachi-spike-report.md). kuromoji
-    // is removed later in this migration once the swap is wired + validated.
-    implementation(libs.kuromoji.ipadic)
+    // Japanese morphological analysis: Sudachi/UniDic (see docs/sudachi-spike-report.md);
+    // replaced the abandoned kuromoji-ipadic (2007 IPADIC).
     implementation(libs.sudachi)
 
     // Lucene Snowball stemmer (Phase 3: Latin/English stemming)

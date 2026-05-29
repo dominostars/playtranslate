@@ -1,8 +1,8 @@
 package com.playtranslate.language
 
 import android.content.Context
-import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.dictionary.DictionaryManager
+import com.playtranslate.dictionary.SudachiJapaneseTokenizer
 import com.playtranslate.model.CharacterDetail
 import com.playtranslate.model.DictionaryResponse
 import kotlinx.coroutines.Dispatchers
@@ -25,19 +25,16 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
     private val dict: DictionaryManager = DictionaryManager.get(appContext)
 
     init {
-        // Point Kuromoji at the pack's tokenizer/ directory BEFORE any
-        // engine method runs. The Deinflector's tokenizer is process-
-        // scoped and lazy; doing this here (at engine construction,
-        // which SourceLanguageEngines.get guarantees happens before any
-        // tokenize/annotateForHintText call) closes the cold-start race
-        // where a UI caller on the main dispatcher could fire before
-        // MainActivity's IO-dispatched preload() set the pack dir.
-        // If the pack predates the tokenizer-migration (no tokenizer/
-        // subdir exists), Deinflector's lazy builder falls back to
-        // classpath-backed Kuromoji — which only works if the APK
-        // hasn't been resource-stripped yet. Ctor is fine for this:
-        // it's just path computation, no disk I/O.
-        Deinflector.initPackDir(
+        // Point the Sudachi tokenizer at the pack's tokenizer/ directory BEFORE
+        // any engine method runs. The Provider is process-scoped and lazy; doing
+        // this at engine construction (which SourceLanguageEngines.get guarantees
+        // happens before any tokenize/annotateForHintText call) closes the
+        // cold-start race where a UI caller on the main dispatcher could fire
+        // before MainActivity's IO-dispatched preload() set the pack dir. If the
+        // installed pack predates ja-v3 (no system_*.dic), the lazy build throws
+        // and preload() reports TokenizerInitFailed. Ctor is just path
+        // computation, no disk I/O.
+        SudachiJapaneseTokenizer.Provider.initPackDir(
             LanguagePackStore.dirFor(appContext, SourceLangId.JA).resolve("tokenizer")
         )
     }
@@ -52,14 +49,14 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
             // schema-stale. Confirmed on-disk issue. Safe to uninstall.
             return PreloadResult.PackCorrupt("JA dict.sqlite failed to open")
         }
-        val warmup = runCatching { Deinflector.preload() }
+        val warmup = runCatching { SudachiJapaneseTokenizer.Provider.preload() }
         if (warmup.isFailure) {
-            // Kuromoji init threw. Very likely a pack issue (we just
-            // pointed at pack dir), but could also be OOM mid-dict
-            // deserialization (33 MB of .bin files) or other runtime
-            // pressure. Don't auto-delete; let the caller log + retry.
+            // Sudachi init/warm-up threw. Most likely the installed pack has no
+            // system_*.dic yet (pre-ja-v3), but could also be OOM or other
+            // runtime pressure. Don't auto-delete; let the caller log + retry
+            // (the launch-time PackUpgradeOrchestrator drives the ja-v3 upgrade).
             return PreloadResult.TokenizerInitFailed(
-                "Kuromoji warm-up failed: ${warmup.exceptionOrNull()?.message ?: "unknown"}"
+                "Sudachi warm-up failed: ${warmup.exceptionOrNull()?.message ?: "unknown"}"
             )
         }
         return PreloadResult.Success

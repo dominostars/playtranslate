@@ -96,7 +96,17 @@ class SudachiJapaneseTokenizer private constructor(
             current = null
         }
 
-        override fun analyze(text: String): List<JaToken> = instance().analyze(text)
+        override fun analyze(text: String): List<JaToken> = try {
+            instance().analyze(text)
+        } catch (e: Throwable) {
+            // No system_*.dic in the pack (pre-ja-v3) or init failure. Degrade
+            // gracefully — empty token list (no furigana / word lookups) rather
+            // than crashing a synchronous UI caller (annotateForHintText).
+            // preload() still throws so JapaneseEngine reports TokenizerInitFailed
+            // and the launch-time orchestrator drives the ja-v3 upgrade.
+            Log.w(TAG, "Sudachi analyze failed (tokenizer unavailable): ${e.message}")
+            emptyList()
+        }
 
         private fun instance(): SudachiJapaneseTokenizer =
             current ?: synchronized(lock) { current ?: build().also { current = it } }

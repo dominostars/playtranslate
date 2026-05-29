@@ -157,14 +157,22 @@ class DictionaryManager private constructor(private val context: Context) {
      * Falls back to [Deinflector.tokenize] if the database is not ready.
      */
     suspend fun tokenizeWithSurfaces(text: String): List<TokenWithReading> = withContext(Dispatchers.IO) {
-        val deinflectorFallback = { Deinflector.tokenize(text).map { TokenWithReading(it, it, null) } }
-        val database = ensureOpen() ?: return@withContext deinflectorFallback()
+        val tokens = SudachiJapaneseTokenizer.Provider.analyze(text)
+        // Fallback when the JMdict DB isn't ready: emit content words on their own
+        // (no n-gram phrase detection, no normalizedForm probing).
+        val contentOnly = {
+            tokens.filter { it.category.isContent }
+                .map { TokenWithReading(it.surface, it.dictionaryForm, it.reading?.let(Deinflector::katakanaToHiragana)) }
+                .filter { isLookupWorthy(it.lookupForm) }
+        }
+        val database = ensureOpen() ?: return@withContext contentOnly()
         database.withRefcount {
-            val tokens   = Deinflector.rawTokenInfos(text)
             val surfaces = tokens.map { it.surface }
             val result   = mutableListOf<TokenWithReading>()
 
-            // Batch-query all candidate N-grams upfront (2 queries instead of ~60)
+            // Batch existence query: candidate N-gram phrases PLUS each content
+            // token's dictionaryForm/normalizedForm (layer 1 — lets us pick the
+            // form that actually resolves, e.g. キミ→君).
             val candidates = mutableSetOf<String>()
             for (i in tokens.indices) {
                 val maxN = minOf(4, tokens.size - i)
@@ -173,16 +181,24 @@ class DictionaryManager private constructor(private val context: Context) {
                     if (isLookupWorthy(phrase)) candidates.add(phrase)
                 }
             }
-            val knownPhrases = batchCheckEntries(database, candidates)
+            for (t in tokens) {
+                if (!t.category.isContent) continue
+                if (isLookupWorthy(t.dictionaryForm)) candidates.add(t.dictionaryForm)
+                if (t.normalizedForm != t.dictionaryForm && isLookupWorthy(t.normalizedForm)) {
+                    candidates.add(t.normalizedForm)
+                }
+            }
+            val known = batchCheckEntries(database, candidates)
 
             var i = 0
             while (i < tokens.size) {
-                // Try multi-token N-grams (4 down to 2) at the current position.
+                // Multi-token N-gram phrases (4 down to 2): JMdict idioms Sudachi
+                // splits grammatically (かもしれない etc.).
                 var advanced = false
                 val maxN = minOf(4, tokens.size - i)
                 for (n in maxN downTo 2) {
                     val phrase = surfaces.subList(i, i + n).joinToString("")
-                    if (phrase in knownPhrases) {
+                    if (phrase in known) {
                         result.add(TokenWithReading(phrase, phrase, reading = null))
                         i += n
                         advanced = true
@@ -192,15 +208,21 @@ class DictionaryManager private constructor(private val context: Context) {
 
                 if (!advanced) {
                     val t = tokens[i]
-                    if (isContentWord(t.pos)) {
-                        val lookupForm = t.baseForm ?: t.surface
+                    if (t.category.isContent) {
+                        // Layer 1: prefer dictionaryForm (lemma); fall back to
+                        // normalizedForm when only the normalized variant resolves.
+                        val lookupForm = when {
+                            t.dictionaryForm in known -> t.dictionaryForm
+                            t.normalizedForm in known -> t.normalizedForm
+                            else -> t.dictionaryForm
+                        }
                         if (isLookupWorthy(lookupForm)) {
-                            // Gather the surface span: for verbs/adjectives, include
-                            // following auxiliary tokens (e.g. ない after 使わ)
+                            // Surface span: for verbs/i-adjectives, fold in trailing
+                            // auxiliary/particle morphemes (e.g. ない after 使わ).
                             var surfaceSpan = t.surface
-                            if (t.pos == "動詞" || t.pos == "形容詞") {
+                            if (t.category.startsConjugation) {
                                 var j = i + 1
-                                while (j < tokens.size && tokens[j].pos in setOf("助動詞", "助詞")) {
+                                while (j < tokens.size && tokens[j].category.isConjugationGlue) {
                                     surfaceSpan += tokens[j].surface
                                     j++
                                 }
@@ -215,57 +237,43 @@ class DictionaryManager private constructor(private val context: Context) {
 
             Log.d(TAG, "tokenizeWithSurfaces: ${result.map { "(${it.surface} → ${it.lookupForm} [${it.reading}])" }}")
             result
-        } ?: deinflectorFallback()
+        } ?: contentOnly()
     }
 
     /**
-     * Tokenize text for furigana display using raw Kuromoji morphemes.
+     * Tokenize text for furigana display.
      *
      * Each token is processed independently with its conjugation-aware reading
      * (e.g. 来た → き for 来, 聞い → き for 聞). Compound words with internal
      * kana are split at shared boundaries (取り出す → と over 取, だ over 出).
      *
-     * No database queries — uses only Kuromoji + in-memory splitting.
+     * Offsets come from the analyzer's begin/end (original-text offsets that
+     * tile the input — verified), so they're robust to Sudachi's input-text
+     * normalization. No database queries.
      */
     fun tokenizeForFurigana(text: String): List<FuriganaToken> {
-        val tokens = Deinflector.tokenizeWithReadings(text)
         val result = mutableListOf<FuriganaToken>()
-        var offset = 0
+        for (tok in SudachiJapaneseTokenizer.Provider.analyze(text)) {
+            val reading = tok.reading?.let { Deinflector.katakanaToHiragana(it) }
+            val hasKanji = tok.surface.any(Deinflector::isKanji)
+            if (!hasKanji || reading == null || reading == tok.surface) continue
 
-        for (tok in tokens) {
-            if (!tok.hasKanji || tok.reading == null || tok.reading == tok.surface) {
-                offset += tok.surface.length
-                continue
-            }
-
-            val parts = Deinflector.splitFurigana(tok.surface, tok.reading)
+            val parts = Deinflector.splitFurigana(tok.surface, reading)
             var partOffset = 0
             for (part in parts) {
                 if (part.reading != null) {
                     result += FuriganaToken(
                         kanjiSurface = part.text,
                         reading = part.reading,
-                        startOffset = offset + partOffset,
-                        endOffset = offset + partOffset + part.text.length
+                        startOffset = tok.begin + partOffset,
+                        endOffset = tok.begin + partOffset + part.text.length,
                     )
                 }
                 partOffset += part.text.length
             }
-            offset += tok.surface.length
         }
         return result
     }
-
-    private fun isContentWord(pos: String?): Boolean = pos in setOf(
-        "名詞", "動詞", "形容詞", "形容動詞", "副詞", "感動詞",
-        // 接続詞 (conjunction): もっとも, しかし, そして, けれども — all in JMdict
-        // and worth a tap. Without this, IPADIC's もっとも (tagged 接続詞 even
-        // for the 最も "most" sense in some sentences) drops out before lookup.
-        "接続詞",
-        // 連体詞 (prenominal adjectival): この, その, あの, どの, 大きな, 小さな,
-        // ある, 我が — common demonstratives and pre-nominals, all in JMdict.
-        "連体詞",
-    )
 
     private fun isLookupWorthy(token: String): Boolean {
         if (token.isBlank()) return false

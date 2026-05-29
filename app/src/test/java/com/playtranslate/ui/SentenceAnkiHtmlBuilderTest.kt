@@ -1,5 +1,8 @@
 package com.playtranslate.ui
 
+import com.playtranslate.dictionary.JaCategory
+import com.playtranslate.dictionary.JaToken
+import com.playtranslate.dictionary.JapaneseTokenizer
 import com.playtranslate.language.SourceLangId
 import org.junit.Assert.*
 import org.junit.Test
@@ -9,6 +12,22 @@ import org.junit.Test
  * Pure JVM — no Android classes needed.
  */
 class SentenceAnkiHtmlBuilderTest {
+
+    // Sudachi can't tokenize in a plain JVM test (it needs a pack .dic file),
+    // so the furigana-assembly tests inject canned tokens. This validates the
+    // builder's <wbr>/bold/offset logic; real tokenization is covered on-device.
+    private fun fakeTokenizer(vararg entries: Pair<String, List<JaToken>>): JapaneseTokenizer {
+        val map = entries.toMap()
+        return object : JapaneseTokenizer {
+            override fun analyze(text: String): List<JaToken> = map[text] ?: emptyList()
+        }
+    }
+
+    private fun jaTok(surface: String, begin: Int, readingKatakana: String) = JaToken(
+        surface = surface, begin = begin, end = begin + surface.length,
+        category = JaCategory.VERB, dictionaryForm = surface, normalizedForm = surface,
+        reading = readingKatakana, isOov = false,
+    )
 
     // ── Japanese: ruby + deinflection ────────────────────────────────────
 
@@ -191,7 +210,8 @@ class SentenceAnkiHtmlBuilderTest {
         // its own ruby base AND its own Migaku word, with no visible
         // whitespace in the rendered card.
         val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            "聞いた", sourceLangId = SourceLangId.JA
+            "聞いた", sourceLangId = SourceLangId.JA,
+            tokenizer = fakeTokenizer("聞いた" to listOf(jaTok("聞いた", 0, "キイタ"))),
         )
         assertEquals("聞[き]<wbr>いた", result)
     }
@@ -200,7 +220,8 @@ class SentenceAnkiHtmlBuilderTest {
         // 取り出す: per-kanji split with both kanji blocks bordered by
         // `<wbr>` so each tap-popup surfaces just one kanji's reading.
         val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            "取り出す", sourceLangId = SourceLangId.JA
+            "取り出す", sourceLangId = SourceLangId.JA,
+            tokenizer = fakeTokenizer("取り出す" to listOf(jaTok("取り出す", 0, "トリダス"))),
         )
         assertEquals("取[と]<wbr>り<wbr>出[だ]<wbr>す", result)
     }
@@ -210,7 +231,10 @@ class SentenceAnkiHtmlBuilderTest {
         // The `<wbr>` after each kanji bracket gives Migaku's parser
         // a word boundary so に doesn't get pulled into 友達's popup.
         val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            "友達に聞いた", sourceLangId = SourceLangId.JA
+            "友達に聞いた", sourceLangId = SourceLangId.JA,
+            tokenizer = fakeTokenizer(
+                "友達に聞いた" to listOf(jaTok("友達", 0, "トモダチ"), jaTok("聞いた", 3, "キイタ")),
+            ),
         )
         assertEquals("友達[ともだち]<wbr>に<wbr>聞[き]<wbr>いた", result)
     }
@@ -220,7 +244,8 @@ class SentenceAnkiHtmlBuilderTest {
         // merged everything from `今度[こんど]` to the next whitespace
         // into one word. The `<wbr>` after the bracket isolates 今度.
         val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            "今度はC", sourceLangId = SourceLangId.JA
+            "今度はC", sourceLangId = SourceLangId.JA,
+            tokenizer = fakeTokenizer("今度はC" to listOf(jaTok("今度", 0, "コンド"))),
         )
         assertEquals("今度[こんど]<wbr>はC", result)
     }
@@ -271,6 +296,9 @@ class SentenceAnkiHtmlBuilderTest {
             words = words,
             highlightedWords = setOf("聞く"),
             sourceLangId = SourceLangId.JA,
+            tokenizer = fakeTokenizer(
+                "友達に聞いた" to listOf(jaTok("友達", 0, "トモダチ"), jaTok("聞いた", 3, "キイタ")),
+            ),
         )
         assertEquals("友達[ともだち]<wbr>に<b><wbr>聞[き]<wbr>いた</b>", result)
     }

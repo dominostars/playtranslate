@@ -2,6 +2,8 @@ package com.playtranslate.ui
 
 import android.util.Log
 import com.playtranslate.dictionary.Deinflector
+import com.playtranslate.dictionary.JapaneseTokenizer
+import com.playtranslate.dictionary.SudachiJapaneseTokenizer
 import com.playtranslate.language.SourceLangId
 
 private const val TAG = "SentenceFurigana"
@@ -323,6 +325,9 @@ object SentenceAnkiHtmlBuilder {
         words: List<WordEntry> = emptyList(),
         highlightedWords: Set<String> = emptySet(),
         sourceLangId: SourceLangId = SourceLangId.JA,
+        // Injectable for unit tests; production uses the process-scoped Sudachi
+        // tokenizer (which needs a pack dict, unavailable in plain JVM tests).
+        tokenizer: JapaneseTokenizer = SudachiJapaneseTokenizer.Provider,
     ): String {
         val isJa = sourceLangId == SourceLangId.JA
         val isZh = sourceLangId == SourceLangId.ZH || sourceLangId == SourceLangId.ZH_HANT
@@ -339,7 +344,7 @@ object SentenceAnkiHtmlBuilder {
         // emitting whitespace as tokens — newlines turn into `<br>`
         // because we see them directly in `text`, not because
         // Kuromoji happened to surface them.
-        val kanjiTokenAt = if (isJa) indexKanjiTokensByStart(text) else emptyMap()
+        val kanjiTokenAt = if (isJa) indexKanjiTokensByStart(text, tokenizer) else emptyMap()
         // ZH: no Kuromoji equivalent, and `words` carries no
         // positional metadata. Greedy-longest-prefix match against
         // the WordEntry list (whatever HanLP-segmented lookups
@@ -439,16 +444,19 @@ object SentenceAnkiHtmlBuilder {
      * characters — are skipped silently; we'd rather drop the bracket
      * than emit it at the wrong position.
      */
-    private fun indexKanjiTokensByStart(text: String): Map<Int, Deinflector.ReadingToken> {
-        val out = mutableMapOf<Int, Deinflector.ReadingToken>()
-        var scanPos = 0
-        for (token in Deinflector.tokenizeWithReadings(text)) {
-            val start = text.indexOf(token.surface, scanPos)
-            if (start < 0) continue
-            if (token.hasKanji && !token.reading.isNullOrEmpty()) {
-                out[start] = token
+    /** Minimal kanji-bearing token: surface + hiragana reading, keyed by start offset. */
+    private data class KanjiToken(val surface: String, val reading: String?)
+
+    private fun indexKanjiTokensByStart(text: String, tokenizer: JapaneseTokenizer): Map<Int, KanjiToken> {
+        val out = mutableMapOf<Int, KanjiToken>()
+        for (m in tokenizer.analyze(text)) {
+            val reading = m.reading?.let { Deinflector.katakanaToHiragana(it) }
+            val hasKanji = m.surface.any(Deinflector::isKanji)
+            if (hasKanji && !reading.isNullOrEmpty()) {
+                // begin is the original-text offset (tokens tile the input), so it
+                // aligns with the consumer's character scan position.
+                out[m.begin] = KanjiToken(m.surface, reading)
             }
-            scanPos = start + token.surface.length
         }
         return out
     }

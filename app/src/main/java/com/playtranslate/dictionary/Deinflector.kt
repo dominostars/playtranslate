@@ -1,20 +1,11 @@
 package com.playtranslate.dictionary
 
-import android.util.Log
-import com.atilika.kuromoji.ipadic.Tokenizer
-import java.io.File
-
-private const val TAG = "Deinflector"
-
 /**
- * Japanese morphological analyser + de-inflector.
- *
- * [tokenize] uses Kuromoji (IPADIC) to split text into content words and
- * returns their dictionary (base) form, ready for direct JMdict lookup.
- * This handles all verb conjugations, katakana, onomatopoeia, etc. natively.
- *
- * [candidates] is kept for the word-tap path in DictionaryManager, where the
- * raw OCR segment (potentially inflected) is looked up directly by the user.
+ * Japanese de-inflection rules + kana / furigana helpers. Tokenizer-independent
+ * — morphological analysis now lives in [SudachiJapaneseTokenizer]. This object
+ * provides the rule-based de-inflection [candidates] fallback used by
+ * DictionaryManager.lookup when a raw (possibly inflected) word is tapped, plus
+ * the kana utilities and furigana splitting shared by the tokenization paths.
  */
 object Deinflector {
 
@@ -22,98 +13,7 @@ object Deinflector {
 
     private data class Rule(val inflected: String, val dictionary: String, val reason: String)
 
-    // Kuromoji tokenizer — lazy so it initialises on first use (always on IO thread).
-    // Pack-aware: if [initPackDir] has been called with a directory containing
-    // IPADIC bin files before first access, the tokenizer loads them from that
-    // directory instead of the APK classpath. See [PackAwareKuromojiBuilder].
-    @Volatile private var packDir: File? = null
-    @Volatile private var _tokenizer: Tokenizer? = null
-    private val tokenizerLock = Any()
-
-    private val tokenizer: Tokenizer
-        get() = _tokenizer ?: synchronized(tokenizerLock) {
-            _tokenizer ?: createTokenizer().also { _tokenizer = it }
-        }
-
-    private fun createTokenizer(): Tokenizer {
-        val dir = packDir
-        return if (dir != null && File(dir, "doubleArrayTrie.bin").isFile) {
-            PackAwareKuromojiBuilder(dir).build()
-        } else {
-            // Classpath fallback — used when no pack dir is set, when the pack
-            // doesn't contain tokenizer files yet (pre-migration packs), or
-            // when the APK hasn't been resource-stripped.
-            Tokenizer()
-        }
-    }
-
-    /**
-     * Register a directory containing IPADIC bin files. Always clears the
-     * cached tokenizer so the next [preload] or tokenize call re-deserializes
-     * from whatever is on disk now. Called from [JapaneseEngine]'s init block,
-     * which runs once per engine instance — a new engine appearing after
-     * [SourceLanguageEngines.release] means the pack on disk may have been
-     * swapped (install's safeSwap reuses the same directory path), so an
-     * "idempotent no-op on same path" would keep serving the old bins.
-     * Safe to call from any thread.
-     */
-    fun initPackDir(dir: File?) {
-        synchronized(tokenizerLock) {
-            packDir = dir
-            _tokenizer = null
-        }
-    }
-
-    /** Call once on a background thread early in startup to avoid first-use latency. */
-    fun preload() {
-        tokenizer
-    }
-
-    /** Raw token info returned by [rawTokenInfos]. */
-    internal data class TokenInfo(
-        val surface: String,
-        val pos: String?,
-        val baseForm: String?,
-        val reading: String?
-    )
-
-    /**
-     * Returns raw Kuromoji token info for every token in [text] — surface,
-     * part-of-speech level 1, and base form (null when Kuromoji returns "*").
-     * Used by [DictionaryManager] for greedy N-gram phrase detection.
-     */
-    internal fun rawTokenInfos(text: String): List<TokenInfo> =
-        tokenizer.tokenize(text).map { t ->
-            Log.d(TAG, "token: surface=${t.surface} pos=${t.partOfSpeechLevel1} baseForm=${t.baseForm} reading=${t.reading}")
-            TokenInfo(
-                surface  = t.surface,
-                pos      = t.partOfSpeechLevel1,
-                baseForm = t.baseForm.takeIf { !it.isNullOrEmpty() && it != "*" },
-                reading  = t.reading.takeIf { !it.isNullOrEmpty() && it != "*" }
-            )
-        }
-
-    /**
-     * Render [text] to the kana a TTS engine should speak — each token's
-     * reading, concatenated. Hands the system engine an unambiguous reading
-     * instead of letting it re-guess compound kanji (初夏 → はつか instead of
-     * the dictionary's しょか); these are the same per-token readings that draw
-     * the furigana, so the audio matches what's shown. Particle sound changes
-     * (は→わ) and prosody are left to the engine, which already handles them.
-     *
-     * Tokens Kuromoji can't read (names, symbols, latin, digits) fall through
-     * as their surface so the engine still voices them. JA-only — callers
-     * reach it through [com.playtranslate.language.SourceLanguageEngine.spokenForm],
-     * whose default leaves other languages untouched.
-     */
-    fun spokenForm(text: String): String = buildString {
-        for (t in rawTokenInfos(text)) {
-            val kana = t.reading?.let { katakanaToHiragana(it) }
-            append(kana ?: t.surface)
-        }
-    }
-
-    /** Convert katakana to hiragana (Kuromoji returns katakana, JMdict stores hiragana). */
+    /** Convert katakana to hiragana (analyzers emit katakana; JMdict stores hiragana). */
     fun katakanaToHiragana(text: String): String = buildString {
         for (c in text) {
             if (c in '\u30A1'..'\u30F6') append(c - 0x60) else append(c)
@@ -128,33 +28,11 @@ object Deinflector {
 
     // ── Furigana tokenization ─────────────────────────────────────────────
 
-    /** A Kuromoji token with its hiragana reading and base (dictionary) form. */
-    data class ReadingToken(
-        val surface: String,
-        val reading: String?,
-        val hasKanji: Boolean,
-        val baseForm: String? = null,
-    )
-
     /** A segment from compound furigana splitting. */
     data class FuriganaPart(
         val text: String,
         val reading: String?   // reading if kanji segment, null if shared kana
     )
-
-    /**
-     * Tokenize text into morphemes with hiragana readings from Kuromoji.
-     * Each token gets its conjugation-aware reading (e.g. 来た → き for 来).
-     * Used by furigana overlay — NOT for dictionary lookup (use [rawTokenInfos] for that).
-     */
-    fun tokenizeWithReadings(text: String): List<ReadingToken> =
-        tokenizer.tokenize(text).map { t ->
-            val reading = t.reading.takeIf { !it.isNullOrEmpty() && it != "*" }
-                ?.let { katakanaToHiragana(it) }
-            val hasKanji = t.surface.any(::isKanji)
-            val baseForm = t.baseForm.takeIf { !it.isNullOrEmpty() && it != "*" }
-            ReadingToken(t.surface, reading, hasKanji, baseForm)
-        }
 
     /**
      * Split a surface/reading pair at all shared kana boundaries.
@@ -211,45 +89,6 @@ object Deinflector {
             result += FuriganaPart(surface.substring(si), reading = null)
         }
         return result
-    }
-
-    /**
-     * Tokenises [text] using Kuromoji morphological analysis and returns the
-     * dictionary form of each content word, deduplicated, in sentence order.
-     *
-     * Content words kept: nouns (名詞), verbs (動詞), i-adjectives (形容詞),
-     * na-adjectives (形容動詞), adverbs (副詞), interjections (感動詞).
-     * Particles, auxiliary verbs, punctuation, etc. are discarded.
-     *
-     * Katakana loanwords and onomatopoeia are classified as 名詞 by Kuromoji
-     * and are returned verbatim (baseForm = "*" for some, fallback to surface).
-     */
-    fun tokenize(text: String): List<String> {
-        val tokens = tokenizer.tokenize(text)
-        return tokens
-            .filter { isContentWord(it.partOfSpeechLevel1) }
-            .map { token ->
-                val base = token.baseForm
-                if (!base.isNullOrEmpty() && base != "*") base else token.surface
-            }
-            .filter { isLookupWorthy(it) }
-            .distinct()
-    }
-
-    private fun isContentWord(pos: String?): Boolean = pos in setOf(
-        "名詞",     // noun — includes katakana loanwords, proper nouns, onomatopoeia
-        "動詞",     // verb
-        "形容詞",   // i-adjective
-        "形容動詞", // na-adjective
-        "副詞",     // adverb
-        "感動詞"    // interjection
-    )
-
-    private fun isLookupWorthy(token: String): Boolean {
-        if (token.isBlank()) return false
-        if (token.all { it.code <= 0x007F }) return false          // ASCII only
-        if (token.length == 1 && token[0] in '\u3041'..'\u3096') return false  // single hiragana
-        return true
     }
 
     // ── De-inflection rules ───────────────────────────────────────────────
