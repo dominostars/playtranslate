@@ -31,10 +31,27 @@
 -keep class com.google.mlkit.** { *; }
 -dontwarn com.google.mlkit.**
 
-# ── Kuromoji (Japanese tokeniser) ─────────────────────────────────────────────
-# Kuromoji loads dictionaries and factories by class name via reflection
--keep class com.atilika.kuromoji.** { *; }
--dontwarn com.atilika.kuromoji.**
+# ── Sudachi (Japanese morphological analysis) ─────────────────────────────────
+# Sudachi instantiates its plugins reflectively by class name from the bundled
+# sudachi.json — input-text (DefaultInputTextPlugin, ProlongedSoundMark…), OOV
+# (MeCabOovProviderPlugin, SimpleOovProviderPlugin), path-rewrite (JoinNumeric,
+# JoinKatakanaOov), formatter — so R8 can't see those references. Keep the whole
+# package plus jdartsclone (the double-array trie it reads the system dict
+# through). Without this, a minified release build silently loses JA
+# tokenization/furigana (create() throws → analyze degrades to empty).
+-keep class com.worksap.nlp.sudachi.** { *; }
+-keep class com.worksap.nlp.dartsclone.** { *; }
+-dontwarn com.worksap.nlp.sudachi.**
+-dontwarn com.worksap.nlp.dartsclone.**
+
+# JSON-P: Sudachi parses sudachi.json with javax.json. The glassfish provider is
+# resolved by class-name string — javax.json 1.1.4 ships no META-INF/services,
+# so JsonProvider.provider() falls back to
+# Class.forName("org.glassfish.json.JsonProviderImpl") — invisible to R8.
+-keep class javax.json.** { *; }
+-keep class org.glassfish.json.** { *; }
+-dontwarn javax.json.**
+-dontwarn org.glassfish.json.**
 
 # ── Lucene + Snowball (English/Latin stemmer) ────────────────────────────────
 # Lucene analyzers-common ships with reflection-loaded filters and
