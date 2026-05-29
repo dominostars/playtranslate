@@ -72,7 +72,7 @@ class AddCustomRegionSheet : DialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         ViewCompat.setOnApplyWindowInsetsListener(view) { v, insets ->
-            val sys = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val sys = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
             v.setPadding(sys.left, sys.top, sys.right, maxOf(sys.bottom, ime.bottom))
             WindowInsetsCompat.CONSUMED
