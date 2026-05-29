@@ -120,8 +120,21 @@ class SudachiJapaneseTokenizer private constructor(
          */
         override fun analyze(text: String): List<JaToken> = try {
             tokenizeStrict(text)
-        } catch (e: Exception) {
-            Log.w(TAG, "Sudachi analyze failed; degrading to empty tokens", e)
+        } catch (noDict: NoDictException) {
+            // Expected: the installed pack has no system_*.dic yet (pre-ja-v3).
+            // Degrade quietly to no tokens — preload() surfaces this as
+            // TokenizerInitFailed and the launch-time orchestrator upgrades.
+            Log.i(TAG, "JA tokenizer dict not present; no tokens (${noDict.message})")
+            emptyList()
+        } catch (t: Throwable) {
+            // Unexpected: a built dict threw at tokenize time (corrupt dict, OOM,
+            // Sudachi-internal error). Contract: analyze is TOTAL / never-throws —
+            // annotateForHintText runs it synchronously on the main thread, so it
+            // must degrade rather than crash the UI. We catch Throwable (incl.
+            // Error) deliberately, but log LOUDLY (ERROR + stack) so the failure
+            // is visible, never silently dropped. preload() does NOT take this
+            // path, so init failures still surface.
+            Log.e(TAG, "Sudachi analyze failed unexpectedly; degrading to empty tokens", t)
             emptyList()
         }
 
@@ -153,11 +166,17 @@ class SudachiJapaneseTokenizer private constructor(
          *  `.dic`. Never set in production. */
         @Volatile internal var tokenizerOverrideForTest: JapaneseTokenizer? = null
 
+        /** Thrown by [build] when the installed pack has no system_*.dic yet
+         *  (pre-ja-v3). Lets [analyze] treat "no dict" as expected (quiet empty)
+         *  while any OTHER failure is logged loudly; [preload] propagates either
+         *  so JapaneseEngine reports TokenizerInitFailed. */
+        private class NoDictException(message: String) : Exception(message)
+
         private fun build(): SudachiJapaneseTokenizer {
-            val dir = packDir ?: error("SudachiJapaneseTokenizer.Provider: pack dir not set")
+            val dir = packDir ?: throw NoDictException("pack dir not set")
             val dic = dir.listFiles { f -> f.isFile && f.name.startsWith("system") && f.name.endsWith(".dic") }
                 ?.minByOrNull { it.name }
-                ?: error("No Sudachi system dictionary (system_*.dic) in ${dir.absolutePath}")
+                ?: throw NoDictException("no system_*.dic in ${dir.absolutePath}")
             return create(dic)
         }
     }

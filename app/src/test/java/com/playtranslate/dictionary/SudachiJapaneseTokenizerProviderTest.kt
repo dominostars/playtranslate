@@ -42,4 +42,17 @@ class SudachiJapaneseTokenizerProviderTest {
             SudachiJapaneseTokenizer.Provider.tokenizerOverrideForTest = null
         }
     }
+
+    @Test
+    fun `public analyze degrades to empty even when the tokenizer throws an Error`() {
+        val throwingError = object : JapaneseTokenizer {
+            override fun analyze(text: String): List<JaToken> = throw OutOfMemoryError("simulated")
+        }
+        SudachiJapaneseTokenizer.Provider.tokenizerOverrideForTest = throwingError
+        try {
+            assertEquals(emptyList<JaToken>(), SudachiJapaneseTokenizer.Provider.analyze("使う"))
+        } finally {
+            SudachiJapaneseTokenizer.Provider.tokenizerOverrideForTest = null
+        }
+    }
 }
