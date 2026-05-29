@@ -133,18 +133,25 @@ class SettingsBottomSheet : DialogFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        // CoordinatorLayout + fitsSystemWindows handles the top status-bar
-        // inset; this listener adds the IME + nav-bar inset to the scroll
-        // view's bottom padding so etCaptureInterval (mid-scroll) isn't
-        // covered by the keyboard under edge-to-edge.
-        ViewCompat.setOnApplyWindowInsetsListener(view.findViewById(R.id.settingsScrollView)) { v, insets ->
+        attachScrollImeInsetListener(view)
+        currentView = view
+        setupViews(view)
+    }
+
+    /** Bind the IME + nav-bar bottom-inset listener to the freshly-inflated
+     *  [settingsScrollView]. Re-call after [reinflateContent] swaps the
+     *  scroll view out — the listener is per-View, not per-window, so the
+     *  replacement scroll view starts unattached and would otherwise leave
+     *  etCaptureInterval (mid-scroll, ~75 blocks below the top) hidden
+     *  behind the keyboard after an in-dialog theme toggle. */
+    private fun attachScrollImeInsetListener(root: View) {
+        val scroll = root.findViewById<View>(R.id.settingsScrollView) ?: return
+        ViewCompat.setOnApplyWindowInsetsListener(scroll) { v, insets ->
             val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
             val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
             v.updatePadding(bottom = maxOf(ime.bottom, nav.bottom))
             WindowInsetsCompat.CONSUMED
         }
-        currentView = view
-        setupViews(view)
     }
 
     override fun onDestroyView() {
@@ -693,6 +700,10 @@ class SettingsBottomSheet : DialogFragment() {
         parent.addView(newView, index)
         currentView = newView
         setupViews(newView)
+        // The previous scroll view was removed; the freshly-inflated one
+        // starts without an inset listener. Re-bind so etCaptureInterval
+        // still gets keyboard + nav-bar bottom padding after a theme toggle.
+        attachScrollImeInsetListener(newView)
         // After an in-place theme switch, refresh the system-bar icon tint
         // to match the new palette. Under edge-to-edge the bars are
         // transparent, so the only thing that flips is the appearance flag —
