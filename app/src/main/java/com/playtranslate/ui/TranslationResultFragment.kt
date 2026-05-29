@@ -1268,12 +1268,12 @@ class TranslationResultFragment : Fragment() {
     private fun sourceLangLocalizedDisplayName(): String {
         val appCtx = requireContext().applicationContext
         val p = Prefs(appCtx)
-        return p.sourceLangId.displayName(Locale(p.targetLang))
+        return p.sourceLangId.displayName(Locale.forLanguageTag(p.targetLang))
     }
 
     private fun targetLangDisplayName(): String {
         val code = selectedTargetLang()
-        val locale = Locale(code)
+        val locale = Locale.forLanguageTag(code)
         return locale.getDisplayLanguage(locale)
             .replaceFirstChar { it.uppercase(locale) }
     }

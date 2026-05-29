@@ -53,7 +53,7 @@ class TargetPackInstaller(
         // but not all double-taps in-frame) and similarly for picker rows.
         if (activeJob?.isActive == true) return
 
-        val targetName = Locale(targetCode).getDisplayLanguage(Locale.getDefault())
+        val targetName = Locale.forLanguageTag(targetCode).getDisplayLanguage(Locale.getDefault())
             .replaceFirstChar { it.uppercase(Locale.getDefault()) }
         val needsTargetPack = targetCode != "en"
             && LanguagePackCatalogLoader.entryForKey(activity, "target-$targetCode") != null

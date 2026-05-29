@@ -308,7 +308,7 @@ class PackUpgradeOrchestrator(
         PackKind.TARGET -> activity.getString(
             R.string.pack_upgrade_label_target,
             pack.targetLangCode?.let {
-                Locale(it).getDisplayLanguage(Locale.getDefault())
+                Locale.forLanguageTag(it).getDisplayLanguage(Locale.getDefault())
                     .replaceFirstChar { c -> c.uppercase(Locale.getDefault()) }
             } ?: pack.displayName,
         )
@@ -344,7 +344,7 @@ class PackUpgradeOrchestrator(
                     PackKind.TARGET -> activity.getString(
                         R.string.pack_upgrade_label_target,
                         pack.targetLangCode?.let {
-                            Locale(it).getDisplayLanguage(Locale.getDefault())
+                            Locale.forLanguageTag(it).getDisplayLanguage(Locale.getDefault())
                                 .replaceFirstChar { c -> c.uppercase(Locale.getDefault()) }
                         } ?: pack.displayName,
                     )

@@ -1577,7 +1577,7 @@ class CaptureService : Service() {
      */
     /** "No source-language text on $displayId in $region" message. */
     internal fun noTextMessage(displayId: Int): String {
-        val langName = java.util.Locale(sourceLang).getDisplayLanguage(java.util.Locale.ENGLISH)
+        val langName = java.util.Locale.forLanguageTag(sourceLang).getDisplayLanguage(java.util.Locale.ENGLISH)
             .replaceFirstChar { it.uppercase(java.util.Locale.ENGLISH) }
         return getString(R.string.status_no_text, langName, activeRegionForDisplay(displayId).label)
     }

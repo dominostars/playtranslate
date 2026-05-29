@@ -49,8 +49,8 @@ enum class SourceLangId(val code: String) {
     val locale: java.util.Locale
         get() = java.util.Locale.forLanguageTag(code)
 
-    /** Display name in [locale]. e.g. `JA.displayName(Locale("en"))` → "Japanese";
-     *  `JA.displayName(Locale("ja"))` → "日本語". Defaults to system locale.
+    /** Display name in [locale]. e.g. `JA.displayName(Locale.forLanguageTag("en"))` → "Japanese";
+     *  `JA.displayName(Locale.forLanguageTag("ja"))` → "日本語". Defaults to system locale.
      *  First-char casing uses the display [locale] so Turkish display names
      *  title-case correctly (e.g. "ispanyolca" → "İspanyolca"). */
     fun displayName(locale: java.util.Locale = java.util.Locale.getDefault()): String = when (this) {
@@ -58,7 +58,7 @@ enum class SourceLangId(val code: String) {
             .replaceFirstChar { it.uppercase(locale) }
         ZH_HANT -> java.util.Locale.forLanguageTag("zh-Hant").getDisplayName(locale)
             .replaceFirstChar { it.uppercase(locale) }
-        else    -> java.util.Locale(code).getDisplayLanguage(locale)
+        else    -> java.util.Locale.forLanguageTag(code).getDisplayLanguage(locale)
             .replaceFirstChar { it.uppercase(locale) }
     }
 

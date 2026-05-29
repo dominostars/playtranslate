@@ -450,12 +450,12 @@ class SettingsRenderer(
 
     private fun resolveSourceName(): String =
         SourceLangId.fromCode(prefs.sourceLang)?.displayName()
-            ?: Locale(prefs.sourceLang)
+            ?: Locale.forLanguageTag(prefs.sourceLang)
                 .getDisplayLanguage(Locale.getDefault())
                 .replaceFirstChar { it.uppercase(Locale.getDefault()) }
 
     private fun resolveTargetName(): String {
-        val locale = Locale(prefs.targetLang)
+        val locale = Locale.forLanguageTag(prefs.targetLang)
         return locale.getDisplayLanguage(locale)
             .replaceFirstChar { it.uppercase(locale) }
     }

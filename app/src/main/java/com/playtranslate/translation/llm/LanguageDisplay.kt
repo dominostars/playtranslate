@@ -15,4 +15,4 @@ import java.util.Locale
  * an empty string.
  */
 fun languageDisplayName(code: String): String =
-    Locale(code).getDisplayLanguage(Locale.ENGLISH).ifBlank { code }
+    Locale.forLanguageTag(code).getDisplayLanguage(Locale.ENGLISH).ifBlank { code }

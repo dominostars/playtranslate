@@ -266,7 +266,7 @@ class LanguageSetupActivity : AppCompatActivity() {
             val isSelected = code == currentTarget
             return LangRow(
                 titleNorm = normalizeWithMap(displayName),
-                endonymNorm = normalizeWithMap(targetDisplayName(code, Locale(code))),
+                endonymNorm = normalizeWithMap(targetDisplayName(code, Locale.forLanguageTag(code))),
                 isSelected = isSelected,
                 canDelete = installed && !isSelected,
                 onRowClick = { onTargetSelected(code) },
@@ -771,9 +771,9 @@ class LanguageSetupActivity : AppCompatActivity() {
 
     /** Display name for a target language [code], rendered in [locale]
      *  (default: the system locale — e.g. Japanese shows as "Japanese" on an
-     *  English device). Pass `Locale(code)` to get the endonym ("日本語"). */
+     *  English device). Pass `Locale.forLanguageTag(code)` to get the endonym ("日本語"). */
     private fun targetDisplayName(code: String, locale: Locale = Locale.getDefault()): String =
-        Locale(code).getDisplayLanguage(locale)
+        Locale.forLanguageTag(code).getDisplayLanguage(locale)
             .replaceFirstChar { it.uppercase(locale) }
 
     interface Delegate {

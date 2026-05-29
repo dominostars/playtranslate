@@ -1739,7 +1739,7 @@ class MainActivity :
         val sourceCode = com.playtranslate.language.SourceLanguageProfiles[p.sourceLangId].translationCode
         val effectiveTarget = if (tgtSet) p.targetLang
             else com.playtranslate.ui.WelcomeDefaults.computeDefaultTarget(sourceCode)
-        val tgtLocale = java.util.Locale(effectiveTarget)
+        val tgtLocale = java.util.Locale.forLanguageTag(effectiveTarget)
 
         rowWelcomeGameLang.findViewById<TextView>(R.id.tvRowTitle).text =
             getString(R.string.lang_translate_from)
@@ -1900,7 +1900,7 @@ class MainActivity :
     }
 
     private fun langDisplayName(langCode: String): String =
-        Locale(langCode).getDisplayLanguage(Locale.getDefault())
+        Locale.forLanguageTag(langCode).getDisplayLanguage(Locale.getDefault())
             .replaceFirstChar { it.uppercase(Locale.getDefault()) }
 
     private fun showEditOverlay() {
@@ -2325,7 +2325,7 @@ class MainActivity :
         val catalogKey = "target-$target"
         if (LanguagePackCatalogLoader.entryForKey(this, catalogKey) == null) return
 
-        val targetLocale = java.util.Locale(target)
+        val targetLocale = java.util.Locale.forLanguageTag(target)
         val targetName = targetLocale.getDisplayLanguage(targetLocale)
             .replaceFirstChar { it.uppercase(targetLocale) }
         AlertDialog.Builder(this)
