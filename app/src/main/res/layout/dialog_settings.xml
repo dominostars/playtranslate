@@ -289,6 +289,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:background="@drawable/bg_word_tatoeba_attribution"
+                        android:baselineAligned="false"
                         android:gravity="center_vertical"
                         android:minHeight="@dimen/pt_row_min_height"
                         android:orientation="horizontal"

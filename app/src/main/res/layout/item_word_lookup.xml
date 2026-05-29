@@ -27,6 +27,7 @@
         android:textSize="18sp"
         android:textStyle="bold"
         android:minWidth="80dp"
+        android:paddingStart="0dp"
         android:paddingEnd="12dp" />
 
     <!-- Reading + stars + meaning stacked -->
