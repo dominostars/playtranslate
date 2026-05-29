@@ -21,10 +21,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.playtranslate.CaptureService
+import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.CaptureSession
 import com.playtranslate.CaptureState
 import com.playtranslate.Prefs
@@ -189,8 +192,15 @@ class TranslationResultActivity :
 
     override fun onCreate(savedInstanceState: Bundle?) {
         applyTheme()
+        applyEdgeToEdge(this)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_translation_result)
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { v, insets ->
+            val sys = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            v.setPadding(sys.left, sys.top, sys.right, maxOf(sys.bottom, ime.bottom))
+            WindowInsetsCompat.CONSUMED
+        }
 
         // Hide our own UI from accessibility screenshots (see MainActivity
         // for the full rationale — prevents OCR feedback loop in multi-window).

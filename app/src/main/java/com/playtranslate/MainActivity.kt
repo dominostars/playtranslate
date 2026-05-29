@@ -3,6 +3,7 @@ package com.playtranslate
 import com.playtranslate.capture.CaptureBackendResolver
 
 import android.Manifest
+import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.applyTheme
 import com.playtranslate.themeColor
 import android.content.ComponentName
@@ -44,6 +45,7 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
@@ -327,6 +329,7 @@ class MainActivity :
 
     override fun onCreate(savedInstanceState: Bundle?) {
         applyTheme()
+        applyEdgeToEdge(this)
         super.onCreate(savedInstanceState)
         maybePromptForCrashShare()
         // Suppress the window transition that would otherwise flash when recreating for a theme change
@@ -340,6 +343,12 @@ class MainActivity :
             }
         }
         setContentView(R.layout.activity_main)
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { v, insets ->
+            val sys = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            v.setPadding(sys.left, sys.top, sys.right, maxOf(sys.bottom, ime.bottom))
+            WindowInsetsCompat.CONSUMED
+        }
 
         // Prevent PlayTranslate's own UI from appearing in screenshots
         // (including the accessibility takeScreenshot path used by the
