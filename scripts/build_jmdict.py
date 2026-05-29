@@ -1037,21 +1037,25 @@ def _sha256_of(path: Path) -> str:
     return h.hexdigest()
 
 
-def stage_sudachi_dic(dic_path: Path, tokenizer_dir: Path) -> list[dict]:
+def stage_sudachi_dic(dic_path: Path, tokenizer_dir: Path, edition: str = "core") -> list[dict]:
     """Copy the Sudachi system dictionary into [tokenizer_dir] so the JA pack
-    ships it under tokenizer/system_small.dic. SudachiJapaneseTokenizer.Provider
-    loads the first system_*.dic it finds there. Returns a single manifest-shape
-    dict (path/size/sha256).
+    ships it under tokenizer/system_<edition>.dic. SudachiJapaneseTokenizer.Provider
+    loads the first system_*.dic it finds there, so any other edition already in
+    the dir is removed first to keep the pick unambiguous (prod ships exactly one).
+    Returns a single manifest-shape dict (path/size/sha256).
 
-    Get the .dic from the SudachiDict-small wheel:
-      pip download SudachiDict-small --no-deps -d /tmp/sd
+    Get the .dic from the matching SudachiDict wheel (core is the ja-v3 default):
+      pip download SudachiDict-core --no-deps -d /tmp/sd
       unzip -o /tmp/sd/*.whl -d /tmp/sd_x
-      # -> /tmp/sd_x/sudachidict_small/resources/system.dic  (~117 MB)
+      # -> /tmp/sd_x/sudachidict_core/resources/system.dic  (~207 MB)
     Edition choice (small vs core): see docs/sudachi-spike-report.md."""
     if not dic_path.is_file():
         raise RuntimeError(f"--sudachi-dic not a file: {dic_path}")
     tokenizer_dir.mkdir(parents=True, exist_ok=True)
-    out_path = tokenizer_dir / "system_small.dic"
+    for stale in tokenizer_dir.glob("system_*.dic"):
+        stale.unlink()
+    out_name = f"system_{edition}.dic"
+    out_path = tokenizer_dir / out_name
     with dic_path.open("rb") as src, out_path.open("wb") as dst:
         while True:
             chunk = src.read(1 << 20)
@@ -1059,11 +1063,11 @@ def stage_sudachi_dic(dic_path: Path, tokenizer_dir: Path) -> list[dict]:
                 break
             dst.write(chunk)
     entry = {
-        "path": "tokenizer/system_small.dic",
+        "path": f"tokenizer/{out_name}",
         "size": out_path.stat().st_size,
         "sha256": _sha256_of(out_path),
     }
-    print(f"Staged Sudachi dict ({entry['size']:,} bytes) to {out_path}")
+    print(f"Staged SudachiDict {edition} ({entry['size']:,} bytes) to {out_path}")
     return [entry]
 
 
@@ -1074,6 +1078,7 @@ def build_manifest(
     tokenizer_entries: list[dict] | None = None,
     include_tatoeba_license: bool = False,
     app_min_version: int = 0,
+    sudachi_edition: str = "core",
 ) -> None:
     size = db_path.stat().st_size
     files: list[dict] = [{"path": "dict.sqlite", "size": size, "sha256": None}]
@@ -1093,7 +1098,7 @@ def build_manifest(
             "attribution": "© EDRDG",
         },
         {
-            "component": "SudachiDict (small)",
+            "component": f"SudachiDict ({sudachi_edition})",
             "license": "Apache-2.0",
             "attribution": "© Works Applications Co., Ltd.; includes UniDic (© NINJAL) and part of mecab-ipadic-NEologd",
         },
@@ -1145,9 +1150,17 @@ def main() -> int:
         type=Path,
         required=False,
         help="Path to a SudachiDict system_*.dic. When provided, it is staged "
-             "into tokenizer/ in the pack (ja-v3). Get it from the "
-             "SudachiDict-small wheel (see stage_sudachi_dic). Omit to produce "
-             "a tokenizer-less pack (dict.sqlite only).",
+             "into tokenizer/ in the pack (ja-v3). Get it from the matching "
+             "SudachiDict wheel (see stage_sudachi_dic; core is the default). "
+             "Omit to produce a tokenizer-less pack (dict.sqlite only).",
+    )
+    parser.add_argument(
+        "--sudachi-edition",
+        choices=["small", "core", "full"],
+        default="core",
+        help="SudachiDict edition being staged (ja-v3 default: core). Sets the "
+             "tokenizer/system_<edition>.dic filename and the manifest license "
+             "attribution; must match the wheel passed to --sudachi-dic.",
     )
     parser.add_argument(
         "--app-min-version",
@@ -1222,7 +1235,9 @@ def main() -> int:
         if not args.sudachi_dic.is_file():
             print(f"error: --sudachi-dic not a file: {args.sudachi_dic}", file=sys.stderr)
             return 1
-        tokenizer_entries = stage_sudachi_dic(args.sudachi_dic, tokenizer_dir)
+        tokenizer_entries = stage_sudachi_dic(
+            args.sudachi_dic, tokenizer_dir, args.sudachi_edition
+        )
     build_manifest(
         db_path,
         manifest_path,
@@ -1230,6 +1245,7 @@ def main() -> int:
         tokenizer_entries,
         include_tatoeba_license=args.tatoeba_dir is not None,
         app_min_version=args.app_min_version,
+        sudachi_edition=args.sudachi_edition,
     )
     build_zip(
         db_path,

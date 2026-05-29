@@ -409,11 +409,11 @@
       "display": "Japanese",
       "script": "CJK_JAPANESE",
       "bundled": false,
-      "packVersion": 2,
-      "additiveFromVersion": 1,
-      "size": 36283441,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/ja-v2/ja.zip",
-      "sha256": "2796732146870afee06d39efc011b5c768c9197321047e0bb323558514ba5785",
+      "packVersion": 3,
+      "additiveFromVersion": 2,
+      "size": 95188899,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/ja-v3/ja.zip",
+      "sha256": "eba26bd721649148f031e8d9bed802099e9caeb4906ca445b51e196d761e8295",
       "licenses": [
         {
           "component": "JMdict",
@@ -426,9 +426,9 @@
           "attribution": "© EDRDG"
         },
         {
-          "component": "Kuromoji IPADIC",
+          "component": "SudachiDict (core)",
           "license": "Apache-2.0",
-          "attribution": "© Atilika Inc. (IPADIC © ICOT)"
+          "attribution": "© Works Applications Co., Ltd.; includes UniDic (© NINJAL) and part of mecab-ipadic-NEologd"
         },
         {
           "component": "Tatoeba example sentences",
