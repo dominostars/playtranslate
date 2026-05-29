@@ -325,6 +325,12 @@
          into the in-memory dictionary (first run after install). -->
     <string name="lang_setup_preloading_message">Preloading, please wait a minute</string>
 
+    <!-- Toast shown after a language is added when its offline ML Kit
+         translation model couldn't be downloaded (e.g. Google Play Services
+         can't fetch it on this device). The language is still usable; only
+         the offline translation fallback is unavailable. -->
+    <string name="lang_setup_offline_model_unavailable">Offline translation isn\'t available on this device right now. Dictionary lookups and online translation still work.</string>
+
     <!-- Button to delete an installed language pack from disk. -->
     <string name="lang_delete_pack">Delete language pack</string>
 

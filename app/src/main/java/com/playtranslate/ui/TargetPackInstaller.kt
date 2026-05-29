@@ -1,9 +1,10 @@
 package com.playtranslate.ui
 
 import android.app.Activity
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import com.playtranslate.R
-import com.playtranslate.TranslationManager
+import com.playtranslate.preloadMlKitFallbackModels
 import com.playtranslate.language.DownloadProgress
 import com.playtranslate.language.InstallResult
 import com.playtranslate.language.LanguagePackCatalogLoader
@@ -117,24 +118,26 @@ class TargetPackInstaller(
         onSuccess: () -> Unit,
     ) {
         try {
-            withContext(Dispatchers.IO) { ensureModels(sourceLangCode, targetCode) }
+            // Best-effort: a failed ML Kit fallback download must not block the
+            // language — the gloss pack is already installed and the online /
+            // on-device backends don't need ML Kit. See [preloadMlKitFallbackModels].
+            val mlKitReady = withContext(Dispatchers.IO) {
+                preloadMlKitFallbackModels(sourceLangCode, targetCode)
+            }
             dialog.dismiss()
+            if (!mlKitReady) {
+                Toast.makeText(
+                    activity,
+                    R.string.lang_setup_offline_model_unavailable,
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
             onSuccess()
         } catch (_: kotlin.coroutines.cancellation.CancellationException) {
             // User tapped Cancel — dialog already dismissed, silent.
         } catch (e: Exception) {
             dialog.dismiss()
             showErrorPopup(e.message ?: "Failed to download translation model")
-        }
-    }
-
-    private suspend fun ensureModels(sourceLangCode: String, targetCode: String) {
-        val tm = TranslationManager(sourceLangCode, targetCode)
-        try { tm.ensureModelReady() } finally { tm.close() }
-        if (targetCode != "en") {
-            // EN→target model for definition-translation fallback
-            val enTm = TranslationManager("en", targetCode)
-            try { enTm.ensureModelReady() } finally { enTm.close() }
         }
     }
 

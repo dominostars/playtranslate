@@ -31,6 +31,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -40,7 +41,6 @@ import com.google.android.material.card.MaterialCardView
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.playtranslate.Prefs
 import com.playtranslate.R
-import com.playtranslate.TranslationManager
 import com.playtranslate.language.DownloadProgress
 import com.playtranslate.language.InstallResult
 import com.playtranslate.language.LanguagePackStore
@@ -55,6 +55,7 @@ import com.playtranslate.blendColors
 import com.playtranslate.compositeOver
 import com.playtranslate.applyTheme
 import com.playtranslate.themeColor
+import com.playtranslate.preloadMlKitFallbackModels
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -207,6 +208,10 @@ class LanguageSetupActivity : AppCompatActivity() {
 
     private fun onSourceSelected(id: SourceLangId) {
         val needsDownload = !LanguagePackStore.isInstalled(this, id)
+        // Best-effort ML Kit fallback warm-up result: written on IO inside
+        // sourceLoadAction, read on Main in onDone (the withContext boundary
+        // provides the happens-before). See [preloadMlKitFallbackModels].
+        var mlKitReady = true
 
         val sourceLoadAction: suspend () -> Unit = {
             val preloadResult = SourceLanguageEngines.get(applicationContext, id).preload()
@@ -236,19 +241,24 @@ class LanguageSetupActivity : AppCompatActivity() {
                     )
                 }
             }
-            // Also download the ML Kit translation model for newSource → currentTarget
-            // so translations work offline after switching.
+            // Warm the ML Kit fallback translation model(s) for newSource →
+            // currentTarget (plus EN → target for the definition-translation
+            // path). Best-effort: ML Kit is the degraded last-resort backend
+            // and its GMS-mediated download fails on some devices, but the
+            // dictionary / OCR / online backends don't need it — a miss must
+            // not block adding the language.
             val currentTarget = Prefs(applicationContext).targetLang
-            val tm = TranslationManager(SourceLanguageProfiles[id].translationCode, currentTarget)
-            try { tm.ensureModelReady() } finally { tm.close() }
-            // EN→target model for definition translation fallback
-            if (currentTarget != "en") {
-                val enTm = TranslationManager("en", currentTarget)
-                try { enTm.ensureModelReady() } finally { enTm.close() }
-            }
+            mlKitReady = preloadMlKitFallbackModels(
+                SourceLanguageProfiles[id].translationCode, currentTarget,
+            )
         }
         val onDone: () -> Unit = {
             Prefs(this).sourceLang = id.code
+            if (!mlKitReady) {
+                Toast.makeText(
+                    this, R.string.lang_setup_offline_model_unavailable, Toast.LENGTH_LONG,
+                ).show()
+            }
             selectionDelegate?.onSourceSelectionDone(id)
             finish()
         }
