@@ -8,6 +8,7 @@ import com.playtranslate.R
 import com.playtranslate.preloadMlKitFallbackModels
 import com.playtranslate.translation.bergamot.BergamotWarmup
 import com.playtranslate.dictionary.DictionaryManager
+import com.playtranslate.dictionary.SudachiJapaneseTokenizer
 import com.playtranslate.translation.llm.humanSize
 import com.playtranslate.ui.OverlayProgress
 import com.playtranslate.ui.showBergamotWarmupProgress
@@ -189,6 +190,9 @@ class PackUpgradeOrchestrator(
         // picks up the new pack.
         if (sid == SourceLangId.JA) {
             DictionaryManager.get(app).close()
+            // Release Sudachi's mmap'd system_*.dic before safeSwap renames the
+            // old pack dir, so we don't keep a handle to the unlinked .dic.
+            SudachiJapaneseTokenizer.Provider.close()
         }
 
         // Step 2 (FORCE only): pre-uninstall. ADDITIVE skips this — install's
@@ -229,6 +233,10 @@ class PackUpgradeOrchestrator(
         // post-install eviction." Per Codex review findings 2026-05-10.
         if (result is InstallResult.Success && sid == SourceLangId.JA) {
             DictionaryManager.get(app).close()
+            // Close the old Sudachi Dictionary too; releaseForPack then drops the
+            // cached JapaneseEngine so the next get() re-inits the Provider against
+            // the new pack's system_*.dic.
+            SudachiJapaneseTokenizer.Provider.close()
             SourceLanguageEngines.releaseForPack(sid.packId)
         }
         return result
