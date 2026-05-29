@@ -50,10 +50,13 @@ import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.translation.llm.humanSize
 import com.playtranslate.language.TargetGlossDatabaseProvider
+import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.blendColors
 import com.playtranslate.compositeOver
 import com.playtranslate.applyTheme
 import com.playtranslate.themeColor
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -83,8 +86,15 @@ class LanguageSetupActivity : AppCompatActivity() {
         // ?attr/pt* against the user's selected palette + accent instead of
         // the manifest's Theme.PlayTranslate default.
         applyTheme(this)
+        applyEdgeToEdge(this)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_language_setup)
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { v, insets ->
+            val sys = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            v.setPadding(sys.left, sys.top, sys.right, maxOf(sys.bottom, ime.bottom))
+            WindowInsetsCompat.CONSUMED
+        }
 
         toolbar = findViewById(R.id.toolbar)
         contentFrame = findViewById(R.id.contentFrame)

@@ -15,7 +15,10 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.applyTheme
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.net.toUri
 
@@ -42,8 +45,15 @@ class DeepLSettingsActivity : AppCompatActivity() {
         // so the first inflation resolves ?attr/pt* against the user's
         // accent + mode rather than the manifest default.
         applyTheme(this)
+        applyEdgeToEdge(this)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_deepl_settings)
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { v, insets ->
+            val sys = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            v.setPadding(sys.left, sys.top, sys.right, maxOf(sys.bottom, ime.bottom))
+            WindowInsetsCompat.CONSUMED
+        }
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         toolbar.setNavigationOnClickListener { finish() }

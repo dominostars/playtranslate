@@ -13,8 +13,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.applyTheme
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.tts.TtsEngine
@@ -51,8 +54,15 @@ class TtsVoiceActivity : AppCompatActivity() {
         // Theme before super so the first inflation resolves ?attr/pt* against
         // the user's accent + mode. Matches LanguageSetupActivity.
         applyTheme(this)
+        applyEdgeToEdge(this)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_tts_voice)
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { v, insets ->
+            val sys = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            v.setPadding(sys.left, sys.top, sys.right, maxOf(sys.bottom, ime.bottom))
+            WindowInsetsCompat.CONSUMED
+        }
 
         prefs = Prefs(this)
         // Prefer the language passed by the launcher — the Anki cell

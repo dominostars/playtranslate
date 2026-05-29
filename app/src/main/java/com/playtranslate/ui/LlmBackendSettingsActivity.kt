@@ -15,7 +15,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.playtranslate.R
+import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.applyTheme
 import com.playtranslate.translation.KeyStatus
 import kotlinx.coroutines.CancellationException
@@ -64,8 +67,15 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         applyTheme(this)
+        applyEdgeToEdge(this)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_llm_backend_settings)
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { v, insets ->
+            val sys = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            v.setPadding(sys.left, sys.top, sys.right, maxOf(sys.bottom, ime.bottom))
+            WindowInsetsCompat.CONSUMED
+        }
 
         val backendId = intent.getStringExtra(EXTRA_BACKEND_ID)
             ?: error("LlmBackendSettingsActivity launched without EXTRA_BACKEND_ID")
