@@ -22,10 +22,11 @@ import java.io.File
  * `noBackupFilesDir/langpacks/<id>/manifest.json` to simulate various
  * installed-pack states.
  *
- * The catalog's current state (post-this-PR): `ja` has packVersion=2;
- * other source packs and target packs are at packVersion=1. Tests assume
- * `ja` is at v2 and treat it as the "version mismatch when on-disk is at
- * v1" case.
+ * The catalog's current state: `ja` has packVersion=3, additiveFromVersion=2
+ * (Sudachi/ja-v3). v2→v3 is ADDITIVE — v2's dict.sqlite already has the current
+ * schema, so lookups keep working through the download. v1→v3 is FORCE — v1's
+ * dict.sqlite is the pre-rank_score schema, below additiveFromVersion. Other
+ * source packs and target packs are at packVersion=1.
  */
 @RunWith(RobolectricTestRunner::class)
 class LanguagePackStoreStalenessTest {
@@ -50,13 +51,13 @@ class LanguagePackStoreStalenessTest {
         )
     }
 
-    @Test fun `ja pack at v1 on disk vs catalog v2 (additiveFromVersion=1) -- stale ADDITIVE`() {
-        writeManifest("ja", packVersion = 1)
-        // Write a v1-shaped dict.sqlite (structural columns present, no v2
-        // columns). Loosened JmdictSchemaProbe must pass this so the pack
-        // doesn't trip the schemaStale → FORCE branch — instead the catalog's
-        // additiveFromVersion=1 says v1 qualifies for ADDITIVE.
-        writeJaV1SchemaDb()
+    @Test fun `ja pack at v2 on disk vs catalog v3 (additiveFromVersion=2) -- stale ADDITIVE`() {
+        writeManifest("ja", packVersion = 2)
+        // v2's dict.sqlite already has the current schema, so additiveFromVersion=2
+        // lets v2 upgrade to v3 ADDITIVELY — definitions / direct lookups keep
+        // working through the download, only the tokenizer swaps. The real ja-v3
+        // upgrade path.
+        writeJaSchemaCurrentDb()
         val stale = LanguagePackStore.staleInstalledPacks(ctx)
         val ja = stale.firstOrNull { it.catalogKey == "ja" }
         assertNotNull("Expected ja pack to be flagged stale", ja)
@@ -65,16 +66,32 @@ class LanguagePackStoreStalenessTest {
         assertEquals(SourceLangId.JA, ja.sourceLangId!!.packId)
         assertNull(ja.targetLangCode)
         assertEquals(
-            "v1 on disk + additiveFromVersion=1 in catalog → ADDITIVE",
+            "v2 on disk + additiveFromVersion=2 in catalog → ADDITIVE",
             UpgradeMode.ADDITIVE, ja.upgradeMode,
         )
     }
 
+    @Test fun `ja pack at v1 on disk vs catalog v3 (below additiveFromVersion) -- stale FORCE`() {
+        writeManifest("ja", packVersion = 1)
+        // v1's dict.sqlite is the pre-rank_score schema and is below
+        // additiveFromVersion=2, so the v3 upgrade is FORCE (clean reinstall to
+        // the current schema). The loosened probe still accepts the v1 DB as
+        // structurally valid so the pack survives to the orderly FORCE upgrade.
+        writeJaV1SchemaDb()
+        val stale = LanguagePackStore.staleInstalledPacks(ctx)
+        val ja = stale.firstOrNull { it.catalogKey == "ja" }
+        assertNotNull("Expected ja pack to be flagged stale", ja)
+        assertEquals(
+            "v1 on disk < additiveFromVersion=2 → FORCE",
+            UpgradeMode.FORCE, ja!!.upgradeMode,
+        )
+    }
+
     @Test fun `schema-broken ja pack always classifies as FORCE`() {
-        // Manifest says v1 (would qualify for ADDITIVE per additiveFromVersion=1),
+        // Manifest says v2 (would qualify for ADDITIVE per additiveFromVersion=2),
         // but the dict.sqlite is missing required tables — schema probe fails
         // → FORCE regardless of version. This is the corruption backstop.
-        writeManifest("ja", packVersion = 1)
+        writeManifest("ja", packVersion = 2)
         // Don't write a valid dict.sqlite; or write one missing tables.
         writeJaBrokenDb()
         val stale = LanguagePackStore.staleInstalledPacks(ctx)
@@ -119,8 +136,8 @@ class LanguagePackStoreStalenessTest {
         }
     }
 
-    @Test fun `ja pack at v2 on disk vs catalog v2 -- not stale`() {
-        writeManifest("ja", packVersion = 2)
+    @Test fun `ja pack at v3 on disk vs catalog v3 -- not stale`() {
+        writeManifest("ja", packVersion = 3)
         // Also write a minimal SQLite to satisfy the schema-current
         // corruption backstop in the source path.
         writeJaSchemaCurrentDb()
@@ -133,18 +150,19 @@ class LanguagePackStoreStalenessTest {
 
     @Test fun `loosened JmdictSchemaProbe accepts v1-shaped DBs`() {
         // Regression for the loosening: a v1-shaped DB (5 structural columns
-        // present, NO rank_score / uk_applicable / ke_pri) must pass the
-        // probe. If the probe ever re-tightens to require v2 columns, this
-        // test fails loudly and the additive-upgrade path becomes unreachable.
-        writeManifest("ja", packVersion = 1)
+        // present, NO rank_score / uk_applicable / ke_pri) must pass the probe.
+        // The probe gates isInstalled (which deletes schema-stale packs) and the
+        // staleness scan; if it rejected v1, an existing v1 pack would be nuked
+        // on launch instead of surviving to its orderly FORCE upgrade to v3.
+        // Asserted directly now: v1 is below additiveFromVersion=2, so its
+        // upgrade mode is FORCE regardless of probe result — the probe outcome
+        // can no longer be inferred from the mode.
         writeJaV1SchemaDb()
-        // The probe is consulted indirectly via staleInstalledPacks. If the
-        // probe rejected v1, ja would be marked schemaStale → FORCE. With the
-        // loosened probe, it's ADDITIVE per additiveFromVersion=1.
-        val stale = LanguagePackStore.staleInstalledPacks(ctx)
-        val ja = stale.firstOrNull { it.catalogKey == "ja" }
-        assertNotNull(ja)
-        assertEquals(UpgradeMode.ADDITIVE, ja!!.upgradeMode)
+        val dbFile = LanguagePackStore.dictDbFor(ctx, SourceLangId.JA)
+        assertTrue(
+            "Loosened probe must accept a v1-shaped dict.sqlite",
+            LanguagePackStore.isJmdictSchemaCurrent(dbFile),
+        )
     }
 
     @Test fun `target pack at older version is stale`() {
