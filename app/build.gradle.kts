@@ -15,7 +15,7 @@ android {
     defaultConfig {
         applicationId = "com.playtranslate"
         minSdk = 30
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 9
         versionName = "2.2.0"
 
