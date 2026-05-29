@@ -147,8 +147,11 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.gson)
 
-    // Japanese morphological analysis
+    // Japanese morphological analysis (Sudachi/UniDic — replaces the abandoned
+    // kuromoji-ipadic 2007 IPADIC; see docs/sudachi-spike-report.md). kuromoji
+    // is removed later in this migration once the swap is wired + validated.
     implementation(libs.kuromoji.ipadic)
+    implementation(libs.sudachi)
 
     // Lucene Snowball stemmer (Phase 3: Latin/English stemming)
     implementation(libs.lucene.analyzers.common)
