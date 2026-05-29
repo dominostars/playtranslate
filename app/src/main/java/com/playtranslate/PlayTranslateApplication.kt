@@ -242,6 +242,14 @@ class PlayTranslateApplication : Application() {
      * cache is bounded at one recognizer per backend (~5 entries); the
      * dev-only "leak" isn't worth the complexity of refcounting.
      */
+    // Suppress TRIM_MEMORY_COMPLETE's API-35 deprecation: Android 15+ stopped
+    // delivering most TRIM_MEMORY_* levels (the OS reclaims memory itself
+    // instead of asking apps). There's no replacement signal for "you're at
+    // the top of the kill list" on newer OS versions, but the cleanup remains
+    // useful on Android 11–13 (the device class the project's retro-handheld
+    // userbase actually runs). Graceful degradation when the signal doesn't
+    // fire — onTrimMemory just isn't called, no caller depends on it.
+    @Suppress("DEPRECATION")
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         if (BuildConfig.DEBUG) return
