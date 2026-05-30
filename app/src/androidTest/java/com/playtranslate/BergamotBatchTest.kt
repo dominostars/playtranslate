@@ -42,6 +42,7 @@ class BergamotBatchTest {
             direction = "ja-en",
             modelPath = glob(Regex("""model\..*\.intgemm\.alphas\.bin""")).absolutePath,
             vocabPath = glob(Regex("""vocab\..*\.spm""")).absolutePath,
+            targetVocabPath = "", // ja-en is single-vocab
             shortlistPath = glob(Regex("""lex\..*\.bin""")).absolutePath,
             encoderLayers = 6,
             decoderLayers = 4,

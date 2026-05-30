@@ -95,6 +95,7 @@ class BergamotTranslator private constructor(private val context: Context) {
         val handle = BergamotNative.loadModel(
             files.modelPath,
             files.vocabPath,
+            files.targetVocabPath,
             files.shortlistPath,
             files.encoderLayers,
             files.decoderLayers,

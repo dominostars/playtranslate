@@ -9,11 +9,10 @@ and size ourselves. The catalog `url` still points at Mozilla's gzipped object
 (the app downloads from there at runtime and gunzips via the MultiFile downloader,
 verifying against these uncompressed hashes).
 
-We ship the `base-memory` tier (what Firefox Android uses). Split-vocab CJK
-targets (en->ja/zh/ko, which carry srcvocab+trgvocab) are SKIPPED for v1 — the
-stock slimt Package exposes a single vocabulary; en->CJK needs a target_vocabulary
-JNI extension (tracked as a follow-up). Every xx->en direction and en->non-CJK is
-single-vocab and supported.
+We ship the `base-memory` tier (what Firefox Android uses). Most directions ship
+one shared `vocab`; the CJK targets (en->ja/zh/ko) ship a split `srcVocab`+`trgVocab`
+pair (separate source/target SentencePiece models), which our slimt fork loads via
+the Package.target_vocabulary path. Both shapes are emitted with role-named files.
 
 Usage:
     python3 scripts/gen_bergamot_catalog.py ja-en es-en en-es ...
@@ -56,13 +55,20 @@ def pick_variant(variants):
 
 def build_entry(direction: str, variant: dict):
     files = variant["files"]
-    if "srcVocab" in files or "trgVocab" in files:
-        print(f"  SKIP {direction}: split-vocab (en->CJK) not supported in v1")
+    # Vocab roles: most pairs ship one shared `vocab`; CJK en->{ja,zh,ko} ship a
+    # split `srcVocab` + `trgVocab`. Mozilla's basenames (vocab.*/srcvocab.*/
+    # trgvocab.*.spm) already match the on-device role regexes, so we keep them.
+    if "vocab" in files:
+        vocab_roles = ["vocab"]
+    elif "srcVocab" in files and "trgVocab" in files:
+        vocab_roles = ["srcVocab", "trgVocab"]
+    else:
+        print(f"  SKIP {direction}: no vocab / srcVocab+trgVocab role")
         return None
     entry_files = []
     total = 0
-    # Stable order: model, vocab, shortlist
-    for role in ("model", "vocab", "lexicalShortlist"):
+    # Stable order: model, vocab(s), shortlist
+    for role in ("model", *vocab_roles, "lexicalShortlist"):
         info = files.get(role)
         if not info:
             print(f"  SKIP {direction}: missing {role}")

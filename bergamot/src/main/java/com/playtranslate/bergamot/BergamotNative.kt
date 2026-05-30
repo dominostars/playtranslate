@@ -30,10 +30,15 @@ object BergamotNative {
      * exported models ship no model.yml, and base-memory is 6 encoder / 4 decoder
      * (the caller auto-detects from the model file). [splitMode] empty = engine
      * default. Returns 0 on failure.
+     *
+     * [targetVocabPath] is the separate target-side vocabulary for split-vocab
+     * models (en→CJK ship srcvocab+trgvocab); pass "" for single-vocab models,
+     * where the source vocabulary is shared for decoding.
      */
     external fun loadModel(
         modelPath: String,
         vocabPath: String,
+        targetVocabPath: String,
         shortlistPath: String,
         encoderLayers: Int,
         decoderLayers: Int,

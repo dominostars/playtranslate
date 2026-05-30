@@ -89,8 +89,9 @@ Java_com_playtranslate_bergamot_BergamotNative_destroyService(JNIEnv*, jobject,
 JNIEXPORT jlong JNICALL
 Java_com_playtranslate_bergamot_BergamotNative_loadModel(
     JNIEnv* env, jobject, jstring model_path, jstring vocab_path,
-    jstring shortlist_path, jint encoder_layers, jint decoder_layers,
-    jint feed_forward_depth, jint num_heads, jstring split_mode) {
+    jstring target_vocab_path, jstring shortlist_path, jint encoder_layers,
+    jint decoder_layers, jint feed_forward_depth, jint num_heads,
+    jstring split_mode) {
   try {
     Model::Config config;
     config.encoder_layers = static_cast<size_t>(encoder_layers);
@@ -103,6 +104,8 @@ Java_com_playtranslate_bergamot_BergamotNative_loadModel(
     Package<std::string> package;
     package.model = jstr(env, model_path);
     package.vocabulary = jstr(env, vocab_path);
+    // Split-vocab (en->CJK) models pass a distinct target vocab; "" => single-vocab.
+    package.target_vocabulary = jstr(env, target_vocab_path);
     package.shortlist = jstr(env, shortlist_path);
     package.ssplit = std::string();
 

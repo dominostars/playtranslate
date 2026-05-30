@@ -5,11 +5,18 @@ import com.playtranslate.language.LanguagePackCatalog
 import com.playtranslate.language.LanguagePackCatalogLoader
 import java.io.File
 
-/** On-disk files + architecture for one translation direction's model. */
+/**
+ * On-disk files + architecture for one translation direction's model.
+ *
+ * [targetVocabPath] is empty for the common single-vocab models (one shared
+ * `vocab.*.spm`); split-vocab models (en→CJK ship `srcvocab`+`trgvocab`) set it
+ * to the target-side vocab, which the engine uses for decoding/detokenization.
+ */
 data class BergamotModelFiles(
     val direction: String,
     val modelPath: String,
     val vocabPath: String,
+    val targetVocabPath: String,
     val shortlistPath: String,
     val encoderLayers: Int,
     val decoderLayers: Int,
@@ -83,16 +90,31 @@ class BergamotModelManager(private val context: Context) {
         if (!File(dir, SENTINEL).exists()) return null
         val model = dir.listFiles { f -> MODEL_RE.matches(f.name) }?.firstOrNull() ?: return null
         val shortlist = dir.listFiles { f -> SHORTLIST_RE.matches(f.name) }?.firstOrNull() ?: return null
-        // Single shared vocab for the pairs we ship (base-memory European + ja/ko-en).
-        // CJK en→{ja,zh} use split src/trg vocabs — out of v1 scope; if present we
-        // pass the source vocab.
-        val vocab = dir.listFiles { f -> VOCAB_RE.matches(f.name) }?.firstOrNull()
-            ?: dir.listFiles { f -> SRCVOCAB_RE.matches(f.name) }?.firstOrNull()
-            ?: return null
+        // Most pairs ship one shared vocab (`vocab.*.spm`). CJK en→{ja,zh,ko} ship
+        // a split pair (`srcvocab.*.spm` + `trgvocab.*.spm`) — source for input
+        // tokenization, target for decoding. Prefer the shared vocab; otherwise
+        // require BOTH split halves (a lone half is an incomplete install).
+        val sharedVocab = dir.listFiles { f -> VOCAB_RE.matches(f.name) }?.firstOrNull()
+        val srcVocab = dir.listFiles { f -> SRCVOCAB_RE.matches(f.name) }?.firstOrNull()
+        val trgVocab = dir.listFiles { f -> TRGVOCAB_RE.matches(f.name) }?.firstOrNull()
+        val vocabPath: String
+        val targetVocabPath: String
+        when {
+            sharedVocab != null -> {
+                vocabPath = sharedVocab.absolutePath
+                targetVocabPath = ""
+            }
+            srcVocab != null && trgVocab != null -> {
+                vocabPath = srcVocab.absolutePath
+                targetVocabPath = trgVocab.absolutePath
+            }
+            else -> return null
+        }
         return BergamotModelFiles(
             direction = direction,
             modelPath = model.absolutePath,
-            vocabPath = vocab.absolutePath,
+            vocabPath = vocabPath,
+            targetVocabPath = targetVocabPath,
             shortlistPath = shortlist.absolutePath,
             // Mozilla "base-memory" architecture: verified 6 encoder / 4 decoder
             // for every base-memory pair sampled (ffn 2, heads 8). We only ship
@@ -115,8 +137,11 @@ class BergamotModelManager(private val context: Context) {
         const val BASE_MEMORY_NUM_HEADS = 8
 
         private val MODEL_RE = Regex("""model\..*\.intgemm\.alphas\.bin""")
+        // NB: srcvocab/trgvocab must be matched before the shared-vocab regex —
+        // `vocab\.` is anchored (matches()), so "srcvocab.*.spm" does NOT match it.
         private val VOCAB_RE = Regex("""vocab\..*\.spm""")
         private val SRCVOCAB_RE = Regex("""srcvocab\..*\.spm""")
+        private val TRGVOCAB_RE = Regex("""trgvocab\..*\.spm""")
         private val SHORTLIST_RE = Regex("""lex\..*\.bin""")
     }
 }
