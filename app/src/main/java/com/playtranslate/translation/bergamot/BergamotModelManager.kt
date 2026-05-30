@@ -127,6 +127,24 @@ class BergamotModelManager(private val context: Context) {
         )
     }
 
+    /**
+     * Reclaim the Bergamot model downloaded for a SOURCE language being removed
+     * (its source→English direction, e.g. ja→en). Frees disk and evicts the
+     * cached native model. No-op when nothing is installed for that direction.
+     */
+    suspend fun deleteForSource(source: String) = deleteDirection("${mozilla(source)}-en")
+
+    /**
+     * Reclaim the Bergamot model for a TARGET language being removed (its
+     * English→target direction, e.g. en→es).
+     */
+    suspend fun deleteForTarget(target: String) = deleteDirection("en-${mozilla(target)}")
+
+    private suspend fun deleteDirection(direction: String) {
+        BergamotModel(direction).delete(context)
+        BergamotTranslator.getInstance(context).evictDirection(direction)
+    }
+
     companion object {
         const val CATALOG_PREFIX = "bergamot-"
         const val SENTINEL = ".sentinel"

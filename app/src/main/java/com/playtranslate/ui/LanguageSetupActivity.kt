@@ -56,6 +56,7 @@ import com.playtranslate.compositeOver
 import com.playtranslate.applyTheme
 import com.playtranslate.themeColor
 import com.playtranslate.preloadMlKitFallbackModels
+import com.playtranslate.translation.bergamot.BergamotModelManager
 import com.playtranslate.translation.bergamot.BergamotWarmup
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
@@ -766,6 +767,17 @@ class LanguageSetupActivity : AppCompatActivity() {
         }
         showDeleteConfirm(title = title, message = message) {
             LanguagePackStore.uninstall(applicationContext, id)
+            // Reclaim the Bergamot source→English model(s) too. Chinese variants
+            // share a pack, so cover both (only zh-en exists in the catalog).
+            val sources = if (chineseShared) {
+                listOf(SourceLangId.ZH, SourceLangId.ZH_HANT)
+            } else {
+                listOf(id)
+            }
+            lifecycleScope.launch {
+                val mgr = BergamotModelManager(applicationContext)
+                sources.forEach { mgr.deleteForSource(SourceLanguageProfiles[it].translationCode) }
+            }
             showCurrentPage()
         }
     }
@@ -776,6 +788,10 @@ class LanguageSetupActivity : AppCompatActivity() {
             message = "This removes $displayName dictionary data from this device. You can redownload later.",
         ) {
             LanguagePackStore.uninstallTarget(applicationContext, code)
+            // Reclaim the Bergamot English→target model for this target too.
+            lifecycleScope.launch {
+                BergamotModelManager(applicationContext).deleteForTarget(code)
+            }
             showCurrentPage()
         }
     }
