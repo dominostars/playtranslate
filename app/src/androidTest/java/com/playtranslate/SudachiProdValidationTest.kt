@@ -13,6 +13,7 @@ import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -25,6 +26,8 @@ import java.io.File
  * Stages system_small.dic into the installed JA pack's tokenizer/ dir (this is
  * what ja-v3 will ship), copying from the adb-pushed external file:
  *   adb push system_small.dic /sdcard/Android/data/com.playtranslate/files/sudachi/system_small.dic
+ * Both tests assumeTrue that dic is present, so they SKIP (not fail) on a normal
+ * connectedDebugAndroidTest run that hasn't done the push (CI / fresh device).
  *
  * Run: ./gradlew :app:connectedDebugAndroidTest \
  *   -Pandroid.testInstrumentationRunnerArguments.class=com.playtranslate.SudachiProdValidationTest
@@ -39,16 +42,24 @@ class SudachiProdValidationTest {
     fun validateProductionPipeline() = runBlocking {
         val appCtx = InstrumentationRegistry.getInstrumentation().targetContext
 
+        // Device-only validation: requires system_small.dic adb-pushed to the
+        // app's external sudachi/ dir (see class doc). assumeTrue SKIPS (not
+        // fails) when it's absent, so a normal connectedDebugAndroidTest on CI /
+        // a fresh device stays green instead of failing here — and skips before
+        // the network install below.
+        val src = File(appCtx.getExternalFilesDir(null), "sudachi/system_small.dic")
+        assumeTrue(
+            "Skipped: push system_small.dic to ${src.absolutePath} to run this device-only validation.",
+            src.isFile,
+        )
+
         // 1. JA pack (dict.sqlite) must be installed.
         if (!LanguagePackStore.isInstalled(appCtx, SourceLangId.JA)) {
             val r = LanguagePackStore.install(appCtx, SourceLangId.JA) {}
             assertEquals("JA pack install failed: $r", InstallResult.Success, r)
         }
 
-        // 2. Stage system_small.dic into the pack tokenizer/ dir (what ja-v3 ships),
-        //    copying from the adb-pushed external file.
-        val src = File(appCtx.getExternalFilesDir(null), "sudachi/system_small.dic")
-        assertTrue("Push system_small.dic to ${src.absolutePath} first.", src.isFile)
+        // 2. Stage system_small.dic into the pack tokenizer/ dir (what ja-v3 ships).
         val tokDir = LanguagePackStore.dirFor(appCtx, SourceLangId.JA).resolve("tokenizer").apply { mkdirs() }
         val dest = File(tokDir, "system_small.dic")
         if (!dest.isFile || dest.length() != src.length()) src.copyTo(dest, overwrite = true)
@@ -102,7 +113,10 @@ class SudachiProdValidationTest {
     fun concurrentAnalyzeVsClose() {
         val appCtx = InstrumentationRegistry.getInstrumentation().targetContext
         val src = File(appCtx.getExternalFilesDir(null), "sudachi/system_small.dic")
-        assertTrue("Push system_small.dic to ${src.absolutePath} first.", src.isFile)
+        assumeTrue(
+            "Skipped: push system_small.dic to ${src.absolutePath} to run this device-only validation.",
+            src.isFile,
+        )
         val tokDir = LanguagePackStore.dirFor(appCtx, SourceLangId.JA).resolve("tokenizer").apply { mkdirs() }
         val dest = File(tokDir, "system_small.dic")
         if (!dest.isFile || dest.length() != src.length()) src.copyTo(dest, overwrite = true)
