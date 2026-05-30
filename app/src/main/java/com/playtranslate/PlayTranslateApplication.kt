@@ -18,6 +18,8 @@ import com.playtranslate.translation.BergamotBackend
 import com.playtranslate.translation.MlKitBackend
 import com.playtranslate.translation.OpenAiBackend
 import com.playtranslate.translation.QwenMnnBackend
+import com.playtranslate.translation.Qwen35Mnn2bBackend
+import com.playtranslate.translation.Qwen35Mnn4bBackend
 import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.translation.UsageTracker
 import com.playtranslate.translation.mnn.MnnTranslator
@@ -135,6 +137,14 @@ class PlayTranslateApplication : Application() {
                     context         = this,
                     enabledProvider = { Prefs(this).qwenMnnEnabled },
                 ),
+                Qwen35Mnn2bBackend(
+                    context         = this,
+                    enabledProvider = { Prefs(this).qwen35Mnn2bEnabled },
+                ),
+                Qwen35Mnn4bBackend(
+                    context         = this,
+                    enabledProvider = { Prefs(this).qwen35Mnn4bEnabled },
+                ),
                 BergamotBackend(
                     context         = this,
                     enabledProvider = { Prefs(this).bergamotEnabled },
@@ -142,6 +152,16 @@ class PlayTranslateApplication : Application() {
                 MlKitBackend(),
             )
         )
+
+        // Launch-time cleanup: drop in-flight download partials for any
+        // deprecated model (generic — driven by CatalogEntry.deprecated), so a
+        // retired model can't resume a stale partial download. No-op for live
+        // models and for fully-installed deprecated models (their install is
+        // kept; only the .partial / .tmp staging artifacts are removed). File
+        // unlinks are O(1), so this is negligible on cold start.
+        TranslationBackendRegistry.orderedBackends()
+            .filterIsInstance<com.playtranslate.translation.llm.OnDeviceLlmBackend>()
+            .forEach { it.cleanupPartialsIfDeprecated() }
         // Track the currently-resumed PlayTranslate activity so display-id
         // queries always reflect the live state instead of a value cached
         // at lifecycle boundaries — Android can move an activity between

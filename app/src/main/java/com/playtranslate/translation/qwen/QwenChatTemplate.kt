@@ -60,4 +60,16 @@ Produce only the $tgtName translation, without any additional explanations or co
      */
     fun userBlock(text: String, source: String, target: String): String =
         "<|im_start|>user\n${userMessage(text, source, target)}<|im_end|>\n<|im_start|>assistant\n"
+
+    /**
+     * Qwen 3.5 user turn — identical to [userBlock] but opens the assistant turn
+     * with the non-thinking marker `<think>\n\n</think>\n\n`. Qwen 3.5 is a
+     * hybrid reasoning model; its own chat template emits this empty think-block
+     * after `<|im_start|>assistant\n` whenever `enable_thinking` is not true, so
+     * the model skips the `<think>` monologue and produces the translation
+     * directly. With `use_template:false` on the MNN side we must bake it in
+     * ourselves. Used by [com.playtranslate.translation.llm.PromptStyle.Qwen35Chat].
+     */
+    fun userBlockNoThink(text: String, source: String, target: String): String =
+        userBlock(text, source, target) + "<think>\n\n</think>\n\n"
 }

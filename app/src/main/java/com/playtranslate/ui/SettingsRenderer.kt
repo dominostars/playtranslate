@@ -149,6 +149,17 @@ class SettingsRenderer(
         /** Tap on the MNN-backed Qwen row when it's currently enabled. */
         fun showQwenMnnDisableDialog()
 
+        /** Qwen 3.5 2B row taps (download / enable-installed / disable).
+         *  Mirror the [startQwenMnnDownload] trio. */
+        fun startQwen35Mnn2bDownload()
+        fun enableInstalledQwen35Mnn2b()
+        fun showQwen35Mnn2bDisableDialog()
+
+        /** Qwen 3.5 4B row taps (download / enable-installed / disable). */
+        fun startQwen35Mnn4bDownload()
+        fun enableInstalledQwen35Mnn4b()
+        fun showQwen35Mnn4bDisableDialog()
+
         /** Tap on the Gemma E2B row when the model isn't installed — start a
          *  zip download via the OnDeviceLlmDownloader ZipExtract commit path. */
         fun startGemmaE2bMnnDownload()
@@ -1336,6 +1347,10 @@ class SettingsRenderer(
     private val rowBackendGemmaE2bMnn: View = root.findViewById(R.id.rowBackendGemmaE2bMnn)
     private val dividerBackendQwenMnn: View = root.findViewById(R.id.dividerBackendQwenMnn)
     private val rowBackendQwenMnn: View = root.findViewById(R.id.rowBackendQwenMnn)
+    private val dividerBackendQwen35Mnn4b: View = root.findViewById(R.id.dividerBackendQwen35Mnn4b)
+    private val rowBackendQwen35Mnn4b: View = root.findViewById(R.id.rowBackendQwen35Mnn4b)
+    private val dividerBackendQwen35Mnn2b: View = root.findViewById(R.id.dividerBackendQwen35Mnn2b)
+    private val rowBackendQwen35Mnn2b: View = root.findViewById(R.id.rowBackendQwen35Mnn2b)
     private val dividerBackendHyMt: View = root.findViewById(R.id.dividerBackendHyMt)
     private val rowBackendHyMt: View = root.findViewById(R.id.rowBackendHyMt)
     private val dividerBackendBergamot: View = root.findViewById(R.id.dividerBackendBergamot)
@@ -1371,6 +1386,8 @@ class SettingsRenderer(
         wireDeeplBackendRow()
         wireGemmaE2bMnnBackendRow()
         wireQwenMnnBackendRow()
+        wireQwen35Mnn4bBackendRow()
+        wireQwen35Mnn2bBackendRow()
         wireHyMtBackendRow()
         wireBergamotBackendRow()
 
@@ -1637,6 +1654,18 @@ class SettingsRenderer(
         updateOfflineStatusIconAndSwitch(rowBackendQwenMnn, backend)
     }
 
+    /** Refresh the Qwen 3.5 2B row. Mirrors [refreshQwenMnnSwitch]. */
+    fun refreshQwen35Mnn2bSwitch() {
+        val backend = TranslationBackendRegistry.byId("qwen35_mnn_2b") ?: return
+        updateOfflineStatusIconAndSwitch(rowBackendQwen35Mnn2b, backend)
+    }
+
+    /** Refresh the Qwen 3.5 4B row. Mirrors [refreshQwenMnnSwitch]. */
+    fun refreshQwen35Mnn4bSwitch() {
+        val backend = TranslationBackendRegistry.byId("qwen35_mnn_4b") ?: return
+        updateOfflineStatusIconAndSwitch(rowBackendQwen35Mnn4b, backend)
+    }
+
     fun refreshBergamotSwitch() {
         val backend = TranslationBackendRegistry.byId("bergamot") ?: return
         updateOfflineStatusIconAndSwitch(rowBackendBergamot, backend)
@@ -1696,6 +1725,8 @@ class SettingsRenderer(
         "lingva"          -> rowBackendLingva
         "gemma_e2b_mnn"   -> rowBackendGemmaE2bMnn
         "qwen_mnn"        -> rowBackendQwenMnn
+        "qwen35_mnn_2b"   -> rowBackendQwen35Mnn2b
+        "qwen35_mnn_4b"   -> rowBackendQwen35Mnn4b
         "hymt_mnn"        -> rowBackendHyMt
         "bergamot"        -> rowBackendBergamot
         "mlkit"           -> rowBackendMlkit
@@ -1950,6 +1981,24 @@ class SettingsRenderer(
         onDownload = callbacks::startQwenMnnDownload,
     )
 
+    private fun wireQwen35Mnn2bBackendRow() = wireOfflineLlmRow(
+        row = rowBackendQwen35Mnn2b,
+        backendId = "qwen35_mnn_2b",
+        isEnabled = { prefs.qwen35Mnn2bEnabled },
+        onDisable = callbacks::showQwen35Mnn2bDisableDialog,
+        onEnableInstalled = callbacks::enableInstalledQwen35Mnn2b,
+        onDownload = callbacks::startQwen35Mnn2bDownload,
+    )
+
+    private fun wireQwen35Mnn4bBackendRow() = wireOfflineLlmRow(
+        row = rowBackendQwen35Mnn4b,
+        backendId = "qwen35_mnn_4b",
+        isEnabled = { prefs.qwen35Mnn4bEnabled },
+        onDisable = callbacks::showQwen35Mnn4bDisableDialog,
+        onEnableInstalled = callbacks::enableInstalledQwen35Mnn4b,
+        onDownload = callbacks::startQwen35Mnn4bDownload,
+    )
+
     /** Bergamot's row can't reuse [wireOfflineLlmRow]: install state is
      *  **per-pair** (the model for the current source→target), not the global
      *  [OnDeviceLlmBackend.isInstalled]. Hidden outright on 32-bit (the .so is
@@ -2038,6 +2087,8 @@ class SettingsRenderer(
      *  it's the always-on fallback). */
     private fun enabledPrefFor(backendId: BackendId): Boolean? = when (backendId) {
         "qwen_mnn"       -> prefs.qwenMnnEnabled
+        "qwen35_mnn_2b"  -> prefs.qwen35Mnn2bEnabled
+        "qwen35_mnn_4b"  -> prefs.qwen35Mnn4bEnabled
         "gemma_e2b_mnn"  -> prefs.gemmaE2bEnabled
         "hymt_mnn"       -> prefs.hyMtEnabled
         "bergamot"       -> prefs.bergamotEnabled
@@ -2055,6 +2106,18 @@ class SettingsRenderer(
         else                  -> false
     }
 
+    /** The id'd divider that precedes an offline row (so the deprecation gate
+     *  can hide it together with the row). Null for rows with no id'd preceding
+     *  divider (Gemma — first row in the card; ML Kit — id-less divider). */
+    private fun dividerForOfflineRow(backendId: BackendId): View? = when (backendId) {
+        "qwen_mnn"       -> dividerBackendQwenMnn
+        "qwen35_mnn_2b"  -> dividerBackendQwen35Mnn2b
+        "qwen35_mnn_4b"  -> dividerBackendQwen35Mnn4b
+        "hymt_mnn"       -> dividerBackendHyMt
+        "bergamot"       -> dividerBackendBergamot
+        else             -> null
+    }
+
     /** Full visual bind for an offline backend row. Idempotent — called on
      *  initial bind, on Settings resume, and after
      *  [TranslationBackend.refreshStatus] returns. Owns the entire layout:
@@ -2062,11 +2125,29 @@ class SettingsRenderer(
      *  (or busy ProgressBar), switch state, warning sub-row, and the
      *  composed row [View.setContentDescription]. */
     private fun renderOfflineBackendRow(row: View, backend: TranslationBackend) {
+        val onDeviceLlm = backend as? OnDeviceLlmBackend
+
+        // Deprecation gate (generic — driven by CatalogEntry.deprecated via
+        // OnDeviceLlmBackend.isDeprecated). A deprecated model's row is shown
+        // only while the model is fully installed, so nobody can start a fresh
+        // download of a retired model. Re-evaluated on every refresh (this
+        // method runs from refreshAllBackendStatuses), so deleting the model
+        // while Settings is open hides the row and its preceding divider.
+        val deprecated = onDeviceLlm?.isDeprecated() == true
+        if (deprecated) {
+            val installed = offlineInstalled(backend)
+            row.isGone = !installed
+            dividerForOfflineRow(backend.id)?.isGone = !installed
+            if (!installed) return
+        }
+
         row.findViewById<TextView>(R.id.tvOfflineTitle).text =
             if (backend is BergamotBackend) ctx.getString(R.string.bergamot_row_title)
             else backend.displayName
+        // Warning-colored "⚠ DEPRECATED ⚠" badge on the title line (deprecated
+        // + installed rows only; the not-installed case returned above).
+        row.findViewById<TextView>(R.id.tvOfflineDeprecatedBadge).isVisible = deprecated
 
-        val onDeviceLlm = backend as? OnDeviceLlmBackend
         val isMlKit = backend is MlKitBackend
 
         val grid = row.findViewById<View>(R.id.cardStatGrid)

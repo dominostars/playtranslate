@@ -72,4 +72,20 @@ interface ModelHelper {
     /** Best-effort delete of both the verified file and any leftover partial.
      *  Returns true if neither file remains after the call. */
     fun delete(ctx: Context): Boolean
+
+    /** Delete only the in-flight download artifacts — the `.partial` file/zip
+     *  and (directory-mode) the `.tmp` extract-staging dir — WITHOUT touching a
+     *  fully-installed model. Used by the launch-time cleanup for deprecated
+     *  catalog entries so a retired model's interrupted download can't resume,
+     *  while a completed install is preserved (its row stays visible). */
+    fun deletePartials(ctx: Context): Boolean {
+        val partialGone = partialFile(ctx).let { if (!it.exists()) true else it.delete() }
+        val tmpGone = if (isDirectoryMode()) {
+            val final = file(ctx)
+            File(final.parentFile, "${final.name}.tmp").let {
+                if (!it.exists()) true else it.deleteRecursively()
+            }
+        } else true
+        return partialGone && tmpGone
+    }
 }

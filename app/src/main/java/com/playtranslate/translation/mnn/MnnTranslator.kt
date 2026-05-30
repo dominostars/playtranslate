@@ -111,6 +111,25 @@ class MnnTranslator private constructor(private val context: Context) {
                     predictLength = 256,
                 ).collect { token -> sb.append(token) }
             }
+            PromptStyle.Qwen35Chat -> {
+                // Qwen 3.5: same ChatML system block as StandardChat (Qwen
+                // template), but the user turn opens the assistant role with the
+                // non-thinking marker so the hybrid-reasoning model skips the
+                // <think> pass. The system-boundary linear-state snapshot
+                // (mnn_chat.cpp) keeps KV-reuse correct for Qwen 3.5's mixed
+                // attention; no Kotlin change needed here beyond the no-think
+                // user block.
+                if (didReload || systemPair != pair) {
+                    engine.setSystemPrompt(QwenChatTemplate.systemBlock(source, target))
+                    systemPair = pair
+                } else {
+                    engine.resetForNextPrompt()
+                }
+                engine.sendUserPrompt(
+                    QwenChatTemplate.userBlockNoThink(text, source, target),
+                    predictLength = 256,
+                ).collect { token -> sb.append(token) }
+            }
             PromptStyle.Gemma4Chat -> {
                 if (didReload || systemPair != pair) {
                     // Gemma 4 uses <|turn>{role}…<turn|> markers per

@@ -164,6 +164,13 @@ Java_com_playtranslate_mnn_internal_MnnChatImpl_processSystemPrompt(
     g_llm->response(sys_str, &sink, nullptr, /*max_new_tokens=*/0);
 
     g_system_prompt_position = g_llm->getCurrentHistory();
+    // Snapshot the linear-attention (gated delta rule) recurrent state at this
+    // system boundary so each resetForNextPrompt's eraseHistory rewinds the SSM
+    // state here too — eraseHistory only rewinds the positional KV cache, which
+    // is enough for full-attention models but leaves a mixed-attention model
+    // (Qwen 3.5) polluted across turns. No-op for non-linear models (Qwen 2.5 /
+    // Gemma / HyMt): no snapshot buffers are ever allocated.
+    g_llm->snapshotLinearState();
     LOGi("processSystemPrompt: prefill complete, history=%zu", g_system_prompt_position);
 
     // Surface status failures to the caller. RUNNING and *_FINISHED are both

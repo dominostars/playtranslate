@@ -46,4 +46,19 @@ sealed interface PromptStyle {
      * [com.playtranslate.translation.hymt.HyMtChatTemplate].
      */
     object HyMtChat : PromptStyle
+
+    /**
+     * Qwen 3.5 — same ChatML `<|im_start|>{role}` / `<|im_end|>` envelope and
+     * true system role as [StandardChat], but Qwen 3.5 is a hybrid
+     * thinking/non-thinking model: its chat template opens the assistant turn
+     * with `<think>\n\n</think>\n\n` whenever thinking is disabled. With
+     * `use_template:false` (mnn_chat.cpp) we bake that empty think-block into
+     * the user turn ourselves so the model skips the reasoning monologue and
+     * emits the translation directly. Without it the model burns latency and
+     * tokens on a `<think>` pass — fatal for a translation tier. Envelope
+     * strings come from [com.playtranslate.translation.qwen.QwenChatTemplate]
+     * ([QwenChatTemplate.userBlockNoThink]); spike-confirmed 0 think-leaks over
+     * 500 sentences (mnn-spike/QWEN35_SPIKE_REPORT.md).
+     */
+    object Qwen35Chat : PromptStyle
 }

@@ -38,6 +38,28 @@
             android:ellipsize="end"
             style="@style/Text.PT.RowTitle" />
 
+        <!-- Deprecation badge: warning-colored "DEPRECATED" flanked by warning
+             triangles. Shown by SettingsRenderer.renderOfflineBackendRow only
+             for deprecated + installed rows. -->
+        <TextView
+            android:id="@+id/tvOfflineDeprecatedBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="@string/deprecated_badge_label"
+            android:textColor="?attr/ptWarning"
+            android:textSize="11sp"
+            android:fontFamily="sans-serif-medium"
+            android:textAllCaps="true"
+            android:letterSpacing="0.06"
+            android:gravity="center_vertical"
+            android:drawableStart="@drawable/ic_warning_triangle"
+            android:drawableEnd="@drawable/ic_warning_triangle"
+            android:drawablePadding="4dp"
+            app:drawableTint="?attr/ptWarning"
+            android:importantForAccessibility="yes"
+            android:visibility="gone" />
+
         <FrameLayout
             android:id="@+id/ivStatusIconWrap"
             android:layout_width="22dp"

@@ -294,6 +294,18 @@ class SettingsBottomSheet : DialogFragment() {
                     com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
                     maybeUnloadIdleEngines(ctx)
                 }
+                Prefs.KEY_QWEN35_MNN_2B_ENABLED -> {
+                    renderer?.refreshQwen35Mnn2bSwitch()
+                    renderer?.refreshAllBackendStatuses()
+                    com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
+                    maybeUnloadIdleEngines(ctx)
+                }
+                Prefs.KEY_QWEN35_MNN_4B_ENABLED -> {
+                    renderer?.refreshQwen35Mnn4bSwitch()
+                    renderer?.refreshAllBackendStatuses()
+                    com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
+                    maybeUnloadIdleEngines(ctx)
+                }
                 Prefs.KEY_GEMMA_E2B_ENABLED -> {
                     renderer?.refreshGemmaE2bSwitch()
                     renderer?.refreshAllBackendStatuses()
@@ -330,7 +342,8 @@ class SettingsBottomSheet : DialogFragment() {
      */
     private fun maybeUnloadIdleEngines(ctx: Context) {
         val prefs = Prefs(ctx)
-        if (!prefs.qwenMnnEnabled && !prefs.gemmaE2bEnabled && !prefs.hyMtEnabled) {
+        if (!prefs.qwenMnnEnabled && !prefs.gemmaE2bEnabled && !prefs.hyMtEnabled &&
+            !prefs.qwen35Mnn2bEnabled && !prefs.qwen35Mnn4bEnabled) {
             viewLifecycleOwner.lifecycleScope.launch {
                 com.playtranslate.translation.mnn.MnnTranslator
                     .getInstance(ctx).unloadModel()
@@ -482,6 +495,24 @@ class SettingsBottomSheet : DialogFragment() {
                 }
                 override fun showQwenMnnDisableDialog() {
                     this@SettingsBottomSheet.showQwenMnnDisableDialog()
+                }
+                override fun startQwen35Mnn2bDownload() {
+                    showOfflineLlmDownloadDialog(qwen35Mnn2bFlow)
+                }
+                override fun enableInstalledQwen35Mnn2b() {
+                    enableInstalledOfflineLlm(qwen35Mnn2bFlow)
+                }
+                override fun showQwen35Mnn2bDisableDialog() {
+                    showOfflineLlmDisableDialog(qwen35Mnn2bFlow)
+                }
+                override fun startQwen35Mnn4bDownload() {
+                    showOfflineLlmDownloadDialog(qwen35Mnn4bFlow)
+                }
+                override fun enableInstalledQwen35Mnn4b() {
+                    enableInstalledOfflineLlm(qwen35Mnn4bFlow)
+                }
+                override fun showQwen35Mnn4bDisableDialog() {
+                    showOfflineLlmDisableDialog(qwen35Mnn4bFlow)
                 }
                 override fun startGemmaE2bMnnDownload() {
                     showGemmaE2bMnnDownloadDialog()
@@ -1159,6 +1190,260 @@ class SettingsBottomSheet : DialogFragment() {
                 renderer?.refreshAllBackendStatuses()
             }
             .addCancelButton { renderer?.refreshQwenMnnSwitch() }
+            .show()
+    }
+
+    // ── Generic offline-LLM flow (Qwen 3.5 2B / 4B) ──────────────────────
+    // Faithful parameterization of the Qwen-MNN flow above, keyed by model +
+    // strings, so additional MNN tiers don't each duplicate ~225 lines. The
+    // older qwen/gemma/hymt flows predate this and are left as-is.
+
+    private class OfflineLlmFlow(
+        val backendId: String,
+        val model: com.playtranslate.translation.llm.ModelHelper,
+        val setEnabled: (Context, Boolean) -> Unit,
+        val refreshSwitch: () -> Unit,
+        @androidx.annotation.StringRes val displayName: Int,
+        @androidx.annotation.StringRes val statusDownloading: Int,
+        @androidx.annotation.StringRes val statusVerifying: Int,
+        @androidx.annotation.StringRes val downloadFailed: Int,
+        @androidx.annotation.StringRes val meteredTitle: Int,
+        @androidx.annotation.StringRes val meteredMessage: Int,
+        @androidx.annotation.StringRes val disableTitle: Int,
+        @androidx.annotation.StringRes val disableMessage: Int,
+        @androidx.annotation.StringRes val disableKeep: Int,
+        @androidx.annotation.StringRes val disableDelete: Int,
+    )
+
+    private val offlineLlmDownloadJobs = mutableMapOf<String, kotlinx.coroutines.Job?>()
+
+    private val qwen35Mnn2bFlow by lazy {
+        OfflineLlmFlow(
+            backendId = "qwen35_mnn_2b",
+            model = com.playtranslate.translation.qwen.Qwen35Mnn2bModel,
+            setEnabled = { c, v -> Prefs(c).qwen35Mnn2bEnabled = v },
+            refreshSwitch = { renderer?.refreshQwen35Mnn2bSwitch() },
+            displayName = R.string.qwen35_2b_mnn_display_name,
+            statusDownloading = R.string.qwen35_2b_mnn_status_downloading,
+            statusVerifying = R.string.qwen35_2b_mnn_status_verifying,
+            downloadFailed = R.string.qwen35_2b_mnn_download_failed,
+            meteredTitle = R.string.qwen35_2b_mnn_metered_warning_title,
+            meteredMessage = R.string.qwen35_2b_mnn_metered_warning_message,
+            disableTitle = R.string.qwen35_2b_mnn_disable_title,
+            disableMessage = R.string.qwen35_2b_mnn_disable_message,
+            disableKeep = R.string.qwen35_2b_mnn_disable_keep,
+            disableDelete = R.string.qwen35_2b_mnn_disable_delete,
+        )
+    }
+
+    private val qwen35Mnn4bFlow by lazy {
+        OfflineLlmFlow(
+            backendId = "qwen35_mnn_4b",
+            model = com.playtranslate.translation.qwen.Qwen35Mnn4bModel,
+            setEnabled = { c, v -> Prefs(c).qwen35Mnn4bEnabled = v },
+            refreshSwitch = { renderer?.refreshQwen35Mnn4bSwitch() },
+            displayName = R.string.qwen35_4b_mnn_display_name,
+            statusDownloading = R.string.qwen35_4b_mnn_status_downloading,
+            statusVerifying = R.string.qwen35_4b_mnn_status_verifying,
+            downloadFailed = R.string.qwen35_4b_mnn_download_failed,
+            meteredTitle = R.string.qwen35_4b_mnn_metered_warning_title,
+            meteredMessage = R.string.qwen35_4b_mnn_metered_warning_message,
+            disableTitle = R.string.qwen35_4b_mnn_disable_title,
+            disableMessage = R.string.qwen35_4b_mnn_disable_message,
+            disableKeep = R.string.qwen35_4b_mnn_disable_keep,
+            disableDelete = R.string.qwen35_4b_mnn_disable_delete,
+        )
+    }
+
+    private fun enableInstalledOfflineLlm(flow: OfflineLlmFlow) {
+        val ctx = context ?: return
+        val backend = com.playtranslate.translation.TranslationBackendRegistry
+            .byId(flow.backendId) as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+            ?: return
+        checkAvailMemAndProceed(
+            backend = backend,
+            modelDisplayName = getString(flow.displayName),
+            onProceed = { flow.setEnabled(ctx, true) },
+            allowDelete = true,
+            onDelete = {
+                flow.model.delete(ctx)
+                viewLifecycleOwner.lifecycleScope.launch {
+                    com.playtranslate.translation.mnn.MnnTranslator
+                        .getInstance(ctx).unloadModel()
+                }
+                renderer?.refreshAllBackendStatuses()
+            },
+            onCancel = { flow.refreshSwitch() },
+        )
+    }
+
+    private fun showOfflineLlmDownloadDialog(flow: OfflineLlmFlow) {
+        if (isDownloadInFlight(offlineLlmDownloadJobs[flow.backendId], flow.backendId)) return
+        val ctx = context ?: return
+        val backend = com.playtranslate.translation.TranslationBackendRegistry
+            .byId(flow.backendId) as? com.playtranslate.translation.llm.OnDeviceLlmBackend
+            ?: return
+        val downloader = com.playtranslate.translation.llm.OnDeviceLlmDownloader(
+            context = ctx,
+            modelHelper = flow.model,
+            totalMemFloorBytes = backend.totalMemFloorBytes,
+        )
+        checkAvailMemAndProceed(
+            backend = backend,
+            modelDisplayName = getString(flow.displayName),
+            onProceed = { showOfflineLlmDownloadDialogPostGate(ctx, downloader, flow) },
+        )
+    }
+
+    private fun showOfflineLlmDownloadDialogPostGate(
+        ctx: Context,
+        downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
+        flow: OfflineLlmFlow,
+    ) {
+        if (downloader.isCurrentNetworkMetered()) {
+            val sizeStr = flow.model.humanSize(ctx)
+            androidx.appcompat.app.AlertDialog.Builder(ctx)
+                .setTitle(flow.meteredTitle)
+                .setMessage(getString(flow.meteredMessage, sizeStr))
+                .setPositiveButton(android.R.string.ok) { _, _ ->
+                    runOfflineLlmDownload(ctx, downloader, flow)
+                }
+                .setNegativeButton(android.R.string.cancel) { _, _ -> }
+                .show()
+            return
+        }
+        runOfflineLlmDownload(ctx, downloader, flow)
+    }
+
+    private fun runOfflineLlmDownload(
+        ctx: Context,
+        downloader: com.playtranslate.translation.llm.OnDeviceLlmDownloader,
+        flow: OfflineLlmFlow,
+    ) {
+        val sizeStr = flow.model.humanSize(ctx)
+        val progressDialog = OverlayProgress.Builder(ctx)
+            .setTitle(getString(flow.displayName))
+            .setMessage(getString(flow.statusDownloading, "0 B", sizeStr))
+            .setProgress(0)
+            .setOnDismiss { reason ->
+                offlineLlmDownloadJobs[flow.backendId]?.cancel()
+                if (reason == com.playtranslate.ui.DismissReason.USER) {
+                    downloader.deletePartial()
+                }
+                renderer?.refreshAllBackendStatuses()
+            }
+            .show()
+
+        renderer?.setBackendDownloading(flow.backendId, true)
+        offlineLlmDownloadJobs[flow.backendId] = viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val outcome = downloader.run { progress ->
+                    requireActivity().runOnUiThread {
+                        when (progress) {
+                            is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Downloading -> {
+                                val recv = com.playtranslate.translation.llm
+                                    .humanSize(progress.received)
+                                val total = com.playtranslate.translation.llm
+                                    .humanSize(progress.total)
+                                progressDialog.setMessage(getString(
+                                    flow.statusDownloading, recv, total,
+                                ))
+                                if (progress.total > 0) {
+                                    progressDialog.setProgress(
+                                        ((progress.received * 100) / progress.total).toInt()
+                                    )
+                                }
+                            }
+                            is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Verifying -> {
+                                progressDialog.setMessage(getString(flow.statusVerifying))
+                                progressDialog.setProgress(100)
+                            }
+                            is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Extracting -> {
+                                progressDialog.setMessage(getString(R.string.model_download_extracting))
+                                progressDialog.setProgress(100)
+                            }
+                        }
+                    }
+                }
+                if (!isAdded) return@launch
+                requireActivity().runOnUiThread {
+                    progressDialog.dismiss()
+                    when (outcome) {
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Success -> {
+                            flow.setEnabled(ctx, true)
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Refused -> {
+                            android.widget.Toast.makeText(
+                                ctx,
+                                getString(flow.downloadFailed, outcome.reason),
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Failed -> {
+                            android.widget.Toast.makeText(
+                                ctx,
+                                getString(flow.downloadFailed, outcome.reason),
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Cancelled -> {
+                            renderer?.refreshAllBackendStatuses()
+                        }
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (isAdded) {
+                    requireActivity().runOnUiThread {
+                        progressDialog.dismiss()
+                        android.widget.Toast.makeText(
+                            ctx,
+                            getString(flow.downloadFailed,
+                                e.message ?: e.javaClass.simpleName),
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                        renderer?.refreshAllBackendStatuses()
+                    }
+                }
+            } finally {
+                progressDialog.dismiss()
+                renderer?.setBackendDownloading(flow.backendId, false)
+                offlineLlmDownloadJobs[flow.backendId] = null
+            }
+        }
+    }
+
+    private fun showOfflineLlmDisableDialog(flow: OfflineLlmFlow) {
+        val ctx = context ?: return
+        val sizeStr = flow.model.humanSize(ctx)
+        OverlayAlert.Builder(ctx)
+            .setTitle(getString(flow.disableTitle))
+            .setMessage(getString(flow.disableMessage, sizeStr))
+            .hideIcon()
+            .addButton(getString(flow.disableKeep), ctx.themeColor(R.attr.ptAccent)) {
+                flow.setEnabled(ctx, false)
+            }
+            .addButton(getString(flow.disableDelete), ctx.themeColor(R.attr.ptDivider), ctx.themeColor(R.attr.ptDanger)) {
+                flow.setEnabled(ctx, false)
+                flow.model.delete(ctx)
+                viewLifecycleOwner.lifecycleScope.launch {
+                    com.playtranslate.translation.mnn.MnnTranslator
+                        .getInstance(ctx).unloadModel()
+                }
+                renderer?.refreshAllBackendStatuses()
+            }
+            .addCancelButton { flow.refreshSwitch() }
             .show()
     }
 

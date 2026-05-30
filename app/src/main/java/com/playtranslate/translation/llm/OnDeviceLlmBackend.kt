@@ -53,6 +53,21 @@ abstract class OnDeviceLlmBackend(
      *  Settings renderer doesn't have to reach into the protected helper. */
     fun isInstalled(): Boolean = modelHelper.isInstalled(context)
 
+    /** Generic deprecation flag, read from this model's catalog entry
+     *  ([com.playtranslate.language.CatalogEntry.deprecated]). Drives the
+     *  Settings row's hide-unless-installed gate + warning badge, and the
+     *  launch-time partial cleanup. */
+    fun isDeprecated(): Boolean = modelHelper.catalogEntry(context)?.deprecated == true
+
+    /** If this model is deprecated, delete its in-flight download artifacts
+     *  (the `.partial` + any `.tmp` staging dir) so a retired model can't
+     *  resume a partial download. A fully-installed deprecated model is left
+     *  untouched (its row stays visible). No-op when not deprecated. Called
+     *  once at launch from `PlayTranslateApplication`. */
+    fun cleanupPartialsIfDeprecated() {
+        if (isDeprecated()) modelHelper.deletePartials(context)
+    }
+
     /** Public read-through for the settings UI: pretty-formatted on-disk
      *  size (e.g. "1.48 GB"). Wraps [ModelHelper.humanSize]. */
     fun humanSize(): String = modelHelper.humanSize(context)

@@ -90,6 +90,21 @@ data class CatalogEntry(
      * combined zip).
      */
     val files: List<CatalogFile>? = null,
+
+    /**
+     * Generic "this entry is retired" marker. `true` (in JSON) means the thing
+     * this entry describes is deprecated: on launch any in-flight
+     * partial/staging artifacts for it are deleted, and in Settings its row is
+     * shown only while the model is fully installed (so a not-installed
+     * deprecated model can't be freshly downloaded) with a warning badge.
+     *
+     * Deliberately generic and data-driven — marking another entry deprecated
+     * is a one-line catalog change, no new code. `null` / omitted = not
+     * deprecated. Consumed by
+     * [com.playtranslate.translation.llm.OnDeviceLlmBackend.isDeprecated] (the
+     * UI gate) and the launch-time partial cleanup in `PlayTranslateApplication`.
+     */
+    val deprecated: Boolean? = null,
 )
 
 /**
