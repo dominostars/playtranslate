@@ -155,11 +155,6 @@ class SettingsRenderer(
         fun enableInstalledQwen35Mnn2b()
         fun showQwen35Mnn2bDisableDialog()
 
-        /** Qwen 3.5 4B row taps (download / enable-installed / disable). */
-        fun startQwen35Mnn4bDownload()
-        fun enableInstalledQwen35Mnn4b()
-        fun showQwen35Mnn4bDisableDialog()
-
         /** Tap on the Gemma E2B row when the model isn't installed — start a
          *  zip download via the OnDeviceLlmDownloader ZipExtract commit path. */
         fun startGemmaE2bMnnDownload()
@@ -1347,8 +1342,6 @@ class SettingsRenderer(
     private val rowBackendGemmaE2bMnn: View = root.findViewById(R.id.rowBackendGemmaE2bMnn)
     private val dividerBackendQwenMnn: View = root.findViewById(R.id.dividerBackendQwenMnn)
     private val rowBackendQwenMnn: View = root.findViewById(R.id.rowBackendQwenMnn)
-    private val dividerBackendQwen35Mnn4b: View = root.findViewById(R.id.dividerBackendQwen35Mnn4b)
-    private val rowBackendQwen35Mnn4b: View = root.findViewById(R.id.rowBackendQwen35Mnn4b)
     private val dividerBackendQwen35Mnn2b: View = root.findViewById(R.id.dividerBackendQwen35Mnn2b)
     private val rowBackendQwen35Mnn2b: View = root.findViewById(R.id.rowBackendQwen35Mnn2b)
     private val dividerBackendHyMt: View = root.findViewById(R.id.dividerBackendHyMt)
@@ -1386,7 +1379,6 @@ class SettingsRenderer(
         wireDeeplBackendRow()
         wireGemmaE2bMnnBackendRow()
         wireQwenMnnBackendRow()
-        wireQwen35Mnn4bBackendRow()
         wireQwen35Mnn2bBackendRow()
         wireHyMtBackendRow()
         wireBergamotBackendRow()
@@ -1660,12 +1652,6 @@ class SettingsRenderer(
         updateOfflineStatusIconAndSwitch(rowBackendQwen35Mnn2b, backend)
     }
 
-    /** Refresh the Qwen 3.5 4B row. Mirrors [refreshQwenMnnSwitch]. */
-    fun refreshQwen35Mnn4bSwitch() {
-        val backend = TranslationBackendRegistry.byId("qwen35_mnn_4b") ?: return
-        updateOfflineStatusIconAndSwitch(rowBackendQwen35Mnn4b, backend)
-    }
-
     fun refreshBergamotSwitch() {
         val backend = TranslationBackendRegistry.byId("bergamot") ?: return
         updateOfflineStatusIconAndSwitch(rowBackendBergamot, backend)
@@ -1726,7 +1712,6 @@ class SettingsRenderer(
         "gemma_e2b_mnn"   -> rowBackendGemmaE2bMnn
         "qwen_mnn"        -> rowBackendQwenMnn
         "qwen35_mnn_2b"   -> rowBackendQwen35Mnn2b
-        "qwen35_mnn_4b"   -> rowBackendQwen35Mnn4b
         "hymt_mnn"        -> rowBackendHyMt
         "bergamot"        -> rowBackendBergamot
         "mlkit"           -> rowBackendMlkit
@@ -1990,15 +1975,6 @@ class SettingsRenderer(
         onDownload = callbacks::startQwen35Mnn2bDownload,
     )
 
-    private fun wireQwen35Mnn4bBackendRow() = wireOfflineLlmRow(
-        row = rowBackendQwen35Mnn4b,
-        backendId = "qwen35_mnn_4b",
-        isEnabled = { prefs.qwen35Mnn4bEnabled },
-        onDisable = callbacks::showQwen35Mnn4bDisableDialog,
-        onEnableInstalled = callbacks::enableInstalledQwen35Mnn4b,
-        onDownload = callbacks::startQwen35Mnn4bDownload,
-    )
-
     /** Bergamot's row can't reuse [wireOfflineLlmRow]: install state is
      *  **per-pair** (the model for the current source→target), not the global
      *  [OnDeviceLlmBackend.isInstalled]. Hidden outright on 32-bit (the .so is
@@ -2088,7 +2064,6 @@ class SettingsRenderer(
     private fun enabledPrefFor(backendId: BackendId): Boolean? = when (backendId) {
         "qwen_mnn"       -> prefs.qwenMnnEnabled
         "qwen35_mnn_2b"  -> prefs.qwen35Mnn2bEnabled
-        "qwen35_mnn_4b"  -> prefs.qwen35Mnn4bEnabled
         "gemma_e2b_mnn"  -> prefs.gemmaE2bEnabled
         "hymt_mnn"       -> prefs.hyMtEnabled
         "bergamot"       -> prefs.bergamotEnabled
@@ -2112,7 +2087,6 @@ class SettingsRenderer(
     private fun dividerForOfflineRow(backendId: BackendId): View? = when (backendId) {
         "qwen_mnn"       -> dividerBackendQwenMnn
         "qwen35_mnn_2b"  -> dividerBackendQwen35Mnn2b
-        "qwen35_mnn_4b"  -> dividerBackendQwen35Mnn4b
         "hymt_mnn"       -> dividerBackendHyMt
         "bergamot"       -> dividerBackendBergamot
         else             -> null

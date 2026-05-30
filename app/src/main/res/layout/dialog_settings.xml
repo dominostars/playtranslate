@@ -851,13 +851,6 @@
                     <include layout="@layout/settings_row_backend_offline"
                         android:id="@+id/rowBackendHyMt" />
 
-                    <!-- Qwen 3.5 4B (Apache-2.0 high-quality tier). -->
-                    <include layout="@layout/settings_row_divider"
-                        android:id="@+id/dividerBackendQwen35Mnn4b" />
-
-                    <include layout="@layout/settings_row_backend_offline"
-                        android:id="@+id/rowBackendQwen35Mnn4b" />
-
                     <!-- Qwen 3.5 2B (fast tier; replaces the deprecated Qwen 2.5). -->
                     <include layout="@layout/settings_row_divider"
                         android:id="@+id/dividerBackendQwen35Mnn2b" />

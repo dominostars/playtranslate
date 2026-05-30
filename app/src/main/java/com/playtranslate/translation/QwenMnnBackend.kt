@@ -58,9 +58,9 @@ class QwenMnnBackend(
 
     companion object {
         /** Deprecated tier — below every live on-device LLM
-         *  ([Qwen35Mnn4bBackend] 24, [GemmaE2BMnnBackend] 25, [HyMtBackend] 26,
-         *  [Qwen35Mnn2bBackend] 27, [com.playtranslate.translation.bergamot.BergamotBackend]
-         *  28); above ML Kit (30). Qwen 3.5 2B replaces this as the fast tier. */
+         *  ([GemmaE2BMnnBackend] 25, [HyMtBackend] 26, [Qwen35Mnn2bBackend] 27,
+         *  [com.playtranslate.translation.bergamot.BergamotBackend] 28); above
+         *  ML Kit (30). Qwen 3.5 2B replaces this as the fast tier. */
         const val PRIORITY = 29
     }
 }

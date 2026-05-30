@@ -361,12 +361,6 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_QWEN35_MNN_2B_ENABLED, false)
         set(v) = sp.edit { putBoolean(KEY_QWEN35_MNN_2B_ENABLED, v) }
 
-    /** User toggle for the MNN-backed Qwen 3.5 4B — the Apache-2.0 high-quality
-     *  on-device tier. Default false; same semantics as [qwenMnnEnabled]. */
-    var qwen35Mnn4bEnabled: Boolean
-        get() = sp.getBoolean(KEY_QWEN35_MNN_4B_ENABLED, false)
-        set(v) = sp.edit { putBoolean(KEY_QWEN35_MNN_4B_ENABLED, v) }
-
     /** User-controlled toggle for the MNN-backed Gemma 4 E2B (premium-quality
      *  manual-lookup tier — replaces the legacy TranslateGemma 4B). Default
      *  false; same enable/disable semantics as [qwenMnnEnabled]. File
@@ -884,7 +878,6 @@ class Prefs(context: Context) {
         const val KEY_BERGAMOT_ENABLED       = "bergamot_enabled"
         const val KEY_QWEN_MNN_ENABLED   = "qwen_mnn_enabled"
         const val KEY_QWEN35_MNN_2B_ENABLED = "qwen35_mnn_2b_enabled"
-        const val KEY_QWEN35_MNN_4B_ENABLED = "qwen35_mnn_4b_enabled"
         const val KEY_GEMMA_E2B_ENABLED  = "gemma_e2b_enabled"
         const val KEY_HYMT_ENABLED          = "hymt_enabled"
         const val KEY_HYMT_LEGAL_ACCEPTED   = "hymt_legal_accepted"

@@ -74,30 +74,6 @@
         }
       ]
     },
-    "engine-qwen-3-5-4b-mnn": {
-      "display": "Qwen 3.5 4B (MNN)",
-      "type": "engine",
-      "script": "",
-      "bundled": false,
-      "packVersion": 1,
-      "additiveFromVersion": 1,
-      "extract": true,
-      "size": 2836771942,
-      "url": "https://huggingface.co/playtranslate/qwen3.5-4b-mnn/resolve/main/qwen3.5-4b-mnn.zip",
-      "sha256": "5c2fc888242c305842a6b9fbc50e40654a8d9bb329cbe47202a3cbef63d78330",
-      "licenses": [
-        {
-          "component": "Qwen 3.5 4B (MNN format)",
-          "license": "Apache-2.0",
-          "attribution": "© Alibaba Cloud. Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0. MNN conversion by taobao-mnn (https://huggingface.co/taobao-mnn/Qwen3.5-4B-MNN), Apache 2.0."
-        },
-        {
-          "component": "MNN runtime (libMNN.so / libllm.so / libMNN_Express.so)",
-          "license": "Apache-2.0",
-          "attribution": "© Alibaba. Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0."
-        }
-      ]
-    },
     "engine-hunyuan-mt1-5-1-8b-mnn": {
       "display": "Hunyuan-MT 1.5 1.8B (MNN)",
       "type": "engine",

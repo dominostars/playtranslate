@@ -300,12 +300,6 @@ class SettingsBottomSheet : DialogFragment() {
                     com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
                     maybeUnloadIdleEngines(ctx)
                 }
-                Prefs.KEY_QWEN35_MNN_4B_ENABLED -> {
-                    renderer?.refreshQwen35Mnn4bSwitch()
-                    renderer?.refreshAllBackendStatuses()
-                    com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
-                    maybeUnloadIdleEngines(ctx)
-                }
                 Prefs.KEY_GEMMA_E2B_ENABLED -> {
                     renderer?.refreshGemmaE2bSwitch()
                     renderer?.refreshAllBackendStatuses()
@@ -332,7 +326,7 @@ class SettingsBottomSheet : DialogFragment() {
      * Drop the loaded MNN model when every on-device LLM backend toggle is
      * off, freeing the working set so the OS can reclaim that RAM. Since
      * `:mnn` serves every on-device LLM tier (Qwen 2.5 MNN, Qwen 3.5 2B,
-     * Qwen 3.5 4B, Gemma E2B, Hunyuan-MT), we only unload when ALL of them
+     * Gemma E2B, Hunyuan-MT), we only unload when ALL of them
      * are disabled — otherwise we'd defeat the point of caching the
      * currently-active model mid-session.
      *
@@ -343,7 +337,7 @@ class SettingsBottomSheet : DialogFragment() {
     private fun maybeUnloadIdleEngines(ctx: Context) {
         val prefs = Prefs(ctx)
         if (!prefs.qwenMnnEnabled && !prefs.gemmaE2bEnabled && !prefs.hyMtEnabled &&
-            !prefs.qwen35Mnn2bEnabled && !prefs.qwen35Mnn4bEnabled) {
+            !prefs.qwen35Mnn2bEnabled) {
             viewLifecycleOwner.lifecycleScope.launch {
                 com.playtranslate.translation.mnn.MnnTranslator
                     .getInstance(ctx).unloadModel()
@@ -504,15 +498,6 @@ class SettingsBottomSheet : DialogFragment() {
                 }
                 override fun showQwen35Mnn2bDisableDialog() {
                     showOfflineLlmDisableDialog(qwen35Mnn2bFlow)
-                }
-                override fun startQwen35Mnn4bDownload() {
-                    showOfflineLlmDownloadDialog(qwen35Mnn4bFlow)
-                }
-                override fun enableInstalledQwen35Mnn4b() {
-                    enableInstalledOfflineLlm(qwen35Mnn4bFlow)
-                }
-                override fun showQwen35Mnn4bDisableDialog() {
-                    showOfflineLlmDisableDialog(qwen35Mnn4bFlow)
                 }
                 override fun startGemmaE2bMnnDownload() {
                     showGemmaE2bMnnDownloadDialog()
@@ -1233,25 +1218,6 @@ class SettingsBottomSheet : DialogFragment() {
             disableMessage = R.string.qwen35_2b_mnn_disable_message,
             disableKeep = R.string.qwen35_2b_mnn_disable_keep,
             disableDelete = R.string.qwen35_2b_mnn_disable_delete,
-        )
-    }
-
-    private val qwen35Mnn4bFlow by lazy {
-        OfflineLlmFlow(
-            backendId = "qwen35_mnn_4b",
-            model = com.playtranslate.translation.qwen.Qwen35Mnn4bModel,
-            setEnabled = { c, v -> Prefs(c).qwen35Mnn4bEnabled = v },
-            refreshSwitch = { renderer?.refreshQwen35Mnn4bSwitch() },
-            displayName = R.string.qwen35_4b_mnn_display_name,
-            statusDownloading = R.string.qwen35_4b_mnn_status_downloading,
-            statusVerifying = R.string.qwen35_4b_mnn_status_verifying,
-            downloadFailed = R.string.qwen35_4b_mnn_download_failed,
-            meteredTitle = R.string.qwen35_4b_mnn_metered_warning_title,
-            meteredMessage = R.string.qwen35_4b_mnn_metered_warning_message,
-            disableTitle = R.string.qwen35_4b_mnn_disable_title,
-            disableMessage = R.string.qwen35_4b_mnn_disable_message,
-            disableKeep = R.string.qwen35_4b_mnn_disable_keep,
-            disableDelete = R.string.qwen35_4b_mnn_disable_delete,
         )
     }
 

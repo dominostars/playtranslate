@@ -1249,21 +1249,6 @@
     <string name="qwen35_2b_mnn_disable_keep">Disable only</string>
     <string name="qwen35_2b_mnn_disable_delete">Delete model</string>
 
-    <!-- ── MNN-backed Qwen 3.5 4B (Apache-2.0 high-quality tier) ── -->
-    <string name="qwen35_4b_mnn_display_name" translatable="false">Qwen 3.5 4B</string>
-    <string name="qwen35_4b_mnn_status_not_downloaded">Requires <xliff:g id="ram" example="8 GB">%1$s</xliff:g> memory, <xliff:g id="disk_size" example="2.6 GB">%2$s</xliff:g> on disk</string>
-    <string name="qwen35_4b_mnn_status_downloaded_disabled">Downloaded but disabled (<xliff:g id="disk_size" example="2.6 GB">%1$s</xliff:g> on disk)</string>
-    <string name="qwen35_4b_mnn_status_ready">Requires <xliff:g id="ram" example="8 GB">%1$s</xliff:g> memory, <xliff:g id="disk_size" example="2.6 GB">%2$s</xliff:g> on disk</string>
-    <string name="qwen35_4b_mnn_status_downloading">Downloading… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> of <xliff:g id="bytes_total" example="2.6 GB">%2$s</xliff:g></string>
-    <string name="qwen35_4b_mnn_status_verifying">Verifying download…</string>
-    <string name="qwen35_4b_mnn_disable_title">Disable <xliff:g id="brand_qwen" example="Qwen 3.5 4B">Qwen 3.5 4B</xliff:g>?</string>
-    <string name="qwen35_4b_mnn_disable_message">The <xliff:g id="disk_size" example="2.6 GB">%1$s</xliff:g> model is installed. You can keep it for later or delete it to free up space.</string>
-    <string name="qwen35_4b_mnn_download_failed">Download failed: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
-    <string name="qwen35_4b_mnn_metered_warning_title">Download on metered network?</string>
-    <string name="qwen35_4b_mnn_metered_warning_message"><xliff:g id="brand_qwen" example="Qwen 3.5 4B">Qwen 3.5 4B</xliff:g> is <xliff:g id="download_size" example="2.6 GB">%1$s</xliff:g>. This network is marked as metered. Continue?</string>
-    <string name="qwen35_4b_mnn_disable_keep">Disable only</string>
-    <string name="qwen35_4b_mnn_disable_delete">Delete model</string>
-
     <!-- Generic deprecation badge shown on a retired model's Settings row
          (warning-colored, flanked by warning triangles). -->
     <string name="deprecated_badge_label">Deprecated</string>

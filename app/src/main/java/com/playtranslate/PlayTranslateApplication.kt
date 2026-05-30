@@ -19,7 +19,6 @@ import com.playtranslate.translation.MlKitBackend
 import com.playtranslate.translation.OpenAiBackend
 import com.playtranslate.translation.QwenMnnBackend
 import com.playtranslate.translation.Qwen35Mnn2bBackend
-import com.playtranslate.translation.Qwen35Mnn4bBackend
 import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.translation.UsageTracker
 import com.playtranslate.translation.mnn.MnnTranslator
@@ -140,10 +139,6 @@ class PlayTranslateApplication : Application() {
                 Qwen35Mnn2bBackend(
                     context         = this,
                     enabledProvider = { Prefs(this).qwen35Mnn2bEnabled },
-                ),
-                Qwen35Mnn4bBackend(
-                    context         = this,
-                    enabledProvider = { Prefs(this).qwen35Mnn4bEnabled },
                 ),
                 BergamotBackend(
                     context         = this,
