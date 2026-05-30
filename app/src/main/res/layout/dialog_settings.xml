@@ -858,6 +858,12 @@
                     <include layout="@layout/settings_row_backend_offline"
                         android:id="@+id/rowBackendQwenMnn" />
 
+                    <include layout="@layout/settings_row_divider"
+                        android:id="@+id/dividerBackendBergamot" />
+
+                    <include layout="@layout/settings_row_backend_offline"
+                        android:id="@+id/rowBackendBergamot" />
+
                     <include layout="@layout/settings_row_divider" />
 
                     <include layout="@layout/settings_row_backend_offline"

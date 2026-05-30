@@ -58,6 +58,7 @@ import com.playtranslate.themeColor
 import com.playtranslate.translation.BackendId
 import com.playtranslate.translation.BackendStatus
 import com.playtranslate.translation.Cooldownable
+import com.playtranslate.translation.BergamotBackend
 import com.playtranslate.translation.MlKitBackend
 import com.playtranslate.translation.StarRating
 import com.playtranslate.translation.Tone
@@ -175,6 +176,18 @@ class SettingsRenderer(
 
         /** Tap on the Hunyuan-MT row when it's currently enabled. */
         fun showHyMtDisableDialog()
+
+        /** Tap on the Bergamot row when the current pair's model isn't installed
+         *  — download the 1–2 required directions for source→target. */
+        fun startBergamotDownload()
+
+        /** Tap on the Bergamot row when the current pair is installed but the
+         *  switch is off. Revert via [refreshBergamotSwitch] on Cancel. */
+        fun enableInstalledBergamot()
+
+        /** Tap on the Bergamot row when it's currently enabled — offer
+         *  delete-this-pair or just-disable. */
+        fun showBergamotDisableDialog()
 
         /** Tap on the "Update language packs" row in the Language section.
          *  Implementer instantiates [com.playtranslate.language.PackUpgradeOrchestrator]
@@ -1325,6 +1338,8 @@ class SettingsRenderer(
     private val rowBackendQwenMnn: View = root.findViewById(R.id.rowBackendQwenMnn)
     private val dividerBackendHyMt: View = root.findViewById(R.id.dividerBackendHyMt)
     private val rowBackendHyMt: View = root.findViewById(R.id.rowBackendHyMt)
+    private val dividerBackendBergamot: View = root.findViewById(R.id.dividerBackendBergamot)
+    private val rowBackendBergamot: View = root.findViewById(R.id.rowBackendBergamot)
     private val rowBackendMlkit: View = root.findViewById(R.id.rowBackendMlkit)
 
     /** Per-backend in-flight `refreshStatus` job, keyed by [BackendId]. Used
@@ -1357,6 +1372,7 @@ class SettingsRenderer(
         wireGemmaE2bMnnBackendRow()
         wireQwenMnnBackendRow()
         wireHyMtBackendRow()
+        wireBergamotBackendRow()
 
         // Compose line 1 for each ONLINE backend from its metadata
         // (requiresInternet + quality), styled with mixed-color spans.
@@ -1621,6 +1637,11 @@ class SettingsRenderer(
         updateOfflineStatusIconAndSwitch(rowBackendQwenMnn, backend)
     }
 
+    fun refreshBergamotSwitch() {
+        val backend = TranslationBackendRegistry.byId("bergamot") ?: return
+        updateOfflineStatusIconAndSwitch(rowBackendBergamot, backend)
+    }
+
     /** Refresh the Gemma E2B row. Mirrors [refreshQwenMnnSwitch]. */
     fun refreshGemmaE2bSwitch() {
         val backend = TranslationBackendRegistry.byId("gemma_e2b_mnn") ?: return
@@ -1676,6 +1697,7 @@ class SettingsRenderer(
         "gemma_e2b_mnn"   -> rowBackendGemmaE2bMnn
         "qwen_mnn"        -> rowBackendQwenMnn
         "hymt_mnn"        -> rowBackendHyMt
+        "bergamot"        -> rowBackendBergamot
         "mlkit"           -> rowBackendMlkit
         else              -> null
     }
@@ -1928,6 +1950,36 @@ class SettingsRenderer(
         onDownload = callbacks::startQwenMnnDownload,
     )
 
+    /** Bergamot's row can't reuse [wireOfflineLlmRow]: install state is
+     *  **per-pair** (the model for the current source→target), not the global
+     *  [OnDeviceLlmBackend.isInstalled]. Hidden outright on 32-bit (the .so is
+     *  arm64-only), mirroring HyMt's region gate. Otherwise the same three-state
+     *  tap branch — enabled+installed → disable dialog · installed → enable ·
+     *  else → download — but keyed off [offlineInstalled] for the current pair. */
+    private fun wireBergamotBackendRow() {
+        val bergamot = TranslationBackendRegistry.byId("bergamot") as? BergamotBackend
+        if (bergamot == null || !bergamot.supportsRequiredAbi()) {
+            rowBackendBergamot.isGone = true
+            dividerBackendBergamot.isGone = true
+            return
+        }
+        rowBackendBergamot.setOnClickListener {
+            val switch = rowBackendBergamot.findViewById<MaterialSwitch>(R.id.switchOfflineToggle)
+            val installed = offlineInstalled(bergamot)
+            when {
+                prefs.bergamotEnabled && installed -> {
+                    switch.isChecked = false
+                    callbacks.showBergamotDisableDialog()
+                }
+                installed -> {
+                    switch.isChecked = true
+                    callbacks.enableInstalledBergamot()
+                }
+                else -> callbacks.startBergamotDownload()
+            }
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // Offline backend row (settings_row_backend_offline) — C7 redesign.
     // Header row with title + status icon + switch, then a 4-column stat
@@ -1944,7 +1996,7 @@ class SettingsRenderer(
     /** True iff [backend] uses the C7 `settings_row_backend_offline` layout.
      *  Today: any [OnDeviceLlmBackend] subclass plus [MlKitBackend]. */
     private fun isOfflineRowBackend(backend: TranslationBackend): Boolean =
-        backend is OnDeviceLlmBackend || backend is MlKitBackend
+        backend is OnDeviceLlmBackend || backend is MlKitBackend || backend is BergamotBackend
 
     /** Round the half-step [StarRating] (0.0–5.0) into the [1, 5] integer
      *  bucket used for the a11y label mapping (Bad / Okay / Good / Better).
@@ -1988,7 +2040,19 @@ class SettingsRenderer(
         "qwen_mnn"       -> prefs.qwenMnnEnabled
         "gemma_e2b_mnn"  -> prefs.gemmaE2bEnabled
         "hymt_mnn"       -> prefs.hyMtEnabled
+        "bergamot"       -> prefs.bergamotEnabled
         else             -> null
+    }
+
+    /** Install state for an offline row. ML Kit is bundled (always installed);
+     *  Bergamot is **per-pair** (the model for the current source+target must be
+     *  present); the on-device LLM tiers are global. Centralized here so the
+     *  three render call sites stay agnostic to the per-pair distinction. */
+    private fun offlineInstalled(backend: TranslationBackend): Boolean = when (backend) {
+        is MlKitBackend       -> true
+        is BergamotBackend    -> backend.manager.isInstalled(prefs.sourceLang, prefs.targetLang)
+        is OnDeviceLlmBackend -> backend.isInstalled()
+        else                  -> false
     }
 
     /** Full visual bind for an offline backend row. Idempotent — called on
@@ -1998,7 +2062,9 @@ class SettingsRenderer(
      *  (or busy ProgressBar), switch state, warning sub-row, and the
      *  composed row [View.setContentDescription]. */
     private fun renderOfflineBackendRow(row: View, backend: TranslationBackend) {
-        row.findViewById<TextView>(R.id.tvOfflineTitle).text = backend.displayName
+        row.findViewById<TextView>(R.id.tvOfflineTitle).text =
+            if (backend is BergamotBackend) ctx.getString(R.string.bergamot_row_title)
+            else backend.displayName
 
         val onDeviceLlm = backend as? OnDeviceLlmBackend
         val isMlKit = backend is MlKitBackend
@@ -2038,10 +2104,18 @@ class SettingsRenderer(
             R.string.offline_backend_speed_label,
             backend.speedStars?.toHalfSteps5() ?: 0)
 
-        val ramText = onDeviceLlm?.availMemFloorBytes?.toGbDisplay()
-            ?: ctx.getString(R.string.offline_backend_mlkit_ram)
-        val diskText = onDeviceLlm?.humanSize()
-            ?: ctx.getString(R.string.offline_backend_mlkit_disk)
+        val ramText = when {
+            backend is BergamotBackend ->
+                ctx.getString(R.string.offline_backend_bergamot_ram)
+            else -> onDeviceLlm?.availMemFloorBytes?.toGbDisplay()
+                ?: ctx.getString(R.string.offline_backend_mlkit_ram)
+        }
+        val diskText = when {
+            backend is BergamotBackend ->
+                ctx.getString(R.string.offline_backend_bergamot_disk)
+            else -> onDeviceLlm?.humanSize()
+                ?: ctx.getString(R.string.offline_backend_mlkit_disk)
+        }
         bindMonoCell(row.findViewById(R.id.cellRam),
             R.string.offline_backend_ram_label, ramText)
         bindMonoCell(row.findViewById(R.id.cellDisk),
@@ -2105,8 +2179,7 @@ class SettingsRenderer(
      *  [setBackendDownloading] / refresh*Switch for targeted updates. */
     private fun updateOfflineStatusIconAndSwitch(row: View, backend: TranslationBackend) {
         val isMlKit = backend is MlKitBackend
-        val onDeviceLlm = backend as? OnDeviceLlmBackend
-        val installed = isMlKit || (onDeviceLlm?.isInstalled() == true)
+        val installed = offlineInstalled(backend)
         val downloading = backend.id in offlineDownloadingIds
 
         val icon = row.findViewById<ImageView>(R.id.ivStatusIcon)
@@ -2163,8 +2236,7 @@ class SettingsRenderer(
         diskText: String,
     ): String {
         val isMlKit = backend is MlKitBackend
-        val onDeviceLlm = backend as? OnDeviceLlmBackend
-        val installed = isMlKit || (onDeviceLlm?.isInstalled() == true)
+        val installed = offlineInstalled(backend)
         val downloadedLabel = ctx.getString(
             if (installed) R.string.offline_backend_downloaded_cd
             else R.string.offline_backend_not_downloaded_cd

@@ -1142,6 +1142,18 @@
     <string name="offline_backend_mlkit_ram" translatable="false">&lt; 1 GB</string>
     <string name="offline_backend_mlkit_disk" translatable="false">~30 MB</string>
 
+    <!-- Bergamot (Firefox Translations) offline row. RAM/disk are literal,
+         like the ML Kit values above (resident set ~200 MB; ~50 MB per pair). -->
+    <string name="bergamot_row_title" translatable="false">Firefox Translations (Bergamot)</string>
+    <string name="offline_backend_bergamot_ram" translatable="false">&lt; 1 GB</string>
+    <string name="offline_backend_bergamot_disk" translatable="false">~50 MB</string>
+    <string name="bergamot_status_downloading">Downloading… %1$s / %2$s</string>
+    <string name="bergamot_download_failed">Couldn\'t download the Firefox Translations model</string>
+    <string name="bergamot_disable_title">Turn off Firefox Translations?</string>
+    <string name="bergamot_disable_message">It will stop translating this language pair offline. You can keep the downloaded model or delete it to free space.</string>
+    <string name="bergamot_disable_keep">Just turn off</string>
+    <string name="bergamot_disable_delete">Delete model</string>
+
     <!-- contentDescription suffix tokens for the offline row. -->
     <string name="offline_backend_downloaded_cd">Downloaded</string>
     <string name="offline_backend_not_downloaded_cd">Not downloaded</string>

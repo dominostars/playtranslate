@@ -306,6 +306,11 @@ class SettingsBottomSheet : DialogFragment() {
                     com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
                     maybeUnloadIdleEngines(ctx)
                 }
+                Prefs.KEY_BERGAMOT_ENABLED -> {
+                    renderer?.refreshBergamotSwitch()
+                    renderer?.refreshAllBackendStatuses()
+                    com.playtranslate.CaptureService.instance?.reconcileBackendPreference()
+                }
             }
         }
         sp.registerOnSharedPreferenceChangeListener(prefsListener)
@@ -495,6 +500,15 @@ class SettingsBottomSheet : DialogFragment() {
                 }
                 override fun showHyMtDisableDialog() {
                     this@SettingsBottomSheet.showHyMtDisableDialog()
+                }
+                override fun startBergamotDownload() {
+                    this@SettingsBottomSheet.showBergamotDownloadDialog()
+                }
+                override fun enableInstalledBergamot() {
+                    this@SettingsBottomSheet.enableInstalledBergamot()
+                }
+                override fun showBergamotDisableDialog() {
+                    this@SettingsBottomSheet.showBergamotDisableDialog()
                 }
                 override fun onUpdateLanguagePacksTapped(
                     stalePacks: List<com.playtranslate.language.StalePack>
@@ -1145,6 +1159,139 @@ class SettingsBottomSheet : DialogFragment() {
                 renderer?.refreshAllBackendStatuses()
             }
             .addCancelButton { renderer?.refreshQwenMnnSwitch() }
+            .show()
+    }
+
+    // ── Bergamot (Firefox Translations, fast offline NMT) flow ──────────
+    // Lighter than the MNN tiers: per-pair, ~50 MB Mozilla models, no RAM
+    // gate. The download is a plain loop over the pair's 1–2 required
+    // directions (single hop, or two for an English pivot).
+
+    private var bergamotDownloadJob: kotlinx.coroutines.Job? = null
+    private val bergamotMemFloorBytes = 700_000_000L
+
+    /** Re-enable Bergamot when the current pair is already downloaded. */
+    private fun enableInstalledBergamot() {
+        val ctx = context ?: return
+        Prefs(ctx).bergamotEnabled = true   // SP listener refreshes the row
+    }
+
+    /** Download the current pair's required directions, then enable. */
+    private fun showBergamotDownloadDialog() {
+        if (isDownloadInFlight(bergamotDownloadJob, "Bergamot")) return
+        val ctx = context ?: return
+        val manager = com.playtranslate.translation.bergamot.BergamotModelManager(ctx)
+        val source = Prefs(ctx).sourceLang
+        val target = Prefs(ctx).targetLang
+        val dirs = manager.requiredDirections(source, target)
+        if (dirs == null) { renderer?.refreshBergamotSwitch(); return }
+
+        val progressDialog = OverlayProgress.Builder(ctx)
+            .setTitle(getString(R.string.bergamot_row_title))
+            .setMessage(getString(R.string.bergamot_status_downloading, "0 B", "…"))
+            .setProgress(0)
+            .setOnDismiss {
+                bergamotDownloadJob?.cancel()
+                renderer?.refreshAllBackendStatuses()
+            }
+            .show()
+
+        renderer?.setBackendDownloading("bergamot", true)
+        bergamotDownloadJob = viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                var outcome: com.playtranslate.translation.llm
+                    .OnDeviceLlmDownloader.Outcome =
+                    com.playtranslate.translation.llm.OnDeviceLlmDownloader.Outcome.Success
+                for (dir in dirs) {
+                    val helper = com.playtranslate.translation.bergamot.BergamotModel(dir)
+                    if (helper.isInstalled(ctx)) continue
+                    val downloader = com.playtranslate.translation.llm.OnDeviceLlmDownloader(
+                        context = ctx,
+                        modelHelper = helper,
+                        totalMemFloorBytes = bergamotMemFloorBytes,
+                    )
+                    outcome = downloader.run { progress ->
+                        if (progress is com.playtranslate.translation.llm
+                                .OnDeviceLlmDownloader.Progress.Downloading) {
+                            val recv = com.playtranslate.translation.llm.humanSize(progress.received)
+                            val total = com.playtranslate.translation.llm.humanSize(progress.total)
+                            requireActivity().runOnUiThread {
+                                progressDialog.setMessage(getString(
+                                    R.string.bergamot_status_downloading, recv, total))
+                                if (progress.total > 0) {
+                                    progressDialog.setProgress(
+                                        ((progress.received * 100) / progress.total).toInt())
+                                }
+                            }
+                        }
+                    }
+                    if (outcome !is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Success) break
+                }
+                if (!isAdded) return@launch
+                requireActivity().runOnUiThread {
+                    progressDialog.dismiss()
+                    when (outcome) {
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Success ->
+                            if (manager.isInstalled(source, target)) {
+                                Prefs(ctx).bergamotEnabled = true
+                            }
+                        is com.playtranslate.translation.llm
+                            .OnDeviceLlmDownloader.Outcome.Cancelled -> { /* user bailed */ }
+                        else -> android.widget.Toast.makeText(
+                            ctx, R.string.bergamot_download_failed,
+                            android.widget.Toast.LENGTH_LONG).show()
+                    }
+                    renderer?.refreshAllBackendStatuses()
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (isAdded) requireActivity().runOnUiThread {
+                    progressDialog.dismiss()
+                    android.widget.Toast.makeText(
+                        ctx, R.string.bergamot_download_failed,
+                        android.widget.Toast.LENGTH_LONG).show()
+                    renderer?.refreshAllBackendStatuses()
+                }
+            } finally {
+                progressDialog.dismiss()
+                renderer?.setBackendDownloading("bergamot", false)
+                bergamotDownloadJob = null
+            }
+        }
+    }
+
+    /** 3-button disable dialog: keep the model + just turn off, or delete the
+     *  current pair's models. Mirrors [showQwenMnnDisableDialog]. */
+    private fun showBergamotDisableDialog() {
+        val ctx = context ?: return
+        OverlayAlert.Builder(ctx)
+            .setTitle(getString(R.string.bergamot_disable_title))
+            .setMessage(getString(R.string.bergamot_disable_message))
+            .hideIcon()
+            .addButton(getString(R.string.bergamot_disable_keep), ctx.themeColor(R.attr.ptAccent)) {
+                Prefs(ctx).bergamotEnabled = false   // SP listener refreshes
+            }
+            .addButton(
+                getString(R.string.bergamot_disable_delete),
+                ctx.themeColor(R.attr.ptDivider),
+                ctx.themeColor(R.attr.ptDanger),
+            ) {
+                Prefs(ctx).bergamotEnabled = false
+                val manager = com.playtranslate.translation.bergamot.BergamotModelManager(ctx)
+                val dirs = manager.requiredDirections(Prefs(ctx).sourceLang, Prefs(ctx).targetLang)
+                viewLifecycleOwner.lifecycleScope.launch {
+                    dirs?.forEach { dir ->
+                        com.playtranslate.translation.bergamot.BergamotModel(dir).delete(ctx)
+                        com.playtranslate.translation.bergamot.BergamotTranslator
+                            .getInstance(ctx).evictDirection(dir)
+                    }
+                    renderer?.refreshAllBackendStatuses()
+                }
+            }
+            .addCancelButton { renderer?.refreshBergamotSwitch() }
             .show()
     }
 
