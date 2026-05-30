@@ -30,8 +30,8 @@ class BergamotBackend(
     override val priority: Int = 28
     override val requiresInternet: Boolean = false
     override val isDegradedFallback: Boolean = false
-    override val qualityStars: StarRating = 3.0f
-    override val speedStars: StarRating = 4.5f
+    override val qualityStars: StarRating = 2.0f
+    override val speedStars: StarRating = 5.0f
 
     /** arm64-only (the .so) — gates the backend off 32-bit, like the MNN tier. */
     fun supportsRequiredAbi(): Boolean = Process.is64Bit()

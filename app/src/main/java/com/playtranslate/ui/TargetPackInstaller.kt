@@ -126,7 +126,14 @@ class TargetPackInstaller(
                 // Prefer Bergamot (the default offline tier): download its model
                 // for this pair and skip ML Kit on success. Falls back to ML Kit
                 // for unsupported pairs / download failures.
-                if (BergamotWarmup.ensureForPair(activity, sourceLangCode, targetCode)) true
+                val warmed = BergamotWarmup.ensureForPair(
+                    activity, sourceLangCode, targetCode
+                ) { i, n, recv, total ->
+                    activity.runOnUiThread {
+                        dialog.showBergamotWarmupProgress(activity, i, n, recv, total)
+                    }
+                }
+                if (warmed) true
                 else preloadMlKitFallbackModels(sourceLangCode, targetCode)
             }
             dialog.dismiss()

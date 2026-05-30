@@ -214,7 +214,7 @@ class LanguageSetupActivity : AppCompatActivity() {
         // provides the happens-before). See [preloadMlKitFallbackModels].
         var mlKitReady = true
 
-        val sourceLoadAction: suspend () -> Unit = {
+        val sourceLoadAction: suspend ((Int, Int, Long, Long) -> Unit) -> Unit = { warmupProgress ->
             val preloadResult = SourceLanguageEngines.get(applicationContext, id).preload()
             when (preloadResult) {
                 is PreloadResult.Success -> { /* proceed */ }
@@ -251,7 +251,7 @@ class LanguageSetupActivity : AppCompatActivity() {
             val currentTarget = Prefs(applicationContext).targetLang
             val src = SourceLanguageProfiles[id].translationCode
             mlKitReady =
-                if (BergamotWarmup.ensureForPair(applicationContext, src, currentTarget)) true
+                if (BergamotWarmup.ensureForPair(applicationContext, src, currentTarget, warmupProgress)) true
                 else preloadMlKitFallbackModels(src, currentTarget)
         }
         val onDone: () -> Unit = {
@@ -489,7 +489,7 @@ class LanguageSetupActivity : AppCompatActivity() {
     private fun showDownloadAndLoadPopup(
         langName: String,
         downloadAction: suspend ((DownloadProgress) -> Unit) -> InstallResult,
-        loadAction: suspend () -> Unit,
+        loadAction: suspend ((Int, Int, Long, Long) -> Unit) -> Unit,
         onSuccess: () -> Unit,
     ) {
         val dialog = buildPopupDialog(langName)
@@ -519,7 +519,15 @@ class LanguageSetupActivity : AppCompatActivity() {
                         dialog.setIndeterminate(true)
                     }
                     try {
-                        withContext(Dispatchers.IO) { loadAction() }
+                        withContext(Dispatchers.IO) {
+                            loadAction { i, n, recv, total ->
+                                runOnUiThread {
+                                    dialog.showBergamotWarmupProgress(
+                                        this@LanguageSetupActivity, i, n, recv, total,
+                                    )
+                                }
+                            }
+                        }
                         dialog.dismiss()
                         onSuccess()
                     } catch (e: kotlin.coroutines.cancellation.CancellationException) {
@@ -543,7 +551,7 @@ class LanguageSetupActivity : AppCompatActivity() {
 
     private fun showLoadingPopup(
         langName: String,
-        loadAction: suspend () -> Unit,
+        loadAction: suspend ((Int, Int, Long, Long) -> Unit) -> Unit,
         onSuccess: () -> Unit,
     ) {
         val dialog = buildPopupDialog(langName)
@@ -552,7 +560,15 @@ class LanguageSetupActivity : AppCompatActivity() {
 
         activeJob = lifecycleScope.launch {
             try {
-                withContext(Dispatchers.IO) { loadAction() }
+                withContext(Dispatchers.IO) {
+                    loadAction { i, n, recv, total ->
+                        runOnUiThread {
+                            dialog.showBergamotWarmupProgress(
+                                this@LanguageSetupActivity, i, n, recv, total,
+                            )
+                        }
+                    }
+                }
                 dialog.dismiss()
                 onSuccess()
             } catch (e: kotlin.coroutines.cancellation.CancellationException) {

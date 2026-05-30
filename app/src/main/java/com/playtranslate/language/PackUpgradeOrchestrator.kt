@@ -10,6 +10,7 @@ import com.playtranslate.translation.bergamot.BergamotWarmup
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.translation.llm.humanSize
 import com.playtranslate.ui.OverlayProgress
+import com.playtranslate.ui.showBergamotWarmupProgress
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -153,7 +154,7 @@ class PackUpgradeOrchestrator(
             dialog.setMessage(activity.getString(R.string.pack_upgrade_priming_models))
         }
         try {
-            withContext(Dispatchers.IO) { primeMlKit() }
+            withContext(Dispatchers.IO) { primeMlKit(dialog) }
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -288,7 +289,7 @@ class PackUpgradeOrchestrator(
         }
     }
 
-    private suspend fun primeMlKit() {
+    private suspend fun primeMlKit(dialog: OverlayProgress) {
         // Delegates to the shared best-effort warm-up. A failed ML Kit download
         // must not block a pack upgrade — the packs are installed and the
         // dictionary / online backends don't need ML Kit. The helper skips the
@@ -296,7 +297,12 @@ class PackUpgradeOrchestrator(
         // EN→target definition-translation pivot independently (the old inline
         // version bailed out of the second model if the first threw).
         val prefs = Prefs(activity.applicationContext)
-        if (!BergamotWarmup.ensureForPair(activity.applicationContext, prefs.sourceLang, prefs.targetLang)) {
+        val warmed = BergamotWarmup.ensureForPair(
+            activity.applicationContext, prefs.sourceLang, prefs.targetLang
+        ) { i, n, recv, total ->
+            activity.runOnUiThread { dialog.showBergamotWarmupProgress(activity, i, n, recv, total) }
+        }
+        if (!warmed) {
             preloadMlKitFallbackModels(prefs.sourceLang, prefs.targetLang)
         }
     }

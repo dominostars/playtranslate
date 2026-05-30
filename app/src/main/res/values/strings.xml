@@ -1153,6 +1153,8 @@
     <string name="bergamot_disable_message">It will stop translating this language pair offline. You can keep the downloaded model or delete it to free space.</string>
     <string name="bergamot_disable_keep">Just turn off</string>
     <string name="bergamot_disable_delete">Delete model</string>
+    <string name="bergamot_warmup_downloading">Downloading offline model… %1$s / %2$s</string>
+    <string name="bergamot_warmup_downloading_multi">Downloading offline model %1$d of %2$d… %3$s / %4$s</string>
 
     <!-- contentDescription suffix tokens for the offline row. -->
     <string name="offline_backend_downloaded_cd">Downloaded</string>

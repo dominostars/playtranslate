@@ -24,6 +24,37 @@ import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.R
 import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
+import com.playtranslate.translation.llm.humanSize
+
+/**
+ * Switch this progress dialog to a determinate "Downloading offline model…"
+ * state for a Bergamot (Firefox Translations) warm-up download. [index]/[count]
+ * is 1-based across the pair's required directions (1 = single hop, 2 = English
+ * pivot). Call on the UI thread.
+ */
+fun OverlayProgress.showBergamotWarmupProgress(
+    context: Context,
+    index: Int,
+    count: Int,
+    received: Long,
+    total: Long,
+) {
+    setIndeterminate(false)
+    setProgress(if (total > 0) ((received * 100L) / total).toInt() else 0)
+    setMessage(
+        if (count > 1) {
+            context.getString(
+                R.string.bergamot_warmup_downloading_multi,
+                index, count, humanSize(received), humanSize(total),
+            )
+        } else {
+            context.getString(
+                R.string.bergamot_warmup_downloading,
+                humanSize(received), humanSize(total),
+            )
+        },
+    )
+}
 
 /** Why this dialog went away. Callers branch on this in [OverlayProgress.Builder.setOnDismiss]
  *  to decide whether to nuke resume state (USER) or just stop using

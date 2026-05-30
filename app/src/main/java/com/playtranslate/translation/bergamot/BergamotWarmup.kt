@@ -24,7 +24,20 @@ object BergamotWarmup {
     // download preflight RAM floor low so we don't refuse on modest devices.
     private const val MEM_FLOOR_BYTES = 700_000_000L
 
-    suspend fun ensureForPair(context: Context, source: String, target: String): Boolean {
+    /**
+     * [onProgress] reports byte progress of the model download(s) so the caller
+     * can show a determinate dialog instead of an indeterminate "preloading"
+     * spinner. It fires as `(index, count, received, total)` where index/count
+     * are 1-based over the directions that actually need downloading (1 for a
+     * single hop, 2 for an English pivot). Invoked on the download (IO) thread —
+     * the caller must marshal to the UI thread. Null = no progress reporting.
+     */
+    suspend fun ensureForPair(
+        context: Context,
+        source: String,
+        target: String,
+        onProgress: ((index: Int, count: Int, received: Long, total: Long) -> Unit)? = null,
+    ): Boolean {
         val ctx = context.applicationContext
         if (!Prefs(ctx).bergamotEnabled) return false
         if (!Process.is64Bit()) return false
@@ -32,11 +45,17 @@ object BergamotWarmup {
         val manager = BergamotModelManager(ctx)
         val dirs = manager.requiredDirections(source, target) ?: return false // unsupported pair
 
-        for (dir in dirs) {
+        // Only the not-yet-installed directions are downloaded; index over those
+        // so a pivot reusing an installed hop reports "1 of 1", not "2 of 2".
+        val needed = dirs.filterNot { BergamotModel(it).isInstalled(ctx) }
+        for ((idx, dir) in needed.withIndex()) {
             val helper = BergamotModel(dir)
-            if (helper.isInstalled(ctx)) continue
             val outcome = try {
-                OnDeviceLlmDownloader(ctx, helper, MEM_FLOOR_BYTES).run { /* indeterminate dialog */ }
+                OnDeviceLlmDownloader(ctx, helper, MEM_FLOOR_BYTES).run { progress ->
+                    if (progress is OnDeviceLlmDownloader.Progress.Downloading) {
+                        onProgress?.invoke(idx + 1, needed.size, progress.received, progress.total)
+                    }
+                }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
