@@ -331,9 +331,9 @@ class SettingsBottomSheet : DialogFragment() {
     /**
      * Drop the loaded MNN model when every on-device LLM backend toggle is
      * off, freeing the working set so the OS can reclaim that RAM. Since
-     * `:mnn` serves Qwen-MNN, Gemma E2B, and Hunyuan-MT (live-mode, manual-
-     * lookup, and translation-specialist tiers), we only unload when ALL
-     * three are disabled — otherwise we'd defeat the point of caching the
+     * `:mnn` serves every on-device LLM tier (Qwen 2.5 MNN, Qwen 3.5 2B,
+     * Qwen 3.5 4B, Gemma E2B, Hunyuan-MT), we only unload when ALL of them
+     * are disabled — otherwise we'd defeat the point of caching the
      * currently-active model mid-session.
      *
      * unloadModel is mutex-serialized inside the translator singleton so it
