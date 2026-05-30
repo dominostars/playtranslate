@@ -7,3 +7,7 @@
 [submodule "mnn/third-party/MNN"]
 	path = mnn/third-party/MNN
 	url = https://github.com/alibaba/MNN.git
+[submodule "bergamot/third-party/slimt"]
+	path = bergamot/third-party/slimt
+	url = https://github.com/dominostars/slimt.git
+	branch = playtranslate-android

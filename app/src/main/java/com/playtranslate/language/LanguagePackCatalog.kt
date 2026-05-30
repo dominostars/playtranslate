@@ -119,6 +119,11 @@ data class CatalogFile(
     val url: String,
     val size: Long,
     val sha256: String,
+    /** When true, [url] serves a gzip stream (no `Content-Encoding`, so the HTTP
+     *  client doesn't auto-inflate); the downloader gunzips the payload and
+     *  verifies [size]/[sha256] against the UNCOMPRESSED bytes. Used for Bergamot
+     *  models served from Mozilla's GCS bucket. */
+    val gzip: Boolean = false,
 )
 
 /**

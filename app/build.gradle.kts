@@ -122,6 +122,7 @@ kotlin {
 
 dependencies {
     implementation(project(":mnn"))
+    implementation(project(":bergamot"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)

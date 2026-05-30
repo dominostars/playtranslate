@@ -446,16 +446,39 @@ class OnDeviceLlmDownloader(
 
             coroutineContext.ensureActive()
             onProgress(Progress.Verifying)
-            val actualSize = partial.length()
-            if (actualSize != f.size) {
+
+            // gzip-served files (Bergamot models from Mozilla GCS) arrive on
+            // disk compressed — the response carries no Content-Encoding so the
+            // HTTP client doesn't auto-inflate. Gunzip to `<path>.raw`, then
+            // verify size/SHA against the UNCOMPRESSED bytes (the catalog values).
+            val payload: File = if (f.gzip) {
+                val raw = File(tmpDir, "${f.path}.raw").apply { parentFile?.mkdirs() }
+                try {
+                    java.util.zip.GZIPInputStream(partial.inputStream().buffered()).use { gz ->
+                        raw.outputStream().buffered().use { out -> gz.copyTo(out) }
+                    }
+                } catch (e: Exception) {
+                    partial.delete(); raw.delete()
+                    return Outcome.Failed(
+                        "Failed to gunzip ${f.path}: ${e.message ?: e.javaClass.simpleName}", e,
+                    )
+                }
                 partial.delete()
+                raw
+            } else {
+                partial
+            }
+
+            val actualSize = payload.length()
+            if (actualSize != f.size) {
+                payload.delete()
                 return Outcome.Failed(
                     "MultiFile size mismatch on ${f.path} (got $actualSize, expected ${f.size})",
                 )
             }
-            val actualSha = computeSha256(partial)
+            val actualSha = computeSha256(payload)
             if (!actualSha.equals(f.sha256, ignoreCase = true)) {
-                partial.delete()
+                payload.delete()
                 return Outcome.Failed(
                     "MultiFile SHA-256 mismatch on ${f.path}",
                 )
@@ -467,7 +490,7 @@ class OnDeviceLlmDownloader(
             // either succeeds atomically or leaves both paths untouched.
             try {
                 Files.move(
-                    partial.toPath(),
+                    payload.toPath(),
                     verifiedPath.toPath(),
                     StandardCopyOption.ATOMIC_MOVE,
                     StandardCopyOption.REPLACE_EXISTING,

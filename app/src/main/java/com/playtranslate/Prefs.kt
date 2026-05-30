@@ -283,6 +283,14 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_LINGVA_ENABLED, true)
         set(v) = sp.edit { putBoolean(KEY_LINGVA_ENABLED, v) }
 
+    /** "Use Firefox Translations (Bergamot) offline?" toggle. Default true so the
+     *  fast offline NMT tier is the default replacement for ML Kit. Existing
+     *  users still see the Settings toggle OFF until a model is downloaded, since
+     *  the row's checked state is (enabled && model-for-current-pair installed). */
+    var bergamotEnabled: Boolean
+        get() = sp.getBoolean(KEY_BERGAMOT_ENABLED, true)
+        set(v) = sp.edit { putBoolean(KEY_BERGAMOT_ENABLED, v) }
+
     /** Gemini API key from AI Studio (https://aistudio.google.com/app/apikey).
      *  Empty by default — users must enter their own key in Settings. */
     var geminiApiKey: String
@@ -860,6 +868,7 @@ class Prefs(context: Context) {
         private const val KEY_DEEPL_KEY      = "deepl_api_key"
         const val KEY_DEEPL_ENABLED          = "deepl_enabled"
         const val KEY_LINGVA_ENABLED         = "lingva_enabled"
+        const val KEY_BERGAMOT_ENABLED       = "bergamot_enabled"
         const val KEY_QWEN_MNN_ENABLED   = "qwen_mnn_enabled"
         const val KEY_GEMMA_E2B_ENABLED  = "gemma_e2b_enabled"
         const val KEY_HYMT_ENABLED          = "hymt_enabled"

@@ -26,3 +26,4 @@ rootProject.name = "GameLens"
 include(":app")
 include(":build-tools")
 include(":mnn")
+include(":bergamot")
