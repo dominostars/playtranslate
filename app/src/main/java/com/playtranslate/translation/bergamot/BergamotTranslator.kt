@@ -3,8 +3,11 @@ package com.playtranslate.translation.bergamot
 import android.content.Context
 import android.util.Log
 import com.playtranslate.bergamot.BergamotNative
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import java.util.concurrent.Executors
 
 /**
  * Process-singleton wrapper around the slimt (Bergamot) engine. One Blocking
@@ -19,6 +22,16 @@ class BergamotTranslator private constructor(private val context: Context) {
 
     private val mutex = Mutex()
 
+    // The slimt engine is single-threaded and its loadModel/translate/pivot calls
+    // BLOCK for hundreds of ms. Run them all on one dedicated background thread so
+    // they never execute on the caller's thread — the capture pipeline invokes
+    // translate from the main thread, which would jank the UI / risk an ANR.
+    // Single-threaded ⇒ inherently serialized; the mutex stays as defense for the
+    // evict/close lifecycle paths.
+    private val engineExecutor =
+        Executors.newSingleThreadExecutor { r -> Thread(r, "bergamot-engine") }
+    private val engineDispatcher = engineExecutor.asCoroutineDispatcher()
+
     @Volatile private var serviceHandle: Long = 0L
 
     // direction -> native Model handle. accessOrder=true so iteration is
@@ -27,31 +40,37 @@ class BergamotTranslator private constructor(private val context: Context) {
     private val models = LinkedHashMap<String, Long>(8, 0.75f, /* accessOrder = */ true)
 
     suspend fun translateSingle(files: BergamotModelFiles, text: String): String =
-        mutex.withLock {
-            ensureService()
-            val model = ensureModel(files, keep = setOf(files.direction))
-            BergamotNative.translate(serviceHandle, model, text)
-                ?: throw IllegalStateException("Bergamot translate returned null (${files.direction})")
+        withContext(engineDispatcher) {
+            mutex.withLock {
+                ensureService()
+                val model = ensureModel(files, keep = setOf(files.direction))
+                BergamotNative.translate(serviceHandle, model, text)
+                    ?: throw IllegalStateException("Bergamot translate returned null (${files.direction})")
+            }
         }
 
     suspend fun translatePivot(
         first: BergamotModelFiles,
         second: BergamotModelFiles,
         text: String,
-    ): String = mutex.withLock {
-        ensureService()
-        val keep = setOf(first.direction, second.direction)
-        val m1 = ensureModel(first, keep)
-        val m2 = ensureModel(second, keep)
-        BergamotNative.pivot(serviceHandle, m1, m2, text)
-            ?: throw IllegalStateException(
-                "Bergamot pivot returned null (${first.direction}->${second.direction})"
-            )
+    ): String = withContext(engineDispatcher) {
+        mutex.withLock {
+            ensureService()
+            val keep = setOf(first.direction, second.direction)
+            val m1 = ensureModel(first, keep)
+            val m2 = ensureModel(second, keep)
+            BergamotNative.pivot(serviceHandle, m1, m2, text)
+                ?: throw IllegalStateException(
+                    "Bergamot pivot returned null (${first.direction}->${second.direction})"
+                )
+        }
     }
 
     /** Free the cached native model for [direction] (called on uninstall). */
-    suspend fun evictDirection(direction: String): Unit = mutex.withLock {
-        models.remove(direction)?.let { BergamotNative.destroyModel(it) }
+    suspend fun evictDirection(direction: String): Unit = withContext(engineDispatcher) {
+        mutex.withLock {
+            models.remove(direction)?.let { BergamotNative.destroyModel(it) }
+        }
         Unit
     }
 
@@ -65,6 +84,7 @@ class BergamotTranslator private constructor(private val context: Context) {
                 serviceHandle = 0L
             }
         }.onFailure { Log.w(TAG, "close() encountered $it (ignored)") }
+        engineExecutor.shutdown()
     }
 
     private fun ensureService() {
