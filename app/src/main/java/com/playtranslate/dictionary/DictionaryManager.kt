@@ -173,32 +173,40 @@ class DictionaryManager private constructor(private val context: Context) {
             // Batch existence query: candidate N-gram phrases PLUS each content
             // token's dictionaryForm/normalizedForm (layer 1 — lets us pick the
             // form that actually resolves, e.g. キミ→君).
-            val candidates = mutableSetOf<String>()
+            // Multi-token N-gram phrase candidates (REGLOB_WINDOW down to 2).
+            val phraseCandidates = mutableSetOf<String>()
             for (i in tokens.indices) {
-                val maxN = minOf(4, tokens.size - i)
+                val maxN = minOf(REGLOB_WINDOW, tokens.size - i)
                 for (n in maxN downTo 2) {
                     val phrase = surfaces.subList(i, i + n).joinToString("")
-                    if (isLookupWorthy(phrase)) candidates.add(phrase)
+                    if (isLookupWorthy(phrase)) phraseCandidates.add(phrase)
                 }
             }
+            // Single content-token forms (layer 1: dictionaryForm / normalizedForm).
+            val formCandidates = mutableSetOf<String>()
             for (t in tokens) {
                 if (!t.category.isContent) continue
-                if (isLookupWorthy(t.dictionaryForm)) candidates.add(t.dictionaryForm)
+                if (isLookupWorthy(t.dictionaryForm)) formCandidates.add(t.dictionaryForm)
                 if (t.normalizedForm != t.dictionaryForm && isLookupWorthy(t.normalizedForm)) {
-                    candidates.add(t.normalizedForm)
+                    formCandidates.add(t.normalizedForm)
                 }
             }
-            val known = batchCheckEntries(database, candidates)
+            // Phrases must match a headword or a PRIMARY reading (rank_score >= 0)
+            // so a particle isn't fused into a coincidental marginal reading
+            // (ここ+の → 九's position-2 stem ここの). Single forms match any
+            // headword/reading — lookup ranking disambiguates those later.
+            val knownPhrases = batchCheckPhrases(database, phraseCandidates)
+            val knownForms = batchCheckEntries(database, formCandidates)
 
             var i = 0
             while (i < tokens.size) {
                 // Multi-token N-gram phrases (4 down to 2): JMdict idioms Sudachi
                 // splits grammatically (かもしれない etc.).
                 var advanced = false
-                val maxN = minOf(4, tokens.size - i)
+                val maxN = minOf(REGLOB_WINDOW, tokens.size - i)
                 for (n in maxN downTo 2) {
                     val phrase = surfaces.subList(i, i + n).joinToString("")
-                    if (phrase in known) {
+                    if (phrase in knownPhrases) {
                         result.add(TokenWithReading(phrase, phrase, reading = null))
                         i += n
                         advanced = true
@@ -212,8 +220,8 @@ class DictionaryManager private constructor(private val context: Context) {
                         // Layer 1: prefer dictionaryForm (lemma); fall back to
                         // normalizedForm when only the normalized variant resolves.
                         val lookupForm = when {
-                            t.dictionaryForm in known -> t.dictionaryForm
-                            t.normalizedForm in known -> t.normalizedForm
+                            t.dictionaryForm in knownForms -> t.dictionaryForm
+                            t.normalizedForm in knownForms -> t.normalizedForm
                             else -> t.dictionaryForm
                         }
                         if (isLookupWorthy(lookupForm)) {
@@ -473,6 +481,44 @@ class DictionaryManager private constructor(private val context: Context) {
         return found
     }
 
+    /**
+     * Like [batchCheckEntries], but for multi-token N-gram phrases: a phrase
+     * counts as a real compound only if it matches a headword (a written form)
+     * or a PRIMARY reading (`rank_score >= 0`). This stops a coincidental kana
+     * run that merely equals a marginal positional reading — e.g. ここ+の →
+     * "ここの", which is 九's position-2 counter-stem reading (rank_score
+     * -20000) — from being fused into a spurious word that swallows the
+     * particle. Legit kana idioms (かもしれない +1M, ないわけにはいかない 0, …) all
+     * rank >= 0 and survive.
+     *
+     * On v1 packs without `rank_score`, falls back to bare existence (the pre-
+     * guard behavior — the ここの mis-glob persists there, but such packs are
+     * force-upgraded to v3).
+     */
+    private fun batchCheckPhrases(db: SQLiteDatabase, candidates: Set<String>): Set<String> {
+        if (candidates.isEmpty()) return emptySet()
+        val readingSql = if (hasRankScore(db)) {
+            "SELECT DISTINCT text FROM reading WHERE rank_score >= 0 AND text IN"
+        } else {
+            "SELECT DISTINCT text FROM reading WHERE text IN"
+        }
+        val found = mutableSetOf<String>()
+        for (chunk in candidates.chunked(500)) {
+            val placeholders = chunk.joinToString(",") { "?" }
+            val args = chunk.toTypedArray()
+            db.rawQuery("SELECT DISTINCT text FROM headword WHERE text IN ($placeholders)", args)
+                .use { c -> while (c.moveToNext()) found.add(c.getString(0)) }
+            val remaining = chunk.filter { it !in found }
+            if (remaining.isNotEmpty()) {
+                val ph2 = remaining.joinToString(",") { "?" }
+                val args2 = remaining.toTypedArray()
+                db.rawQuery("$readingSql ($ph2)", args2)
+                    .use { c -> while (c.moveToNext()) found.add(c.getString(0)) }
+            }
+        }
+        return found
+    }
+
     /** Query entries matching both a kanji form and a reading (narrowed
      *  search). Ranks by the sum of per-headword and per-reading rank
      *  scores, both precomputed at pack-build time from JMdict priority
@@ -653,6 +699,18 @@ class DictionaryManager private constructor(private val context: Context) {
             instance ?: synchronized(this) {
                 instance ?: DictionaryManager(context.applicationContext).also { instance = it }
             }
+
+        /**
+         * Max tokens the n-gram re-glob fuses into one JMdict-lookup phrase.
+         * JMdict lists idioms (かもしれない, わけにはいかない, …) that Sudachi's
+         * short-unit output splits into 4-6 morphemes; kuromoji split coarser, so
+         * 4 used to suffice, but Sudachi pushed common expressions past it
+         * (かもしれません=5, ないわけにはいかない=6). 8 covers the observed span with
+         * headroom; the rank>=0 guard in [batchCheckPhrases] keeps the wider
+         * window from re-introducing reading-coincidence globs. Not derived from
+         * the lexicon — a build-time max-span computation could replace it.
+         */
+        private const val REGLOB_WINDOW = 8
 
         // ── Ranking SQL constants ─────────────────────────────────────────
         // Two parallel sets selected by [hasRankScore] per handle:
