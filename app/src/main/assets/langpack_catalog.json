@@ -1662,6 +1662,435 @@
           "attribution": "(c) Mozilla / Firefox Translations, https://github.com/mozilla/translations"
         }
       ]
+    },
+    "bergamot-zh-en": {
+      "display": "Firefox Translations zh-en",
+      "type": "engine",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "additiveFromVersion": 1,
+      "size": 54556676,
+      "files": [
+        {
+          "path": "model.zhen.intgemm.alphas.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/zh-en/cjk_retrain_base-memory_cNY_yaJCStGwnTeXgW8A5w/exported/model.zhen.intgemm.alphas.bin.gz",
+          "size": 43977787,
+          "sha256": "5cd149601802fc8a18124a1c1306144dbbedc058630c4ddb2d53aa76fa9c7c06",
+          "gzip": true
+        },
+        {
+          "path": "vocab.zhen.spm",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/zh-en/cjk_retrain_base-memory_cNY_yaJCStGwnTeXgW8A5w/exported/vocab.zhen.spm.gz",
+          "size": 1359697,
+          "sha256": "dff594318ab7d8b7b60b844ab98ebe6b932ae8045fab15235404c787715965b3",
+          "gzip": true
+        },
+        {
+          "path": "lex.50.50.zhen.s2t.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/zh-en/cjk_retrain_base-memory_cNY_yaJCStGwnTeXgW8A5w/exported/lex.50.50.zhen.s2t.bin.gz",
+          "size": 9219192,
+          "sha256": "8524dd4c93ffd7f0ae7be32f77a7c14fea7cdbbebe34ea6ad0ec368d5ddd8b13",
+          "gzip": true
+        }
+      ],
+      "licenses": [
+        {
+          "component": "Firefox Translations model (zh-en)",
+          "license": "CC-BY-SA-4.0",
+          "attribution": "(c) Mozilla / Firefox Translations, https://github.com/mozilla/translations"
+        }
+      ]
+    },
+    "bergamot-ko-en": {
+      "display": "Firefox Translations ko-en",
+      "type": "engine",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "additiveFromVersion": 1,
+      "size": 54005366,
+      "files": [
+        {
+          "path": "model.koen.intgemm.alphas.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ko-en/cjk_retrain_base-memory_QgYNtG3BTzKBFSV1wl06Pg/exported/model.koen.intgemm.alphas.bin.gz",
+          "size": 43977787,
+          "sha256": "7cb30cbc0a86e242084756445268a2346136771c92b884d9b4ebb077f67d5507",
+          "gzip": true
+        },
+        {
+          "path": "vocab.koen.spm",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ko-en/cjk_retrain_base-memory_QgYNtG3BTzKBFSV1wl06Pg/exported/vocab.koen.spm.gz",
+          "size": 1410063,
+          "sha256": "1c72b740ab793cdc3a8f16913dd6b4e806c77421077dd2d85edeb7be38418598",
+          "gzip": true
+        },
+        {
+          "path": "lex.50.50.koen.s2t.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ko-en/cjk_retrain_base-memory_QgYNtG3BTzKBFSV1wl06Pg/exported/lex.50.50.koen.s2t.bin.gz",
+          "size": 8617516,
+          "sha256": "b26291f063ce216a74239275f0485534a38111203e59d42a2a56ba62d6eeb196",
+          "gzip": true
+        }
+      ],
+      "licenses": [
+        {
+          "component": "Firefox Translations model (ko-en)",
+          "license": "CC-BY-SA-4.0",
+          "attribution": "(c) Mozilla / Firefox Translations, https://github.com/mozilla/translations"
+        }
+      ]
+    },
+    "bergamot-fr-en": {
+      "display": "Firefox Translations fr-en",
+      "type": "engine",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "additiveFromVersion": 1,
+      "size": 37200311,
+      "files": [
+        {
+          "path": "model.fren.intgemm.alphas.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/fr-en/retrain_hr_EFgIftH_RrCyzl5gjemVNg/exported/model.fren.intgemm.alphas.bin.gz",
+          "size": 31561787,
+          "sha256": "15f997bc0d13808b0b0fbd0786e684a3c8a52adcd8071844b76123fdacbf2b90",
+          "gzip": true
+        },
+        {
+          "path": "vocab.fren.spm",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/fr-en/retrain_hr_EFgIftH_RrCyzl5gjemVNg/exported/vocab.fren.spm.gz",
+          "size": 814404,
+          "sha256": "783abf3abe075afdf8d85d233994bef2c3a064e935ab1bed946820aff6ac002a",
+          "gzip": true
+        },
+        {
+          "path": "lex.50.50.fren.s2t.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/fr-en/retrain_hr_EFgIftH_RrCyzl5gjemVNg/exported/lex.50.50.fren.s2t.bin.gz",
+          "size": 4824120,
+          "sha256": "87c6752ea908f5f0347c10ac0cf7d80d9c2f4f20c81c90168f3e8230b56d4440",
+          "gzip": true
+        }
+      ],
+      "licenses": [
+        {
+          "component": "Firefox Translations model (fr-en)",
+          "license": "CC-BY-SA-4.0",
+          "attribution": "(c) Mozilla / Firefox Translations, https://github.com/mozilla/translations"
+        }
+      ]
+    },
+    "bergamot-de-en": {
+      "display": "Firefox Translations de-en",
+      "type": "engine",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "additiveFromVersion": 1,
+      "size": 37317656,
+      "files": [
+        {
+          "path": "model.deen.intgemm.alphas.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/de-en/retrain_hr2_WZOW24i4QJmIib61LeHfwg/exported/model.deen.intgemm.alphas.bin.gz",
+          "size": 31561787,
+          "sha256": "3e6f7c2c2425d10824797270b382bee718ff34af2cab9308841c82ca46dc6f20",
+          "gzip": true
+        },
+        {
+          "path": "vocab.deen.spm",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/de-en/retrain_hr2_WZOW24i4QJmIib61LeHfwg/exported/vocab.deen.spm.gz",
+          "size": 810073,
+          "sha256": "69f730becafa48e3bb2c244eab66456877c08959a02f2bd5519b5a3088b62f9c",
+          "gzip": true
+        },
+        {
+          "path": "lex.50.50.deen.s2t.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/de-en/retrain_hr2_WZOW24i4QJmIib61LeHfwg/exported/lex.50.50.deen.s2t.bin.gz",
+          "size": 4945796,
+          "sha256": "113b98460468360cca68c042e1cddf49c4e1931cbb975ed04349c9a3bd607010",
+          "gzip": true
+        }
+      ],
+      "licenses": [
+        {
+          "component": "Firefox Translations model (de-en)",
+          "license": "CC-BY-SA-4.0",
+          "attribution": "(c) Mozilla / Firefox Translations, https://github.com/mozilla/translations"
+        }
+      ]
+    },
+    "bergamot-it-en": {
+      "display": "Firefox Translations it-en",
+      "type": "engine",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "additiveFromVersion": 1,
+      "size": 37088127,
+      "files": [
+        {
+          "path": "model.iten.intgemm.alphas.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/it-en/retrain_hr_d1nPDwVeSD6t-HdtWA4xNg/exported/model.iten.intgemm.alphas.bin.gz",
+          "size": 31561787,
+          "sha256": "21b70978ce2f3b4da7a06b5de86a09abe3acd30b9eee1b2ebb3582b9bad790bf",
+          "gzip": true
+        },
+        {
+          "path": "vocab.iten.spm",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/it-en/retrain_hr_d1nPDwVeSD6t-HdtWA4xNg/exported/vocab.iten.spm.gz",
+          "size": 812724,
+          "sha256": "3ef0211d4ae6db21440892f180f2019fe2bfc110a330ffa9d2eca9665e4f2bc5",
+          "gzip": true
+        },
+        {
+          "path": "lex.50.50.iten.s2t.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/it-en/retrain_hr_d1nPDwVeSD6t-HdtWA4xNg/exported/lex.50.50.iten.s2t.bin.gz",
+          "size": 4713616,
+          "sha256": "0700d6d70b30490e68ff9deca0b45b80310745b491855bde3a13e1692d0cbce1",
+          "gzip": true
+        }
+      ],
+      "licenses": [
+        {
+          "component": "Firefox Translations model (it-en)",
+          "license": "CC-BY-SA-4.0",
+          "attribution": "(c) Mozilla / Firefox Translations, https://github.com/mozilla/translations"
+        }
+      ]
+    },
+    "bergamot-pt-en": {
+      "display": "Firefox Translations pt-en",
+      "type": "engine",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "additiveFromVersion": 1,
+      "size": 37013005,
+      "files": [
+        {
+          "path": "model.pten.intgemm.alphas.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/pt-en/retrain_hr_drxrs5bGSsOWvfK9lyZISw/exported/model.pten.intgemm.alphas.bin.gz",
+          "size": 31561787,
+          "sha256": "7b854f1ec5a485dd33efd7c1bc01dd7d5a57f566957c5e47722af333f0ce9157",
+          "gzip": true
+        },
+        {
+          "path": "vocab.pten.spm",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/pt-en/retrain_hr_drxrs5bGSsOWvfK9lyZISw/exported/vocab.pten.spm.gz",
+          "size": 816726,
+          "sha256": "d9f46182823d5bbc84201252b2dfcac28f63e561f0ec827ed858f241864c9def",
+          "gzip": true
+        },
+        {
+          "path": "lex.50.50.pten.s2t.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/pt-en/retrain_hr_drxrs5bGSsOWvfK9lyZISw/exported/lex.50.50.pten.s2t.bin.gz",
+          "size": 4634492,
+          "sha256": "2685d8b6530be92a4db4cc61f15a097eb114552be15cb6c1699e9d2d99d24470",
+          "gzip": true
+        }
+      ],
+      "licenses": [
+        {
+          "component": "Firefox Translations model (pt-en)",
+          "license": "CC-BY-SA-4.0",
+          "attribution": "(c) Mozilla / Firefox Translations, https://github.com/mozilla/translations"
+        }
+      ]
+    },
+    "bergamot-en-fr": {
+      "display": "Firefox Translations en-fr",
+      "type": "engine",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "additiveFromVersion": 1,
+      "size": 36749127,
+      "files": [
+        {
+          "path": "model.enfr.intgemm.alphas.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-fr/retrain_hr_NLIxDbE1TBGyOTI-zwZagw/exported/model.enfr.intgemm.alphas.bin.gz",
+          "size": 31561787,
+          "sha256": "6322e296d4fecfe395a8d5723da4ec37ecbe6d7613bb1dfcf4b28e2a47498b68",
+          "gzip": true
+        },
+        {
+          "path": "vocab.enfr.spm",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-fr/retrain_hr_NLIxDbE1TBGyOTI-zwZagw/exported/vocab.enfr.spm.gz",
+          "size": 814404,
+          "sha256": "783abf3abe075afdf8d85d233994bef2c3a064e935ab1bed946820aff6ac002a",
+          "gzip": true
+        },
+        {
+          "path": "lex.50.50.enfr.s2t.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-fr/retrain_hr_NLIxDbE1TBGyOTI-zwZagw/exported/lex.50.50.enfr.s2t.bin.gz",
+          "size": 4372936,
+          "sha256": "2585ed98d3af0bc949865aedeb390493d591f56870814376e73e4144c41ed059",
+          "gzip": true
+        }
+      ],
+      "licenses": [
+        {
+          "component": "Firefox Translations model (en-fr)",
+          "license": "CC-BY-SA-4.0",
+          "attribution": "(c) Mozilla / Firefox Translations, https://github.com/mozilla/translations"
+        }
+      ]
+    },
+    "bergamot-en-de": {
+      "display": "Firefox Translations en-de",
+      "type": "engine",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "additiveFromVersion": 1,
+      "size": 36719532,
+      "files": [
+        {
+          "path": "model.ende.intgemm.alphas.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-de/retrain_hr_fix_names_SCgGhxUPQ2WAECHLRtzrMg/exported/model.ende.intgemm.alphas.bin.gz",
+          "size": 31561787,
+          "sha256": "8df29d9494d19f47fd5d97c6a73474c6f657e9f81c1a607c431d02befdf3810f",
+          "gzip": true
+        },
+        {
+          "path": "vocab.ende.spm",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-de/retrain_hr_fix_names_SCgGhxUPQ2WAECHLRtzrMg/exported/vocab.ende.spm.gz",
+          "size": 810073,
+          "sha256": "69f730becafa48e3bb2c244eab66456877c08959a02f2bd5519b5a3088b62f9c",
+          "gzip": true
+        },
+        {
+          "path": "lex.50.50.ende.s2t.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-de/retrain_hr_fix_names_SCgGhxUPQ2WAECHLRtzrMg/exported/lex.50.50.ende.s2t.bin.gz",
+          "size": 4347672,
+          "sha256": "7ed39f1cffbd68a27ddf05bbfe068de2060f1d7e69f1a20e27ae923551dd7393",
+          "gzip": true
+        }
+      ],
+      "licenses": [
+        {
+          "component": "Firefox Translations model (en-de)",
+          "license": "CC-BY-SA-4.0",
+          "attribution": "(c) Mozilla / Firefox Translations, https://github.com/mozilla/translations"
+        }
+      ]
+    },
+    "bergamot-en-it": {
+      "display": "Firefox Translations en-it",
+      "type": "engine",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "additiveFromVersion": 1,
+      "size": 36507703,
+      "files": [
+        {
+          "path": "model.enit.intgemm.alphas.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-it/retrain_hr_fix_names_GPSr_u8PSmC9fOx1ZDCHoA/exported/model.enit.intgemm.alphas.bin.gz",
+          "size": 31561787,
+          "sha256": "248f47568788ecc351da7e5e07064d4153b4f71e011364ae2c931ffeec4d1cc2",
+          "gzip": true
+        },
+        {
+          "path": "vocab.enit.spm",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-it/retrain_hr_fix_names_GPSr_u8PSmC9fOx1ZDCHoA/exported/vocab.enit.spm.gz",
+          "size": 812724,
+          "sha256": "3ef0211d4ae6db21440892f180f2019fe2bfc110a330ffa9d2eca9665e4f2bc5",
+          "gzip": true
+        },
+        {
+          "path": "lex.50.50.enit.s2t.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-it/retrain_hr_fix_names_GPSr_u8PSmC9fOx1ZDCHoA/exported/lex.50.50.enit.s2t.bin.gz",
+          "size": 4133192,
+          "sha256": "8b21914804625b2777dae7fdb636eb78f02a3eb8b7bceaa50f29ac740961da93",
+          "gzip": true
+        }
+      ],
+      "licenses": [
+        {
+          "component": "Firefox Translations model (en-it)",
+          "license": "CC-BY-SA-4.0",
+          "attribution": "(c) Mozilla / Firefox Translations, https://github.com/mozilla/translations"
+        }
+      ]
+    },
+    "bergamot-en-pt": {
+      "display": "Firefox Translations en-pt",
+      "type": "engine",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "additiveFromVersion": 1,
+      "size": 36348853,
+      "files": [
+        {
+          "path": "model.enpt.intgemm.alphas.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-pt/retrain_hr_fix_names_Vnb0RUXTTd67hR-oLHM3eg/exported/model.enpt.intgemm.alphas.bin.gz",
+          "size": 31561787,
+          "sha256": "07892fd2544ee79dcb643615d8f2debb9793fae16842e87c328e27a3dd26a770",
+          "gzip": true
+        },
+        {
+          "path": "vocab.enpt.spm",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-pt/retrain_hr_fix_names_Vnb0RUXTTd67hR-oLHM3eg/exported/vocab.enpt.spm.gz",
+          "size": 816726,
+          "sha256": "d9f46182823d5bbc84201252b2dfcac28f63e561f0ec827ed858f241864c9def",
+          "gzip": true
+        },
+        {
+          "path": "lex.50.50.enpt.s2t.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-pt/retrain_hr_fix_names_Vnb0RUXTTd67hR-oLHM3eg/exported/lex.50.50.enpt.s2t.bin.gz",
+          "size": 3970340,
+          "sha256": "ccb4c31c9e1899d77a200e71a86958e6ef6c8649627d0bbf3f873b57d9f236bd",
+          "gzip": true
+        }
+      ],
+      "licenses": [
+        {
+          "component": "Firefox Translations model (en-pt)",
+          "license": "CC-BY-SA-4.0",
+          "attribution": "(c) Mozilla / Firefox Translations, https://github.com/mozilla/translations"
+        }
+      ]
+    },
+    "bergamot-en-ru": {
+      "display": "Firefox Translations en-ru",
+      "type": "engine",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "additiveFromVersion": 1,
+      "size": 35240782,
+      "files": [
+        {
+          "path": "model.enru.intgemm.alphas.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ru/retrain_base-memory_KJ23-iDVTcymG1ZldWY17w/exported/model.enru.intgemm.alphas.bin.gz",
+          "size": 31561787,
+          "sha256": "184cb5cda528eeefc0f75f5d0035d787b71d74af135e3c5608d01ae02ecfb920",
+          "gzip": true
+        },
+        {
+          "path": "vocab.enru.spm",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ru/retrain_base-memory_KJ23-iDVTcymG1ZldWY17w/exported/vocab.enru.spm.gz",
+          "size": 904455,
+          "sha256": "56ee63e14e8cb926c394242adc3ed7cc602644c3d33058cff2ce2959d52a6258",
+          "gzip": true
+        },
+        {
+          "path": "lex.50.50.enru.s2t.bin",
+          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ru/retrain_base-memory_KJ23-iDVTcymG1ZldWY17w/exported/lex.50.50.enru.s2t.bin.gz",
+          "size": 2774540,
+          "sha256": "4d91839726b960e70b6d05c53d0cffd16262832b1c0e1ea99d66f412dcc6a239",
+          "gzip": true
+        }
+      ],
+      "licenses": [
+        {
+          "component": "Firefox Translations model (en-ru)",
+          "license": "CC-BY-SA-4.0",
+          "attribution": "(c) Mozilla / Firefox Translations, https://github.com/mozilla/translations"
+        }
+      ]
     }
   }
 }
