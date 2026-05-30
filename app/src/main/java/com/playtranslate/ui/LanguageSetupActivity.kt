@@ -56,6 +56,7 @@ import com.playtranslate.compositeOver
 import com.playtranslate.applyTheme
 import com.playtranslate.themeColor
 import com.playtranslate.preloadMlKitFallbackModels
+import com.playtranslate.translation.bergamot.BergamotWarmup
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -248,9 +249,10 @@ class LanguageSetupActivity : AppCompatActivity() {
             // dictionary / OCR / online backends don't need it — a miss must
             // not block adding the language.
             val currentTarget = Prefs(applicationContext).targetLang
-            mlKitReady = preloadMlKitFallbackModels(
-                SourceLanguageProfiles[id].translationCode, currentTarget,
-            )
+            val src = SourceLanguageProfiles[id].translationCode
+            mlKitReady =
+                if (BergamotWarmup.ensureForPair(applicationContext, src, currentTarget)) true
+                else preloadMlKitFallbackModels(src, currentTarget)
         }
         val onDone: () -> Unit = {
             Prefs(this).sourceLang = id.code

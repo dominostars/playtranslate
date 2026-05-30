@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import com.playtranslate.R
 import com.playtranslate.preloadMlKitFallbackModels
+import com.playtranslate.translation.bergamot.BergamotWarmup
 import com.playtranslate.language.DownloadProgress
 import com.playtranslate.language.InstallResult
 import com.playtranslate.language.LanguagePackCatalogLoader
@@ -122,7 +123,11 @@ class TargetPackInstaller(
             // language — the gloss pack is already installed and the online /
             // on-device backends don't need ML Kit. See [preloadMlKitFallbackModels].
             val mlKitReady = withContext(Dispatchers.IO) {
-                preloadMlKitFallbackModels(sourceLangCode, targetCode)
+                // Prefer Bergamot (the default offline tier): download its model
+                // for this pair and skip ML Kit on success. Falls back to ML Kit
+                // for unsupported pairs / download failures.
+                if (BergamotWarmup.ensureForPair(activity, sourceLangCode, targetCode)) true
+                else preloadMlKitFallbackModels(sourceLangCode, targetCode)
             }
             dialog.dismiss()
             if (!mlKitReady) {

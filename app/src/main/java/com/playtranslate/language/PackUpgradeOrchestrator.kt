@@ -6,6 +6,7 @@ import androidx.appcompat.app.AlertDialog
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.preloadMlKitFallbackModels
+import com.playtranslate.translation.bergamot.BergamotWarmup
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.translation.llm.humanSize
 import com.playtranslate.ui.OverlayProgress
@@ -295,7 +296,9 @@ class PackUpgradeOrchestrator(
         // EN→target definition-translation pivot independently (the old inline
         // version bailed out of the second model if the first threw).
         val prefs = Prefs(activity.applicationContext)
-        preloadMlKitFallbackModels(prefs.sourceLang, prefs.targetLang)
+        if (!BergamotWarmup.ensureForPair(activity.applicationContext, prefs.sourceLang, prefs.targetLang)) {
+            preloadMlKitFallbackModels(prefs.sourceLang, prefs.targetLang)
+        }
     }
 
     private fun labelFor(pack: StalePack): String = when (pack.kind) {
