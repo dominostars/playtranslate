@@ -9,12 +9,12 @@ import com.playtranslate.translation.qwen.Qwen35Mnn4bModel
 
 /**
  * MNN-backed **Qwen 3.5 4B** — the Apache-2.0 high-quality on-device LLM tier.
- * Per the spike on Thor (Snapdragon 8 Gen 2), it is the blind-judge quality
- * leader of every on-device tier — ahead of Gemma 4 E2B and the WMT-specialist
- * HyMt 1.5 — at 0.0% catastrophic / 0.0% CJK-echo. Being Apache-2.0 it carries
- * no geo-restriction (unlike HyMt's Tencent license). Cost: ~1.28 s median
- * (the slowest tier — a tap-and-wait quality option) and a higher RAM gate.
- * See `mnn-spike/QWEN35_SPIKE_REPORT.md`.
+ * Per the spike on Thor (Snapdragon 8 Gen 2) it ties Gemma 4 E2B at the top of
+ * the blind judge (12.17 vs 12.06 / 15 — within noise) and is clearly ahead of
+ * the WMT-specialist HyMt 1.5, at 0.0% catastrophic / 0.0% CJK-echo. Being
+ * Apache-2.0 it carries no geo-restriction (unlike HyMt's Tencent license).
+ * Cost vs Gemma: ~30% slower (~1.28 s median, the slowest tier — a tap-and-wait
+ * option); RAM is the same class. See `mnn-spike/QWEN35_SPIKE_REPORT.md`.
  *
  * Priority [PRIORITY] = 24 — above Gemma (25), as the new quality leader.
  *
@@ -30,8 +30,8 @@ class Qwen35Mnn4bBackend(
     override val id: BackendId = "qwen35_mnn_4b"
     override val displayName: String = context.getString(R.string.qwen35_4b_mnn_display_name)
     override val priority: Int = PRIORITY
-    override val qualityStars: StarRating = 4.5f
-    override val speedStars: StarRating = 2.0f
+    override val qualityStars: StarRating = 4.0f
+    override val speedStars: StarRating = 1.5f
     override val modelHelper = Qwen35Mnn4bModel
     override val promptStyle = PromptStyle.Qwen35Chat
 
