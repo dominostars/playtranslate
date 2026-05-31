@@ -2,6 +2,7 @@ package com.playtranslate.translation.bergamot
 
 import android.content.Context
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import com.playtranslate.bergamot.BergamotNative
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.sync.Mutex
@@ -74,7 +75,12 @@ class BergamotTranslator private constructor(private val context: Context) {
         Unit
     }
 
-    /** Best-effort full teardown. Safe at app teardown. */
+    /**
+     * Best-effort teardown of this instance's native handles + engine thread.
+     * Intended for tests that build their own instance via [createForTest]; the
+     * shared [getInstance] singleton is never closed in production (it lives for
+     * the process). The [INSTANCE] reset at the end is only a failsafe.
+     */
     fun close() {
         runCatching {
             for (h in models.values) BergamotNative.destroyModel(h)
@@ -85,6 +91,14 @@ class BergamotTranslator private constructor(private val context: Context) {
             }
         }.onFailure { Log.w(TAG, "close() encountered $it (ignored)") }
         engineExecutor.shutdown()
+        // Failsafe only. By design nothing closes the shared singleton —
+        // production never does, and tests own their own instance via
+        // createForTest (for which INSTANCE !== this, so this is a no-op). But if
+        // anything ever closes the cached singleton, drop it so a later
+        // getInstance() rebuilds instead of returning this shut-down instance.
+        synchronized(Companion) {
+            if (INSTANCE === this) INSTANCE = null
+        }
     }
 
     private fun ensureService() {
@@ -135,9 +149,20 @@ class BergamotTranslator private constructor(private val context: Context) {
         private const val MAX_RESIDENT = 4
 
         @Volatile private var INSTANCE: BergamotTranslator? = null
+
+        /** The shared process engine — the production path. Never closed: it
+         *  lives for the process, and the OS reclaims its native memory at
+         *  process death. */
         fun getInstance(context: Context): BergamotTranslator =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: BergamotTranslator(context.applicationContext).also { INSTANCE = it }
             }
+
+        /** A standalone instance for tests that need deterministic teardown
+         *  (e.g. freeing native models between cases) without touching the
+         *  shared [getInstance] singleton. Production must use [getInstance]. */
+        @VisibleForTesting
+        fun createForTest(context: Context): BergamotTranslator =
+            BergamotTranslator(context.applicationContext)
     }
 }

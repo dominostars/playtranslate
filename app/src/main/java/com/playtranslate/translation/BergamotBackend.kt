@@ -73,13 +73,13 @@ class BergamotBackend(
 
     override fun close() {
         // No-op by design — mirrors OnDeviceLlmBackend.close(). [translator] is a
-        // process-singleton ([BergamotTranslator.getInstance]) shared across
-        // BergamotBackend instances. Closing it here would shut down its engine
-        // executor while leaving the companion INSTANCE cached, so the next
-        // BergamotBackend — e.g. after a TranslationBackendRegistry.init() re-init,
-        // which closes the prior backends — would reuse a dead singleton and fail
-        // every translate/warm-up with a RejectedExecutionException. The engine is
-        // reclaimed at process death; explicit teardown, if ever needed (e.g. a
-        // test), is BergamotTranslator.getInstance(ctx).close() directly.
+        // shared process singleton ([BergamotTranslator.getInstance]) that lives
+        // for the process and outlives individual BergamotBackend instances,
+        // which the registry replaces on TranslationBackendRegistry.init()
+        // re-inits. A backend being swapped out must not tear down the engine
+        // every other backend/warm-up shares. Its native memory is reclaimed at
+        // process death; a test needing deterministic teardown builds its own
+        // instance via BergamotTranslator.createForTest(ctx) and closes that —
+        // never the shared singleton.
     }
 }

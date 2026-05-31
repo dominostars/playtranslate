@@ -50,7 +50,9 @@ class BergamotBatchTest {
             numHeads = 8,
         )
 
-        val translator = BergamotTranslator.getInstance(appCtx)
+        // Standalone instance (not the process singleton) so close() below frees
+        // native models deterministically without touching a shared engine.
+        val translator = BergamotTranslator.createForTest(appCtx)
 
         // Warm-up: first call pays the model-load cost.
         val warm0 = System.currentTimeMillis()
