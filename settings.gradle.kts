@@ -22,7 +22,7 @@ dependencyResolutionManagement {
         maven { url = uri("https://jitpack.io") }
     }
 }
-rootProject.name = "GameLens"
+rootProject.name = "PlayTranslate"
 include(":app")
 include(":build-tools")
 include(":mnn")
