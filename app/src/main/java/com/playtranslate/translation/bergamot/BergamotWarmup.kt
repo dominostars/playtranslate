@@ -12,10 +12,14 @@ import com.playtranslate.translation.llm.OnDeviceLlmDownloader
  * Called at the same point the app warms up ML Kit fallback models
  * ([com.playtranslate.preloadMlKitFallbackModels]). It downloads the Bergamot
  * model(s) for the chosen source→target pair (one for a hop, two for an English
- * pivot) and, on success, the caller SKIPS the ML Kit warm-up — making Bergamot
- * the default offline translator. It falls back to ML Kit (returns false) when
- * Bergamot is disabled, the pair is unsupported by Mozilla's xx↔en model set,
- * the device is 32-bit, or any download fails.
+ * pivot), then **proves the runtime path actually works** with a native load +
+ * smoke translate; only on that success does the caller SKIP the ML Kit warm-up,
+ * making Bergamot the default offline translator. It falls back to ML Kit
+ * (returns false) when Bergamot is disabled, the pair is unsupported by Mozilla's
+ * xx↔en model set, the device is 32-bit, any download fails, OR the native engine
+ * can't load/translate — so we never suppress ML Kit provisioning on the strength
+ * of files-on-disk the engine can't actually use (which would leave an offline
+ * user with no fallback when Bergamot fails at runtime).
  */
 object BergamotWarmup {
     private const val TAG = "BergamotWarmup"
@@ -23,6 +27,11 @@ object BergamotWarmup {
     // Bergamot's resident working set is small (~150–200 MB int8); keep the
     // download preflight RAM floor low so we don't refuse on modest devices.
     private const val MEM_FLOOR_BYTES = 700_000_000L
+
+    // Minimal non-empty input for the runtime smoke translate. We only care that
+    // the native lib + model load and translate without crashing — not the
+    // output — so any short, universally-tokenizable string works.
+    private const val SMOKE_TEXT = "1"
 
     /**
      * [onProgress] reports byte progress of the model download(s) so the caller
@@ -67,6 +76,31 @@ object BergamotWarmup {
                 return false
             }
         }
-        return manager.isInstalled(source, target)
+        // Files are downloaded + hash-validated above, but that only proves
+        // files-on-disk — it does NOT load libbergamot_jni, load the native
+        // model, or translate. If we returned true here, a native load/translate
+        // failure at real runtime would fall through to ML Kit (registry
+        // waterfall), but this function's success already suppressed ML Kit
+        // provisioning — leaving an offline user with no offline translation.
+        // So run a real native load + smoke translate: success means the offline
+        // path is genuinely ready (and the model is now warm in the translator's
+        // cache); any failure returns false so the caller best-effort-preloads
+        // ML Kit instead.
+        if (!manager.isInstalled(source, target)) return false
+        val files = dirs.mapNotNull { manager.filesFor(it) }
+        if (files.size != dirs.size) return false
+        return try {
+            val translator = BergamotTranslator.getInstance(ctx)
+            when (files.size) {
+                1 -> translator.translateSingle(files[0], SMOKE_TEXT)
+                else -> translator.translatePivot(files[0], files[1], SMOKE_TEXT)
+            }
+            true
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Bergamot runtime smoke failed for $source->$target: ${e.message}")
+            false
+        }
     }
 }
