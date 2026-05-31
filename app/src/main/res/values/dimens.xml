@@ -7,4 +7,10 @@
     <dimen name="pt_row_v_padding">14dp</dimen>
     <dimen name="pt_group_gap">20dp</dimen>
     <dimen name="pt_section_h_padding">14dp</dimen>
+
+    <!-- Offline backend row header touch-target floor (= MaterialSwitch's 48dp
+         height) so every enabled row is the same height. Collapsed to 0 by
+         SettingsRenderer when the row is in its inert "disabled" state, which
+         tightens the title→reason-line spacing. -->
+    <dimen name="offline_row_header_min_height">48dp</dimen>
 </resources>

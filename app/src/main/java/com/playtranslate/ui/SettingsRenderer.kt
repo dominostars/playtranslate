@@ -2082,6 +2082,16 @@ class SettingsRenderer(
         else                  -> false
     }
 
+    /** Whether Mozilla's Bergamot model set has a path (direct or English-pivot)
+     *  for the current source→target. `supportsPair == false` means no model
+     *  exists for this pair, so [renderOfflineBackendRow] shows the row inert
+     *  with an unsupported-pair message instead of a download affordance that
+     *  silently no-ops. Source is resolved through translationCode — matching
+     *  setup/runtime — so e.g. Traditional Chinese (zh-Hant) → "zh". */
+    private fun bergamotPairSupported(backend: BergamotBackend): Boolean =
+        backend.manager.supportsPair(
+            SourceLanguageProfiles[prefs.sourceLangId].translationCode, prefs.targetLang)
+
     /** The id'd divider that precedes an offline row (so the deprecation gate
      *  can hide it together with the row). Null for rows with no id'd preceding
      *  divider (Gemma — first row in the card; ML Kit — id-less divider). */
@@ -2116,9 +2126,12 @@ class SettingsRenderer(
             if (!installed) return
         }
 
-        row.findViewById<TextView>(R.id.tvOfflineTitle).text =
+        val rowTitle =
             if (backend is BergamotBackend) ctx.getString(R.string.bergamot_row_title)
             else backend.displayName
+        val title = row.findViewById<TextView>(R.id.tvOfflineTitle)
+        val header = row.findViewById<View>(R.id.offlineHeaderRow)
+        title.text = rowTitle
         // Warning-colored "⚠ DEPRECATED ⚠" badge on the title line (deprecated
         // + installed rows only; the not-installed case returned above).
         row.findViewById<TextView>(R.id.tvOfflineDeprecatedBadge).isVisible = deprecated
@@ -2131,22 +2144,53 @@ class SettingsRenderer(
         val switch = row.findViewById<MaterialSwitch>(R.id.switchOfflineToggle)
         val warning = row.findViewById<TextView>(R.id.tvOfflineWarningLine)
 
-        // Hardware-incompat branch — preserves the legacy "visible but
-        // inert" contract: row stays, grid + icon + switch hidden,
-        // single-line reason shown in their place.
-        val incompatReason = onDeviceLlm?.takeIf { !it.meetsHardwareRequirements() }
-            ?.hardwareIncompatibilityReason()
-        if (incompatReason != null) {
+        // "Visible but inert" branch — the row stays so the user sees what's
+        // unavailable and why, but the stat grid + status icon + switch are
+        // replaced by a single reason line. Two triggers:
+        //   • on-device LLM whose device fails the hardware floor (arch / RAM)
+        //   • Bergamot when Mozilla ships no model for the current source→target
+        //     pair — this is per-pair, so it's re-evaluated on every refresh and
+        //     the row's interactivity is toggled here (not in the one-time
+        //     wiring), so switching to a supported pair re-enables the row.
+        val disabledReason: String? = when {
+            onDeviceLlm != null && !onDeviceLlm.meetsHardwareRequirements() ->
+                onDeviceLlm.hardwareIncompatibilityReason()
+            backend is BergamotBackend && !bergamotPairSupported(backend) ->
+                ctx.getString(R.string.bergamot_pair_unsupported)
+            else -> null
+        }
+        if (backend is BergamotBackend) row.isClickable = disabledReason == null
+        if (disabledReason != null) {
+            // Compact, recessed "disabled" presentation: collapse the header's
+            // 48dp touch-target floor so the title pairs tightly with the reason
+            // line, add symmetric vertical padding (the collapse otherwise
+            // leaves the title flush against the row's top edge), and drop the
+            // title to ptTextHint — the same recessed tone the online rows'
+            // neutral status line uses — so the whole cell reads as a single
+            // inactive group. (The reason line is ptTextHint via the layout.)
+            header.minimumHeight = 0
+            val vPad = row.paddingBottom   // 10dp from the layout
+            row.setPadding(row.paddingLeft, vPad, row.paddingRight, vPad)
+            title.setTextColor(ctx.themeColor(R.attr.ptTextHint))
             grid.isGone = true
-            incompat.text = incompatReason
+            incompat.text = disabledReason
             incompat.isVisible = true
             iconWrap.isGone = true
             switch.isGone = true
             warning.isGone = true
-            row.contentDescription = "${backend.displayName}. $incompatReason"
+            row.contentDescription = "$rowTitle. $disabledReason"
             return
         }
 
+        // Enabled presentation — restore the header floor, the layout's top
+        // padding (0dp; the header's height supplies the top inset), and the
+        // primary title color. The row View is recycled across refreshes and
+        // backends, so an earlier disabled pass may have collapsed/padded/muted
+        // them.
+        header.minimumHeight =
+            ctx.resources.getDimensionPixelSize(R.dimen.offline_row_header_min_height)
+        row.setPadding(row.paddingLeft, 0, row.paddingRight, row.paddingBottom)
+        title.setTextColor(ctx.themeColor(R.attr.ptText))
         grid.isVisible = true
         incompat.isGone = true
         iconWrap.isVisible = true

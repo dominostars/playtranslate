@@ -23,11 +23,12 @@
          whose switch is GONE. The 32dp track is centered inside that
          48dp; without this floor the ML Kit row collapses ~16dp shorter. -->
     <LinearLayout
+        android:id="@+id/offlineHeaderRow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:minHeight="48dp">
+        android:minHeight="@dimen/offline_row_header_min_height">
 
         <TextView
             android:id="@+id/tvOfflineTitle"
@@ -138,15 +139,18 @@
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <!-- Hardware-incompat replacement for the stat grid. Shown instead of
-         cardStatGrid when OnDeviceLlmBackend.meetsHardwareRequirements()=false. -->
+    <!-- Inert "disabled"-state reason line, shown in place of cardStatGrid when
+         a row is unavailable: an on-device LLM whose device fails the hardware
+         floor (meetsHardwareRequirements()=false), or Bergamot with no model
+         for the current language pair. Only ever visible in that state, so its
+         small top margin pairs it tightly under the (collapsed) header. -->
     <TextView
         android:id="@+id/tvOfflineHardwareIncompat"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="2dp"
         android:textSize="13sp"
-        android:textColor="?attr/ptTextMuted"
+        android:textColor="?attr/ptTextHint"
         android:visibility="gone" />
 
     <!-- Optional warning sub-row (e.g. "Low memory — translations using
