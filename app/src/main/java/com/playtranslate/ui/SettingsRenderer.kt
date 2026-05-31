@@ -2076,7 +2076,8 @@ class SettingsRenderer(
      *  three render call sites stay agnostic to the per-pair distinction. */
     private fun offlineInstalled(backend: TranslationBackend): Boolean = when (backend) {
         is MlKitBackend       -> true
-        is BergamotBackend    -> backend.manager.isInstalled(prefs.sourceLang, prefs.targetLang)
+        is BergamotBackend    -> backend.manager.isInstalled(
+            SourceLanguageProfiles[prefs.sourceLangId].translationCode, prefs.targetLang)
         is OnDeviceLlmBackend -> backend.isInstalled()
         else                  -> false
     }

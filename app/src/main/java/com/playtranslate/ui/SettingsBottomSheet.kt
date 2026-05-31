@@ -32,6 +32,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import com.playtranslate.overlayPermissionSettingsIntent
 import com.playtranslate.themeColor
+import com.playtranslate.language.SourceLanguageProfiles
 import kotlinx.coroutines.launch
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.drawable.toDrawable
@@ -1432,7 +1433,11 @@ class SettingsBottomSheet : DialogFragment() {
         if (isDownloadInFlight(bergamotDownloadJob, "Bergamot")) return
         val ctx = context ?: return
         val manager = com.playtranslate.translation.bergamot.BergamotModelManager(ctx)
-        val source = Prefs(ctx).sourceLang
+        // Resolve the source through translationCode exactly like setup
+        // (LanguageSetupActivity) and the runtime (CaptureService) do, so a
+        // Traditional-Chinese (zh-Hant) source maps to the shared "zh" Bergamot
+        // model instead of an unsupported zh_hant. Target is already canonical.
+        val source = SourceLanguageProfiles[Prefs(ctx).sourceLangId].translationCode
         val target = Prefs(ctx).targetLang
         val dirs = manager.requiredDirections(source, target)
         if (dirs == null) { renderer?.refreshBergamotSwitch(); return }
@@ -1532,7 +1537,10 @@ class SettingsBottomSheet : DialogFragment() {
             ) {
                 Prefs(ctx).bergamotEnabled = false
                 val manager = com.playtranslate.translation.bergamot.BergamotModelManager(ctx)
-                val dirs = manager.requiredDirections(Prefs(ctx).sourceLang, Prefs(ctx).targetLang)
+                val dirs = manager.requiredDirections(
+                    SourceLanguageProfiles[Prefs(ctx).sourceLangId].translationCode,
+                    Prefs(ctx).targetLang,
+                )
                 viewLifecycleOwner.lifecycleScope.launch {
                     dirs?.forEach { dir ->
                         com.playtranslate.translation.bergamot.BergamotModel(dir).delete(ctx)
