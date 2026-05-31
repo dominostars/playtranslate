@@ -129,10 +129,18 @@ class BergamotModelManager(private val context: Context) {
             vocabPath = vocabPath,
             targetVocabPath = targetVocabPath,
             shortlistPath = shortlist.absolutePath,
-            // Mozilla "base-memory" architecture: verified 6 encoder / 4 decoder
-            // for every base-memory pair sampled (ffn 2, heads 8). We only ship
-            // base-memory; the models carry no model.yml, so these must be set
-            // explicitly or the engine mis-loads layers and emits fluent garbage.
+            // Every shipped direction is Mozilla "base-memory" architecture
+            // (6 encoder / 4 decoder, 8 heads, ffn 2), verified against each
+            // model's metadata.json (modelConfig.enc-depth / dec-depth) across all
+            // recipe families. The catalog URL folder names — cjk, llmaat,
+            // retrain_hr, retrain_hr2, retrain_base-memory — are TRAINING-recipe
+            // labels, NOT architectures; their metadata all reports base-memory.
+            // We download only model + vocab + shortlist (not that metadata.json),
+            // and the exported .intgemm.alphas.bin carries no architecture, so
+            // these must be set explicitly or the engine mis-loads layers and
+            // emits fluent garbage. If a direction is ever added whose metadata
+            // reports a different architecture (plain "base" is 6/2, for example),
+            // read it per-model instead of assuming these constants.
             encoderLayers = BASE_MEMORY_ENCODER_LAYERS,
             decoderLayers = BASE_MEMORY_DECODER_LAYERS,
             feedForwardDepth = BASE_MEMORY_FFN_DEPTH,
