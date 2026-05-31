@@ -81,13 +81,22 @@ class BergamotModelManager(private val context: Context) {
     fun directionDir(direction: String): File =
         File(context.noBackupFilesDir, "models/$CATALOG_PREFIX$direction")
 
+    // Hash-validated install check: delegate to BergamotModel.isInstalled, which
+    // compares the on-disk `.sentinel` against the current catalog's aggregate
+    // SHA (MultiFileSha.aggregate). A presence-only `.sentinel.exists()` check
+    // would accept a stale install after a catalog update (or a leftover
+    // sentinel beside mismatched assets); loading it yields fluent garbage or
+    // repeated native load failures, and Settings would show the row installed.
     private fun isDirectionInstalled(direction: String): Boolean =
-        File(directionDir(direction), SENTINEL).exists()
+        BergamotModel(direction).isInstalled(context)
 
     /** Resolve files + architecture for a direction, or null if not fully installed. */
     fun filesFor(direction: String): BergamotModelFiles? {
         val dir = directionDir(direction)
-        if (!File(dir, SENTINEL).exists()) return null
+        // Same hash-validated gate as isDirectionInstalled — never resolve files
+        // for a stale/mismatched install (the engine would mis-load and emit
+        // fluent garbage instead of letting the waterfall fall back).
+        if (!BergamotModel(direction).isInstalled(context)) return null
         val model = dir.listFiles { f -> MODEL_RE.matches(f.name) }?.firstOrNull() ?: return null
         val shortlist = dir.listFiles { f -> SHORTLIST_RE.matches(f.name) }?.firstOrNull() ?: return null
         // Most pairs ship one shared vocab (`vocab.*.spm`). CJK en→{ja,zh,ko} ship
@@ -147,7 +156,6 @@ class BergamotModelManager(private val context: Context) {
 
     companion object {
         const val CATALOG_PREFIX = "bergamot-"
-        const val SENTINEL = ".sentinel"
 
         const val BASE_MEMORY_ENCODER_LAYERS = 6
         const val BASE_MEMORY_DECODER_LAYERS = 4

@@ -36,10 +36,14 @@ std::string jstr(JNIEnv* env, jstring s) {
   return out;
 }
 
-// One text through one model (single hop) or two (English pivot). Returns the
-// single response's target text, or "" on empty/failure.
-std::string run(Blocking* service, Model* first, Model* second,
-                const std::string& text) {
+// One text through one model (single hop) or two (English pivot). On success
+// writes the target text to `out` (which may legitimately be empty for empty
+// input) and returns true. Returns false — distinct from a valid empty result
+// — on a native exception or empty Responses, so the JNI can surface failure as
+// a null jstring and the Kotlin waterfall falls back to the next backend instead
+// of caching/displaying a blank translation as if Bergamot had succeeded.
+bool run(Blocking* service, Model* first, Model* second,
+         const std::string& text, std::string& out) {
   try {
     std::vector<std::string> sources{text};
     Options options{};
@@ -52,14 +56,15 @@ std::string run(Blocking* service, Model* first, Model* second,
       Ptr<Model> m2(second, [](Model*) {});
       responses = service->pivot(m1, m2, std::move(sources), options);
     }
-    if (responses.empty()) return std::string();
-    return responses.front().target.text;
+    if (responses.empty()) return false;
+    out = responses.front().target.text;
+    return true;
   } catch (const std::exception& e) {
     LOGE("translate failed: %s", e.what());
-    return std::string();
+    return false;
   } catch (...) {
     LOGE("translate failed: unknown native error");
-    return std::string();
+    return false;
   }
 }
 
@@ -132,7 +137,8 @@ Java_com_playtranslate_bergamot_BergamotNative_translate(
   auto* service = reinterpret_cast<Blocking*>(service_handle);
   auto* model = reinterpret_cast<Model*>(model_handle);
   if (service == nullptr || model == nullptr) return nullptr;
-  std::string out = run(service, model, nullptr, jstr(env, text));
+  std::string out;
+  if (!run(service, model, nullptr, jstr(env, text), out)) return nullptr;
   return env->NewStringUTF(out.c_str());
 }
 
@@ -145,7 +151,8 @@ Java_com_playtranslate_bergamot_BergamotNative_pivot(
   auto* second = reinterpret_cast<Model*>(second_handle);
   if (service == nullptr || first == nullptr || second == nullptr)
     return nullptr;
-  std::string out = run(service, first, second, jstr(env, text));
+  std::string out;
+  if (!run(service, first, second, jstr(env, text), out)) return nullptr;
   return env->NewStringUTF(out.c_str());
 }
 
