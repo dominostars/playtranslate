@@ -12,6 +12,7 @@
 #include <android/log.h>
 #include <jni.h>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -34,6 +35,94 @@ std::string jstr(JNIEnv* env, jstring s) {
   std::string out = (c != nullptr) ? std::string(c) : std::string();
   if (c != nullptr) env->ReleaseStringUTFChars(s, c);
   return out;
+}
+
+// NOTE: jstr() above uses GetStringUTFChars, which yields JNI *modified* UTF-8.
+// That's fine for the ASCII filesystem paths passed to loadModel, but NOT for
+// user text: modified UTF-8 encodes supplementary code points (emoji, rare CJK,
+// U+10000+) as 6-byte CESU-8 surrogate pairs and NUL as 0xC0 0x80, while slimt
+// expects standard UTF-8 (4-byte supplementary, 1-byte NUL). translate/pivot
+// convert the source/target text explicitly via the two helpers below so real
+// user text round-trips losslessly instead of being mangled or rejected.
+
+// Java String (UTF-16) -> standard UTF-8. Combines surrogate pairs into 4-byte
+// sequences; lone/invalid surrogates become U+FFFD.
+std::string jstringToUtf8(JNIEnv* env, jstring s) {
+  if (s == nullptr) return std::string();
+  const jsize len = env->GetStringLength(s);
+  const jchar* u = env->GetStringChars(s, nullptr);
+  if (u == nullptr) return std::string();
+  std::string out;
+  out.reserve(static_cast<size_t>(len) + static_cast<size_t>(len) / 2 + 1);
+  for (jsize i = 0; i < len; ++i) {
+    uint32_t cp = u[i];
+    if (cp >= 0xD800u && cp <= 0xDBFFu) {  // high surrogate
+      const uint32_t lo = (i + 1 < len) ? static_cast<uint32_t>(u[i + 1]) : 0u;
+      if (lo >= 0xDC00u && lo <= 0xDFFFu) {
+        cp = 0x10000u + ((cp - 0xD800u) << 10) + (lo - 0xDC00u);
+        ++i;
+      } else {
+        cp = 0xFFFDu;  // unpaired high surrogate
+      }
+    } else if (cp >= 0xDC00u && cp <= 0xDFFFu) {  // unpaired low surrogate
+      cp = 0xFFFDu;
+    }
+    if (cp < 0x80u) {
+      out.push_back(static_cast<char>(cp));
+    } else if (cp < 0x800u) {
+      out.push_back(static_cast<char>(0xC0u | (cp >> 6)));
+      out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+    } else if (cp < 0x10000u) {
+      out.push_back(static_cast<char>(0xE0u | (cp >> 12)));
+      out.push_back(static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu)));
+      out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+    } else {
+      out.push_back(static_cast<char>(0xF0u | (cp >> 18)));
+      out.push_back(static_cast<char>(0x80u | ((cp >> 12) & 0x3Fu)));
+      out.push_back(static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu)));
+      out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+    }
+  }
+  env->ReleaseStringChars(s, u);
+  return out;
+}
+
+// Standard UTF-8 -> Java String. Decodes to UTF-16 (supplementary -> surrogate
+// pair) and uses NewString, NOT NewStringUTF (which expects modified UTF-8 and
+// mangles slimt's 4-byte output). Invalid/truncated sequences become U+FFFD.
+jstring utf8ToJstring(JNIEnv* env, const std::string& s) {
+  std::vector<jchar> u;
+  u.reserve(s.size() + 1);
+  const size_t n = s.size();
+  size_t i = 0;
+  while (i < n) {
+    const uint8_t c0 = static_cast<uint8_t>(s[i]);
+    uint32_t cp;
+    size_t extra;
+    if (c0 < 0x80u) { cp = c0; extra = 0; }
+    else if ((c0 & 0xE0u) == 0xC0u) { cp = c0 & 0x1Fu; extra = 1; }
+    else if ((c0 & 0xF0u) == 0xE0u) { cp = c0 & 0x0Fu; extra = 2; }
+    else if ((c0 & 0xF8u) == 0xF0u) { cp = c0 & 0x07u; extra = 3; }
+    else { cp = 0xFFFDu; extra = 0; }  // invalid lead byte
+    bool ok = (i + extra < n);
+    for (size_t k = 0; ok && k < extra; ++k) {
+      const uint8_t cc = static_cast<uint8_t>(s[i + 1 + k]);
+      if ((cc & 0xC0u) != 0x80u) { ok = false; break; }
+      cp = (cp << 6) | (cc & 0x3Fu);
+    }
+    if (!ok) { cp = 0xFFFDu; i += 1; }  // truncated/invalid: replace, resync 1 byte
+    else { i += 1 + extra; }
+    if (cp <= 0xFFFFu) {
+      u.push_back(static_cast<jchar>(cp));
+    } else if (cp <= 0x10FFFFu) {
+      cp -= 0x10000u;
+      u.push_back(static_cast<jchar>(0xD800u | (cp >> 10)));
+      u.push_back(static_cast<jchar>(0xDC00u | (cp & 0x3FFu)));
+    } else {
+      u.push_back(static_cast<jchar>(0xFFFDu));
+    }
+  }
+  return env->NewString(u.data(), static_cast<jsize>(u.size()));
 }
 
 // One text through one model (single hop) or two (English pivot). On success
@@ -138,8 +227,8 @@ Java_com_playtranslate_bergamot_BergamotNative_translate(
   auto* model = reinterpret_cast<Model*>(model_handle);
   if (service == nullptr || model == nullptr) return nullptr;
   std::string out;
-  if (!run(service, model, nullptr, jstr(env, text), out)) return nullptr;
-  return env->NewStringUTF(out.c_str());
+  if (!run(service, model, nullptr, jstringToUtf8(env, text), out)) return nullptr;
+  return utf8ToJstring(env, out);
 }
 
 JNIEXPORT jstring JNICALL
@@ -152,8 +241,8 @@ Java_com_playtranslate_bergamot_BergamotNative_pivot(
   if (service == nullptr || first == nullptr || second == nullptr)
     return nullptr;
   std::string out;
-  if (!run(service, first, second, jstr(env, text), out)) return nullptr;
-  return env->NewStringUTF(out.c_str());
+  if (!run(service, first, second, jstringToUtf8(env, text), out)) return nullptr;
+  return utf8ToJstring(env, out);
 }
 
 }  // extern "C"
