@@ -27,6 +27,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
+import com.playtranslate.language.DefinitionGlossTranslators
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.WordTranslator
@@ -773,10 +774,9 @@ class TranslationResultFragment : Fragment() {
                 val engine = SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
                 val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, prefs.targetLang)
                 val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
-                val enToTarget = TranslationManagerProvider.getEnToTarget(prefs.targetLang)
                 val resolver = DefinitionResolver(engine, targetGlossDb,
                     mlKitTranslator?.let { WordTranslator(it::translate) }, prefs.targetLang,
-                    enToTarget?.let { WordTranslator(it::translate) })
+                    DefinitionGlossTranslators.forTarget(prefs.targetLang))
                 val defResult = withContext(Dispatchers.IO) {
                     resolver.lookup(lookupForm, reading.ifEmpty { null })
                 }

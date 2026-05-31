@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.playtranslate.Prefs
+import com.playtranslate.language.DefinitionGlossTranslators
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.SourceLanguageEngines
@@ -282,11 +283,10 @@ class TranslationResultViewModel : ViewModel() {
         val engine = SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
         val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, prefs.targetLang)
         val mlKit = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
-        val enToTarget = TranslationManagerProvider.getEnToTarget(prefs.targetLang)
         val resolver = DefinitionResolver(
             engine, targetGlossDb,
             mlKit?.let { WordTranslator(it::translate) }, prefs.targetLang,
-            enToTarget?.let { WordTranslator(it::translate) },
+            DefinitionGlossTranslators.forTarget(prefs.targetLang),
         )
 
         val allTokens = withContext(Dispatchers.IO) { engine.tokenize(text) }

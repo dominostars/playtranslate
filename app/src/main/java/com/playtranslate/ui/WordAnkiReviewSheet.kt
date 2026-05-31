@@ -29,6 +29,7 @@ import com.playtranslate.applyDialogEdgeToEdge
 import com.playtranslate.fullScreenDialogTheme
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.playtranslate.language.DefinitionGlossTranslators
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.SourceLangId
@@ -647,12 +648,12 @@ class WordAnkiReviewSheet : DialogFragment() {
         val engine = SourceLanguageEngines.get(appCtx, sourceLangId)
         val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, targetLangCode)
         val mlKit = TranslationManagerProvider.get(engine.profile.translationCode, targetLangCode)
-        val enToTarget = TranslationManagerProvider.getEnToTarget(targetLangCode)
+        val enToTargetWrapper = DefinitionGlossTranslators.forTarget(targetLangCode)
         val resolver = DefinitionResolver(
             engine, targetGlossDb,
             mlKit?.let { WordTranslator(it::translate) },
             targetLangCode,
-            enToTarget?.let { WordTranslator(it::translate) },
+            enToTargetWrapper,
         )
         val defResult = withContext(Dispatchers.IO) { resolver.lookup(word, readingHint) }
         val response = defResult?.response
@@ -721,14 +722,14 @@ class WordAnkiReviewSheet : DialogFragment() {
                         .filter { it.text.isNotBlank() }
                     when {
                         raw.isEmpty() -> null
-                        targetLangCode == "en" || enToTarget == null ->
+                        targetLangCode == "en" || enToTargetWrapper == null ->
                             raw.map { TatoebaClient.SentencePair(it.text, it.translation) }
                         else -> withContext(Dispatchers.IO) {
                             raw.map { ex ->
                                 async {
                                     val translated = if (ex.translation.isBlank()) ""
                                     else try {
-                                        enToTarget.translate(ex.translation)
+                                        enToTargetWrapper.translate(ex.translation)
                                     } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                                         throw e
                                     } catch (_: Exception) {

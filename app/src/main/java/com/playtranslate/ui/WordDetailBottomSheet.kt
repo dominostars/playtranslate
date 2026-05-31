@@ -32,6 +32,7 @@ import com.playtranslate.applyDialogEdgeToEdge
 import com.playtranslate.fullScreenDialogTheme
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.playtranslate.language.DefinitionGlossTranslators
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.LanguagePackCatalogLoader
@@ -252,8 +253,7 @@ class WordDetailBottomSheet : DialogFragment() {
             moreExamplesTargetLang = targetLangCode
             val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, targetLangCode)
             val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, targetLangCode)
-            val enToTarget = TranslationManagerProvider.getEnToTarget(targetLangCode)
-            val enToTargetWrapper = enToTarget?.let { WordTranslator(it::translate) }
+            val enToTargetWrapper = DefinitionGlossTranslators.forTarget(targetLangCode)
             val resolver = DefinitionResolver(engine, targetGlossDb,
                 mlKitTranslator?.let { WordTranslator(it::translate) }, targetLangCode,
                 enToTargetWrapper)

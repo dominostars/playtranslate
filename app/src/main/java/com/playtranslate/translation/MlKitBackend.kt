@@ -27,6 +27,11 @@ class MlKitBackend : TranslationBackend {
     override val qualityStars: StarRating = 1.0f
     override val speedStars: StarRating = 5.0f
 
+    /** The floor of the dictionary definition-gloss waterfall: priority 30 puts
+     *  it last among the gloss-capable backends, after Bergamot. See
+     *  DefinitionGlossTranslators. */
+    override val usableForDefinitionGloss: Boolean = true
+
     override val status: BackendStatus = BackendStatus.Info("Bundled with the app, used as a fallback")
 
     override fun isUsable(source: String, target: String): Boolean = true

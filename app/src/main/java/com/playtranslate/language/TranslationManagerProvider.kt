@@ -28,12 +28,6 @@ object TranslationManagerProvider {
         return getOrCreate(sourceLangTranslationCode, targetLang)
     }
 
-    /** Translator for EN→target definition translation. */
-    fun getEnToTarget(targetLang: String): TranslationManager? {
-        if (targetLang == "en") return null
-        return getOrCreate("en", targetLang)
-    }
-
     fun close() {
         cache.values.forEach { it.close() }
         cache.clear()
