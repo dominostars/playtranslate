@@ -105,6 +105,19 @@ data class CatalogEntry(
      * UI gate) and the launch-time partial cleanup in `PlayTranslateApplication`.
      */
     val deprecated: Boolean? = null,
+
+    /**
+     * Transformer architecture for an NMT engine model (Bergamot/slimt), baked
+     * from the model's Mozilla `metadata.json`
+     * (`modelConfig.{enc-depth, dec-depth, transformer-heads, transformer-ffn-depth}`)
+     * by `scripts/gen_bergamot_catalog.py` at catalog-build time. `null` /
+     * omitted means "use the engine's documented default" — for Bergamot, the
+     * base-memory 6/4/8/2 fallback in
+     * [com.playtranslate.translation.bergamot.BergamotModelManager]. Only emitted
+     * when a model's architecture differs from that default, so base-memory
+     * entries stay clean.
+     */
+    val arch: EngineArch? = null,
 )
 
 /**
@@ -139,6 +152,24 @@ data class CatalogFile(
      *  verifies [size]/[sha256] against the UNCOMPRESSED bytes. Used for Bergamot
      *  models served from Mozilla's GCS bucket. */
     val gzip: Boolean = false,
+)
+
+/**
+ * Transformer layer counts for an NMT engine model (Bergamot/slimt). Read at
+ * runtime by
+ * [com.playtranslate.translation.bergamot.BergamotModelManager.filesFor] and
+ * handed to the native loader — mismatched counts mis-load the weights into
+ * fluent garbage, so these are the model's own `metadata.json` values baked into
+ * the catalog by `scripts/gen_bergamot_catalog.py`, never a guess. All four are
+ * required when present (the script always writes the complete set); a partial
+ * or non-positive value is treated as absent and falls back to the engine
+ * default.
+ */
+data class EngineArch(
+    val encoderLayers: Int,
+    val decoderLayers: Int,
+    val feedForwardDepth: Int,
+    val numHeads: Int,
 )
 
 /**

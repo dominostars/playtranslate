@@ -123,28 +123,29 @@ class BergamotModelManager(private val context: Context) {
             }
             else -> return null
         }
+        // Architecture comes from the catalog entry's `arch` (baked from the
+        // model's Mozilla metadata.json by scripts/gen_bergamot_catalog.py at
+        // build time), falling back to the base-memory default (6 enc / 4 dec,
+        // 8 heads, ffn 2) when absent. Every current direction is base-memory —
+        // recipe folder names (cjk / llmaat / retrain_hr) are training labels,
+        // not architectures, and their metadata all reports base-memory — so they
+        // carry no `arch` and use the fallback. A future non-base-memory model
+        // ships an `arch` and is loaded with it; mismatched layer counts would
+        // mis-load the weights into fluent garbage.
+        val arch = catalog.packs[CATALOG_PREFIX + direction]?.arch?.takeIf {
+            it.encoderLayers > 0 && it.decoderLayers > 0 &&
+                it.feedForwardDepth > 0 && it.numHeads > 0
+        }
         return BergamotModelFiles(
             direction = direction,
             modelPath = model.absolutePath,
             vocabPath = vocabPath,
             targetVocabPath = targetVocabPath,
             shortlistPath = shortlist.absolutePath,
-            // Every shipped direction is Mozilla "base-memory" architecture
-            // (6 encoder / 4 decoder, 8 heads, ffn 2), verified against each
-            // model's metadata.json (modelConfig.enc-depth / dec-depth) across all
-            // recipe families. The catalog URL folder names — cjk, llmaat,
-            // retrain_hr, retrain_hr2, retrain_base-memory — are TRAINING-recipe
-            // labels, NOT architectures; their metadata all reports base-memory.
-            // We download only model + vocab + shortlist (not that metadata.json),
-            // and the exported .intgemm.alphas.bin carries no architecture, so
-            // these must be set explicitly or the engine mis-loads layers and
-            // emits fluent garbage. If a direction is ever added whose metadata
-            // reports a different architecture (plain "base" is 6/2, for example),
-            // read it per-model instead of assuming these constants.
-            encoderLayers = BASE_MEMORY_ENCODER_LAYERS,
-            decoderLayers = BASE_MEMORY_DECODER_LAYERS,
-            feedForwardDepth = BASE_MEMORY_FFN_DEPTH,
-            numHeads = BASE_MEMORY_NUM_HEADS,
+            encoderLayers = arch?.encoderLayers ?: BASE_MEMORY_ENCODER_LAYERS,
+            decoderLayers = arch?.decoderLayers ?: BASE_MEMORY_DECODER_LAYERS,
+            feedForwardDepth = arch?.feedForwardDepth ?: BASE_MEMORY_FFN_DEPTH,
+            numHeads = arch?.numHeads ?: BASE_MEMORY_NUM_HEADS,
         )
     }
 

@@ -14,6 +14,13 @@ one shared `vocab`; the CJK targets (en->ja/zh/ko) ship a split `srcVocab`+`trgV
 pair (separate source/target SentencePiece models), which our slimt fork loads via
 the Package.target_vocabulary path. Both shapes are emitted with role-named files.
 
+Per direction we also read the model's sibling `metadata.json` and bake an `arch`
+object (encoder/decoder layers, heads, ffn depth) into the entry ONLY when it
+differs from the base-memory default (6/4/8/2). Base-memory entries omit it and
+fall back to the app's constants; a future non-base-memory model gets its real
+architecture baked so the engine loads it correctly instead of mis-loading into
+fluent garbage.
+
 Usage:
     python3 scripts/gen_bergamot_catalog.py ja-en es-en en-es ...
     python3 scripts/gen_bergamot_catalog.py            # default core set
@@ -31,6 +38,12 @@ MANIFEST_CACHE = "/tmp/live_models.json"
 CATALOG = os.path.join(os.path.dirname(__file__), "..", "app", "src", "main", "assets", "langpack_catalog.json")
 
 DEFAULT_DIRS = ["ja-en", "es-en", "en-es"]
+
+# Bergamot "base-memory" architecture (6 enc / 4 dec / 8 heads / ffn 2). Every
+# current Mozilla on-device model is this; entries matching it carry NO `arch`
+# and use the app's BASE_MEMORY_* fallback. An entry only gets an explicit
+# `arch` when its metadata.json reports something different.
+BASE_MEMORY_ARCH = {"encoderLayers": 6, "decoderLayers": 4, "feedForwardDepth": 2, "numHeads": 8}
 
 
 def fetch(url: str) -> bytes:
@@ -51,6 +64,28 @@ def pick_variant(variants):
             if v.get("architecture") == arch:
                 return v
     return None
+
+
+def read_arch(model_path: str):
+    """Read the transformer arch (enc/dec/heads/ffn) from the model's sibling
+    metadata.json on the GCS bucket, in the app's catalog field names. Returns
+    None if the metadata can't be fetched/parsed (operator should investigate
+    rather than silently assuming base-memory for a non-default model)."""
+    meta_url = f"{BUCKET}/{os.path.dirname(model_path)}/metadata.json"
+    try:
+        mc = json.loads(fetch(meta_url))["modelConfig"]
+        arch = {
+            "encoderLayers": int(mc["enc-depth"]),
+            "decoderLayers": int(mc["dec-depth"]),
+            "feedForwardDepth": int(mc["transformer-ffn-depth"]),
+            "numHeads": int(mc["transformer-heads"]),
+        }
+        if min(arch.values()) <= 0:
+            raise ValueError(f"non-positive layer count {arch}")
+        return arch
+    except Exception as e:
+        print(f"  WARN  could not read arch from {meta_url}: {e}")
+        return None
 
 
 def build_entry(direction: str, variant: dict):
@@ -84,7 +119,7 @@ def build_entry(direction: str, variant: dict):
         total += size
         entry_files.append({"path": name, "url": url, "size": size, "sha256": sha, "gzip": True})
         print(f"  {direction} {role:16s} {name}  {size} bytes")
-    return {
+    entry = {
         "display": f"Firefox Translations {direction}",
         "type": "engine",
         "script": "",
@@ -99,6 +134,21 @@ def build_entry(direction: str, variant: dict):
             "attribution": "(c) Mozilla / Firefox Translations, https://github.com/mozilla/translations",
         }],
     }
+    # Architecture from the model's metadata.json. It's load-bearing: with the
+    # wrong layer counts the engine mis-loads the weights into fluent garbage.
+    # A failed read means "unknown arch", NOT "base-memory" — and pick_variant
+    # can also pick a plain `base` variant (6/2, not 6/4) — so we must NOT emit
+    # an entry whose arch we couldn't verify. Skip it, like a missing vocab role.
+    arch = read_arch(files["model"]["path"])
+    if arch is None:
+        print(f"  SKIP {direction}: could not determine architecture from metadata.json")
+        return None
+    if arch != BASE_MEMORY_ARCH:
+        entry["arch"] = arch  # non-default: bake it so the app loads correctly
+        print(f"  {direction} arch NON-DEFAULT -> baked {arch}")
+    else:
+        print(f"  {direction} arch base-memory (default, omitted)")
+    return entry
 
 
 def main():

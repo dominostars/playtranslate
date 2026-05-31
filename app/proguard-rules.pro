@@ -22,6 +22,7 @@
 -keep class com.playtranslate.language.LanguagePackCatalog { *; }
 -keep class com.playtranslate.language.CatalogEntry { *; }
 -keep class com.playtranslate.language.CatalogFile { *; }
+-keep class com.playtranslate.language.EngineArch { *; }
 -keep class com.playtranslate.language.LanguagePackManifest { *; }
 -keep class com.playtranslate.language.ManifestFile { *; }
 -keep class com.playtranslate.language.ManifestLicense { *; }
