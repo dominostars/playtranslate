@@ -28,6 +28,16 @@ object TranslationManagerProvider {
         return getOrCreate(sourceLangTranslationCode, targetLang)
     }
 
+    /** Closes and removes every cached manager whose source or target is [lang]
+     *  (in translationCode space). Used when [lang]'s ML Kit model is reclaimed,
+     *  so the next translate reconstructs the Translator and re-downloads rather
+     *  than holding a handle to a now-deleted model. Other pairs are untouched. */
+    fun evictLanguage(lang: String) {
+        cache.keys
+            .filter { it.first == lang || it.second == lang }
+            .forEach { key -> cache.remove(key)?.close() }
+    }
+
     fun close() {
         cache.values.forEach { it.close() }
         cache.clear()

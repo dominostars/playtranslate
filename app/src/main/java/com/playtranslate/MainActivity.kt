@@ -68,6 +68,7 @@ import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.StalePack
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
+import com.playtranslate.translation.OfflineModelReclaimer
 import com.playtranslate.ui.ClickableTextView
 import com.playtranslate.ui.DimController
 import com.playtranslate.ui.OverlayAlert
@@ -437,6 +438,15 @@ class MainActivity :
                 // target the upgrade flow already handled (or is about to handle)
                 // to avoid two prompts addressing the same pack.
                 checkTargetPackMigration(skipTargetCodes)
+
+                // Reclaim ML Kit + Bergamot models orphaned by past deletions or
+                // by the recovery/upgrade uninstall paths. Runs only after pack
+                // upgrades/migrations have settled, so it never sees a pack that's
+                // transiently uninstalled mid-upgrade. No-op once clean;
+                // fire-and-forget on IO.
+                lifecycleScope.launch(Dispatchers.IO) {
+                    OfflineModelReclaimer.sweepOrphans(applicationContext)
+                }
             }
         }
 

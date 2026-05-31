@@ -39,6 +39,7 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.card.MaterialCardView
 import com.google.mlkit.nl.translate.TranslateLanguage
+import com.playtranslate.translation.OfflineModelReclaimer
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.DownloadProgress
@@ -777,6 +778,13 @@ class LanguageSetupActivity : AppCompatActivity() {
             lifecycleScope.launch {
                 val mgr = BergamotModelManager(applicationContext)
                 sources.forEach { mgr.deleteForSource(SourceLanguageProfiles[it].translationCode) }
+                // Reclaim this language's ML Kit model too, unless it's still
+                // needed as a target (or is the selected pair). Both ZH variants
+                // share translationCode CHINESE, so this resolves to one call.
+                OfflineModelReclaimer.reclaimMlKitIfUnneeded(
+                    applicationContext,
+                    SourceLanguageProfiles[id].translationCode,
+                )
             }
             showCurrentPage()
         }
@@ -791,6 +799,9 @@ class LanguageSetupActivity : AppCompatActivity() {
             // Reclaim the Bergamot English→target model for this target too.
             lifecycleScope.launch {
                 BergamotModelManager(applicationContext).deleteForTarget(code)
+                // Reclaim this target's ML Kit model too, unless it's still needed
+                // as a source (or is the selected pair).
+                OfflineModelReclaimer.reclaimMlKitIfUnneeded(applicationContext, code)
             }
             showCurrentPage()
         }

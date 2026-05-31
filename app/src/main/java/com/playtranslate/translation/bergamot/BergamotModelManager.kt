@@ -167,6 +167,27 @@ class BergamotModelManager(private val context: Context) {
         BergamotTranslator.getInstance(context).evictDirection(direction)
     }
 
+    /**
+     * Direction keys with model files currently on disk under `models/`
+     * (e.g. "ja-en", "en-es"). The [CATALOG_PREFIX] filter is the safety guard
+     * that keeps the orphan sweep away from the MNN model dirs (qwen/gemma/hymt)
+     * that share `models/`; `.partial`/`.tmp` staging siblings are skipped (their
+     * stripped name contains a '.', which a real direction never does).
+     */
+    fun installedDirections(): Set<String> {
+        val entries = File(context.noBackupFilesDir, "models").listFiles() ?: return emptySet()
+        return entries
+            .filter { it.isDirectory && it.name.startsWith(CATALOG_PREFIX) }
+            .map { it.name.removePrefix(CATALOG_PREFIX) }
+            .filterNot { it.contains('.') }
+            .toSet()
+    }
+
+    /** Reclaim each direction in [dirs] (disk + native eviction). Absent dirs no-op. */
+    suspend fun deleteDirections(dirs: Set<String>) {
+        dirs.forEach { deleteDirection(it) }
+    }
+
     companion object {
         const val CATALOG_PREFIX = "bergamot-"
 
