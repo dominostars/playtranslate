@@ -46,11 +46,15 @@ class BergamotModelManager(private val context: Context) {
             .toSet()
     }
 
-    /** Map a PlayTranslate translation code to a Mozilla model language code. */
-    private fun mozilla(code: String): String = when (val c = code.lowercase()) {
-        "zh-hant", "zh_hant" -> "zh_hant"
-        else -> c.substringBefore('-') // strip region subtag (e.g. pt-BR -> pt)
-    }
+    /** Map a PlayTranslate translation code to a Mozilla model language code by
+     *  stripping any region/script subtag (pt-BR -> pt, zh-Hant -> zh). The app
+     *  routes Traditional Chinese through the Simplified "zh" model everywhere
+     *  (its translationCode is CHINESE) and Mozilla ships no Traditional model,
+     *  so zh-Hant must resolve to "zh" — never a non-existent zh_hant direction.
+     *  This makes the lookup forgiving of callers that pass the raw stored code
+     *  ("zh-Hant") instead of the translationCode ("zh"). */
+    private fun mozilla(code: String): String =
+        code.lowercase().substringBefore('-')
 
     /**
      * The model directions needed to translate [source]→[target], or null if

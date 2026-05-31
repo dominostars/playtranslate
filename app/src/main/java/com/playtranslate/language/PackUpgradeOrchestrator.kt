@@ -297,13 +297,17 @@ class PackUpgradeOrchestrator(
         // EN→target definition-translation pivot independently (the old inline
         // version bailed out of the second model if the first threw).
         val prefs = Prefs(activity.applicationContext)
+        // Translation code, not the raw stored source: Traditional Chinese
+        // (zh-Hant) must resolve to "zh" for both Bergamot and ML Kit, which
+        // ship Simplified-only. Matches CaptureService / LanguageSetupActivity.
+        val sourceCode = SourceLanguageProfiles[prefs.sourceLangId].translationCode
         val warmed = BergamotWarmup.ensureForPair(
-            activity.applicationContext, prefs.sourceLang, prefs.targetLang
+            activity.applicationContext, sourceCode, prefs.targetLang
         ) { i, n, recv, total ->
             activity.runOnUiThread { dialog.showBergamotWarmupProgress(activity, i, n, recv, total) }
         }
         if (!warmed) {
-            preloadMlKitFallbackModels(prefs.sourceLang, prefs.targetLang)
+            preloadMlKitFallbackModels(sourceCode, prefs.targetLang)
         }
     }
 
