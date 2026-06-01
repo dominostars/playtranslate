@@ -64,7 +64,8 @@ add_subdirectory(${MNN_SRC} build-mnn)
 # JNI wrapper library
 # --------------------------------------------------------------------------
 add_library(${CMAKE_PROJECT_NAME} SHARED
-        mnn_chat.cpp)
+        mnn_chat.cpp
+        mnn_infer.cpp)
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
         ${MNN_SRC}/include
