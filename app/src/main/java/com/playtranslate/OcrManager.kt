@@ -146,7 +146,7 @@ class OcrManager private constructor() {
             logGrouping = debugLogGroupingEnabled,
         ) ?: return null
 
-        val result = buildOcrResult(output.groups, output.scaleFactor, sourceLang, collectDebugBoxes)
+        val result = buildOcrResult(output.groups, output.scaleFactor, collectDebugBoxes)
         if (result.fullText.isBlank()) return null
 
         android.util.Log.d("DetectionLog", "OCR raw: ${result.groups.size} groups")
@@ -189,21 +189,26 @@ class OcrManager private constructor() {
     private fun buildOcrResult(
         groups: List<LayoutGroup>,
         scaleFactor: Float,
-        sourceLang: String,
         collectDebugBoxes: Boolean,
     ): OcrResult {
         val segments = mutableListOf<TextSegment>()
-        val addWordSpaces =
-            SourceLanguageProfiles.forCode(sourceLang)?.wordsSeparatedByWhitespace ?: false
 
         val ocrGroups = groups.mapIndexed { gi, group ->
             if (gi > 0) segments += TextSegment("\n\n", isSeparator = true)
             val lines = group.lines.mapIndexed { li, line ->
                 if (li > 0) segments += TextSegment("\n", isSeparator = true)
-                line.elements.forEachIndexed { ei, el ->
-                    if (ei > 0 && addWordSpaces) segments += TextSegment(" ", isSeparator = true)
-                    segments += TextSegment(el.text)
-                }
+                // `segments` is a display-only projection: ClickableTextView
+                // concatenates it to render the original text, and tap-to-lookup
+                // re-tokenizes by character offset (segment boundaries and
+                // isSeparator are never read). Source it from the universal
+                // line.text tier — produced by EVERY engine — not the optional
+                // element tier, which is empty for PaddleOCR / whole-region
+                // recognizers and otherwise leaves the original text blank. For
+                // ML Kit, line.text IS the element concatenation incl. word
+                // spacing (MlKitTextMapper.walkLine), so this is display-
+                // identical. The per-element / per-char boxes that bounds-based
+                // features (drag-lookup, furigana) need still live in LineBox.
+                if (line.text.isNotEmpty()) segments += TextSegment(line.text)
                 LineBox(
                     text = line.text,
                     bounds = scaleRect(line.box.bounds, scaleFactor),
