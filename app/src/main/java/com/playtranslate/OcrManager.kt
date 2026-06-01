@@ -3,21 +3,13 @@ package com.playtranslate
 import android.graphics.Bitmap
 import android.graphics.Rect
 import com.google.mlkit.vision.text.Text
-import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
-import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
-import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
-import com.playtranslate.language.OcrBackend
-import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.model.TextSegment
 import com.playtranslate.ocr.OcrPipeline
 import com.playtranslate.ocr.core.LayoutGroup
-import com.playtranslate.ocr.core.OcrEngine
-import com.playtranslate.ocr.engines.mlkit.MlKitOcr
-import java.util.concurrent.ConcurrentHashMap
+import com.playtranslate.ocr.registry.OcrEngineRegistry
 import androidx.core.graphics.get
 
 /**
@@ -38,24 +30,9 @@ class OcrManager private constructor() {
      *  [PlayTranslateApplication] on start and from the SettingsRenderer toggle. */
     @Volatile var debugLogGroupingEnabled: Boolean = false
 
-    // Lazy cache of OCR engines keyed by backend. One engine per backend, reused
-    // across captures; closed in releaseAll().
-    private val engines = ConcurrentHashMap<OcrBackend, OcrEngine>()
-
-    private fun engineFor(sourceLang: String): OcrEngine {
-        val profile = SourceLanguageProfiles.forCode(sourceLang)
-            ?: SourceLanguageProfiles[SourceLangId.JA]
-        return engines.getOrPut(profile.ocrBackend) { createEngine(profile.ocrBackend) }
-    }
-
-    private fun createEngine(backend: OcrBackend): OcrEngine = when (backend) {
-        OcrBackend.MLKitJapanese -> MlKitOcr(JapaneseTextRecognizerOptions.Builder().build())
-        OcrBackend.MLKitLatin -> MlKitOcr(TextRecognizerOptions.DEFAULT_OPTIONS)
-        OcrBackend.MLKitChinese -> MlKitOcr(ChineseTextRecognizerOptions.Builder().build())
-        OcrBackend.MLKitKorean -> MlKitOcr(KoreanTextRecognizerOptions.Builder().build())
-        OcrBackend.MLKitDevanagari -> error("MLKitDevanagari not yet available (add play-services-mlkit-text-recognition-devanagari dependency)")
-        is OcrBackend.Tesseract -> error("Tesseract OCR backend not yet implemented (Phase 5)")
-    }
+    /** Builds + caches the [com.playtranslate.ocr.core.OcrEngine] per source
+     *  language; closed in [releaseAll]. */
+    private val registry = OcrEngineRegistry()
 
     /**
      * Drop every cached engine and close its native resources.
@@ -67,10 +44,7 @@ class OcrManager private constructor() {
      * engine out from under its worker, so do NOT hook it into any UI-driven path.
      */
     fun releaseAll() {
-        val snapshot = engines.keys.toList()
-        for (backend in snapshot) {
-            engines.remove(backend)?.close()
-        }
+        registry.closeAll()
     }
 
     /** A bounding box with optional confidence for debug overlay. */
@@ -168,7 +142,7 @@ class OcrManager private constructor() {
             ?.let { return it }
 
         val output = OcrPipeline.run(
-            engine = engineFor(sourceLang),
+            engine = registry.engineFor(sourceLang),
             bitmap = bitmap,
             sourceLang = sourceLang,
             screenshotWidth = screenshotWidth,
@@ -201,7 +175,7 @@ class OcrManager private constructor() {
             ?.let { return it }
 
         val output = OcrPipeline.run(
-            engine = engineFor(sourceLang),
+            engine = registry.engineFor(sourceLang),
             bitmap = bitmap,
             sourceLang = sourceLang,
             screenshotWidth = 0,
