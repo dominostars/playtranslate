@@ -7,9 +7,11 @@ import com.playtranslate.mnn.MnnInterpreter
 import org.opencv.android.OpenCVLoader
 import org.opencv.android.Utils
 import org.opencv.core.Core
+import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
+import org.opencv.imgcodecs.Imgcodecs
 import java.io.Closeable
 import java.io.File
 import kotlin.math.max
@@ -78,11 +80,18 @@ class PaddleOcrSession private constructor(
         val recStart = System.nanoTime()
         val regions = ArrayList<Region>(boxes.size)
         try {
-            for (b in boxes) {
+            for ((idx, b) in boxes.withIndex()) {
                 val crop = DbNet.warpCrop(srcMat, b.points, Cfg.REC_HEIGHT) ?: continue
                 try {
                     val r = recognizeMat(crop)
                     if (r.text.isNotBlank()) regions += Region(b.aabb, r.text, r.confidence)
+                    // Debug crop-dump: write the EXACT pre-recognition crop the
+                    // model saw, tagged with what it read + the region's aspect
+                    // (V = warpCrop rotated it as vertical, H = horizontal). Lets
+                    // us eyeball whether our rotate/resample mangled small kana
+                    // (our bug, fixable) vs the crop is legible but the model
+                    // blanked it (recognition limit). No-op unless dumpDir set.
+                    dumpDir?.let { dir -> dumpCrop(dir, crop, idx, r.text, b.aabb) }
                 } finally {
                     crop.release()
                 }
@@ -119,7 +128,11 @@ class PaddleOcrSession private constructor(
                 val resized = Mat()
                 try {
                     val w = max(1, (Cfg.REC_HEIGHT * clamped.width().toDouble() / clamped.height()).roundToInt())
-                    Imgproc.resize(sub, resized, Size(w.toDouble(), Cfg.REC_HEIGHT.toDouble()))
+                    // Direction-aware interpolation (see DbNet.warpCrop): INTER_AREA
+                    // when shrinking preserves fine dakuten/handakuten detail that
+                    // default INTER_LINEAR aliases away; INTER_CUBIC when enlarging.
+                    val interp = if (clamped.height() > Cfg.REC_HEIGHT) Imgproc.INTER_AREA else Imgproc.INTER_CUBIC
+                    Imgproc.resize(sub, resized, Size(w.toDouble(), Cfg.REC_HEIGHT.toDouble()), 0.0, 0.0, interp)
                     out += recognizeMat(resized)
                 } finally {
                     sub.release(); resized.release()
@@ -133,7 +146,25 @@ class PaddleOcrSession private constructor(
 
     // ── Recognizer: one already-cropped, height-48 Mat → text + confidence ───
 
+    /** Soft unsharp-mask kernel, identical to the Vietnamese diacritics recipe
+     *  (DiacriticsOcrPreprocessing): `v = (6·center − 4·neighbours) / 2`. Boosts
+     *  thin-stroke edges (dakuten/handakuten) without halo overshoot. Applied
+     *  per-channel via filter2D so COLOR is preserved (no grayscale) — PP's rec
+     *  model wants RGB. No upscale/contrast/invert: just the sharpen, so region
+     *  coordinates are untouched and nothing downstream needs rescaling. */
+    private val sharpenKernel: Mat by lazy {
+        Mat(3, 3, CvType.CV_32F).apply {
+            put(0, 0,
+                0.0, -0.5, 0.0,
+                -0.5, 3.0, -0.5,
+                0.0, -0.5, 0.0)
+        }
+    }
+
     private fun recognizeMat(crop: Mat): CropResult {
+        // Sharpen in place (in-channel) before normalization to preserve fine
+        // diacritic detail through the height-48 resample.
+        Imgproc.filter2D(crop, crop, -1, sharpenKernel)
         val w = crop.cols()
         val input = recPreprocess(crop, w)
         val out = rec.run(input, intArrayOf(1, 3, Cfg.REC_HEIGHT, w))
@@ -189,7 +220,13 @@ class PaddleOcrSession private constructor(
     // ── Recognizer preprocessing ─────────────────────────────────────────────
 
     /** crop is an RGBA Mat already at height Cfg.REC_HEIGHT. Produce NCHW RGB
-     *  float normalized to the -1..1 range, i.e. (v/255 - 0.5) / 0.5. */
+     *  float normalized to [-1,1], i.e. (v/255 - 0.5) / 0.5. This is correct
+     *  for PP-OCRv5 rec: the inference.yml lists NO NormalizeImage op — the
+     *  normalization is baked into PaddleOCR's RecResizeImg operator, whose
+     *  `resize_norm_img` does exactly `img/255; img -= 0.5; img /= 0.5`. (A
+     *  plain v/255 mapping was tried and reverted — it feeds the model a range
+     *  it wasn't trained on. The det model is the one with explicit ImageNet
+     *  mean/std; rec is [-1,1].) */
     private fun recPreprocess(crop: Mat, w: Int): FloatArray {
         val h = Cfg.REC_HEIGHT
         val ch = crop.channels()
@@ -261,12 +298,28 @@ class PaddleOcrSession private constructor(
 
     // ── Reading order ────────────────────────────────────────────────────────
 
-    /** Order regions top-to-bottom, then left-to-right within a row band. Good
-     *  enough for the spike horizontal-dominant game text; vertical/tategaki
-     *  ordering is a documented limitation of the full-PP arms (the hybrid arms
-     *  inherit ML Kit ordering instead). */
+    /** Order regions into reading order. Horizontal (default): top-to-bottom,
+     *  then left-to-right within a row band. Vertical/tategaki: columns read
+     *  right-to-left (rightmost column first), top-to-bottom within a column —
+     *  so we band by column X (rightmost first) then sort by top.
+     *
+     *  A capture is treated as vertical when most regions are tall-and-narrow
+     *  (same box test the crop rotation uses), which is the tategaki case. */
     private fun orderForReading(regions: List<Region>): List<Region> {
         if (regions.isEmpty()) return regions
+        val verticalCount = regions.count { it.box.height() > it.box.width() * 1.5 }
+        val verticalDominant = verticalCount * 2 > regions.size
+
+        if (verticalDominant) {
+            // Band by column using average region width; rightmost band first.
+            val avgW = regions.map { it.box.width() }.average().toFloat().coerceAtLeast(1f)
+            return regions.sortedWith(
+                // Negate the column band so larger X (rightmost) sorts first;
+                // within a column, top-to-bottom.
+                compareBy({ -((it.box.left + it.box.right) / 2 / (avgW * 0.7f)).toInt() }, { it.box.top })
+            )
+        }
+
         val avgH = regions.map { it.box.height() }.average().toFloat().coerceAtLeast(1f)
         return regions.sortedWith(compareBy({ (it.box.top / (avgH * 0.7f)).toInt() }, { it.box.left }))
     }
@@ -275,10 +328,40 @@ class PaddleOcrSession private constructor(
         det.close(); rec.close()
     }
 
+    /** Write one pre-recognition crop to [dir] as PNG, named with the recognized
+     *  text + orientation tag so the file itself documents what the model saw vs
+     *  read. Filenames: `crop_<idx>_<V|H>_<text>.png`. Best-effort; never throws
+     *  into the OCR path. [crop] is RGBA (from Utils.bitmapToMat); convert to BGR
+     *  for imwrite so colors aren't swapped in the saved file. */
+    private fun dumpCrop(dir: File, crop: Mat, idx: Int, text: String, box: Rect) {
+        try {
+            if (!dir.exists()) dir.mkdirs()
+            // V if the source region was taller than wide (warpCrop rotated it).
+            val tag = if (box.height() > box.width() * 1.5) "V" else "H"
+            // sanitize text for a filename; keep it short.
+            val safe = text.take(12).map { if (it.isLetterOrDigit() || it in '぀'..'ヿ' || it in '一'..'鿿') it else '_' }
+                .joinToString("")
+            val bgr = Mat()
+            Imgproc.cvtColor(crop, bgr, Imgproc.COLOR_RGBA2BGR)
+            Imgcodecs.imwrite(File(dir, "crop_${idx}_${tag}_$safe.png").absolutePath, bgr)
+            bgr.release()
+        } catch (e: Throwable) {
+            Log.w(TAG, "dumpCrop failed: ${e.message}")
+        }
+    }
+
     // Canonical PP-OCRv5 inference constants. Verified against inference.yml.
     private object Cfg {
-        // DetResizeForTest resize_long 960 (longest side).
-        const val DET_LIMIT_SIDE = 960
+        // Longest-side cap for the detector input. PP's default is 960, but our
+        // captures are 1080p — capping at 960 downscaled 1920→960, HALVING every
+        // character's pixels before detection and starving small-kana detail
+        // (dakuten, small っ). Raised to 1920 so 1080p frames pass through at
+        // native resolution: more pixels per character upstream of the crop,
+        // where the detail still exists. See docs/paddleocr-kana-research.md
+        // (option B). Cost: larger detector input → slower det (the det stage
+        // was already the latency sink at 960; expect a further increase).
+        // Rounded to a multiple of 32 in detPreprocess regardless.
+        const val DET_LIMIT_SIDE = 1920
         // NormalizeImage (det): ImageNet mean/std, scale 1/255, RGB order.
         val DET_MEAN = floatArrayOf(0.485f, 0.456f, 0.406f)
         val DET_STD = floatArrayOf(0.229f, 0.224f, 0.225f)
@@ -288,6 +371,11 @@ class PaddleOcrSession private constructor(
 
     companion object {
         private const val TAG = "PaddleOcrSession"
+
+        /** Debug crop-dump target. When non-null, every pre-recognition crop is
+         *  written here as a PNG (see [dumpCrop]). Null in production → no-op.
+         *  Set by PaddleOcrBridge from the debug toggle. */
+        @Volatile var dumpDir: File? = null
 
         @Volatile private var cvLoaded = false
         private fun ensureOpenCv() {

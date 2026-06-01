@@ -38,7 +38,12 @@ internal object DbNet {
 
     private const val BIN_THRESH = 0.3       // DBPostProcess.thresh
     private const val BOX_THRESH = 0.6       // DBPostProcess.box_thresh
-    private const val UNCLIP_RATIO = 1.5     // DBPostProcess.unclip_ratio
+    // Box dilation. PP default 1.5 expands all four sides symmetrically; on tall
+    // vertical (tategaki) boxes that pushes the long sides into the ADJACENT
+    // column, so warped crops pick up neighboring text and the recognizer reads
+    // garbage. Lowered to 1.1 to keep crops tight to their own column. (distance
+    // scales with this ratio, so 1.5→1.1 cuts the sideways bleed ~3.6×.)
+    private const val UNCLIP_RATIO = 1.1     // DBPostProcess.unclip_ratio (PP default 1.5)
     private const val MIN_SIZE = 3.0         // reject boxes whose short side < this (det-map px)
     private const val MAX_CANDIDATES = 1000
 
@@ -117,15 +122,28 @@ internal object DbNet {
         src.release(); dst.release(); m.release()
 
         var cur = warped
-        // PaddleOCR get_rotate_crop_image: tall boxes are vertical text → rotate
+        // Tall box → vertical (tategaki) text, which reads top-to-bottom.
+        // Rotate COUNTER-clockwise so the top character maps to the LEFT of the
+        // strip: the horizontal recognizer reads the column in true top→bottom
+        // order. (A CW experiment was tried to test a small-kana positional
+        // hypothesis — it COLLAPSED most vertical columns to empty output, i.e.
+        // CW is the wrong orientation for the recognizer. Reverted. Direction is
+        // load-bearing for recognition working at all, not a small-kana lever.)
         if (boxH > boxW * 1.5) {
             val rot = Mat()
-            Core.rotate(cur, rot, Core.ROTATE_90_CLOCKWISE)
+            Core.rotate(cur, rot, Core.ROTATE_90_COUNTERCLOCKWISE)
             cur.release(); cur = rot
         }
         val finalW = max(1, (targetH * cur.cols().toDouble() / cur.rows()).roundToInt())
         val out = Mat()
-        Imgproc.resize(cur, out, Size(finalW.toDouble(), targetH.toDouble()))
+        // Direction-aware interpolation to preserve fine high-frequency detail
+        // (dakuten/handakuten marks — the dominant kana error). Default
+        // INTER_LINEAR aliases those 2-px marks away when shrinking and blurs
+        // edges when enlarging. INTER_AREA is the correct anti-aliased filter
+        // for downscale (the common case: game dialogue taller than 48px);
+        // INTER_CUBIC keeps edges crisp when upscaling small UI text.
+        val interp = if (cur.rows() > targetH) Imgproc.INTER_AREA else Imgproc.INTER_CUBIC
+        Imgproc.resize(cur, out, Size(finalW.toDouble(), targetH.toDouble()), 0.0, 0.0, interp)
         cur.release()
         return out
     }

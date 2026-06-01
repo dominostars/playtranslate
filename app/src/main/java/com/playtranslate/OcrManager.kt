@@ -150,6 +150,13 @@ class OcrManager private constructor() {
         screenshotWidth: Int = 0,
         recipe: OcrPreprocessingRecipe = selectOcrRecipe(sourceLang)
     ): OcrResult? {
+        // Debug-only experimental backend. Returns null (→ ML Kit below) unless
+        // the toggle is on, device is arm64, source is JA, and models are
+        // present. PaddleOCR self-preprocesses, so it gets the ORIGINAL bitmap
+        // before the ML Kit recipe runs; the caller still owns/recycles it.
+        com.playtranslate.ocr.paddle.PaddleOcrBridge.maybeRecognise(bitmap, sourceLang)
+            ?.let { return it }
+
         val processed = recipe.apply(bitmap, sampleIsDarkBackground(bitmap))
         val scaleFactor = processed.width.toFloat() / bitmap.width
         val addWordSpaces = SourceLanguageProfiles.forCode(sourceLang)?.wordsSeparatedByWhitespace ?: false
@@ -610,6 +617,10 @@ class OcrManager private constructor() {
         sourceLang: String = "ja",
         recipe: OcrPreprocessingRecipe = selectOcrRecipe(sourceLang)
     ): List<OcrLine>? {
+        // Debug-only experimental backend (see recognise() note above).
+        com.playtranslate.ocr.paddle.PaddleOcrBridge.maybeRecogniseLines(bitmap, sourceLang)
+            ?.let { return it }
+
         val processed = recipe.apply(bitmap, sampleIsDarkBackground(bitmap))
         val scaleFactor = processed.width.toFloat() / bitmap.width
         val addWordSpaces = SourceLanguageProfiles.forCode(sourceLang)?.wordsSeparatedByWhitespace ?: false

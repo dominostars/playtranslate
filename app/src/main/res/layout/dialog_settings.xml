@@ -1163,6 +1163,21 @@
 
                         <include layout="@layout/settings_row_divider" />
 
+                        <include layout="@layout/settings_row_switch"
+                            android:id="@+id/rowUsePaddleOcr" />
+
+                        <include layout="@layout/settings_row_divider" />
+
+                        <include layout="@layout/settings_row_switch"
+                            android:id="@+id/rowPaddleServerRec" />
+
+                        <include layout="@layout/settings_row_divider" />
+
+                        <include layout="@layout/settings_row_switch"
+                            android:id="@+id/rowPaddleDumpCrops" />
+
+                        <include layout="@layout/settings_row_divider" />
+
                         <include layout="@layout/settings_row_action"
                             android:id="@+id/rowForceCrash" />
 

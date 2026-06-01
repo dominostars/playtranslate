@@ -173,8 +173,10 @@ dependencies {
     androidTestImplementation(libs.androidx.test.rules)
     androidTestImplementation(libs.kotlinx.coroutines.test)
 
-    // PaddleOCR spike (androidTest-only): OpenCV for DBNet postprocessing +
-    // crop rectification. Ships native .so into the TEST apk only — the
-    // production app APK is byte-identical. See docs/paddleocr-spike-scope.md.
-    androidTestImplementation(libs.opencv)
+    // PaddleOCR: OpenCV for DBNet postprocessing + crop rectification.
+    // Promoted from androidTest to a main dependency for the debug-only
+    // in-app PaddleOCR toggle (DebugUsePaddleOcr) — ships OpenCV native .so
+    // into the app APK. Experimental / debug-gated; not a shipped feature.
+    // See docs/paddleocr-spike-report.md (verdict: NO-GO for production).
+    implementation(libs.opencv)
 }

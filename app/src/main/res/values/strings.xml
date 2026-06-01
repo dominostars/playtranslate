@@ -2055,6 +2055,9 @@
     <string name="settings_debug_log_pinhole">Log live-mode pinhole metrics</string>
     <string name="settings_debug_save_ocr_seed">Save OCR captures as seeds</string>
     <string name="settings_debug_log_grouping">Log OCR grouping decisions</string>
+    <string name="settings_debug_use_paddle_ocr">Use PaddleOCR (experimental, JA)</string>
+    <string name="settings_debug_paddle_server_rec">PaddleOCR: server recognizer (A/B)</string>
+    <string name="settings_debug_paddle_dump_crops">PaddleOCR: dump rec crops (debug)</string>
     <string name="settings_debug_force_crash_title">Force crash</string>
 
     <!-- Button on the force-crash row.  Dev-only. -->

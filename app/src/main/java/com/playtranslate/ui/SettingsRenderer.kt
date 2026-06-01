@@ -3030,6 +3030,56 @@ class SettingsRenderer(
         }
         rowLogGrouping.setOnClickListener { switchLogGrouping.toggle() }
 
+        // Use PaddleOCR (experimental, JA) — debug-only OCR-engine swap.
+        // Hidden on 32-bit devices: the :mnn / OpenCV native path is arm64-only.
+        val rowUsePaddleOcr = root.findViewById<View>(R.id.rowUsePaddleOcr)
+        if (!android.os.Process.is64Bit()) {
+            rowUsePaddleOcr.isVisible = false
+        } else {
+            val switchPaddleOcr = rowUsePaddleOcr.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+            rowUsePaddleOcr.findViewById<TextView>(R.id.tvRowTitle).text =
+                ctx.getString(R.string.settings_debug_use_paddle_ocr)
+            switchPaddleOcr.isChecked = prefs.debugUsePaddleOcr
+            switchPaddleOcr.setOnCheckedChangeListener { _, checked ->
+                prefs.debugUsePaddleOcr = checked
+                com.playtranslate.ocr.paddle.PaddleOcrBridge.enabled = checked
+            }
+            rowUsePaddleOcr.setOnClickListener { switchPaddleOcr.toggle() }
+        }
+
+        // PaddleOCR: server recognizer A/B (only meaningful when PaddleOCR is on).
+        // Swaps mobile rec → server rec, detector stays mobile.
+        val rowPaddleServerRec = root.findViewById<View>(R.id.rowPaddleServerRec)
+        if (!android.os.Process.is64Bit()) {
+            rowPaddleServerRec.isVisible = false
+        } else {
+            val switchServerRec = rowPaddleServerRec.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+            rowPaddleServerRec.findViewById<TextView>(R.id.tvRowTitle).text =
+                ctx.getString(R.string.settings_debug_paddle_server_rec)
+            switchServerRec.isChecked = prefs.debugPaddleServerRec
+            switchServerRec.setOnCheckedChangeListener { _, checked ->
+                prefs.debugPaddleServerRec = checked
+                com.playtranslate.ocr.paddle.PaddleOcrBridge.useServerRec = checked
+            }
+            rowPaddleServerRec.setOnClickListener { switchServerRec.toggle() }
+        }
+
+        // PaddleOCR: dump rec crops to disk (diagnostic for vertical-rotation).
+        val rowPaddleDumpCrops = root.findViewById<View>(R.id.rowPaddleDumpCrops)
+        if (!android.os.Process.is64Bit()) {
+            rowPaddleDumpCrops.isVisible = false
+        } else {
+            val switchDumpCrops = rowPaddleDumpCrops.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+            rowPaddleDumpCrops.findViewById<TextView>(R.id.tvRowTitle).text =
+                ctx.getString(R.string.settings_debug_paddle_dump_crops)
+            switchDumpCrops.isChecked = prefs.debugPaddleDumpCrops
+            switchDumpCrops.setOnCheckedChangeListener { _, checked ->
+                prefs.debugPaddleDumpCrops = checked
+                com.playtranslate.ocr.paddle.PaddleOcrBridge.dumpCrops = checked
+            }
+            rowPaddleDumpCrops.setOnClickListener { switchDumpCrops.toggle() }
+        }
+
         // Force crash
         val rowForceCrash = root.findViewById<View>(R.id.rowForceCrash)
         rowForceCrash.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.settings_debug_force_crash_title)

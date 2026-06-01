@@ -52,6 +52,16 @@ class PlayTranslateApplication : Application() {
         // section, so there'd be no way to turn it back off.
         if (BuildConfig.DEBUG) {
             OcrManager.instance.debugLogGroupingEnabled = Prefs(this).debugLogGrouping
+            // Wire the experimental PaddleOCR backend: push the model dir (we
+            // have a Context here; the bridge is Context-free) + the toggle
+            // state. Models are hand-pushed via adb to this dir; absent → the
+            // bridge silently falls back to ML Kit. Debug-gated so a stale
+            // `true` can't ride into a release build.
+            com.playtranslate.ocr.paddle.PaddleOcrBridge.modelDir =
+                java.io.File(getExternalFilesDir(null), "paddle_models")
+            com.playtranslate.ocr.paddle.PaddleOcrBridge.enabled = Prefs(this).debugUsePaddleOcr
+            com.playtranslate.ocr.paddle.PaddleOcrBridge.useServerRec = Prefs(this).debugPaddleServerRec
+            com.playtranslate.ocr.paddle.PaddleOcrBridge.dumpCrops = Prefs(this).debugPaddleDumpCrops
         }
         // Derive the capture backend from the granted permissions (the
         // accessibility service vs "display over other apps").

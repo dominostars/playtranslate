@@ -781,6 +781,31 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_DEBUG_LOG_GROUPING, false)
         set(v) = sp.edit { putBoolean(KEY_DEBUG_LOG_GROUPING, v) }
 
+    /** Debug-only: route Japanese OCR through the experimental PaddleOCR
+     *  PP-OCRv5 mobile backend instead of ML Kit. Requires the model files
+     *  pushed to `<externalFilesDir>/paddle_models/` and an arm64 device;
+     *  falls back to ML Kit silently if either is missing. Not a shipped
+     *  feature — see docs/paddleocr-spike-report.md (verdict: NO-GO). */
+    var debugUsePaddleOcr: Boolean
+        get() = sp.getBoolean(KEY_DEBUG_USE_PADDLE_OCR, false)
+        set(v) = sp.edit { putBoolean(KEY_DEBUG_USE_PADDLE_OCR, v) }
+
+    /** Debug-only A/B: when [debugUsePaddleOcr] is on, use PP's SERVER
+     *  recognizer instead of mobile (detector stays mobile). Tests whether the
+     *  larger recognizer reads small kana / dakuten better. Requires
+     *  rec_server.mnn pushed alongside the mobile models. */
+    var debugPaddleServerRec: Boolean
+        get() = sp.getBoolean(KEY_DEBUG_PADDLE_SERVER_REC, false)
+        set(v) = sp.edit { putBoolean(KEY_DEBUG_PADDLE_SERVER_REC, v) }
+
+    /** Debug-only: dump every pre-recognition PaddleOCR crop to
+     *  `<externalFilesDir>/paddle_crops/` as PNG (tagged with the recognized
+     *  text + V/H orientation). Used to diagnose whether the rotate/resample of
+     *  vertical text mangles small kana. Pull with adb. */
+    var debugPaddleDumpCrops: Boolean
+        get() = sp.getBoolean(KEY_DEBUG_PADDLE_DUMP_CROPS, false)
+        set(v) = sp.edit { putBoolean(KEY_DEBUG_PADDLE_DUMP_CROPS, v) }
+
     /** Set to true after the user dismisses the target-pack migration dialog. */
     var targetPackMigrationDismissed: Boolean
         get() = sp.getBoolean(KEY_TARGET_PACK_MIGRATION_DISMISSED, false)
@@ -928,6 +953,9 @@ class Prefs(context: Context) {
         private const val KEY_DEBUG_LIVE_MODE                = "debug_live_mode"
         private const val KEY_DEBUG_SAVE_OCR_SEED            = "debug_save_ocr_seed"
         private const val KEY_DEBUG_LOG_GROUPING             = "debug_log_grouping"
+        private const val KEY_DEBUG_USE_PADDLE_OCR           = "debug_use_paddle_ocr"
+        private const val KEY_DEBUG_PADDLE_SERVER_REC        = "debug_paddle_server_rec"
+        private const val KEY_DEBUG_PADDLE_DUMP_CROPS         = "debug_paddle_dump_crops"
         private const val KEY_HOTKEY_TRANSLATION           = "hotkey_translation"
         private const val KEY_HOTKEY_FURIGANA              = "hotkey_furigana"
         private const val KEY_LAST_UPDATE_CHECK            = "last_update_check"
