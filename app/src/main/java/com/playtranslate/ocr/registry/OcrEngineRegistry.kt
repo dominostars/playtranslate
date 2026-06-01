@@ -27,6 +27,9 @@ class OcrEngineRegistry {
     private val engines = ConcurrentHashMap<OcrBackend, OcrEngine>()
 
     fun engineFor(sourceLang: String): OcrEngine {
+        // Debug-only PaddleOCR override (Prefs.debugUsePaddleOcr); PaddleOcrBridge
+        // owns its lifecycle, so it is NOT cached here. Falls through to ML Kit.
+        com.playtranslate.ocr.paddle.PaddleOcrBridge.engineOrNull(sourceLang)?.let { return it }
         val profile = SourceLanguageProfiles.forCode(sourceLang)
             ?: SourceLanguageProfiles[SourceLangId.JA]
         return engines.getOrPut(profile.ocrBackend) { create(profile.ocrBackend) }

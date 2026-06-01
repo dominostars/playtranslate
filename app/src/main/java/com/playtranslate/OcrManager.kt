@@ -134,13 +134,6 @@ class OcrManager private constructor() {
         screenshotWidth: Int = 0,
         recipe: OcrPreprocessingRecipe = selectOcrRecipe(sourceLang)
     ): OcrResult? {
-        // Debug-only experimental backend. Returns non-null only when the toggle
-        // is on, device is arm64, source is JA, and models are present; otherwise
-        // falls through to the engine pipeline. (Removed in the PaddleOCR
-        // DetectThenRecognize migration.)
-        com.playtranslate.ocr.paddle.PaddleOcrBridge.maybeRecognise(bitmap, sourceLang)
-            ?.let { return it }
-
         val output = OcrPipeline.run(
             engine = registry.engineFor(sourceLang),
             bitmap = bitmap,
@@ -171,9 +164,6 @@ class OcrManager private constructor() {
         sourceLang: String = "ja",
         recipe: OcrPreprocessingRecipe = selectOcrRecipe(sourceLang)
     ): List<OcrLine>? {
-        com.playtranslate.ocr.paddle.PaddleOcrBridge.maybeRecogniseLines(bitmap, sourceLang)
-            ?.let { return it }
-
         val output = OcrPipeline.run(
             engine = registry.engineFor(sourceLang),
             bitmap = bitmap,
