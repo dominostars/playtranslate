@@ -33,7 +33,7 @@ import com.playtranslate.CaptureState
 import com.playtranslate.Prefs
 import com.playtranslate.RegionEntry
 import com.playtranslate.R
-import com.playtranslate.model.TextSegment
+import com.playtranslate.model.TextSegments
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.themeColor
 import kotlinx.coroutines.launch
@@ -519,7 +519,7 @@ class TranslationResultActivity :
 
     private fun handleSentenceMode(svc: CaptureService, sentenceText: String) {
         val screenshotPath = intent.getStringExtra(EXTRA_SCREENSHOT_PATH)
-        val segments = sentenceText.map { TextSegment(it.toString()) }
+        val segments = TextSegments.ofText(sentenceText)
 
         // Drag flow already produced this translation in the lens. Skip
         // the redundant translateOnce so the sentence tab opens straight

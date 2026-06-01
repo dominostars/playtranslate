@@ -13,6 +13,7 @@ import com.playtranslate.language.TokenSpan
 import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.language.WordTranslator
 import com.playtranslate.model.TextSegment
+import com.playtranslate.model.TextSegments
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.headwordFor
@@ -171,13 +172,13 @@ class TranslationResultViewModel : ViewModel() {
      *  Ready/Translating result, reset translation, re-run lookups.
      *  No-op for non-result states.
      *
-     *  Regenerates [segments] from [newText] (one TextSegment per
-     *  character) so the fragment's [tvOriginal.setSegments] renders
+     *  Regenerates [segments] from [newText] via the shared [TextSegments]
+     *  helper so the fragment's [tvOriginal.setSegments] renders
      *  the edited string. Without this, the OCR-derived segments from
      *  before the edit stay on screen even though originalText,
      *  translation, and lookups all shift to the new value. */
     fun updateOriginalText(newText: String, appCtx: Context) {
-        val newSegments = newText.map { TextSegment(it.toString()) }
+        val newSegments = TextSegments.ofText(newText)
         when (val cur = _result.value) {
             is ResultState.Ready -> {
                 _result.value = ResultState.Ready(

@@ -7,6 +7,7 @@ import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.model.TextSegment
+import com.playtranslate.model.TextSegments
 import com.playtranslate.ocr.OcrPipeline
 import com.playtranslate.ocr.core.LayoutGroup
 import com.playtranslate.ocr.registry.OcrEngineRegistry
@@ -191,41 +192,32 @@ class OcrManager private constructor() {
         scaleFactor: Float,
         collectDebugBoxes: Boolean,
     ): OcrResult {
-        val segments = mutableListOf<TextSegment>()
-
         val ocrGroups = groups.mapIndexed { gi, group ->
-            if (gi > 0) segments += TextSegment("\n\n", isSeparator = true)
-            val lines = group.lines.mapIndexed { li, line ->
-                if (li > 0) segments += TextSegment("\n", isSeparator = true)
-                // `segments` is a display-only projection: ClickableTextView
-                // concatenates it to render the original text, and tap-to-lookup
-                // re-tokenizes by character offset (segment boundaries and
-                // isSeparator are never read). Source it from the universal
-                // line.text tier — produced by EVERY engine — not the optional
-                // element tier, which is empty for PaddleOCR / whole-region
-                // recognizers and otherwise leaves the original text blank. For
-                // ML Kit, line.text IS the element concatenation incl. word
-                // spacing (MlKitTextMapper.walkLine), so this is display-
-                // identical. The per-element / per-char boxes that bounds-based
-                // features (drag-lookup, furigana) need still live in LineBox.
-                if (line.text.isNotEmpty()) segments += TextSegment(line.text)
-                LineBox(
-                    text = line.text,
-                    bounds = scaleRect(line.box.bounds, scaleFactor),
-                    groupIndex = gi,
-                    elements = line.elements.map { ElementBox(it.text, scaleRect(it.box.bounds, scaleFactor)) },
-                    symbols = line.chars.map { SymbolBox(it.text, scaleRect(it.box.bounds, scaleFactor), it.charOffset) },
-                    orientation = line.orientation,
-                )
-            }
             OcrGroup(
                 text = group.text,
                 bounds = scaleRect(group.bounds, scaleFactor),
                 orientation = group.orientation,
                 alignment = group.alignment,
-                lines = lines,
+                lines = group.lines.map { line ->
+                    LineBox(
+                        text = line.text,
+                        bounds = scaleRect(line.box.bounds, scaleFactor),
+                        groupIndex = gi,
+                        elements = line.elements.map { ElementBox(it.text, scaleRect(it.box.bounds, scaleFactor)) },
+                        symbols = line.chars.map { SymbolBox(it.text, scaleRect(it.box.bounds, scaleFactor), it.charOffset) },
+                        orientation = line.orientation,
+                    )
+                },
             )
         }
+
+        // `segments` is a display-only projection of the result: ClickableTextView
+        // concatenates it to render the original text and tap-to-lookup re-tokenizes
+        // by character offset (boundaries unused). Derive it — like every other
+        // producer — through the shared TextSegments helper instead of reinventing
+        // the layout here. Engine-agnostic: line.text is the one tier EVERY engine
+        // emits (the element tier is empty for PaddleOCR / whole-region recognizers).
+        val segments = TextSegments.ofGroups(ocrGroups.map { grp -> grp.lines.map { it.text } })
 
         val fullText = groups.joinToString(" ") { it.text }.trim()
         val debugBoxes = if (collectDebugBoxes) buildDebugBoxes(groups, scaleFactor) else null

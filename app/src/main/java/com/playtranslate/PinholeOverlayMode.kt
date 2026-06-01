@@ -8,7 +8,7 @@ import android.graphics.Color
 import android.graphics.Rect
 import android.util.Log
 import android.view.Choreographer
-import com.playtranslate.model.TextSegment
+import com.playtranslate.model.TextSegments
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CancellationException
@@ -880,11 +880,7 @@ class PinholeOverlayMode(
             .joinToString("\n") { it.sourceText }
         val translatedText = boxes.filter { it.translatedText.isNotEmpty() }
             .joinToString("\n\n") { it.translatedText }
-        val segments = boxes.filter { it.sourceText.isNotEmpty() }
-            .flatMap { box ->
-                box.sourceText.map { ch -> TextSegment(ch.toString()) } +
-                    TextSegment("\n", isSeparator = true)
-            }
+        val segments = TextSegments.ofLines(boxes.map { it.sourceText })
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
             .format(java.util.Date())
 

@@ -66,7 +66,7 @@ import com.playtranslate.language.PreloadResult
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.StalePack
-import com.playtranslate.model.TextSegment
+import com.playtranslate.model.TextSegments
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.translation.OfflineModelReclaimer
 import com.playtranslate.ui.ClickableTextView
@@ -1309,7 +1309,7 @@ class MainActivity :
 
         if (isLiveMode) pauseLiveMode()
 
-        val segments = lineText.map { TextSegment(it.toString()) }
+        val segments = TextSegments.ofText(lineText)
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(java.util.Date())
 
         resultVm.showTranslatingPlaceholder(lineText, segments, applicationContext)
