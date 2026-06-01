@@ -3,71 +3,75 @@ package com.playtranslate
 import android.graphics.Bitmap
 import android.graphics.Rect
 import com.google.mlkit.vision.text.Text
+import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
+import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
+import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.playtranslate.language.OcrBackend
-import com.playtranslate.language.ScreenTextRecognizer
-import com.playtranslate.language.ScreenTextRecognizerFactory
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.model.TextSegment
-import com.playtranslate.ocr.core.LayoutAnalyzer
+import com.playtranslate.ocr.OcrPipeline
+import com.playtranslate.ocr.core.LayoutGroup
+import com.playtranslate.ocr.core.OcrEngine
+import com.playtranslate.ocr.engines.mlkit.MlKitOcr
 import java.util.concurrent.ConcurrentHashMap
 import androidx.core.graphics.get
 
 /**
- * Wraps ML Kit's Japanese text recogniser.
+ * Public facade for on-device OCR.
  *
- * OCR pipeline:
- *  1. Scale up small crops so fine text has enough pixels to be read accurately.
- *  2. Group TextBlocks by similar line height so same-size text stays together
- *     and different-size text (dialogue vs. UI labels) is split into paragraphs.
- *  3. Filter out groups whose text is entirely ASCII — these are target-language
- *     labels (e.g. "TALK", "HP: 100") that need no translation.
- *  4. Drop individual elements that are purely UI decoration (arrows, angle
- *     brackets used as dialogue cursors, etc.).
+ * Resolves the [OcrEngine] for a source language, runs the engine-agnostic
+ * [OcrPipeline] (preprocess → engine → shared [com.playtranslate.ocr.core.LayoutAnalyzer]),
+ * and projects the grouped result into the [OcrResult] / [OcrLine] shapes the
+ * app consumes. All grouping/layout logic lives in `ocr.core`; the per-vendor
+ * extraction lives in `ocr.engines`. This class keeps only: engine lifecycle,
+ * the result projection, and a few ML-Kit-typed helpers the ML Kit adapter
+ * reuses ([detectOrientation], [effectiveAlignLeft], [isSourceLangChar]).
  */
 class OcrManager private constructor() {
 
-    /** Debug-only: when true, [groupLinesOnePass] logs every candidate
-     *  line's MERGE/SPLIT decision plus the numeric reason to logcat
-     *  under tag "DetectionLog". Pushed from [PlayTranslateApplication]
-     *  on app start and from the SettingsRenderer toggle, so the flag
-     *  stays in sync with [Prefs.debugLogGrouping] without OcrManager
-     *  needing a Context of its own. */
+    /** Debug-only: when true, the grouping kernel logs every candidate line's
+     *  MERGE/SPLIT decision to logcat under tag "DetectionLog". Pushed from
+     *  [PlayTranslateApplication] on start and from the SettingsRenderer toggle. */
     @Volatile var debugLogGroupingEnabled: Boolean = false
 
-    // Lazy cache of recognizers keyed by OCR backend. Phase 1 only ever
-    // populates the OcrBackend.MLKitJapanese entry, identical to the old
-    // single-recognizer pattern. Later phases use this map to switch
-    // backends per source language.
-    private val recognizers = ConcurrentHashMap<OcrBackend, ScreenTextRecognizer>()
+    // Lazy cache of OCR engines keyed by backend. One engine per backend, reused
+    // across captures; closed in releaseAll().
+    private val engines = ConcurrentHashMap<OcrBackend, OcrEngine>()
 
-    private fun recognizerFor(sourceLang: String): ScreenTextRecognizer {
+    private fun engineFor(sourceLang: String): OcrEngine {
         val profile = SourceLanguageProfiles.forCode(sourceLang)
             ?: SourceLanguageProfiles[SourceLangId.JA]
-        return recognizers.getOrPut(profile.ocrBackend) {
-            ScreenTextRecognizerFactory.create(profile.ocrBackend)
-        }
+        return engines.getOrPut(profile.ocrBackend) { createEngine(profile.ocrBackend) }
+    }
+
+    private fun createEngine(backend: OcrBackend): OcrEngine = when (backend) {
+        OcrBackend.MLKitJapanese -> MlKitOcr(JapaneseTextRecognizerOptions.Builder().build())
+        OcrBackend.MLKitLatin -> MlKitOcr(TextRecognizerOptions.DEFAULT_OPTIONS)
+        OcrBackend.MLKitChinese -> MlKitOcr(ChineseTextRecognizerOptions.Builder().build())
+        OcrBackend.MLKitKorean -> MlKitOcr(KoreanTextRecognizerOptions.Builder().build())
+        OcrBackend.MLKitDevanagari -> error("MLKitDevanagari not yet available (add play-services-mlkit-text-recognition-devanagari dependency)")
+        is OcrBackend.Tesseract -> error("Tesseract OCR backend not yet implemented (Phase 5)")
     }
 
     /**
-     * Drop every cached recognizer and close its underlying ML Kit client.
+     * Drop every cached engine and close its native resources.
      *
      * Wired only into [com.playtranslate.PlayTranslateApplication.onTrimMemory]
-     * at [android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE] — the
-     * one signal that guarantees no foreground service (and therefore no
-     * in-flight OCR) is running. Calling this while [recognise] is mid-call
-     * would close the client out from under the ML Kit worker, so do NOT
-     * hook this into pack-uninstall or any other UI-driven path.
+     * at [android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE] — the one
+     * signal that guarantees no foreground service (and therefore no in-flight
+     * OCR) is running. Calling this while [recognise] is mid-call would close an
+     * engine out from under its worker, so do NOT hook it into any UI-driven path.
      */
     fun releaseAll() {
-        val snapshot = recognizers.keys.toList()
+        val snapshot = engines.keys.toList()
         for (backend in snapshot) {
-            recognizers.remove(backend)?.close()
+            engines.remove(backend)?.close()
         }
     }
-
 
     /** A bounding box with optional confidence for debug overlay. */
     data class DebugBox(
@@ -82,7 +86,7 @@ class OcrManager private constructor() {
         val blockBoxes: List<DebugBox>,
         val lineBoxes: List<DebugBox>,
         val elementBoxes: List<DebugBox>,
-        /** Combined group bounding boxes (union of merged TextBlocks). */
+        /** Combined group bounding boxes (union of merged lines). */
         val groupBoxes: List<DebugBox>,
         /** Scale factor applied during OCR; divide box coords by this to get original coords. */
         val scaleFactor: Float
@@ -94,7 +98,7 @@ class OcrManager private constructor() {
         val bounds: Rect
     )
 
-    /** A single character (ML Kit Symbol) with its exact bounding box.
+    /** A single character with its exact bounding box.
      *  [charOffset] is the character's position within the containing line's
      *  processed text string. Consumers filter symbols by offset range rather
      *  than assuming 1:1 positional alignment — spaces and missing symbols
@@ -115,7 +119,7 @@ class OcrManager private constructor() {
         val groupIndex: Int,
         /** Per-element bounding boxes within this line (for precise character positioning). */
         val elements: List<ElementBox> = emptyList(),
-        /** Per-character symbols with exact bounds from ML Kit. Empty if unavailable. */
+        /** Per-character symbols with exact bounds. Empty if unavailable. */
         val symbols: List<SymbolBox> = emptyList(),
         /** Text orientation detected from ML Kit angle / bounding box geometry. */
         val orientation: TextOrientation = TextOrientation.HORIZONTAL
@@ -144,6 +148,11 @@ class OcrManager private constructor() {
         val groupAlignments: List<TextAlignment> = emptyList()
     )
 
+    /**
+     * Run OCR and return a grouped, translation-ready [OcrResult] in original
+     * bitmap coordinates. Resolves the engine for [sourceLang], runs the shared
+     * pipeline, and projects the result.
+     */
     suspend fun recognise(
         bitmap: Bitmap,
         sourceLang: String = "ja",
@@ -151,263 +160,156 @@ class OcrManager private constructor() {
         screenshotWidth: Int = 0,
         recipe: OcrPreprocessingRecipe = selectOcrRecipe(sourceLang)
     ): OcrResult? {
-        // Debug-only experimental backend. Returns null (→ ML Kit below) unless
-        // the toggle is on, device is arm64, source is JA, and models are
-        // present. PaddleOCR self-preprocesses, so it gets the ORIGINAL bitmap
-        // before the ML Kit recipe runs; the caller still owns/recycles it.
+        // Debug-only experimental backend. Returns non-null only when the toggle
+        // is on, device is arm64, source is JA, and models are present; otherwise
+        // falls through to the engine pipeline. (Removed in the PaddleOCR
+        // DetectThenRecognize migration.)
         com.playtranslate.ocr.paddle.PaddleOcrBridge.maybeRecognise(bitmap, sourceLang)
             ?.let { return it }
 
-        val processed = recipe.apply(bitmap, sampleIsDarkBackground(bitmap))
-        val scaleFactor = processed.width.toFloat() / bitmap.width
-        val addWordSpaces = SourceLanguageProfiles.forCode(sourceLang)?.wordsSeparatedByWhitespace ?: false
+        val output = OcrPipeline.run(
+            engine = engineFor(sourceLang),
+            bitmap = bitmap,
+            sourceLang = sourceLang,
+            screenshotWidth = screenshotWidth,
+            recipe = recipe,
+            isDarkBackground = sampleIsDarkBackground(bitmap),
+            logGrouping = debugLogGroupingEnabled,
+        ) ?: return null
 
-        val visionText: Text = try {
-            recognizerFor(sourceLang).recognize(processed)
-        } finally {
-            if (processed !== bitmap) processed.recycle()
-        }
+        val result = buildOcrResult(output.groups, output.scaleFactor, sourceLang, collectDebugBoxes)
+        if (result.fullText.isBlank()) return null
 
-        if (visionText.textBlocks.isEmpty()) return null
-
-        // 2. Group lines by proximity, size, and alignment (not blocks — blocks
-        //    can contain spatially distant lines that shouldn't be merged).
-        // 3. Discard groups that contain no character from the source language's script.
-        val rawGroups = groupLinesByProximity(visionText.textBlocks, sourceLang)
-            .filter { group ->
-                group.any { line -> line.text.any { c -> isSourceLangChar(c, sourceLang) } }
-            }
-
-        if (rawGroups.isEmpty()) return null
-
-        val splitResult = if (screenshotWidth > 0) {
-            splitMenuGroups(rawGroups, screenshotWidth * scaleFactor)
-        } else rawGroups.map { SplitGroup(it) }
-        val groups = splitResult.map { it.lines }
-
-        val segments = mutableListOf<TextSegment>()
-        val fullTextBuilder = StringBuilder()
-        val groupTexts = mutableListOf<String>()
-        val lineBoxes = mutableListOf<LineBox>()
-
-        groups.forEachIndexed { gi, group ->
-            if (gi > 0) {
-                fullTextBuilder.append(" ")
-                segments += TextSegment("\n\n", isSeparator = true)
-            }
-            val groupBuilder = StringBuilder()
-            group.forEachIndexed { li, line ->
-                if (li > 0) {
-                    fullTextBuilder.append(" ")
-                    groupBuilder.append(" ")
-                    segments += TextSegment("\n", isSeparator = true)
-                }
-                val lineBuilder = StringBuilder()
-                val lineElements = mutableListOf<ElementBox>()
-                val lineSymbols = mutableListOf<SymbolBox>()
-                var lineCharCount = 0
-                line.elements.forEachIndexed { ei, element ->
-                    if (!isUiDecoration(element.text)) {
-                        var text = element.text
-                        // Strip leading | from first element, trailing | from last
-                        if (ei == 0) text = text.trimStart('|').trimStart()
-                        if (ei == line.elements.lastIndex) text = text.trimEnd('|').trimEnd()
-                        if (text.isNotEmpty()) {
-                            if (addWordSpaces && lineCharCount > 0) {
-                                fullTextBuilder.append(' ')
-                                groupBuilder.append(' ')
-                                lineBuilder.append(' ')
-                                segments += TextSegment(" ", isSeparator = true)
-                                lineCharCount++
-                            }
-                            val elementOffset = lineCharCount
-                            fullTextBuilder.append(text)
-                            groupBuilder.append(text)
-                            lineBuilder.append(text)
-                            lineCharCount += text.length
-                            segments += TextSegment(text)
-                            // Collect element bounding box for precise furigana positioning
-                            element.boundingBox?.let { ebb ->
-                                lineElements += ElementBox(
-                                    text = text,
-                                    bounds = Rect(
-                                        (ebb.left / scaleFactor).toInt(),
-                                        (ebb.top / scaleFactor).toInt(),
-                                        (ebb.right / scaleFactor).toInt(),
-                                        (ebb.bottom / scaleFactor).toInt()
-                                    )
-                                )
-                            }
-                            // Collect per-character symbols with exact bounds
-                            lineSymbols += extractElementSymbols(element, text, scaleFactor, elementOffset)
-                        }
-                    }
-                }
-                // Collect per-line bounding box for furigana character positioning
-                val lineText = lineBuilder.toString()
-                if (lineText.isNotEmpty()) {
-                    line.boundingBox?.let { bb ->
-                        lineBoxes += LineBox(
-                            text = lineText,
-                            bounds = Rect(
-                                (bb.left / scaleFactor).toInt(),
-                                (bb.top / scaleFactor).toInt(),
-                                (bb.right / scaleFactor).toInt(),
-                                (bb.bottom / scaleFactor).toInt()
-                            ),
-                            groupIndex = gi,
-                            elements = lineElements,
-                            symbols = lineSymbols,
-                            orientation = detectOrientation(line)
-                        )
-                    }
-                }
-            }
-            val gt = groupBuilder.toString().trim()
-            if (gt.isNotBlank()) groupTexts += gt
-        }
-
-        val fullText = fullTextBuilder.toString().trim()
-        android.util.Log.d("DetectionLog", "OCR raw: ${groupTexts.size} groups")
-        for ((i, gt) in groupTexts.withIndex()) {
+        android.util.Log.d("DetectionLog", "OCR raw: ${result.groupTexts.size} groups")
+        for ((i, gt) in result.groupTexts.withIndex()) {
             android.util.Log.d("DetectionLog", "  group[$i]: \"${gt.take(50)}\"")
         }
-        if (fullText.isBlank()) return null
+        return result
+    }
 
-        // Compute group bounding boxes (union of lines per group) in original bitmap coords.
-        // For split menu items, use the parent group's left/right so all items align.
-        val groupBounds = splitResult.map { sg ->
-            val rects = sg.lines.mapNotNull { it.boundingBox }
-            val left = sg.parentLeft ?: rects.minOf { it.left }
-            val right = sg.parentRight ?: rects.maxOf { it.right }
-            Rect(
-                (left / scaleFactor).toInt(),
-                (rects.minOf { it.top } / scaleFactor).toInt(),
-                (right / scaleFactor).toInt(),
-                (rects.maxOf { it.bottom } / scaleFactor).toInt()
-            )
-        }
+    /**
+     * Run OCR and return lines with bounding boxes in original bitmap coordinates.
+     * Used by drag-to-lookup to hit-test finger position against text lines. Does
+     * NOT split menu groups (screenshotWidth = 0), matching the prior behavior.
+     */
+    suspend fun recogniseWithPositions(
+        bitmap: Bitmap,
+        sourceLang: String = "ja",
+        recipe: OcrPreprocessingRecipe = selectOcrRecipe(sourceLang)
+    ): List<OcrLine>? {
+        com.playtranslate.ocr.paddle.PaddleOcrBridge.maybeRecogniseLines(bitmap, sourceLang)
+            ?.let { return it }
 
-        val debugBoxes = if (collectDebugBoxes) {
-            val blockBoxes = mutableListOf<DebugBox>()
-            val lineBoxes = mutableListOf<DebugBox>()
-            val elementBoxes = mutableListOf<DebugBox>()
-            for (block in visionText.textBlocks) {
-                block.boundingBox?.let { blockBoxes += DebugBox(it, text = block.text, lang = block.recognizedLanguage) }
-                for (line in block.lines) {
-                    val lineConf = if (android.os.Build.VERSION.SDK_INT >= 31) line.confidence else -1f
-                    line.boundingBox?.let { lineBoxes += DebugBox(it, lineConf, text = line.text, lang = line.recognizedLanguage) }
-                    for (element in line.elements) {
-                        val elemConf = if (android.os.Build.VERSION.SDK_INT >= 31) element.confidence else -1f
-                        element.boundingBox?.let { elementBoxes += DebugBox(it, elemConf, text = element.text, lang = element.recognizedLanguage) }
-                    }
+        val output = OcrPipeline.run(
+            engine = engineFor(sourceLang),
+            bitmap = bitmap,
+            sourceLang = sourceLang,
+            screenshotWidth = 0,
+            recipe = recipe,
+            isDarkBackground = sampleIsDarkBackground(bitmap),
+            logGrouping = debugLogGroupingEnabled,
+        ) ?: return null
+
+        return buildOcrLines(output.groups, output.scaleFactor).ifEmpty { null }
+    }
+
+    // ── Projection: LayoutGroup (engine-input coords) → app result types ─────
+
+    /** Divide a box by [sf] to map engine-input coords back to original-bitmap coords. */
+    private fun scaleRect(r: Rect, sf: Float): Rect =
+        if (sf == 1f) r
+        else Rect((r.left / sf).toInt(), (r.top / sf).toInt(), (r.right / sf).toInt(), (r.bottom / sf).toInt())
+
+    private fun buildOcrResult(
+        groups: List<LayoutGroup>,
+        scaleFactor: Float,
+        sourceLang: String,
+        collectDebugBoxes: Boolean,
+    ): OcrResult {
+        val segments = mutableListOf<TextSegment>()
+        val groupTexts = mutableListOf<String>()
+        val groupBounds = mutableListOf<Rect>()
+        val groupLineCounts = mutableListOf<Int>()
+        val groupOrientations = mutableListOf<TextOrientation>()
+        val groupAlignments = mutableListOf<TextAlignment>()
+        val lineBoxes = mutableListOf<LineBox>()
+        val addWordSpaces =
+            SourceLanguageProfiles.forCode(sourceLang)?.wordsSeparatedByWhitespace ?: false
+
+        groups.forEachIndexed { gi, group ->
+            if (gi > 0) segments += TextSegment("\n\n", isSeparator = true)
+            group.lines.forEachIndexed { li, line ->
+                if (li > 0) segments += TextSegment("\n", isSeparator = true)
+                line.elements.forEachIndexed { ei, el ->
+                    if (ei > 0 && addWordSpaces) segments += TextSegment(" ", isSeparator = true)
+                    segments += TextSegment(el.text)
                 }
-            }
-            // Compute combined group bounding boxes (union of grouped lines)
-            val groupBoxes = groups.map { group ->
-                val rects = group.mapNotNull { it.boundingBox }
-                val union = Rect(
-                    rects.minOf { it.left },
-                    rects.minOf { it.top },
-                    rects.maxOf { it.right },
-                    rects.maxOf { it.bottom }
-                )
-                DebugBox(union)
-            }
-            OcrDebugBoxes(blockBoxes, lineBoxes, elementBoxes, groupBoxes, scaleFactor)
-        } else null
-
-        val groupLineCounts = groups.map { it.size }
-
-        // Compute per-group orientation by majority vote of constituent lines.
-        val groupOrientations = groups.map { group ->
-            val verticalCount = group.count { detectOrientation(it) == TextOrientation.VERTICAL }
-            if (verticalCount > group.size / 2) TextOrientation.VERTICAL
-            else TextOrientation.HORIZONTAL
-        }
-
-        // Detect block alignment per horizontal group; vertical groups always
-        // default to LEFT (the horizontal alignment concept doesn't apply, and
-        // overlay rendering ignores alignment for rotated vertical text).
-        val groupAlignments = groups.zip(groupOrientations).mapIndexed { gi, (group, orient) ->
-            val align = if (orient == TextOrientation.VERTICAL) {
-                TextAlignment.LEFT
-            } else {
-                classifyGroupAlignment(group)
-            }
-            if (debugLogGroupingEnabled && group.size >= 2 && orient == TextOrientation.HORIZONTAL) {
-                val sample = group.firstOrNull()?.text?.take(24)?.replace('\n', ' ').orEmpty()
-                android.util.Log.d(
-                    "DetectionLog",
-                    "[align] group[$gi] ${align.name} lines=${group.size} \"$sample\""
+                lineBoxes += LineBox(
+                    text = line.text,
+                    bounds = scaleRect(line.box.bounds, scaleFactor),
+                    groupIndex = gi,
+                    elements = line.elements.map { ElementBox(it.text, scaleRect(it.box.bounds, scaleFactor)) },
+                    symbols = line.chars.map { SymbolBox(it.text, scaleRect(it.box.bounds, scaleFactor), it.charOffset) },
+                    orientation = line.orientation,
                 )
             }
-            align
+            groupTexts += group.text
+            groupBounds += scaleRect(group.bounds, scaleFactor)
+            groupLineCounts += group.lines.size
+            groupOrientations += group.orientation
+            groupAlignments += group.alignment
         }
 
+        val fullText = groups.joinToString(" ") { it.text }.trim()
+        val debugBoxes = if (collectDebugBoxes) buildDebugBoxes(groups, scaleFactor) else null
         return OcrResult(
-            fullText, segments, groupTexts, groupBounds, groupLineCounts,
-            lineBoxes, debugBoxes, groupOrientations, groupAlignments,
+            fullText = fullText,
+            segments = segments,
+            groupTexts = groupTexts,
+            groupBounds = groupBounds,
+            groupLineCounts = groupLineCounts,
+            lineBoxes = lineBoxes,
+            debugBoxes = debugBoxes,
+            groupOrientations = groupOrientations,
+            groupAlignments = groupAlignments,
         )
     }
 
-    /**
-     * Returns true for OCR elements that are pure UI decoration rather than
-     * dialogue text — arrows used as "more text" cursors, angle brackets used
-     * as decorative dialogue borders, etc.  Only matches elements whose entire
-     * text content is made up of these symbols so real Japanese text containing
-     * similar characters is never silently dropped.
-     */
-    private fun isUiDecoration(text: String): Boolean {
-        val t = text.trim()
-        if (t.isEmpty()) return false
-        return t.all { it in UI_DECORATION_CHARS }
-    }
-
-    /**
-     * Walks [element]'s raw ML Kit symbols and returns a [SymbolBox] for each
-     * character in [processedText] (the post-pipe-trim, post-decoration-filter
-     * text for this element). Shared between [recognise] and
-     * [recogniseWithPositions] so both methods produce symbol lists aligned 1:1
-     * with their line text.
-     *
-     * Symbols whose `text` doesn't match the corresponding character are
-     * skipped — this is the same match-and-advance pattern ML Kit requires
-     * since its symbol ordering isn't guaranteed to be left-to-right on some
-     * RTL inputs. Coordinates are divided by [scaleFactor] to undo the OCR
-     * upscale.
-     */
-    private fun extractElementSymbols(
-        element: Text.Element,
-        processedText: String,
-        scaleFactor: Float,
-        startOffset: Int,
-    ): List<SymbolBox> {
-        val out = mutableListOf<SymbolBox>()
-        val rawSymbols = element.symbols
-        var symIdx = 0
-        for ((charIdx, ch) in processedText.withIndex()) {
-            while (symIdx < rawSymbols.size) {
-                val sym = rawSymbols[symIdx]
-                symIdx++
-                if (sym.text == ch.toString()) {
-                    sym.boundingBox?.let { sbb ->
-                        out += SymbolBox(
-                            text = sym.text,
-                            bounds = Rect(
-                                (sbb.left / scaleFactor).toInt(),
-                                (sbb.top / scaleFactor).toInt(),
-                                (sbb.right / scaleFactor).toInt(),
-                                (sbb.bottom / scaleFactor).toInt()
-                            ),
-                            charOffset = startOffset + charIdx,
-                        )
-                    }
-                    break
-                }
+    private fun buildOcrLines(groups: List<LayoutGroup>, scaleFactor: Float): List<OcrLine> {
+        val out = mutableListOf<OcrLine>()
+        groups.forEachIndexed { gi, group ->
+            for (line in group.lines) {
+                out += OcrLine(
+                    text = line.text,
+                    bounds = scaleRect(line.box.bounds, scaleFactor),
+                    groupIndex = gi,
+                    groupText = group.text,
+                    symbols = line.chars.map { SymbolBox(it.text, scaleRect(it.box.bounds, scaleFactor), it.charOffset) },
+                    orientation = line.orientation,
+                )
             }
         }
         return out
+    }
+
+    /**
+     * Debug overlay boxes, projected from the grouped result. Boxes are in
+     * engine-input (pre-scale) coordinates with [OcrDebugBoxes.scaleFactor] set,
+     * matching the prior contract (consumers divide). The block tier is empty —
+     * the vendor-neutral model carries line/element/group levels only.
+     */
+    private fun buildDebugBoxes(groups: List<LayoutGroup>, scaleFactor: Float): OcrDebugBoxes {
+        val lineBoxes = mutableListOf<DebugBox>()
+        val elementBoxes = mutableListOf<DebugBox>()
+        val groupBoxes = mutableListOf<DebugBox>()
+        for (group in groups) {
+            groupBoxes += DebugBox(group.bounds)
+            for (line in group.lines) {
+                lineBoxes += DebugBox(line.box.bounds, text = line.text)
+                for (el in line.elements) elementBoxes += DebugBox(el.box.bounds, text = el.text)
+            }
+        }
+        return OcrDebugBoxes(emptyList(), lineBoxes, elementBoxes, groupBoxes, scaleFactor)
     }
 
     /**
@@ -443,293 +345,34 @@ class OcrManager private constructor() {
         return brightnessSum / points.size < 100
     }
 
-    /**
-     * Extracts all lines from all TextBlocks and groups them by proximity,
-     * size, and alignment. Operating on lines (not blocks) avoids the issue
-     * where ML Kit groups spatially distant lines into a single TextBlock.
-     *
-     * A line is merged into the current group when ALL of the following hold:
-     *  1. Its height is within 20% of the previous line's height.
-     *  2. The vertical gap between them is ≤ 2.5× the larger line height.
-     *  3. The current group's text does not end with sentence-final punctuation
-     *     — those indicate a complete sentence boundary.
-     *  4. Horizontal alignment: the line's left edge is within one line height
-     *     of the group's left edge, OR the right edges are similarly aligned.
-     */
-    private fun groupLinesByProximity(blocks: List<Text.TextBlock>, sourceLang: String = "ja"): List<List<Text.Line>> {
-        // Extract all lines from all blocks and filter noise.
-        val allLines = blocks.flatMap { it.lines }
-            .filter { it.boundingBox != null }
-            .filter { line ->
-                // Drop single-character lines that aren't real words.
-                if (line.text.trim().length <= 1) {
-                    val blockLang = blocks.firstOrNull { b -> line in b.lines }?.recognizedLanguage
-                    if (blockLang == null || blockLang == "und") {
-                        val c = line.text.trim().firstOrNull() ?: return@filter false
-                        val isKanji = c in '\u4E00'..'\u9FFF' || c in '\u3400'..'\u4DBF'
-                        if (!isKanji) return@filter false
-                    }
-                }
-                // Drop garbled multi-char lines: mostly non-source characters AND
-                // low confidence.
-                if (android.os.Build.VERSION.SDK_INT >= 31 && line.text.trim().length > 1) {
-                    val text = line.text.trim()
-                    val sourceCount = text.count { c -> isSourceLangChar(c, sourceLang) }
-                    val ratio = sourceCount.toFloat() / text.length
-                    if (ratio < 0.30f && line.confidence < 0.35f) return@filter false
-                }
-                true
-            }
-        if (allLines.isEmpty()) return emptyList()
-
-        // Partition lines by detected orientation, group each set with its
-        // own sort order and axis-aware proximity rules.
-        val (verticalLines, horizontalLines) = allLines.partition {
-            detectOrientation(it) == TextOrientation.VERTICAL
-        }
-
-        // Horizontal: sort top-to-bottom (existing behavior)
-        val hGroups = groupLinesOnePass(
-            horizontalLines.sortedBy { it.boundingBox!!.top },
-            TextOrientation.HORIZONTAL
-        )
-
-        // Vertical: sort right-to-left (rightmost column first = Japanese reading order)
-        val vGroups = groupLinesOnePass(
-            verticalLines.sortedByDescending { it.boundingBox!!.right },
-            TextOrientation.VERTICAL
-        )
-
-        return hGroups + vGroups
-    }
-
-    /** Groups pre-sorted lines using orientation-aware proximity rules.
-     *  Thin adapter around [groupBoxesOnePass]: extracts boxes + effective
-     *  align-lefts from each [Text.Line], runs the index-level grouping, and
-     *  remaps groups back to Text.Line lists. The algorithm lives on the
-     *  companion so unit tests can exercise it with synthetic rects without
-     *  fabricating ML Kit objects. */
-    private fun groupLinesOnePass(
-        sortedLines: List<Text.Line>,
-        orientation: TextOrientation
-    ): List<List<Text.Line>> {
-        if (sortedLines.isEmpty()) return emptyList()
-        // Drop lines without a bounding box up front so the index-level
-        // function can assume each input has one. Matches the pre-extraction
-        // behavior, where `line.boundingBox ?: continue` skipped them.
-        val kept = sortedLines.filter { it.boundingBox != null }
-        if (kept.isEmpty()) return emptyList()
-        val boxes = kept.map { it.boundingBox!! }
-        val alignLefts: List<Int?> = if (orientation == TextOrientation.HORIZONTAL) {
-            kept.map { effectiveAlignLeft(it) }
-        } else {
-            List(kept.size) { null }
-        }
-        val texts = if (debugLogGroupingEnabled) kept.map { it.text } else null
-        val indexGroups = LayoutAnalyzer.groupBoxesOnePass(
-            boxes, alignLefts, orientation, debugLogGroupingEnabled, texts
-        )
-        return indexGroups.map { idxs -> idxs.map { kept[it] } }
-    }
-
-    private data class SplitGroup(
-        val lines: List<Text.Line>,
-        /** Horizontal bounds from the parent group (scaled coords), set for split menu items. */
-        val parentLeft: Int? = null,
-        val parentRight: Int? = null
-    )
-
-    /**
-     * Splits groups that look like menus/lists into individual lines.
-     * A group is "menu-like" if it has 3+ lines, is narrow (< 1/3 screen),
-     * and its line edges don't cluster the way wrapped paragraph text would.
-     * Split items inherit the parent group's left/right bounds for aligned overlays.
-     */
-    private fun splitMenuGroups(
-        groups: List<List<Text.Line>>,
-        screenWidthScaled: Float
-    ): List<SplitGroup> {
-        return groups.flatMap { group ->
-            if (group.size >= 4 && isMenuLike(group, screenWidthScaled)) {
-                val boxes = group.mapNotNull { it.boundingBox }
-                val groupLeft = boxes.minOf { it.left }
-                val groupRight = boxes.maxOf { it.right }
-                group.map { SplitGroup(listOf(it), parentLeft = groupLeft, parentRight = groupRight) }
-            } else {
-                listOf(SplitGroup(group))
-            }
-        }
-    }
-
-    private fun isMenuLike(lines: List<Text.Line>, screenWidthScaled: Float): Boolean {
-        val boxes = lines.mapNotNull { it.boundingBox }
-        if (boxes.isEmpty()) return false
-
-        // Layer 1: group width < 1/3 of full screen width
-        val groupWidth = boxes.maxOf { it.right } - boxes.minOf { it.left }
-        if (groupWidth >= screenWidthScaled / 3f) return false
-
-        // Layer 2: a paragraph clusters on BOTH edges (left margin + right wrap).
-        // A menu clusters on at most one edge (alignment side) but scatters on
-        // the other (varying item lengths). Allow 1 outlier per edge (the final
-        // line of a paragraph is typically shorter).
-        val avgLineHeight = boxes.map { it.height() }.average().toFloat()
-        val minLeft = boxes.minOf { it.left }
-        val maxRight = boxes.maxOf { it.right }
-        val clusterThreshold = boxes.size - 1
-
-        val nearMinLeft = boxes.count { it.left - minLeft <= avgLineHeight }
-        val nearMaxRight = boxes.count { maxRight - it.right <= avgLineHeight }
-        val leftClustered = nearMinLeft >= clusterThreshold
-        val rightClustered = nearMaxRight >= clusterThreshold
-
-        // Both edges must cluster for it to be a paragraph — skip split
-        if (leftClustered && rightClustered) return false
-
-        return true
-    }
-
     /** A line of OCR text with its bounding box in original (pre-scale) screen coordinates. */
     data class OcrLine(
         val text: String,
         val bounds: Rect,
         /** Index of the group this line belongs to (lines in the same group are combined text). */
         val groupIndex: Int = 0,
-        /** Pre-built combined text of the entire group this line belongs to (same logic as [recognise]). */
+        /** Pre-built combined text of the entire group this line belongs to. */
         val groupText: String = text,
         /**
-         * Per-character bounding boxes, aligned 1:1 with [text]. Empty if ML Kit
-         * didn't emit symbols for this line (some older model versions). When
-         * populated, drag-lookup uses these for precise (non-monospaced) hit
-         * testing; empty triggers the legacy charWidth fallback.
+         * Per-character bounding boxes, aligned 1:1 with [text]. Empty if the
+         * engine didn't emit symbols. When populated, drag-lookup uses these for
+         * precise (non-monospaced) hit testing; empty triggers the legacy
+         * charWidth fallback.
          */
         val symbols: List<SymbolBox> = emptyList(),
         /** Text orientation detected from ML Kit angle / bounding box geometry. */
         val orientation: TextOrientation = TextOrientation.HORIZONTAL
     )
 
-    /**
-     * Runs OCR and returns lines with bounding boxes mapped back to the original
-     * bitmap's coordinate space (undoing the internal upscale).
-     * Used by drag-to-lookup to hit-test finger position against text lines.
-     */
-    suspend fun recogniseWithPositions(
-        bitmap: Bitmap,
-        sourceLang: String = "ja",
-        recipe: OcrPreprocessingRecipe = selectOcrRecipe(sourceLang)
-    ): List<OcrLine>? {
-        // Debug-only experimental backend (see recognise() note above).
-        com.playtranslate.ocr.paddle.PaddleOcrBridge.maybeRecogniseLines(bitmap, sourceLang)
-            ?.let { return it }
-
-        val processed = recipe.apply(bitmap, sampleIsDarkBackground(bitmap))
-        val scaleFactor = processed.width.toFloat() / bitmap.width
-        val addWordSpaces = SourceLanguageProfiles.forCode(sourceLang)?.wordsSeparatedByWhitespace ?: false
-
-        val visionText: Text = try {
-            recognizerFor(sourceLang).recognize(processed)
-        } finally {
-            if (processed !== bitmap) processed.recycle()
-        }
-
-        if (visionText.textBlocks.isEmpty()) return null
-
-        // Group lines using the same logic as the main OCR pipeline
-        val groups = groupLinesByProximity(visionText.textBlocks, sourceLang)
-            .filter { group ->
-                group.any { line -> line.text.any { c -> isSourceLangChar(c, sourceLang) } }
-            }
-
-        val lines = mutableListOf<OcrLine>()
-        groups.forEachIndexed { gi, group ->
-            val groupTextBuilder = StringBuilder()
-            var groupLineCharCount = 0
-            group.forEachIndexed { li, line ->
-                if (li > 0) groupTextBuilder.append(" ")
-                groupLineCharCount = 0
-                line.elements.forEachIndexed { ei, element ->
-                    if (!isUiDecoration(element.text)) {
-                        var text = element.text
-                        if (ei == 0) text = text.trimStart('|').trimStart()
-                        if (ei == line.elements.lastIndex) text = text.trimEnd('|').trimEnd()
-                        if (text.isNotEmpty()) {
-                            if (addWordSpaces && groupLineCharCount > 0) {
-                                groupTextBuilder.append(' ')
-                                groupLineCharCount++
-                            }
-                            groupTextBuilder.append(text)
-                            groupLineCharCount += text.length
-                        }
-                    }
-                }
-            }
-            val combinedGroupText = groupTextBuilder.toString().trim()
-
-            for (line in group) {
-                val b = line.boundingBox ?: continue
-                // Walk elements with the same pipe-trim + decoration-filter +
-                // symbol-extraction rules that recognise() uses. Symbols carry
-                // charOffset for offset-based lookup in drag-to-lookup.
-                val lineTextBuilder = StringBuilder()
-                val lineSymbols = mutableListOf<SymbolBox>()
-                var lineCharCount = 0
-                line.elements.forEachIndexed { ei, element ->
-                    if (!isUiDecoration(element.text)) {
-                        var text = element.text
-                        if (ei == 0) text = text.trimStart('|').trimStart()
-                        if (ei == line.elements.lastIndex) text = text.trimEnd('|').trimEnd()
-                        if (text.isNotEmpty()) {
-                            if (addWordSpaces && lineCharCount > 0) {
-                                lineTextBuilder.append(' ')
-                                lineCharCount++
-                            }
-                            val elementOffset = lineCharCount
-                            lineTextBuilder.append(text)
-                            lineCharCount += text.length
-                            lineSymbols += extractElementSymbols(element, text, scaleFactor, elementOffset)
-                        }
-                    }
-                }
-                val text = lineTextBuilder.toString()
-                if (text.isBlank()) continue
-                lines += OcrLine(
-                    text = text,
-                    bounds = Rect(
-                        (b.left / scaleFactor).toInt(),
-                        (b.top / scaleFactor).toInt(),
-                        (b.right / scaleFactor).toInt(),
-                        (b.bottom / scaleFactor).toInt()
-                    ),
-                    groupIndex = gi,
-                    groupText = combinedGroupText,
-                    symbols = lineSymbols,
-                    orientation = detectOrientation(line),
-                )
-            }
-        }
-        return lines.ifEmpty { null }
-    }
-
     companion object {
-        /** Process-scoped singleton. The TextRecognizer lives for the app's lifetime. */
+        /** Process-scoped singleton. Engines live for the app's lifetime. */
         val instance: OcrManager by lazy { OcrManager() }
 
         /**
-         * Characters that should not be treated as the body-text left edge
-         * when they appear as a line's first glyph. Two distinct sources:
-         *
-         *  - Opening punctuation that visually hangs to the left of body text
-         *    in CJK and Western typography (brackets, quotes, middle dots).
-         *    These genuinely outdent past the body indent and need
-         *    compensation so the leftAligned check against subsequent body
-         *    lines doesn't fail.
-         *  - Glyphs OCR commonly misreads for hanging openers (e.g. ML Kit
-         *    reading a CJK middle dot or low-set bullet as a comma). A real
-         *    body line essentially never starts with one of these, so
-         *    skipping them when they appear is safe and protects alignment
-         *    from OCR noise.
-         *
-         * See [effectiveAlignLeft] for the shift logic.
+         * Characters that should not be treated as the body-text left edge when
+         * they appear as a line's first glyph: opening punctuation that visually
+         * hangs to the left of body text (brackets, quotes, middle dots), plus
+         * glyphs OCR commonly misreads for them. See [effectiveAlignLeft].
          */
         private val HANGING_PUNCT_LEFT = setOf(
             '「', '『', '（', '【', '〔', '《', '〈',
@@ -740,21 +383,14 @@ class OcrManager private constructor() {
         )
 
         /**
-         * Effective left edge of [line] for paragraph-alignment checks. If
-         * the line begins with a [HANGING_PUNCT_LEFT] character, the returned
-         * left is shifted right past that glyph so a body line beneath
-         * `「こんにちは` aligns to where `こ` starts, not where `「` starts.
+         * Effective left edge of [line] for paragraph-alignment checks. If the
+         * line begins with a [HANGING_PUNCT_LEFT] character, the returned left is
+         * shifted right past that glyph so a body line beneath `「こんにちは`
+         * aligns to where `こ` starts. Returns the raw [Rect.left] when no
+         * adjustment applies, or null if [line] has no bounding box.
          *
-         * Width estimate prefers ML Kit's per-symbol bounding box (accurate
-         * when emitted) and falls back to line height (CJK glyphs are roughly
-         * square). The shift is capped at 1.5× line height to bound the
-         * adjustment when the first symbol box looks unusual. Returns the
-         * raw [Rect.left] when no adjustment applies, or null if [line] has
-         * no bounding box.
-         *
-         * Used only for the leftAligned sub-check in [wouldGroup] /
-         * [groupDecisionHorizontal]. The rect's actual center stays intact
-         * so center-aligned wrapped text is unaffected.
+         * Reused by [com.playtranslate.ocr.engines.mlkit.MlKitTextMapper] to
+         * populate `RecognizedLine.effectiveAlignLeft`.
          */
         internal fun effectiveAlignLeft(line: Text.Line): Int? {
             val box = line.boundingBox ?: return null
@@ -769,57 +405,15 @@ class OcrManager private constructor() {
         }
 
         /**
-         * Classify the block alignment of an already-grouped horizontal paragraph.
+         * Detects whether a Text.Line is vertical (tategaki) or horizontal based
+         * on ML Kit's reported angle and bounding box geometry. ~90° (or a tall
+         * aspect ratio on multi-char lines) indicates vertical. Single-character
+         * lines are ambiguous and default to horizontal.
          *
-         * Returns [TextAlignment.LEFT] when:
-         *   - the group has fewer than 2 lines (no evidence to classify against),
-         *   - or the effective-left spread fits within the same per-pair tolerance
-         *     `wouldGroup` uses (`refH * 0.5`) — left-aligned text wins over
-         *     coincidentally-tight centers, since same-width lines satisfy both.
-         *
-         * Returns [TextAlignment.CENTER] only when:
-         *   - the left spread exceeds the tolerance (lines actually have varying
-         *     left edges), AND the centerX spread fits within tolerance — i.e.
-         *     the only thing the lines share is their center axis.
-         *
-         * Uses [effectiveAlignLeft] so hanging opening punctuation
-         * (「『（) on one line doesn't masquerade as a varying left edge.
-         * Vertical groups should be filtered out by the caller — this function
-         * is horizontal-only.
-         */
-        internal fun classifyGroupAlignment(group: List<Text.Line>): TextAlignment {
-            if (group.size < 2) return TextAlignment.LEFT
-            val boxes = group.mapNotNull { it.boundingBox }
-            if (boxes.size < 2) return TextAlignment.LEFT
-            val effectiveLefts = group.mapNotNull { effectiveAlignLeft(it) }
-            if (effectiveLefts.size < 2) return TextAlignment.LEFT
-            val refH = boxes.maxOf { it.height() }
-            if (refH <= 0) return TextAlignment.LEFT
-            val tol = (refH * 0.5f).toInt()
-            val leftSpread = (effectiveLefts.max() - effectiveLefts.min())
-            val centerXs = boxes.map { it.centerX() }
-            val centerSpread = centerXs.max() - centerXs.min()
-            // Left wins on ties — same-width left-aligned lines satisfy both
-            // checks, and we never want to falsely center actually-left text.
-            if (leftSpread <= tol) return TextAlignment.LEFT
-            if (centerSpread <= tol) return TextAlignment.CENTER
-            return TextAlignment.LEFT
-        }
-
-        /**
-         * Detects whether a Text.Line is vertical (tategaki) or horizontal
-         * based on ML Kit's reported angle and bounding box geometry.
-         *
-         * Primary signal: [Text.Line.getAngle] — ~90° indicates vertical text.
-         * Fallback: bounding box aspect ratio (height/width > 2 for multi-char lines).
-         * Single-character lines are ambiguous and default to [TextOrientation.HORIZONTAL].
+         * Reused by [com.playtranslate.ocr.engines.mlkit.MlKitTextMapper].
          */
         fun detectOrientation(line: Text.Line): TextOrientation {
-            // Single-character lines are ambiguous — a tall narrow box could be
-            // one large character, not a vertical column.
             if (line.text.trim().length <= 1) return TextOrientation.HORIZONTAL
-
-            // Primary: ML Kit angle (~90° = vertical)
             try {
                 val angle = line.angle.toDouble()
                 if (angle in 60.0..120.0 || angle in -120.0..-60.0) {
@@ -828,57 +422,41 @@ class OcrManager private constructor() {
             } catch (_: Throwable) {
                 // getAngle() may not exist in all versions — fall through to geometry
             }
-
-            // Fallback: bounding box aspect ratio
             val bb = line.boundingBox ?: return TextOrientation.HORIZONTAL
             val w = bb.width()
             val h = bb.height()
             if (w > 0 && h.toFloat() / w > 2.0f) return TextOrientation.VERTICAL
-
             return TextOrientation.HORIZONTAL
         }
 
         /**
-         * Returns true if [c] belongs to a script that is native to [sourceLang].
-         * Used to filter out OCR groups that contain no source-language characters —
-         * e.g. romanizations, symbols, or Latin-with-diacritics when translating from Japanese.
+         * Returns true if [c] belongs to a script native to [sourceLang]. Reused
+         * by the ML Kit adapter's line filter. (The layout stage uses the
+         * vendor-neutral copy in
+         * [com.playtranslate.ocr.core.LayoutAnalyzer.isSourceLangChar].)
          */
         fun isSourceLangChar(c: Char, sourceLang: String): Boolean = when (sourceLang) {
-            "ja" -> c in '\u3040'..'\u309F'   // Hiragana
-                 || c in '\u30A0'..'\u30FF'   // Katakana
-                 || c in '\u4E00'..'\u9FFF'   // CJK Unified Ideographs (kanji)
-                 || c in '\u3400'..'\u4DBF'   // CJK Extension A
-                 || c in '\uFF65'..'\uFF9F'   // Half-width Katakana
+            "ja" -> c in '぀'..'ゟ'   // Hiragana
+                 || c in '゠'..'ヿ'   // Katakana
+                 || c in '一'..'鿿'   // CJK Unified Ideographs (kanji)
+                 || c in '㐀'..'䶿'   // CJK Extension A
+                 || c in '･'..'ﾟ'   // Half-width Katakana
             "zh", "zh-TW" ->
-                   c in '\u4E00'..'\u9FFF'
-                 || c in '\u3400'..'\u4DBF'
-            "ko" -> c in '\uAC00'..'\uD7AF'   // Hangul Syllables
-                 || c in '\u1100'..'\u11FF'   // Hangul Jamo
-                 || c in '\u3130'..'\u318F'   // Hangul Compatibility Jamo
-            "ar" -> c in '\u0600'..'\u06FF'   // Arabic
+                   c in '一'..'鿿'
+                 || c in '㐀'..'䶿'
+            "ko" -> c in '가'..'힯'   // Hangul Syllables
+                 || c in 'ᄀ'..'ᇿ'   // Hangul Jamo
+                 || c in '㄰'..'㆏'   // Hangul Compatibility Jamo
+            "ar" -> c in '؀'..'ۿ'   // Arabic
             "ru", "bg", "uk" ->
-                   c in '\u0400'..'\u04FF'   // Cyrillic
-            "th" -> c in '\u0E00'..'\u0E7F'   // Thai
+                   c in 'Ѐ'..'ӿ'   // Cyrillic
+            "th" -> c in '฀'..'๿'   // Thai
             "hi", "mr", "ne" ->
-                   c in '\u0900'..'\u097F'   // Devanagari
+                   c in 'ऀ'..'ॿ'   // Devanagari
             else -> {
-                // For registered source languages (EN, future Latin, etc.)
-                // use the profile's isScriptChar lambda — it knows the correct
-                // character ranges. Fallback to non-ASCII heuristic only for
-                // source codes that aren't in the profile registry.
                 val profile = SourceLanguageProfiles.forCode(sourceLang)
                 if (profile != null) profile.isScriptChar(c) else c.code > 0x007F
             }
         }
-
-        /** UI-only symbols that are never meaningful dialogue text on their own. */
-        private val UI_DECORATION_CHARS = setOf(
-            // Arrows / triangles used as dialogue-advance or selection cursors
-            '▼', '▽', '▲', '△', '▸', '▾', '◂', '◀', '▶', '►', '◄',
-            '↓', '↑', '←', '→', '↵', '↩',
-            // Angle brackets used as decorative dialogue borders
-            '<', '>', '＜', '＞', '〈', '〉', '《', '》', '«', '»'
-        )
-
     }
 }
