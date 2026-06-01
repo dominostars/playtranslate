@@ -220,6 +220,58 @@ class OcrGoldenSetTest {
         }
     }
 
+    /**
+     * Reporting tool (ALWAYS passes): emits a per-screen group-structure
+     * signature to logcat under [STRUCT_TAG]. Capture on the pre-refactor
+     * baseline and again after the keystone (MlKitOcr + OcrPipeline) and diff —
+     * this surfaces grouping / group-bounds / reading-order regressions that the
+     * char-drop and CER gates cannot see (the gap flagged in the plan review).
+     *
+     * ML Kit is nondeterministic, so treat small bounds jitter (±few px) and
+     * length deltas as noise; group-COUNT changes, large bounds shifts, and
+     * reading-order changes are the catastrophic signals to investigate.
+     *
+     * Recover with: adb logcat -d -s OcrStructure:I
+     */
+    @Test
+    fun emitGroupStructure() {
+        val cases = loadGoldenCases(testCtx)
+        if (cases.isEmpty()) {
+            Log.w(TAG, "No golden cases — group-structure report is a no-op.")
+            return
+        }
+        Log.i(STRUCT_TAG, "===== BEGIN OCR GROUP-STRUCTURE =====")
+        for (case in cases) {
+            val bitmap = loadBitmap(testCtx, "$ASSET_DIR/${case.imageAsset}")
+            try {
+                val result = runBlocking {
+                    OcrManager.instance.recognise(
+                        bitmap = bitmap,
+                        sourceLang = "ja",
+                        screenshotWidth = bitmap.width,
+                        recipe = OcrPreprocessingRecipe.Default,
+                    )
+                }
+                val n = result?.groupTexts?.size ?: 0
+                val sb = StringBuilder("${case.id}: groups=$n |")
+                if (result != null) {
+                    for (i in result.groupTexts.indices) {
+                        val b = result.groupBounds.getOrNull(i)
+                        val lc = result.groupLineCounts.getOrNull(i) ?: -1
+                        val o = result.groupOrientations.getOrNull(i)?.name?.firstOrNull() ?: '?'
+                        val len = result.groupTexts[i].length
+                        sb.append(" [#$i ${b?.left},${b?.top},${b?.right},${b?.bottom} lc=$lc $o len=$len]")
+                    }
+                }
+                Log.i(STRUCT_TAG, sb.toString())
+                Thread.sleep(3)
+            } finally {
+                bitmap.recycle()
+            }
+        }
+        Log.i(STRUCT_TAG, "===== END OCR GROUP-STRUCTURE =====")
+    }
+
     // ── Loaders ──────────────────────────────────────────────────────────
 
     private data class GoldenCase(val id: String, val imageAsset: String, val expected: String)
@@ -565,6 +617,7 @@ class OcrGoldenSetTest {
     companion object {
         private const val TAG = "OcrGoldenSetTest"
         private const val REPORT_TAG = "OcrReport"
+        private const val STRUCT_TAG = "OcrStructure"
         private const val ASSET_DIR = "ocr_golden"
     }
 }

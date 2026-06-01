@@ -1,8 +1,8 @@
 package com.playtranslate
 
 import android.graphics.Rect
-import com.playtranslate.OcrManager
-import com.playtranslate.OcrManager.Companion.groupBoxesOnePass
+import com.playtranslate.ocr.core.LayoutAnalyzer
+import com.playtranslate.ocr.core.LayoutAnalyzer.groupBoxesOnePass
 import com.playtranslate.language.TextOrientation
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
@@ -13,8 +13,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * Unit tests for [OcrManager.Companion.groupBoxesOnePass] — the index-level
- * grouping pass that powers [OcrManager.groupLinesOnePass]. Tests use plain
+ * Unit tests for [LayoutAnalyzer.groupBoxesOnePass] — the index-level
+ * grouping pass that powers `OcrManager.groupLinesOnePass`. Tests use plain
  * [Rect]s so they don't need to fabricate ML Kit [Text.Line] objects; the
  * companion-level function is the same algorithm the production wrapper
  * runs after extracting boxes/align-lefts from Text.Lines.
@@ -273,7 +273,7 @@ class OcrGroupingTest {
         val normal = Rect(0, 10, 200, 60)    // h=50, dy=7 from tiny.bottom
         assertFalse(
             "positive multi-line rect of height 3 must not group with a 50px neighbor",
-            OcrManager.wouldGroup(
+            LayoutAnalyzer.wouldGroup(
                 tiny, normal, TextOrientation.HORIZONTAL,
                 aLineCount = 4, bLineCount = 1,
             ),
@@ -288,7 +288,7 @@ class OcrGroupingTest {
         val normal = Rect(10, 0, 60, 200)    // w=50, dx=7 from tiny.right
         assertFalse(
             "positive multi-column rect of width 3 must not group with a 50px neighbor",
-            OcrManager.wouldGroup(
+            LayoutAnalyzer.wouldGroup(
                 tiny, normal, TextOrientation.VERTICAL,
                 aLineCount = 4, bLineCount = 1,
             ),
@@ -367,7 +367,7 @@ class OcrGroupingTest {
         // block path) so we don't double-judge.
         val a = Rect(0, 0, 50, 30)
         val b = Rect(0, 25, 200, 60)   // vertical overlap 25..30
-        assertNull(OcrManager.shortAboveLongBlock(a, b, TextOrientation.HORIZONTAL))
+        assertNull(LayoutAnalyzer.shortAboveLongBlock(a, b, TextOrientation.HORIZONTAL))
     }
 
     @Test
@@ -375,7 +375,7 @@ class OcrGroupingTest {
         // Asymmetric: earlier=long, later=short → rule must not fire.
         val long = Rect(0, 0, 200, 30)
         val short = Rect(0, 50, 50, 80)
-        assertNull(OcrManager.shortAboveLongBlock(long, short, TextOrientation.HORIZONTAL))
+        assertNull(LayoutAnalyzer.shortAboveLongBlock(long, short, TextOrientation.HORIZONTAL))
     }
 
     @Test
@@ -384,8 +384,8 @@ class OcrGroupingTest {
         // earlier/later from spatial position, not argument position.
         val above = Rect(100, 0, 200, 50)         // w=100
         val below = Rect(100, 80, 1000, 130)      // w=900
-        assertTrue(OcrManager.shortAboveLongBlock(above, below, TextOrientation.HORIZONTAL) != null)
-        assertTrue(OcrManager.shortAboveLongBlock(below, above, TextOrientation.HORIZONTAL) != null)
+        assertTrue(LayoutAnalyzer.shortAboveLongBlock(above, below, TextOrientation.HORIZONTAL) != null)
+        assertTrue(LayoutAnalyzer.shortAboveLongBlock(below, above, TextOrientation.HORIZONTAL) != null)
     }
 
     @Test

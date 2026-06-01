@@ -3,6 +3,7 @@ package com.playtranslate
 import android.graphics.Rect
 import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
+import com.playtranslate.ocr.core.LayoutAnalyzer
 import com.playtranslate.ui.TextBox
 
 /**
@@ -198,16 +199,16 @@ fun classifyOcrResults(
             val growthDirection = orientMatch && ocrLineCount > boxLineCount
             val aLn = if (growthDirection) boxLineCount else 1
             val bLn = if (growthDirection) ocrLineCount else 1
-            val matched = OcrManager.wouldGroup(
+            val matched = LayoutAnalyzer.wouldGroup(
                 boxRect, ocrFullRect, orient,
-                mode = OcrManager.Companion.GroupingMode.CROSS_FRAME_SAME_REGION,
+                mode = LayoutAnalyzer.GroupingMode.CROSS_FRAME_SAME_REGION,
                 aLineCount = aLn,
                 bLineCount = bLn,
             )
             if (OcrManager.instance.debugLogGroupingEnabled) {
-                val decision = OcrManager.groupDecision(
+                val decision = LayoutAnalyzer.groupDecision(
                     boxRect, ocrFullRect, orient,
-                    mode = OcrManager.Companion.GroupingMode.CROSS_FRAME_SAME_REGION,
+                    mode = LayoutAnalyzer.GroupingMode.CROSS_FRAME_SAME_REGION,
                     aLineCount = aLn,
                     bLineCount = bLn,
                 )
@@ -216,8 +217,8 @@ fun classifyOcrResults(
                 val ocrSnippet = ocrText.take(24).replace('\n', ' ')
                 android.util.Log.d(
                     "DetectionLog",
-                    "[xf:${orient.name[0]}] $verdict box[$boxIdx]=${OcrManager.rectStr(boxRect)} " +
-                        "\"$boxSnippet\" ocr[$ocrIdx]=${OcrManager.rectStr(ocrFullRect)} " +
+                    "[xf:${orient.name[0]}] $verdict box[$boxIdx]=${LayoutAnalyzer.rectStr(boxRect)} " +
+                        "\"$boxSnippet\" ocr[$ocrIdx]=${LayoutAnalyzer.rectStr(ocrFullRect)} " +
                         "\"$ocrSnippet\" :: ${decision.reason}"
                 )
             }
@@ -294,7 +295,7 @@ fun classifyOcrResults(
                 // the more conservative gate is appropriate here.
                 if (existing.orientation != orient) return@firstOrNull false
                 val existingBitmapRect = coords.ocrToBitmap(existing.bounds)
-                OcrManager.wouldGroup(
+                LayoutAnalyzer.wouldGroup(
                     existingBitmapRect, ocrFullRect, existing.orientation,
                     aLineCount = existing.lineCount,
                     bLineCount = lc,
@@ -395,7 +396,7 @@ fun cascadeStaleRemovals(
                 // an unrelated single-line neighbor of the same font with
                 // a small gap — a false positive with no replacement
                 // evidence, since neither rect comes from fresh OCR.
-                if (OcrManager.wouldGroup(ocrBitmapRects[removeIdx], ocrBitmapRects[i], orient)) {
+                if (LayoutAnalyzer.wouldGroup(ocrBitmapRects[removeIdx], ocrBitmapRects[i], orient)) {
                     cascadedRemovals.add(i)
                     expanded = true
                     break
