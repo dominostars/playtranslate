@@ -457,9 +457,9 @@ class PinholeOverlayMode(
                 // are off enough that fillOverlayRegions left text visible.
                 if (pipeline != null) {
                     val ocrR = pipeline.ocrResult
-                    for (i in ocrR.groupTexts.indices) {
-                        val t = ocrR.groupTexts[i].take(40)
-                        val b = ocrR.groupBounds.getOrNull(i)
+                    for ((i, g) in ocrR.groups.withIndex()) {
+                        val t = g.text.take(40)
+                        val b = g.bounds
                         DetectionLog.log(
                             "D$displayId c$cycleNum   ocr[$i] text=\"$t\" " +
                                 "ocrRect=${b?.let { "(${it.left},${it.top},${it.right},${it.bottom})" } ?: "null"}"

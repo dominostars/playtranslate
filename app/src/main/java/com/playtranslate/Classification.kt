@@ -118,10 +118,9 @@ fun classifyOcrResults(
     // eligible. See the gate kdoc at step 3 for the reasoning.
     val pairedFarIndices = mutableSetOf<Int>()
 
-    for (ocrIdx in ocrResult.groupTexts.indices) {
-        if (ocrIdx >= ocrResult.groupBounds.size) continue
-        val ocrText = ocrResult.groupTexts[ocrIdx]
-        val ocrBound = ocrResult.groupBounds[ocrIdx]
+    for ((ocrIdx, group) in ocrResult.groups.withIndex()) {
+        val ocrText = group.text
+        val ocrBound = group.bounds
         val ocrH = ocrBound.height()
 
         // 1. Content match: same source text + similar size → position update.
@@ -135,9 +134,9 @@ fun classifyOcrResults(
                 val maxH = maxOf(ocrH, boxH)
                 if (maxH > 0 && kotlin.math.abs(ocrH - boxH) < maxH * 0.5) {
                     contentMatchRemovals.add(boxIdx)
-                    val lc = ocrResult.groupLineCounts.getOrElse(ocrIdx) { 1 }
-                    val orient = ocrResult.groupOrientations.getOrElse(ocrIdx) { TextOrientation.HORIZONTAL }
-                    val align = ocrResult.groupAlignments.getOrElse(ocrIdx) { TextAlignment.LEFT }
+                    val lc = group.lines.size
+                    val orient = group.orientation
+                    val align = group.alignment
                     // Record the about-to-be index so step 3's coalesce
                     // step can identify this FAR as the paired-from-
                     // content-match target a later fresh OCR fragment may
@@ -154,8 +153,8 @@ fun classifyOcrResults(
         // 2. Proximity check: near existing overlay → stale.
         val ocrFullRect = coords.ocrToBitmap(ocrBound)
         var nearExisting = false
-        val orient = ocrResult.groupOrientations.getOrElse(ocrIdx) { TextOrientation.HORIZONTAL }
-        val ocrLineCount = ocrResult.groupLineCounts.getOrElse(ocrIdx) { 1 }
+        val orient = group.orientation
+        val ocrLineCount = group.lines.size
         for (boxIdx in boxes.indices) {
             if (boxIdx >= ocrBitmapRects.size) continue
             if (boxes[boxIdx].dirty) continue
@@ -261,7 +260,7 @@ fun classifyOcrResults(
         //    regions) fails wouldGroup and stays as separate far entries.
         if (!nearExisting) {
             val lc = ocrLineCount
-            val align = ocrResult.groupAlignments.getOrElse(ocrIdx) { TextAlignment.LEFT }
+            val align = group.alignment
             // Gate: only coalesce INTO a paired FAR (an entry queued by
             // content-match earlier in this loop). Fresh-FARs added by
             // an earlier Far-branch iteration are NOT eligible — they

@@ -134,8 +134,8 @@ object OverlayToolkit {
     ): List<FuriganaGroup> {
         val groups = mutableListOf<FuriganaGroup>()
 
-        for (groupIdx in ocrResult.groupTexts.indices) {
-            val lines = ocrResult.lineBoxes.filter { it.groupIndex == groupIdx }
+        for ((groupIdx, group) in ocrResult.groups.withIndex()) {
+            val lines = group.lines
             if (lines.isEmpty()) continue
 
             val groupBoxes = mutableListOf<TextBox>()
@@ -250,10 +250,10 @@ object OverlayToolkit {
                 groupBoxes += mergeOverlappingFurigana(lineBoxes, furiganaPaint, isVertical)
             }
 
-            if (groupBoxes.isNotEmpty() && groupIdx < ocrResult.groupBounds.size) {
+            if (groupBoxes.isNotEmpty()) {
                 groups += FuriganaGroup(
-                    groupText = ocrResult.groupTexts[groupIdx],
-                    groupBounds = ocrResult.groupBounds[groupIdx],
+                    groupText = group.text,
+                    groupBounds = group.bounds,
                     boxes = groupBoxes
                 )
             }

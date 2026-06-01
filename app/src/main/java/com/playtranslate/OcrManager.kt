@@ -122,27 +122,7 @@ class OcrManager private constructor() {
         val groups: List<OcrGroup> = emptyList(),
         /** Debug bounding boxes at line/element/group level, or null if debug is off. */
         val debugBoxes: OcrDebugBoxes? = null,
-    ) {
-        // Back-compat views derived from [groups] (always consistent — no index
-        // desync possible). Migrate readers to `groups`, then remove these.
-        @Deprecated("Use groups.map { it.text }", ReplaceWith("groups.map { it.text }"))
-        val groupTexts: List<String> get() = groups.map { it.text }
-
-        @Deprecated("Use groups.map { it.bounds }", ReplaceWith("groups.map { it.bounds }"))
-        val groupBounds: List<Rect> get() = groups.map { it.bounds }
-
-        @Deprecated("Use groups.map { it.lines.size }", ReplaceWith("groups.map { it.lines.size }"))
-        val groupLineCounts: List<Int> get() = groups.map { it.lines.size }
-
-        @Deprecated("Use groups.map { it.orientation }", ReplaceWith("groups.map { it.orientation }"))
-        val groupOrientations: List<TextOrientation> get() = groups.map { it.orientation }
-
-        @Deprecated("Use groups.map { it.alignment }", ReplaceWith("groups.map { it.alignment }"))
-        val groupAlignments: List<TextAlignment> get() = groups.map { it.alignment }
-
-        @Deprecated("Use groups.flatMap { it.lines }", ReplaceWith("groups.flatMap { it.lines }"))
-        val lineBoxes: List<LineBox> get() = groups.flatMap { it.lines }
-    }
+    )
 
     /**
      * Run OCR and return a grouped, translation-ready [OcrResult] in original
@@ -169,9 +149,9 @@ class OcrManager private constructor() {
         val result = buildOcrResult(output.groups, output.scaleFactor, sourceLang, collectDebugBoxes)
         if (result.fullText.isBlank()) return null
 
-        android.util.Log.d("DetectionLog", "OCR raw: ${result.groupTexts.size} groups")
-        for ((i, gt) in result.groupTexts.withIndex()) {
-            android.util.Log.d("DetectionLog", "  group[$i]: \"${gt.take(50)}\"")
+        android.util.Log.d("DetectionLog", "OCR raw: ${result.groups.size} groups")
+        for ((i, g) in result.groups.withIndex()) {
+            android.util.Log.d("DetectionLog", "  group[$i]: \"${g.text.take(50)}\"")
         }
         return result
     }

@@ -371,7 +371,7 @@ class FuriganaMode(
                         DetectionLog.log("Furigana: text changed, requesting clean capture")
 
                         // Selective invalidation: remove furigana for changed groups, keep the rest
-                        val newOcrGroups = pipeline.ocrResult.groupTexts.zip(pipeline.ocrResult.groupBounds)
+                        val newOcrGroups = pipeline.ocrResult.groups.map { it.text to it.bounds }
                         val surviving = furiganaGroups.filter { old ->
                             newOcrGroups.any { (newText, newBounds) ->
                                 OverlayToolkit.groupsMatch(old.groupText, old.groupBounds, newText, newBounds)

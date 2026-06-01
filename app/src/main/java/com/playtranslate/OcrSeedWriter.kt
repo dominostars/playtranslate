@@ -38,7 +38,7 @@ object OcrSeedWriter {
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
             }
             File(dir, "$ts.txt").writeText(transcript(ocrResult))
-            Log.d(TAG, "Wrote seed $ts (${ocrResult?.lineBoxes?.size ?: 0} lines)")
+            Log.d(TAG, "Wrote seed $ts (${ocrResult?.groups?.sumOf { it.lines.size } ?: 0} lines)")
         } catch (t: Throwable) {
             Log.w(TAG, "writeSeed failed", t)
         }
@@ -51,7 +51,7 @@ object OcrSeedWriter {
      *  set curation. */
     private fun transcript(ocrResult: OcrManager.OcrResult?): String {
         if (ocrResult == null) return "(no text detected — recognise returned null)"
-        val fromLines = ocrResult.lineBoxes.joinToString("\n") { it.text }
+        val fromLines = ocrResult.groups.flatMap { it.lines }.joinToString("\n") { it.text }
         return if (fromLines.isNotBlank()) fromLines else ocrResult.fullText
     }
 }

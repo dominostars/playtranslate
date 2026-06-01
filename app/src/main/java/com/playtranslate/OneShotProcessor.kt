@@ -54,29 +54,26 @@ internal class TranslationOneShotProcessor(
         val colors: List<Pair<Int, Int>>
         try {
             colors = OverlayToolkit.sampleGroupColors(
-                colorRef, ocrResult.groupBounds, cropLeft, cropTop, colorScale
+                colorRef, ocrResult.groups.map { it.bounds }, cropLeft, cropTop, colorScale
             )
         } finally {
             colorRef.recycle()
         }
 
         // Show shimmer placeholders while translating
-        val placeholders = ocrResult.groupBounds.mapIndexed { idx, bounds ->
+        val placeholders = ocrResult.groups.mapIndexed { idx, g ->
             val (bgColor, textColor) = colors.getOrElse(idx) {
                 Pair(android.graphics.Color.argb(200, 0, 0, 0), android.graphics.Color.WHITE)
             }
-            val lineCount = ocrResult.groupLineCounts.getOrElse(idx) { 1 }
-            val orient = ocrResult.groupOrientations.getOrElse(idx) { com.playtranslate.language.TextOrientation.HORIZONTAL }
-            val align = ocrResult.groupAlignments.getOrElse(idx) { com.playtranslate.language.TextAlignment.LEFT }
-            TextBox("", bounds, bgColor, textColor, lineCount, orientation = orient, alignment = align)
+            TextBox("", g.bounds, bgColor, textColor, g.lines.size, orientation = g.orientation, alignment = g.alignment)
         }
         showOverlay(placeholders)
 
         // Translate
-        val perGroup = translateFn(ocrResult.groupTexts)
+        val perGroup = translateFn(ocrResult.groups.map { it.text })
 
         // Build final boxes with translated text
-        return if (ocrResult.groupBounds.size == perGroup.size) {
+        return if (ocrResult.groups.size == perGroup.size) {
             perGroup.zip(placeholders).map { (tr, ph) ->
                 ph.copy(translatedText = tr.text)
             }

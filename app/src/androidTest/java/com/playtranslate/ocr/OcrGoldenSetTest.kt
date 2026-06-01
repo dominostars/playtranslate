@@ -252,16 +252,11 @@ class OcrGoldenSetTest {
                         recipe = OcrPreprocessingRecipe.Default,
                     )
                 }
-                val n = result?.groupTexts?.size ?: 0
-                val sb = StringBuilder("${case.id}: groups=$n |")
-                if (result != null) {
-                    for (i in result.groupTexts.indices) {
-                        val b = result.groupBounds.getOrNull(i)
-                        val lc = result.groupLineCounts.getOrNull(i) ?: -1
-                        val o = result.groupOrientations.getOrNull(i)?.name?.firstOrNull() ?: '?'
-                        val len = result.groupTexts[i].length
-                        sb.append(" [#$i ${b?.left},${b?.top},${b?.right},${b?.bottom} lc=$lc $o len=$len]")
-                    }
+                val groups = result?.groups ?: emptyList()
+                val sb = StringBuilder("${case.id}: groups=${groups.size} |")
+                for ((i, g) in groups.withIndex()) {
+                    val b = g.bounds
+                    sb.append(" [#$i ${b.left},${b.top},${b.right},${b.bottom} lc=${g.lines.size} ${g.orientation.name.first()} len=${g.text.length}]")
                 }
                 Log.i(STRUCT_TAG, sb.toString())
                 Thread.sleep(3)

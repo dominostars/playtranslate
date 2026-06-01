@@ -734,7 +734,7 @@ class CaptureService : Service() {
             }
 
             state.value = CaptureState.InProgress(getString(R.string.status_translating))
-            val groupTranslation = translateGroups(ocrResult.groupTexts)
+            val groupTranslation = translateGroups(ocrResult.groups.map { it.text })
 
             val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
             state.value = CaptureState.Done(
@@ -1634,7 +1634,7 @@ class CaptureService : Service() {
             val appPanelVisible = !Prefs.isSingleScreen(this) && MainActivity.isInForeground
             if (!appPanelVisible) return null
         }
-        val perGroup = translateGroupsSeparately(ocrResult.groupTexts)
+        val perGroup = translateGroupsSeparately(ocrResult.groups.map { it.text })
         val translated = perGroup.joinToString("\n\n") { it.text }
         val note = perGroup.mapNotNull { it.note }.firstOrNull()
         val backendDisplayName = perGroup.mapNotNull { it.backendDisplayName }.firstOrNull()
@@ -1802,7 +1802,7 @@ class CaptureService : Service() {
 
             if (ocrResult == null) return PipelineOutcome.NoText
 
-            val perGroup = translateGroupsSeparately(ocrResult.groupTexts)
+            val perGroup = translateGroupsSeparately(ocrResult.groups.map { it.text })
             val translated = perGroup.joinToString("\n\n") { it.text }
             val note = perGroup.mapNotNull { it.note }.firstOrNull()
             val backendDisplayName = perGroup.mapNotNull { it.backendDisplayName }.firstOrNull()
@@ -1819,7 +1819,7 @@ class CaptureService : Service() {
                         note               = note,
                         backendDisplayName = backendDisplayName,
                     ),
-                    groupBounds = ocrResult.groupBounds,
+                    groupBounds = ocrResult.groups.map { it.bounds },
                     groupTranslations = perGroup.map { it.text },
                     cropLeft = left, cropTop = top,
                     screenshotW = raw.width, screenshotH = raw.height,
