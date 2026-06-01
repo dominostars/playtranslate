@@ -51,15 +51,25 @@ class ClassificationTest {
         orientation = orientation,
     )
 
+    private fun grp(
+        text: String,
+        bounds: Rect,
+        lineCount: Int = 1,
+        orientation: TextOrientation = TextOrientation.HORIZONTAL,
+    ) = OcrManager.OcrGroup(
+        text = text,
+        bounds = bounds,
+        orientation = orientation,
+        lines = List(lineCount) { OcrManager.LineBox(text = text, bounds = bounds, groupIndex = 0) },
+    )
+
     private fun ocrResult(
         vararg groups: Pair<String, Rect>,
         lineCounts: List<Int>? = null,
     ) = OcrManager.OcrResult(
         fullText = "",
         segments = emptyList(),
-        groupTexts = groups.map { it.first },
-        groupBounds = groups.map { it.second },
-        groupLineCounts = lineCounts ?: groups.map { 1 },
+        groups = groups.mapIndexed { i, (text, bounds) -> grp(text, bounds, lineCounts?.getOrElse(i) { 1 } ?: 1) },
     )
 
     // ── classifyOcrResults: shape / empty-input cases ────────────────────
@@ -323,9 +333,7 @@ class ClassificationTest {
         val ocr = OcrManager.OcrResult(
             fullText = "",
             segments = emptyList(),
-            groupTexts = listOf("continuation"),
-            groupBounds = listOf(freshBounds),
-            groupLineCounts = listOf(2),
+            groups = listOf(grp("continuation", freshBounds, lineCount = 2)),
         )
         val result = classifyOcrResults(
             ocrResult = ocr,
@@ -359,9 +367,7 @@ class ClassificationTest {
         val ocr = OcrManager.OcrResult(
             fullText = "",
             segments = emptyList(),
-            groupTexts = listOf("unrelated label"),
-            groupBounds = listOf(freshBounds),
-            groupLineCounts = listOf(1),
+            groups = listOf(grp("unrelated label", freshBounds, lineCount = 1)),
         )
         val result = classifyOcrResults(
             ocrResult = ocr,
@@ -396,9 +402,7 @@ class ClassificationTest {
         val ocr = OcrManager.OcrResult(
             fullText = "",
             segments = emptyList(),
-            groupTexts = listOf("unrelated horiz text"),
-            groupBounds = listOf(freshBounds),
-            groupLineCounts = listOf(3),
+            groups = listOf(grp("unrelated horiz text", freshBounds, lineCount = 3)),
         )
         val result = classifyOcrResults(
             ocrResult = ocr,
@@ -421,33 +425,20 @@ class ClassificationTest {
 
     // ── classifyOcrResults: defensive index guards ───────────────────────
 
-    @Test
-    fun classify_groupBoundsShorterThanGroupTexts_skipsOverflow() {
-        val ocr = OcrManager.OcrResult(
-            fullText = "",
-            segments = emptyList(),
-            groupTexts = listOf("a", "b", "c"),
-            groupBounds = listOf(Rect(0, 0, 100, 100)),  // Only one entry
-            groupLineCounts = listOf(1),
-        )
-        val result = classifyOcrResults(
-            ocrResult = ocr,
-            boxes = emptyList(),
-            ocrBitmapRects = emptyList(),
-            coords = identityCoords,
-        )
-        assertEquals(1, result.farOcrGroups.size)
-        assertEquals("a", result.farOcrGroups[0].text)
-    }
+    // (Removed classify_groupBoundsShorterThanGroupTexts_skipsOverflow: the
+    //  nested OcrGroup model makes a groupTexts/groupBounds length mismatch
+    //  impossible to construct — the desync class that guard protected against
+    //  no longer exists.)
 
     @Test
-    fun classify_lineCountDefaultsToOneWhenMissing() {
+    fun classify_lineCountFlowsFromGroupLines() {
         val ocr = OcrManager.OcrResult(
             fullText = "",
             segments = emptyList(),
-            groupTexts = listOf("a", "b"),
-            groupBounds = listOf(Rect(0, 0, 100, 100), Rect(0, 200, 100, 300)),
-            groupLineCounts = listOf(3),  // Missing entry for index 1
+            groups = listOf(
+                grp("a", Rect(0, 0, 100, 100), lineCount = 3),
+                grp("b", Rect(0, 200, 100, 300), lineCount = 1),
+            ),
         )
         val result = classifyOcrResults(
             ocrResult = ocr,
@@ -457,7 +448,7 @@ class ClassificationTest {
         )
         assertEquals(2, result.farOcrGroups.size)
         assertEquals(3, result.farOcrGroups[0].lineCount)
-        assertEquals(1, result.farOcrGroups[1].lineCount)  // defaulted
+        assertEquals(1, result.farOcrGroups[1].lineCount)
     }
 
     @Test
@@ -500,10 +491,10 @@ class ClassificationTest {
         val ocr = OcrManager.OcrResult(
             fullText = "",
             segments = emptyList(),
-            groupTexts = listOf("縦", "horiz lines"),
-            groupBounds = listOf(verticalBounds, horizontalBounds),
-            groupLineCounts = listOf(1, 3),
-            groupOrientations = listOf(TextOrientation.VERTICAL, TextOrientation.HORIZONTAL),
+            groups = listOf(
+                grp("縦", verticalBounds, lineCount = 1, orientation = TextOrientation.VERTICAL),
+                grp("horiz lines", horizontalBounds, lineCount = 3, orientation = TextOrientation.HORIZONTAL),
+            ),
         )
         val result = classifyOcrResults(
             ocrResult = ocr,

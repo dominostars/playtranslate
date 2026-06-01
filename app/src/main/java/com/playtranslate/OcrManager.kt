@@ -99,28 +99,50 @@ class OcrManager private constructor() {
         val orientation: TextOrientation = TextOrientation.HORIZONTAL
     )
 
+    /**
+     * One grouped paragraph: combined [text], [bounds] (original-bitmap coords),
+     * the voted [orientation] + classified [alignment], and its constituent
+     * [lines]. Replaces the former parallel group-* lists with one cohesive type
+     * — index desync is impossible.
+     */
+    data class OcrGroup(
+        val text: String,
+        val bounds: Rect,
+        val orientation: TextOrientation = TextOrientation.HORIZONTAL,
+        val alignment: TextAlignment = TextAlignment.LEFT,
+        val lines: List<LineBox> = emptyList(),
+    )
+
     data class OcrResult(
         /** Full text joined across groups, suitable for bulk translation. */
         val fullText: String,
         /** Flat list of segments (one per TextElement) for tappable display. */
         val segments: List<TextSegment>,
-        /** Text of each OCR group, for per-group translation. */
-        val groupTexts: List<String> = emptyList(),
-        /** Bounding box per group in original (pre-scale) bitmap coordinates. */
-        val groupBounds: List<Rect> = emptyList(),
-        /** Number of OCR lines per group (for skeleton placeholder display). */
-        val groupLineCounts: List<Int> = emptyList(),
-        /** Per-line bounding boxes with processed text, for furigana positioning. */
-        val lineBoxes: List<LineBox> = emptyList(),
-        /** Debug bounding boxes at block/line/element level, or null if debug is off. */
+        /** The OCR groups (paragraphs) in reading order — the source of truth. */
+        val groups: List<OcrGroup> = emptyList(),
+        /** Debug bounding boxes at line/element/group level, or null if debug is off. */
         val debugBoxes: OcrDebugBoxes? = null,
-        /** Orientation per group (majority vote of constituent lines). */
-        val groupOrientations: List<TextOrientation> = emptyList(),
-        /** Detected block alignment per group. Always [TextAlignment.LEFT] for
-         *  vertical groups and for horizontal groups with insufficient evidence
-         *  of centering (the safe default — never falsely centers text). */
-        val groupAlignments: List<TextAlignment> = emptyList()
-    )
+    ) {
+        // Back-compat views derived from [groups] (always consistent — no index
+        // desync possible). Migrate readers to `groups`, then remove these.
+        @Deprecated("Use groups.map { it.text }", ReplaceWith("groups.map { it.text }"))
+        val groupTexts: List<String> get() = groups.map { it.text }
+
+        @Deprecated("Use groups.map { it.bounds }", ReplaceWith("groups.map { it.bounds }"))
+        val groupBounds: List<Rect> get() = groups.map { it.bounds }
+
+        @Deprecated("Use groups.map { it.lines.size }", ReplaceWith("groups.map { it.lines.size }"))
+        val groupLineCounts: List<Int> get() = groups.map { it.lines.size }
+
+        @Deprecated("Use groups.map { it.orientation }", ReplaceWith("groups.map { it.orientation }"))
+        val groupOrientations: List<TextOrientation> get() = groups.map { it.orientation }
+
+        @Deprecated("Use groups.map { it.alignment }", ReplaceWith("groups.map { it.alignment }"))
+        val groupAlignments: List<TextAlignment> get() = groups.map { it.alignment }
+
+        @Deprecated("Use groups.flatMap { it.lines }", ReplaceWith("groups.flatMap { it.lines }"))
+        val lineBoxes: List<LineBox> get() = groups.flatMap { it.lines }
+    }
 
     /**
      * Run OCR and return a grouped, translation-ready [OcrResult] in original
@@ -191,24 +213,18 @@ class OcrManager private constructor() {
         collectDebugBoxes: Boolean,
     ): OcrResult {
         val segments = mutableListOf<TextSegment>()
-        val groupTexts = mutableListOf<String>()
-        val groupBounds = mutableListOf<Rect>()
-        val groupLineCounts = mutableListOf<Int>()
-        val groupOrientations = mutableListOf<TextOrientation>()
-        val groupAlignments = mutableListOf<TextAlignment>()
-        val lineBoxes = mutableListOf<LineBox>()
         val addWordSpaces =
             SourceLanguageProfiles.forCode(sourceLang)?.wordsSeparatedByWhitespace ?: false
 
-        groups.forEachIndexed { gi, group ->
+        val ocrGroups = groups.mapIndexed { gi, group ->
             if (gi > 0) segments += TextSegment("\n\n", isSeparator = true)
-            group.lines.forEachIndexed { li, line ->
+            val lines = group.lines.mapIndexed { li, line ->
                 if (li > 0) segments += TextSegment("\n", isSeparator = true)
                 line.elements.forEachIndexed { ei, el ->
                     if (ei > 0 && addWordSpaces) segments += TextSegment(" ", isSeparator = true)
                     segments += TextSegment(el.text)
                 }
-                lineBoxes += LineBox(
+                LineBox(
                     text = line.text,
                     bounds = scaleRect(line.box.bounds, scaleFactor),
                     groupIndex = gi,
@@ -217,11 +233,13 @@ class OcrManager private constructor() {
                     orientation = line.orientation,
                 )
             }
-            groupTexts += group.text
-            groupBounds += scaleRect(group.bounds, scaleFactor)
-            groupLineCounts += group.lines.size
-            groupOrientations += group.orientation
-            groupAlignments += group.alignment
+            OcrGroup(
+                text = group.text,
+                bounds = scaleRect(group.bounds, scaleFactor),
+                orientation = group.orientation,
+                alignment = group.alignment,
+                lines = lines,
+            )
         }
 
         val fullText = groups.joinToString(" ") { it.text }.trim()
@@ -229,13 +247,8 @@ class OcrManager private constructor() {
         return OcrResult(
             fullText = fullText,
             segments = segments,
-            groupTexts = groupTexts,
-            groupBounds = groupBounds,
-            groupLineCounts = groupLineCounts,
-            lineBoxes = lineBoxes,
+            groups = ocrGroups,
             debugBoxes = debugBoxes,
-            groupOrientations = groupOrientations,
-            groupAlignments = groupAlignments,
         )
     }
 
