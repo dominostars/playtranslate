@@ -9,6 +9,7 @@ import org.opencv.android.Utils
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
+import org.opencv.core.Point
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 import org.opencv.imgcodecs.Imgcodecs
@@ -142,6 +143,39 @@ class PaddleOcrSession private constructor(
             srcMat.release()
         }
         return out
+    }
+
+    // ── Detect / recognize halves (composable for DetectThenRecognize) ───────
+
+    /** Detection half: run DBNet on [bitmap] and return text-region boxes — each
+     *  with its 4-point deskew [DbNet.Box.points] quad + axis-aligned
+     *  [DbNet.Box.aabb], in ORIGINAL-bitmap coords. Same pre/post-processing as
+     *  [detectAndRecognize]; exposed so the engine layer can compose detection
+     *  with a separate recognizer. */
+    internal fun detect(bitmap: Bitmap): List<DbNet.Box> {
+        val dp = detPreprocess(bitmap)
+        val detOut = det.run(dp.data, intArrayOf(1, 3, dp.resizedH, dp.resizedW))
+        val (probH, probW) = probMapHW(detOut.shape, dp.resizedH, dp.resizedW)
+        return DbNet.boxesFromProbMap(
+            prob = detOut.data, h = probH, w = probW,
+            scaleX = dp.resizedW.toFloat() / bitmap.width,
+            scaleY = dp.resizedH.toFloat() / bitmap.height,
+            origW = bitmap.width, origH = bitmap.height,
+        )
+    }
+
+    /** Recognition half: perspective-warp the 4-point [quad] (ORIGINAL-bitmap
+     *  coords) out of [srcMat] into a height-REC_HEIGHT strip — preserving the
+     *  deskew exactly like [detectAndRecognize], NOT the rect-only crop
+     *  [recognizeCrops] uses — and recognize it. Returns null on a degenerate
+     *  quad. [srcMat] is an RGBA Mat (Utils.bitmapToMat); the caller owns it. */
+    internal fun recognizeQuad(srcMat: Mat, quad: Array<Point>): CropResult? {
+        val crop = DbNet.warpCrop(srcMat, quad, Cfg.REC_HEIGHT) ?: return null
+        return try {
+            recognizeMat(crop)
+        } finally {
+            crop.release()
+        }
     }
 
     // ── Recognizer: one already-cropped, height-48 Mat → text + confidence ───
