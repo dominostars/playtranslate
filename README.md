@@ -176,7 +176,8 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 - [Snowball stemmers](https://snowballstem.org/) via [Apache Lucene](https://lucene.apache.org/): Latin/European stemming
 - [Lingva](https://github.com/thedaviddelta/lingva-translate): online translation
 - [AnkiDroid](https://github.com/ankidroid/Anki-Android): flashcard integration
-- [MNN](https://github.com/alibaba/MNN): on-device LLM inference engine (Apache 2.0)
+- [MNN](https://github.com/alibaba/MNN): on-device LLM and OCR inference engine (Apache 2.0)
+- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR): on-device OCR — the bundled PP-OCRv5 text detector plus per-script recognizers (Apache 2.0)
 
 ### (Optional) Downloadable Offline Models
 
@@ -184,6 +185,8 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 - Qwen 2.5 1.5B Instruct (Alibaba): downloadable as an optional offline pack (Apache 2.0)
 - Gemma 4 E2B (Google): downloadable as an optional offline pack (Gemma terms of use)
 - Hunyuan-MT 1.5 1.8B (Tencent): translation-specialised model, downloadable as an optional offline pack (Tencent HY Community License — not available in the EU, UK, or South Korea)
+- [PaddleOCR PP-OCRv5 recognizers](https://github.com/PaddlePaddle/PaddleOCR): per-script OCR recognizer packs (Chinese/Japanese/English, Latin, Korean), downloadable per source language (Apache 2.0)
+- [Meiki](https://github.com/rtr46/meikiocr): high-accuracy Japanese OCR model (D-FINE), downloadable as an optional offline pack (LGPL 3.0)
 
 ### Linguistic data
 
