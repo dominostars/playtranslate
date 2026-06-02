@@ -6,6 +6,9 @@ import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.OcrBackend
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.ocr.core.OcrEngine
+import com.playtranslate.ocr.meiki.MeikiBridge
+import com.playtranslate.ocr.paddle.PaddleOcrBridge
 import com.playtranslate.translation.llm.OnDeviceLlmDownloader
 
 /**
@@ -39,6 +42,29 @@ object OcrModelManager {
     ): Plan {
         val required = installedLangs.flatMapTo(HashSet()) { selectedBackend(it).packKeys }
         return Plan(required, required - installedPacks, installedPacks - required)
+    }
+
+    /** App context pushed at startup (PlayTranslateApplication) so the registry +
+     *  bridges resolve installed packs / Prefs without threading a Context through
+     *  `recognise()`. */
+    @Volatile var appContext: Context? = null
+
+    /**
+     * Production OCR engine for [sourceLang]: the user's chosen backend if its pack
+     * is installed, else null → the registry's ML Kit floor. Selection only mutates
+     * Prefs, so this resolves fresh each call (no stale cached engine); the native
+     * session is owned + cached by the bridge (closed only at quiescent teardown).
+     */
+    fun engineForSelected(sourceLang: String): OcrEngine? {
+        val ctx = appContext ?: return null
+        val profile = SourceLanguageProfiles.forCode(sourceLang) ?: SourceLanguageProfiles[SourceLangId.JA]
+        return when (val chosen = selectedBackend(ctx, profile.id)) {
+            is OcrBackend.Meiki ->
+                if (OcrPackModelHelper(chosen.packKey).isInstalled(ctx)) MeikiBridge.engine(ctx, chosen.packKey) else null
+            is OcrBackend.Paddle ->
+                if (OcrPackModelHelper(chosen.recPackKey).isInstalled(ctx)) PaddleOcrBridge.engine(ctx, chosen.recPackKey) else null
+            else -> null // ML Kit floor — registry builds it
+        }
     }
 
     /** Every OCR pack key the app knows about (single source of truth = the
@@ -93,10 +119,19 @@ object OcrModelManager {
     /** Delete orphaned packs (installed − required) that aren't currently loaded.
      *  MUST run only at quiescence; [isLoaded] is wired to the bridges in Phase 3
      *  so a pack backing a live session is never deleted. */
-    fun sweepOrphans(ctx: Context, isLoaded: (packKey: String) -> Boolean = { false }) {
+    fun sweepOrphans(
+        ctx: Context,
+        isLoaded: (packKey: String) -> Boolean = { MeikiBridge.isLoaded(it) || PaddleOcrBridge.isLoaded(it) },
+    ) {
         for (key in currentPlan(ctx).toDelete) {
             if (!isLoaded(key)) helper(key).delete(ctx)
         }
+    }
+
+    /** Quiescent teardown: close every bridge session + engine cache. Caller must
+     *  guarantee no in-flight OCR (wired from OcrManager.releaseAll at TRIM_MEMORY). */
+    fun closeAll() {
+        MeikiBridge.close(); PaddleOcrBridge.close()
     }
 }
 

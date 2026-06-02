@@ -1,112 +1,82 @@
 package com.playtranslate.ocr.paddle
 
+import android.content.Context
 import android.util.Log
 import com.playtranslate.ocr.composites.DetectThenRecognize
 import com.playtranslate.ocr.core.OcrEngine
-import com.playtranslate.ocr.core.TextDetector
+import com.playtranslate.ocr.registry.OcrPackModelHelper
 import java.io.File
 
 /**
- * Debug-only provider for the experimental PaddleOCR PP-OCRv5 backend, selected
- * via the Settings "OCR engine" picker. NOT a shipped feature — see
- * docs/paddleocr-spike-report.md (verdict: NO-GO for production).
+ * Owner of PaddleOCR's native MNN sessions (the lifecycle contract's "one
+ * owner"). Builds a [DetectThenRecognize] (Paddle detector + recognizer) over a
+ * session that pairs the **APK-bundled shared detector** with the selected
+ * language's **recognizer pack**, caching engine+session by recognizer pack key.
+ * Construction is lazy + read-only; sessions close ONLY at the quiescent teardown
+ * via [close], never on a selection switch.
  *
- * Exposes building blocks for [com.playtranslate.ocr.registry.OcrEngineSelection]:
- * [engineOrNull] (full [DetectThenRecognize] = [PaddleDetector] + [PaddleRecognizer]
- * over a shared [PaddleOcrSession]) and [detectorOrNull] (the detector alone, for
- * the `Paddle→Manga` combination). arm64 / JA / which-engine-is-selected gating
- * lives in [com.playtranslate.ocr.registry.OcrEngineSelection]; here we only build
- * from the session and return null when models are absent (never a crash).
- *
- * ## Lifecycle
- * Process-wide singleton mirroring [com.playtranslate.OcrManager]'s Context-free
- * design. [modelDir] is pushed once at startup from PlayTranslateApplication
- * (which has a Context); the session + engine are built lazily on first use and
- * reused (rebuilt when [useServerRec] flips). Deleting this file + the
- * [engineOrNull] call in OcrEngineRegistry fully removes the integration.
+ * Detector: bundled `assets/ocr/paddle_det.mnn`, copied once to
+ * `noBackupFilesDir/ocr/`. Recognizer pack (`noBackupFilesDir/models/<recPackKey>/`):
+ * `rec.mnn` + `keys.txt`. Missing files → null → ML Kit floor.
  */
 object PaddleOcrBridge {
 
     private const val TAG = "PaddleOcrBridge"
+    private const val BUNDLED_DET_ASSET = "ocr/paddle_det.mnn"
 
-    /** Pushed from PlayTranslateApplication (which has a Context). When null,
-     *  the bridge is inert. Re-derives the crop-dump dir so startup order
-     *  (modelDir vs dumpCrops) doesn't matter. */
-    @Volatile var modelDir: File? = null
-        set(value) {
-            field = value
-            if (dumpCrops) PaddleOcrSession.dumpDir = value?.parentFile?.let { File(it, "paddle_crops") }
-        }
+    private val sessions = HashMap<String, PaddleOcrSession>()
+    private val engines = HashMap<String, OcrEngine>()
+    @Volatile private var detFile: File? = null
 
-    /** When true, use the SERVER recognizer (rec_server.mnn) instead of mobile,
-     *  keeping the mobile DETECTOR fixed — isolates "does the bigger recognizer
-     *  read small kana better?" from detection differences. Debug A/B toggle;
-     *  flipping it rebuilds the session + engine. See docs/paddleocr-kana-research.md. */
-    @Volatile var useServerRec: Boolean = false
-        set(value) {
-            if (field != value) {
-                field = value
-                // Force a rebuild on next use with the new recognizer tier.
-                // (OcrEngineSelection.invalidate() drops its cached composite.)
-                synchronized(this) { session?.close(); session = null; triedInit = false }
-            }
-        }
-
-    /** When true, dump every pre-recognition crop to `<modelDir>/../paddle_crops/`
-     *  (see PaddleOcrSession.dumpCrop). Diagnostic for the vertical-rotation
-     *  hypothesis; pulled via adb. Pushed from the debug toggle + startup. */
-    @Volatile var dumpCrops: Boolean = false
-        set(value) {
-            field = value
-            PaddleOcrSession.dumpDir =
-                if (value) modelDir?.parentFile?.let { File(it, "paddle_crops") } else null
-        }
-
-    @Volatile private var session: PaddleOcrSession? = null
-    @Volatile private var triedInit = false
-
-    /** PaddleOCR detector building block (for the `Paddle→Manga` combination), or
-     *  null when models are absent. Gating lives in [OcrEngineSelection]. */
-    fun detectorOrNull(): TextDetector? = sessionOrNull()?.let { PaddleDetector(it) }
-
-    /**
-     * The full PaddleOCR engine ([DetectThenRecognize] over the shared session),
-     * or null when models are absent. Gating (arm64/JA/selected engine) lives in
-     * [OcrEngineSelection], which also caches the result.
-     */
-    fun engineOrNull(): OcrEngine? =
-        sessionOrNull()?.let { DetectThenRecognize(PaddleDetector(it), PaddleRecognizer(it)) }
-
-    /** Lazily build (once) the PP session from the pushed model dir. Returns
-     *  null and logs if the dir/models are missing — caller falls back. */
+    /** Cached engine for recognizer [recPackKey], or null if det/rec files absent. */
     @Synchronized
-    private fun sessionOrNull(): PaddleOcrSession? {
-        session?.let { return it }
-        if (triedInit) return null   // already failed; don't retry every capture
-        triedInit = true
-        val dir = modelDir ?: run { Log.w(TAG, "no modelDir pushed"); return null }
-        // Detector stays mobile to isolate the recognizer variable; only the
-        // recognizer swaps to the server tier when useServerRec is set.
-        val det = File(dir, "det_mobile.mnn")
-        val recName = if (useServerRec) "rec_server.mnn" else "rec_mobile.mnn"
-        val rec = File(dir, recName)
+    fun engine(ctx: Context, recPackKey: String): OcrEngine? {
+        engines[recPackKey]?.let { return it }
+        val s = sessionFor(ctx, recPackKey) ?: return null
+        return DetectThenRecognize(PaddleDetector(s), PaddleRecognizer(s)).also { engines[recPackKey] = it }
+    }
+
+    @Synchronized
+    fun isLoaded(recPackKey: String): Boolean = sessions.containsKey(recPackKey)
+
+    private fun sessionFor(ctx: Context, recPackKey: String): PaddleOcrSession? {
+        sessions[recPackKey]?.let { return it }
+        val det = bundledDetector(ctx) ?: return null
+        val dir = OcrPackModelHelper(recPackKey).file(ctx)
+        val rec = File(dir, "rec.mnn")
         val keys = File(dir, "keys.txt")
-        if (!det.exists() || !rec.exists() || !keys.exists()) {
-            Log.w(TAG, "models missing in ${dir.absolutePath} " +
-                "(det=${det.exists()} rec[$recName]=${rec.exists()} keys=${keys.exists()}) — using ML Kit")
+        if (!rec.exists() || !keys.exists()) {
+            Log.w(TAG, "rec pack incomplete in ${dir.absolutePath} " +
+                "(rec=${rec.exists()} keys=${keys.exists()}) — using ML Kit")
             return null
         }
         return try {
             PaddleOcrSession.create(det.absolutePath, rec.absolutePath, keys.absolutePath)
-                .also { session = it; Log.i(TAG, "PaddleOCR session ready (det=mobile rec=${if (useServerRec) "server" else "mobile"})") }
+                .also { sessions[recPackKey] = it; Log.i(TAG, "Paddle session ready ($recPackKey)") }
         } catch (e: Throwable) {
-            Log.e(TAG, "PaddleOcrSession.create failed — using ML Kit", e)
-            null
+            Log.e(TAG, "PaddleOcrSession.create failed ($recPackKey) — using ML Kit", e); null
         }
+    }
+
+    /** The bundled detector, copied from assets to a real file path once (MNN
+     *  loads from a path, not an asset stream). Null if the asset is missing. */
+    private fun bundledDetector(ctx: Context): File? {
+        detFile?.let { if (it.exists()) return it }
+        val out = File(ctx.noBackupFilesDir, "ocr/paddle_det.mnn").apply { parentFile?.mkdirs() }
+        if (!out.exists()) {
+            try {
+                ctx.assets.open(BUNDLED_DET_ASSET).use { input -> out.outputStream().use { input.copyTo(it) } }
+            } catch (e: Throwable) {
+                Log.e(TAG, "bundled $BUNDLED_DET_ASSET missing — using ML Kit", e); return null
+            }
+        }
+        detFile = out
+        return out
     }
 
     @Synchronized
     fun close() {
-        session?.close(); session = null; triedInit = false
+        engines.values.forEach { runCatching { it.close() } }; engines.clear()
+        sessions.values.forEach { runCatching { it.close() } }; sessions.clear()
     }
 }

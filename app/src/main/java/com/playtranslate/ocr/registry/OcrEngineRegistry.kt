@@ -27,11 +27,11 @@ class OcrEngineRegistry {
     private val engines = ConcurrentHashMap<OcrBackend, OcrEngine>()
 
     fun engineFor(sourceLang: String): OcrEngine {
-        // Debug-only engine override (Settings "OCR engine" picker: PaddleOCR /
-        // Meiki / Meiki→Manga / Paddle→Manga). OcrEngineSelection owns the chosen
-        // composite's lifecycle, so it is NOT cached here. Falls through to the
-        // production ML Kit backend when DEFAULT / unavailable.
-        OcrEngineSelection.debugEngineOrNull(sourceLang)?.let { return it }
+        // Production: the user's chosen Meiki/Paddle engine if its pack is
+        // installed — built + owned by the bridge (NOT cached here, so a selection
+        // switch never closes a live session out from under a capture). Falls
+        // through to the ML Kit floor (cached; thread-safe, no native teardown).
+        OcrModelManager.engineForSelected(sourceLang)?.let { return it }
         val profile = SourceLanguageProfiles.forCode(sourceLang)
             ?: SourceLanguageProfiles[SourceLangId.JA]
         return engines.getOrPut(profile.ocrBackend) { create(profile.ocrBackend) }
@@ -43,7 +43,7 @@ class OcrEngineRegistry {
         for (backend in snapshot) {
             engines.remove(backend)?.close()
         }
-        OcrEngineSelection.closeAll()
+        OcrModelManager.closeAll()
     }
 
     private fun create(backend: OcrBackend): OcrEngine = when (backend) {

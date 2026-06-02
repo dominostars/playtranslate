@@ -1,40 +1,45 @@
 package com.playtranslate.ocr.meiki
 
+import android.content.Context
 import android.util.Log
-import com.playtranslate.ocr.core.TextDetector
-import com.playtranslate.ocr.core.TextRecognizer
+import com.playtranslate.ocr.composites.DetectThenRecognize
+import com.playtranslate.ocr.core.OcrEngine
+import com.playtranslate.ocr.registry.OcrPackModelHelper
 import java.io.File
 
 /**
- * Debug-only provider for the Meiki engine, mirroring
- * [com.playtranslate.ocr.paddle.PaddleOcrBridge]. Owns one lazily-built
- * [MeikiSession] (det + horizontal rec + vertical rec) and exposes its
- * [TextDetector] / [TextRecognizer] building blocks so [com.playtranslate.ocr.registry.OcrEngineSelection]
- * can compose `Meiki` (Meiki det + Meiki rec) and `Meiki→Manga` (Meiki det +
- * manga-ocr rec). [modelDir] is pushed at startup from PlayTranslateApplication;
- * missing model files → null → ML Kit fallback (never crashes).
+ * Owner of Meiki's native MNN sessions (the lifecycle contract's "one owner").
+ * Builds a [DetectThenRecognize] (Meiki detector + char-detection recognizer) over
+ * a session loaded from an installed OCR pack dir, caching the engine+session by
+ * pack key. Construction is lazy + read-only (safe any thread/time); sessions are
+ * closed ONLY at the quiescent teardown via [close] — never on a selection switch
+ * — so a live capture is never torn out from under itself.
  *
- * Model files (pushed to `<externalFilesDir>/meiki_models/`): `det.mnn`,
- * `rec_horizontal.mnn`, `rec_vertical.mnn`.
+ * Pack layout (`noBackupFilesDir/models/<packKey>/`): `det.mnn`,
+ * `rec_horizontal.mnn`, `rec_vertical.mnn`. Missing files → null → ML Kit floor.
  */
 object MeikiBridge {
 
     private const val TAG = "MeikiBridge"
 
-    @Volatile var modelDir: File? = null
+    private val sessions = HashMap<String, MeikiSession>()
+    private val engines = HashMap<String, OcrEngine>()
 
-    @Volatile private var session: MeikiSession? = null
-    @Volatile private var triedInit = false
-
-    fun detectorOrNull(): TextDetector? = sessionOrNull()?.let { MeikiDetector(it) }
-    fun recognizerOrNull(): TextRecognizer? = sessionOrNull()?.let { MeikiRecognizer(it) }
-
+    /** Cached engine for [packKey], or null if its pack files are absent. */
     @Synchronized
-    private fun sessionOrNull(): MeikiSession? {
-        session?.let { return it }
-        if (triedInit) return null
-        triedInit = true
-        val dir = modelDir ?: run { Log.w(TAG, "no modelDir pushed"); return null }
+    fun engine(ctx: Context, packKey: String): OcrEngine? {
+        engines[packKey]?.let { return it }
+        val s = sessionFor(ctx, packKey) ?: return null
+        return DetectThenRecognize(MeikiDetector(s), MeikiRecognizer(s)).also { engines[packKey] = it }
+    }
+
+    /** True if a live session for [packKey] is held (sweep must not delete its files). */
+    @Synchronized
+    fun isLoaded(packKey: String): Boolean = sessions.containsKey(packKey)
+
+    private fun sessionFor(ctx: Context, packKey: String): MeikiSession? {
+        sessions[packKey]?.let { return it }
+        val dir = OcrPackModelHelper(packKey).file(ctx)
         val det = File(dir, "det.mnn")
         val recH = File(dir, "rec_horizontal.mnn")
         val recV = File(dir, "rec_vertical.mnn")
@@ -45,15 +50,17 @@ object MeikiBridge {
         }
         return try {
             MeikiSession.create(det.absolutePath, recH.absolutePath, recV.absolutePath)
-                .also { session = it; Log.i(TAG, "Meiki session ready") }
+                .also { sessions[packKey] = it; Log.i(TAG, "Meiki session ready ($packKey)") }
         } catch (e: Throwable) {
-            Log.e(TAG, "MeikiSession.create failed — using ML Kit", e)
-            null
+            Log.e(TAG, "MeikiSession.create failed ($packKey) — using ML Kit", e); null
         }
     }
 
+    /** Quiescent teardown only (no in-flight capture): close cached engines
+     *  (recognizer Mat caches) + native sessions. */
     @Synchronized
     fun close() {
-        session?.close(); session = null; triedInit = false
+        engines.values.forEach { runCatching { it.close() } }; engines.clear()
+        sessions.values.forEach { runCatching { it.close() } }; sessions.clear()
     }
 }

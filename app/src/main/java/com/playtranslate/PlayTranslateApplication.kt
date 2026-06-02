@@ -50,22 +50,13 @@ class PlayTranslateApplication : Application() {
         // value carried over from a debug build can't leak OCR text to
         // logcat in a release upgrade — release builds also hide the Debug
         // section, so there'd be no way to turn it back off.
+        // Production OCR needs an app Context to resolve installed packs (the
+        // registry + bridges are Context-free); push it before any capture runs.
+        // Selection lives in Prefs; OcrModelManager resolves the chosen engine
+        // per recognise() and the bridges own the native sessions.
+        com.playtranslate.ocr.registry.OcrModelManager.appContext = applicationContext
         if (BuildConfig.DEBUG) {
             OcrManager.instance.debugLogGroupingEnabled = Prefs(this).debugLogGrouping
-            // Wire the experimental on-device OCR engines: push each bridge's
-            // model dir (we have a Context here; the bridges are Context-free) +
-            // the selected engine. Models are hand-pushed via adb to these dirs;
-            // absent → the registry silently falls back to ML Kit. Debug-gated so
-            // a stale non-DEFAULT selection can't ride into a release build.
-            com.playtranslate.ocr.paddle.PaddleOcrBridge.modelDir =
-                java.io.File(getExternalFilesDir(null), "paddle_models")
-            com.playtranslate.ocr.paddle.PaddleOcrBridge.useServerRec = Prefs(this).debugPaddleServerRec
-            com.playtranslate.ocr.paddle.PaddleOcrBridge.dumpCrops = Prefs(this).debugPaddleDumpCrops
-            com.playtranslate.ocr.meiki.MeikiBridge.modelDir =
-                java.io.File(getExternalFilesDir(null), "meiki_models")
-            com.playtranslate.ocr.mangaocr.MangaOcrBridge.modelDir =
-                java.io.File(getExternalFilesDir(null), "mangaocr_models")
-            com.playtranslate.ocr.registry.OcrEngineSelection.engine = Prefs(this).debugOcrEngine
         }
         // Derive the capture backend from the granted permissions (the
         // accessibility service vs "display over other apps").

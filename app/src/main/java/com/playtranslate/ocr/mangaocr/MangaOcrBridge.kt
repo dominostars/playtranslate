@@ -5,15 +5,16 @@ import com.playtranslate.ocr.core.TextRecognizer
 import java.io.File
 
 /**
- * Debug-only provider for the manga-ocr recognizer, mirroring
- * [com.playtranslate.ocr.paddle.PaddleOcrBridge]. Owns one lazily-built
- * [MangaOcrSession] (encoder + decoder + vocab) and exposes its [TextRecognizer]
- * so [com.playtranslate.ocr.registry.OcrEngineSelection] can compose it with a
- * detector (`Meiki→Manga` or `Paddle→Manga`). [modelDir] is pushed at startup;
- * missing model files → null → ML Kit fallback (never crashes).
+ * Provider for the manga-ocr recognizer (bake-off artifact). Owns one lazily-built
+ * [MangaOcrSession] (encoder + decoder + vocab) and exposes its [TextRecognizer].
+ * [modelDir] is set by the caller; missing model files → null → ML Kit fallback
+ * (never crashes).
  *
- * Model files (pushed to `<externalFilesDir>/mangaocr_models/`): `encoder.mnn`,
- * `decoder.mnn`, `vocab.txt`.
+ * NOT wired into production: manga-ocr is out of scope (see the approved OCR-engine
+ * plan), so nothing currently calls this. Kept for the documented vertical-text
+ * bake-off; safe to delete once the bake-off doc no longer needs a live reference.
+ *
+ * Model files: `encoder.mnn`, `decoder.mnn`, `vocab.txt` under [modelDir].
  */
 object MangaOcrBridge {
 
