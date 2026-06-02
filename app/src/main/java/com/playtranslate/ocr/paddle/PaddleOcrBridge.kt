@@ -1,24 +1,22 @@
 package com.playtranslate.ocr.paddle
 
-import android.os.Process
 import android.util.Log
 import com.playtranslate.ocr.composites.DetectThenRecognize
 import com.playtranslate.ocr.core.OcrEngine
+import com.playtranslate.ocr.core.TextDetector
 import java.io.File
 
 /**
- * Debug-only provider that lets the OCR pipeline run the experimental PaddleOCR
- * PP-OCRv5 mobile backend instead of ML Kit, behind the `Prefs.debugUsePaddleOcr`
- * toggle. NOT a shipped feature — see docs/paddleocr-spike-report.md (verdict:
- * NO-GO for production).
+ * Debug-only provider for the experimental PaddleOCR PP-OCRv5 backend, selected
+ * via the Settings "OCR engine" picker. NOT a shipped feature — see
+ * docs/paddleocr-spike-report.md (verdict: NO-GO for production).
  *
- * Exposes [engineOrNull]: when active (toggle on, arm64, JA source, models
- * present) it returns a [DetectThenRecognize] engine ([PaddleDetector] +
- * [PaddleRecognizer]) over a shared [PaddleOcrSession]. That engine flows
- * through the SAME OcrPipeline + shared LayoutAnalyzer as any other engine — so
- * PaddleOCR now gets real paragraph grouping (no bespoke result assembly), the
- * architectural payoff of the refactor. [OcrEngineRegistry] consults this before
- * falling back to ML Kit; if anything is missing it returns null (never a crash).
+ * Exposes building blocks for [com.playtranslate.ocr.registry.OcrEngineSelection]:
+ * [engineOrNull] (full [DetectThenRecognize] = [PaddleDetector] + [PaddleRecognizer]
+ * over a shared [PaddleOcrSession]) and [detectorOrNull] (the detector alone, for
+ * the `Paddle→Manga` combination). arm64 / JA / which-engine-is-selected gating
+ * lives in [com.playtranslate.ocr.registry.OcrEngineSelection]; here we only build
+ * from the session and return null when models are absent (never a crash).
  *
  * ## Lifecycle
  * Process-wide singleton mirroring [com.playtranslate.OcrManager]'s Context-free
@@ -40,10 +38,6 @@ object PaddleOcrBridge {
             if (dumpCrops) PaddleOcrSession.dumpDir = value?.parentFile?.let { File(it, "paddle_crops") }
         }
 
-    /** Mirrors Prefs.debugUsePaddleOcr; pushed at startup + on the Settings
-     *  toggle, same idiom as OcrManager.debugLogGroupingEnabled. */
-    @Volatile var enabled: Boolean = false
-
     /** When true, use the SERVER recognizer (rec_server.mnn) instead of mobile,
      *  keeping the mobile DETECTOR fixed — isolates "does the bigger recognizer
      *  read small kana better?" from detection differences. Debug A/B toggle;
@@ -53,7 +47,8 @@ object PaddleOcrBridge {
             if (field != value) {
                 field = value
                 // Force a rebuild on next use with the new recognizer tier.
-                synchronized(this) { session?.close(); session = null; engine = null; triedInit = false }
+                // (OcrEngineSelection.invalidate() drops its cached composite.)
+                synchronized(this) { session?.close(); session = null; triedInit = false }
             }
         }
 
@@ -67,30 +62,20 @@ object PaddleOcrBridge {
                 if (value) modelDir?.parentFile?.let { File(it, "paddle_crops") } else null
         }
 
-    private val arm64: Boolean by lazy { Process.is64Bit() }
-
     @Volatile private var session: PaddleOcrSession? = null
-    @Volatile private var engine: OcrEngine? = null
     @Volatile private var triedInit = false
 
-    /** True only when the toggle is on, the device is arm64, and the JA source
-     *  is selected. Cheap pre-check before touching the (lazy) session. */
-    private fun activeFor(sourceLang: String): Boolean =
-        enabled && arm64 && sourceLang.equals("ja", ignoreCase = true)
+    /** PaddleOCR detector building block (for the `Paddle→Manga` combination), or
+     *  null when models are absent. Gating lives in [OcrEngineSelection]. */
+    fun detectorOrNull(): TextDetector? = sessionOrNull()?.let { PaddleDetector(it) }
 
     /**
-     * The PaddleOCR engine for [sourceLang], or null to fall back to ML Kit.
-     * Returns a [DetectThenRecognize] over the shared session when the debug
-     * path is active and models are present; cached alongside the session.
+     * The full PaddleOCR engine ([DetectThenRecognize] over the shared session),
+     * or null when models are absent. Gating (arm64/JA/selected engine) lives in
+     * [OcrEngineSelection], which also caches the result.
      */
-    fun engineOrNull(sourceLang: String): OcrEngine? {
-        if (!activeFor(sourceLang)) return null
-        val s = sessionOrNull() ?: return null
-        engine?.let { return it }
-        return synchronized(this) {
-            engine ?: DetectThenRecognize(PaddleDetector(s), PaddleRecognizer(s)).also { engine = it }
-        }
-    }
+    fun engineOrNull(): OcrEngine? =
+        sessionOrNull()?.let { DetectThenRecognize(PaddleDetector(it), PaddleRecognizer(it)) }
 
     /** Lazily build (once) the PP session from the pushed model dir. Returns
      *  null and logs if the dir/models are missing — caller falls back. */
@@ -118,5 +103,10 @@ object PaddleOcrBridge {
             Log.e(TAG, "PaddleOcrSession.create failed — using ML Kit", e)
             null
         }
+    }
+
+    @Synchronized
+    fun close() {
+        session?.close(); session = null; triedInit = false
     }
 }

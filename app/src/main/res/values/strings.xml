@@ -2055,7 +2055,15 @@
     <string name="settings_debug_log_pinhole">Log live-mode pinhole metrics</string>
     <string name="settings_debug_save_ocr_seed">Save OCR captures as seeds</string>
     <string name="settings_debug_log_grouping">Log OCR grouping decisions</string>
-    <string name="settings_debug_use_paddle_ocr">Use PaddleOCR (experimental, JA)</string>
+    <string name="settings_debug_ocr_engine" translatable="false">OCR engine: %1$s</string>
+    <string name="settings_debug_ocr_engine_title" translatable="false">OCR engine (experimental, JA)</string>
+    <string-array name="debug_ocr_engine_labels" translatable="false">
+        <item>ML Kit (default)</item>
+        <item>PaddleOCR</item>
+        <item>Meiki</item>
+        <item>Meiki → manga-ocr</item>
+        <item>Paddle → manga-ocr</item>
+    </string-array>
     <string name="settings_debug_paddle_server_rec">PaddleOCR: server recognizer (A/B)</string>
     <string name="settings_debug_paddle_dump_crops">PaddleOCR: dump rec crops (debug)</string>
     <string name="settings_debug_force_crash_title">Force crash</string>

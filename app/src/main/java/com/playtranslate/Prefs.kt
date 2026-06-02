@@ -6,6 +6,7 @@ import android.hardware.display.DisplayManager
 import com.playtranslate.BuildConfig
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.ocr.registry.DebugOcrEngine
 import com.playtranslate.ui.AccentColor
 import com.playtranslate.ui.ThemeMode
 import org.json.JSONArray
@@ -781,16 +782,19 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_DEBUG_LOG_GROUPING, false)
         set(v) = sp.edit { putBoolean(KEY_DEBUG_LOG_GROUPING, v) }
 
-    /** Debug-only: route Japanese OCR through the experimental PaddleOCR
-     *  PP-OCRv5 mobile backend instead of ML Kit. Requires the model files
-     *  pushed to `<externalFilesDir>/paddle_models/` and an arm64 device;
-     *  falls back to ML Kit silently if either is missing. Not a shipped
-     *  feature — see docs/paddleocr-spike-report.md (verdict: NO-GO). */
-    var debugUsePaddleOcr: Boolean
-        get() = sp.getBoolean(KEY_DEBUG_USE_PADDLE_OCR, false)
-        set(v) = sp.edit { putBoolean(KEY_DEBUG_USE_PADDLE_OCR, v) }
+    /** Debug-only: route Japanese OCR through an experimental on-device engine
+     *  (PaddleOCR / Meiki / Meiki→manga-ocr / Paddle→manga-ocr) instead of ML Kit,
+     *  chosen via the Settings "OCR engine" picker. Each requires its model files
+     *  under `<externalFilesDir>/{paddle,meiki,mangaocr}_models/` and an arm64
+     *  device; falls back to ML Kit silently if anything is missing. Not shipped —
+     *  see docs/vertical-recognizer-bakeoff-results.md. */
+    var debugOcrEngine: DebugOcrEngine
+        get() = runCatching {
+            DebugOcrEngine.valueOf(sp.getString(KEY_DEBUG_OCR_ENGINE, null) ?: "")
+        }.getOrDefault(DebugOcrEngine.DEFAULT)
+        set(v) = sp.edit { putString(KEY_DEBUG_OCR_ENGINE, v.name) }
 
-    /** Debug-only A/B: when [debugUsePaddleOcr] is on, use PP's SERVER
+    /** Debug-only A/B: when [debugOcrEngine] selects a PaddleOCR engine, use PP's SERVER
      *  recognizer instead of mobile (detector stays mobile). Tests whether the
      *  larger recognizer reads small kana / dakuten better. Requires
      *  rec_server.mnn pushed alongside the mobile models. */
@@ -953,7 +957,7 @@ class Prefs(context: Context) {
         private const val KEY_DEBUG_LIVE_MODE                = "debug_live_mode"
         private const val KEY_DEBUG_SAVE_OCR_SEED            = "debug_save_ocr_seed"
         private const val KEY_DEBUG_LOG_GROUPING             = "debug_log_grouping"
-        private const val KEY_DEBUG_USE_PADDLE_OCR           = "debug_use_paddle_ocr"
+        private const val KEY_DEBUG_OCR_ENGINE               = "debug_ocr_engine"
         private const val KEY_DEBUG_PADDLE_SERVER_REC        = "debug_paddle_server_rec"
         private const val KEY_DEBUG_PADDLE_DUMP_CROPS         = "debug_paddle_dump_crops"
         private const val KEY_HOTKEY_TRANSLATION           = "hotkey_translation"

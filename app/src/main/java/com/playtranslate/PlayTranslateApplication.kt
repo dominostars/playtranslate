@@ -52,16 +52,20 @@ class PlayTranslateApplication : Application() {
         // section, so there'd be no way to turn it back off.
         if (BuildConfig.DEBUG) {
             OcrManager.instance.debugLogGroupingEnabled = Prefs(this).debugLogGrouping
-            // Wire the experimental PaddleOCR backend: push the model dir (we
-            // have a Context here; the bridge is Context-free) + the toggle
-            // state. Models are hand-pushed via adb to this dir; absent → the
-            // bridge silently falls back to ML Kit. Debug-gated so a stale
-            // `true` can't ride into a release build.
+            // Wire the experimental on-device OCR engines: push each bridge's
+            // model dir (we have a Context here; the bridges are Context-free) +
+            // the selected engine. Models are hand-pushed via adb to these dirs;
+            // absent → the registry silently falls back to ML Kit. Debug-gated so
+            // a stale non-DEFAULT selection can't ride into a release build.
             com.playtranslate.ocr.paddle.PaddleOcrBridge.modelDir =
                 java.io.File(getExternalFilesDir(null), "paddle_models")
-            com.playtranslate.ocr.paddle.PaddleOcrBridge.enabled = Prefs(this).debugUsePaddleOcr
             com.playtranslate.ocr.paddle.PaddleOcrBridge.useServerRec = Prefs(this).debugPaddleServerRec
             com.playtranslate.ocr.paddle.PaddleOcrBridge.dumpCrops = Prefs(this).debugPaddleDumpCrops
+            com.playtranslate.ocr.meiki.MeikiBridge.modelDir =
+                java.io.File(getExternalFilesDir(null), "meiki_models")
+            com.playtranslate.ocr.mangaocr.MangaOcrBridge.modelDir =
+                java.io.File(getExternalFilesDir(null), "mangaocr_models")
+            com.playtranslate.ocr.registry.OcrEngineSelection.engine = Prefs(this).debugOcrEngine
         }
         // Derive the capture backend from the granted permissions (the
         // accessibility service vs "display over other apps").

@@ -3030,21 +3030,36 @@ class SettingsRenderer(
         }
         rowLogGrouping.setOnClickListener { switchLogGrouping.toggle() }
 
-        // Use PaddleOCR (experimental, JA) — debug-only OCR-engine swap.
+        // OCR engine picker (experimental, JA) — debug-only swap among ML Kit /
+        // PaddleOCR / Meiki / Meiki→manga-ocr / Paddle→manga-ocr. Reuses the old
+        // PaddleOCR row (switch hidden, row taps open a single-choice dialog).
         // Hidden on 32-bit devices: the :mnn / OpenCV native path is arm64-only.
-        val rowUsePaddleOcr = root.findViewById<View>(R.id.rowUsePaddleOcr)
+        val rowOcrEngine = root.findViewById<View>(R.id.rowUsePaddleOcr)
         if (!android.os.Process.is64Bit()) {
-            rowUsePaddleOcr.isVisible = false
+            rowOcrEngine.isVisible = false
         } else {
-            val switchPaddleOcr = rowUsePaddleOcr.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-            rowUsePaddleOcr.findViewById<TextView>(R.id.tvRowTitle).text =
-                ctx.getString(R.string.settings_debug_use_paddle_ocr)
-            switchPaddleOcr.isChecked = prefs.debugUsePaddleOcr
-            switchPaddleOcr.setOnCheckedChangeListener { _, checked ->
-                prefs.debugUsePaddleOcr = checked
-                com.playtranslate.ocr.paddle.PaddleOcrBridge.enabled = checked
+            rowOcrEngine.findViewById<MaterialSwitch>(R.id.switchRowToggle).isVisible = false
+            val engineTitle = rowOcrEngine.findViewById<TextView>(R.id.tvRowTitle)
+            val engineLabels = ctx.resources.getStringArray(R.array.debug_ocr_engine_labels)
+            val engineValues = com.playtranslate.ocr.registry.DebugOcrEngine.values()
+            fun renderEngineTitle() {
+                engineTitle.text = ctx.getString(
+                    R.string.settings_debug_ocr_engine, engineLabels[prefs.debugOcrEngine.ordinal])
             }
-            rowUsePaddleOcr.setOnClickListener { switchPaddleOcr.toggle() }
+            renderEngineTitle()
+            rowOcrEngine.setOnClickListener {
+                com.google.android.material.dialog.MaterialAlertDialogBuilder(ctx)
+                    .setTitle(R.string.settings_debug_ocr_engine_title)
+                    .setSingleChoiceItems(engineLabels, prefs.debugOcrEngine.ordinal) { dialog, which ->
+                        val sel = engineValues[which]
+                        prefs.debugOcrEngine = sel
+                        com.playtranslate.ocr.registry.OcrEngineSelection.engine = sel
+                        renderEngineTitle()
+                        dialog.dismiss()
+                    }
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show()
+            }
         }
 
         // PaddleOCR: server recognizer A/B (only meaningful when PaddleOCR is on).
@@ -3060,6 +3075,7 @@ class SettingsRenderer(
             switchServerRec.setOnCheckedChangeListener { _, checked ->
                 prefs.debugPaddleServerRec = checked
                 com.playtranslate.ocr.paddle.PaddleOcrBridge.useServerRec = checked
+                com.playtranslate.ocr.registry.OcrEngineSelection.invalidate()
             }
             rowPaddleServerRec.setOnClickListener { switchServerRec.toggle() }
         }
