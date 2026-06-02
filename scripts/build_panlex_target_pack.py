@@ -36,6 +36,12 @@ import zipfile
 from collections import defaultdict
 from pathlib import Path
 
+# Shared source-lang code normalization. APP_TO_PANLEX below is still needed
+# for file-naming (which TSV to load for which target), but storage-side
+# normalization (3-letter → 2-letter where mappable, umbrella collapse, etc.)
+# delegates to the shared module so all three builders agree.
+from iso_codes import normalize_lang_code
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
@@ -109,10 +115,13 @@ def load_meaning_to_glosses(path: Path) -> dict[int, list[str]]:
     return out
 
 
-def app_lang_for(panlex_code: str) -> str:
-    """Map 3-letter PanLex code to app's 2-letter code if known, else
-    keep the 3-letter code (still a valid string for source_lang)."""
-    return PANLEX_TO_APP.get(panlex_code, panlex_code)
+def app_lang_for(panlex_code: str) -> str | None:
+    """Map a PanLex 3-letter file-stem code to the canonical source_lang the
+    runtime can query (2-letter where possible). Delegates to
+    `iso_codes.normalize_lang_code` so all three builders use the same table.
+
+    Returns None for invalid codes (caller should skip the row)."""
+    return normalize_lang_code(panlex_code)
 
 
 def sha256(p: Path) -> str:
@@ -173,6 +182,9 @@ def build(targets_app: list[str], output_dir: Path, pack_version: int = 1) -> di
         # Skip if this file is itself a target (don't pair lang with itself)
         # but still useful as a SOURCE for OTHER targets.
         src_app = app_lang_for(plx_code)
+        if src_app is None:
+            print(f"  [{i+1}/{len(source_files)}] {plx_code}: invalid code, skipping")
+            continue
         try:
             src_idx = load_meaning_to_glosses(sf)
         except Exception as e:

@@ -56,6 +56,13 @@ def is_garbage_written(text: str) -> bool:
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
+# Shared source-lang code normalization. APP_TO_PANLEX below is still needed
+# for file-naming + self-pair skip; storage-side normalization delegates to
+# the shared module so all three builders agree (this builder previously
+# had a smaller table than build_panlex_target_pack.py, leaving target-de
+# with 30% unreachable 3-letter codes).
+from iso_codes import normalize_lang_code
+
 ROOT = Path(__file__).resolve().parent.parent
 PANLEX_DIR = ROOT / "local" / "panlex-spike"
 
@@ -102,8 +109,11 @@ def load_meaning_to_glosses(path: Path) -> dict[int, list[str]]:
     return out
 
 
-def app_lang_for(panlex_code: str) -> str:
-    return PANLEX_TO_APP.get(panlex_code, panlex_code)
+def app_lang_for(panlex_code: str) -> str | None:
+    """Map a PanLex 3-letter code to the canonical source_lang. Delegates to
+    the shared normalization table so this builder's storage codes don't drift
+    from build_panlex_target_pack.py. Returns None for invalid codes."""
+    return normalize_lang_code(panlex_code)
 
 
 def sha256(p: Path) -> str:
@@ -199,6 +209,8 @@ def build_hybrid(target_app: str, kaikki_pack: Path, output_dir: Path,
             continue
 
         src_app = app_lang_for(plx_code)
+        if src_app is None:
+            continue
         # Group source headwords by their meanings
         written_to_meanings: dict[str, list[int]] = defaultdict(list)
         for m in shared:

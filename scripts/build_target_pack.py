@@ -78,6 +78,10 @@ POS_ABBREV = {
 # and build_latin_dict.py can't drift on what "redirect" / "content POS"
 # means — a bug hidden by that drift was what prompted this refactor.
 from wiktionary_filters import WIKT_EXCLUDED_POS, WIKT_REDIRECT_KEYS
+# Shared source-lang code normalization (ISO 639-3 → 639-1, umbrella collapse,
+# whitespace stripping, non-ASCII rejection). See scripts/iso_codes.py for the
+# bug class this prevents.
+from iso_codes import normalize_lang_code
 
 
 def shorten_pos(pos_text: str) -> str:
@@ -402,9 +406,12 @@ def parse_wiktionary_dir(
                 if is_redirect:
                     continue
 
-                # Determine source language from the entry
-                source_lang = entry.get("lang_code", "").lower()
-                if not source_lang or len(source_lang) > 3:
+                # Determine source language from the entry. normalize_lang_code
+                # strips whitespace, rejects non-ASCII, collapses 3-letter
+                # variants (cmn→zh, nob→no, etc.) to the umbrella our source
+                # packs use. Returns None for invalid codes, which we skip.
+                source_lang = normalize_lang_code(entry.get("lang_code"))
+                if not source_lang:
                     continue
 
                 # Skip if already covered by primary source
