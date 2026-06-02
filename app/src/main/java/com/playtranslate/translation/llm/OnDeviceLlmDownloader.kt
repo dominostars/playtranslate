@@ -15,10 +15,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileInputStream
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
-import java.security.MessageDigest
 import kotlin.coroutines.coroutineContext
 
 /**
@@ -190,7 +186,7 @@ class OnDeviceLlmDownloader(
             )
         }
 
-        val actualSha = computeSha256(partial)
+        val actualSha = PackIntegrity.sha256Hex(partial)
         if (!actualSha.equals(expectedSha, ignoreCase = true)) {
             partial.delete()
             return@withContext Outcome.Failed(
@@ -217,19 +213,9 @@ class OnDeviceLlmDownloader(
      * (caller short-circuits with the returned outcome).
      */
     private fun commitFileSwap(partial: File, finalFile: File): Outcome.Failed? = try {
-        // Atomic replace: rename(2) either succeeds atomically or leaves both
-        // paths untouched. REPLACE_EXISTING covers in-place model upgrades
-        // (catalog ships v2 at the same filename). On failure, the verified
-        // partial is preserved for a retry AND any previous install at
-        // finalFile keeps serving — no path where we delete one and fail to
-        // land the other. Both paths are under noBackupFilesDir (same FS), so
-        // ATOMIC_MOVE is honored by ext4/f2fs without falling back.
-        Files.move(
-            partial.toPath(),
-            finalFile.toPath(),
-            StandardCopyOption.ATOMIC_MOVE,
-            StandardCopyOption.REPLACE_EXISTING,
-        )
+        // On failure the verified partial is preserved for a retry AND any previous
+        // install at finalFile keeps serving (both under noBackupFilesDir, same FS).
+        PackIntegrity.atomicReplace(partial, finalFile)
         null
     } catch (e: Exception) {
         Log.e(TAG, "Failed to commit verified model to ${finalFile.absolutePath}", e)
@@ -409,7 +395,7 @@ class OnDeviceLlmDownloader(
             // case (SHA mismatch → delete stale, fall through to fresh
             // download below).
             if (verifiedPath.exists() && verifiedPath.length() == f.size) {
-                val priorSha = computeSha256(verifiedPath)
+                val priorSha = PackIntegrity.sha256Hex(verifiedPath)
                 if (priorSha.equals(f.sha256, ignoreCase = true)) {
                     Log.i(TAG, "skip-if-verified: ${f.path} (${f.size} bytes, SHA matched)")
                     committedBytes += f.size
@@ -476,7 +462,7 @@ class OnDeviceLlmDownloader(
                     "MultiFile size mismatch on ${f.path} (got $actualSize, expected ${f.size})",
                 )
             }
-            val actualSha = computeSha256(payload)
+            val actualSha = PackIntegrity.sha256Hex(payload)
             if (!actualSha.equals(f.sha256, ignoreCase = true)) {
                 payload.delete()
                 return Outcome.Failed(
@@ -486,15 +472,9 @@ class OnDeviceLlmDownloader(
 
             // Atomic rename inside tmpDir. After this rename the file is
             // "verified"; the skip-if-verified branch above trusts it on
-            // re-entry. Same atomic-rename properties as commitFileSwap —
-            // either succeeds atomically or leaves both paths untouched.
+            // re-entry. See PackIntegrity.atomicReplace.
             try {
-                Files.move(
-                    payload.toPath(),
-                    verifiedPath.toPath(),
-                    StandardCopyOption.ATOMIC_MOVE,
-                    StandardCopyOption.REPLACE_EXISTING,
-                )
+                PackIntegrity.atomicReplace(payload, verifiedPath)
             } catch (e: Exception) {
                 return Outcome.Failed(
                     "Failed to commit ${f.path} inside tmpDir: ${e.message ?: e.javaClass.simpleName}",
@@ -660,20 +640,6 @@ class OnDeviceLlmDownloader(
      *   transports=[VPN, …] → a VPN is masking the underlying transport.
      */
     fun isCurrentNetworkMetered(): Boolean = isMetered(context)
-
-    private suspend fun computeSha256(file: File): String = withContext(Dispatchers.IO) {
-        val md = MessageDigest.getInstance("SHA-256")
-        FileInputStream(file).use { input ->
-            val buf = ByteArray(64 * 1024)
-            while (true) {
-                coroutineContext.ensureActive()
-                val n = input.read(buf)
-                if (n <= 0) break
-                md.update(buf, 0, n)
-            }
-        }
-        md.digest().joinToString("") { "%02x".format(it) }
-    }
 
     companion object {
         private const val TAG = "OnDeviceLlmDownloader"

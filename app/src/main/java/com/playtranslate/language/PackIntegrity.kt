@@ -1,10 +1,14 @@
 package com.playtranslate.language
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.zip.ZipInputStream
+import kotlin.coroutines.coroutineContext
 
 /**
  * File integrity helpers for language pack installs.
@@ -18,18 +22,42 @@ import java.util.zip.ZipInputStream
  */
 object PackIntegrity {
 
-    /** Returns the lowercase hex SHA-256 of [file]'s contents. */
+    /** Returns the lowercase hex SHA-256 of [file]'s contents. Streams so the whole
+     *  file never sits in memory (packs/models are tens of MB to multi-GB), and is
+     *  cancellable mid-stream so a user cancel during hashing is honored promptly. */
     suspend fun sha256Hex(file: File): String = withContext(Dispatchers.IO) {
         val md = MessageDigest.getInstance("SHA-256")
         file.inputStream().buffered().use { input ->
             val buf = ByteArray(64 * 1024)
             while (true) {
+                coroutineContext.ensureActive()
                 val n = input.read(buf)
                 if (n <= 0) break
                 md.update(buf, 0, n)
             }
         }
         md.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * Atomically replace [to] with [from] on the same filesystem: `rename(2)`
+     * either succeeds wholly or leaves both paths untouched, and `REPLACE_EXISTING`
+     * covers in-place upgrades (a new version landing at the same name). The single
+     * commit primitive for installing a fully-written/verified file — the model
+     * downloader's FileSwap + MultiFile strategies and the bundled OCR detector copy
+     * all land through here. [from] and [to] must be on the same filesystem (e.g.
+     * both under `noBackupFilesDir`) so `ATOMIC_MOVE` is honored by ext4/f2fs
+     * without a silent copy fallback. Throws on failure (caller decides how to
+     * surface it); on failure both paths stay intact, so a previous install at [to]
+     * keeps serving and [from] survives for a retry.
+     */
+    fun atomicReplace(from: File, to: File) {
+        Files.move(
+            from.toPath(),
+            to.toPath(),
+            StandardCopyOption.ATOMIC_MOVE,
+            StandardCopyOption.REPLACE_EXISTING,
+        )
     }
 
     /**

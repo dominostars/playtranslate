@@ -2,12 +2,11 @@ package com.playtranslate.ocr.paddle
 
 import android.content.Context
 import android.util.Log
+import com.playtranslate.language.PackIntegrity
 import com.playtranslate.ocr.composites.DetectThenRecognize
 import com.playtranslate.ocr.core.OcrEngine
 import com.playtranslate.ocr.registry.OcrPackModelHelper
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 
 /**
  * Owner of PaddleOCR's native MNN sessions (the lifecycle contract's "one
@@ -74,9 +73,8 @@ object PaddleOcrBridge {
     }
 
     /** Stream the bundled detector asset into a sibling `.tmp`, then atomic-rename
-     *  onto [out] — the same write-temp-then-`Files.move(ATOMIC_MOVE)` commit
-     *  discipline every DOWNLOADED model file gets via
-     *  `OnDeviceLlmDownloader.commitFileSwap`. A process death / storage-full /
+     *  onto [out] via [PackIntegrity.atomicReplace] — the same commit primitive
+     *  every DOWNLOADED model file lands through. A process death / storage-full /
      *  mid-copy throw leaves only the `.tmp` (deleted here), so [out] never holds a
      *  truncated detector that the existence check would later trust and feed to a
      *  failing `PaddleOcrSession.create` — which would silently fall back to ML Kit
@@ -88,10 +86,7 @@ object PaddleOcrBridge {
         val tmp = File(out.parentFile, "paddle_det.mnn.tmp")
         return try {
             ctx.assets.open(BUNDLED_DET_ASSET).use { input -> tmp.outputStream().use { input.copyTo(it) } }
-            Files.move(
-                tmp.toPath(), out.toPath(),
-                StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING,
-            )
+            PackIntegrity.atomicReplace(tmp, out)
             true
         } catch (e: Throwable) {
             tmp.delete()
