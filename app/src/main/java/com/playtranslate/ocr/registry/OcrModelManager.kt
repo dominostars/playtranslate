@@ -103,16 +103,25 @@ object OcrModelManager {
         }
     }
 
-    /** Set [id]'s OCR backend to its top priority IF unset, then download it
-     *  best-effort. Idempotent; called from the user-intent language-consolidation
-     *  flow (Phase 3). Existing languages with a stored choice are untouched. */
-    suspend fun ensureDefaultForSource(ctx: Context, id: SourceLangId) {
+    /** Record [id]'s default OCR backend (top priority) IF the user hasn't chosen
+     *  one. Cheap + synchronous; safe on any thread/network. Existing languages
+     *  with a stored choice are untouched. */
+    fun setDefaultBackendIfUnset(ctx: Context, id: SourceLangId) {
         val prefs = Prefs(ctx)
         if (prefs.ocrBackendToken(id) == null) {
             SourceLanguageProfiles[id].ocrBackends.firstOrNull()?.let {
                 prefs.setOcrBackendToken(id, it.selectionToken)
             }
         }
+    }
+
+    /** Auto-provision [id]'s default OCR engine from the language-consolidation
+     *  flow: record the default (always) + best-effort download the required packs,
+     *  **Wi-Fi-gated** (metered → token set, download deferred to the next Settings
+     *  visit / unmetered consolidation). Idempotent; ML Kit floor until packs land. */
+    suspend fun ensureDefaultForSource(ctx: Context, id: SourceLangId) {
+        setDefaultBackendIfUnset(ctx, id)
+        if (OnDeviceLlmDownloader.isMetered(ctx)) return
         applyDownloads(ctx)
     }
 

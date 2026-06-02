@@ -40,6 +40,7 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.card.MaterialCardView
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.playtranslate.translation.OfflineModelReclaimer
+import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.DownloadProgress
@@ -49,6 +50,7 @@ import com.playtranslate.language.PreloadResult
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.translation.llm.humanSize
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.applyEdgeToEdge
@@ -258,6 +260,14 @@ class LanguageSetupActivity : AppCompatActivity() {
         }
         val onDone: () -> Unit = {
             Prefs(this).sourceLang = id.code
+            // Auto-provision this source's default OCR engine: record the choice
+            // now (ML Kit floor covers OCR until the pack lands) + best-effort
+            // download it on the app scope — survives finish(), Wi-Fi-gated and
+            // non-blocking so it never holds up setup completion.
+            OcrModelManager.setDefaultBackendIfUnset(applicationContext, id)
+            (applicationContext as PlayTranslateApplication).appScope.launch {
+                runCatching { OcrModelManager.ensureDefaultForSource(applicationContext, id) }
+            }
             if (!mlKitReady) {
                 Toast.makeText(
                     this, R.string.lang_setup_offline_model_unavailable, Toast.LENGTH_LONG,
@@ -785,6 +795,13 @@ class LanguageSetupActivity : AppCompatActivity() {
                     applicationContext,
                     SourceLanguageProfiles[id].translationCode,
                 )
+                // Forget the removed language(s)' chosen OCR engine + reclaim any
+                // OCR pack no remaining language needs. The pack is already gone
+                // from installedCodes (uninstall ran above), so it's an orphan;
+                // sweepOrphans self-guards — a pack with a live capture session is
+                // skipped now and swept at the next quiescent teardown.
+                sources.forEach { Prefs(applicationContext).clearOcrBackendToken(it) }
+                withContext(Dispatchers.IO) { OcrModelManager.sweepOrphans(applicationContext) }
             }
             showCurrentPage()
         }

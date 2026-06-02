@@ -659,38 +659,7 @@ class OnDeviceLlmDownloader(
      *   transports=[CELLULAR] → actually on cellular.
      *   transports=[VPN, …] → a VPN is masking the underlying transport.
      */
-    fun isCurrentNetworkMetered(): Boolean {
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val active = cm.activeNetwork
-        if (active == null) {
-            Log.i(TAG, "Metered check: no active default network → unmetered")
-            return false
-        }
-        val caps = cm.getNetworkCapabilities(active)
-        if (caps == null) {
-            Log.i(TAG, "Metered check: active network but no NetworkCapabilities → unmetered")
-            return false
-        }
-        val transports = buildList {
-            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) add("WIFI")
-            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) add("CELLULAR")
-            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) add("ETHERNET")
-            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) add("VPN")
-            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH)) add("BLUETOOTH")
-        }
-        val notMetered = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
-        val tempNotMetered = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED)
-        val notVpn = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-        val notRoaming = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING)
-        val metered = !notMetered
-        Log.i(
-            TAG,
-            "Metered check: transports=$transports NOT_METERED=$notMetered " +
-                "TEMP_NOT_METERED=$tempNotMetered NOT_VPN=$notVpn NOT_ROAMING=$notRoaming " +
-                "→ isMetered=$metered",
-        )
-        return metered
-    }
+    fun isCurrentNetworkMetered(): Boolean = isMetered(context)
 
     private suspend fun computeSha256(file: File): String = withContext(Dispatchers.IO) {
         val md = MessageDigest.getInstance("SHA-256")
@@ -713,5 +682,41 @@ class OnDeviceLlmDownloader(
          *  [runMultiFile] (per-file validation) and
          *  `HyMtModel.hasShippableCatalogEntry` (catalog visibility gate). */
         val SHA_HEX_REGEX = Regex("^[a-fA-F0-9]{64}$")
+
+        /** True if the active default network is metered — callers gate Wi-Fi-only
+         *  downloads on this. Static so a caller without a configured downloader
+         *  (e.g. OCR auto-provision) can check without constructing one. */
+        fun isMetered(context: Context): Boolean {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val active = cm.activeNetwork
+            if (active == null) {
+                Log.i(TAG, "Metered check: no active default network → unmetered")
+                return false
+            }
+            val caps = cm.getNetworkCapabilities(active)
+            if (caps == null) {
+                Log.i(TAG, "Metered check: active network but no NetworkCapabilities → unmetered")
+                return false
+            }
+            val transports = buildList {
+                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) add("WIFI")
+                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) add("CELLULAR")
+                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) add("ETHERNET")
+                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) add("VPN")
+                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH)) add("BLUETOOTH")
+            }
+            val notMetered = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+            val tempNotMetered = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED)
+            val notVpn = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            val notRoaming = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING)
+            val metered = !notMetered
+            Log.i(
+                TAG,
+                "Metered check: transports=$transports NOT_METERED=$notMetered " +
+                    "TEMP_NOT_METERED=$tempNotMetered NOT_VPN=$notVpn NOT_ROAMING=$notRoaming " +
+                    "→ isMetered=$metered",
+            )
+            return metered
+        }
     }
 }
