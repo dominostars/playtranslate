@@ -823,13 +823,12 @@ class LanguageSetupActivity : AppCompatActivity() {
                     applicationContext,
                     SourceLanguageProfiles[id].translationCode,
                 )
-                // Forget the removed language(s)' chosen OCR engine + reclaim any
-                // OCR pack no remaining language needs. The pack is already gone
-                // from installedCodes (uninstall ran above), so it's an orphan;
-                // sweepOrphans self-guards — a pack with a live capture session is
-                // skipped now and swept at the next quiescent teardown.
+                // Forget the removed language(s)' chosen OCR engine. The OCR
+                // pack(s) they leave orphaned are reclaimed at the next launch
+                // sweep (MainActivity), not here: sweepOrphans must run only at
+                // that quiescent point, never from an interactive flow that can
+                // race a live capture resolving a pack. See its kdoc.
                 sources.forEach { Prefs(applicationContext).clearOcrBackendToken(it) }
-                withContext(Dispatchers.IO) { OcrModelManager.sweepOrphans(applicationContext) }
             }
             showCurrentPage()
         }

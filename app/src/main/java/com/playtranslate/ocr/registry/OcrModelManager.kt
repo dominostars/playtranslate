@@ -201,8 +201,19 @@ object OcrModelManager {
     }
 
     /** Delete orphaned packs (installed − required) that aren't currently loaded.
-     *  MUST run only at quiescence; [isLoaded] is wired to the bridges in Phase 3
-     *  so a pack backing a live session is never deleted. */
+     *
+     *  MUST be called ONLY from the launch-time reclaim (MainActivity, after pack
+     *  upgrades/migrations settle) — never from an interactive engine-switch or
+     *  language-delete flow. Rationale: a sweep only targets NON-required packs,
+     *  and a live capture only resolves the REQUIRED pack for its language, so the
+     *  two sets are normally disjoint. They overlap only when an interactive
+     *  selection change flips a pack required→orphan WHILE a capture is mid-resolve
+     *  of it — the [engineForSelected] isInstalled-check → bridge-session-create
+     *  window that [isLoaded] cannot yet see. At launch the required set is stable
+     *  and no capture/download is in flight, so the sets stay disjoint.
+     *
+     *  [isLoaded] stays as defense-in-depth: a pack backing an already-created live
+     *  session is never deleted even if this is somehow called off-quiescence. */
     fun sweepOrphans(
         ctx: Context,
         isLoaded: (packKey: String) -> Boolean = { MeikiBridge.isLoaded(it) || PaddleOcrBridge.isLoaded(it) },

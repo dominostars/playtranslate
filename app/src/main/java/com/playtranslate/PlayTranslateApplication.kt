@@ -280,16 +280,11 @@ class PlayTranslateApplication : Application() {
         if (BuildConfig.DEBUG) return
         if (level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE) {
             OcrManager.instance.releaseAll()
-            // Reclaim OCR packs no installed language needs. releaseAll() just
-            // closed every bridge session (synchronously) so isLoaded is false
-            // for all packs → the sweep is unguarded here, which is exactly right
-            // at quiescence. IO scope: file deletes off the main thread that
-            // delivered onTrimMemory.
-            appScope.launch {
-                runCatching {
-                    com.playtranslate.ocr.registry.OcrModelManager.sweepOrphans(applicationContext)
-                }
-            }
+            // OCR pack *disk* reclaim is intentionally NOT done here: freeing disk
+            // doesn't relieve RAM pressure, and an unguarded sweep at TRIM can race
+            // a backgrounded in-flight pack download (deleting a just-installed
+            // pack). Orphaned OCR packs are swept at the next launch instead
+            // (MainActivity, post-settle quiescence) — see OcrModelManager.sweepOrphans.
             // Drop the on-device LLM model + KV cache / scratch (E2B's working
             // set is ~3.3 GB on Thor; Qwen-MNN's is ~1 GB). At
             // TRIM_MEMORY_COMPLETE we're at the top of the LRU kill list;

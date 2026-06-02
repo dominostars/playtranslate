@@ -2643,21 +2643,19 @@ class SettingsRenderer(
             .sumOf { OcrPackModelHelper(it).expectedSize(ctx) }
     }
 
-    /** Switch [id] to [backend]. Transactional: the new selection is persisted —
-     *  and the packs the switch orphans are swept — ONLY after the new backend's
-     *  packs are confirmed installed. A failed or cancelled download therefore
-     *  leaves the previously working engine and its pack intact (the user stays on
-     *  it, with a toast) instead of deleting the old pack and dropping to ML Kit. */
+    /** Switch [id] to [backend]. Transactional: the new selection is persisted ONLY
+     *  after the new backend's packs are confirmed installed, so a failed or
+     *  cancelled download leaves the previously working engine and its pack intact
+     *  (the user stays on it, with a toast). The pack(s) the switch orphans are NOT
+     *  reclaimed here — that's deferred to the launch-time sweep (MainActivity),
+     *  because an interactive [OcrModelManager.sweepOrphans] can race a live capture
+     *  mid-resolving the just-orphaned pack. See sweepOrphans' kdoc. */
     private fun applyOcrSelection(row: View, id: SourceLangId, backend: OcrBackend) {
         val needsDownload = backend.packKeys.any { !OcrPackModelHelper(it).isInstalled(ctx) }
         if (!needsDownload) {
-            // New backend's packs already on disk (or the pack-less ML Kit floor):
-            // commit now, then reclaim whatever the switch orphaned.
+            // Packs already on disk (or the pack-less ML Kit floor): commit now.
             prefs.setOcrBackendToken(id, backend.selectionToken)
-            lifecycleScope.launch {
-                withContext(Dispatchers.IO) { OcrModelManager.sweepOrphans(ctx) }
-                bindOcrRow(row, id)
-            }
+            bindOcrRow(row, id)
             return
         }
         var job: Job? = null
@@ -2695,10 +2693,11 @@ class SettingsRenderer(
                     }
                 }
             }
+            // Commit only on a confirmed install; a failed/cancelled download
+            // leaves the previous engine in place. The now-orphaned previous
+            // pack(s) are reclaimed at the next launch sweep, never here.
             if (installed) {
-                // Commit the choice, THEN reclaim the now-orphaned previous pack(s).
                 prefs.setOcrBackendToken(id, backend.selectionToken)
-                withContext(Dispatchers.IO) { OcrModelManager.sweepOrphans(ctx) }
             }
             overlay.dismiss()
             bindOcrRow(row, id)

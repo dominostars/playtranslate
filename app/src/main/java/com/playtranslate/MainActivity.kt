@@ -439,13 +439,18 @@ class MainActivity :
                 // to avoid two prompts addressing the same pack.
                 checkTargetPackMigration(skipTargetCodes)
 
-                // Reclaim ML Kit + Bergamot models orphaned by past deletions or
-                // by the recovery/upgrade uninstall paths. Runs only after pack
+                // Reclaim ML Kit + Bergamot translation models AND OCR packs
+                // orphaned by past deletions, engine switches, or the
+                // recovery/upgrade uninstall paths. Runs only after pack
                 // upgrades/migrations have settled, so it never sees a pack that's
-                // transiently uninstalled mid-upgrade. No-op once clean;
-                // fire-and-forget on IO.
+                // transiently uninstalled mid-upgrade. This launch pass is the ONLY
+                // place OCR packs are swept — doing it from the interactive engine
+                // switch / language-delete flows can race a live capture resolving
+                // the just-orphaned pack (see OcrModelManager.sweepOrphans). No-op
+                // once clean; fire-and-forget on IO.
                 lifecycleScope.launch(Dispatchers.IO) {
                     OfflineModelReclaimer.sweepOrphans(applicationContext)
+                    com.playtranslate.ocr.registry.OcrModelManager.sweepOrphans(applicationContext)
                 }
             }
         }
