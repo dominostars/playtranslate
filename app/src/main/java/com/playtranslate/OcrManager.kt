@@ -138,12 +138,12 @@ class OcrManager private constructor() {
         recipe: OcrPreprocessingRecipe = selectOcrRecipe(sourceLang)
     ): OcrResult? {
         val output = OcrPipeline.run(
-            engine = registry.engineFor(sourceLang),
+            engineProvider = { registry.engineFor(sourceLang) },
             bitmap = bitmap,
             sourceLang = sourceLang,
             screenshotWidth = screenshotWidth,
             recipe = recipe,
-            isDarkBackground = sampleIsDarkBackground(bitmap),
+            darkBackgroundProvider = { sampleIsDarkBackground(bitmap) },
             logGrouping = debugLogGroupingEnabled,
         ) ?: return null
 
@@ -168,12 +168,12 @@ class OcrManager private constructor() {
         recipe: OcrPreprocessingRecipe = selectOcrRecipe(sourceLang)
     ): List<OcrLine>? {
         val output = OcrPipeline.run(
-            engine = registry.engineFor(sourceLang),
+            engineProvider = { registry.engineFor(sourceLang) },
             bitmap = bitmap,
             sourceLang = sourceLang,
             screenshotWidth = 0,
             recipe = recipe,
-            isDarkBackground = sampleIsDarkBackground(bitmap),
+            darkBackgroundProvider = { sampleIsDarkBackground(bitmap) },
             logGrouping = debugLogGroupingEnabled,
         ) ?: return null
 

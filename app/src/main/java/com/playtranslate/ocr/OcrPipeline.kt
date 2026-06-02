@@ -32,12 +32,12 @@ object OcrPipeline {
     data class Output(val groups: List<LayoutGroup>, val scaleFactor: Float)
 
     suspend fun run(
-        engine: OcrEngine,
+        engineProvider: () -> OcrEngine,
         bitmap: Bitmap,
         sourceLang: String,
         screenshotWidth: Int,
         recipe: OcrPreprocessingRecipe,
-        isDarkBackground: Boolean,
+        darkBackgroundProvider: () -> Boolean,
         logGrouping: Boolean,
     ): Output? = withContext(Dispatchers.Default) {
         // Run the whole pass OFF the main thread: preprocessing, the engine's
@@ -47,6 +47,13 @@ object OcrPipeline {
         // never blocked Main — which masked this until a heavy engine (manga-ocr
         // on a large page) blocked Main long enough to ANR. Moving every engine
         // off Main here fixes the ANR and the (smaller) Paddle/Meiki UI jank.
+        //
+        // The engine + dark-background inputs are resolved HERE, not as eager
+        // call-site arguments: building a first-use Meiki/Paddle engine does a
+        // native MNN load + OpenCV init, and the dark-bg sample reads bitmap
+        // pixels — both would otherwise run on the Main capture coroutine.
+        val engine = engineProvider()
+        val isDarkBackground = darkBackgroundProvider()
         val selfPreprocesses = engine.capabilities.selfPreprocesses
         val processed = if (selfPreprocesses) bitmap else recipe.apply(bitmap, isDarkBackground)
         val scaleFactor =
