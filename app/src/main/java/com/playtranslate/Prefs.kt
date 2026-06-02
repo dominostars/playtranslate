@@ -103,6 +103,16 @@ class Prefs(context: Context) {
             return resolved ?: SourceLangId.JA
         }
 
+    // ── Per-language OCR engine choice (production) ─────────────────────────
+    /** Coarse selection token ("mlkit"/"meiki"/"paddle") for [id]'s OCR engine, or
+     *  null when the user hasn't chosen (→ ML Kit floor). Written during language
+     *  consolidation (default = top priority) and the Settings OCR section;
+     *  resolved by `OcrModelManager.selectedBackend`. */
+    fun ocrBackendToken(id: SourceLangId): String? = sp.getString("ocr_backend_${id.code}", null)
+    fun setOcrBackendToken(id: SourceLangId, token: String) =
+        sp.edit { putString("ocr_backend_${id.code}", token) }
+    fun clearOcrBackendToken(id: SourceLangId) = sp.edit { remove("ocr_backend_${id.code}") }
+
     /** The user's preferred TTS voice for [lang], by [android.speech.tts.Voice]
      *  name, or null to use the engine default. Voices are stored per language
      *  because a voice is locale-specific. */

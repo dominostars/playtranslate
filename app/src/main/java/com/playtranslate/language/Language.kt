@@ -108,16 +108,26 @@ enum class TextAlignment { LEFT, CENTER }
 
 /**
  * The on-device OCR backend that produces recognized text for a source
- * language. Sealed so the [ScreenTextRecognizerFactory] `when` is exhaustive
- * at compile time.
+ * language. Sealed so the OCR engine factory `when` is exhaustive at compile
+ * time. [packKeys] names the downloadable OCR model pack(s) the backend needs,
+ * used by `OcrModelManager` to plan downloads/deletions.
  */
 sealed interface OcrBackend {
-    data object MLKitLatin : OcrBackend
-    data object MLKitChinese : OcrBackend
-    data object MLKitJapanese : OcrBackend
-    data object MLKitKorean : OcrBackend
-    data object MLKitDevanagari : OcrBackend
-    data class Tesseract(val traineddataCode: String) : OcrBackend
+    /** Downloadable OCR model packs this backend needs on disk. Empty for ML Kit
+     *  (bundled in the APK) and Tesseract; the PaddleOCR detector is bundled too,
+     *  so Paddle needs only its per-script recognizer pack. Packs SHARED across
+     *  languages are expressed as the SAME key (the manager dedups via the key). */
+    val packKeys: Set<String>
+    data object MLKitLatin : OcrBackend { override val packKeys = emptySet<String>() }
+    data object MLKitChinese : OcrBackend { override val packKeys = emptySet<String>() }
+    data object MLKitJapanese : OcrBackend { override val packKeys = emptySet<String>() }
+    data object MLKitKorean : OcrBackend { override val packKeys = emptySet<String>() }
+    data object MLKitDevanagari : OcrBackend { override val packKeys = emptySet<String>() }
+    data class Tesseract(val traineddataCode: String) : OcrBackend { override val packKeys = emptySet<String>() }
+    /** Meiki (Japanese): detector + horizontal + vertical recognizers in one pack. */
+    data class Meiki(val packKey: String) : OcrBackend { override val packKeys = setOf(packKey) }
+    /** PaddleOCR: one per-script recognizer pack ([recPackKey]); detector bundled. */
+    data class Paddle(val recPackKey: String) : OcrBackend { override val packKeys = setOf(recPackKey) }
 }
 
 /**
@@ -149,7 +159,30 @@ data class SourceLanguageProfile(
     val translationCode: String,
     /** When true, dictionary results show traditional headword first. */
     val preferTraditional: Boolean = false,
-)
+) {
+    /**
+     * On-device OCR backends in PRIORITY order (highest first); [ocrBackend]
+     * (ML Kit) is the always-present floor. Availability = which backends appear.
+     * PaddleOCR recognizer packs are SHARED by key — ja/zh/en all name
+     * "paddle-rec-cjk", so `OcrModelManager` dedups/reclaims via the shared key
+     * with no special-casing (the detector is bundled in the APK).
+     */
+    val ocrBackends: List<OcrBackend>
+        get() = buildList {
+            if (id == SourceLangId.JA) add(OcrBackend.Meiki("meiki-ja"))
+            when (scriptFamily) {
+                ScriptFamily.CJK_JAPANESE, ScriptFamily.CJK_CHINESE ->
+                    add(OcrBackend.Paddle("paddle-rec-cjk"))
+                ScriptFamily.CJK_KOREAN -> add(OcrBackend.Paddle("paddle-rec-korean"))
+                // English shares the unified CJK recognizer (it includes English),
+                // so it dedups with ja/zh; other Latin scripts use the latin rec.
+                ScriptFamily.LATIN ->
+                    add(OcrBackend.Paddle(if (id == SourceLangId.EN) "paddle-rec-cjk" else "paddle-rec-latin"))
+                ScriptFamily.ARABIC, ScriptFamily.DEVANAGARI -> {} // no Paddle pack yet
+            }
+            add(ocrBackend) // ML Kit floor, last
+        }
+}
 
 private val CJK_CHAR_CHECK: (Char) -> Boolean = { c ->
     c in '\u4E00'..'\u9FFF' || c in '\u3400'..'\u4DBF'

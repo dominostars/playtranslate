@@ -53,5 +53,9 @@ class OcrEngineRegistry {
         OcrBackend.MLKitKorean -> MlKitOcr(KoreanTextRecognizerOptions.Builder().build())
         OcrBackend.MLKitDevanagari -> error("MLKitDevanagari not yet available (add play-services-mlkit-text-recognition-devanagari dependency)")
         is OcrBackend.Tesseract -> error("Tesseract OCR backend not yet implemented (Phase 5)")
+        // Meiki/Paddle are detector+recognizer composites built via their bridges
+        // in engineFor (Phase 2 resolution), never through this ML-Kit factory.
+        is OcrBackend.Meiki -> error("Meiki built via MeikiBridge in engineFor, not create()")
+        is OcrBackend.Paddle -> error("Paddle built via PaddleOcrBridge in engineFor, not create()")
     }
 }

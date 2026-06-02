@@ -79,6 +79,15 @@ object LanguagePackStore {
         return false
     }
 
+    /** Cheap "present on disk" set (manifest + dict files exist) WITHOUT
+     *  [isInstalled]'s JA stale-schema delete / SQLite probe — the pure, cheap
+     *  input the OCR reconciler ([com.playtranslate.ocr.registry.OcrModelManager])
+     *  needs after every change. */
+    fun installedCodes(ctx: Context): Set<SourceLangId> =
+        SourceLangId.entries.filterTo(HashSet()) { id ->
+            manifestFileFor(ctx, id).exists() && dictDbFor(ctx, id).exists()
+        }
+
     /** Returns false if the on-device DB is missing tables/columns the
      *  current runtime queries. Delegates to [JmdictSchemaProbe] so this
      *  and [com.playtranslate.dictionary.DictionaryManager.isSchemaUpToDate]
