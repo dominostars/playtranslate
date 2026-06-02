@@ -170,6 +170,12 @@ data class SourceLanguageProfile(
     val ocrBackends: List<OcrBackend>
         get() = buildList {
             if (id == SourceLangId.JA) add(OcrBackend.Meiki("meiki-ja"))
+            // Vietnamese defaults to ML Kit instead of the shared Paddle latin
+            // recognizer (it reads Vietnamese's dense diacritics more reliably).
+            // Putting the ML Kit floor first makes it the default; Paddle stays in
+            // the list as a secondary, user-selectable option.
+            val mlKitDefault = id == SourceLangId.VI
+            if (mlKitDefault) add(ocrBackend)
             when (scriptFamily) {
                 ScriptFamily.CJK_JAPANESE, ScriptFamily.CJK_CHINESE ->
                     add(OcrBackend.Paddle("paddle-rec-cjk"))
@@ -180,7 +186,7 @@ data class SourceLanguageProfile(
                     add(OcrBackend.Paddle(if (id == SourceLangId.EN) "paddle-rec-cjk" else "paddle-rec-latin"))
                 ScriptFamily.ARABIC, ScriptFamily.DEVANAGARI -> {} // no Paddle pack yet
             }
-            add(ocrBackend) // ML Kit floor, last
+            if (!mlKitDefault) add(ocrBackend) // ML Kit floor, last (unless already first)
         }
 }
 
