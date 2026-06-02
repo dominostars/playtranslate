@@ -2610,7 +2610,10 @@ class SettingsRenderer(
             .setSingleChoiceItems(labels, checked) { dialog, which ->
                 dialog.dismiss()
                 val sel = backends[which]
-                if (sel.selectionToken != chosenToken) applyOcrSelection(row, id, sel)
+                // Re-run on a real change OR when the chosen engine's pack is
+                // missing (so re-tapping retries a failed/cancelled download).
+                val needsDownload = sel.packKeys.any { !OcrPackModelHelper(it).isInstalled(ctx) }
+                if (sel.selectionToken != chosenToken || needsDownload) applyOcrSelection(row, id, sel)
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
@@ -2667,8 +2670,17 @@ class SettingsRenderer(
                 main.post {
                     when (p) {
                         is OnDeviceLlmDownloader.Progress.Downloading ->
-                            if (p.total > 0) overlay.setProgress(((p.received * 100L) / p.total).toInt())
-                            else overlay.setIndeterminate(true)
+                            if (p.total > 0) {
+                                overlay.setProgress(((p.received * 100L) / p.total).toInt())
+                                overlay.setMessage(
+                                    ctx.getString(
+                                        R.string.install_downloading_with_bytes,
+                                        humanSize(p.received), humanSize(p.total),
+                                    ),
+                                )
+                            } else {
+                                overlay.setIndeterminate(true)
+                            }
                         OnDeviceLlmDownloader.Progress.Verifying -> {
                             overlay.setIndeterminate(true)
                             overlay.setMessage(ctx.getString(R.string.settings_ocr_verifying))
