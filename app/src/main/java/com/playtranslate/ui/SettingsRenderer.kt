@@ -65,7 +65,16 @@ import com.playtranslate.translation.Tone
 import com.playtranslate.translation.TranslationBackend
 import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.translation.llm.OnDeviceLlmBackend
+import com.playtranslate.translation.llm.OnDeviceLlmDownloader
+import com.playtranslate.translation.llm.humanSize
 import com.playtranslate.translation.llm.toGbDisplay
+import com.playtranslate.language.LanguagePackStore
+import com.playtranslate.language.OcrBackend
+import com.playtranslate.ocr.registry.OcrModelManager
+import com.playtranslate.ocr.registry.OcrPackModelHelper
+import com.playtranslate.ocr.registry.ocrLabel
+import com.playtranslate.ocr.registry.selectionToken
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -326,6 +335,7 @@ class SettingsRenderer(
         setupHotkeySection()
         setupCaptureDisplaySection()
         setupTranslationServiceSection()
+        setupOcrSection()
         setupAnkiSection()
         refreshTtsSection()
         setupAppearanceSection()
@@ -2526,6 +2536,160 @@ class SettingsRenderer(
         row.isClickable = false
         row.isFocusable = false
         row.setOnClickListener(null)
+    }
+
+    // ── OCR section ──────────────────────────────────────────────────────
+
+    /**
+     * Per installed source language that has a real engine choice (>1 backend),
+     * a tappable row to pick the OCR engine and download/delete its model pack.
+     * ML Kit is always the built-in floor (no download). Sizes are honest +
+     * incremental — a pack already on disk or shared with another installed
+     * language reads "No extra space". The whole section hides when no installed
+     * language offers a choice.
+     */
+    private fun setupOcrSection() {
+        val container = root.findViewById<LinearLayout>(R.id.containerOcrLanguages) ?: return
+        val card = root.findViewById<View>(R.id.cardOcr)
+        val header = root.findViewById<View>(R.id.headerOcr)
+        container.removeAllViews()
+
+        val langs = LanguagePackStore.installedCodes(ctx)
+            .filter { SourceLanguageProfiles[it].ocrBackends.size > 1 }
+            .sortedBy { it.displayName() }
+        if (langs.isEmpty()) {
+            header?.visibility = View.GONE
+            card?.visibility = View.GONE
+            return
+        }
+        header?.visibility = View.VISIBLE
+        card?.visibility = View.VISIBLE
+        setGroupHeader(R.id.headerOcr, ctx.getString(R.string.settings_header_ocr))
+
+        langs.forEachIndexed { i, id ->
+            if (i > 0) {
+                container.addView(
+                    LayoutInflater.from(ctx).inflate(R.layout.settings_row_divider, container, false),
+                )
+            }
+            val row = LayoutInflater.from(ctx)
+                .inflate(R.layout.settings_row_value_multiline, container, false)
+            bindOcrRow(row, id)
+            container.addView(row)
+        }
+    }
+
+    private fun bindOcrRow(row: View, id: SourceLangId) {
+        val chosen = OcrModelManager.selectedBackend(ctx, id)
+        row.findViewById<TextView>(R.id.tvRowTitle).text = id.displayName()
+        row.findViewById<TextView>(R.id.tvRowSubtitle).text = ocrStatusLine(chosen)
+        row.setOnClickListener { showOcrEnginePicker(row, id) }
+    }
+
+    /** Subtitle: engine name + state (Built-in / installed size / Not downloaded). */
+    private fun ocrStatusLine(backend: OcrBackend): String = when {
+        backend.packKeys.isEmpty() ->
+            ctx.getString(R.string.settings_ocr_status_builtin, backend.ocrLabel)
+        backend.packKeys.all { OcrPackModelHelper(it).isInstalled(ctx) } -> {
+            val bytes = backend.packKeys.sumOf { OcrPackModelHelper(it).expectedSize(ctx) }
+            ctx.getString(R.string.settings_ocr_status_installed, backend.ocrLabel, humanSize(bytes))
+        }
+        else -> ctx.getString(R.string.settings_ocr_status_not_downloaded, backend.ocrLabel)
+    }
+
+    private fun showOcrEnginePicker(row: View, id: SourceLangId) {
+        val backends = SourceLanguageProfiles[id].ocrBackends
+        val chosenToken = OcrModelManager.selectedBackend(ctx, id).selectionToken
+        val checked = backends.indexOfFirst { it.selectionToken == chosenToken }.coerceAtLeast(0)
+        val labels = backends.map { b ->
+            val note = ocrPickerNote(id, b)
+            if (note.isEmpty()) b.ocrLabel else "${b.ocrLabel} — $note"
+        }.toTypedArray()
+        MaterialAlertDialogBuilder(ctx)
+            .setTitle(ctx.getString(R.string.settings_ocr_picker_title, id.displayName()))
+            .setSingleChoiceItems(labels, checked) { dialog, which ->
+                dialog.dismiss()
+                val sel = backends[which]
+                if (sel.selectionToken != chosenToken) applyOcrSelection(row, id, sel)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    /** Right-hand note in the picker: Built-in, Installed, "No extra space"
+     *  (shared / already on disk), or the honest incremental download size. */
+    private fun ocrPickerNote(id: SourceLangId, backend: OcrBackend): String = when {
+        backend.packKeys.isEmpty() -> ctx.getString(R.string.settings_ocr_note_builtin)
+        backend.packKeys.all { OcrPackModelHelper(it).isInstalled(ctx) } ->
+            ctx.getString(R.string.settings_ocr_note_installed)
+        else -> {
+            val extra = incrementalOcrBytes(id, backend)
+            if (extra == 0L) ctx.getString(R.string.settings_ocr_note_shared)
+            else ctx.getString(R.string.settings_ocr_note_download, humanSize(extra))
+        }
+    }
+
+    /** Bytes this choice ADDS: pack keys not already on disk and not already
+     *  required by another installed language's current selection (shared → 0). */
+    private fun incrementalOcrBytes(id: SourceLangId, backend: OcrBackend): Long {
+        val othersRequired = LanguagePackStore.installedCodes(ctx)
+            .filter { it != id }
+            .flatMapTo(HashSet()) { OcrModelManager.selectedBackend(ctx, it).packKeys }
+        return backend.packKeys
+            .filter { it !in othersRequired && !OcrPackModelHelper(it).isInstalled(ctx) }
+            .sumOf { OcrPackModelHelper(it).expectedSize(ctx) }
+    }
+
+    /** Persist the choice, then reconcile: download any newly-required pack (with
+     *  a progress overlay) + sweep any pack the switch orphaned. Best-effort — a
+     *  failed download leaves ML Kit as the floor. */
+    private fun applyOcrSelection(row: View, id: SourceLangId, backend: OcrBackend) {
+        prefs.setOcrBackendToken(id, backend.selectionToken)
+        val plan = OcrModelManager.currentPlan(ctx)
+        if (plan.toDownload.isEmpty()) {
+            // Built-in or already-on-disk: no download. Reclaim the old orphan + re-render.
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) { OcrModelManager.sweepOrphans(ctx) }
+                bindOcrRow(row, id)
+            }
+            return
+        }
+        var job: Job? = null
+        val overlay = OverlayProgress.Builder(ctx)
+            .setTitle(ctx.getString(R.string.settings_ocr_downloading_title, backend.ocrLabel))
+            .setMessage(ctx.getString(R.string.settings_ocr_downloading_msg))
+            .setProgress(0)
+            .setOnDismiss { reason -> if (reason == DismissReason.USER) job?.cancel() }
+            .show()
+        val main = Handler(Looper.getMainLooper())
+        job = lifecycleScope.launch {
+            OcrModelManager.applyDownloads(ctx, plan) { _, p ->
+                main.post {
+                    when (p) {
+                        is OnDeviceLlmDownloader.Progress.Downloading ->
+                            if (p.total > 0) overlay.setProgress(((p.received * 100L) / p.total).toInt())
+                            else overlay.setIndeterminate(true)
+                        OnDeviceLlmDownloader.Progress.Verifying -> {
+                            overlay.setIndeterminate(true)
+                            overlay.setMessage(ctx.getString(R.string.settings_ocr_verifying))
+                        }
+                        is OnDeviceLlmDownloader.Progress.Extracting -> {
+                            overlay.setIndeterminate(true)
+                            overlay.setMessage(ctx.getString(R.string.settings_ocr_installing))
+                        }
+                    }
+                }
+            }
+            val ok = withContext(Dispatchers.IO) {
+                OcrModelManager.sweepOrphans(ctx)
+                backend.packKeys.all { OcrPackModelHelper(it).isInstalled(ctx) }
+            }
+            overlay.dismiss()
+            bindOcrRow(row, id)
+            if (!ok) {
+                Toast.makeText(ctx, R.string.settings_ocr_download_failed, Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     // ── Anki section ─────────────────────────────────────────────────────

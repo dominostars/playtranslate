@@ -1832,6 +1832,22 @@
     <string name="settings_header_capture_display">Capture display</string>
     <string name="settings_header_online_translations">Online translations</string>
     <string name="settings_header_offline_translations">Offline translations</string>
+    <string name="settings_header_ocr" translatable="false">OCR</string>
+    <!-- OCR engine picker (Settings → OCR). %1$s = engine name (Meiki / PaddleOCR /
+         ML Kit, not translated); %2$s = a model size like "16 MB". -->
+    <string name="settings_ocr_status_builtin"><xliff:g id="engine">%1$s</xliff:g> · Built-in</string>
+    <string name="settings_ocr_status_installed"><xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="size">%2$s</xliff:g></string>
+    <string name="settings_ocr_status_not_downloaded"><xliff:g id="engine">%1$s</xliff:g> · Not downloaded</string>
+    <string name="settings_ocr_picker_title">OCR engine for <xliff:g id="language">%1$s</xliff:g></string>
+    <string name="settings_ocr_note_builtin">Built-in</string>
+    <string name="settings_ocr_note_installed">Installed</string>
+    <string name="settings_ocr_note_shared">No extra space</string>
+    <string name="settings_ocr_note_download"><xliff:g id="size">%1$s</xliff:g> download</string>
+    <string name="settings_ocr_downloading_title">Downloading <xliff:g id="engine">%1$s</xliff:g></string>
+    <string name="settings_ocr_downloading_msg">Starting…</string>
+    <string name="settings_ocr_verifying">Verifying…</string>
+    <string name="settings_ocr_installing">Installing…</string>
+    <string name="settings_ocr_download_failed">Couldn\'t download the OCR model. Check your connection and try again.</string>
     <string name="settings_header_anki" translatable="false">Anki</string>
     <string name="settings_header_text_to_speech">Text-to-speech</string>
     <string name="settings_header_appearance">Appearance</string>

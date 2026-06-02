@@ -152,3 +152,13 @@ val OcrBackend.selectionToken: String
         is OcrBackend.Paddle -> "paddle"
         else -> "mlkit"
     }
+
+/** Human-facing engine name for the Settings OCR picker. Proper nouns — not
+ *  translated. */
+val OcrBackend.ocrLabel: String
+    get() = when (this) {
+        is OcrBackend.Meiki -> "Meiki"
+        is OcrBackend.Paddle -> "PaddleOCR"
+        is OcrBackend.Tesseract -> "Tesseract"
+        else -> "ML Kit"
+    }
