@@ -76,12 +76,24 @@ object OcrModelManager {
 
     private fun helper(packKey: String) = OcrPackModelHelper(packKey)
 
-    /** Chosen backend for [id]: the stored selection if still available, else the
-     *  ML Kit floor (so existing languages with no stored choice stay on ML Kit). */
+    /** A backend is offerable iff every pack it needs has a shippable catalog entry.
+     *  ML Kit (no packs) is always available; a recognizer pack not yet authored/
+     *  hosted (e.g. `paddle-rec-latin`) makes its backend unavailable until it ships,
+     *  so we never surface an engine we can't deliver. */
+    fun isBackendAvailable(ctx: Context, backend: OcrBackend): Boolean =
+        backend.packKeys.all { OcrPackModelHelper(it).isShippable(ctx) }
+
+    /** [id]'s priority list filtered to currently-deliverable engines (always keeps
+     *  the ML Kit floor). */
+    fun availableBackends(ctx: Context, id: SourceLangId): List<OcrBackend> =
+        SourceLanguageProfiles[id].ocrBackends.filter { isBackendAvailable(ctx, it) }
+
+    /** Chosen backend for [id]: the stored selection if still available + deliverable,
+     *  else the ML Kit floor (so existing languages with no/stale choice stay on ML Kit). */
     fun selectedBackend(ctx: Context, id: SourceLangId): OcrBackend {
         val profile = SourceLanguageProfiles[id]
         val token = Prefs(ctx).ocrBackendToken(id)
-        return profile.ocrBackends.firstOrNull { it.selectionToken == token } ?: profile.ocrBackend
+        return availableBackends(ctx, id).firstOrNull { it.selectionToken == token } ?: profile.ocrBackend
     }
 
     private fun installedPacks(ctx: Context): Set<String> =
@@ -108,11 +120,12 @@ object OcrModelManager {
      *  with a stored choice are untouched. */
     fun setDefaultBackendIfUnset(ctx: Context, id: SourceLangId) {
         val prefs = Prefs(ctx)
-        if (prefs.ocrBackendToken(id) == null) {
-            SourceLanguageProfiles[id].ocrBackends.firstOrNull()?.let {
-                prefs.setOcrBackendToken(id, it.selectionToken)
-            }
-        }
+        if (prefs.ocrBackendToken(id) != null) return
+        // Top deliverable engine. If only the ML Kit floor is available (the
+        // language's recognizer pack isn't hosted yet), leave the choice unset so a
+        // later visit can default it once a real engine ships.
+        val best = availableBackends(ctx, id).firstOrNull() ?: return
+        if (best.packKeys.isNotEmpty()) prefs.setOcrBackendToken(id, best.selectionToken)
     }
 
     /** Auto-provision [id]'s default OCR engine from the language-consolidation

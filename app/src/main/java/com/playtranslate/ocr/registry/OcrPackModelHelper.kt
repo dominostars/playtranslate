@@ -6,6 +6,7 @@ import com.playtranslate.language.CatalogEntry
 import com.playtranslate.language.LanguagePackCatalogLoader
 import com.playtranslate.translation.llm.ModelHelper
 import com.playtranslate.translation.llm.MultiFileSha
+import com.playtranslate.translation.llm.OnDeviceLlmDownloader
 import com.playtranslate.translation.llm.humanSize
 import java.io.File
 
@@ -40,6 +41,21 @@ class OcrPackModelHelper(override val catalogKey: String) : ModelHelper {
             sentinel.readText().trim().equals(expected, ignoreCase = true)
         } catch (e: Exception) {
             Log.w(TAG, "sentinel read failed for $catalogKey: ${e.message}"); false
+        }
+    }
+
+    /** True iff the catalog has a *deliverable* entry for this pack: present AND
+     *  with real (non-placeholder) per-file sizes + 64-hex SHA-256. Gates whether
+     *  the engine needing this pack is offered to the user — so a pack that isn't
+     *  authored/hosted yet (e.g. `paddle-rec-latin`) never surfaces a broken
+     *  "not installed / can't download" option. */
+    fun isShippable(ctx: Context): Boolean {
+        val entry = catalogEntry(ctx) ?: return false
+        val files = entry.files
+        return if (files != null) {
+            files.isNotEmpty() && files.all { it.size > 0L && OnDeviceLlmDownloader.SHA_HEX_REGEX.matches(it.sha256) }
+        } else {
+            entry.size > 0L && entry.sha256?.let { OnDeviceLlmDownloader.SHA_HEX_REGEX.matches(it) } == true
         }
     }
 

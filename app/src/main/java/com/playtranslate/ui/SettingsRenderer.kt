@@ -2555,7 +2555,7 @@ class SettingsRenderer(
         container.removeAllViews()
 
         val langs = LanguagePackStore.installedCodes(ctx)
-            .filter { SourceLanguageProfiles[it].ocrBackends.size > 1 }
+            .filter { OcrModelManager.availableBackends(ctx, it).size > 1 }
             .sortedBy { it.displayName() }
         if (langs.isEmpty()) {
             header?.visibility = View.GONE
@@ -2598,7 +2598,7 @@ class SettingsRenderer(
     }
 
     private fun showOcrEnginePicker(row: View, id: SourceLangId) {
-        val backends = SourceLanguageProfiles[id].ocrBackends
+        val backends = OcrModelManager.availableBackends(ctx, id)
         val chosenToken = OcrModelManager.selectedBackend(ctx, id).selectionToken
         val checked = backends.indexOfFirst { it.selectionToken == chosenToken }.coerceAtLeast(0)
         val labels = backends.map { b ->
