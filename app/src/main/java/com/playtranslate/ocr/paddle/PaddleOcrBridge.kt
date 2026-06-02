@@ -6,6 +6,8 @@ import com.playtranslate.ocr.composites.DetectThenRecognize
 import com.playtranslate.ocr.core.OcrEngine
 import com.playtranslate.ocr.registry.OcrPackModelHelper
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 /**
  * Owner of PaddleOCR's native MNN sessions (the lifecycle contract's "one
@@ -59,19 +61,43 @@ object PaddleOcrBridge {
     }
 
     /** The bundled detector, copied from assets to a real file path once (MNN
-     *  loads from a path, not an asset stream). Null if the asset is missing. */
+     *  loads from a path, not an asset stream). Null if the asset is missing or the
+     *  copy fails. Runs under the object monitor (callers are @Synchronized), so the
+     *  copy is single-flight. Existence is trustworthy because [copyBundledDetector]
+     *  commits atomically — the final path only ever appears as a COMPLETE copy. */
     private fun bundledDetector(ctx: Context): File? {
         detFile?.let { if (it.exists()) return it }
         val out = File(ctx.noBackupFilesDir, "ocr/paddle_det.mnn").apply { parentFile?.mkdirs() }
-        if (!out.exists()) {
-            try {
-                ctx.assets.open(BUNDLED_DET_ASSET).use { input -> out.outputStream().use { input.copyTo(it) } }
-            } catch (e: Throwable) {
-                Log.e(TAG, "bundled $BUNDLED_DET_ASSET missing — using ML Kit", e); return null
-            }
-        }
+        if (!out.exists() && !copyBundledDetector(ctx, out)) return null
         detFile = out
         return out
+    }
+
+    /** Stream the bundled detector asset into a sibling `.tmp`, then atomic-rename
+     *  onto [out] — the same write-temp-then-`Files.move(ATOMIC_MOVE)` commit
+     *  discipline every DOWNLOADED model file gets via
+     *  `OnDeviceLlmDownloader.commitFileSwap`. A process death / storage-full /
+     *  mid-copy throw leaves only the `.tmp` (deleted here), so [out] never holds a
+     *  truncated detector that the existence check would later trust and feed to a
+     *  failing `PaddleOcrSession.create` — which would silently fall back to ML Kit
+     *  with no repair path. Returns true iff [out] now holds the complete asset.
+     *  No SHA/length check: it's a bundled asset (no transport corruption) and a
+     *  non-throwing `copyTo` reads to EOF, so the atomic rename alone guarantees a
+     *  complete file. */
+    private fun copyBundledDetector(ctx: Context, out: File): Boolean {
+        val tmp = File(out.parentFile, "paddle_det.mnn.tmp")
+        return try {
+            ctx.assets.open(BUNDLED_DET_ASSET).use { input -> tmp.outputStream().use { input.copyTo(it) } }
+            Files.move(
+                tmp.toPath(), out.toPath(),
+                StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING,
+            )
+            true
+        } catch (e: Throwable) {
+            tmp.delete()
+            Log.e(TAG, "bundled $BUNDLED_DET_ASSET copy failed — using ML Kit", e)
+            false
+        }
     }
 
     @Synchronized
