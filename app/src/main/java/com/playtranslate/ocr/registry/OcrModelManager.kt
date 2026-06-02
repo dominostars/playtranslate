@@ -81,12 +81,31 @@ object OcrModelManager {
 
     private fun helper(packKey: String) = OcrPackModelHelper(packKey)
 
-    /** A backend is offerable iff every pack it needs has a shippable catalog entry.
-     *  ML Kit (no packs) is always available; a recognizer pack not yet authored/
-     *  hosted (e.g. `paddle-rec-latin`) makes its backend unavailable until it ships,
-     *  so we never surface an engine we can't deliver. */
+    /** Pure runtime-compatibility gate (no I/O, so JVM-testable): an MNN-backed OCR
+     *  engine (Meiki/Paddle) runs only on the arm64 MNN native runtime, so it is
+     *  unavailable on a 32-bit process even when its pack is shippable. The app
+     *  ships an armeabi-v7a slice (installs on 32-bit) but `:mnn` is arm64-only, so
+     *  without this gate setup could default/download Meiki/Paddle and Settings
+     *  could select them, only for engine creation to fail and silently drop to ML
+     *  Kit — after burning the pack download. [mnnAvailable] mirrors
+     *  `OnDeviceLlmBackend.supportsRequiredAbi()` ([android.os.Process.is64Bit]);
+     *  pass it explicitly in tests. */
+    fun isRuntimeCompatible(
+        backend: OcrBackend,
+        mnnAvailable: Boolean = android.os.Process.is64Bit(),
+    ): Boolean = !backend.requiresMnn || mnnAvailable
+
+    /** A backend is offerable iff its native runtime is compatible AND every pack it
+     *  needs has a shippable catalog entry. ML Kit (no packs) is always available; a
+     *  recognizer pack not yet authored/hosted (e.g. `paddle-rec-latin`) makes its
+     *  backend unavailable until it ships; an MNN engine on a 32-bit device is
+     *  unavailable (see [isRuntimeCompatible]). Gating here is the single chokepoint:
+     *  [availableBackends] (the picker), [setDefaultBackendIfUnset], and
+     *  [selectedBackend] all flow through it, and the [selectedBackend] fallback is
+     *  always the pack-less ML Kit floor — so a 32-bit device never downloads or
+     *  selects an engine it can't load. */
     fun isBackendAvailable(ctx: Context, backend: OcrBackend): Boolean =
-        backend.packKeys.all { OcrPackModelHelper(it).isShippable(ctx) }
+        isRuntimeCompatible(backend) && backend.packKeys.all { OcrPackModelHelper(it).isShippable(ctx) }
 
     /** [id]'s priority list filtered to currently-deliverable engines (always keeps
      *  the ML Kit floor). */

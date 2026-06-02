@@ -118,6 +118,13 @@ sealed interface OcrBackend {
      *  so Paddle needs only its per-script recognizer pack. Packs SHARED across
      *  languages are expressed as the SAME key (the manager dedups via the key). */
     val packKeys: Set<String>
+
+    /** True if this engine runs on the arm64-only MNN native runtime (the `:mnn`
+     *  module ships arm64-v8a only), so it must be gated to 64-bit processes — see
+     *  [com.playtranslate.ocr.registry.OcrModelManager.isBackendAvailable]. Mirrors
+     *  the LLM tier's `OnDeviceLlmBackend` arm64 gate. */
+    val requiresMnn: Boolean get() = false
+
     data object MLKitLatin : OcrBackend { override val packKeys = emptySet<String>() }
     data object MLKitChinese : OcrBackend { override val packKeys = emptySet<String>() }
     data object MLKitJapanese : OcrBackend { override val packKeys = emptySet<String>() }
@@ -125,9 +132,15 @@ sealed interface OcrBackend {
     data object MLKitDevanagari : OcrBackend { override val packKeys = emptySet<String>() }
     data class Tesseract(val traineddataCode: String) : OcrBackend { override val packKeys = emptySet<String>() }
     /** Meiki (Japanese): detector + horizontal + vertical recognizers in one pack. */
-    data class Meiki(val packKey: String) : OcrBackend { override val packKeys = setOf(packKey) }
+    data class Meiki(val packKey: String) : OcrBackend {
+        override val packKeys = setOf(packKey)
+        override val requiresMnn = true
+    }
     /** PaddleOCR: one per-script recognizer pack ([recPackKey]); detector bundled. */
-    data class Paddle(val recPackKey: String) : OcrBackend { override val packKeys = setOf(recPackKey) }
+    data class Paddle(val recPackKey: String) : OcrBackend {
+        override val packKeys = setOf(recPackKey)
+        override val requiresMnn = true
+    }
 }
 
 /**

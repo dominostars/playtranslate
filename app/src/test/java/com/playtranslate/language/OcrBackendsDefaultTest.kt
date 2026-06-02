@@ -1,7 +1,9 @@
 package com.playtranslate.language
 
+import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.ocr.registry.selectionToken
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -31,5 +33,32 @@ class OcrBackendsDefaultTest {
 
     @Test fun japaneseStillDefaultsToMeiki() {
         assertEquals("meiki", backends(SourceLangId.JA).first().selectionToken)
+    }
+
+    // ── Native-runtime (arm64/MNN) gate ──────────────────────────────────
+    // The app ships an armeabi-v7a slice (installs on 32-bit) but :mnn is
+    // arm64-only, so the MNN-backed OCR engines must be runtime-incompatible on
+    // a 32-bit process — otherwise setup/Settings would offer, download, and
+    // select an engine that can't load and silently drops to ML Kit.
+
+    @Test fun mnnBackedEnginesDeclareTheNativeRequirement() {
+        assertTrue(OcrBackend.Meiki("meiki-ja").requiresMnn)
+        assertTrue(OcrBackend.Paddle("paddle-rec-cjk").requiresMnn)
+        // ML Kit + Tesseract don't touch the MNN runtime.
+        assertFalse(OcrBackend.MLKitJapanese.requiresMnn)
+        assertFalse(OcrBackend.MLKitLatin.requiresMnn)
+        assertFalse(OcrBackend.Tesseract("ara").requiresMnn)
+    }
+
+    @Test fun on32BitOnlyMlKitEnginesAreRuntimeCompatible() {
+        assertFalse(OcrModelManager.isRuntimeCompatible(OcrBackend.Meiki("meiki-ja"), mnnAvailable = false))
+        assertFalse(OcrModelManager.isRuntimeCompatible(OcrBackend.Paddle("paddle-rec-cjk"), mnnAvailable = false))
+        assertTrue(OcrModelManager.isRuntimeCompatible(OcrBackend.MLKitJapanese, mnnAvailable = false))
+        assertTrue(OcrModelManager.isRuntimeCompatible(OcrBackend.MLKitLatin, mnnAvailable = false))
+    }
+
+    @Test fun on64BitMnnBackedEnginesAreRuntimeCompatible() {
+        assertTrue(OcrModelManager.isRuntimeCompatible(OcrBackend.Meiki("meiki-ja"), mnnAvailable = true))
+        assertTrue(OcrModelManager.isRuntimeCompatible(OcrBackend.Paddle("paddle-rec-cjk"), mnnAvailable = true))
     }
 }
