@@ -6,6 +6,8 @@ import com.playtranslate.ocr.core.LayoutAnalyzer
 import com.playtranslate.ocr.core.LayoutGroup
 import com.playtranslate.ocr.core.OcrEngine
 import com.playtranslate.ocr.core.OcrImage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Orchestrates one OCR pass: preprocess → engine → shared layout. Engine- and
@@ -37,22 +39,29 @@ object OcrPipeline {
         recipe: OcrPreprocessingRecipe,
         isDarkBackground: Boolean,
         logGrouping: Boolean,
-    ): Output? {
+    ): Output? = withContext(Dispatchers.Default) {
+        // Run the whole pass OFF the main thread: preprocessing, the engine's
+        // inference, and layout are all CPU-bound. The capture coroutine is
+        // dispatched on Main, and synchronous MNN engines (Paddle/Meiki/manga-ocr)
+        // would otherwise block it. ML Kit suspends around its async client so it
+        // never blocked Main — which masked this until a heavy engine (manga-ocr
+        // on a large page) blocked Main long enough to ANR. Moving every engine
+        // off Main here fixes the ANR and the (smaller) Paddle/Meiki UI jank.
         val selfPreprocesses = engine.capabilities.selfPreprocesses
         val processed = if (selfPreprocesses) bitmap else recipe.apply(bitmap, isDarkBackground)
         val scaleFactor =
             if (processed === bitmap) 1f else processed.width.toFloat() / bitmap.width
         try {
             val regions = engine.recognize(OcrImage(processed, sourceLang, screenshotWidth))
-            if (regions.isEmpty()) return null
+            if (regions.isEmpty()) return@withContext null
             val groups = LayoutAnalyzer.analyze(
                 regions = regions,
                 sourceLang = sourceLang,
                 screenshotWidthInRegionSpace = screenshotWidth * scaleFactor,
                 logDecisions = logGrouping,
             )
-            if (groups.isEmpty()) return null
-            return Output(groups, scaleFactor)
+            if (groups.isEmpty()) return@withContext null
+            Output(groups, scaleFactor)
         } finally {
             if (processed !== bitmap) processed.recycle()
         }
