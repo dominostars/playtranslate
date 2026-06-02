@@ -1,6 +1,80 @@
 {
   "catalogVersion": 1,
   "packs": {
+    "meiki-ja": {
+      "display": "Meiki (Japanese OCR)",
+      "type": "ocr",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 46671420,
+      "files": [
+        {
+          "path": "det.mnn",
+          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/meiki-ja/det.mnn",
+          "size": 14723792,
+          "sha256": "7ff93668ddd0cf454b18e44ac398d050758fd5bdfcaf2805d943af70f4d6373b"
+        },
+        {
+          "path": "rec_horizontal.mnn",
+          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/meiki-ja/rec_horizontal.mnn",
+          "size": 18820188,
+          "sha256": "a018031161d1c967d57ec9bd379368f8595f912e31b3a1492c7aaa23871832b9"
+        },
+        {
+          "path": "rec_vertical.mnn",
+          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/meiki-ja/rec_vertical.mnn",
+          "size": 13127440,
+          "sha256": "492169ab5dc65ccf8df2d4e73c6b48041aceb99db7614cec5a72f0f95eaef095"
+        }
+      ],
+      "licenses": [
+        {
+          "component": "Meiki OCR (D-FINE detector + horizontal/vertical recognizers, MNN format)",
+          "license": "LGPL-3.0",
+          "attribution": "Meiki OCR — GNU LGPL-3.0. Converted to MNN for on-device use; conversion scripts available on request."
+        },
+        {
+          "component": "MNN runtime",
+          "license": "Apache-2.0",
+          "attribution": "© Alibaba. Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0."
+        }
+      ]
+    },
+    "paddle-rec-cjk": {
+      "display": "PaddleOCR recognizer — CJK + English",
+      "type": "ocr",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 16587707,
+      "files": [
+        {
+          "path": "rec.mnn",
+          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-cjk/rec.mnn",
+          "size": 16513696,
+          "sha256": "b9126da615889cd3703998f114d00cb7793c33fa85882188521dd4cb063e6360"
+        },
+        {
+          "path": "keys.txt",
+          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-cjk/keys.txt",
+          "size": 74011,
+          "sha256": "17665d27ed39f0deb82007859992d626d3105d0ee4578c120b7c72138dc04d05"
+        }
+      ],
+      "licenses": [
+        {
+          "component": "PaddleOCR PP-OCRv5 mobile recognizer (MNN format)",
+          "license": "Apache-2.0",
+          "attribution": "© PaddlePaddle Authors. Apache 2.0 — https://github.com/PaddlePaddle/PaddleOCR. Converted to MNN for on-device use."
+        },
+        {
+          "component": "MNN runtime",
+          "license": "Apache-2.0",
+          "attribution": "© Alibaba. Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0."
+        }
+      ]
+    },
     "engine-gemma-4-e2b-mnn": {
       "display": "Gemma 4 E2B (MNN)",
       "type": "engine",
