@@ -74,7 +74,14 @@ to one recognizer pack (PaddleOCR detection is language-independent).
 | `PP-OCRv5_mobile_rec` | `paddle-rec-cjk` | rec.mnn + keys.txt | yes (zh/ja/en) |
 | `latin_PP-OCRv5_mobile_rec` | `paddle-rec-latin` | rec.mnn + keys.txt | yes (fr/es/de/…) |
 | `korean_PP-OCRv5_mobile_rec` | `paddle-rec-korean` | rec.mnn + keys.txt | yes (ko) |
-| `arabic` / `cyrillic` / `devanagari` / `el` / `eslav` / `th` / `ta` / `te` `_PP-OCRv5_mobile_rec` | *(unwired)* | — | no source language uses these yet |
+| `arabic` / `cyrillic` / `devanagari` / `th` `_PP-OCRv5_mobile_rec` | `paddle-rec-arabic` / `-cyrillic` / `-devanagari` / `-thai` | rec.mnn + keys.txt | **hosted + cataloged, not yet wired** (language support coming; see note) |
+| `el` / `eslav` / `ta` / `te` `_PP-OCRv5_mobile_rec` | *(none)* | — | exist upstream; not converted/hosted |
+
+> **Arabic / Cyrillic / Thai have no ML Kit OCR fallback** (ML Kit scripts =
+> Latin/Chinese/Japanese/Korean/Devanagari only). When wired, PaddleOCR is their
+> **sole** recognizer — the no-floor case (`OcrModelManager` D3: never sweep the only
+> recognizer of a floor-less language). Arabic is also RTL. These four are hosted +
+> cataloged ahead of that wiring; they stay inert until a `SourceLangId` maps to them.
 
 > Naming note: `convert_all.py` emits the CJK recognizer as `rec_mobile.mnn`; the app
 > pack expects it as **`rec.mnn`**. Rename on staging. `convert_langs.py` already emits

@@ -17,8 +17,15 @@ MNNCONVERT = os.path.join(VENV_BIN, "mnnconvert")
 
 # pack-key -> HF repo (PP-OCRv5 mobile rec, one per script group)
 MODELS = {
-    "paddle-rec-latin":  "PaddlePaddle/latin_PP-OCRv5_mobile_rec",
-    "paddle-rec-korean": "PaddlePaddle/korean_PP-OCRv5_mobile_rec",
+    "paddle-rec-latin":      "PaddlePaddle/latin_PP-OCRv5_mobile_rec",
+    "paddle-rec-korean":     "PaddlePaddle/korean_PP-OCRv5_mobile_rec",
+    # Hosted ahead of language wiring (support coming soon). NOTE: Arabic / Cyrillic
+    # / Thai have NO ML Kit OCR fallback, so Paddle is their SOLE recognizer once
+    # wired (the no-floor case). Arabic is also RTL.
+    "paddle-rec-arabic":     "PaddlePaddle/arabic_PP-OCRv5_mobile_rec",
+    "paddle-rec-cyrillic":   "PaddlePaddle/cyrillic_PP-OCRv5_mobile_rec",
+    "paddle-rec-devanagari": "PaddlePaddle/devanagari_PP-OCRv5_mobile_rec",
+    "paddle-rec-thai":       "PaddlePaddle/th_PP-OCRv5_mobile_rec",
 }
 
 def run(cmd):

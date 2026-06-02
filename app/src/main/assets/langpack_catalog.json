@@ -143,6 +143,142 @@
         }
       ]
     },
+    "paddle-rec-arabic": {
+      "display": "PaddleOCR recognizer — Arabic",
+      "type": "ocr",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 7980240,
+      "files": [
+        {
+          "path": "rec.mnn",
+          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-arabic/rec.mnn",
+          "size": 7977872,
+          "sha256": "1f444fb900d97b7766bc7151a26e082d394fc53111684ec3c6d01df7a0a89ecb"
+        },
+        {
+          "path": "keys.txt",
+          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-arabic/keys.txt",
+          "size": 2368,
+          "sha256": "8f239c13f6c8b1bdf15f332a65a05002ddd4d99b9286a4bfaf6f0327c36ebbec"
+        }
+      ],
+      "licenses": [
+        {
+          "component": "PaddleOCR PP-OCRv5 Arabic mobile recognizer (MNN format)",
+          "license": "Apache-2.0",
+          "attribution": "© PaddlePaddle Authors. Apache 2.0 — https://github.com/PaddlePaddle/PaddleOCR. Converted to MNN for on-device use."
+        },
+        {
+          "component": "MNN runtime",
+          "license": "Apache-2.0",
+          "attribution": "© Alibaba. Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0."
+        }
+      ]
+    },
+    "paddle-rec-cyrillic": {
+      "display": "PaddleOCR recognizer — Cyrillic",
+      "type": "ocr",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 8030504,
+      "files": [
+        {
+          "path": "rec.mnn",
+          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-cyrillic/rec.mnn",
+          "size": 8027724,
+          "sha256": "6b4ce6917fd32786daaa9652a04617d5737a65cc40be1253a3768ea3e9464aac"
+        },
+        {
+          "path": "keys.txt",
+          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-cyrillic/keys.txt",
+          "size": 2780,
+          "sha256": "2de016b31edd687acfc1bf72170f4feff9f0c4893edac87cef30b2c5a82443ec"
+        }
+      ],
+      "licenses": [
+        {
+          "component": "PaddleOCR PP-OCRv5 Cyrillic mobile recognizer (MNN format)",
+          "license": "Apache-2.0",
+          "attribution": "© PaddlePaddle Authors. Apache 2.0 — https://github.com/PaddlePaddle/PaddleOCR. Converted to MNN for on-device use."
+        },
+        {
+          "component": "MNN runtime",
+          "license": "Apache-2.0",
+          "attribution": "© Alibaba. Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0."
+        }
+      ]
+    },
+    "paddle-rec-devanagari": {
+      "display": "PaddleOCR recognizer — Devanagari",
+      "type": "ocr",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 7893178,
+      "files": [
+        {
+          "path": "rec.mnn",
+          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-devanagari/rec.mnn",
+          "size": 7891236,
+          "sha256": "9d44355de916fdedf4a0cc300cd50b0609444920e40e8b69102db2673bab2e51"
+        },
+        {
+          "path": "keys.txt",
+          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-devanagari/keys.txt",
+          "size": 1942,
+          "sha256": "c66d17ef6ced6fbfb4413810e75f0f788cfde37d4192bd17af7923fa190066c8"
+        }
+      ],
+      "licenses": [
+        {
+          "component": "PaddleOCR PP-OCRv5 Devanagari mobile recognizer (MNN format)",
+          "license": "Apache-2.0",
+          "attribution": "© PaddlePaddle Authors. Apache 2.0 — https://github.com/PaddlePaddle/PaddleOCR. Converted to MNN for on-device use."
+        },
+        {
+          "component": "MNN runtime",
+          "license": "Apache-2.0",
+          "attribution": "© Alibaba. Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0."
+        }
+      ]
+    },
+    "paddle-rec-thai": {
+      "display": "PaddleOCR recognizer — Thai",
+      "type": "ocr",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 7871706,
+      "files": [
+        {
+          "path": "rec.mnn",
+          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-thai/rec.mnn",
+          "size": 7869940,
+          "sha256": "a76b29f16eeb507090f4e1c0a15ccb544bcfc62e0a457f6f0e72abb1872093fc"
+        },
+        {
+          "path": "keys.txt",
+          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-thai/keys.txt",
+          "size": 1766,
+          "sha256": "e0f32101004cc828ed4505bba80126be06e282700c4c79175ed2b21a4d454dfa"
+        }
+      ],
+      "licenses": [
+        {
+          "component": "PaddleOCR PP-OCRv5 Thai mobile recognizer (MNN format)",
+          "license": "Apache-2.0",
+          "attribution": "© PaddlePaddle Authors. Apache 2.0 — https://github.com/PaddlePaddle/PaddleOCR. Converted to MNN for on-device use."
+        },
+        {
+          "component": "MNN runtime",
+          "license": "Apache-2.0",
+          "attribution": "© Alibaba. Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0."
+        }
+      ]
+    },
     "engine-gemma-4-e2b-mnn": {
       "display": "Gemma 4 E2B (MNN)",
       "type": "engine",
