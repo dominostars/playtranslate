@@ -2643,14 +2643,17 @@ class SettingsRenderer(
             .sumOf { OcrPackModelHelper(it).expectedSize(ctx) }
     }
 
-    /** Persist the choice, then reconcile: download any newly-required pack (with
-     *  a progress overlay) + sweep any pack the switch orphaned. Best-effort — a
-     *  failed download leaves ML Kit as the floor. */
+    /** Switch [id] to [backend]. Transactional: the new selection is persisted —
+     *  and the packs the switch orphans are swept — ONLY after the new backend's
+     *  packs are confirmed installed. A failed or cancelled download therefore
+     *  leaves the previously working engine and its pack intact (the user stays on
+     *  it, with a toast) instead of deleting the old pack and dropping to ML Kit. */
     private fun applyOcrSelection(row: View, id: SourceLangId, backend: OcrBackend) {
-        prefs.setOcrBackendToken(id, backend.selectionToken)
-        val plan = OcrModelManager.currentPlan(ctx)
-        if (plan.toDownload.isEmpty()) {
-            // Built-in or already-on-disk: no download. Reclaim the old orphan + re-render.
+        val needsDownload = backend.packKeys.any { !OcrPackModelHelper(it).isInstalled(ctx) }
+        if (!needsDownload) {
+            // New backend's packs already on disk (or the pack-less ML Kit floor):
+            // commit now, then reclaim whatever the switch orphaned.
+            prefs.setOcrBackendToken(id, backend.selectionToken)
             lifecycleScope.launch {
                 withContext(Dispatchers.IO) { OcrModelManager.sweepOrphans(ctx) }
                 bindOcrRow(row, id)
@@ -2666,7 +2669,7 @@ class SettingsRenderer(
             .show()
         val main = Handler(Looper.getMainLooper())
         job = lifecycleScope.launch {
-            OcrModelManager.applyDownloads(ctx, plan) { _, p ->
+            val installed = OcrModelManager.installBackend(ctx, backend) { _, p ->
                 main.post {
                     when (p) {
                         is OnDeviceLlmDownloader.Progress.Downloading ->
@@ -2692,13 +2695,14 @@ class SettingsRenderer(
                     }
                 }
             }
-            val ok = withContext(Dispatchers.IO) {
-                OcrModelManager.sweepOrphans(ctx)
-                backend.packKeys.all { OcrPackModelHelper(it).isInstalled(ctx) }
+            if (installed) {
+                // Commit the choice, THEN reclaim the now-orphaned previous pack(s).
+                prefs.setOcrBackendToken(id, backend.selectionToken)
+                withContext(Dispatchers.IO) { OcrModelManager.sweepOrphans(ctx) }
             }
             overlay.dismiss()
             bindOcrRow(row, id)
-            if (!ok) {
+            if (!installed) {
                 Toast.makeText(ctx, R.string.settings_ocr_download_failed, Toast.LENGTH_LONG).show()
             }
         }

@@ -1,6 +1,7 @@
 package com.playtranslate.ocr.registry
 
 import android.content.Context
+import android.util.Log
 import com.playtranslate.Prefs
 import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.OcrBackend
@@ -10,6 +11,8 @@ import com.playtranslate.ocr.core.OcrEngine
 import com.playtranslate.ocr.meiki.MeikiBridge
 import com.playtranslate.ocr.paddle.PaddleOcrBridge
 import com.playtranslate.translation.llm.OnDeviceLlmDownloader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * The OCR model-pack reconciler. The desired on-disk pack set is a PURE function
@@ -24,6 +27,8 @@ import com.playtranslate.translation.llm.OnDeviceLlmDownloader
  * registry resolves fresh on the next `engineFor`.
  */
 object OcrModelManager {
+
+    private const val TAG = "OcrModelManager"
 
     data class Plan(
         /** Packs every installed language's chosen backend needs. */
@@ -102,16 +107,41 @@ object OcrModelManager {
     fun currentPlan(ctx: Context): Plan =
         plan(LanguagePackStore.installedCodes(ctx), { selectedBackend(ctx, it) }, installedPacks(ctx))
 
+    /** Fetch one pack, best-effort. The downloader RETURNS its terminal state
+     *  rather than throwing for failure/refusal (only cancellation propagates, via
+     *  its withContext boundary rethrowing CancellationException) — so a discarded
+     *  Outcome would let a failed/refused pack vanish silently into the ML Kit
+     *  fallback. Log the reason here so an exported diagnostic log can explain why
+     *  a pack didn't land. */
+    private suspend fun downloadPack(
+        ctx: Context,
+        key: String,
+        onProgress: (OnDeviceLlmDownloader.Progress) -> Unit,
+    ) {
+        val downloader = OnDeviceLlmDownloader(ctx.applicationContext, helper(key), totalMemFloorBytes = 0L)
+        when (val outcome = downloader.run(onProgress)) {
+            is OnDeviceLlmDownloader.Outcome.Failed ->
+                Log.w(TAG, "OCR pack '$key' download failed: ${outcome.reason}", outcome.cause)
+            is OnDeviceLlmDownloader.Outcome.Refused ->
+                Log.w(TAG, "OCR pack '$key' download refused: ${outcome.reason}")
+            // Success: nothing to log. Cancelled: shadowed by the downloader's
+            // withContext rethrow on Job-cancel, so it's only reachable via a
+            // non-Job cancellation (e.g. an inner timeout) — best-effort, ignore.
+            OnDeviceLlmDownloader.Outcome.Success,
+            OnDeviceLlmDownloader.Outcome.Cancelled -> Unit
+        }
+    }
+
     /** Download every pack in [plan].toDownload, best-effort (a failed pack stays
-     *  absent → the registry falls back to ML Kit). Suspend/IO. */
+     *  absent → the registry falls back to ML Kit; [downloadPack] logs the reason).
+     *  Suspend/IO. */
     suspend fun applyDownloads(
         ctx: Context,
         plan: Plan = currentPlan(ctx),
         onProgress: (packKey: String, p: OnDeviceLlmDownloader.Progress) -> Unit = { _, _ -> },
     ) {
         for (key in plan.toDownload) {
-            OnDeviceLlmDownloader(ctx.applicationContext, helper(key), totalMemFloorBytes = 0L)
-                .run { p -> onProgress(key, p) }
+            downloadPack(ctx, key) { p -> onProgress(key, p) }
         }
     }
 
@@ -133,8 +163,12 @@ object OcrModelManager {
      *  pack + offline translation models). Records the default first, then fetches
      *  each not-yet-installed pack, reporting byte progress via [onBytes]. No-op
      *  when the default resolves to ML Kit or the pack is already present.
-     *  Propagates cancellation; a network failure throws — the caller swallows it
-     *  so OCR falls back to the ML Kit floor without aborting language setup. */
+     *
+     *  Cancellation propagates: if the enclosing coroutine is cancelled the
+     *  downloader's withContext boundary rethrows CancellationException, aborting
+     *  setup like any other step. A network/verify failure or RAM/storage refusal
+     *  does NOT throw — [downloadPack] logs it and leaves the ML Kit floor, so a
+     *  failed OCR download never aborts adding the language. */
     suspend fun downloadDefaultForSource(
         ctx: Context,
         id: SourceLangId,
@@ -143,9 +177,27 @@ object OcrModelManager {
         setDefaultBackendIfUnset(ctx, id)
         val needed = selectedBackend(ctx, id).packKeys.filter { !OcrPackModelHelper(it).isInstalled(ctx) }
         for (key in needed) {
-            OnDeviceLlmDownloader(ctx.applicationContext, OcrPackModelHelper(key), totalMemFloorBytes = 0L)
-                .run { p -> if (p is OnDeviceLlmDownloader.Progress.Downloading) onBytes(p.received, p.total) }
+            downloadPack(ctx, key) { p ->
+                if (p is OnDeviceLlmDownloader.Progress.Downloading) onBytes(p.received, p.total)
+            }
         }
+    }
+
+    /** Download [backend]'s not-yet-installed packs, best-effort (failures logged
+     *  by [downloadPack], leaving the ML Kit floor), and report whether [backend]
+     *  is fully installed afterward. Deliberately does NOT mutate Prefs and does
+     *  NOT sweep: an engine SWITCH must persist the new selection — and only then
+     *  sweep the packs the switch orphaned — AFTER this returns true, so a failed
+     *  or cancelled download never reclaims the still-working previous engine's
+     *  pack. Suspend/IO. */
+    suspend fun installBackend(
+        ctx: Context,
+        backend: OcrBackend,
+        onProgress: (packKey: String, p: OnDeviceLlmDownloader.Progress) -> Unit = { _, _ -> },
+    ): Boolean = withContext(Dispatchers.IO) {
+        val missing = backend.packKeys.filterTo(HashSet()) { !helper(it).isInstalled(ctx) }
+        applyDownloads(ctx, Plan(backend.packKeys.toSet(), missing, emptySet()), onProgress)
+        backend.packKeys.all { helper(it).isInstalled(ctx) }
     }
 
     /** Delete orphaned packs (installed − required) that aren't currently loaded.
