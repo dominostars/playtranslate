@@ -75,6 +75,74 @@
         }
       ]
     },
+    "paddle-rec-latin": {
+      "display": "PaddleOCR recognizer — Latin",
+      "type": "ocr",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 8023563,
+      "files": [
+        {
+          "path": "rec.mnn",
+          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-latin/rec.mnn",
+          "size": 8020948,
+          "sha256": "59579073b0fd5c58c7f814c08efb1c02390ac2fa3b030210d6b4b346772b1df8"
+        },
+        {
+          "path": "keys.txt",
+          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-latin/keys.txt",
+          "size": 2615,
+          "sha256": "c3ab00106e4a4d151a8575b1129b91901a68a35b79a81fd63faab00418b87d75"
+        }
+      ],
+      "licenses": [
+        {
+          "component": "PaddleOCR PP-OCRv5 Latin mobile recognizer (MNN format)",
+          "license": "Apache-2.0",
+          "attribution": "© PaddlePaddle Authors. Apache 2.0 — https://github.com/PaddlePaddle/PaddleOCR. Converted to MNN for on-device use."
+        },
+        {
+          "component": "MNN runtime",
+          "license": "Apache-2.0",
+          "attribution": "© Alibaba. Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0."
+        }
+      ]
+    },
+    "paddle-rec-korean": {
+      "display": "PaddleOCR recognizer — Korean",
+      "type": "ocr",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "size": 13445154,
+      "files": [
+        {
+          "path": "rec.mnn",
+          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-korean/rec.mnn",
+          "size": 13397704,
+          "sha256": "6e9cfdc3bd03d3166c13ab72b98f4679dd1a74812333721c08899b904f437af6"
+        },
+        {
+          "path": "keys.txt",
+          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-korean/keys.txt",
+          "size": 47450,
+          "sha256": "a7872c929cd25cf615cdfea08579cf800db1943900fe683468df4dcff6f848bb"
+        }
+      ],
+      "licenses": [
+        {
+          "component": "PaddleOCR PP-OCRv5 Korean mobile recognizer (MNN format)",
+          "license": "Apache-2.0",
+          "attribution": "© PaddlePaddle Authors. Apache 2.0 — https://github.com/PaddlePaddle/PaddleOCR. Converted to MNN for on-device use."
+        },
+        {
+          "component": "MNN runtime",
+          "license": "Apache-2.0",
+          "attribution": "© Alibaba. Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0."
+        }
+      ]
+    },
     "engine-gemma-4-e2b-mnn": {
       "display": "Gemma 4 E2B (MNN)",
       "type": "engine",
