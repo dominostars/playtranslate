@@ -1,13 +1,16 @@
-# OCR model conversion — PaddleOCR → ONNX → MNN
+# OCR model conversion → MNN
 
-How the on-device PaddleOCR models that PlayTranslate ships are produced. The app
-loads MNN models; PaddleOCR publishes PaddlePaddle *inference* bundles. This pipeline
-bridges the two and is the recipe for adding a new recognizer or rebuilding an
-existing one.
+How the on-device OCR models that PlayTranslate ships are produced. The app's engine
+runtime loads **MNN** models; this is the recipe for rebuilding an existing model or
+adding a new one. Covers **both** model families the app ships:
 
-Covers **PaddleOCR** only (the shared detector + the per-script recognizers). Meiki
-(the Japanese `meiki-ja` pack) is a different model family converted separately — not
-this pipeline.
+- **PaddleOCR** — the shared detector + per-script recognizers (`paddle-rec-*`).
+  PaddlePaddle ships *inference* bundles → `paddle2onnx` → `mnnconvert`.
+- **Meiki** — the Japanese `meiki-ja` pack (D-FINE detector + horizontal/vertical
+  recognizers, LGPL-3.0). Meiki publishes ONNX directly, so it's just `mnnconvert`
+  (no Paddle step). See the **Meiki** section below.
+
+Same venv/toolchain for both (`mnnconvert` from the `mnn` pip package).
 
 ## TL;DR
 
@@ -15,8 +18,9 @@ this pipeline.
 cd scripts/ocr-model-conversion
 python3.9 -m venv venv
 venv/bin/pip install -r requirements.txt
-venv/bin/python convert_langs.py     # latin + korean recognizers (edit MODELS to add more)
-# outputs: mnn/<pack-key>/{rec.mnn, keys.txt}  — then host + catalog (see below)
+venv/bin/python convert_langs.py     # PaddleOCR latin + korean recognizers (edit MODELS for more)
+venv/bin/python convert_meiki.py     # Meiki meiki-ja pack (det + horizontal/vertical rec)
+# outputs under mnn/  — then host + catalog (see below)
 ```
 
 Everything except the scripts / `requirements.txt` / this README is git-ignored
@@ -49,13 +53,15 @@ both `paddle2onnx` and `mnnconvert` are console scripts from pip packages, so th
    under `PostProcess.character_dict` — written one entry per line to `keys.txt`.
 5. **Verify** the `.mnn` loads via `MNN.expr.load_as_dict` (pymnn).
 
-## The two scripts
+## The three scripts
 
 - **`convert_all.py`** — the original 4 PP-OCRv5 *general* models: `det_mobile`,
   `rec_mobile` (the CJK+JA+EN recognizer = pack `paddle-rec-cjk`), plus the `*_server`
   variants. Outputs flat into `mnn/` (`det_mobile.mnn`, `rec_mobile.mnn`, `keys.txt`, …).
-- **`convert_langs.py`** — the per-script recognizers, output into the app's pack layout
-  `mnn/<pack-key>/{rec.mnn, keys.txt}`. Edit its `MODELS` dict to add a language.
+- **`convert_langs.py`** — the per-script PaddleOCR recognizers, output into the app's
+  pack layout `mnn/<pack-key>/{rec.mnn, keys.txt}`. Edit its `MODELS` dict to add a language.
+- **`convert_meiki.py`** — the Meiki `meiki-ja` pack (det + horizontal/vertical rec).
+  Downloads ONNX from the pinned rtr46 HF repos and `mnnconvert`s each. See **Meiki** below.
 
 ## Model → pack mapping
 
@@ -96,12 +102,54 @@ to one recognizer pack (PaddleOCR detection is language-independent).
 5. **Verify**: anonymous download + sha match before shipping, e.g.
    `curl -sL <resolve-url> | shasum -a 256`.
 
+## Meiki (`meiki-ja`)
+
+A different model family from PaddleOCR: a D-FINE object detector + MobileNetV4 backbone
+that reframes recognition as **character detection**. Japanese-only, trained on video-game
+text. `convert_meiki.py` handles it end-to-end (ONNX → MNN; no Paddle step).
+
+**Source (pinned):** `github.com/rtr46/meikiocr`; weights on HuggingFace, **LGPL-3.0**:
+
+| HF repo @ revision | ONNX file | → pack file |
+|---|---|---|
+| `rtr46/meiki.text.detect.v0` @ `a9cffa4f` | `meiki.text.detect.v0.1.960x544.onnx` | `det.mnn` |
+| `rtr46/meiki.txt.recognition.v0` @ `a28cf587` | `meiki.text.rec.v0.960x32.onnx` | `rec_horizontal.mnn` |
+| `rtr46/meiki.txt.recognition.v0` @ `a28cf587` | `meiki.text.rec.v0.vertical.32x480.onnx` | `rec_vertical.mnn` |
+
+(The recognition repo was re-trained 2026-02-21; the prior checkpoint is revision
+`ddd06176a4da56fba082293dbe9898d4e5998af2`.)
+
+**No charset file.** Meiki emits Unicode codepoints directly (`char_codes` → `chr(code)`),
+so `meiki-ja` is just the three `.mnn` files — no `keys.txt` (unlike the Paddle packs).
+
+**I/O contract** (implemented by `MeikiSession`/`MeikiDetector`/`MeikiRecognizer`, mirrored
+from each repo's `inference.py`):
+- inputs: `images` (NCHW float32, **BGR**, `/255`, aspect-resized + zero-padded to the
+  model size — 960×544 det, 960×32 horizontal rec, 32×480 vertical rec) and
+  `orig_target_sizes` — **must be int32 `[W,H]`**; int64 silently zeroes the height
+  scaling (boxes collapse to y=0, reading order scrambles, recognition still correct).
+- outputs: `char_codes`, `boxes`, `scores`. post: confidence filter → overlap-dedup →
+  positional sort → join.
+
+Verified: re-converting the pinned ONNX with the documented toolchain reproduces the
+shipped `.mnn` to within 4 bytes (header metadata only), and the bake-off confirmed
+MNN == ONNX with 0 output diffs. The exact source ONNX + upstream `inference.py` /
+`README.md` that produced the shipped pack are archived at `mnn-spike/meiki-convert/`
+(local safety copy; also re-downloadable from the pinned revisions above).
+
+Host + catalog like a Paddle pack (`type:"ocr"` entry, `files` = the 3 `.mnn`, no keys);
+already wired in `Language.kt` (`JA → OcrBackend.Meiki("meiki-ja")`).
+
 ## Provenance / licensing
 
-PP-OCRv5 models © PaddlePaddle Authors, **Apache-2.0**
-(<https://github.com/PaddlePaddle/PaddleOCR>). MNN © Alibaba, Apache-2.0. The hosted
-repo (`huggingface.co/playtranslate/ocr-models`) carries a README with per-pack
-attribution; keep it in sync when adding packs.
+- **PaddleOCR** PP-OCRv5 models © PaddlePaddle Authors, **Apache-2.0**
+  (<https://github.com/PaddlePaddle/PaddleOCR>).
+- **Meiki** © rtr46, **LGPL-3.0** (<https://github.com/rtr46/meikiocr>) — copyleft; keep
+  the attribution on the hosted repo and in the app's open-source licenses.
+- **MNN** runtime/format © Alibaba, **Apache-2.0**.
+
+The hosted repo (`huggingface.co/playtranslate/ocr-models`) carries a README with
+per-pack attribution; keep it in sync when adding packs.
 
 ## Original working directory
 
