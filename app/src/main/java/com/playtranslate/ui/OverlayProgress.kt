@@ -56,6 +56,22 @@ fun OverlayProgress.showBergamotWarmupProgress(
     )
 }
 
+/**
+ * Switch this progress dialog to a determinate OCR-model download state, mirroring
+ * [showBergamotWarmupProgress] so the OCR pack download reads like the other
+ * downloads in the language-setup flow. Call on the UI thread.
+ */
+fun OverlayProgress.showOcrDownloadProgress(context: Context, received: Long, total: Long) {
+    setIndeterminate(false)
+    setProgress(if (total > 0) ((received * 100L) / total).toInt() else 0)
+    setMessage(
+        context.getString(
+            R.string.lang_setup_downloading_ocr_model,
+            humanSize(received), humanSize(total),
+        ),
+    )
+}
+
 /** Why this dialog went away. Callers branch on this in [OverlayProgress.Builder.setOnDismiss]
  *  to decide whether to nuke resume state (USER) or just stop using
  *  bandwidth/CPU (LIFECYCLE_PAUSE). */

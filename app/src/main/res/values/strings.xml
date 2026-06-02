@@ -1807,6 +1807,7 @@
          bytes-so-far formatted (e.g. "12 MB"); %2$s = total bytes
          formatted (e.g. "84 MB"). -->
     <string name="install_downloading_with_bytes">Downloading… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> of <xliff:g id="bytes_total" example="84 MB">%2$s</xliff:g></string>
+    <string name="lang_setup_downloading_ocr_model">Downloading OCR model… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> of <xliff:g id="bytes_total" example="47 MB">%2$s</xliff:g></string>
 
     <!-- Body of the progress dialog while target-language definitions
          are downloading. -->

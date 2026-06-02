@@ -128,14 +128,24 @@ object OcrModelManager {
         if (best.packKeys.isNotEmpty()) prefs.setOcrBackendToken(id, best.selectionToken)
     }
 
-    /** Auto-provision [id]'s default OCR engine from the language-consolidation
-     *  flow: record the default (always) + best-effort download the required packs,
-     *  **Wi-Fi-gated** (metered → token set, download deferred to the next Settings
-     *  visit / unmetered consolidation). Idempotent; ML Kit floor until packs land. */
-    suspend fun ensureDefaultForSource(ctx: Context, id: SourceLangId) {
+    /** Download [id]'s default OCR engine's pack(s) as a VISIBLE step folded into
+     *  the language-setup download flow (its own progress view, like the source
+     *  pack + offline translation models). Records the default first, then fetches
+     *  each not-yet-installed pack, reporting byte progress via [onBytes]. No-op
+     *  when the default resolves to ML Kit or the pack is already present.
+     *  Propagates cancellation; a network failure throws — the caller swallows it
+     *  so OCR falls back to the ML Kit floor without aborting language setup. */
+    suspend fun downloadDefaultForSource(
+        ctx: Context,
+        id: SourceLangId,
+        onBytes: (received: Long, total: Long) -> Unit,
+    ) {
         setDefaultBackendIfUnset(ctx, id)
-        if (OnDeviceLlmDownloader.isMetered(ctx)) return
-        applyDownloads(ctx)
+        val needed = selectedBackend(ctx, id).packKeys.filter { !OcrPackModelHelper(it).isInstalled(ctx) }
+        for (key in needed) {
+            OnDeviceLlmDownloader(ctx.applicationContext, OcrPackModelHelper(key), totalMemFloorBytes = 0L)
+                .run { p -> if (p is OnDeviceLlmDownloader.Progress.Downloading) onBytes(p.received, p.total) }
+        }
     }
 
     /** Delete orphaned packs (installed − required) that aren't currently loaded.

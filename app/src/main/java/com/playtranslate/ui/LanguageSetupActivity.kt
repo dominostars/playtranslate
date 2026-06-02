@@ -40,7 +40,6 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.card.MaterialCardView
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.playtranslate.translation.OfflineModelReclaimer
-import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.DownloadProgress
@@ -218,7 +217,10 @@ class LanguageSetupActivity : AppCompatActivity() {
         // provides the happens-before). See [preloadMlKitFallbackModels].
         var mlKitReady = true
 
-        val sourceLoadAction: suspend ((Int, Int, Long, Long) -> Unit) -> Unit = { warmupProgress ->
+        val sourceLoadAction: suspend (
+            (Int, Int, Long, Long) -> Unit,
+            (Long, Long) -> Unit,
+        ) -> Unit = { warmupProgress, ocrProgress ->
             val preloadResult = SourceLanguageEngines.get(applicationContext, id).preload()
             when (preloadResult) {
                 is PreloadResult.Success -> { /* proceed */ }
@@ -257,17 +259,23 @@ class LanguageSetupActivity : AppCompatActivity() {
             mlKitReady =
                 if (BergamotWarmup.ensureForPair(applicationContext, src, currentTarget, warmupProgress)) true
                 else preloadMlKitFallbackModels(src, currentTarget)
+            // Download this source's default OCR engine as a visible step in the
+            // same setup flow (its own progress view, like the source pack +
+            // offline translation models). Best-effort: a network failure leaves
+            // ML Kit as the floor and does NOT abort adding the language; a user
+            // cancel aborts setup like any other step.
+            try {
+                OcrModelManager.downloadDefaultForSource(applicationContext, id) { recv, total ->
+                    ocrProgress(recv, total)
+                }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "default OCR download failed for ${id.code}; using ML Kit floor", e)
+            }
         }
         val onDone: () -> Unit = {
             Prefs(this).sourceLang = id.code
-            // Auto-provision this source's default OCR engine: record the choice
-            // now (ML Kit floor covers OCR until the pack lands) + best-effort
-            // download it on the app scope — survives finish(), Wi-Fi-gated and
-            // non-blocking so it never holds up setup completion.
-            OcrModelManager.setDefaultBackendIfUnset(applicationContext, id)
-            (applicationContext as PlayTranslateApplication).appScope.launch {
-                runCatching { OcrModelManager.ensureDefaultForSource(applicationContext, id) }
-            }
             if (!mlKitReady) {
                 Toast.makeText(
                     this, R.string.lang_setup_offline_model_unavailable, Toast.LENGTH_LONG,
@@ -501,7 +509,10 @@ class LanguageSetupActivity : AppCompatActivity() {
     private fun showDownloadAndLoadPopup(
         langName: String,
         downloadAction: suspend ((DownloadProgress) -> Unit) -> InstallResult,
-        loadAction: suspend ((Int, Int, Long, Long) -> Unit) -> Unit,
+        loadAction: suspend (
+            (Int, Int, Long, Long) -> Unit,
+            (Long, Long) -> Unit,
+        ) -> Unit,
         onSuccess: () -> Unit,
     ) {
         val dialog = buildPopupDialog(langName)
@@ -532,13 +543,20 @@ class LanguageSetupActivity : AppCompatActivity() {
                     }
                     try {
                         withContext(Dispatchers.IO) {
-                            loadAction { i, n, recv, total ->
-                                runOnUiThread {
-                                    dialog.showBergamotWarmupProgress(
-                                        this@LanguageSetupActivity, i, n, recv, total,
-                                    )
-                                }
-                            }
+                            loadAction(
+                                { i, n, recv, total ->
+                                    runOnUiThread {
+                                        dialog.showBergamotWarmupProgress(
+                                            this@LanguageSetupActivity, i, n, recv, total,
+                                        )
+                                    }
+                                },
+                                { recv, total ->
+                                    runOnUiThread {
+                                        dialog.showOcrDownloadProgress(this@LanguageSetupActivity, recv, total)
+                                    }
+                                },
+                            )
                         }
                         dialog.dismiss()
                         onSuccess()
@@ -563,7 +581,10 @@ class LanguageSetupActivity : AppCompatActivity() {
 
     private fun showLoadingPopup(
         langName: String,
-        loadAction: suspend ((Int, Int, Long, Long) -> Unit) -> Unit,
+        loadAction: suspend (
+            (Int, Int, Long, Long) -> Unit,
+            (Long, Long) -> Unit,
+        ) -> Unit,
         onSuccess: () -> Unit,
     ) {
         val dialog = buildPopupDialog(langName)
@@ -573,13 +594,20 @@ class LanguageSetupActivity : AppCompatActivity() {
         activeJob = lifecycleScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    loadAction { i, n, recv, total ->
-                        runOnUiThread {
-                            dialog.showBergamotWarmupProgress(
-                                this@LanguageSetupActivity, i, n, recv, total,
-                            )
-                        }
-                    }
+                    loadAction(
+                        { i, n, recv, total ->
+                            runOnUiThread {
+                                dialog.showBergamotWarmupProgress(
+                                    this@LanguageSetupActivity, i, n, recv, total,
+                                )
+                            }
+                        },
+                        { recv, total ->
+                            runOnUiThread {
+                                dialog.showOcrDownloadProgress(this@LanguageSetupActivity, recv, total)
+                            }
+                        },
+                    )
                 }
                 dialog.dismiss()
                 onSuccess()
