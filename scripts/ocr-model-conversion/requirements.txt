@@ -1,0 +1,16 @@
+# Toolchain for converting PaddleOCR models to MNN (PaddleOCR → ONNX → MNN).
+# Validated on macOS (Apple Silicon), Python 3.9.6. See README.md.
+#
+#   python3.9 -m venv venv
+#   venv/bin/pip install -r requirements.txt
+#
+# Direct tools:
+paddlepaddle==3.3.1      # the source inference models load through Paddle
+paddle2onnx==2.1.0       # Paddle inference  -> ONNX  (provides `paddle2onnx` CLI)
+mnn==3.5.0               # ONNX -> MNN        (provides `mnnconvert` CLI; pure pip, no native build)
+onnx==1.17.0
+PyYAML==6.0.3            # extract the rec charset from inference.yml -> keys.txt
+huggingface_hub==1.8.0   # download the Paddle inference bundles from the PaddlePaddle HF org
+# Pinned for reproducibility (pulled in transitively by the above):
+numpy==2.0.2
+protobuf==6.33.6

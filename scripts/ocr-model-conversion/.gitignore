@@ -1,0 +1,8 @@
+# Regenerable working dirs + outputs — never commit (large, re-downloadable/
+# re-buildable). Only the scripts, requirements.txt, and README.md are tracked.
+venv/
+paddle/
+onnx/
+mnn/
+__pycache__/
+*.pyc
