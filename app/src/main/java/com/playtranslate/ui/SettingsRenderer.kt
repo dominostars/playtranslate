@@ -807,7 +807,9 @@ class SettingsRenderer(
         drawable.setBounds(0, 0, px, px)
         val start = sb.length
         sb.append(" ")
-        val dy = (2 * ctx.resources.displayMetrics.density).toInt()
+        // Lift 1.5dp above ALIGN_BOTTOM to optically center; at 2dp the icons
+        // read slightly high, so 1.5dp drops them ~0.5dp.
+        val dy = (1.5f * ctx.resources.displayMetrics.density).toInt()
         sb.setSpan(OffsetImageSpan(drawable, dy), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
 
