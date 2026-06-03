@@ -35,35 +35,6 @@
             android:paddingBottom="20dp">
 
             <!-- ══════════════════════════════════════════════════════ -->
-            <!-- OCR                                                   -->
-            <!-- ══════════════════════════════════════════════════════ -->
-            <!-- Header + card visibility are toggled in
-                 CaptureOverlaySettingsActivity.setupOcrSection (hidden when no
-                 installed source language has a real engine choice). Rows are
-                 inflated into containerOcrLanguages, one per source language. -->
-
-            <include layout="@layout/settings_group_header"
-                android:id="@+id/headerOcr" />
-
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardOcr"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:cardBackgroundColor="?attr/ptCard"
-                app:cardCornerRadius="@dimen/pt_radius"
-                app:cardElevation="0dp"
-                app:strokeColor="?attr/ptDivider"
-                app:strokeWidth="1dp">
-
-                <LinearLayout
-                    android:id="@+id/containerOcrLanguages"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical" />
-
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- ══════════════════════════════════════════════════════ -->
             <!-- CAPTURE DISPLAY (conditional: multi-display)          -->
             <!-- ══════════════════════════════════════════════════════ -->
 
@@ -111,6 +82,36 @@
 
                 </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
+
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- IMAGE-TO-TEXT (OCR)                                   -->
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- Header + card visibility are toggled in
+                 CaptureOverlaySettingsActivity.setupOcrSection (hidden when the
+                 current source language has no engine choice beyond the ML Kit
+                 floor). One row per available OCR engine is inflated into
+                 containerOcrLanguages. -->
+
+            <include layout="@layout/settings_group_header"
+                android:id="@+id/headerOcr" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardOcr"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:id="@+id/containerOcrLanguages"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+            </com.google.android.material.card.MaterialCardView>
 
             <!-- ══════════════════════════════════════════════════════ -->
             <!-- AUTO-TRANSLATE                                        -->

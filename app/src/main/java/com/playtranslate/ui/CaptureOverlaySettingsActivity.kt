@@ -512,8 +512,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         }
         header?.visibility = View.VISIBLE
         card?.visibility = View.VISIBLE
-        header?.findViewById<TextView>(R.id.tvGroupTitle)?.text =
-            getString(R.string.settings_ocr_header_for, id.displayName())
+        setGroupHeader(R.id.headerOcr, R.string.settings_header_ocr)
 
         val selectedToken = OcrModelManager.selectedBackend(this, id).selectionToken
         backends.forEachIndexed { i, backend ->

@@ -1833,11 +1833,10 @@
     <string name="settings_header_capture_display">Capture display</string>
     <string name="settings_header_online_translations">Online translations</string>
     <string name="settings_header_offline_translations">Offline translations</string>
-    <!-- OCR engine section (Settings → Capture &amp; overlay → OCR). One cell per
-         engine available for the current source language. %1$s = engine name
-         (Meiki / PaddleOCR / ML Kit, not translated); %2$s = a model size like
-         "16 MB". -->
-    <string name="settings_ocr_header_for" translatable="false">OCR · <xliff:g id="language" example="Japanese">%1$s</xliff:g></string>
+    <!-- OCR engine section (Settings → Capture &amp; overlay): one cell per
+         engine available for the current source language. Engine names
+         (Meiki / PaddleOCR / ML Kit) are proper nouns, not translated. -->
+    <string name="settings_header_ocr">Image-to-text (OCR)</string>
     <string name="settings_ocr_note_builtin">Built-in</string>
     <string name="settings_ocr_note_shared">No extra space</string>
     <string name="settings_ocr_note_download"><xliff:g id="size">%1$s</xliff:g> download</string>
