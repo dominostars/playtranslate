@@ -11,6 +11,9 @@ import com.playtranslate.ui.ThemeMode
 import org.json.JSONArray
 import org.json.JSONObject
 import androidx.core.content.edit
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 
 /**
  * Which overlay the live-mode loop and hold-to-preview gesture should render
@@ -67,6 +70,31 @@ class Prefs(context: Context) {
         // values. Idempotent and cheap (sp.contains() lookups) once migration
         // has actually executed on a device.
         migrateLegacyPrefs()
+    }
+
+    /**
+     * Cold [Flow] that emits once immediately (seeding the current state) and
+     * again on every change to any of [keys] — plus on a null-key broadcast,
+     * which `clear()` and some OEMs send. Emits [Unit]: collectors re-read the
+     * relevant typed getter on each tick, so a single signal covers any number
+     * of observed keys. Pair with `.map { … }.distinctUntilChanged()` to drive
+     * a settings ViewModel's UiState reactively (prefs are the source of truth;
+     * the VM is a projection).
+     *
+     * The listener is held in a local `val` for the flow's lifetime —
+     * [SharedPreferences] keeps only a weak reference to listeners — and is
+     * removed in [awaitClose]. It registers on the process-global
+     * `playtranslate_prefs` store, so it observes writes from any [Prefs]
+     * instance or process component.
+     */
+    fun observe(vararg keys: String): Flow<Unit> = callbackFlow {
+        val watched = keys.toHashSet()
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, changed ->
+            if (changed == null || changed in watched) trySend(Unit)
+        }
+        sp.registerOnSharedPreferenceChangeListener(listener)
+        trySend(Unit) // seed with the current state
+        awaitClose { sp.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
     var sourceLang: String
@@ -750,8 +778,8 @@ class Prefs(context: Context) {
      *  PlayTranslate tile is added (or already added). Drives whether the
      *  Settings "Add Quick Settings tile" row is offered. */
     var quickTileAdded: Boolean
-        get() = sp.getBoolean("quick_tile_added", false)
-        set(v) = sp.edit { putBoolean("quick_tile_added", v) }
+        get() = sp.getBoolean(KEY_QUICK_TILE_ADDED, false)
+        set(v) = sp.edit { putBoolean(KEY_QUICK_TILE_ADDED, v) }
 
     /** Debug-only: forces isSingleScreen() to return true regardless of actual display count. */
     var debugForceSingleScreen: Boolean
@@ -917,8 +945,8 @@ class Prefs(context: Context) {
         // (flash-lite-latest).
         const val DEFAULT_DEEPSEEK_MODEL  = "deepseek-v4-flash"
         private const val KEY_LEGACY_THEME_INDEX    = "theme_index"
-        private const val KEY_THEME_MODE            = "theme_mode"
-        private const val KEY_ACCENT_NAME           = "accent_name"
+        const val KEY_THEME_MODE                    = "theme_mode"
+        const val KEY_ACCENT_NAME                   = "accent_name"
         private const val KEY_CAPTURE_INTERVAL_SEC  = "capture_interval_sec"
         private const val KEY_CAPTURE_METHOD           = "capture_method"
         private const val KEY_OVERLAY_MODE               = "overlay_mode"
@@ -938,8 +966,9 @@ class Prefs(context: Context) {
         private const val KEY_DEBUG_LIVE_MODE                = "debug_live_mode"
         private const val KEY_DEBUG_SAVE_OCR_SEED            = "debug_save_ocr_seed"
         private const val KEY_DEBUG_LOG_GROUPING             = "debug_log_grouping"
-        private const val KEY_HOTKEY_TRANSLATION           = "hotkey_translation"
-        private const val KEY_HOTKEY_FURIGANA              = "hotkey_furigana"
+        const val KEY_HOTKEY_TRANSLATION                   = "hotkey_translation"
+        const val KEY_HOTKEY_FURIGANA                      = "hotkey_furigana"
+        const val KEY_QUICK_TILE_ADDED                     = "quick_tile_added"
         private const val KEY_LAST_UPDATE_CHECK            = "last_update_check"
         private const val KEY_UPDATE_SKIP_TAG              = "update_skip_tag"
         private const val KEY_TARGET_PACK_MIGRATION_DISMISSED = "target_pack_migration_dismissed"

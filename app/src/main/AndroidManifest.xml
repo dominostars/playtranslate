@@ -112,6 +112,20 @@
             android:parentActivityName=".MainActivity"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- Appearance sub-page (theme + accent), launched from Settings → Configure. -->
+        <activity
+            android:name=".ui.AppearanceSettingsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.PlayTranslate" />
+
+        <!-- Hotkeys sub-page (QS tile + hotkeys), launched from Settings → Configure. -->
+        <activity
+            android:name=".ui.HotkeysSettingsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.PlayTranslate" />
+
         <!-- Transparent host for the MediaProjection consent dialog. -->
         <activity
             android:name=".capture.MediaProjectionConsentActivity"

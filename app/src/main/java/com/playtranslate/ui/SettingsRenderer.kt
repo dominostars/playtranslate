@@ -104,11 +104,18 @@ class SettingsRenderer(
     private val ctx: Context,
     private val lifecycleScope: CoroutineScope,
     private val callbacks: Callbacks,
+    /** True when hosted by the onboarding flow (hideDismiss). The CONFIGURE
+     *  drill-down is suppressed in that mode. */
+    private val isOnboarding: Boolean = false,
 ) {
 
     interface Callbacks {
         fun onClose()
-        fun onThemeChanged(scrollY: Int)
+        /** Tap on the Appearance CONFIGURE cell — open the theme/accent
+         *  sub-page ([AppearanceSettingsActivity]). */
+        fun openAppearanceSettings()
+        /** Tap on the Hotkeys CONFIGURE cell — open [HotkeysSettingsActivity]. */
+        fun openHotkeysSettings()
         fun onDisplayChanged()
         fun onSourceLangChanged()
         fun onOverlayModeChanged()
@@ -129,7 +136,6 @@ class SettingsRenderer(
         fun openTtsVoicePicker()
         /** Tap on the TTS no-engine cell — show the "No Text-to-Speech" alert. */
         fun openTtsSetup()
-        fun showHotkeyDialog(title: String?, onSet: (List<Int>) -> Unit, onCancel: () -> Unit)
 
         /** Show an OverlayAlert explaining that [requirement] needs the
          *  accessibility service enabled. The accent button opens
@@ -143,7 +149,6 @@ class SettingsRenderer(
         fun showAnkiDeckPicker(onDeckSelected: () -> Unit)
         fun showAnkiCardTypePicker(onPicked: () -> Unit)
         fun showAnkiCardTypeMapping(onSaved: () -> Unit)
-        fun getScrollY(): Int
 
         /** Tap on the MNN-backed Qwen row when the model isn't installed —
          *  start a zip download via the OnDeviceLlmDownloader ZipExtract
@@ -251,7 +256,6 @@ class SettingsRenderer(
     // and is hidden in lock-step with the cell (a11y dual-screen has no
     // activate control and the cell is GONE).
     private val powerCard: ShimmerLinearLayout = root.findViewById(R.id.powerCard)
-    private val dividerPowerCell: View = root.findViewById(R.id.dividerPowerCell)
     private val powerIconBlock: FrameLayout = root.findViewById(R.id.powerIconBlock)
     private val powerIconGlyph: ImageView = root.findViewById(R.id.powerIconGlyph)
     private val powerStateHalo: View = root.findViewById(R.id.powerStateHalo)
@@ -267,8 +271,6 @@ class SettingsRenderer(
     private val rowGameScreenControls: View = root.findViewById(R.id.rowGameScreenControls)
     private val switchGameScreenControls: MaterialSwitch =
         root.findViewById(R.id.switchGameScreenControls)
-
-    private val rowAddQuickTile: View = root.findViewById(R.id.rowAddQuickTile)
 
     private val overlayModeSection: View = root.findViewById(R.id.overlayModeSection)
     private val overlayModeToggleContainer: FrameLayout = root.findViewById(R.id.overlayModeToggleContainer)
@@ -293,11 +295,6 @@ class SettingsRenderer(
     private val rowHideOverlays: View = root.findViewById(R.id.rowHideOverlays)
     private val switchHideOverlays: MaterialSwitch = rowHideOverlays.findViewById(R.id.switchRowToggle)
 
-    private val hotkeySection: View = root.findViewById(R.id.hotkeySection)
-    private val rowHotkeyTranslation: View = root.findViewById(R.id.rowHotkeyTranslation)
-    private val rowHotkeyFurigana: View = root.findViewById(R.id.rowHotkeyFurigana)
-    private val dividerHotkeyFurigana: View = root.findViewById(R.id.dividerHotkeyFurigana)
-
     private val captureDisplaySection: View = root.findViewById(R.id.captureDisplaySection)
     private val llDisplayOptions: LinearLayout = root.findViewById(R.id.llDisplayOptions)
 
@@ -311,8 +308,6 @@ class SettingsRenderer(
     private val tvAnkiLongPressFooter: View = root.findViewById(R.id.tvAnkiLongPressFooter)
     private val tvAnkiSectionTitle: TextView = root.findViewById(R.id.tvAnkiSectionTitle)
 
-    private val llThemeModePicker: LinearLayout = root.findViewById(R.id.llThemeModePicker)
-    private val llAccentPicker: WrappingLinearLayout = root.findViewById(R.id.llAccentPicker)
     private val rowDiscord: View = root.findViewById(R.id.rowDiscord)
     private val rowDonate: View = root.findViewById(R.id.rowDonate)
     private val settingsScrollView: androidx.core.widget.NestedScrollView = root.findViewById(R.id.settingsScrollView)
@@ -332,13 +327,12 @@ class SettingsRenderer(
         setupLanguageSection()
         setupOnScreenControls()
         setupAutoTranslateSection()
-        setupHotkeySection()
         setupCaptureDisplaySection()
         setupTranslationServiceSection()
         setupOcrSection()
         setupAnkiSection()
         refreshTtsSection()
-        setupAppearanceSection()
+        setupConfigureSection()
         setupSupportSection()
         setupDebugSection()
         setupFooter()
@@ -354,13 +348,11 @@ class SettingsRenderer(
         // the power card as part of the top section (no headerOnScreen in
         // dialog_settings.xml).
         setGroupHeader(R.id.headerAutoTranslate, ctx.getString(R.string.settings_header_auto_translate))
-        setGroupHeader(R.id.headerHotkeys, ctx.getString(R.string.settings_header_hotkeys))
         setGroupHeader(R.id.headerCaptureDisplay, ctx.getString(R.string.settings_header_capture_display))
         setGroupHeader(R.id.headerOnlineTranslations, ctx.getString(R.string.settings_header_online_translations))
         setGroupHeader(R.id.headerOfflineTranslations, ctx.getString(R.string.settings_header_offline_translations))
         setGroupHeader(R.id.headerAnki, ctx.getString(R.string.settings_header_anki))
         setGroupHeader(R.id.headerTextToSpeech, ctx.getString(R.string.settings_header_text_to_speech))
-        setGroupHeader(R.id.headerAppearance, ctx.getString(R.string.settings_header_appearance))
         setGroupHeader(R.id.headerSupport, ctx.getString(R.string.settings_header_support))
         setGroupHeader(R.id.headerDebug, ctx.getString(R.string.settings_header_debug))
     }
@@ -500,63 +492,8 @@ class SettingsRenderer(
         tvOverlayIconTitle.setText(R.string.settings_show_overlay_icon)
         overlayIconPreviewSlot.isVisible = true
         buildOverlayIconPreview()
-
-        setupAddQuickTileRow()
     }
 
-    /** "Add Quick Settings tile" row — only present on API 33+ (where
-     *  [android.app.StatusBarManager.requestAddTileService] exists) and only
-     *  while the user hasn't already confirmed adding the tile (tracked in
-     *  [Prefs.quickTileAdded] from the request callback). Pre-Tiramisu and
-     *  post-add the row stays hidden; the floating-icon footer's own
-     *  hairline divider (from bg_word_tatoeba_attribution) is then enough
-     *  separation from the power cell.
-     *
-     *  Also re-syncs dividerPowerCell — it's the divider between the power
-     *  cell and the quick-tile row, so it should hide whenever the
-     *  quick-tile row is hidden (the footer's own top divider takes over
-     *  the separation duty). */
-    private fun setupAddQuickTileRow() {
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) {
-            rowAddQuickTile.isGone = true
-            refreshDividerPowerCellVisibility()
-            return
-        }
-        setupAddQuickTileRowTiramisu()
-    }
-
-    @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.TIRAMISU)
-    private fun setupAddQuickTileRowTiramisu() {
-        val visible = !prefs.quickTileAdded
-        rowAddQuickTile.visibility = if (visible) View.VISIBLE else View.GONE
-        refreshDividerPowerCellVisibility()
-        if (!visible) return
-
-        rowAddQuickTile.findViewById<TextView>(R.id.tvRowTitle).text =
-            ctx.getString(R.string.quick_tile_add_row_title)
-        val subtitle = rowAddQuickTile.findViewById<TextView>(R.id.tvRowSubtitle)
-        subtitle.text = ctx.getString(R.string.quick_tile_add_row_subtitle)
-        subtitle.isVisible = true
-        rowAddQuickTile.findViewById<ImageView>(R.id.ivRowIcon)
-            ?.setImageResource(R.drawable.ic_add)
-        rowAddQuickTile.setOnClickListener { requestAddQuickTile() }
-    }
-
-    /** dividerPowerCell sits between the top-slot cell (the power cell or the
-     *  Game Screen Controls row — exactly one is always present) and the
-     *  quick-tile row. It shows only when the quick-tile row below is also
-     *  visible; when that row is hidden the floating-icon footer's own top
-     *  divider provides the separation, and a divider here would
-     *  double-stroke against it.
-     *
-     *  Called from both [refreshCaptureLifecycleButton] (which toggles the
-     *  top-slot cell) and [setupAddQuickTileRow] (which toggles the
-     *  quick-tile row) so the rule stays in sync with whichever changed
-     *  last. */
-    private fun refreshDividerPowerCellVisibility() {
-        val cellAbove = powerCard.isVisible || rowGameScreenControls.isVisible
-        dividerPowerCell.isVisible = cellAbove && rowAddQuickTile.isVisible
-    }
 
     /** Pulls the gesture string [stringRes] (which carries an inline `<b>`
      *  on the leading verb word), copies it into a SpannableStringBuilder,
@@ -586,30 +523,6 @@ class SettingsRenderer(
         return sb
     }
 
-    @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.TIRAMISU)
-    private fun requestAddQuickTile() {
-        val statusBarManager = ctx.getSystemService(android.app.StatusBarManager::class.java)
-            ?: return
-        val component = android.content.ComponentName(ctx, PlayTranslateTileService::class.java)
-        val icon = android.graphics.drawable.Icon.createWithResource(ctx, R.drawable.ic_qs_tile)
-        val label = ctx.getString(R.string.tile_label)
-        statusBarManager.requestAddTileService(
-            component,
-            label,
-            icon,
-            ContextCompat.getMainExecutor(ctx),
-        ) { result ->
-            when (result) {
-                android.app.StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED,
-                android.app.StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED -> {
-                    prefs.quickTileAdded = true
-                    setupAddQuickTileRow()
-                }
-                // TILE_NOT_ADDED / error codes: keep the row visible so the
-                // user can try again.
-            }
-        }
-    }
 
     // ── Turn On / Turn Off PlayTranslate ───────────────────────────────────────
 
@@ -695,9 +608,6 @@ class SettingsRenderer(
         rowGameScreenControls.visibility =
             if (showPowerCell) View.GONE else View.VISIBLE
         switchGameScreenControls.isChecked = prefs.showOverlayIcon
-        // dividerPowerCell visibility depends on the cell above it and the
-        // quick-tile row below — see refreshDividerPowerCellVisibility.
-        refreshDividerPowerCellVisibility()
         val active = CaptureLifecycle.isActive(ctx)
         // The floating-icon footer is lit when the icon is actually on the
         // game screen, dim otherwise. That tracks `active` everywhere except
@@ -1073,103 +983,6 @@ class SettingsRenderer(
 
     // ── Hotkey section ───────────────────────────────────────────────────
 
-    private fun setupHotkeySection() {
-        val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
-        val hasHintText = hintKind != HintTextKind.NONE
-
-        // Section is always available — the translation hotkey is useful
-        // regardless of source language (handheld users want hold-to-translate
-        // even when there's no furigana/pinyin layer to surface).
-        hotkeySection.isVisible = true
-
-        // -- Translation hotkey (always visible) --
-        setupSingleHotkeyRow(
-            row = rowHotkeyTranslation,
-            title = ctx.getString(R.string.hotkey_show_translations_title),
-            getHotkey = { prefs.hotkeyTranslation },
-            setHotkey = { prefs.hotkeyTranslation = it },
-            dialogTitle = ctx.getString(R.string.hotkey_show_translations_dialog_title)
-        )
-
-        // -- Furigana/Pinyin hotkey (only when source language has hint text) --
-        if (hasHintText) {
-            val hintLabel = when (hintKind) {
-                HintTextKind.PINYIN -> ctx.getString(R.string.overlay_mode_option_pinyin)
-                else -> ctx.getString(R.string.overlay_mode_option_furigana)
-            }
-            rowHotkeyFurigana.isVisible = true
-            dividerHotkeyFurigana.isVisible = true
-            setupSingleHotkeyRow(
-                row = rowHotkeyFurigana,
-                title = ctx.getString(R.string.hotkey_show_hint_title, hintLabel),
-                getHotkey = { prefs.hotkeyFurigana },
-                setHotkey = { prefs.hotkeyFurigana = it },
-                dialogTitle = ctx.getString(R.string.hotkey_show_hint_dialog_title, hintLabel)
-            )
-        } else {
-            rowHotkeyFurigana.isGone = true
-            dividerHotkeyFurigana.isGone = true
-        }
-    }
-
-    private fun setupSingleHotkeyRow(
-        row: View,
-        title: String,
-        getHotkey: () -> String,
-        setHotkey: (String) -> Unit,
-        dialogTitle: String?
-    ) {
-        val tvTitle = row.findViewById<TextView>(R.id.tvRowTitle)
-        val tvSubtitle = row.findViewById<TextView>(R.id.tvRowSubtitle)
-        val switch = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-        val hotkey = getHotkey()
-
-        tvTitle.text = title
-
-        switch.isChecked = hotkey.isNotEmpty()
-        if (hotkey.isNotEmpty()) {
-            tvSubtitle.text = formatHotkey(hotkey)
-            tvSubtitle.isVisible = true
-        } else {
-            tvSubtitle.text = ctx.getString(R.string.hotkey_not_set_subtitle)
-            tvSubtitle.isVisible = true
-        }
-
-        switch.setOnCheckedChangeListener { _, checked ->
-            if (checked) {
-                // Hotkeys are detected via AccessibilityService.onKeyEvent —
-                // the setup dialog can't capture keystrokes without the
-                // service bound. Revert the optimistic flip and explain.
-                if (!PlayTranslateAccessibilityService.isEnabled(ctx)) {
-                    switch.isChecked = false
-                    callbacks.showAccessibilityRequiredAlert(AccessibilityRequirement.HOTKEY)
-                    return@setOnCheckedChangeListener
-                }
-                callbacks.showHotkeyDialog(
-                    dialogTitle,
-                    onSet = { keyCodes ->
-                        val combo = keyCodes.joinToString("+")
-                        setHotkey(combo)
-                        tvSubtitle.text = formatHotkey(combo)
-                        tvSubtitle.isVisible = true
-                    },
-                    onCancel = {
-                        switch.isChecked = false
-                    }
-                )
-            } else {
-                setHotkey("")
-                tvSubtitle.text = ctx.getString(R.string.hotkey_not_set_subtitle)
-            }
-        }
-
-        row.setOnClickListener { switch.toggle() }
-    }
-
-    private fun formatHotkey(stored: String): String =
-        stored.split("+")
-            .map { KeyEvent.keyCodeToString(it.toInt()).removePrefix("KEYCODE_") }
-            .joinToString(" + ")
 
     // ── Capture display section ──────────────────────────────────────────
 
@@ -2865,196 +2678,34 @@ class SettingsRenderer(
         dividerAnkiEditMapping.isVisible = true
     }
 
-    // ── Appearance ───────────────────────────────────────────────────────
+    // ── Configure (drill-down to settings sub-pages) ─────────────────────
 
-    private fun setupAppearanceSection() {
-        buildThemeModePicker(llThemeModePicker)
-        buildAccentPicker(llAccentPicker)
-    }
-
-    private fun buildThemeModePicker(container: LinearLayout) {
-        container.removeAllViews()
-        val dp = ctx.resources.displayMetrics.density
-        val tileRadius = 12 * dp
-        val swatchRadius = 8 * dp
-        val accentColor = ctx.themeColor(R.attr.ptAccent)
-        val outlineColor = ctx.themeColor(R.attr.ptOutline)
-        val current = prefs.themeMode
-
-        val darkBg   = ContextCompat.getColor(ctx, R.color.pt_dark_bg)
-        val darkText = ContextCompat.getColor(ctx, R.color.pt_dark_text)
-        val lightBg   = ContextCompat.getColor(ctx, R.color.pt_light_bg)
-        val lightText = ContextCompat.getColor(ctx, R.color.pt_light_text)
-
-        data class ModeOption(val mode: ThemeMode, val label: String)
-        val modes = listOf(
-            ModeOption(ThemeMode.SYSTEM, ctx.getString(R.string.pt_theme_mode_system)),
-            ModeOption(ThemeMode.DARK,   ctx.getString(R.string.pt_theme_mode_dark)),
-            ModeOption(ThemeMode.LIGHT,  ctx.getString(R.string.pt_theme_mode_light)),
-        )
-
-        modes.forEachIndexed { idx, opt ->
-            val selected = opt.mode == current
-            val tile = FrameLayout(ctx).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
-                ).also { lp ->
-                    if (idx > 0) lp.marginStart = (10 * dp).toInt()
-                }
-                background = GradientDrawable().apply {
-                    cornerRadius = tileRadius
-                    setColor(Color.TRANSPARENT)
-                    setStroke((2 * dp).toInt(),
-                        if (selected) accentColor else outlineColor)
-                }
-                setPadding((4 * dp).toInt(), (4 * dp).toInt(), (4 * dp).toInt(), (4 * dp).toInt())
-                isClickable = true
-                isFocusable = true
-                foreground = android.util.TypedValue().let { tv ->
-                    ctx.theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
-                    ContextCompat.getDrawable(ctx, tv.resourceId)
-                }
-                setOnClickListener {
-                    if (prefs.themeMode != opt.mode) {
-                        val scrollY = callbacks.getScrollY()
-                        prefs.themeMode = opt.mode
-                        callbacks.onThemeChanged(scrollY)
-                    }
-                }
-            }
-
-            val inner = LinearLayout(ctx).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT
-                )
-            }
-
-            val swatchH = (52 * dp).toInt()
-            val swatch = LinearLayout(ctx).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, swatchH
-                )
-                background = when (opt.mode) {
-                    ThemeMode.DARK -> GradientDrawable().apply {
-                        setColor(darkBg); cornerRadius = swatchRadius
-                    }
-                    ThemeMode.LIGHT -> GradientDrawable().apply {
-                        setColor(lightBg); cornerRadius = swatchRadius
-                    }
-                    ThemeMode.SYSTEM -> DiagonalSplitDrawable(
-                        topLeftColor = darkBg,
-                        bottomRightColor = lightBg,
-                        cornerRadius = swatchRadius,
-                    )
-                }
-                setPadding((8 * dp).toInt(), (8 * dp).toInt(), (8 * dp).toInt(), (8 * dp).toInt())
-            }
-
-            // Faux text bars for solid Light/Dark previews. System tile is
-            // intentionally bare so the diagonal split reads cleanly.
-            if (opt.mode != ThemeMode.SYSTEM) {
-                val barColor = if (opt.mode == ThemeMode.DARK) darkText else lightText
-                swatch.post {
-                    swatch.removeAllViews()
-                    val availW = swatch.width - swatch.paddingLeft - swatch.paddingRight
-                    if (availW <= 0) return@post
-
-                    fun makeBar(widthFraction: Float, height: Int, alphaFrac: Float): View {
-                        return View(ctx).apply {
-                            layoutParams = LinearLayout.LayoutParams(
-                                (availW * widthFraction).toInt(), (height * dp).toInt()
-                            )
-                            background = GradientDrawable().apply {
-                                setColor(barColor)
-                                cornerRadius = 2 * dp
-                                this.alpha = (alphaFrac * 255).toInt()
-                            }
-                        }
-                    }
-                    swatch.addView(makeBar(0.40f, 4, 0.8f))
-                    swatch.addView(makeBar(0.70f, 3, 0.4f).also {
-                        (it.layoutParams as LinearLayout.LayoutParams).topMargin = (4 * dp).toInt()
-                    })
-                    swatch.addView(makeBar(0.55f, 3, 0.4f).also {
-                        (it.layoutParams as LinearLayout.LayoutParams).topMargin = (4 * dp).toInt()
-                    })
-                }
-            }
-
-            inner.addView(swatch)
-
-            val label = TextView(ctx).apply {
-                text = opt.label
-                textSize = 12f
-                typeface = android.graphics.Typeface.create(
-                    "sans-serif-medium", android.graphics.Typeface.NORMAL
-                )
-                gravity = Gravity.CENTER
-                setTextColor(ctx.themeColor(R.attr.ptText))
-                setPadding(0, (6 * dp).toInt(), 0, (2 * dp).toInt())
-            }
-            inner.addView(label)
-
-            tile.addView(inner)
-            container.addView(tile)
+    /** Wire the CONFIGURE cells, each of which opens a settings sub-page.
+     *  Suppressed entirely during onboarding ([isOnboarding]): the focused
+     *  setup flow shouldn't branch into the sub-pages, and an Appearance
+     *  change there would recreate MainActivity out from under the onboarding
+     *  dialog. Cells are added here as each page's migration lands. */
+    private fun setupConfigureSection() {
+        val section = root.findViewById<View>(R.id.configureSection)
+        if (isOnboarding) {
+            section.isGone = true
+            return
+        }
+        setGroupHeader(R.id.headerConfigure, ctx.getString(R.string.settings_header_configure))
+        wireConfigureCell(R.id.rowConfigHotkeys, R.string.settings_cell_hotkeys) {
+            callbacks.openHotkeysSettings()
+        }
+        wireConfigureCell(R.id.rowConfigAppearance, R.string.settings_cell_appearance) {
+            callbacks.openAppearanceSettings()
         }
     }
 
-    private fun buildAccentPicker(container: WrappingLinearLayout) {
-        container.removeAllViews()
-        val dp = ctx.resources.displayMetrics.density
-        val swatchSize = (48 * dp).toInt()
-        val ringStroke = (2 * dp).toInt()
-        val innerInset = (8 * dp).toInt()
-        container.horizontalSpacingPx = (8 * dp).toInt()
-        container.verticalSpacingPx = (12 * dp).toInt()
-
-        val current = prefs.accent
-
-        AccentColor.values().forEach { accent ->
-            val color = ContextCompat.getColor(ctx, accent.color)
-            val selected = accent == current
-
-            val ringDrawable = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.TRANSPARENT)
-                if (selected) setStroke(ringStroke, color)
-            }
-            val innerDrawable = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(color)
-            }
-            val layered = android.graphics.drawable.LayerDrawable(
-                arrayOf(ringDrawable, innerDrawable)
-            ).apply {
-                setLayerInset(1, innerInset, innerInset, innerInset, innerInset)
-            }
-
-            val swatch = FrameLayout(ctx).apply {
-                layoutParams = ViewGroup.LayoutParams(swatchSize, swatchSize)
-                background = layered
-                isClickable = true
-                isFocusable = true
-                contentDescription = ctx.getString(accent.displayName)
-                foreground = android.util.TypedValue().let { tv ->
-                    ctx.theme.resolveAttribute(
-                        android.R.attr.selectableItemBackgroundBorderless, tv, true
-                    )
-                    ContextCompat.getDrawable(ctx, tv.resourceId)
-                }
-                setOnClickListener {
-                    if (prefs.accent != accent) {
-                        val scrollY = callbacks.getScrollY()
-                        prefs.accentName = accent.name
-                        callbacks.onThemeChanged(scrollY)
-                    }
-                }
-            }
-            container.addView(swatch)
-        }
+    /** A CONFIGURE row rendered as a title + chevron nav cell (empty value). */
+    private fun wireConfigureCell(rowId: Int, @StringRes titleRes: Int, onTap: () -> Unit) {
+        val row = root.findViewById<View>(rowId)
+        row.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(titleRes)
+        row.findViewById<TextView>(R.id.tvRowValue).text = ""
+        row.setOnClickListener { onTap() }
     }
 
     // ── Support ──────────────────────────────────────────────────────────
@@ -3281,19 +2932,6 @@ class SettingsRenderer(
             )
         }
 
-        // Hotkey section is always visible (translation hotkey is useful
-        // regardless of source language). Only the Furigana/Pinyin row
-        // toggles with hasHintText.
-        hotkeySection.isVisible = true
-        if (hasHintText) {
-            rowHotkeyFurigana.isVisible = true
-            dividerHotkeyFurigana.isVisible = true
-            rowHotkeyFurigana.findViewById<TextView>(R.id.tvRowTitle)?.text =
-                ctx.getString(R.string.hotkey_show_hint_title, hintLabel)
-        } else {
-            rowHotkeyFurigana.isGone = true
-            dividerHotkeyFurigana.isGone = true
-        }
     }
 
     fun refreshDisplayRows(prefs: Prefs) {

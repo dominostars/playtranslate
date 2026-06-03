@@ -55,7 +55,6 @@ class SettingsBottomSheet : DialogFragment() {
     var onSourceLangChanged: (() -> Unit)? = null
     var onScreenModeChanged: (() -> Unit)? = null
     var onClose: (() -> Unit)? = null
-    var onThemeChanged: ((scrollY: Int) -> Unit)? = null
     var onOverlayModeChanged: (() -> Unit)? = null
 
     // ── Internal state ──────────────────────────────────────────────────
@@ -438,14 +437,18 @@ class SettingsBottomSheet : DialogFragment() {
             prefs = prefs,
             ctx = requireContext(),
             lifecycleScope = viewLifecycleOwner.lifecycleScope,
+            isOnboarding = hideDismiss,
             callbacks = object : SettingsRenderer.Callbacks {
                 override fun onClose() { this@SettingsBottomSheet.onClose?.invoke() ?: dismiss() }
-                override fun onThemeChanged(scrollY: Int) {
-                    this@SettingsBottomSheet.onThemeChanged?.invoke(scrollY) ?: run {
-                        prefs.settingsScrollY = scrollY
-                        prefs.suppressNextTransition = true
-                        activity?.recreate()
-                    }
+                override fun openAppearanceSettings() {
+                    startActivity(
+                        android.content.Intent(requireContext(), AppearanceSettingsActivity::class.java)
+                    )
+                }
+                override fun openHotkeysSettings() {
+                    startActivity(
+                        android.content.Intent(requireContext(), HotkeysSettingsActivity::class.java)
+                    )
                 }
                 override fun onDisplayChanged() { this@SettingsBottomSheet.onDisplayChanged?.invoke() }
                 override fun onSourceLangChanged() { this@SettingsBottomSheet.onSourceLangChanged?.invoke() }
@@ -532,14 +535,6 @@ class SettingsBottomSheet : DialogFragment() {
                 ) {
                     this@SettingsBottomSheet.startPackUpgrade(stalePacks)
                 }
-                override fun showHotkeyDialog(
-                    title: String?, onSet: (List<Int>) -> Unit, onCancel: () -> Unit
-                ) {
-                    val dialog = HotkeySetupDialog.newInstance(title)
-                    dialog.onHotkeySet = onSet
-                    dialog.onCancelled = onCancel
-                    dialog.show(childFragmentManager, "hotkey_setup")
-                }
                 override fun showAccessibilityRequiredAlert(
                     requirement: AccessibilityRequirement
                 ) {
@@ -619,7 +614,6 @@ class SettingsBottomSheet : DialogFragment() {
                         dialog.show(childFragmentManager, AnkiFieldMappingDialog.TAG)
                     }
                 }
-                override fun getScrollY(): Int = settingsScrollView.scrollY
             }
         )
         renderer = r

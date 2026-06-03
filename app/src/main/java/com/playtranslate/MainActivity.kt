@@ -327,10 +327,17 @@ class MainActivity :
 
     override fun getAnkiPermissionLauncher() = requestAnkiPermission
 
+    /** Theme + accent this instance was created with; compared in [onResume]
+     *  to recreate after a change made on [com.playtranslate.ui.AppearanceSettingsActivity]. */
+    private var createdThemeKey: String = ""
+    private var createdAccentName: String = ""
+
     // ── Lifecycle ─────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
         applyTheme()
+        createdThemeKey = prefs.themeMode.storageKey
+        createdAccentName = prefs.accentName
         applyEdgeToEdge(this)
         super.onCreate(savedInstanceState)
         maybePromptForCrashShare()
@@ -548,6 +555,18 @@ class MainActivity :
 
     override fun onResume() {
         super.onResume()
+        // Appearance (theme mode / accent) is changed on the standalone
+        // AppearanceSettingsActivity, which writes the prefs and recreates
+        // itself. MainActivity, sitting behind it, re-applies on return: if
+        // either pref moved since this instance was themed, recreate so
+        // applyTheme() resolves the new palette/accent. suppressNextTransition
+        // keeps the swap seamless (consumed in onCreate).
+        if (prefs.themeMode.storageKey != createdThemeKey ||
+            prefs.accentName != createdAccentName) {
+            prefs.suppressNextTransition = true
+            recreate()
+            return
+        }
         // Pre-populate the resumed-activity registry before flipping
         // isInForeground. The flag's setter calls reconcileLiveModes, and
         // the Application-level onActivityResumed callback that drives
@@ -1052,18 +1071,11 @@ class MainActivity :
                 checkOnboardingState()
             }
             onClose = { hideSettings() }
-            onThemeChanged = { scrollY -> applyThemeInPlace(scrollY) }
             onOverlayModeChanged = { updateRegionButton() }
         }
         supportFragmentManager.beginTransaction()
             .replace(R.id.settingsContainer, sheet, SettingsBottomSheet.TAG)
             .commitAllowingStateLoss()
-    }
-
-    /** Apply the new theme by recreating the activity. */
-    private fun applyThemeInPlace(settingsScrollY: Int) {
-        prefs.settingsScrollY = settingsScrollY
-        recreate()
     }
 
     private fun hideSettings() {
@@ -1126,11 +1138,6 @@ class MainActivity :
             onSourceLangChanged = { onSourceLanguageChanged() }
             onScreenModeChanged = {
                 checkOnboardingState()
-            }
-            onThemeChanged = { scrollY ->
-                applyTheme()
-                prefs.settingsScrollY = scrollY
-                reinflateContent()
             }
             onOverlayModeChanged = { updateRegionButton() }
         }

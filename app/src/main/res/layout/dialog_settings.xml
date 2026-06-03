@@ -267,16 +267,6 @@
 
                     </LinearLayout>
 
-                    <View
-                        android:id="@+id/dividerPowerCell"
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:layout_marginStart="@dimen/pt_row_h_padding"
-                        android:background="?attr/ptDivider" />
-
-                    <include layout="@layout/settings_row_link"
-                        android:id="@+id/rowAddQuickTile" />
-
                     <!-- "On the floating icon" — sits at the bottom of the
                          top section as a footer (same surface tint + hairline
                          top divider as the capture-display footer; see
@@ -410,6 +400,48 @@
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
+
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- CONFIGURE — drill-down into the settings sub-pages.   -->
+            <!--   Cells are added here as each page's migration lands; -->
+            <!--   the section is hidden entirely during onboarding     -->
+            <!--   (hideDismiss) — see SettingsRenderer.setupConfigureSection. -->
+            <!-- ══════════════════════════════════════════════════════ -->
+
+            <LinearLayout
+                android:id="@+id/configureSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <include layout="@layout/settings_group_header"
+                    android:id="@+id/headerConfigure" />
+
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:cardBackgroundColor="?attr/ptCard"
+                    app:cardCornerRadius="@dimen/pt_radius"
+                    app:cardElevation="0dp"
+                    app:strokeColor="?attr/ptDivider"
+                    app:strokeWidth="1dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <include layout="@layout/settings_row_value"
+                            android:id="@+id/rowConfigHotkeys" />
+
+                        <include layout="@layout/settings_row_divider" />
+
+                        <include layout="@layout/settings_row_value"
+                            android:id="@+id/rowConfigAppearance" />
+
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
 
             <!-- ══════════════════════════════════════════════════════ -->
             <!-- AUTO-TRANSLATE                                        -->
@@ -624,51 +656,6 @@
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
-
-            <!-- ══════════════════════════════════════════════════════ -->
-            <!-- HOTKEYS (conditional: only when language has hint text) -->
-            <!-- ══════════════════════════════════════════════════════ -->
-
-            <LinearLayout
-                android:id="@+id/hotkeySection"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone">
-
-                <include layout="@layout/settings_group_header"
-                    android:id="@+id/headerHotkeys" />
-
-                <com.google.android.material.card.MaterialCardView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    app:cardBackgroundColor="?attr/ptCard"
-                    app:cardCornerRadius="@dimen/pt_radius"
-                    app:cardElevation="0dp"
-                    app:strokeColor="?attr/ptDivider"
-                    app:strokeWidth="1dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical">
-
-                        <include layout="@layout/settings_row_hotkey"
-                            android:id="@+id/rowHotkeyTranslation" />
-
-                        <View
-                            android:id="@+id/dividerHotkeyFurigana"
-                            android:layout_width="match_parent"
-                            android:layout_height="1dp"
-                            android:layout_marginStart="@dimen/pt_row_h_padding"
-                            android:background="?attr/ptDivider" />
-
-                        <include layout="@layout/settings_row_hotkey"
-                            android:id="@+id/rowHotkeyFurigana" />
-
-                    </LinearLayout>
-                </com.google.android.material.card.MaterialCardView>
-            </LinearLayout>
 
             <!-- ══════════════════════════════════════════════════════ -->
             <!-- CAPTURE DISPLAY (conditional: multi-display)          -->
@@ -1044,57 +1031,6 @@
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
-
-            <!-- ══════════════════════════════════════════════════════ -->
-            <!-- APPEARANCE                                            -->
-            <!-- ══════════════════════════════════════════════════════ -->
-
-            <include layout="@layout/settings_group_header"
-                android:id="@+id/headerAppearance" />
-
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:cardBackgroundColor="?attr/ptCard"
-                app:cardCornerRadius="@dimen/pt_radius"
-                app:cardElevation="0dp"
-                app:strokeColor="?attr/ptDivider"
-                app:strokeWidth="1dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="@dimen/pt_row_h_padding">
-
-                    <LinearLayout
-                        android:id="@+id/llThemeModePicker"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal" />
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:layout_marginTop="@dimen/pt_row_h_padding"
-                        android:background="?attr/ptDivider" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:paddingTop="@dimen/pt_row_h_padding"
-                        android:paddingBottom="6dp"
-                        android:text="@string/pt_accent_label"
-                        style="@style/Text.PT.RowTitle" />
-
-                    <com.playtranslate.ui.WrappingLinearLayout
-                        android:id="@+id/llAccentPicker"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content" />
-
-                </LinearLayout>
-
-            </com.google.android.material.card.MaterialCardView>
 
             <!-- ══════════════════════════════════════════════════════ -->
             <!-- SUPPORT                                               -->

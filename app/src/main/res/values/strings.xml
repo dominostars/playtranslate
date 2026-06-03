@@ -1855,6 +1855,11 @@
     <string name="settings_header_support">Support</string>
     <string name="settings_header_debug" translatable="false">Debug</string>
 
+    <!-- CONFIGURE — drill-down section linking to the settings sub-pages. -->
+    <string name="settings_header_configure">Configure</string>
+    <string name="settings_cell_appearance">Appearance</string>
+    <string name="settings_cell_hotkeys">Hotkeys</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Text-to-Speech section
          ═══════════════════════════════════════════════════════════════ -->
