@@ -896,6 +896,17 @@ class Prefs(context: Context) {
 
         const val KEY_SOURCE_LANG    = "source_lang"
         const val KEY_TARGET_LANG    = "target_lang"
+
+        /** The pref keys whose writes affect onboarding readiness — the source/
+         *  target language pick and the debug force-single toggle. The
+         *  readiness gate observes exactly these so a write from any component
+         *  re-derives on its own. The gate's non-pref inputs (pack install,
+         *  notification/accessibility permissions, display topology) are NOT
+         *  observable and are driven by MainActivity's refresh() triggers. */
+        val ONBOARDING_GATE_KEYS = arrayOf(
+            KEY_SOURCE_LANG, KEY_TARGET_LANG, KEY_DEBUG_FORCE_SINGLE_SCREEN,
+        )
+
         private const val KEY_DISPLAY_ID     = "capture_display_id"
         private const val KEY_DISPLAY_IDS    = "capture_display_ids"
         private const val KEY_SELECTED_REGION_ID = "selected_region_id"

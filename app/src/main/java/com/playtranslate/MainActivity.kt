@@ -71,8 +71,8 @@ import com.playtranslate.model.TranslationResult
 import com.playtranslate.translation.OfflineModelReclaimer
 import com.playtranslate.ui.AppReadiness
 import com.playtranslate.ui.ClickableTextView
-import com.playtranslate.ui.computeReadiness
 import com.playtranslate.ui.DimController
+import com.playtranslate.ui.OnboardingViewModel
 import com.playtranslate.ui.OverlayAlert
 import android.net.Uri
 import com.playtranslate.AnkiManager
@@ -151,6 +151,11 @@ class MainActivity :
      *  observes this VM; this activity mutates it. */
     private val resultVm: com.playtranslate.ui.TranslationResultViewModel by viewModels()
 
+    /** The onboarding readiness gate. Derives [AppReadiness] from setup + screen
+     *  mode; this activity collects [OnboardingViewModel.state] and routes, and
+     *  calls [OnboardingViewModel.refresh] (after `reresolve`) from each trigger. */
+    private val onboardingVm: OnboardingViewModel by viewModels()
+
     // ── TranslationResultHost event handlers ──────────────────────────────
 
     override fun onEditOriginalRequested() {
@@ -187,14 +192,14 @@ class MainActivity :
         override fun onDisplayAdded(displayId: Int) { runOnUiThread {
             dumpDisplayState("displayAdded:$displayId")
             if (!isFinishing) {
-                checkOnboardingState()
+                refreshReadiness()
                 CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
             }
         } }
         override fun onDisplayRemoved(displayId: Int) { runOnUiThread {
             dumpDisplayState("displayRemoved:$displayId")
             if (!isFinishing) {
-                checkOnboardingState()
+                refreshReadiness()
                 CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
             }
         } }
@@ -207,7 +212,7 @@ class MainActivity :
                 // state has to reconcile the same way it does on add/remove.
                 // Both handlers are idempotent — brightness changes and
                 // rotations that don't flip the predicates are no-ops.
-                checkOnboardingState()
+                refreshReadiness()
                 CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
             }
         } }
@@ -291,7 +296,7 @@ class MainActivity :
                 }
             )
         }
-        checkOnboardingState()
+        refreshReadiness()
     }
 
     private val requestAnkiPermission = registerForActivityResult(
@@ -498,6 +503,17 @@ class MainActivity :
         if (Prefs.hasMultipleDisplays(this) && !isLiveMode) {
             dimController = DimController(findViewById(R.id.dimOverlay))
         }
+
+        // Drive the onboarding gate: collect readiness and route it. The
+        // collector restarts on each STARTED, so a returning foreground
+        // re-applies the current home via the StateFlow's replay (matching the
+        // old per-resume re-derive). The first *derivation* is deferred to
+        // onResume's refresh() — see OnboardingViewModel — so null is skipped.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                onboardingVm.state.collect { readiness -> readiness?.let { route(it) } }
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -601,13 +617,17 @@ class MainActivity :
         // TranslationResultActivity nulling shared callback fields,
         // which it no longer does.)
         CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
-        checkOnboardingState()
+        refreshReadiness()
         maybeCheckForUpdates()
-        if (onboardingContainer.isVisible) return
-        if (isSingleScreen()) return
-        initLiveHintText()
-        updateRegionButton()
-        updateCaptureReadyStatus()
+        // The dual-screen live-hint surface applies only when fully Ready on
+        // dual. Read the gate's freshly-refreshed state (refreshReadiness()
+        // updated it synchronously) rather than the onboardingContainer view,
+        // which the route() collector updates asynchronously.
+        if (onboardingVm.state.value == AppReadiness.Ready(AppReadiness.Home.DUAL)) {
+            initLiveHintText()
+            updateRegionButton()
+            updateCaptureReadyStatus()
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -1068,7 +1088,7 @@ class MainActivity :
             setShowsDialog(false)
             onSourceLangChanged = { onSourceLanguageChanged() }
             onScreenModeChanged = {
-                checkOnboardingState()
+                refreshReadiness()
             }
             onClose = { hideSettings() }
         }
@@ -1102,7 +1122,7 @@ class MainActivity :
         val sheet = SettingsBottomSheet.newInstance(nonDismissible = nonDismissible).apply {
             onSourceLangChanged = { onSourceLanguageChanged() }
             onScreenModeChanged = {
-                checkOnboardingState()
+                refreshReadiness()
             }
         }
         val ft = supportFragmentManager.beginTransaction()
@@ -1120,7 +1140,7 @@ class MainActivity :
      *  the brief unbound window are absorbed by the three-way decision in
      *  [withAccessibility] rather than gated here.
      *
-     *  Mirrors the broader `captureReady` formula in [checkOnboardingState]
+     *  Mirrors the broader `captureReady` formula in [OnboardingViewModel]
      *  so MediaProjection users don't see the stale "Accessibility required"
      *  message in the Translate status area. */
     private val isCaptureReady: Boolean
@@ -1607,11 +1627,14 @@ class MainActivity :
     }
 
     private fun maybeCheckForUpdates() {
-        if (onboardingContainer.isVisible) return
+        // Only nudge for updates once fully set up. Gate on the readiness state
+        // (not the onboardingContainer view, which route() updates async): when
+        // this runs straight after refreshReadiness() the view may still be stale.
+        if (onboardingVm.state.value !is AppReadiness.Ready) return
         lifecycleScope.launch {
             val release = UpdateChecker.maybeCheck(this@MainActivity) ?: return@launch
             if (!isInForeground || isFinishing || isDestroyed) return@launch
-            if (onboardingContainer.isVisible) return@launch
+            if (onboardingVm.state.value !is AppReadiness.Ready) return@launch
             showUpdatePopup(release)
         }
     }
@@ -1660,39 +1683,34 @@ class MainActivity :
 
     private fun isSingleScreen(): Boolean = Prefs.isSingleScreen(this)
 
-    private fun checkOnboardingState() {
-        // Re-derive the capture backend from current permissions first — a
-        // grant made in system Settings only reaches us on resume. This has
-        // side effects (it can tear down a stale capture session), so it stays
-        // here in the Activity, never inside the pure derivation below.
-        CaptureBackendResolver.reresolve(this)
-
-        val prefs = Prefs(this)
-        val languageConfigured =
-            LanguagePackStore.isInstalled(this, prefs.sourceLangId) && prefs.hasTargetLangBeenSet
-        val notifGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED
-        // The accessibility onboarding page only needs to be forced when the
-        // active capture backend depends on the accessibility service. The
-        // MediaProjection backend does not, so an approved MP setup skips it.
-        val captureReady = PlayTranslateAccessibilityService.isEnabled(this) ||
-            !CaptureBackendResolver.active().requiresAccessibilityService
-        // Use the viewport predicate (not hasMultipleDisplays) so split-screen
-        // users don't fall into the forced non-dismissible settings sheet: in
-        // pure single-screen fullscreen the user has no other surface to manage
-        // the app from; that rationale doesn't apply in split-screen where the
-        // app half is visible alongside the game.
-        val singleScreen = Prefs.isSingleScreen(this)
-
+    /** Apply [readiness] to the UI — show the onboarding page for a step, or
+     *  the steady-state home. This is the single place the readiness state
+     *  machine touches the UI; the [onboardingVm] collector calls it on every
+     *  distinct emission. The derivation (and `reresolve`) live elsewhere: each
+     *  trigger does `reresolve(this); onboardingVm.refresh()`.
+     *
+     *  [Prefs.isSingleScreen] is re-read here only for the CAPTURE page's
+     *  dismissal nuance (the step itself doesn't encode screen mode); the Ready
+     *  home comes from [readiness] directly. */
+    private fun route(readiness: AppReadiness) {
         val existingSheet =
             supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG) as? SettingsBottomSheet
-
-        when (val readiness =
-            computeReadiness(languageConfigured, notifGranted, captureReady, singleScreen)) {
-            is AppReadiness.Onboarding -> showOnboardingStep(readiness.step, singleScreen, existingSheet)
+        when (readiness) {
+            is AppReadiness.Onboarding ->
+                showOnboardingStep(readiness.step, Prefs.isSingleScreen(this), existingSheet)
             is AppReadiness.Ready -> showReadyHome(readiness.home, existingSheet)
         }
+    }
+
+    /** Re-derive onboarding readiness from current system state — the
+     *  replacement for the old direct `refreshReadiness()` calls. Resolves
+     *  the capture backend first (a permission granted in system Settings only
+     *  reaches us now; this has side effects, so it stays here, not in the VM),
+     *  then refreshes the gate. [OnboardingViewModel.refresh] updates the state
+     *  synchronously, and the [onboardingVm] collector routes any change. */
+    private fun refreshReadiness() {
+        CaptureBackendResolver.reresolve(this)
+        onboardingVm.refresh()
     }
 
     /** Show the onboarding page for [step].
@@ -1852,11 +1870,11 @@ class MainActivity :
                         targetCode = defaultTarget,
                         onSuccess = {
                             Prefs(this).targetLang = defaultTarget
-                            checkOnboardingState()
+                            refreshReadiness()
                         },
                     )
                 }
-                else -> checkOnboardingState()
+                else -> refreshReadiness()
             }
         }
 
