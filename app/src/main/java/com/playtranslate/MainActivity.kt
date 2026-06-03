@@ -657,6 +657,13 @@ class MainActivity :
         super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
         MainActivity.isInMultiWindowMode = isInMultiWindowMode
         dumpDisplayState("multiWindow=$isInMultiWindowMode")
+        // Entering/leaving split-screen flips Prefs.isSingleScreen, so re-derive
+        // the gate to flip the home chrome (bottom bar / forced-Settings) live
+        // rather than at the next resume. refresh() — not refreshReadiness() — on
+        // purpose: capture is already reconciled by onMultiWindowChanged() below,
+        // and reresolve is a no-op for a pure viewport change (its backend choice
+        // keys off permissions, not screen mode).
+        onboardingVm.refresh()
         // Let a running live session adapt if the viewport predicate flipped.
         // No-op if live mode isn't active.
         CaptureService.instance?.onMultiWindowChanged()
