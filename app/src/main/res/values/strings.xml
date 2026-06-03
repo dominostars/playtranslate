@@ -1838,8 +1838,6 @@
          (Meiki / PaddleOCR / ML Kit) are proper nouns, not translated. -->
     <string name="settings_header_ocr">Image-to-text (OCR)</string>
     <string name="settings_ocr_note_builtin">Built-in</string>
-    <string name="settings_ocr_note_shared">No extra space</string>
-    <string name="settings_ocr_note_download"><xliff:g id="size">%1$s</xliff:g> download</string>
     <string name="settings_ocr_delete_cd">Delete <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
     <string name="settings_ocr_delete_title">Delete <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g>?</string>
     <string name="settings_ocr_delete_msg">This removes the <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> model from this device. You can download it again later.</string>

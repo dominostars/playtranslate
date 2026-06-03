@@ -28,6 +28,7 @@ import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
+import androidx.core.widget.TextViewCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.CaptureService
@@ -546,13 +547,31 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
             .inflate(R.layout.language_list_row, container, false)
         view.findViewById<TextView>(R.id.tvRowTitle).text = backend.ocrLabel
 
-        // ML Kit is bundled (no packs) → always present / built-in.
+        // "Downloaded" (strict) gates the trash + re-tap; ML Kit (no packs) is
+        // never "downloaded" but is always "available" for the status icon.
         val downloaded = backend.packKeys.isNotEmpty() &&
             backend.packKeys.all { OcrPackModelHelper(it).isInstalled(this) }
+        val available = downloaded || backend.packKeys.isEmpty()
 
+        // Subtitle: the model's package size (or "Built-in"), led by the same
+        // download-state icon the offline translation cells use — an accent
+        // check when available, a muted download-cloud when not.
         val subtitle = view.findViewById<TextView>(R.id.tvRowEndonym)
         subtitle.visibility = View.VISIBLE
-        subtitle.text = ocrSizeSubtitle(id, backend, downloaded)
+        subtitle.text = ocrSizeSubtitle(backend)
+        val dp = resources.displayMetrics.density
+        val statusIcon = ContextCompat.getDrawable(
+            this,
+            if (available) R.drawable.ic_status_downloaded else R.drawable.ic_status_cloud_down,
+        )?.apply { setBounds(0, 0, (20 * dp).toInt(), (20 * dp).toInt()) }
+        subtitle.setCompoundDrawablesRelative(statusIcon, null, null, null)
+        subtitle.compoundDrawablePadding = (6 * dp).toInt()
+        // The check is self-colored (accent disc + card tick) → no tint; the
+        // cloud is tinted muted, exactly like the offline cells.
+        TextViewCompat.setCompoundDrawableTintList(
+            subtitle,
+            if (available) null else ColorStateList.valueOf(themeColor(R.attr.ptTextMuted)),
+        )
 
         // Trailing slot mirrors the language picker: an accent check when
         // selected (a non-interactive status mark), a trash when downloaded +
@@ -602,27 +621,13 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         return view
     }
 
-    /** Subtitle = the model's download size. ML Kit (no packs) → "Built-in";
-     *  installed → its on-disk size; otherwise the incremental download (0 bytes
-     *  when a sibling language already has the shared pack). */
-    private fun ocrSizeSubtitle(id: SourceLangId, backend: OcrBackend, downloaded: Boolean): String = when {
-        backend.packKeys.isEmpty() -> getString(R.string.settings_ocr_note_builtin)
-        downloaded -> humanSize(backend.packKeys.sumOf { OcrPackModelHelper(it).expectedSize(this) })
-        else -> {
-            val extra = incrementalOcrBytes(id, backend)
-            if (extra == 0L) getString(R.string.settings_ocr_note_shared)
-            else getString(R.string.settings_ocr_note_download, humanSize(extra))
-        }
-    }
-
-    private fun incrementalOcrBytes(id: SourceLangId, backend: OcrBackend): Long {
-        val othersRequired = LanguagePackStore.installedCodes(this)
-            .filter { it != id }
-            .flatMapTo(HashSet()) { OcrModelManager.selectedBackend(this, it).packKeys }
-        return backend.packKeys
-            .filter { it !in othersRequired && !OcrPackModelHelper(it).isInstalled(this) }
-            .sumOf { OcrPackModelHelper(it).expectedSize(this) }
-    }
+    /** Subtitle = the model's own package size; ML Kit (no packs) → "Built-in".
+     *  Always the model's real size — not an "incremental" cost — so a pack
+     *  shared with another language still shows its true download size instead
+     *  of reading as free. */
+    private fun ocrSizeSubtitle(backend: OcrBackend): String =
+        if (backend.packKeys.isEmpty()) getString(R.string.settings_ocr_note_builtin)
+        else humanSize(backend.packKeys.sumOf { OcrPackModelHelper(it).expectedSize(this) })
 
     /** Select [backend] for [id]: persist immediately if its pack is already
      *  present, else download with a progress overlay and persist only on
