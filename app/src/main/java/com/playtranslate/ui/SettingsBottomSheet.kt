@@ -51,11 +51,9 @@ import androidx.core.view.isGone
 class SettingsBottomSheet : DialogFragment() {
 
     // ── External callbacks (set by the host) ────────────────────────────
-    var onDisplayChanged: (() -> Unit)? = null
     var onSourceLangChanged: (() -> Unit)? = null
     var onScreenModeChanged: (() -> Unit)? = null
     var onClose: (() -> Unit)? = null
-    var onOverlayModeChanged: (() -> Unit)? = null
 
     // ── Internal state ──────────────────────────────────────────────────
     private var renderer: SettingsRenderer? = null
@@ -75,8 +73,6 @@ class SettingsBottomSheet : DialogFragment() {
         prefs.openaiApiKey, prefs.openaiModel,
         prefs.deepseekApiKey, prefs.deepseekModel,
     ).joinToString("|")
-    private var displayListener: DisplayManager.DisplayListener? = null
-    private var lastDisplayIds: Set<Int> = emptySet()
 
     /** The live MediaProjection session this sheet holds a teardown listener
      *  on while resumed (kept so onPause unregisters from the same one).
@@ -161,13 +157,6 @@ class SettingsBottomSheet : DialogFragment() {
     }
 
     override fun onDestroyView() {
-        renderer?.displayThumbnails?.values?.forEach { it?.recycle() }
-        renderer?.displayThumbnails?.clear()
-        displayListener?.let {
-            val dm = context?.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
-            dm?.unregisterDisplayListener(it)
-        }
-        displayListener = null
         renderer?.destroyOverlayIconPreview()
         renderer = null
         currentView = null
@@ -190,14 +179,6 @@ class SettingsBottomSheet : DialogFragment() {
         // backend — re-check its visibility in case the accessibility grant
         // changed while we were away (same catch-up reason as the rows here).
         view?.let { refreshToolbarVisibility(it) }
-        // Display picker locks to the first display while the a11y service is
-        // off (see SettingsRenderer.buildDisplayRow); rebuild on resume so it
-        // unlocks the moment the user returns from Accessibility Settings.
-        renderer?.refreshDisplayRows(Prefs(requireContext()))
-        renderer?.refreshAutoModeToggle()
-        // Catch up on the Enhanced auto-translate row in case the user
-        // granted (or revoked) accessibility while the sheet was paused.
-        renderer?.refreshEnhancedAutoTranslateRow()
         renderer?.refreshTtsSection()
         // Pick up backend toggle changes made while we were paused —
         // DeepLSettingsActivity / LlmBackendSettingsActivity flip the
@@ -245,7 +226,6 @@ class SettingsBottomSheet : DialogFragment() {
         prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             when (key) {
                 "show_overlay_icon" -> renderer?.refreshOverlayIconState()
-                "auto_translation_mode" -> renderer?.refreshAutoModeToggle()
                 Prefs.KEY_DEEPL_ENABLED -> {
                     renderer?.refreshDeeplBackendSwitch()
                     renderer?.refreshAllBackendStatuses()
@@ -450,9 +430,12 @@ class SettingsBottomSheet : DialogFragment() {
                         android.content.Intent(requireContext(), HotkeysSettingsActivity::class.java)
                     )
                 }
-                override fun onDisplayChanged() { this@SettingsBottomSheet.onDisplayChanged?.invoke() }
+                override fun openCaptureOverlaySettings() {
+                    startActivity(
+                        android.content.Intent(requireContext(), CaptureOverlaySettingsActivity::class.java)
+                    )
+                }
                 override fun onSourceLangChanged() { this@SettingsBottomSheet.onSourceLangChanged?.invoke() }
-                override fun onOverlayModeChanged() { this@SettingsBottomSheet.onOverlayModeChanged?.invoke() }
                 override fun onScreenModeChanged() { this@SettingsBottomSheet.onScreenModeChanged?.invoke() }
                 override fun requestAnkiPermission() {
                     requestAnkiPermission.launch(AnkiManager.PERMISSION)
@@ -618,76 +601,8 @@ class SettingsBottomSheet : DialogFragment() {
         )
         renderer = r
 
-        // Initialize display list and load thumbnails
-        setupDisplays(view, r, prefs)
-
         // Bind all rows
         r.bind()
-    }
-
-    // ── Display management ──────────────────────────────────────────────
-
-    private fun setupDisplays(view: View, r: SettingsRenderer, prefs: Prefs) {
-        val displayManager = requireContext().getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-        val displays = displayManager.capturableDisplays()
-        lastDisplayIds = displays.mapTo(mutableSetOf()) { it.displayId }
-
-        r.displayList = displays
-
-        // Register display listener for hot-plug
-        displayListener?.let { displayManager.unregisterDisplayListener(it) }
-        displayListener = object : DisplayManager.DisplayListener {
-            override fun onDisplayAdded(displayId: Int) { reinflateIfDisplaysChanged(displayManager) }
-            override fun onDisplayRemoved(displayId: Int) { reinflateIfDisplaysChanged(displayManager) }
-            // capturableDisplays() filters on STATE_ON, so a fold/unfold or
-            // monitor sleep/wake changes the picker's set without firing
-            // add/remove. Same-count swaps (one panel off as another comes on)
-            // would be missed by a count check, so compare the set of ids.
-            override fun onDisplayChanged(displayId: Int) { reinflateIfDisplaysChanged(displayManager) }
-        }
-        displayManager.registerDisplayListener(displayListener, null)
-
-        // Capture thumbnails asynchronously. On the MediaProjection backend
-        // captureSource.requestClean() fails closed without screen-record
-        // consent, so the backend source is used only when capture can
-        // actually produce a frame; otherwise the own-display activity
-        // thumbnail is used, as on the null-source path below.
-        val myDisplayId = requireActivity().display?.displayId ?: android.view.Display.DEFAULT_DISPLAY
-        val backend = CaptureBackendResolver.active()
-        val mgr = backend.captureSource?.takeIf { backend.canCaptureWithoutPrompting }
-        // Only the displays the backend can actually capture get a backend
-        // thumbnail — MediaProjection mirrors just the default display, so a
-        // requestClean for any other display would return the default
-        // display's pixels under the wrong row. Other rows get no thumbnail.
-        displays.forEach { display ->
-            if (mgr != null && backend.canCapture(display.displayId)) {
-                viewLifecycleOwner.lifecycleScope.launch {
-                    val bitmap = mgr.requestClean(display.displayId)
-                    if (bitmap != null) {
-                        r.displayThumbnails[display.displayId] = scaleThumbnail(bitmap)
-                        view.post { if (isAdded) r.refreshDisplayRows(Prefs(requireContext())) }
-                    } else if (display.displayId == myDisplayId) {
-                        captureActivityWindow { thumb ->
-                            r.displayThumbnails[display.displayId] = thumb
-                            if (isAdded) r.refreshDisplayRows(Prefs(requireContext()))
-                        }
-                    }
-                }
-            } else if (display.displayId == myDisplayId) {
-                captureActivityWindow { thumb ->
-                    r.displayThumbnails[display.displayId] = thumb
-                    if (isAdded) r.refreshDisplayRows(Prefs(requireContext()))
-                }
-            }
-        }
-    }
-
-    private fun reinflateIfDisplaysChanged(dm: DisplayManager) {
-        val newIds = dm.capturableDisplays().mapTo(mutableSetOf()) { it.displayId }
-        if (newIds != lastDisplayIds && isAdded) {
-            lastDisplayIds = newIds
-            reinflateContent()
-        }
     }
 
     // ── Re-inflate (used for theme changes in dialog mode) ──────────────
@@ -756,36 +671,6 @@ class SettingsBottomSheet : DialogFragment() {
                 renderer?.refreshLanguageRow()
                 onSourceLangChanged?.invoke()
             }
-        }
-    }
-
-    // ── Thumbnail helpers ───────────────────────────────────────────────
-
-    private fun scaleThumbnail(bitmap: Bitmap): Bitmap {
-        val targetW = 192
-        val scale = targetW.toFloat() / bitmap.width
-        val scaled = bitmap.scale(targetW, (bitmap.height * scale).toInt(), true)
-        if (scaled !== bitmap) bitmap.recycle()
-        return scaled
-    }
-
-    private fun captureActivityWindow(onReady: (Bitmap?) -> Unit) {
-        val activity = activity ?: run { onReady(null); return }
-        val decorView = activity.window.decorView
-        val w = decorView.width.takeIf { it > 0 } ?: run { onReady(null); return }
-        val h = decorView.height.takeIf { it > 0 } ?: run { onReady(null); return }
-        val bmp = createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        try {
-            PixelCopy.request(activity.window, bmp, { result ->
-                if (result == PixelCopy.SUCCESS) onReady(scaleThumbnail(bmp))
-                else { bmp.recycle(); onReady(null) }
-            }, Handler(Looper.getMainLooper()))
-        } catch (e: IllegalArgumentException) {
-            // PixelCopy throws when the activity window has no backing surface
-            // — a display-change reinflate can land mid-transition, before the
-            // window is drawn. Skip the thumbnail instead of crashing.
-            bmp.recycle()
-            onReady(null)
         }
     }
 

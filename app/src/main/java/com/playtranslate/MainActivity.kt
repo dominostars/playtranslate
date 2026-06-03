@@ -332,12 +332,18 @@ class MainActivity :
     private var createdThemeKey: String = ""
     private var createdAccentName: String = ""
 
+    /** Capture-display selection last applied to the running service; compared
+     *  in [onResume] to reconfigure after a change made on
+     *  [com.playtranslate.ui.CaptureOverlaySettingsActivity]. */
+    private var lastSeenCaptureDisplayIds: Set<Int> = emptySet()
+
     // ── Lifecycle ─────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
         applyTheme()
         createdThemeKey = prefs.themeMode.storageKey
         createdAccentName = prefs.accentName
+        lastSeenCaptureDisplayIds = prefs.captureDisplayIds
         applyEdgeToEdge(this)
         super.onCreate(savedInstanceState)
         maybePromptForCrashShare()
@@ -566,6 +572,14 @@ class MainActivity :
             prefs.suppressNextTransition = true
             recreate()
             return
+        }
+        // Capture-display selection is changed on CaptureOverlaySettingsActivity;
+        // reconfigure the running capture on return if it moved (mirrors the old
+        // inline onDisplayChanged callback). Overlay-mode changes are picked up
+        // by the updateRegionButton() call later in onResume.
+        if (prefs.captureDisplayIds != lastSeenCaptureDisplayIds) {
+            lastSeenCaptureDisplayIds = prefs.captureDisplayIds
+            reconfigureForDisplayChange()
         }
         // Pre-populate the resumed-activity registry before flipping
         // isInForeground. The flag's setter calls reconcileLiveModes, and
@@ -1055,23 +1069,11 @@ class MainActivity :
     private fun openSettingsInline(anchor: com.playtranslate.ui.SettingsAnchor? = null) {
         val sheet = SettingsBottomSheet.newInstance(hideDismiss = false, anchor = anchor).apply {
             setShowsDialog(false)
-            onDisplayChanged = {
-                val wasLive = captureService?.isLive == true
-                // configureService() writes display/region; language managers
-                // self-heal via ensureLanguageManagersFor.
-                configureService()
-                CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
-                if (wasLive) {
-                    captureService?.stopLive()
-                    withAccessibility { doStartLive() }
-                }
-            }
             onSourceLangChanged = { onSourceLanguageChanged() }
             onScreenModeChanged = {
                 checkOnboardingState()
             }
             onClose = { hideSettings() }
-            onOverlayModeChanged = { updateRegionButton() }
         }
         supportFragmentManager.beginTransaction()
             .replace(R.id.settingsContainer, sheet, SettingsBottomSheet.TAG)
@@ -1080,6 +1082,21 @@ class MainActivity :
 
     private fun hideSettings() {
         selectTab(Tab.TRANSLATE)
+    }
+
+    /** Reconfigure the running capture after the display selection changed on
+     *  [com.playtranslate.ui.CaptureOverlaySettingsActivity] (mirrors the old
+     *  inline onDisplayChanged): re-run configureService, reconcile the floating
+     *  icons, and restart live mode if it was running so it picks up the new
+     *  display set. */
+    private fun reconfigureForDisplayChange() {
+        val wasLive = captureService?.isLive == true
+        configureService()
+        CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
+        if (wasLive) {
+            captureService?.stopLive()
+            withAccessibility { doStartLive() }
+        }
     }
 
     /**
@@ -1124,22 +1141,10 @@ class MainActivity :
     /** Creates and shows a SettingsBottomSheet as a dialog (for onboarding). */
     private fun showSettingsSheet(hideDismiss: Boolean) {
         val sheet = SettingsBottomSheet.newInstance(hideDismiss = hideDismiss).apply {
-            onDisplayChanged = {
-                val wasLive = captureService?.isLive == true
-                // configureService() writes display/region; language managers
-                // self-heal via ensureLanguageManagersFor.
-                configureService()
-                CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
-                if (wasLive) {
-                    captureService?.stopLive()
-                    withAccessibility { doStartLive() }
-                }
-            }
             onSourceLangChanged = { onSourceLanguageChanged() }
             onScreenModeChanged = {
                 checkOnboardingState()
             }
-            onOverlayModeChanged = { updateRegionButton() }
         }
         val ft = supportFragmentManager.beginTransaction()
         ft.add(sheet, SettingsBottomSheet.TAG)

@@ -116,9 +116,9 @@ class SettingsRenderer(
         fun openAppearanceSettings()
         /** Tap on the Hotkeys CONFIGURE cell — open [HotkeysSettingsActivity]. */
         fun openHotkeysSettings()
-        fun onDisplayChanged()
+        /** Tap on the Capture & overlay CONFIGURE cell — open [CaptureOverlaySettingsActivity]. */
+        fun openCaptureOverlaySettings()
         fun onSourceLangChanged()
-        fun onOverlayModeChanged()
         fun onScreenModeChanged()
         fun requestAnkiPermission()
         fun openLanguageSetup(mode: String)
@@ -272,32 +272,6 @@ class SettingsRenderer(
     private val switchGameScreenControls: MaterialSwitch =
         root.findViewById(R.id.switchGameScreenControls)
 
-    private val overlayModeSection: View = root.findViewById(R.id.overlayModeSection)
-    private val overlayModeToggleContainer: FrameLayout = root.findViewById(R.id.overlayModeToggleContainer)
-
-    // Enhanced auto-translate row — top of the AUTO-TRANSLATE card.
-    // Reflects PlayTranslateAccessibilityService.isEnabled: when off, a
-    // MaterialSwitch + the "More responsive…" pitch, tapping the row
-    // shows the a11y-required alert. When on, a check mark + "Enabled",
-    // row becomes non-clickable. State sync happens in
-    // refreshEnhancedAutoTranslateRow, which the bottom sheet calls in
-    // onResume so returning from system Accessibility Settings picks up
-    // the grant immediately.
-    private val rowEnhancedAutoTranslate: View =
-        root.findViewById(R.id.rowEnhancedAutoTranslate)
-    private val tvEnhancedAutoTranslateSubtitle: TextView =
-        rowEnhancedAutoTranslate.findViewById(R.id.tvEnhancedAutoTranslateSubtitle)
-    private val switchEnhancedAutoTranslate: MaterialSwitch =
-        rowEnhancedAutoTranslate.findViewById(R.id.switchEnhancedAutoTranslate)
-    private val checkEnhancedAutoTranslate: ImageView =
-        rowEnhancedAutoTranslate.findViewById(R.id.checkEnhancedAutoTranslate)
-
-    private val rowHideOverlays: View = root.findViewById(R.id.rowHideOverlays)
-    private val switchHideOverlays: MaterialSwitch = rowHideOverlays.findViewById(R.id.switchRowToggle)
-
-    private val captureDisplaySection: View = root.findViewById(R.id.captureDisplaySection)
-    private val llDisplayOptions: LinearLayout = root.findViewById(R.id.llDisplayOptions)
-
     private val llAnkiGetApp: LinearLayout = root.findViewById(R.id.llAnkiGetApp)
     private val llAnkiPermission: LinearLayout = root.findViewById(R.id.llAnkiPermission)
     private val rowAnkiDeck: View = root.findViewById(R.id.rowAnkiDeck)
@@ -315,8 +289,6 @@ class SettingsRenderer(
     private val llDebugSection: LinearLayout = root.findViewById(R.id.llDebugSection)
 
     private var deckEntries: List<Map.Entry<Long, String>> = emptyList()
-    var displayList: List<android.view.Display> = emptyList()
-    val displayThumbnails = HashMap<Int, Bitmap?>()
 
     // ── Public entry point ───────────────────────────────────────────────
 
@@ -326,10 +298,7 @@ class SettingsRenderer(
         setupGameScreenControlsRow()
         setupLanguageSection()
         setupOnScreenControls()
-        setupAutoTranslateSection()
-        setupCaptureDisplaySection()
         setupTranslationServiceSection()
-        setupOcrSection()
         setupAnkiSection()
         refreshTtsSection()
         setupConfigureSection()
@@ -347,8 +316,6 @@ class SettingsRenderer(
         // ON-SCREEN CONTROLS has no header — its card sits directly under
         // the power card as part of the top section (no headerOnScreen in
         // dialog_settings.xml).
-        setGroupHeader(R.id.headerAutoTranslate, ctx.getString(R.string.settings_header_auto_translate))
-        setGroupHeader(R.id.headerCaptureDisplay, ctx.getString(R.string.settings_header_capture_display))
         setGroupHeader(R.id.headerOnlineTranslations, ctx.getString(R.string.settings_header_online_translations))
         setGroupHeader(R.id.headerOfflineTranslations, ctx.getString(R.string.settings_header_offline_translations))
         setGroupHeader(R.id.headerAnki, ctx.getString(R.string.settings_header_anki))
@@ -813,340 +780,6 @@ class SettingsRenderer(
     fun destroyOverlayIconPreview() {
         overlayIconPreview?.destroy()
         overlayIconPreview = null
-    }
-
-    // ── Auto-translate section ───────────────────────────────────────────
-
-    private fun setupEnhancedAutoTranslateRow() {
-        rowEnhancedAutoTranslate.setOnClickListener {
-            // Click only fires while a11y is off (refreshEnhanced…
-            // sets isClickable=false otherwise). The alert routes the
-            // user to system Accessibility Settings; the row picks up
-            // the grant when the sheet's onResume runs the refresh.
-            callbacks.showAccessibilityRequiredAlert(
-                AccessibilityRequirement.ENHANCED_AUTO_TRANSLATE
-            )
-        }
-        refreshEnhancedAutoTranslateRow()
-    }
-
-    /** Re-sync the Enhanced auto-translate row against
-     *  [PlayTranslateAccessibilityService.isEnabled]. Called from setup
-     *  and from the bottom sheet's onResume so a user returning from
-     *  system Accessibility Settings sees the row flip to "Enabled" +
-     *  check mark immediately. */
-    fun refreshEnhancedAutoTranslateRow() {
-        val enabled = PlayTranslateAccessibilityService.isEnabled(ctx)
-        if (enabled) {
-            tvEnhancedAutoTranslateSubtitle.setText(
-                R.string.enhanced_auto_translate_subtitle_on
-            )
-            switchEnhancedAutoTranslate.isGone = true
-            checkEnhancedAutoTranslate.isVisible = true
-            // Non-clickable while on — the row is a status indicator at
-            // that point; selectableItemBackground also suppresses its
-            // ripple when isClickable is false, so no stray feedback.
-            rowEnhancedAutoTranslate.isClickable = false
-            rowEnhancedAutoTranslate.isFocusable = false
-        } else {
-            tvEnhancedAutoTranslateSubtitle.setText(
-                R.string.enhanced_auto_translate_subtitle_off
-            )
-            switchEnhancedAutoTranslate.isVisible = true
-            // Switch stays unchecked — the user grants accessibility via
-            // system Settings, not by flipping this switch. The grant
-            // path then routes back through refreshEnhancedAutoTranslateRow
-            // and the switch is replaced by the check mark.
-            switchEnhancedAutoTranslate.isChecked = false
-            checkEnhancedAutoTranslate.isGone = true
-            rowEnhancedAutoTranslate.isClickable = true
-            rowEnhancedAutoTranslate.isFocusable = true
-        }
-    }
-
-    private fun setupAutoTranslateSection() {
-        setupEnhancedAutoTranslateRow()
-
-        val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
-        val hasHintText = hintKind != HintTextKind.NONE
-
-        // -- Overlay mode toggle (Translation / Furigana-Pinyin) --
-        if (hasHintText) {
-            overlayModeSection.isVisible = true
-            val hintLabel = when (hintKind) {
-                HintTextKind.PINYIN -> ctx.getString(R.string.overlay_mode_option_pinyin)
-                else -> ctx.getString(R.string.overlay_mode_option_furigana)
-            }
-
-            buildPillToggle(
-                container = overlayModeToggleContainer,
-                options = listOf(ctx.getString(R.string.overlay_mode_option_translation) to OverlayMode.TRANSLATION, hintLabel to OverlayMode.FURIGANA),
-                selected = prefs.overlayMode,
-                onSelect = { mode ->
-                    prefs.overlayMode = mode
-                    if (CaptureService.instance?.isLive == true) {
-                        // TODO(P1): swap for instant rebuild via CaptureService
-                        //   internals — setLiveDisplays() now picks up flavor
-                        //   mismatch as a stop+restart, so the user wouldn't
-                        //   need to re-tap. Behavior-preserving for now.
-                        CaptureService.instance?.stopLive()
-                    }
-                    callbacks.onOverlayModeChanged()
-                }
-            )
-
-            root.findViewById<View>(R.id.dividerOverlayMode)?.visibility = View.VISIBLE
-        } else {
-            overlayModeSection.isGone = true
-            root.findViewById<View>(R.id.dividerOverlayMode)?.visibility = View.GONE
-            if (prefs.overlayMode == OverlayMode.FURIGANA) {
-                prefs.overlayMode = OverlayMode.TRANSLATION
-                callbacks.onOverlayModeChanged()
-            }
-        }
-
-        // -- Hide game screen overlays toggle (multi-screen only) --
-        val isSingle = Prefs.isSingleScreen(ctx)
-        if (!isSingle) {
-            rowHideOverlays.isVisible = true
-            rowHideOverlays.findViewById<TextView>(R.id.tvRowTitle).text =
-                ctx.getString(R.string.settings_hide_overlays_during_auto_mode)
-            // Multi-display selection silently routes around this toggle —
-            // the user has explicitly opted into per-display overlays, so
-            // we render on every selected display regardless of this
-            // setting. Disclose that on the row itself.
-            val subtitleHide = rowHideOverlays.findViewById<TextView>(R.id.tvRowSubtitle)
-            if (prefs.captureDisplayIds.size > 1) {
-                subtitleHide.text =
-                    ctx.getString(R.string.settings_hide_overlays_ignored_multi_display)
-                subtitleHide.isVisible = true
-                subtitleHide.setTextColor(ctx.themeColor(R.attr.ptTextHint))
-            } else {
-                subtitleHide.isGone = true
-            }
-            switchHideOverlays.isChecked = prefs.hideGameOverlays
-            switchHideOverlays.setOnCheckedChangeListener { _, checked ->
-                prefs.hideGameOverlays = checked
-                if (CaptureService.instance?.isLive == true) {
-                    // TODO(P1): swap for instant rebuild via CaptureService
-                    //   internals — flavor mismatch detection in
-                    //   setLiveDisplays() handles InAppOnly↔overlay swap
-                    //   without requiring a user re-tap.
-                    CaptureService.instance?.stopLive()
-                }
-            }
-            rowHideOverlays.setOnClickListener { switchHideOverlays.toggle() }
-        }
-
-        // -- Capture interval --
-        setupCaptureInterval()
-    }
-
-    private fun setupCaptureInterval() {
-        val minSec = Prefs.MIN_CAPTURE_INTERVAL_SEC
-        val minLabel = if (minSec == minSec.toLong().toFloat()) "${minSec.toLong()}"
-        else "%.1f".format(minSec)
-
-        root.findViewById<TextView>(R.id.tvCaptureIntervalHint)?.text =
-            ctx.getString(R.string.settings_capture_interval_hint, minLabel)
-
-        val etCaptureInterval = root.findViewById<EditText>(R.id.etCaptureInterval)
-        etCaptureInterval.setText(prefs.captureIntervalSec.let {
-            if (it == it.toLong().toFloat()) it.toLong().toString() else "%.1f".format(it)
-        })
-        etCaptureInterval.inputType =
-            android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
-        etCaptureInterval.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
-            override fun afterTextChanged(s: Editable?) {
-                val v = s?.toString()?.toFloatOrNull() ?: return
-                prefs.captureIntervalSec = v
-            }
-        })
-        etCaptureInterval.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
-                etCaptureInterval.clearFocus()
-                val imm = ctx.getSystemService(Context.INPUT_METHOD_SERVICE)
-                    as android.view.inputmethod.InputMethodManager
-                imm.hideSoftInputFromWindow(etCaptureInterval.windowToken, 0)
-                true
-            } else false
-        }
-        root.findViewById<View>(R.id.rowCaptureInterval)?.setOnClickListener {
-            etCaptureInterval.requestFocus()
-            val imm = ctx.getSystemService(Context.INPUT_METHOD_SERVICE)
-                as android.view.inputmethod.InputMethodManager
-            imm.showSoftInput(etCaptureInterval, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
-        }
-    }
-
-    // ── Hotkey section ───────────────────────────────────────────────────
-
-
-    // ── Capture display section ──────────────────────────────────────────
-
-    private fun setupCaptureDisplaySection() {
-        val dm = ctx.getSystemService(Context.DISPLAY_SERVICE)
-            as android.hardware.display.DisplayManager
-        displayList = dm.capturableDisplays()
-
-        captureDisplaySection.visibility =
-            if (displayList.size <= 1) View.GONE else View.VISIBLE
-
-        buildDisplayRows(prefs)
-    }
-
-    fun buildDisplayRows(prefs: Prefs) {
-        llDisplayOptions.removeAllViews()
-        if (displayList.isEmpty()) {
-            llDisplayOptions.addView(TextView(ctx).apply {
-                text = ctx.getString(R.string.settings_no_displays_found)
-                setTextColor(ctx.themeColor(R.attr.ptTextHint))
-                textSize = 13f
-                val pad = (16 * ctx.resources.displayMetrics.density).toInt()
-                setPadding(pad, pad, pad, pad)
-            })
-            return
-        }
-        // Multi-display capture runs through the accessibility service's
-        // screenshot path; without it the picker locks to the first display
-        // (see buildDisplayRow).
-        val a11yEnabled = PlayTranslateAccessibilityService.isEnabled(ctx)
-        displayList.forEachIndexed { idx, display ->
-            if (idx > 0) {
-                llDisplayOptions.addView(
-                    LayoutInflater.from(ctx)
-                        .inflate(R.layout.settings_row_divider, llDisplayOptions, false)
-                )
-            }
-            val isFirst = idx == 0
-            val isLast = idx == displayList.size - 1
-            llDisplayOptions.addView(buildDisplayRow(display, prefs, isFirst, isLast, a11yEnabled))
-        }
-    }
-
-    private fun buildDisplayRow(
-        display: android.view.Display,
-        prefs: Prefs,
-        isFirst: Boolean,
-        isLast: Boolean,
-        a11yEnabled: Boolean,
-    ): View {
-        val dp = ctx.resources.displayMetrics.density
-        // Without the accessibility service the picker can't switch displays,
-        // so it always renders the first display as the (locked) selection
-        // regardless of the persisted multi-display set.
-        val isSelected =
-            if (a11yEnabled) display.displayId in prefs.captureDisplayIds else isFirst
-        // 10dp buffer on top, bottom, and left of the thumbnail; right side
-        // gets the standard row padding so the checkmark sits in the usual
-        // place. Row height = thumbH + 10×2 = 66dp, matching the toggle and
-        // support-link rows.
-        val rowHPad = ctx.resources.getDimensionPixelSize(R.dimen.pt_row_h_padding)
-        val bufferPx = (10 * dp).toInt()
-        val halfV = bufferPx
-        val halfH = bufferPx
-        val thumbH = (46 * dp).toInt()
-        val thumbW = (thumbH * 1.6f).toInt()
-
-        val accent = ctx.themeColor(R.attr.ptAccent)
-        val cardColor = ctx.themeColor(R.attr.ptCard)
-        // Selected row fill: ptCard composited with 10% of the active accent.
-        val accent10 = androidx.core.graphics.ColorUtils.setAlphaComponent(accent, 26)
-        val selectedBg = compositeOver(accent10, cardColor)
-        val cardRadius = ctx.resources.getDimension(R.dimen.pt_radius)
-
-        val row = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(halfH, halfV, rowHPad, halfV)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            isClickable = true
-            isFocusable = true
-            if (isSelected) {
-                // Highlight extends edge-to-edge so it visually IS the cell.
-                // Round only the corners that touch the card's outer rounding
-                // (first row → top corners, last row → bottom corners, middle
-                // rows → no rounding) so the fill follows the card cleanly.
-                val tl = if (isFirst) cardRadius else 0f
-                val tr = if (isFirst) cardRadius else 0f
-                val br = if (isLast)  cardRadius else 0f
-                val bl = if (isLast)  cardRadius else 0f
-                background = GradientDrawable().apply {
-                    setColor(selectedBg)
-                    cornerRadii = floatArrayOf(tl, tl, tr, tr, br, br, bl, bl)
-                }
-            }
-            // Ripple in the foreground overlays the selected fill.
-            foreground = android.util.TypedValue().let { tv ->
-                ctx.theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
-                ContextCompat.getDrawable(ctx, tv.resourceId)
-            }
-        }
-
-        val iv = ImageView(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(thumbW, thumbH).also {
-                it.marginEnd = (12 * dp).toInt()
-            }
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            setBackgroundColor(ctx.themeColor(R.attr.ptDivider))
-            val thumb = displayThumbnails[display.displayId]
-            if (thumb != null) setImageBitmap(thumb)
-        }
-
-        val tv = TextView(ctx).apply {
-            text = ctx.getString(R.string.capture_display_row_label, display.displayId, display.name)
-            setTextColor(ctx.themeColor(if (isSelected) R.attr.ptText else R.attr.ptTextMuted))
-            setTextAppearance(R.style.Text_PT_RowTitle)
-            layoutParams = LinearLayout.LayoutParams(
-                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
-            )
-        }
-
-        row.addView(iv)
-        row.addView(tv)
-        if (isSelected) {
-            val checkSize = (20 * dp).toInt()
-            row.addView(ImageView(ctx).apply {
-                layoutParams = LinearLayout.LayoutParams(checkSize, checkSize).also {
-                    it.marginStart = (8 * dp).toInt()
-                }
-                setImageResource(R.drawable.ic_check)
-                imageTintList = android.content.res.ColorStateList.valueOf(accent)
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            })
-        }
-        row.setOnClickListener {
-            if (!a11yEnabled) {
-                // Locked to the first display — tapping any other row explains
-                // that switching displays needs the accessibility service.
-                if (!isFirst) {
-                    callbacks.showAccessibilityRequiredAlert(
-                        AccessibilityRequirement.MULTI_DISPLAY
-                    )
-                }
-                return@setOnClickListener
-            }
-            val current = prefs.captureDisplayIds
-            val targetId = display.displayId
-            val next = if (targetId in current) {
-                // Refuse to toggle off the last selected display — leaving the
-                // set empty would leave the app with nothing to capture.
-                if (current.size <= 1) return@setOnClickListener
-                current - targetId
-            } else {
-                // Preserve insertion order so primary disambiguators are stable.
-                current.toMutableSet().also { it += targetId }
-            }
-            prefs.captureDisplayIds = next
-            callbacks.onDisplayChanged()
-            buildDisplayRows(prefs)
-        }
-        return row
     }
 
     // ── Translation service section ──────────────────────────────────────
@@ -2351,175 +1984,6 @@ class SettingsRenderer(
         row.setOnClickListener(null)
     }
 
-    // ── OCR section ──────────────────────────────────────────────────────
-
-    /**
-     * Per installed source language that has a real engine choice (>1 backend),
-     * a tappable row to pick the OCR engine and download/delete its model pack.
-     * ML Kit is always the built-in floor (no download). Sizes are honest +
-     * incremental — a pack already on disk or shared with another installed
-     * language reads "No extra space". The whole section hides when no installed
-     * language offers a choice.
-     */
-    private fun setupOcrSection() {
-        val container = root.findViewById<LinearLayout>(R.id.containerOcrLanguages) ?: return
-        val card = root.findViewById<View>(R.id.cardOcr)
-        val header = root.findViewById<View>(R.id.headerOcr)
-        container.removeAllViews()
-
-        val langs = LanguagePackStore.installedCodes(ctx)
-            .filter { OcrModelManager.availableBackends(ctx, it).size > 1 }
-            .sortedBy { it.displayName() }
-        if (langs.isEmpty()) {
-            header?.visibility = View.GONE
-            card?.visibility = View.GONE
-            return
-        }
-        header?.visibility = View.VISIBLE
-        card?.visibility = View.VISIBLE
-        setGroupHeader(R.id.headerOcr, ctx.getString(R.string.settings_header_ocr))
-
-        langs.forEachIndexed { i, id ->
-            if (i > 0) {
-                container.addView(
-                    LayoutInflater.from(ctx).inflate(R.layout.settings_row_divider, container, false),
-                )
-            }
-            val row = LayoutInflater.from(ctx)
-                .inflate(R.layout.settings_row_value_multiline, container, false)
-            bindOcrRow(row, id)
-            container.addView(row)
-        }
-    }
-
-    private fun bindOcrRow(row: View, id: SourceLangId) {
-        val chosen = OcrModelManager.selectedBackend(ctx, id)
-        row.findViewById<TextView>(R.id.tvRowTitle).text = id.displayName()
-        row.findViewById<TextView>(R.id.tvRowSubtitle).text = ocrStatusLine(chosen)
-        row.setOnClickListener { showOcrEnginePicker(row, id) }
-    }
-
-    /** Subtitle: engine name + state (Built-in / installed size / Not downloaded). */
-    private fun ocrStatusLine(backend: OcrBackend): String = when {
-        backend.packKeys.isEmpty() ->
-            ctx.getString(R.string.settings_ocr_status_builtin, backend.ocrLabel)
-        backend.packKeys.all { OcrPackModelHelper(it).isInstalled(ctx) } -> {
-            val bytes = backend.packKeys.sumOf { OcrPackModelHelper(it).expectedSize(ctx) }
-            ctx.getString(R.string.settings_ocr_status_installed, backend.ocrLabel, humanSize(bytes))
-        }
-        else -> ctx.getString(R.string.settings_ocr_status_not_downloaded, backend.ocrLabel)
-    }
-
-    private fun showOcrEnginePicker(row: View, id: SourceLangId) {
-        val backends = OcrModelManager.availableBackends(ctx, id)
-        val chosenToken = OcrModelManager.selectedBackend(ctx, id).selectionToken
-        val checked = backends.indexOfFirst { it.selectionToken == chosenToken }.coerceAtLeast(0)
-        val labels = backends.map { b ->
-            val note = ocrPickerNote(id, b)
-            if (note.isEmpty()) b.ocrLabel else "${b.ocrLabel} — $note"
-        }.toTypedArray()
-        MaterialAlertDialogBuilder(ctx)
-            .setTitle(ctx.getString(R.string.settings_ocr_picker_title, id.displayName()))
-            .setSingleChoiceItems(labels, checked) { dialog, which ->
-                dialog.dismiss()
-                val sel = backends[which]
-                // Re-run on a real change OR when the chosen engine's pack is
-                // missing (so re-tapping retries a failed/cancelled download).
-                val needsDownload = sel.packKeys.any { !OcrPackModelHelper(it).isInstalled(ctx) }
-                if (sel.selectionToken != chosenToken || needsDownload) applyOcrSelection(row, id, sel)
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
-    /** Right-hand note in the picker: Built-in, Installed, "No extra space"
-     *  (shared / already on disk), or the honest incremental download size. */
-    private fun ocrPickerNote(id: SourceLangId, backend: OcrBackend): String = when {
-        backend.packKeys.isEmpty() -> ctx.getString(R.string.settings_ocr_note_builtin)
-        backend.packKeys.all { OcrPackModelHelper(it).isInstalled(ctx) } ->
-            ctx.getString(R.string.settings_ocr_note_installed)
-        else -> {
-            val extra = incrementalOcrBytes(id, backend)
-            if (extra == 0L) ctx.getString(R.string.settings_ocr_note_shared)
-            else ctx.getString(R.string.settings_ocr_note_download, humanSize(extra))
-        }
-    }
-
-    /** Bytes this choice ADDS: pack keys not already on disk and not already
-     *  required by another installed language's current selection (shared → 0). */
-    private fun incrementalOcrBytes(id: SourceLangId, backend: OcrBackend): Long {
-        val othersRequired = LanguagePackStore.installedCodes(ctx)
-            .filter { it != id }
-            .flatMapTo(HashSet()) { OcrModelManager.selectedBackend(ctx, it).packKeys }
-        return backend.packKeys
-            .filter { it !in othersRequired && !OcrPackModelHelper(it).isInstalled(ctx) }
-            .sumOf { OcrPackModelHelper(it).expectedSize(ctx) }
-    }
-
-    /** Switch [id] to [backend]. Transactional: the new selection is persisted ONLY
-     *  after the new backend's packs are confirmed installed, so a failed or
-     *  cancelled download leaves the previously working engine and its pack intact
-     *  (the user stays on it, with a toast). The pack(s) the switch orphans are NOT
-     *  reclaimed here — that's deferred to the launch-time sweep (MainActivity),
-     *  because an interactive [OcrModelManager.sweepOrphans] can race a live capture
-     *  mid-resolving the just-orphaned pack. See sweepOrphans' kdoc. */
-    private fun applyOcrSelection(row: View, id: SourceLangId, backend: OcrBackend) {
-        val needsDownload = backend.packKeys.any { !OcrPackModelHelper(it).isInstalled(ctx) }
-        if (!needsDownload) {
-            // Packs already on disk (or the pack-less ML Kit floor): commit now.
-            prefs.setOcrBackendToken(id, backend.selectionToken)
-            bindOcrRow(row, id)
-            return
-        }
-        var job: Job? = null
-        val overlay = OverlayProgress.Builder(ctx)
-            .setTitle(ctx.getString(R.string.settings_ocr_downloading_title, backend.ocrLabel))
-            .setMessage(ctx.getString(R.string.settings_ocr_downloading_msg))
-            .setProgress(0)
-            .setOnDismiss { reason -> if (reason == DismissReason.USER) job?.cancel() }
-            .show()
-        val main = Handler(Looper.getMainLooper())
-        job = lifecycleScope.launch {
-            val installed = OcrModelManager.installBackend(ctx, backend) { _, p ->
-                main.post {
-                    when (p) {
-                        is OnDeviceLlmDownloader.Progress.Downloading ->
-                            if (p.total > 0) {
-                                overlay.setProgress(((p.received * 100L) / p.total).toInt())
-                                overlay.setMessage(
-                                    ctx.getString(
-                                        R.string.install_downloading_with_bytes,
-                                        humanSize(p.received), humanSize(p.total),
-                                    ),
-                                )
-                            } else {
-                                overlay.setIndeterminate(true)
-                            }
-                        OnDeviceLlmDownloader.Progress.Verifying -> {
-                            overlay.setIndeterminate(true)
-                            overlay.setMessage(ctx.getString(R.string.settings_ocr_verifying))
-                        }
-                        is OnDeviceLlmDownloader.Progress.Extracting -> {
-                            overlay.setIndeterminate(true)
-                            overlay.setMessage(ctx.getString(R.string.settings_ocr_installing))
-                        }
-                    }
-                }
-            }
-            // Commit only on a confirmed install; a failed/cancelled download
-            // leaves the previous engine in place. The now-orphaned previous
-            // pack(s) are reclaimed at the next launch sweep, never here.
-            if (installed) {
-                prefs.setOcrBackendToken(id, backend.selectionToken)
-            }
-            overlay.dismiss()
-            bindOcrRow(row, id)
-            if (!installed) {
-                Toast.makeText(ctx, R.string.settings_ocr_download_failed, Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
     // ── Anki section ─────────────────────────────────────────────────────
 
     private fun setupAnkiSection() {
@@ -2692,6 +2156,9 @@ class SettingsRenderer(
             return
         }
         setGroupHeader(R.id.headerConfigure, ctx.getString(R.string.settings_header_configure))
+        wireConfigureCell(R.id.rowConfigCaptureOverlay, R.string.settings_cell_capture_overlay) {
+            callbacks.openCaptureOverlaySettings()
+        }
         wireConfigureCell(R.id.rowConfigHotkeys, R.string.settings_cell_hotkeys) {
             callbacks.openHotkeysSettings()
         }
@@ -2903,40 +2370,6 @@ class SettingsRenderer(
         refreshCaptureLifecycleButton()
     }
 
-    fun refreshAutoModeToggle() {
-        val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
-        val hasHintText = hintKind != HintTextKind.NONE
-        val hintLabel = when (hintKind) {
-            HintTextKind.PINYIN -> "Pinyin"
-            else -> "Furigana"
-        }
-
-        overlayModeSection.visibility = if (hasHintText) View.VISIBLE else View.GONE
-        root.findViewById<View>(R.id.dividerOverlayMode)?.visibility =
-            if (hasHintText) View.VISIBLE else View.GONE
-
-        if (hasHintText) {
-            buildPillToggle(
-                container = overlayModeToggleContainer,
-                options = listOf("Translation" to OverlayMode.TRANSLATION, hintLabel to OverlayMode.FURIGANA),
-                selected = prefs.overlayMode,
-                onSelect = { mode ->
-                    prefs.overlayMode = mode
-                    if (CaptureService.instance?.isLive == true) {
-                        // TODO(P1): swap for instant rebuild — see twin TODO
-                        //   on the earlier overlayMode pill toggle.
-                        CaptureService.instance?.stopLive()
-                    }
-                    callbacks.onOverlayModeChanged()
-                }
-            )
-        }
-
-    }
-
-    fun refreshDisplayRows(prefs: Prefs) {
-        buildDisplayRows(prefs)
-    }
 
     // ── Private helpers ──────────────────────────────────────────────────
 
