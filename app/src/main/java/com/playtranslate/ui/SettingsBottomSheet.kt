@@ -217,7 +217,7 @@ class SettingsBottomSheet : DialogFragment() {
     }
 
     private fun setupViews(view: View) {
-        val hideDismiss = arguments?.getBoolean(ARG_HIDE_DISMISS, false) ?: false
+        val nonDismissible = arguments?.getBoolean(ARG_NON_DISMISSIBLE, false) ?: false
         val isDialog = showsDialog
         val prefs = Prefs(requireContext())
 
@@ -229,7 +229,7 @@ class SettingsBottomSheet : DialogFragment() {
         val closeBtn = view.findViewById<View>(R.id.btnCloseSettings)
         when {
             !isDialog -> closeBtn.isGone = true
-            hideDismiss -> {
+            nonDismissible -> {
                 closeBtn.isGone = true
                 dialog?.setOnKeyListener { _, keyCode, event ->
                     if (keyCode == android.view.KeyEvent.KEYCODE_BACK &&
@@ -264,7 +264,6 @@ class SettingsBottomSheet : DialogFragment() {
             prefs = prefs,
             ctx = requireContext(),
             lifecycleScope = viewLifecycleOwner.lifecycleScope,
-            isOnboarding = hideDismiss,
             callbacks = object : SettingsRenderer.Callbacks {
                 override fun onClose() { this@SettingsBottomSheet.onClose?.invoke() ?: dismiss() }
                 override fun openAppearanceSettings() {
@@ -513,7 +512,7 @@ class SettingsBottomSheet : DialogFragment() {
 
     companion object {
         const val TAG = "SettingsBottomSheet"
-        private const val ARG_HIDE_DISMISS = "hide_dismiss"
+        private const val ARG_NON_DISMISSIBLE = "non_dismissible"
 
         // (TG and Qwen total-mem floors used to live here as TG_TOTAL_MEM_FLOOR_BYTES
         // and QWEN_TOTAL_MEM_FLOOR_BYTES, but they're now properties on the backend
@@ -521,10 +520,10 @@ class SettingsBottomSheet : DialogFragment() {
         // hardware-gate logic and the downloader's preflight read the same source.)
 
         fun newInstance(
-            hideDismiss: Boolean = false,
+            nonDismissible: Boolean = false,
         ) = SettingsBottomSheet().apply {
             val args = Bundle()
-            if (hideDismiss) args.putBoolean(ARG_HIDE_DISMISS, true)
+            if (nonDismissible) args.putBoolean(ARG_NON_DISMISSIBLE, true)
             if (!args.isEmpty) arguments = args
         }
     }

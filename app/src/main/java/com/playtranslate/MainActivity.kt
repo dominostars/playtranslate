@@ -1062,7 +1062,7 @@ class MainActivity :
 
     /** Add the settings fragment to the already-visible settings container. */
     private fun openSettingsInline() {
-        val sheet = SettingsBottomSheet.newInstance(hideDismiss = false).apply {
+        val sheet = SettingsBottomSheet.newInstance(nonDismissible = false).apply {
             setShowsDialog(false)
             onSourceLangChanged = { onSourceLanguageChanged() }
             onScreenModeChanged = {
@@ -1094,9 +1094,10 @@ class MainActivity :
         }
     }
 
-    /** Creates and shows a SettingsBottomSheet as a dialog (for onboarding). */
-    private fun showSettingsSheet(hideDismiss: Boolean) {
-        val sheet = SettingsBottomSheet.newInstance(hideDismiss = hideDismiss).apply {
+    /** Creates and shows a SettingsBottomSheet as a non-dismissible dialog —
+     *  the single-screen "home" surface (back exits the app). */
+    private fun showSettingsSheet(nonDismissible: Boolean) {
+        val sheet = SettingsBottomSheet.newInstance(nonDismissible = nonDismissible).apply {
             onSourceLangChanged = { onSourceLanguageChanged() }
             onScreenModeChanged = {
                 checkOnboardingState()
@@ -1707,15 +1708,15 @@ class MainActivity :
             }
             onboardingContainer.isGone = true
                 val isAlreadySingleScreenSheet = existingSheet != null &&
-                existingSheet.arguments?.getBoolean("hide_dismiss", false) == true
+                existingSheet.arguments?.getBoolean("non_dismissible", false) == true
             if (!isAlreadySingleScreenSheet) {
                 existingSheet?.dismissAllowingStateLoss()
-                showSettingsSheet(hideDismiss = true)
+                showSettingsSheet(nonDismissible = true)
             }
             return
         }
 
-        if (existingSheet != null && existingSheet.arguments?.getBoolean("hide_dismiss", false) == true) {
+        if (existingSheet != null && existingSheet.arguments?.getBoolean("non_dismissible", false) == true) {
             existingSheet.dismissAllowingStateLoss()
         }
 

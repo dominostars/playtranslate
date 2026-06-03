@@ -140,9 +140,6 @@ class SettingsRenderer(
     private val ctx: Context,
     private val lifecycleScope: CoroutineScope,
     private val callbacks: Callbacks,
-    /** True when hosted by the onboarding flow (hideDismiss). The CONFIGURE
-     *  drill-down is suppressed in that mode. */
-    private val isOnboarding: Boolean = false,
 ) {
 
     interface Callbacks {
@@ -682,20 +679,11 @@ class SettingsRenderer(
 
     // ── Configure (drill-down to settings sub-pages) ─────────────────────
 
-    /** Wire the CONFIGURE cells, each of which opens a settings sub-page.
-     *  Suppressed entirely during onboarding ([isOnboarding]): the focused
-     *  setup flow shouldn't branch into the sub-pages, and an Appearance
-     *  change there would recreate MainActivity out from under the onboarding
-     *  dialog. Cells are added here as each page's migration lands. */
+    /** Wire the CONFIGURE cells, each of which opens a settings sub-page. */
     private fun setupConfigureSection() {
-        val section = root.findViewById<View>(R.id.configureSection)
-        if (isOnboarding) {
-            section.isGone = true
-            return
-        }
         setGroupHeader(R.id.headerConfigure, ctx.getString(R.string.settings_header_configure))
         // The cells carry VM-driven status digests, so they're bound from
-        // render(); this only sets the static group header + onboarding gate.
+        // render(); this only sets the static group header.
     }
 
     /** Bind the six CONFIGURE hub cells (icon chip + title + status digest +
@@ -1075,7 +1063,6 @@ class SettingsRenderer(
     fun render(state: RootSettingsViewModel.UiState) {
         rowSourceLang.findViewById<TextView>(R.id.tvSourceLangValue).text = state.sourceName
         rowTargetLang.findViewById<TextView>(R.id.tvTargetLangValue).text = state.targetName
-        if (isOnboarding) return
         bindConfigureCells(state)
     }
 
