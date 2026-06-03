@@ -40,6 +40,15 @@ object PaddleOcrBridge {
     @Synchronized
     fun isLoaded(recPackKey: String): Boolean = sessions.containsKey(recPackKey)
 
+    /** Close + drop the cached engine/session for a SINGLE [recPackKey], for the
+     *  interactive pack delete (OcrModelManager.deleteOcrPack). No-op if none is
+     *  held; unlike [close] it leaves every other pack's live session intact. */
+    @Synchronized
+    fun close(recPackKey: String) {
+        engines.remove(recPackKey)?.let { runCatching { it.close() } }
+        sessions.remove(recPackKey)?.let { runCatching { it.close() } }
+    }
+
     private fun sessionFor(ctx: Context, recPackKey: String): PaddleOcrSession? {
         sessions[recPackKey]?.let { return it }
         val det = bundledDetector(ctx) ?: return null

@@ -37,6 +37,15 @@ object MeikiBridge {
     @Synchronized
     fun isLoaded(packKey: String): Boolean = sessions.containsKey(packKey)
 
+    /** Close + drop the cached engine/session for a SINGLE [packKey], for the
+     *  interactive pack delete (OcrModelManager.deleteOcrPack). No-op if none is
+     *  held; unlike [close] it leaves every other pack's live session intact. */
+    @Synchronized
+    fun close(packKey: String) {
+        engines.remove(packKey)?.let { runCatching { it.close() } }
+        sessions.remove(packKey)?.let { runCatching { it.close() } }
+    }
+
     private fun sessionFor(ctx: Context, packKey: String): MeikiSession? {
         sessions[packKey]?.let { return it }
         val dir = OcrPackModelHelper(packKey).file(ctx)

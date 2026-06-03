@@ -1,6 +1,7 @@
 package com.playtranslate.ui
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.drawable.GradientDrawable
 import android.hardware.display.DisplayManager
@@ -14,7 +15,9 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.PixelCopy
 import android.view.View
+import android.view.ViewGroup
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -26,7 +29,6 @@ import androidx.core.graphics.scale
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.CaptureService
 import com.playtranslate.OverlayMode
@@ -77,7 +79,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     private lateinit var switchEnhancedAutoTranslate: MaterialSwitch
     private lateinit var checkEnhancedAutoTranslate: ImageView
     private lateinit var overlayModeSection: View
-    private lateinit var overlayModeToggleContainer: android.widget.FrameLayout
+    private lateinit var overlayModeToggleContainer: FrameLayout
     private lateinit var rowHideOverlays: View
     private lateinit var switchHideOverlays: MaterialSwitch
 
@@ -121,6 +123,9 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         // lock both key off it.
         refreshEnhancedAutoTranslateRow()
         refreshDisplayRows()
+        // The source language can change from another screen (the language
+        // picker); rebuild the OCR cells so they track the current language.
+        setupOcrSection()
     }
 
     override fun onDestroy() {
@@ -377,7 +382,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
                     it.marginStart = (8 * dp).toInt()
                 }
                 setImageResource(R.drawable.ic_check)
-                imageTintList = android.content.res.ColorStateList.valueOf(accent)
+                imageTintList = ColorStateList.valueOf(accent)
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             })
         }
@@ -488,78 +493,122 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
 
     // ── OCR ──────────────────────────────────────────────────────────────
 
+    /** One cell per OCR engine available for the CURRENT source language. The
+     *  selected engine gets the same accent + check treatment as the display
+     *  picker above; a downloaded, unselected engine gets a trash. Hidden when
+     *  the language has no real choice beyond the ML Kit floor. */
     private fun setupOcrSection() {
         val container = findViewById<LinearLayout>(R.id.containerOcrLanguages) ?: return
         val card = findViewById<View>(R.id.cardOcr)
         val header = findViewById<View>(R.id.headerOcr)
         container.removeAllViews()
 
-        val langs = LanguagePackStore.installedCodes(this)
-            .filter { OcrModelManager.availableBackends(this, it).size > 1 }
-            .sortedBy { it.displayName() }
-        if (langs.isEmpty()) {
+        val id = prefs.sourceLangId
+        val backends = OcrModelManager.availableBackends(this, id)
+        if (backends.size <= 1) {
             header?.visibility = View.GONE
             card?.visibility = View.GONE
             return
         }
         header?.visibility = View.VISIBLE
         card?.visibility = View.VISIBLE
-        setGroupHeader(R.id.headerOcr, R.string.settings_header_ocr)
+        header?.findViewById<TextView>(R.id.tvGroupTitle)?.text =
+            getString(R.string.settings_ocr_header_for, id.displayName())
 
-        langs.forEachIndexed { i, id ->
+        val selectedToken = OcrModelManager.selectedBackend(this, id).selectionToken
+        backends.forEachIndexed { i, backend ->
             if (i > 0) {
                 container.addView(
                     LayoutInflater.from(this).inflate(R.layout.settings_row_divider, container, false),
                 )
             }
-            val row = LayoutInflater.from(this)
-                .inflate(R.layout.settings_row_value_multiline, container, false)
-            bindOcrRow(row, id)
-            container.addView(row)
+            container.addView(
+                buildOcrCell(
+                    container = container,
+                    id = id,
+                    backend = backend,
+                    isSelected = backend.selectionToken == selectedToken,
+                    isFirst = i == 0,
+                    isLast = i == backends.lastIndex,
+                ),
+            )
         }
     }
 
-    private fun bindOcrRow(row: View, id: SourceLangId) {
-        val chosen = OcrModelManager.selectedBackend(this, id)
-        row.findViewById<TextView>(R.id.tvRowTitle).text = id.displayName()
-        row.findViewById<TextView>(R.id.tvRowSubtitle).text = ocrStatusLine(chosen)
-        row.setOnClickListener { showOcrEnginePicker(row, id) }
-    }
+    private fun buildOcrCell(
+        container: ViewGroup,
+        id: SourceLangId,
+        backend: OcrBackend,
+        isSelected: Boolean,
+        isFirst: Boolean,
+        isLast: Boolean,
+    ): View {
+        val view = LayoutInflater.from(this)
+            .inflate(R.layout.language_list_row, container, false)
+        view.findViewById<TextView>(R.id.tvRowTitle).text = backend.ocrLabel
 
-    private fun ocrStatusLine(backend: OcrBackend): String = when {
-        backend.packKeys.isEmpty() ->
-            getString(R.string.settings_ocr_status_builtin, backend.ocrLabel)
-        backend.packKeys.all { OcrPackModelHelper(it).isInstalled(this) } -> {
-            val bytes = backend.packKeys.sumOf { OcrPackModelHelper(it).expectedSize(this) }
-            getString(R.string.settings_ocr_status_installed, backend.ocrLabel, humanSize(bytes))
-        }
-        else -> getString(R.string.settings_ocr_status_not_downloaded, backend.ocrLabel)
-    }
+        // ML Kit is bundled (no packs) → always present / built-in.
+        val downloaded = backend.packKeys.isNotEmpty() &&
+            backend.packKeys.all { OcrPackModelHelper(it).isInstalled(this) }
 
-    private fun showOcrEnginePicker(row: View, id: SourceLangId) {
-        val backends = OcrModelManager.availableBackends(this, id)
-        val chosenToken = OcrModelManager.selectedBackend(this, id).selectionToken
-        val checked = backends.indexOfFirst { it.selectionToken == chosenToken }.coerceAtLeast(0)
-        val labels = backends.map { b ->
-            val note = ocrPickerNote(id, b)
-            if (note.isEmpty()) b.ocrLabel else "${b.ocrLabel} — $note"
-        }.toTypedArray()
-        MaterialAlertDialogBuilder(this)
-            .setTitle(getString(R.string.settings_ocr_picker_title, id.displayName()))
-            .setSingleChoiceItems(labels, checked) { dialog, which ->
-                dialog.dismiss()
-                val sel = backends[which]
-                val needsDownload = sel.packKeys.any { !OcrPackModelHelper(it).isInstalled(this) }
-                if (sel.selectionToken != chosenToken || needsDownload) applyOcrSelection(row, id, sel)
+        val subtitle = view.findViewById<TextView>(R.id.tvRowEndonym)
+        subtitle.visibility = View.VISIBLE
+        subtitle.text = ocrSizeSubtitle(id, backend, downloaded)
+
+        // Trailing slot mirrors the language picker: an accent check when
+        // selected (a non-interactive status mark), a trash when downloaded +
+        // unselected, nothing otherwise (the XML default is GONE + trash icon).
+        val trailing = view.findViewById<FrameLayout>(R.id.btnDelete)
+        val trailingIcon = view.findViewById<ImageView>(R.id.ivDeleteIcon)
+        when {
+            isSelected -> {
+                trailing.visibility = View.VISIBLE
+                trailingIcon.setImageResource(R.drawable.ic_check)
+                trailingIcon.imageTintList = ColorStateList.valueOf(themeColor(R.attr.ptAccent))
+                trailing.isClickable = false
+                trailing.isFocusable = false
+                trailing.foreground = null
+                trailing.contentDescription = null
             }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+            downloaded -> {
+                trailing.visibility = View.VISIBLE
+                trailingIcon.setImageResource(R.drawable.ic_delete)
+                trailingIcon.imageTintList = ColorStateList.valueOf(themeColor(R.attr.ptTextMuted))
+                trailing.contentDescription =
+                    getString(R.string.settings_ocr_delete_cd, backend.ocrLabel)
+                trailing.setOnClickListener { confirmAndDeleteOcr(id, backend) }
+            }
+            // else: trailing stays GONE.
+        }
+
+        // Selected-row accent: 10% accent composited over the card, matching the
+        // display picker on this page. Corners round only on the card's ends.
+        if (isSelected) {
+            val accent10 = ColorUtils.setAlphaComponent(themeColor(R.attr.ptAccent), 26)
+            val selectedBg = compositeOver(accent10, themeColor(R.attr.ptCard))
+            val cardRadius = resources.getDimension(R.dimen.pt_radius)
+            val tl = if (isFirst) cardRadius else 0f
+            val br = if (isLast) cardRadius else 0f
+            view.background = GradientDrawable().apply {
+                setColor(selectedBg)
+                cornerRadii = floatArrayOf(tl, tl, tl, tl, br, br, br, br)
+            }
+        }
+
+        // Tap the row body to select this engine (downloading first if needed);
+        // re-tapping the already-installed current engine is a no-op.
+        view.setOnClickListener {
+            if (!(isSelected && downloaded)) selectOcr(id, backend)
+        }
+        return view
     }
 
-    private fun ocrPickerNote(id: SourceLangId, backend: OcrBackend): String = when {
+    /** Subtitle = the model's download size. ML Kit (no packs) → "Built-in";
+     *  installed → its on-disk size; otherwise the incremental download (0 bytes
+     *  when a sibling language already has the shared pack). */
+    private fun ocrSizeSubtitle(id: SourceLangId, backend: OcrBackend, downloaded: Boolean): String = when {
         backend.packKeys.isEmpty() -> getString(R.string.settings_ocr_note_builtin)
-        backend.packKeys.all { OcrPackModelHelper(it).isInstalled(this) } ->
-            getString(R.string.settings_ocr_note_installed)
+        downloaded -> humanSize(backend.packKeys.sumOf { OcrPackModelHelper(it).expectedSize(this) })
         else -> {
             val extra = incrementalOcrBytes(id, backend)
             if (extra == 0L) getString(R.string.settings_ocr_note_shared)
@@ -576,11 +625,15 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
             .sumOf { OcrPackModelHelper(it).expectedSize(this) }
     }
 
-    private fun applyOcrSelection(row: View, id: SourceLangId, backend: OcrBackend) {
+    /** Select [backend] for [id]: persist immediately if its pack is already
+     *  present, else download with a progress overlay and persist only on
+     *  success (the previous picker's flow). Rebuilds the section so the check +
+     *  accent move to the new selection. */
+    private fun selectOcr(id: SourceLangId, backend: OcrBackend) {
         val needsDownload = backend.packKeys.any { !OcrPackModelHelper(it).isInstalled(this) }
         if (!needsDownload) {
             prefs.setOcrBackendToken(id, backend.selectionToken)
-            bindOcrRow(row, id)
+            setupOcrSection()
             return
         }
         var job: Job? = null
@@ -622,10 +675,46 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
                 prefs.setOcrBackendToken(id, backend.selectionToken)
             }
             overlay.dismiss()
-            bindOcrRow(row, id)
+            setupOcrSection()
             if (!installed) {
                 Toast.makeText(this@CaptureOverlaySettingsActivity, R.string.settings_ocr_download_failed, Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    /** Trash tap for a downloaded, unselected engine. Always confirms via
+     *  OverlayAlert; when another downloaded language's selected engine shares
+     *  this model, the message also names them (they keep their choice —
+     *  switching to one re-downloads the model through the normal source-setup
+     *  path). */
+    private fun confirmAndDeleteOcr(id: SourceLangId, backend: OcrBackend) {
+        val dependents = LanguagePackStore.installedCodes(this)
+            .filter { it != id }
+            .filter { other ->
+                OcrModelManager.selectedBackend(this, other).packKeys.any { it in backend.packKeys }
+            }
+            .sortedBy { it.displayName() }
+        val message = if (dependents.isEmpty()) {
+            getString(R.string.settings_ocr_delete_msg, backend.ocrLabel)
+        } else {
+            val names = dependents.joinToString("\n") { it.displayName() }
+            getString(R.string.settings_ocr_delete_shared_msg, backend.ocrLabel, names)
+        }
+        OverlayAlert.Builder(this)
+            .hideIcon()
+            .setTitle(getString(R.string.settings_ocr_delete_title, backend.ocrLabel))
+            .setMessage(message)
+            .addButton(
+                getString(R.string.settings_ocr_delete_confirm),
+                themeColor(R.attr.ptDanger),
+                themeColor(R.attr.ptAccentOn),
+            ) { deleteOcr(backend) }
+            .addCancelButton()
+            .show()
+    }
+
+    private fun deleteOcr(backend: OcrBackend) {
+        backend.packKeys.forEach { OcrModelManager.deleteOcrPack(this, it) }
+        setupOcrSection()
     }
 }

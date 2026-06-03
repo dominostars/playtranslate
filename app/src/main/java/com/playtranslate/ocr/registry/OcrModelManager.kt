@@ -242,6 +242,25 @@ object OcrModelManager {
         }
     }
 
+    /** Delete a SINGLE OCR pack interactively (the Settings OCR trash), outside
+     *  the launch-time [sweepOrphans] pass. Safe off-quiescence ONLY because the
+     *  caller offers the trash exclusively on a backend the current source
+     *  language has NOT selected — never the pack a live capture is resolving (a
+     *  capture only ever resolves the *selected* backend, and a language's own
+     *  backends never share a pack). Any session still cached for [packKey] is
+     *  therefore a stale one from a prior selection: close just it — so we never
+     *  unlink files under a live mmap — then delete, leaving every other
+     *  language's live session intact.
+     *
+     *  Other languages that selected [packKey] keep their choice; the missing
+     *  pack re-downloads through the normal source-switch path
+     *  (downloadDefaultForSource) the next time one becomes the source. */
+    fun deleteOcrPack(ctx: Context, packKey: String) {
+        MeikiBridge.close(packKey)
+        PaddleOcrBridge.close(packKey)
+        helper(packKey).delete(ctx)
+    }
+
     /** Quiescent teardown: close every bridge session + engine cache. Caller must
      *  guarantee no in-flight OCR (wired from OcrManager.releaseAll at TRIM_MEMORY). */
     fun closeAll() {

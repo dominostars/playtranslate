@@ -1833,17 +1833,19 @@
     <string name="settings_header_capture_display">Capture display</string>
     <string name="settings_header_online_translations">Online translations</string>
     <string name="settings_header_offline_translations">Offline translations</string>
-    <string name="settings_header_ocr" translatable="false">OCR</string>
-    <!-- OCR engine picker (Settings → OCR). %1$s = engine name (Meiki / PaddleOCR /
-         ML Kit, not translated); %2$s = a model size like "16 MB". -->
-    <string name="settings_ocr_status_builtin"><xliff:g id="engine">%1$s</xliff:g> · Built-in</string>
-    <string name="settings_ocr_status_installed"><xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="size">%2$s</xliff:g></string>
-    <string name="settings_ocr_status_not_downloaded"><xliff:g id="engine">%1$s</xliff:g> · Not downloaded</string>
-    <string name="settings_ocr_picker_title">OCR engine for <xliff:g id="language">%1$s</xliff:g></string>
+    <!-- OCR engine section (Settings → Capture &amp; overlay → OCR). One cell per
+         engine available for the current source language. %1$s = engine name
+         (Meiki / PaddleOCR / ML Kit, not translated); %2$s = a model size like
+         "16 MB". -->
+    <string name="settings_ocr_header_for" translatable="false">OCR · <xliff:g id="language" example="Japanese">%1$s</xliff:g></string>
     <string name="settings_ocr_note_builtin">Built-in</string>
-    <string name="settings_ocr_note_installed">Installed</string>
     <string name="settings_ocr_note_shared">No extra space</string>
     <string name="settings_ocr_note_download"><xliff:g id="size">%1$s</xliff:g> download</string>
+    <string name="settings_ocr_delete_cd">Delete <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
+    <string name="settings_ocr_delete_title">Delete <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g>?</string>
+    <string name="settings_ocr_delete_msg">This removes the <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> model from this device. You can download it again later.</string>
+    <string name="settings_ocr_delete_shared_msg"><xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> is also used by these languages. Deleting frees the space now; it\'ll download again next time you switch to one:\n\n<xliff:g id="languages" example="Chinese">%2$s</xliff:g></string>
+    <string name="settings_ocr_delete_confirm">Delete</string>
     <string name="settings_ocr_downloading_title">Downloading <xliff:g id="engine">%1$s</xliff:g></string>
     <string name="settings_ocr_downloading_msg">Starting…</string>
     <string name="settings_ocr_verifying">Verifying…</string>
