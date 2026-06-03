@@ -69,7 +69,9 @@ import com.playtranslate.language.StalePack
 import com.playtranslate.model.TextSegments
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.translation.OfflineModelReclaimer
+import com.playtranslate.ui.AppReadiness
 import com.playtranslate.ui.ClickableTextView
+import com.playtranslate.ui.computeReadiness
 import com.playtranslate.ui.DimController
 import com.playtranslate.ui.OverlayAlert
 import android.net.Uri
@@ -1660,24 +1662,14 @@ class MainActivity :
 
     private fun checkOnboardingState() {
         // Re-derive the capture backend from current permissions first — a
-        // grant made in system Settings only reaches us on resume.
+        // grant made in system Settings only reaches us on resume. This has
+        // side effects (it can tear down a stale capture session), so it stays
+        // here in the Activity, never inside the pure derivation below.
         CaptureBackendResolver.reresolve(this)
+
         val prefs = Prefs(this)
-        val sourceInstalled = LanguagePackStore.isInstalled(this, prefs.sourceLangId)
-        val languageConfigured = sourceInstalled && prefs.hasTargetLangBeenSet
-
-        val existingSheet = supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG) as? SettingsBottomSheet
-
-        // Welcome + language setup comes first: tap a language pair before
-        // being asked to grant permissions. Upgrade users who already have
-        // both satisfied skip this step entirely.
-        if (!languageConfigured) {
-            existingSheet?.dismissAllowingStateLoss()
-            showOnboardingPage(pageWelcome)
-            refreshWelcomeRowsAndButton()
-            return
-        }
-
+        val languageConfigured =
+            LanguagePackStore.isInstalled(this, prefs.sourceLangId) && prefs.hasTargetLangBeenSet
         val notifGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
@@ -1687,53 +1679,88 @@ class MainActivity :
         val captureReady = PlayTranslateAccessibilityService.isEnabled(this) ||
             !CaptureBackendResolver.active().requiresAccessibilityService
         // Use the viewport predicate (not hasMultipleDisplays) so split-screen
-        // users don't fall into the forced non-dismissible settings sheet
-        // below. The sheet exists because in pure single-screen fullscreen
-        // mode the user has no other UI surface to manage the app from; that
-        // rationale doesn't apply in split-screen where the app half is
-        // visible alongside the game.
+        // users don't fall into the forced non-dismissible settings sheet: in
+        // pure single-screen fullscreen the user has no other surface to manage
+        // the app from; that rationale doesn't apply in split-screen where the
+        // app half is visible alongside the game.
         val singleScreen = Prefs.isSingleScreen(this)
 
-        if (!notifGranted) {
-            existingSheet?.dismissAllowingStateLoss()
-            showOnboardingPage(pageNotif)
-            return
-        }
+        val existingSheet =
+            supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG) as? SettingsBottomSheet
 
-        if (singleScreen) {
-            if (!captureReady) {
+        when (val readiness =
+            computeReadiness(languageConfigured, notifGranted, captureReady, singleScreen)) {
+            is AppReadiness.Onboarding -> showOnboardingStep(readiness.step, singleScreen, existingSheet)
+            is AppReadiness.Ready -> showReadyHome(readiness.home, existingSheet)
+        }
+    }
+
+    /** Show the onboarding page for [step].
+     *
+     *  Mirrors the legacy dismissal nuance: LANGUAGE / NOTIFICATION and the
+     *  single-screen CAPTURE page dismiss any open settings sheet, but the
+     *  dual-screen CAPTURE page dismisses only the forced single-screen "home"
+     *  dialog — an inline (dismissible) settings tab stays put behind the
+     *  overlay. */
+    private fun showOnboardingStep(
+        step: AppReadiness.Step,
+        singleScreen: Boolean,
+        existingSheet: SettingsBottomSheet?,
+    ) {
+        when (step) {
+            AppReadiness.Step.LANGUAGE -> {
+                // Welcome + language setup comes first: tap a language pair
+                // before being asked to grant permissions.
                 existingSheet?.dismissAllowingStateLoss()
+                showOnboardingPage(pageWelcome)
+                refreshWelcomeRowsAndButton()
+            }
+            AppReadiness.Step.NOTIFICATION -> {
+                existingSheet?.dismissAllowingStateLoss()
+                showOnboardingPage(pageNotif)
+            }
+            AppReadiness.Step.CAPTURE -> {
+                if (singleScreen || SettingsBottomSheet.isNonDismissible(existingSheet)) {
+                    existingSheet?.dismissAllowingStateLoss()
+                }
                 showOnboardingPage(pageA11y)
-                return
             }
-            onboardingContainer.isGone = true
-                val isAlreadySingleScreenSheet = existingSheet != null &&
-                existingSheet.arguments?.getBoolean("non_dismissible", false) == true
-            if (!isAlreadySingleScreenSheet) {
-                existingSheet?.dismissAllowingStateLoss()
-                showSettingsSheet(nonDismissible = true)
-            }
-            return
         }
+    }
 
-        if (existingSheet != null && existingSheet.arguments?.getBoolean("non_dismissible", false) == true) {
-            existingSheet.dismissAllowingStateLoss()
-        }
-
-        if (captureReady) {
-            // Finishing onboarding by granting the overlay permission (the
-            // MediaProjection backend, accessibility off) drops the user on
-            // Settings, where the Turn On control lives.
-            val leavingOnboarding = onboardingContainer.isVisible
-            onboardingContainer.isGone = true
-            if (leavingOnboarding &&
-                !CaptureBackendResolver.active().requiresAccessibilityService) {
-                selectTab(Tab.SETTINGS)
-                openSettingsInline()
+    /** Setup is complete — hide the onboarding overlay and show the
+     *  steady-state home for [home].
+     *
+     *  SINGLE_SCREEN: the non-dismissible settings dialog is the only surface,
+     *  so (re-)show it, guarding against re-adding one that's already up (the
+     *  gate re-routes on every refresh).
+     *
+     *  DUAL: drop the forced single-screen dialog if we're crossing over from
+     *  it, reveal the tabs, and — only on the edge that *leaves* onboarding via
+     *  the MediaProjection backend (accessibility off) — land on Settings,
+     *  where the Turn On control lives. */
+    private fun showReadyHome(home: AppReadiness.Home, existingSheet: SettingsBottomSheet?) {
+        when (home) {
+            AppReadiness.Home.SINGLE_SCREEN -> {
+                onboardingContainer.isGone = true
+                if (!SettingsBottomSheet.isNonDismissible(existingSheet)) {
+                    existingSheet?.dismissAllowingStateLoss()
+                    showSettingsSheet(nonDismissible = true)
+                }
             }
-            return
+            AppReadiness.Home.DUAL -> {
+                if (SettingsBottomSheet.isNonDismissible(existingSheet)) {
+                    existingSheet?.dismissAllowingStateLoss()
+                }
+                val leavingOnboarding = onboardingContainer.isVisible
+                onboardingContainer.isGone = true
+                if (leavingOnboarding &&
+                    !CaptureBackendResolver.active().requiresAccessibilityService) {
+                    selectTab(Tab.SETTINGS)
+                    openSettingsInline()
+                }
+            }
         }
-        showOnboardingPage(pageA11y)
     }
 
     /** Refreshes Game Language / Your Language row values and the Continue

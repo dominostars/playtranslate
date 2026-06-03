@@ -514,6 +514,12 @@ class SettingsBottomSheet : DialogFragment() {
         const val TAG = "SettingsBottomSheet"
         private const val ARG_NON_DISMISSIBLE = "non_dismissible"
 
+        /** True if [fragment] is the non-dismissible single-screen "home"
+         *  instance (no close button, back exits the app). The single owner of
+         *  the [ARG_NON_DISMISSIBLE] key, so callers don't re-spell it. */
+        fun isNonDismissible(fragment: SettingsBottomSheet?): Boolean =
+            fragment?.arguments?.getBoolean(ARG_NON_DISMISSIBLE, false) == true
+
         // (TG and Qwen total-mem floors used to live here as TG_TOTAL_MEM_FLOOR_BYTES
         // and QWEN_TOTAL_MEM_FLOOR_BYTES, but they're now properties on the backend
         // class itself — see OnDeviceLlmBackend.totalMemFloorBytes — so the UI's
