@@ -902,9 +902,9 @@ class Prefs(context: Context) {
         private const val KEY_SELECTED_REGION_BY_DISPLAY = "selected_region_by_display"
         private const val KEY_ICON_POSITION_BY_DISPLAY   = "icon_position_by_display"
         private const val KEY_ANKI_DECK_ID         = "anki_deck_id"
-        private const val KEY_ANKI_DECK_NAME       = "anki_deck_name"
-        private const val KEY_ANKI_MODEL_ID        = "anki_model_id"
-        private const val KEY_ANKI_MODEL_NAME      = "anki_model_name"
+        const val KEY_ANKI_DECK_NAME       = "anki_deck_name"
+        const val KEY_ANKI_MODEL_ID        = "anki_model_id"
+        const val KEY_ANKI_MODEL_NAME      = "anki_model_name"
         private const val KEY_ANKI_FIELD_MAPPINGS  = "anki_field_mappings"   // JSON
         private const val KEY_ANKI_WORD_AUDIO      = "anki_word_audio_enabled"
         private const val KEY_ANKI_SENTENCE_AUDIO  = "anki_sentence_audio_enabled"

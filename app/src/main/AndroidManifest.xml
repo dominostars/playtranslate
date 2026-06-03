@@ -133,6 +133,13 @@
             android:parentActivityName=".MainActivity"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- Anki Flashcards sub-page (deck / card-type / mapping), launched from Settings → Configure. -->
+        <activity
+            android:name=".ui.AnkiSettingsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.PlayTranslate" />
+
         <!-- Transparent host for the MediaProjection consent dialog. -->
         <activity
             android:name=".capture.MediaProjectionConsentActivity"

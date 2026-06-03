@@ -85,7 +85,7 @@ class SettingsBottomSheet : DialogFragment() {
     private val requestAnkiPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) renderer?.refreshAnkiSection()
+        if (granted) renderer?.refreshAnkiConfigureCell()
     }
 
     /** Voice picker now returns the choice via setResult rather than
@@ -173,7 +173,7 @@ class SettingsBottomSheet : DialogFragment() {
                 it.addTeardownListener(onProjectionTeardown)
             }
         renderer?.startCaptureButtonShimmer()
-        renderer?.refreshAnkiSection()
+        renderer?.refreshAnkiConfigureCell()
         renderer?.refreshOverlayIconState()
         // The toolbar hosts the Turn On/Off button on the MediaProjection
         // backend — re-check its visibility in case the accessibility grant
@@ -526,76 +526,10 @@ class SettingsBottomSheet : DialogFragment() {
                 override fun requestMediaProjectionControls() {
                     this@SettingsBottomSheet.requestMediaProjectionControls()
                 }
-                override fun showAnkiDeckPicker(onDeckSelected: () -> Unit) {
-                    val picker = AnkiDeckPickerDialog.newInstance()
-                    picker.onDeckSelected = onDeckSelected
-                    picker.show(childFragmentManager, AnkiDeckPickerDialog.TAG)
-                }
-                override fun showAnkiCardTypePicker(onPicked: () -> Unit) {
-                    // Settings doesn't know mode; use SENTENCE as the
-                    // default for Basic-shape detection. Mapping dialog
-                    // lets the user override per template anyway.
-                    val picker = AnkiCardTypePickerDialog.newInstance(CardMode.SENTENCE)
-                    picker.onCardTypePicked = { _, _ -> onPicked() }
-                    picker.show(childFragmentManager, AnkiCardTypePickerDialog.TAG)
-                }
-                override fun showAnkiCardTypeMapping(onSaved: () -> Unit) {
-                    val sheet = this@SettingsBottomSheet
-                    val ctx = sheet.requireContext()
-                    val prefs = Prefs(ctx)
-                    val pickedId = prefs.ankiModelId
-                    if (pickedId == -1L) return  // shouldn't be reachable; row's hidden
-                    sheet.viewLifecycleOwner.lifecycleScope.launch {
-                        val models = withContext(Dispatchers.IO) { AnkiManager(ctx).getModels() }
-                        if (models.isEmpty()) {
-                            // Empty list always means transient query /
-                            // permission failure — a working AnkiDroid
-                            // install always has built-in Basic + Cloze.
-                            // Don't destructively reset prefs; just
-                            // surface the error and let the user retry.
-                            // Same guard as dispatchSendToAnki.
-                            android.widget.Toast.makeText(
-                                ctx, R.string.anki_models_unavailable,
-                                android.widget.Toast.LENGTH_LONG,
-                            ).show()
-                            return@launch
-                        }
-                        val picked = models.firstOrNull { it.id == pickedId }
-                        if (picked == null) {
-                            // Model genuinely disappeared (models is non-
-                            // empty, our id isn't in it). Fall back to
-                            // default and Toast.
-                            prefs.ankiModelId = -1L
-                            prefs.ankiModelName = ""
-                            android.widget.Toast.makeText(
-                                ctx, R.string.anki_card_type_stale_fallback,
-                                android.widget.Toast.LENGTH_SHORT,
-                            ).show()
-                            onSaved()
-                            return@launch
-                        }
-                        if (AnkiCardTypeMapper.isBasicShape(picked.fieldNames)) {
-                            // Basic-shape templates bypass the mapping
-                            // system entirely — dispatchSendToAnki routes
-                            // them through assembleBasicNote which
-                            // derives Front/Back from the send mode and
-                            // ignores any saved mapping. Don't open the
-                            // mapping dialog; explain instead.
-                            android.widget.Toast.makeText(
-                                ctx, R.string.anki_card_type_basic_no_mapping,
-                                android.widget.Toast.LENGTH_LONG,
-                            ).show()
-                            return@launch
-                        }
-                        val dialog = AnkiFieldMappingDialog.newInstance(
-                            modelId = picked.id,
-                            modelName = picked.name,
-                            fieldNames = picked.fieldNames,
-                            mode = CardMode.SENTENCE,
-                        )
-                        dialog.onSaved = { _, _ -> onSaved() }
-                        dialog.show(childFragmentManager, AnkiFieldMappingDialog.TAG)
-                    }
+                override fun openAnkiSettings() {
+                    startActivity(
+                        android.content.Intent(requireContext(), AnkiSettingsActivity::class.java)
+                    )
                 }
             }
         )

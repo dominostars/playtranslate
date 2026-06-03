@@ -441,6 +441,11 @@
 
                         <include layout="@layout/settings_row_divider" />
 
+                        <include layout="@layout/settings_row_value_multiline"
+                            android:id="@+id/rowConfigAnki" />
+
+                        <include layout="@layout/settings_row_divider" />
+
                         <include layout="@layout/settings_row_value"
                             android:id="@+id/rowConfigAppearance" />
 
@@ -616,91 +621,6 @@
                         android:text="@string/tr_service_offline_footer"
                         android:textColor="?attr/ptTextHint"
                         android:textSize="11sp" />
-
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- ══════════════════════════════════════════════════════ -->
-            <!-- ANKI                                                  -->
-            <!-- ══════════════════════════════════════════════════════ -->
-
-            <include layout="@layout/settings_group_header"
-                android:id="@+id/headerAnki" />
-
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:cardBackgroundColor="?attr/ptCard"
-                app:cardCornerRadius="@dimen/pt_radius"
-                app:cardElevation="0dp"
-                app:strokeColor="?attr/ptDivider"
-                app:strokeWidth="1dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:id="@+id/tvAnkiSectionTitle"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:paddingHorizontal="@dimen/pt_row_h_padding"
-                        android:paddingTop="@dimen/pt_row_v_padding"
-                        android:visibility="gone"
-                        style="@style/Text.PT.RowTitle" />
-
-                    <LinearLayout
-                        android:id="@+id/llAnkiGetApp"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:visibility="gone" />
-
-                    <LinearLayout
-                        android:id="@+id/llAnkiPermission"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:visibility="gone" />
-
-                    <include layout="@layout/settings_row_value"
-                        android:id="@+id/rowAnkiDeck"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:visibility="gone" />
-
-                    <include layout="@layout/settings_row_divider"
-                        android:id="@+id/dividerAnkiCardType"
-                        android:visibility="gone" />
-
-                    <include layout="@layout/settings_row_value"
-                        android:id="@+id/rowAnkiCardType"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:visibility="gone" />
-
-                    <include layout="@layout/settings_row_divider"
-                        android:id="@+id/dividerAnkiEditMapping"
-                        android:visibility="gone" />
-
-                    <include layout="@layout/settings_row_value"
-                        android:id="@+id/rowAnkiEditMapping"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:visibility="gone" />
-
-                    <TextView
-                        android:id="@+id/tvAnkiLongPressFooter"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:background="@drawable/bg_word_tatoeba_attribution"
-                        android:paddingHorizontal="16dp"
-                        android:paddingVertical="10dp"
-                        android:text="@string/anki_long_press_footer"
-                        android:textColor="?attr/ptTextHint"
-                        android:textSize="11sp"
-                        android:visibility="gone" />
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>

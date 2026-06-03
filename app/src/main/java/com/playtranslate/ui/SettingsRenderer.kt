@@ -121,6 +121,9 @@ class SettingsRenderer(
         fun onSourceLangChanged()
         fun onScreenModeChanged()
         fun requestAnkiPermission()
+        /** Tap on the Anki CONFIGURE cell when AnkiDroid is installed + granted
+         *  — open [AnkiSettingsActivity]. */
+        fun openAnkiSettings()
         fun openLanguageSetup(mode: String)
         fun openDeepLSettings()
         /** Tap on an LLM-backend row's title area (not the switch) — open
@@ -146,9 +149,6 @@ class SettingsRenderer(
          *  on grant, bring up the floating game-screen controls. Refreshes the
          *  overlay-icon switch when the flow settles so it mirrors the result. */
         fun requestMediaProjectionControls()
-        fun showAnkiDeckPicker(onDeckSelected: () -> Unit)
-        fun showAnkiCardTypePicker(onPicked: () -> Unit)
-        fun showAnkiCardTypeMapping(onSaved: () -> Unit)
 
         /** Tap on the MNN-backed Qwen row when the model isn't installed —
          *  start a zip download via the OnDeviceLlmDownloader ZipExtract
@@ -272,16 +272,6 @@ class SettingsRenderer(
     private val switchGameScreenControls: MaterialSwitch =
         root.findViewById(R.id.switchGameScreenControls)
 
-    private val llAnkiGetApp: LinearLayout = root.findViewById(R.id.llAnkiGetApp)
-    private val llAnkiPermission: LinearLayout = root.findViewById(R.id.llAnkiPermission)
-    private val rowAnkiDeck: View = root.findViewById(R.id.rowAnkiDeck)
-    private val dividerAnkiCardType: View = root.findViewById(R.id.dividerAnkiCardType)
-    private val rowAnkiCardType: View = root.findViewById(R.id.rowAnkiCardType)
-    private val dividerAnkiEditMapping: View = root.findViewById(R.id.dividerAnkiEditMapping)
-    private val rowAnkiEditMapping: View = root.findViewById(R.id.rowAnkiEditMapping)
-    private val tvAnkiLongPressFooter: View = root.findViewById(R.id.tvAnkiLongPressFooter)
-    private val tvAnkiSectionTitle: TextView = root.findViewById(R.id.tvAnkiSectionTitle)
-
     private val rowDiscord: View = root.findViewById(R.id.rowDiscord)
     private val rowDonate: View = root.findViewById(R.id.rowDonate)
     private val settingsScrollView: androidx.core.widget.NestedScrollView = root.findViewById(R.id.settingsScrollView)
@@ -299,7 +289,6 @@ class SettingsRenderer(
         setupLanguageSection()
         setupOnScreenControls()
         setupTranslationServiceSection()
-        setupAnkiSection()
         refreshTtsSection()
         setupConfigureSection()
         setupSupportSection()
@@ -318,7 +307,6 @@ class SettingsRenderer(
         // dialog_settings.xml).
         setGroupHeader(R.id.headerOnlineTranslations, ctx.getString(R.string.settings_header_online_translations))
         setGroupHeader(R.id.headerOfflineTranslations, ctx.getString(R.string.settings_header_offline_translations))
-        setGroupHeader(R.id.headerAnki, ctx.getString(R.string.settings_header_anki))
         setGroupHeader(R.id.headerTextToSpeech, ctx.getString(R.string.settings_header_text_to_speech))
         setGroupHeader(R.id.headerSupport, ctx.getString(R.string.settings_header_support))
         setGroupHeader(R.id.headerDebug, ctx.getString(R.string.settings_header_debug))
@@ -1984,164 +1972,6 @@ class SettingsRenderer(
         row.setOnClickListener(null)
     }
 
-    // ── Anki section ─────────────────────────────────────────────────────
-
-    private fun setupAnkiSection() {
-        addLinkRow(
-            llAnkiGetApp,
-            ctx.getString(R.string.anki_settings_get_ankidroid_title),
-            ctx.getString(R.string.anki_section_description, ctx.getString(R.string.app_name)),
-            ctx.getString(R.string.anki_play_store_url)
-        )
-        refreshAnkiSection()
-    }
-
-    fun refreshAnkiSection() {
-        val ankiManager = AnkiManager(ctx)
-        val installed = ankiManager.isAnkiDroidInstalled()
-
-        llAnkiGetApp.visibility = if (installed) View.GONE else View.VISIBLE
-
-        when {
-            !installed -> {
-                tvAnkiSectionTitle.isGone = true
-                llAnkiPermission.isGone = true
-                hideAllAnkiRows()
-            }
-
-            !ankiManager.hasPermission() -> {
-                tvAnkiSectionTitle.isGone = true
-                llAnkiPermission.removeAllViews()
-                addClickableRow(
-                    llAnkiPermission,
-                    ctx.getString(R.string.anki_settings_grant_access_title),
-                    ctx.getString(R.string.anki_settings_grant_access_subtitle, ctx.getString(R.string.app_name)),
-                    R.drawable.ic_lock,
-                    onClick = { callbacks.requestAnkiPermission() }
-                )
-                llAnkiPermission.isVisible = true
-                hideAllAnkiRows()
-            }
-
-            else -> {
-                tvAnkiSectionTitle.isGone = true
-                llAnkiPermission.isGone = true
-                setupAnkiDeckRow()
-                setupAnkiCardTypeRow()
-                refreshAnkiEditMappingRow()
-                tvAnkiLongPressFooter.isVisible = true
-            }
-        }
-    }
-
-    private fun hideAllAnkiRows() {
-        rowAnkiDeck.isGone = true
-        rowAnkiCardType.isGone = true
-        dividerAnkiCardType.isGone = true
-        rowAnkiEditMapping.isGone = true
-        dividerAnkiEditMapping.isGone = true
-        tvAnkiLongPressFooter.isGone = true
-    }
-
-    private fun setupAnkiDeckRow() {
-        rowAnkiDeck.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.anki_deck_row_label)
-        val deckName = prefs.ankiDeckName.ifEmpty { ctx.getString(R.string.anki_deck_not_selected_subtitle) }
-        rowAnkiDeck.findViewById<TextView>(R.id.tvRowValue).text = deckName
-        rowAnkiDeck.setOnClickListener {
-            callbacks.showAnkiDeckPicker { refreshAnkiDeckValue() }
-        }
-        rowAnkiDeck.isVisible = true
-
-        // Validate saved deck still exists in AnkiDroid
-        validateAnkiDeck()
-    }
-
-    private fun validateAnkiDeck() {
-        if (prefs.ankiDeckId == 0L) return
-        lifecycleScope.launch {
-            val decks = withContext(Dispatchers.IO) { AnkiManager(ctx).getDecks() }
-            if (decks.isEmpty()) return@launch
-            if (!decks.containsKey(prefs.ankiDeckId)) {
-                // Saved deck no longer exists — clear and show first available
-                val first = decks.entries.first()
-                prefs.ankiDeckId = first.key
-                prefs.ankiDeckName = first.value
-                rowAnkiDeck.findViewById<TextView>(R.id.tvRowValue).text = first.value
-            }
-        }
-    }
-
-    private fun refreshAnkiDeckValue() {
-        val freshPrefs = Prefs(ctx)
-        val deckName = freshPrefs.ankiDeckName.ifEmpty { ctx.getString(R.string.anki_deck_not_selected_subtitle) }
-        rowAnkiDeck.findViewById<TextView>(R.id.tvRowValue).text = deckName
-    }
-
-    private fun setupAnkiCardTypeRow() {
-        rowAnkiCardType.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.anki_card_type_row_label)
-        refreshAnkiCardTypeValue()
-        rowAnkiCardType.setOnClickListener {
-            callbacks.showAnkiCardTypePicker { refreshAnkiCardTypeValue() }
-        }
-        rowAnkiCardType.isVisible = true
-        dividerAnkiCardType.isVisible = true
-        validateAnkiCardType()
-    }
-
-    /**
-     * Heal the saved card type against AnkiDroid's live model list. If
-     * the saved id was deleted (or never existed), reset to the Default
-     * sentinel. If found, refresh the saved name so a rename in
-     * AnkiDroid surfaces here too.
-     */
-    private fun validateAnkiCardType() {
-        if (prefs.ankiModelId == -1L) return
-        lifecycleScope.launch {
-            val models = withContext(Dispatchers.IO) { AnkiManager(ctx).getModels() }
-            if (models.isEmpty()) return@launch
-            val match = models.firstOrNull { it.id == prefs.ankiModelId }
-            if (match == null) {
-                prefs.ankiModelId = -1L
-                prefs.ankiModelName = ""
-                refreshAnkiCardTypeValue()
-            } else if (match.name != prefs.ankiModelName) {
-                prefs.ankiModelName = match.name
-                refreshAnkiCardTypeValue()
-            }
-        }
-    }
-
-    private fun refreshAnkiCardTypeValue() {
-        val freshPrefs = Prefs(ctx)
-        val label = freshPrefs.ankiModelName.ifBlank {
-            ctx.getString(R.string.anki_card_type_row_empty)
-        }
-        rowAnkiCardType.findViewById<TextView>(R.id.tvRowValue).text = label
-        refreshAnkiEditMappingRow()
-    }
-
-    /**
-     * The "Edit field mapping" row is only relevant when the user has
-     * picked a non-default card type — the Default (PlayTranslate) path
-     * uses v004's fixed two-field schema and has nothing to map.
-     */
-    private fun refreshAnkiEditMappingRow() {
-        val hasCustom = prefs.ankiModelId != -1L
-        if (!hasCustom) {
-            rowAnkiEditMapping.isGone = true
-            dividerAnkiEditMapping.isGone = true
-            return
-        }
-        rowAnkiEditMapping.findViewById<TextView>(R.id.tvRowTitle).text =
-            ctx.getString(R.string.anki_card_type_edit_mapping_row_label)
-        rowAnkiEditMapping.findViewById<TextView>(R.id.tvRowValue).text = ""
-        rowAnkiEditMapping.setOnClickListener {
-            callbacks.showAnkiCardTypeMapping { refreshAnkiCardTypeValue() }
-        }
-        rowAnkiEditMapping.isVisible = true
-        dividerAnkiEditMapping.isVisible = true
-    }
-
     // ── Configure (drill-down to settings sub-pages) ─────────────────────
 
     /** Wire the CONFIGURE cells, each of which opens a settings sub-page.
@@ -2162,8 +1992,43 @@ class SettingsRenderer(
         wireConfigureCell(R.id.rowConfigHotkeys, R.string.settings_cell_hotkeys) {
             callbacks.openHotkeysSettings()
         }
+        refreshAnkiConfigureCell()
         wireConfigureCell(R.id.rowConfigAppearance, R.string.settings_cell_appearance) {
             callbacks.openAppearanceSettings()
+        }
+    }
+
+    /** Wire the state-dependent Anki CONFIGURE cell: AnkiDroid not installed →
+     *  Play Store link; installed without permission → request the grant;
+     *  installed + granted → navigate to [AnkiSettingsActivity]. Refreshed on
+     *  resume + after the permission result so it flips state without leaving
+     *  the root screen. */
+    fun refreshAnkiConfigureCell() {
+        if (isOnboarding) return
+        val row = root.findViewById<View>(R.id.rowConfigAnki) ?: return
+        val title = row.findViewById<TextView>(R.id.tvRowTitle)
+        val subtitle = row.findViewById<TextView>(R.id.tvRowSubtitle)
+        val ankiManager = AnkiManager(ctx)
+        when {
+            !ankiManager.isAnkiDroidInstalled() -> {
+                title.text = ctx.getString(R.string.anki_settings_get_ankidroid_title)
+                subtitle.text = ctx.getString(R.string.anki_section_description, ctx.getString(R.string.app_name))
+                subtitle.isVisible = true
+                row.setOnClickListener {
+                    ctx.startActivity(Intent(Intent.ACTION_VIEW, ctx.getString(R.string.anki_play_store_url).toUri()))
+                }
+            }
+            !ankiManager.hasPermission() -> {
+                title.text = ctx.getString(R.string.settings_cell_anki)
+                subtitle.text = ctx.getString(R.string.anki_settings_grant_access_subtitle, ctx.getString(R.string.app_name))
+                subtitle.isVisible = true
+                row.setOnClickListener { callbacks.requestAnkiPermission() }
+            }
+            else -> {
+                title.text = ctx.getString(R.string.settings_cell_anki)
+                subtitle.isGone = true
+                row.setOnClickListener { callbacks.openAnkiSettings() }
+            }
         }
     }
 
@@ -2400,33 +2265,4 @@ class SettingsRenderer(
         }
     }
 
-    /** Inflate and add a link row dynamically to a container. For sections with variable content. */
-    private fun addLinkRow(container: LinearLayout, title: String, subtitle: String, url: String) {
-        val row = LayoutInflater.from(ctx)
-            .inflate(R.layout.settings_row_link, container, false)
-        wireLinkRow(row, title, subtitle, url)
-        container.addView(row)
-    }
-
-    /** Add an action row using the settings_row_link template with a custom icon and click. */
-    private fun addClickableRow(
-        container: LinearLayout,
-        title: String,
-        subtitle: String,
-        iconRes: Int,
-        onClick: () -> Unit
-    ): View {
-        val row = LayoutInflater.from(ctx)
-            .inflate(R.layout.settings_row_link, container, false)
-        row.findViewById<TextView>(R.id.tvRowTitle).text = title
-        val tvSub = row.findViewById<TextView>(R.id.tvRowSubtitle)
-        if (subtitle.isNotEmpty()) {
-            tvSub.text = subtitle
-            tvSub.isVisible = true
-        }
-        row.findViewById<ImageView>(R.id.ivRowIcon)?.setImageResource(iconRes)
-        row.setOnClickListener { onClick() }
-        container.addView(row)
-        return row
-    }
 }
