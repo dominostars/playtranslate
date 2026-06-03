@@ -24,9 +24,6 @@ import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.capturableDisplays
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.R
-import com.playtranslate.applyAccentOverlay
-import com.playtranslate.applyDialogEdgeToEdge
-import com.playtranslate.fullScreenDialogTheme
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
@@ -40,10 +37,11 @@ import androidx.core.graphics.scale
 import androidx.core.view.isGone
 
 /**
- * Full-screen settings dialog. Works in two modes:
- *
- * - **Dialog mode** (default): shown via FragmentTransaction.add(). Has toolbar + close button.
- * - **Inline mode** (setShowsDialog(false)): embedded in MainActivity's settingsContainer.
+ * The full-screen settings panel. Always hosted **inline** (`setShowsDialog(false)`)
+ * in MainActivity's `settingsContainer` — both as the dual-screen Settings tab and
+ * as the single-screen home (where MainActivity hides the bottom bar; see
+ * `route`/`showReadyHome`). It is a [DialogFragment] only by inheritance — it never
+ * shows as a dialog.
  *
  * All view ↔ pref wiring is delegated to [SettingsRenderer]. This class handles
  * lifecycle, scroll restore, display listeners, and permission results.
@@ -91,26 +89,9 @@ class SettingsBottomSheet : DialogFragment() {
 
     // ── Lifecycle ────────────────────────────────────────────────────────
 
-    override fun getTheme(): Int = fullScreenDialogTheme(requireContext())
-
-    override fun onCreateDialog(savedInstanceState: Bundle?): android.app.Dialog {
-        val dialog = super.onCreateDialog(savedInstanceState)
-        applyAccentOverlay(dialog.context.theme, requireContext())
-        return dialog
-    }
-
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View = inflater.inflate(R.layout.dialog_settings, container, false)
-
-    override fun onStart() {
-        super.onStart()
-        dialog?.window?.apply {
-            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            setWindowAnimations(R.style.AnimSlideRight)
-            applyDialogEdgeToEdge(this, requireContext())
-        }
-    }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -178,7 +159,7 @@ class SettingsBottomSheet : DialogFragment() {
         // The toolbar hosts the Turn On/Off button on the MediaProjection
         // backend — re-check its visibility in case the accessibility grant
         // changed while we were away (same catch-up reason as the rows here).
-        view?.let { refreshToolbarVisibility(it) }
+        refreshToolbar(isSingle = Prefs.isSingleScreen(requireContext()))
     }
 
     override fun onPause() {
@@ -190,51 +171,46 @@ class SettingsBottomSheet : DialogFragment() {
 
     // ── View setup ──────────────────────────────────────────────────────
 
-    /** Show the toolbar in dialog mode (single-screen), and in inline mode
-     *  (dual-screen) only when the accessibility service is off — the
-     *  MediaProjection backend then needs the Turn On/Off control the toolbar
-     *  hosts. With accessibility on, dual-screen capture is always running, so
-     *  there is nothing to start. Re-checked on resume since the grant can
-     *  change while the user is away in system settings.
+    /** Show the toolbar on the single-screen home, and in dual-screen only when
+     *  the accessibility service is off — the MediaProjection backend then needs
+     *  the Turn On/Off control the toolbar hosts. With accessibility on,
+     *  dual-screen capture is always running, so there is nothing to start.
+     *  Re-checked on resume since the grant can change while the user is away in
+     *  system settings, and re-pushed by MainActivity on a screen-mode flip via
+     *  [refreshToolbar] (which owns the mode; this reads only a11y).
      *
      *  Toggles the inner MaterialToolbar, not the AppBarLayout: a GONE
      *  AppBarLayout keeps its stale measured height, so the CoordinatorLayout
      *  leaves the scroll child offset by a phantom toolbar until the view is
      *  rebuilt. The AppBarLayout (wrap_content) collapses to 0 on its own once
      *  its only child is hidden. */
-    private fun refreshToolbarVisibility(root: View) {
-        val show = showsDialog ||
+    private fun refreshToolbarVisibility(root: View, isSingle: Boolean) {
+        val show = isSingle ||
             !PlayTranslateAccessibilityService.isEnabled(requireContext())
         root.findViewById<View>(R.id.settingsToolbarInner).visibility =
             if (show) View.VISIBLE else View.GONE
     }
 
+    /** Re-evaluate the toolbar for the current screen mode. MainActivity calls
+     *  this on a screen-mode flip; the a11y dimension is read fresh here and on
+     *  [onResume], so this is the persistent inline surface's only screen-mode
+     *  chrome that the Activity drives. */
+    fun refreshToolbar(isSingle: Boolean) {
+        view?.let { refreshToolbarVisibility(it, isSingle) }
+    }
+
     private fun setupViews(view: View) {
-        val nonDismissible = arguments?.getBoolean(ARG_NON_DISMISSIBLE, false) ?: false
-        val isDialog = showsDialog
         val prefs = Prefs(requireContext())
 
-        // Toolbar contents — mode-constant, configured once here. The title is
-        // always the app name; the close button only makes sense in dialog
-        // mode (inline mode is embedded in MainActivity, nothing to dismiss).
+        // Toolbar contents — the title is always the app name. The fragment is
+        // always inline (embedded in MainActivity's settingsContainer), so there
+        // is no close button: navigation is the bottom bar, and on the
+        // single-screen home (bottom bar hidden) back exits the app via the
+        // Activity's default dispatcher.
         view.findViewById<android.widget.TextView>(R.id.tvSettingsTitle)
             .text = getString(R.string.app_name)
-        val closeBtn = view.findViewById<View>(R.id.btnCloseSettings)
-        when {
-            !isDialog -> closeBtn.isGone = true
-            nonDismissible -> {
-                closeBtn.isGone = true
-                dialog?.setOnKeyListener { _, keyCode, event ->
-                    if (keyCode == android.view.KeyEvent.KEYCODE_BACK &&
-                        event.action == android.view.KeyEvent.ACTION_UP) {
-                        activity?.finish()
-                        true
-                    } else false
-                }
-            }
-            else -> closeBtn.setOnClickListener { dismiss() }
-        }
-        refreshToolbarVisibility(view)
+        view.findViewById<View>(R.id.btnCloseSettings).isGone = true
+        refreshToolbarVisibility(view, isSingle = Prefs.isSingleScreen(requireContext()))
 
         // Restore the scroll position saved before a theme-change recreate.
         val settingsScrollView = view.findViewById<NestedScrollView>(R.id.settingsScrollView)
@@ -451,25 +427,12 @@ class SettingsBottomSheet : DialogFragment() {
 
     companion object {
         const val TAG = "SettingsBottomSheet"
-        private const val ARG_NON_DISMISSIBLE = "non_dismissible"
-
-        /** True if [fragment] is the non-dismissible single-screen "home"
-         *  instance (no close button, back exits the app). The single owner of
-         *  the [ARG_NON_DISMISSIBLE] key, so callers don't re-spell it. */
-        fun isNonDismissible(fragment: SettingsBottomSheet?): Boolean =
-            fragment?.arguments?.getBoolean(ARG_NON_DISMISSIBLE, false) == true
 
         // (TG and Qwen total-mem floors used to live here as TG_TOTAL_MEM_FLOOR_BYTES
         // and QWEN_TOTAL_MEM_FLOOR_BYTES, but they're now properties on the backend
         // class itself — see OnDeviceLlmBackend.totalMemFloorBytes — so the UI's
         // hardware-gate logic and the downloader's preflight read the same source.)
 
-        fun newInstance(
-            nonDismissible: Boolean = false,
-        ) = SettingsBottomSheet().apply {
-            val args = Bundle()
-            if (nonDismissible) args.putBoolean(ARG_NON_DISMISSIBLE, true)
-            if (!args.isEmpty) arguments = args
-        }
+        fun newInstance() = SettingsBottomSheet()
     }
 }

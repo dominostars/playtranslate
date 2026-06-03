@@ -70,6 +70,9 @@ import com.playtranslate.model.TextSegments
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.translation.OfflineModelReclaimer
 import com.playtranslate.ui.AppReadiness
+import com.playtranslate.ui.HomeAction
+import com.playtranslate.ui.Tab
+import com.playtranslate.ui.decideHome
 import com.playtranslate.ui.ClickableTextView
 import com.playtranslate.ui.DimController
 import com.playtranslate.ui.OnboardingViewModel
@@ -255,7 +258,6 @@ class MainActivity :
 
     // ── State ─────────────────────────────────────────────────────────────
 
-    private enum class Tab { TRANSLATE, SETTINGS, REGIONS }
     private var selectedTab = Tab.TRANSLATE
 
     /** The last readiness [route] applied, tracked across STOP→START (it's an
@@ -792,6 +794,7 @@ class MainActivity :
     }
 
     private fun openRegionPickerInline() {
+        if (supportFragmentManager.findFragmentByTag(RegionPickerSheet.TAG) != null) return
         // The picker resolves its own display state from Prefs.captureDisplayIds
         // and MainActivity.foregroundDisplayId — see RegionPickerSheet.onViewCreated.
         val sheet = RegionPickerSheet().apply {
@@ -813,7 +816,7 @@ class MainActivity :
         }
         supportFragmentManager.beginTransaction()
             .replace(R.id.regionPickerContainer, sheet, RegionPickerSheet.TAG)
-            .commit()
+            .commitAllowingStateLoss()
     }
 
     private fun hideRegionPicker() {
@@ -1118,9 +1121,13 @@ class MainActivity :
         openSettingsInline()
     }
 
-    /** Add the settings fragment to the already-visible settings container. */
+    /** Add the settings fragment to the already-visible settings container.
+     *  Idempotent: a no-op when it's already present, so a screen-mode flip that
+     *  re-routes through the Settings tab preserves the live fragment (and its
+     *  scroll/state) instead of rebuilding it via `replace()`. */
     private fun openSettingsInline() {
-        val sheet = SettingsBottomSheet.newInstance(nonDismissible = false).apply {
+        if (supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG) != null) return
+        val sheet = SettingsBottomSheet.newInstance().apply {
             setShowsDialog(false)
             onSourceLangChanged = { onSourceLanguageChanged() }
             onScreenModeChanged = {
@@ -1152,19 +1159,6 @@ class MainActivity :
         }
     }
 
-    /** Creates and shows a SettingsBottomSheet as a non-dismissible dialog —
-     *  the single-screen "home" surface (back exits the app). */
-    private fun showSettingsSheet(nonDismissible: Boolean) {
-        val sheet = SettingsBottomSheet.newInstance(nonDismissible = nonDismissible).apply {
-            onSourceLangChanged = { onSourceLanguageChanged() }
-            onScreenModeChanged = {
-                refreshReadiness()
-            }
-        }
-        val ft = supportFragmentManager.beginTransaction()
-        ft.add(sheet, SettingsBottomSheet.TAG)
-        ft.commitAllowingStateLoss()
-    }
 
     /** True when the active capture backend's prerequisites are satisfied:
      *  on the accessibility backend, the service is enabled in system
@@ -1729,18 +1723,16 @@ class MainActivity :
      *  dismissal nuance (the step itself doesn't encode screen mode); the Ready
      *  home comes from [current] directly. */
     private fun route(prev: AppReadiness?, current: AppReadiness) {
-        val existingSheet =
-            supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG) as? SettingsBottomSheet
         when (current) {
             is AppReadiness.Onboarding -> {
                 setMainSurfacesVisible(false)
+                val existingSheet =
+                    supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG) as? SettingsBottomSheet
                 showOnboardingStep(current.step, Prefs.isSingleScreen(this), existingSheet)
             }
             is AppReadiness.Ready -> {
                 setMainSurfacesVisible(true)
-                val enteringReady = prev !is AppReadiness.Ready
-                showReadyHome(current.home, existingSheet, enteringReady)
-                if (enteringReady) restoredTab = null // consume the one-shot restore hint
+                showReadyHome(current.home, prev)
             }
         }
     }
@@ -1758,11 +1750,9 @@ class MainActivity :
 
     /** Show the onboarding page for [step].
      *
-     *  Mirrors the legacy dismissal nuance: LANGUAGE / NOTIFICATION and the
-     *  single-screen CAPTURE page dismiss any open settings sheet, but the
-     *  dual-screen CAPTURE page dismisses only the forced single-screen "home"
-     *  dialog — an inline (dismissible) settings tab stays put behind the
-     *  overlay. */
+     *  LANGUAGE / NOTIFICATION and the single-screen CAPTURE page dismiss any
+     *  open inline settings panel; the dual-screen CAPTURE page leaves it in
+     *  place behind the overlay, so a returning dual user keeps their panel. */
     private fun showOnboardingStep(
         step: AppReadiness.Step,
         singleScreen: Boolean,
@@ -1781,7 +1771,7 @@ class MainActivity :
                 showOnboardingPage(pageNotif)
             }
             AppReadiness.Step.CAPTURE -> {
-                if (singleScreen || SettingsBottomSheet.isNonDismissible(existingSheet)) {
+                if (singleScreen) {
                     existingSheet?.dismissAllowingStateLoss()
                 }
                 showOnboardingPage(pageA11y)
@@ -1789,50 +1779,51 @@ class MainActivity :
         }
     }
 
-    /** Setup is complete — hide the onboarding overlay and show the
-     *  steady-state home for [home]. The home surfaces were already restored by
-     *  [route] via [setMainSurfacesVisible]; this composes what sits on them.
+    /** Setup is complete — compose the steady-state home for [home]. The home
+     *  surfaces were already restored by [route] via [setMainSurfacesVisible];
+     *  this decides (purely, via [decideHome]) what sits on them and applies it.
      *
-     *  SINGLE_SCREEN: the non-dismissible settings dialog is the only surface,
-     *  so (re-)show it, guarding against re-adding one that's already up (the
-     *  gate re-routes on every refresh).
-     *
-     *  DUAL: drop the forced single-screen dialog if we're crossing over from
-     *  it; then, only on the [enteringReady] edge (leaving onboarding, cold
-     *  launch, or recreation — not a plain resume), pick the home tab. On
-     *  recreation [restoredTab] carries the user's saved tab; otherwise default
-     *  to Settings on the MediaProjection backend (where Turn On lives), else
-     *  Translate. This consolidates the old onCreate initial-tab selection and
-     *  the leaving-onboarding navigation into one place. */
-    private fun showReadyHome(
-        home: AppReadiness.Home,
-        existingSheet: SettingsBottomSheet?,
-        enteringReady: Boolean,
-    ) {
+     *  SINGLE_SCREEN forces the inline Settings panel (the only single-screen
+     *  surface) and hides the bottom bar; returning to dual lands on Settings
+     *  (single-screen excursions aren't tab-tracked — see [decideHome]). DUAL
+     *  shows the bottom bar and either re-selects the recreation-saved tab, picks
+     *  the entry default, or leaves the current tab alone. The title bar follows
+     *  the same screen-mode flip via [SettingsBottomSheet.refreshToolbar]; the
+     *  fragment keeps the accessibility dimension fresh on its own resume. */
+    private fun showReadyHome(home: AppReadiness.Home, prev: AppReadiness?) {
+        val decision = decideHome(
+            prev = prev,
+            home = home,
+            restoredTab = restoredTab,
+            requiresA11y = CaptureBackendResolver.active().requiresAccessibilityService,
+        )
+        restoredTab = decision.restoredTab
         onboardingContainer.isGone = true
-        when (home) {
-            AppReadiness.Home.SINGLE_SCREEN -> {
-                if (!SettingsBottomSheet.isNonDismissible(existingSheet)) {
-                    existingSheet?.dismissAllowingStateLoss()
-                    showSettingsSheet(nonDismissible = true)
-                }
+        when (val action = decision.action) {
+            HomeAction.ForceSettings -> {
+                selectTab(Tab.SETTINGS)
+                openSettingsInline() // idempotent — builds only if absent, so the panel persists
+                bottomBar.isGone = true
             }
-            AppReadiness.Home.DUAL -> {
-                if (SettingsBottomSheet.isNonDismissible(existingSheet)) {
-                    existingSheet?.dismissAllowingStateLoss()
-                }
-                if (enteringReady) {
-                    val tab = restoredTab
-                        ?: if (CaptureBackendResolver.active().requiresAccessibilityService) Tab.TRANSLATE
-                        else Tab.SETTINGS
-                    selectTab(tab)
-                    when (tab) {
-                        Tab.SETTINGS -> openSettingsInline()
-                        Tab.REGIONS -> openRegionPickerInline()
-                        else -> {}
-                    }
-                }
+            is HomeAction.ShowTab -> {
+                applyTab(action.tab)
+                bottomBar.isVisible = true
             }
+            HomeAction.KeepTab -> {
+                bottomBar.isVisible = true
+            }
+        }
+        (supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG) as? SettingsBottomSheet)
+            ?.refreshToolbar(isSingle = home == AppReadiness.Home.SINGLE_SCREEN)
+    }
+
+    /** Select [tab] and ensure its inline fragment is present (idempotent). */
+    private fun applyTab(tab: Tab) {
+        selectTab(tab)
+        when (tab) {
+            Tab.SETTINGS -> openSettingsInline()
+            Tab.REGIONS -> openRegionPickerInline()
+            Tab.TRANSLATE -> {}
         }
     }
 
