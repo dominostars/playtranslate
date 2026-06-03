@@ -221,7 +221,6 @@ class SettingsRenderer(
         setupGameScreenControlsRow()
         setupLanguageSection()
         setupOnScreenControls()
-        refreshTtsSection()
         setupConfigureSection()
         setupSupportSection()
         setupDebugSection()
@@ -237,7 +236,6 @@ class SettingsRenderer(
         // ON-SCREEN CONTROLS has no header — its card sits directly under
         // the power card as part of the top section (no headerOnScreen in
         // dialog_settings.xml).
-        setGroupHeader(R.id.headerTextToSpeech, ctx.getString(R.string.settings_header_text_to_speech))
         setGroupHeader(R.id.headerSupport, ctx.getString(R.string.settings_header_support))
         setGroupHeader(R.id.headerDebug, ctx.getString(R.string.settings_header_debug))
     }
@@ -299,15 +297,20 @@ class SettingsRenderer(
 
     // ── Text-to-Speech section ────────────────────────────────────────────
 
-    /** (Re)resolve TTS engine availability and populate the section: a "Voice"
-     *  value-cell when an engine is usable, otherwise a cell that opens the
-     *  "No Text-to-Speech" alert. The section stays hidden until the async
-     *  check resolves (no empty-card flash). Also called from onResume so a
-     *  voice picked in the detail screen — or a game-language change — shows. */
-    fun refreshTtsSection() {
-        val section = root.findViewById<View>(R.id.ttsSection) ?: return
-        val rowNoEngine = root.findViewById<View>(R.id.rowTtsNoEngine)
-        val rowVoice = root.findViewById<View>(R.id.rowTtsVoice)
+    /** Wire the state-dependent TTS CONFIGURE cell. Unlike the other cells it
+     *  has no sub-page — it behaves like the old TTS row: engine available →
+     *  a cell showing the selected voice that opens the per-language voice
+     *  picker; no engine → a cell whose subtitle explains the gap and whose
+     *  tap shows the "No Text-to-Speech" alert. The voice / explanation share
+     *  the subtitle slot. Refreshed on resume so a voice picked in the detail
+     *  screen — or a newly-installed engine — shows without leaving root. */
+    fun refreshTtsConfigureCell() {
+        if (isOnboarding) return
+        val row = root.findViewById<View>(R.id.rowConfigTts) ?: return
+        val title = row.findViewById<TextView>(R.id.tvRowTitle)
+        val subtitle = row.findViewById<TextView>(R.id.tvRowSubtitle)
+        title.text = ctx.getString(R.string.settings_cell_tts)
+        subtitle.isVisible = true
         lifecycleScope.launch {
             val lang = prefs.sourceLangId
             if (TtsEngine.isEngineAvailable(ctx)) {
@@ -315,24 +318,14 @@ class SettingsRenderer(
                 val savedName = prefs.ttsVoiceName(lang)
                 val idx = if (savedName == null) -1
                           else voices.indexOfFirst { it.name == savedName }
-                rowVoice.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.tts_voice_row_title)
-                rowVoice.findViewById<TextView>(R.id.tvRowValue).text =
+                subtitle.text =
                     if (idx >= 0) ctx.getString(R.string.tts_voice_numbered, idx + 1)
                     else ctx.getString(R.string.tts_voice_default)
-                rowVoice.setOnClickListener { callbacks.openTtsVoicePicker() }
-                rowVoice.isVisible = true
-                rowNoEngine.isGone = true
+                row.setOnClickListener { callbacks.openTtsVoicePicker() }
             } else {
-                rowNoEngine.findViewById<TextView>(R.id.tvRowTitle).text =
-                    ctx.getString(R.string.tts_no_engine_row_title)
-                val sub = rowNoEngine.findViewById<TextView>(R.id.tvRowSubtitle)
-                sub.text = ctx.getString(R.string.tts_no_engine_row_subtitle)
-                sub.isVisible = true
-                rowNoEngine.setOnClickListener { callbacks.openTtsSetup() }
-                rowNoEngine.isVisible = true
-                rowVoice.isGone = true
+                subtitle.text = ctx.getString(R.string.tts_no_engine_row_subtitle)
+                row.setOnClickListener { callbacks.openTtsSetup() }
             }
-            section.isVisible = true
         }
     }
 
@@ -724,6 +717,7 @@ class SettingsRenderer(
             callbacks.openHotkeysSettings()
         }
         refreshAnkiConfigureCell()
+        refreshTtsConfigureCell()
         wireConfigureCell(R.id.rowConfigAppearance, R.string.settings_cell_appearance) {
             callbacks.openAppearanceSettings()
         }

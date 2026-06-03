@@ -87,7 +87,7 @@ class SettingsBottomSheet : DialogFragment() {
         if (result.resultCode != android.app.Activity.RESULT_OK) return@registerForActivityResult
         val picked = result.data?.getStringExtra(TtsVoiceActivity.EXTRA_PICKED_VOICE)
         Prefs(requireContext()).setTtsVoiceName(lang, picked)
-        renderer?.refreshTtsSection()
+        renderer?.refreshTtsConfigureCell()
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────────
@@ -165,7 +165,7 @@ class SettingsBottomSheet : DialogFragment() {
         // backend — re-check its visibility in case the accessibility grant
         // changed while we were away (same catch-up reason as the rows here).
         view?.let { refreshToolbarVisibility(it) }
-        renderer?.refreshTtsSection()
+        renderer?.refreshTtsConfigureCell()
 
         val ctx = context ?: return
         val sp = ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
