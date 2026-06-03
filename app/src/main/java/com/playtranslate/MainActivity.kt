@@ -114,6 +114,7 @@ class MainActivity :
     private lateinit var resultsContainer: View
     private lateinit var regionPickerContainer: View
     private lateinit var settingsContainer: View
+    private lateinit var bottomBar: View
     private lateinit var onboardingContainer: View
     private lateinit var pageWelcome: View
     private lateinit var pageNotif: View
@@ -256,6 +257,18 @@ class MainActivity :
 
     private enum class Tab { TRANSLATE, SETTINGS, REGIONS }
     private var selectedTab = Tab.TRANSLATE
+
+    /** The last readiness [route] applied, tracked across STOP→START (it's an
+     *  Activity field, so it survives a plain background→foreground but resets
+     *  on recreation). Lets [route] tell a true Ready-entering edge — leaving
+     *  onboarding, cold launch, recreation — from a steady-state re-emit, so a
+     *  plain resume never re-picks the user's tab. */
+    private var lastReadiness: AppReadiness? = null
+
+    /** On recreation (rotation / theme) the tab the user was on, for [route]'s
+     *  entering-Ready edge to restore; null on a cold launch (route picks the
+     *  default home tab). A one-shot — consumed on the first Ready edge. */
+    private var restoredTab: Tab? = null
 
     private val prefs by lazy { Prefs(this) }
     private var dimController: DimController? = null
@@ -479,24 +492,17 @@ class MainActivity :
         // this activity already implements) — no separate sink wiring
         // needed.
 
-        // The tab to open on launch. A recreate (theme change) restores the
-        // tab the user was on. A cold launch opens Translate — except
-        // dual-screen on the MediaProjection backend, which opens Settings:
-        // that is where Turn On lives, and MediaProjection consent must be
-        // re-granted each session since it does not survive a process restart.
-        val initialTab = when {
-            savedInstanceState != null -> Tab.entries.getOrElse(
-                savedInstanceState.getInt("selected_tab", 0)
-            ) { Tab.TRANSLATE }
-            !isSingleScreen() &&
-                !CaptureBackendResolver.active().requiresAccessibilityService -> Tab.SETTINGS
-            else -> Tab.TRANSLATE
-        }
-        selectTab(initialTab)
-        when (initialTab) {
-            Tab.SETTINGS -> openSettingsInline()
-            Tab.REGIONS -> openRegionPickerInline()
-            else -> {}
+        // The home is composed by route() in onResume, not here — onCreate no
+        // longer independently picks a tab. Hide the home surfaces until then so
+        // a cold launch never flashes the wrong tab before the gate decides. On
+        // a recreate (rotation / theme) remember the tab the user was on for
+        // route()'s entering-Ready edge to restore; a cold launch leaves it null
+        // and route() picks the default (Settings on the MediaProjection
+        // backend, where Turn On lives — its consent doesn't survive a process
+        // restart — else Translate).
+        setMainSurfacesVisible(false)
+        restoredTab = savedInstanceState?.let {
+            Tab.entries.getOrElse(it.getInt("selected_tab", 0)) { Tab.TRANSLATE }
         }
 
         // Start dim controller on dual-screen when not in live mode
@@ -511,7 +517,12 @@ class MainActivity :
         // onResume's refresh() — see OnboardingViewModel — so null is skipped.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                onboardingVm.state.collect { readiness -> readiness?.let { route(it) } }
+                onboardingVm.state.collect { current ->
+                    current?.let {
+                        route(lastReadiness, it)
+                        lastReadiness = it
+                    }
+                }
             }
         }
     }
@@ -723,6 +734,7 @@ class MainActivity :
         resultsContainer     = findViewById(R.id.resultsContainer)
         regionPickerContainer = findViewById(R.id.regionPickerContainer)
         settingsContainer    = findViewById(R.id.settingsContainer)
+        bottomBar            = findViewById(R.id.bottomBar)
         onboardingContainer  = findViewById(R.id.onboardingContainer)
         pageWelcome          = findViewById(R.id.pageWelcome)
         pageNotif            = findViewById(R.id.pageNotif)
@@ -1001,14 +1013,38 @@ class MainActivity :
         }
     }
 
+    /** Show only the container for [tab]. Factored out of [selectTab] so the
+     *  readiness router can restore the selected tab's container after the home
+     *  surfaces were hidden for onboarding ([setMainSurfacesVisible]) — a path
+     *  selectTab's "only on change" guard would otherwise skip. */
+    private fun applyTabVisibility(tab: Tab) {
+        resultsContainer.visibility = if (tab == Tab.TRANSLATE) View.VISIBLE else View.GONE
+        settingsContainer.visibility = if (tab == Tab.SETTINGS) View.VISIBLE else View.GONE
+        regionPickerContainer.visibility = if (tab == Tab.REGIONS) View.VISIBLE else View.GONE
+    }
+
+    /** Toggle the persistent home surfaces (the three tab containers + the
+     *  bottom bar) for the onboarding-vs-ready split. During onboarding they're
+     *  GONE — the onboarding pages own the screen, with the tab/settings stack
+     *  out of the layout entirely, not merely covered by an opaque overlay. On
+     *  Ready they're restored, the containers following the selected tab. */
+    private fun setMainSurfacesVisible(visible: Boolean) {
+        bottomBar.isVisible = visible
+        if (visible) {
+            applyTabVisibility(selectedTab)
+        } else {
+            resultsContainer.isGone = true
+            settingsContainer.isGone = true
+            regionPickerContainer.isGone = true
+        }
+    }
+
     private fun selectTab(tab: Tab) {
         if (selectedTab != tab) {
             selectedTab = tab
 
             // ── Container visibility ──
-            resultsContainer.visibility = if (tab == Tab.TRANSLATE) View.VISIBLE else View.GONE
-            settingsContainer.visibility = if (tab == Tab.SETTINGS) View.VISIBLE else View.GONE
-            regionPickerContainer.visibility = if (tab == Tab.REGIONS) View.VISIBLE else View.GONE
+            applyTabVisibility(tab)
 
             // Remove inline fragments for tabs we're leaving
             if (tab != Tab.SETTINGS) {
@@ -1681,29 +1717,36 @@ class MainActivity :
             .show()
     }
 
-    private fun isSingleScreen(): Boolean = Prefs.isSingleScreen(this)
-
-    /** Apply [readiness] to the UI — show the onboarding page for a step, or
-     *  the steady-state home. This is the single place the readiness state
-     *  machine touches the UI; the [onboardingVm] collector calls it on every
-     *  distinct emission. The derivation (and `reresolve`) live elsewhere: each
-     *  trigger does `reresolve(this); onboardingVm.refresh()`.
+    /** Apply [current] readiness to the UI — show the onboarding pages (with the
+     *  home surfaces hidden), or the steady-state home (surfaces restored). This
+     *  is the single place the readiness state machine touches the UI; the
+     *  [onboardingVm] collector calls it on every distinct emission, passing the
+     *  previously-routed [prev] so the Ready branch can tell an entering edge
+     *  from a steady-state re-emit. The derivation (and `reresolve`) live
+     *  elsewhere: each trigger does `reresolve(this); onboardingVm.refresh()`.
      *
      *  [Prefs.isSingleScreen] is re-read here only for the CAPTURE page's
      *  dismissal nuance (the step itself doesn't encode screen mode); the Ready
-     *  home comes from [readiness] directly. */
-    private fun route(readiness: AppReadiness) {
+     *  home comes from [current] directly. */
+    private fun route(prev: AppReadiness?, current: AppReadiness) {
         val existingSheet =
             supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG) as? SettingsBottomSheet
-        when (readiness) {
-            is AppReadiness.Onboarding ->
-                showOnboardingStep(readiness.step, Prefs.isSingleScreen(this), existingSheet)
-            is AppReadiness.Ready -> showReadyHome(readiness.home, existingSheet)
+        when (current) {
+            is AppReadiness.Onboarding -> {
+                setMainSurfacesVisible(false)
+                showOnboardingStep(current.step, Prefs.isSingleScreen(this), existingSheet)
+            }
+            is AppReadiness.Ready -> {
+                setMainSurfacesVisible(true)
+                val enteringReady = prev !is AppReadiness.Ready
+                showReadyHome(current.home, existingSheet, enteringReady)
+                if (enteringReady) restoredTab = null // consume the one-shot restore hint
+            }
         }
     }
 
     /** Re-derive onboarding readiness from current system state — the
-     *  replacement for the old direct `refreshReadiness()` calls. Resolves
+     *  replacement for the old direct `checkOnboardingState()` calls. Resolves
      *  the capture backend first (a permission granted in system Settings only
      *  reaches us now; this has side effects, so it stays here, not in the VM),
      *  then refreshes the gate. [OnboardingViewModel.refresh] updates the state
@@ -1747,20 +1790,28 @@ class MainActivity :
     }
 
     /** Setup is complete — hide the onboarding overlay and show the
-     *  steady-state home for [home].
+     *  steady-state home for [home]. The home surfaces were already restored by
+     *  [route] via [setMainSurfacesVisible]; this composes what sits on them.
      *
      *  SINGLE_SCREEN: the non-dismissible settings dialog is the only surface,
      *  so (re-)show it, guarding against re-adding one that's already up (the
      *  gate re-routes on every refresh).
      *
      *  DUAL: drop the forced single-screen dialog if we're crossing over from
-     *  it, reveal the tabs, and — only on the edge that *leaves* onboarding via
-     *  the MediaProjection backend (accessibility off) — land on Settings,
-     *  where the Turn On control lives. */
-    private fun showReadyHome(home: AppReadiness.Home, existingSheet: SettingsBottomSheet?) {
+     *  it; then, only on the [enteringReady] edge (leaving onboarding, cold
+     *  launch, or recreation — not a plain resume), pick the home tab. On
+     *  recreation [restoredTab] carries the user's saved tab; otherwise default
+     *  to Settings on the MediaProjection backend (where Turn On lives), else
+     *  Translate. This consolidates the old onCreate initial-tab selection and
+     *  the leaving-onboarding navigation into one place. */
+    private fun showReadyHome(
+        home: AppReadiness.Home,
+        existingSheet: SettingsBottomSheet?,
+        enteringReady: Boolean,
+    ) {
+        onboardingContainer.isGone = true
         when (home) {
             AppReadiness.Home.SINGLE_SCREEN -> {
-                onboardingContainer.isGone = true
                 if (!SettingsBottomSheet.isNonDismissible(existingSheet)) {
                     existingSheet?.dismissAllowingStateLoss()
                     showSettingsSheet(nonDismissible = true)
@@ -1770,12 +1821,16 @@ class MainActivity :
                 if (SettingsBottomSheet.isNonDismissible(existingSheet)) {
                     existingSheet?.dismissAllowingStateLoss()
                 }
-                val leavingOnboarding = onboardingContainer.isVisible
-                onboardingContainer.isGone = true
-                if (leavingOnboarding &&
-                    !CaptureBackendResolver.active().requiresAccessibilityService) {
-                    selectTab(Tab.SETTINGS)
-                    openSettingsInline()
+                if (enteringReady) {
+                    val tab = restoredTab
+                        ?: if (CaptureBackendResolver.active().requiresAccessibilityService) Tab.TRANSLATE
+                        else Tab.SETTINGS
+                    selectTab(tab)
+                    when (tab) {
+                        Tab.SETTINGS -> openSettingsInline()
+                        Tab.REGIONS -> openRegionPickerInline()
+                        else -> {}
+                    }
                 }
             }
         }

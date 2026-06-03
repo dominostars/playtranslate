@@ -63,18 +63,14 @@ fun applyEdgeToEdge(activity: ComponentActivity) {
 }
 
 /** Dialog/fragment edge-to-edge: turn off decor-fits-system-windows and set
- *  appearance flags. Call in `onStart`. Idempotent — safe to re-call from
- *  [com.playtranslate.ui.SettingsBottomSheet.reinflateContent] after a theme
- *  toggle. */
+ *  appearance flags. Call in `onStart`. Idempotent — safe to re-call. */
 fun applyDialogEdgeToEdge(window: Window, context: Context) {
     WindowCompat.setDecorFitsSystemWindows(window, false)
     applySystemBarAppearance(window, context)
 }
 
 /** Bare appearance-flag update — refresh status- and navigation-bar icon
- *  tint to match the current in-app theme. The in-place re-themer in
- *  `SettingsBottomSheet.reinflateContent` calls this when the user toggles
- *  theme inside dialog-mode Settings. */
+ *  tint to match the current in-app theme. */
 fun applySystemBarAppearance(window: Window, context: Context) {
     val light = !isEffectivelyDark(context)
     val controller = WindowCompat.getInsetsController(window, window.decorView)

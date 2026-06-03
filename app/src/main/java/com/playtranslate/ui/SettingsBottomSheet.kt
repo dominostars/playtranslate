@@ -26,7 +26,6 @@ import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
 import com.playtranslate.applyDialogEdgeToEdge
-import com.playtranslate.applySystemBarAppearance
 import com.playtranslate.fullScreenDialogTheme
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -58,7 +57,6 @@ class SettingsBottomSheet : DialogFragment() {
 
     // ── Internal state ──────────────────────────────────────────────────
     private var renderer: SettingsRenderer? = null
-    private var currentView: View? = null
     private val rootVm: RootSettingsViewModel by viewModels()
 
     /** The live MediaProjection session this sheet holds a teardown listener
@@ -117,7 +115,6 @@ class SettingsBottomSheet : DialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         attachScrollImeInsetListener(view)
-        currentView = view
         setupViews(view)
 
         // Render the VM-owned root state (language names + the Anki/TTS cells)
@@ -138,12 +135,10 @@ class SettingsBottomSheet : DialogFragment() {
         }
     }
 
-    /** Bind the IME + nav-bar bottom-inset listener to the freshly-inflated
-     *  [settingsScrollView]. Re-call after [reinflateContent] swaps the
-     *  scroll view out — the listener is per-View, not per-window, so the
-     *  replacement scroll view starts unattached and would otherwise leave
-     *  etCaptureInterval (mid-scroll, ~75 blocks below the top) hidden
-     *  behind the keyboard after an in-dialog theme toggle. */
+    /** Bind the IME + nav-bar bottom-inset listener to the
+     *  [settingsScrollView] so etCaptureInterval (mid-scroll, ~75 blocks
+     *  below the top) isn't left hidden behind the keyboard. The listener is
+     *  per-View, not per-window. */
     private fun attachScrollImeInsetListener(root: View) {
         val scroll = root.findViewById<View>(R.id.settingsScrollView) ?: return
         ViewCompat.setOnApplyWindowInsetsListener(scroll) { v, insets ->
@@ -153,9 +148,8 @@ class SettingsBottomSheet : DialogFragment() {
             WindowInsetsCompat.CONSUMED
         }
         // Platform doesn't replay the current WindowInsets to a listener
-        // installed after the attach-time dispatch has already fired. If the
-        // keyboard is up when reinflateContent runs (or even at first attach
-        // in inline mode, where the parent is already laid out), the new
+        // installed after the attach-time dispatch has already fired. At first
+        // attach in inline mode, where the parent is already laid out, the new
         // listener would otherwise sit silent until the next inset change.
         ViewCompat.requestApplyInsets(scroll)
     }
@@ -163,7 +157,6 @@ class SettingsBottomSheet : DialogFragment() {
     override fun onDestroyView() {
         renderer?.destroyOverlayIconPreview()
         renderer = null
-        currentView = null
         super.onDestroyView()
     }
 
@@ -331,60 +324,6 @@ class SettingsBottomSheet : DialogFragment() {
 
         // Bind all rows
         r.bind()
-    }
-
-    // ── Re-inflate (used for theme changes in dialog mode) ──────────────
-
-    /**
-     * Swaps the bottom-sheet's entire content view for a freshly-inflated
-     * [R.layout.dialog_settings]. Used for theme changes (MainActivity)
-     * and display hot-plug (this class's display listener).
-     *
-     * Skipped when:
-     *  - The fragment isn't attached or currentView has been detached.
-     *  - The parent is a FragmentContainerView. AndroidX's FCV refuses
-     *    raw View children — only Fragment-managed views. Showing any
-     *    child DialogFragment in this session (deck / card-type /
-     *    field-mapping / source picker) replaces the sheet's content
-     *    parent with an FCV, and that container persists for the rest
-     *    of the session — even after the dialog dismisses. So a
-     *    simple "is a child dialog currently shown" check isn't
-     *    enough; we have to look at what the parent actually is.
-     *
-     * The fresh layout is picked up next time Settings opens (its
-     * onViewCreated re-runs against a clean view tree).
-     */
-    fun reinflateContent() {
-        if (!isAdded) return
-        val old = currentView ?: return
-        val parent = old.parent as? ViewGroup ?: return
-        if (parent is androidx.fragment.app.FragmentContainerView) {
-            android.util.Log.d(TAG,
-                "reinflateContent skipped — parent is FragmentContainerView " +
-                    "(a child DialogFragment was shown earlier this session)")
-            return
-        }
-        // Recycle the outgoing renderer's preview bitmap — reinflate builds a
-        // fresh renderer + preview without going through onDestroyView.
-        renderer?.destroyOverlayIconPreview()
-        val index = parent.indexOfChild(old)
-        parent.removeView(old)
-        val newView = layoutInflater
-            .inflate(R.layout.dialog_settings, parent, false)
-        parent.addView(newView, index)
-        currentView = newView
-        setupViews(newView)
-        // The previous scroll view was removed; the freshly-inflated one
-        // starts without an inset listener. Re-bind so etCaptureInterval
-        // still gets keyboard + nav-bar bottom padding after a theme toggle.
-        attachScrollImeInsetListener(newView)
-        // After an in-place theme switch, refresh the system-bar icon tint
-        // to match the new palette. Under edge-to-edge the bars are
-        // transparent, so the only thing that flips is the appearance flag —
-        // no statusBarColor/navigationBarColor writes (deprecated, no-op on
-        // API 35+). windowBackground isn't touched because the content view
-        // covers it anyway.
-        dialog?.window?.let { applySystemBarAppearance(it, requireContext()) }
     }
 
     // ── Language delegate ────────────────────────────────────────────────

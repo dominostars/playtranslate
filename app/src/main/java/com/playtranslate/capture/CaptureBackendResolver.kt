@@ -42,7 +42,7 @@ object CaptureBackendResolver {
      * accessibility backend; otherwise "display over other apps" being granted
      * selects MediaProjection; with neither, the accessibility backend stands
      * (onboarding asks for a permission). Called at app start and from
-     * MainActivity.checkOnboardingState so a permission granted in system
+     * MainActivity.refreshReadiness so a permission granted in system
      * Settings is picked up on the next resume. Stops live mode, releases the
      * outgoing MediaProjection session, and hides the outgoing backend's
      * overlays before the swap, then brings up the incoming backend's floating
