@@ -894,8 +894,8 @@ class Prefs(context: Context) {
         const val MIN_CAPTURE_INTERVAL_SEC = 0.5f
         const val DEFAULT_CAPTURE_INTERVAL_SEC = 1.0f
 
-        private const val KEY_SOURCE_LANG    = "source_lang"
-        private const val KEY_TARGET_LANG    = "target_lang"
+        const val KEY_SOURCE_LANG    = "source_lang"
+        const val KEY_TARGET_LANG    = "target_lang"
         private const val KEY_DISPLAY_ID     = "capture_display_id"
         private const val KEY_DISPLAY_IDS    = "capture_display_ids"
         private const val KEY_SELECTED_REGION_ID = "selected_region_id"
@@ -951,7 +951,7 @@ class Prefs(context: Context) {
         private const val KEY_CAPTURE_METHOD           = "capture_method"
         private const val KEY_OVERLAY_MODE               = "overlay_mode"
         private const val KEY_SETTINGS_SCROLL_Y        = "settings_scroll_y"
-        private const val KEY_SHOW_OVERLAY_ICON       = "show_overlay_icon"
+        const val KEY_SHOW_OVERLAY_ICON       = "show_overlay_icon"
         private const val KEY_OVERLAY_ICON_EDGE      = "overlay_icon_edge"
         private const val KEY_OVERLAY_ICON_FRACTION  = "overlay_icon_fraction"
         private const val KEY_SUPPRESS_TRANSITION            = "suppress_next_transition"

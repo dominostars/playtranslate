@@ -1,7 +1,5 @@
 package com.playtranslate.ui
 
-import android.content.Context
-import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.hardware.display.DisplayManager
 import android.os.Bundle
@@ -14,7 +12,10 @@ import android.view.ViewGroup
 import androidx.core.widget.NestedScrollView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.DialogFragment
+import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.playtranslate.AnkiManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -58,20 +59,20 @@ class SettingsBottomSheet : DialogFragment() {
     // ── Internal state ──────────────────────────────────────────────────
     private var renderer: SettingsRenderer? = null
     private var currentView: View? = null
-    private var prefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
+    private val rootVm: RootSettingsViewModel by viewModels()
 
     /** The live MediaProjection session this sheet holds a teardown listener
      *  on while resumed (kept so onPause unregisters from the same one).
-     *  MediaProjection "active" is held consent, not a pref the
-     *  SharedPreferences listener observes — so the Turn On/Off buttons are
-     *  refreshed from this teardown callback instead. */
+     *  MediaProjection "active" is held consent, not a pref our observers
+     *  see — so the Turn On/Off buttons are refreshed from this teardown
+     *  callback instead. */
     private var teardownController: com.playtranslate.capture.MediaProjectionController? = null
     private val onProjectionTeardown: () -> Unit = { renderer?.refreshOverlayIconState() }
 
     private val requestAnkiPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) renderer?.refreshAnkiConfigureCell()
+        if (granted) rootVm.refresh()
     }
 
     /** Voice picker now returns the choice via setResult rather than
@@ -87,7 +88,7 @@ class SettingsBottomSheet : DialogFragment() {
         if (result.resultCode != android.app.Activity.RESULT_OK) return@registerForActivityResult
         val picked = result.data?.getStringExtra(TtsVoiceActivity.EXTRA_PICKED_VOICE)
         Prefs(requireContext()).setTtsVoiceName(lang, picked)
-        renderer?.refreshTtsConfigureCell()
+        rootVm.refresh()
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────────
@@ -118,6 +119,23 @@ class SettingsBottomSheet : DialogFragment() {
         attachScrollImeInsetListener(view)
         currentView = view
         setupViews(view)
+
+        // Render the VM-owned root state (language names + the Anki/TTS cells)
+        // and react to overlay-icon flips (QS tile) — both view-lifecycle-
+        // scoped. The power card + stale-pack card are NOT here: they project
+        // live system state and stay imperative (resume-driven) in the renderer.
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                rootVm.state.collect { renderer?.render(it) }
+            }
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                Prefs(requireContext()).observe(Prefs.KEY_SHOW_OVERLAY_ICON).collect {
+                    renderer?.refreshOverlayIconState()
+                }
+            }
+        }
     }
 
     /** Bind the IME + nav-bar bottom-inset listener to the freshly-inflated
@@ -159,22 +177,15 @@ class SettingsBottomSheet : DialogFragment() {
                 it.addTeardownListener(onProjectionTeardown)
             }
         renderer?.startCaptureButtonShimmer()
-        renderer?.refreshAnkiConfigureCell()
+        // Re-poll the system-state cells (Anki permission, TTS engine) that can
+        // change while Settings is backgrounded — the VM has no pref to observe
+        // for these, so resume is the catch-up point.
+        rootVm.refresh()
         renderer?.refreshOverlayIconState()
         // The toolbar hosts the Turn On/Off button on the MediaProjection
         // backend — re-check its visibility in case the accessibility grant
         // changed while we were away (same catch-up reason as the rows here).
         view?.let { refreshToolbarVisibility(it) }
-        renderer?.refreshTtsConfigureCell()
-
-        val ctx = context ?: return
-        val sp = ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
-        prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            when (key) {
-                "show_overlay_icon" -> renderer?.refreshOverlayIconState()
-            }
-        }
-        sp.registerOnSharedPreferenceChangeListener(prefsListener)
     }
 
     override fun onPause() {
@@ -182,10 +193,6 @@ class SettingsBottomSheet : DialogFragment() {
         teardownController?.removeTeardownListener(onProjectionTeardown)
         teardownController = null
         renderer?.stopCaptureButtonShimmer()
-        val ctx = context ?: return
-        val sp = ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
-        prefsListener?.let { sp.unregisterOnSharedPreferenceChangeListener(it) }
-        prefsListener = null
     }
 
     // ── View setup ──────────────────────────────────────────────────────
@@ -386,11 +393,9 @@ class SettingsBottomSheet : DialogFragment() {
     private fun setLanguageDelegate() {
         LanguageSetupActivity.selectionDelegate = object : LanguageSetupActivity.Delegate {
             override fun onSourceSelectionDone(sourceId: com.playtranslate.language.SourceLangId) {
-                renderer?.refreshLanguageRow()
                 onSourceLangChanged?.invoke()
             }
             override fun onTargetSelectionDone(targetCode: String) {
-                renderer?.refreshLanguageRow()
                 onSourceLangChanged?.invoke()
             }
         }

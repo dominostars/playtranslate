@@ -39,7 +39,6 @@ import androidx.core.widget.ImageViewCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.materialswitch.MaterialSwitch
-import com.playtranslate.AnkiManager
 import com.playtranslate.BuildConfig
 import com.playtranslate.CaptureService
 import com.playtranslate.OcrManager
@@ -50,7 +49,6 @@ import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.diagnostics.LogExporter
 import com.playtranslate.language.HintTextKind
-import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.blendColors
 import com.playtranslate.compositeOver
@@ -78,12 +76,10 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import com.playtranslate.tts.TtsEngine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 import androidx.core.view.isVisible
 import androidx.core.net.toUri
 import androidx.core.view.isGone
@@ -255,15 +251,12 @@ class SettingsRenderer(
     // ── Language section ──────────────────────────────────────────────────
 
     private fun setupLanguageSection() {
-        val sourceName = resolveSourceName()
-        val targetName = resolveTargetName()
-
-        rowSourceLang.findViewById<TextView>(R.id.tvSourceLangValue).text = sourceName
+        // Source/target names are VM-owned and applied in render(); this wires
+        // only the static click targets + the stale-pack update card (the card
+        // is live disk state, so it stays renderer-owned, refreshed on resume).
         rowSourceLang.setOnClickListener {
             callbacks.openLanguageSetup(LanguageSetupActivity.MODE_SOURCE)
         }
-
-        rowTargetLang.findViewById<TextView>(R.id.tvTargetLangValue).text = targetName
         rowTargetLang.setOnClickListener {
             callbacks.openLanguageSetup(LanguageSetupActivity.MODE_TARGET)
         }
@@ -304,26 +297,23 @@ class SettingsRenderer(
      *  tap shows the "No Text-to-Speech" alert. The voice / explanation share
      *  the subtitle slot. Refreshed on resume so a voice picked in the detail
      *  screen — or a newly-installed engine — shows without leaving root. */
-    fun refreshTtsConfigureCell() {
+    private fun renderTtsCell(state: RootSettingsViewModel.TtsCell) {
         if (isOnboarding) return
         val row = root.findViewById<View>(R.id.rowConfigTts) ?: return
         val title = row.findViewById<TextView>(R.id.tvRowTitle)
         val subtitle = row.findViewById<TextView>(R.id.tvRowSubtitle)
         title.text = ctx.getString(R.string.settings_cell_tts)
-        subtitle.isVisible = true
-        lifecycleScope.launch {
-            val lang = prefs.sourceLangId
-            if (TtsEngine.isEngineAvailable(ctx)) {
-                val voices = TtsEngine.voicesFor(ctx, lang)
-                val savedName = prefs.ttsVoiceName(lang)
-                val idx = if (savedName == null) -1
-                          else voices.indexOfFirst { it.name == savedName }
-                subtitle.text =
-                    if (idx >= 0) ctx.getString(R.string.tts_voice_numbered, idx + 1)
-                    else ctx.getString(R.string.tts_voice_default)
+        when (state) {
+            // Engine check in flight — leave the subtitle hidden (no flash).
+            RootSettingsViewModel.TtsCell.Loading -> subtitle.isGone = true
+            is RootSettingsViewModel.TtsCell.Available -> {
+                subtitle.text = state.voiceLabel
+                subtitle.isVisible = true
                 row.setOnClickListener { callbacks.openTtsVoicePicker() }
-            } else {
+            }
+            RootSettingsViewModel.TtsCell.NoEngine -> {
                 subtitle.text = ctx.getString(R.string.tts_no_engine_row_subtitle)
+                subtitle.isVisible = true
                 row.setOnClickListener { callbacks.openTtsSetup() }
             }
         }
@@ -345,18 +335,6 @@ class SettingsRenderer(
      *  staleInstalledPacks() is now empty. */
     fun refreshLanguageSection() {
         setupLanguageSection()
-    }
-
-    private fun resolveSourceName(): String =
-        SourceLangId.fromCode(prefs.sourceLang)?.displayName()
-            ?: Locale.forLanguageTag(prefs.sourceLang)
-                .getDisplayLanguage(Locale.getDefault())
-                .replaceFirstChar { it.uppercase(Locale.getDefault()) }
-
-    private fun resolveTargetName(): String {
-        val locale = Locale.forLanguageTag(prefs.targetLang)
-        return locale.getDisplayLanguage(locale)
-            .replaceFirstChar { it.uppercase(locale) }
     }
 
     // ── On-screen controls ───────────────────────────────────────────────
@@ -716,8 +694,8 @@ class SettingsRenderer(
         wireConfigureCell(R.id.rowConfigHotkeys, R.string.settings_cell_hotkeys) {
             callbacks.openHotkeysSettings()
         }
-        refreshAnkiConfigureCell()
-        refreshTtsConfigureCell()
+        // The Anki + TTS cells are state-dependent — rendered from the VM via
+        // render(), not wired here. The static nav cells above are.
         wireConfigureCell(R.id.rowConfigAppearance, R.string.settings_cell_appearance) {
             callbacks.openAppearanceSettings()
         }
@@ -728,14 +706,13 @@ class SettingsRenderer(
      *  installed + granted → navigate to [AnkiSettingsActivity]. Refreshed on
      *  resume + after the permission result so it flips state without leaving
      *  the root screen. */
-    fun refreshAnkiConfigureCell() {
+    private fun renderAnkiCell(state: RootSettingsViewModel.AnkiCell) {
         if (isOnboarding) return
         val row = root.findViewById<View>(R.id.rowConfigAnki) ?: return
         val title = row.findViewById<TextView>(R.id.tvRowTitle)
         val subtitle = row.findViewById<TextView>(R.id.tvRowSubtitle)
-        val ankiManager = AnkiManager(ctx)
-        when {
-            !ankiManager.isAnkiDroidInstalled() -> {
+        when (state) {
+            RootSettingsViewModel.AnkiCell.GetApp -> {
                 title.text = ctx.getString(R.string.anki_settings_get_ankidroid_title)
                 subtitle.text = ctx.getString(R.string.anki_section_description, ctx.getString(R.string.app_name))
                 subtitle.isVisible = true
@@ -743,13 +720,13 @@ class SettingsRenderer(
                     ctx.startActivity(Intent(Intent.ACTION_VIEW, ctx.getString(R.string.anki_play_store_url).toUri()))
                 }
             }
-            !ankiManager.hasPermission() -> {
+            RootSettingsViewModel.AnkiCell.GrantAccess -> {
                 title.text = ctx.getString(R.string.settings_cell_anki)
                 subtitle.text = ctx.getString(R.string.anki_settings_grant_access_subtitle, ctx.getString(R.string.app_name))
                 subtitle.isVisible = true
                 row.setOnClickListener { callbacks.requestAnkiPermission() }
             }
-            else -> {
+            RootSettingsViewModel.AnkiCell.Navigate -> {
                 title.text = ctx.getString(R.string.settings_cell_anki)
                 subtitle.isGone = true
                 row.setOnClickListener { callbacks.openAnkiSettings() }
@@ -946,9 +923,15 @@ class SettingsRenderer(
 
     // ── Refresh methods (called externally) ──────────────────────────────
 
-    fun refreshLanguageRow() {
-        rowSourceLang.findViewById<TextView>(R.id.tvSourceLangValue).text = resolveSourceName()
-        rowTargetLang.findViewById<TextView>(R.id.tvTargetLangValue).text = resolveTargetName()
+    /** Render the VM-owned root state: language names + the Anki/TTS cells.
+     *  Called by the host on every [RootSettingsViewModel] emission. The power
+     *  card, stale-pack card, support, debug + footer are NOT here — they're
+     *  live-system-state or static and stay imperative (see the class header). */
+    fun render(state: RootSettingsViewModel.UiState) {
+        rowSourceLang.findViewById<TextView>(R.id.tvSourceLangValue).text = state.sourceName
+        rowTargetLang.findViewById<TextView>(R.id.tvTargetLangValue).text = state.targetName
+        renderAnkiCell(state.anki)
+        renderTtsCell(state.tts)
     }
 
     /** Settings's response to [Prefs.showOverlayIcon] changing externally
