@@ -140,6 +140,13 @@
             android:parentActivityName=".MainActivity"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- Translation services sub-page (online + offline backends), launched from Settings → Configure. -->
+        <activity
+            android:name=".ui.TranslationServicesActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.PlayTranslate" />
+
         <!-- Transparent host for the MediaProjection consent dialog. -->
         <activity
             android:name=".capture.MediaProjectionConsentActivity"

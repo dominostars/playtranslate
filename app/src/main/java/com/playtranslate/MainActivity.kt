@@ -1060,14 +1060,9 @@ class MainActivity :
         openSettingsInline()
     }
 
-    /** Add the settings fragment to the already-visible settings container.
-     *  [anchor], if non-null, is passed through to [SettingsBottomSheet.newInstance]
-     *  so the freshly-bound sheet scrolls the corresponding section header
-     *  into view on its first layout pass — for deep-links like the
-     *  cold-launch Qwen-legacy nudge that want to land the user at a
-     *  specific section without creating a duplicate fragment. */
-    private fun openSettingsInline(anchor: com.playtranslate.ui.SettingsAnchor? = null) {
-        val sheet = SettingsBottomSheet.newInstance(hideDismiss = false, anchor = anchor).apply {
+    /** Add the settings fragment to the already-visible settings container. */
+    private fun openSettingsInline() {
+        val sheet = SettingsBottomSheet.newInstance(hideDismiss = false).apply {
             setShowsDialog(false)
             onSourceLangChanged = { onSourceLanguageChanged() }
             onScreenModeChanged = {
@@ -1097,45 +1092,6 @@ class MainActivity :
             captureService?.stopLive()
             withAccessibility { doStartLive() }
         }
-    }
-
-    /**
-     * Open Settings keyed to a specific section anchor — without duplicating
-     * the SettingsBottomSheet fragment if one already exists.
-     *
-     * Three states it has to handle:
-     *  - **Dual-screen, default Settings tab**: a SettingsBottomSheet is
-     *    already in the fragment manager (added by [openSettingsInline] at
-     *    initial-tab selection). Just scroll *that* instance to the anchor.
-     *  - **Single-screen, Settings tab visited earlier**: the sheet was
-     *    removed when the user navigated away (see [selectTab]'s fragment
-     *    cleanup at line 859), so the fragment manager doesn't have it.
-     *    Select the SETTINGS tab and add a fresh sheet with the anchor
-     *    baked into its arguments.
-     *  - **Single-screen, never visited Settings**: same as above.
-     *
-     * Replaces the earlier `SettingsBottomSheet.newInstance(…).show(…)`
-     * approach that incorrectly used the DialogFragment `.show()` path to
-     * stack a *modal* dialog over the existing fragment.
-     */
-    private fun openSettingsAtAnchor(anchor: com.playtranslate.ui.SettingsAnchor) {
-        val existing = supportFragmentManager
-            .findFragmentByTag(SettingsBottomSheet.TAG) as? SettingsBottomSheet
-        if (existing != null) {
-            // Sheet already attached (dual-screen default, or onboarding
-            // dialog mode — both wear the same TAG). Scrolling in place
-            // beats creating a second instance.
-            existing.scrollToAnchor(anchor)
-            // Defensive: a dual-screen flow that switched away from SETTINGS
-            // between alert fire + button tap should land back on it. Normal
-            // dual-screen path is a no-op (selectedTab is already SETTINGS).
-            if (selectedTab != Tab.SETTINGS) selectTab(Tab.SETTINGS)
-            return
-        }
-        // No existing sheet — switch to the Settings tab and add a fresh
-        // sheet with the anchor pre-set via newInstance args.
-        if (selectedTab != Tab.SETTINGS) selectTab(Tab.SETTINGS)
-        openSettingsInline(anchor)
     }
 
     /** Creates and shows a SettingsBottomSheet as a dialog (for onboarding). */
@@ -1632,7 +1588,9 @@ class MainActivity :
                 getString(R.string.legacy_engines_removed_button_settings),
                 themeColor(R.attr.ptAccent),
             ) {
-                openSettingsAtAnchor(com.playtranslate.ui.SettingsAnchor.OfflineTranslation)
+                startActivity(
+                    android.content.Intent(this, com.playtranslate.ui.TranslationServicesActivity::class.java),
+                )
                 onProceed()
             }
             // Same USER-only gate as pack-upgrade: don't silently advance

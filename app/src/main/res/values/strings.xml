@@ -1861,6 +1861,7 @@
     <string name="settings_cell_hotkeys">Hotkeys</string>
     <string name="settings_cell_capture_overlay">Capture &amp; overlay</string>
     <string name="settings_cell_anki">Anki Flashcards</string>
+    <string name="settings_cell_translation_services">Translation services</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Text-to-Speech section
