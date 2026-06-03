@@ -106,10 +106,27 @@
                 app:strokeWidth="1dp">
 
                 <LinearLayout
-                    android:id="@+id/containerOcrLanguages"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical" />
+                    android:orientation="vertical">
+
+                    <LinearLayout
+                        android:id="@+id/containerOcrLanguages"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_word_tatoeba_attribution"
+                        android:paddingHorizontal="16dp"
+                        android:paddingVertical="10dp"
+                        android:text="@string/settings_ocr_footer"
+                        android:textColor="?attr/ptTextHint"
+                        android:textSize="11sp" />
+
+                </LinearLayout>
 
             </com.google.android.material.card.MaterialCardView>
 

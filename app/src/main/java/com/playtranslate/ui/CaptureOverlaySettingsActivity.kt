@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.hardware.display.DisplayManager
 import android.os.Bundle
@@ -516,6 +517,9 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         setGroupHeader(R.id.headerOcr, R.string.settings_header_ocr)
 
         val selectedToken = OcrModelManager.selectedBackend(this, id).selectionToken
+        // The language's recommended engine (top of the priority list) wears the
+        // "Default" badge.
+        val defaultToken = backends.first().selectionToken
         backends.forEachIndexed { i, backend ->
             if (i > 0) {
                 container.addView(
@@ -528,6 +532,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
                     id = id,
                     backend = backend,
                     isSelected = backend.selectionToken == selectedToken,
+                    isDefault = backend.selectionToken == defaultToken,
                     isFirst = i == 0,
                     isLast = i == backends.lastIndex,
                 ),
@@ -540,6 +545,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         id: SourceLangId,
         backend: OcrBackend,
         isSelected: Boolean,
+        isDefault: Boolean,
         isFirst: Boolean,
         isLast: Boolean,
     ): View {
@@ -573,6 +579,12 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
             if (available) null else ColorStateList.valueOf(themeColor(R.attr.ptTextMuted)),
         )
 
+        // Accent + the cell's own selected background (10% accent over card),
+        // shared by the selected-row highlight and the "Default" badge knockout.
+        val accent = themeColor(R.attr.ptAccent)
+        val cardColor = themeColor(R.attr.ptCard)
+        val selectedBg = compositeOver(ColorUtils.setAlphaComponent(accent, 26), cardColor)
+
         // Trailing slot mirrors the language picker: an accent check when
         // selected (a non-interactive status mark), a trash when downloaded +
         // unselected, nothing otherwise (the XML default is GONE + trash icon).
@@ -582,7 +594,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
             isSelected -> {
                 trailing.visibility = View.VISIBLE
                 trailingIcon.setImageResource(R.drawable.ic_check)
-                trailingIcon.imageTintList = ColorStateList.valueOf(themeColor(R.attr.ptAccent))
+                trailingIcon.imageTintList = ColorStateList.valueOf(accent)
                 trailing.isClickable = false
                 trailing.isFocusable = false
                 trailing.foreground = null
@@ -599,11 +611,38 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
             // else: trailing stays GONE.
         }
 
-        // Selected-row accent: 10% accent composited over the card, matching the
-        // display picker on this page. Corners round only on the card's ends.
+        // "Default" badge on the recommended engine, just left of the trailing
+        // slot. The label is a knockout — painted in the cell's own background
+        // (the accent-tinted selected bg, or plain card) — so it reads as cut
+        // out of an accent chip when this default is the active selection, or a
+        // muted (subtitle-color) chip when it isn't.
+        if (isDefault) {
+            val chip = TextView(this).apply {
+                text = getString(R.string.settings_ocr_default_badge)
+                textSize = 11f
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                setTextColor(if (isSelected) selectedBg else cardColor)
+                includeFontPadding = false
+                setPadding((7 * dp).toInt(), (3 * dp).toInt(), (7 * dp).toInt(), (3 * dp).toInt())
+                background = GradientDrawable().apply {
+                    cornerRadius = 6 * dp
+                    setColor(if (isSelected) accent else themeColor(R.attr.ptTextMuted))
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    marginEnd = (8 * dp).toInt()
+                }
+            }
+            val row = view as LinearLayout
+            row.addView(chip, row.indexOfChild(trailing))
+        }
+
+        // Selected-row accent: the cell's selected background, corners rounding
+        // only on the card's ends, matching the display picker on this page.
         if (isSelected) {
-            val accent10 = ColorUtils.setAlphaComponent(themeColor(R.attr.ptAccent), 26)
-            val selectedBg = compositeOver(accent10, themeColor(R.attr.ptCard))
             val cardRadius = resources.getDimension(R.dimen.pt_radius)
             val tl = if (isFirst) cardRadius else 0f
             val br = if (isLast) cardRadius else 0f

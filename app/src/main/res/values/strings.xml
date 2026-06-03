@@ -1838,6 +1838,8 @@
          (Meiki / PaddleOCR / ML Kit) are proper nouns, not translated. -->
     <string name="settings_header_ocr">Image-to-text (OCR)</string>
     <string name="settings_ocr_note_builtin">Built-in</string>
+    <string name="settings_ocr_default_badge">Default</string>
+    <string name="settings_ocr_footer">If PlayTranslate is having a hard time accurately reading the screen text, try experimenting with different selections. Different OCR tools may work better for different font types or text orientations.</string>
     <string name="settings_ocr_delete_cd">Delete <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
     <string name="settings_ocr_delete_title">Delete <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g>?</string>
     <string name="settings_ocr_delete_msg">This removes the <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> model from this device. You can download it again later.</string>
