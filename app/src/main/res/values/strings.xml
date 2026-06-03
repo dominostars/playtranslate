@@ -1864,6 +1864,20 @@
     <string name="settings_cell_translation_services">Translation services</string>
     <string name="settings_cell_tts">Text-to-speech</string>
 
+    <!-- Hub-cell status digests (the summary line under each cell title). -->
+    <string name="settings_digest_none">None</string>
+    <!-- Capture cell digest: shown when 2+ displays are selected (e.g. "2 Displays"). -->
+    <string name="settings_capture_displays_count">%1$d Displays</string>
+    <string name="settings_hotkeys_tile_add">Add tile</string>
+    <string name="settings_hotkeys_none">No hotkeys set</string>
+    <string name="settings_hotkeys_translation">Translation</string>
+    <string name="settings_hotkeys_furigana">Furigana</string>
+    <string name="settings_hotkeys_pinyin">Pinyin</string>
+    <string name="settings_anki_digest">Deck %1$s · Card type %2$s</string>
+    <string name="settings_anki_default">Default</string>
+    <string name="settings_anki_get_app_summary">Download AnkiDroid free on Google Play</string>
+    <string name="settings_anki_grant_summary">Grant permissions to use AnkiDroid</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Text-to-Speech section
          ═══════════════════════════════════════════════════════════════ -->
@@ -1934,6 +1948,9 @@
 
     <!-- Subtitle on the same row. -->
     <string name="quick_tile_add_row_subtitle">Toggle <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> from your status bar</string>
+
+    <!-- Subtitle once the tile has been added (the row shows a check). -->
+    <string name="quick_tile_added_row_subtitle">Added to Quick Settings</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Hotkeys section

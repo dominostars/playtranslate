@@ -47,9 +47,10 @@ class HotkeysSettingsViewModel(app: Application) : AndroidViewModel(app) {
             furiganaHotkey = prefs.hotkeyFurigana,
             hintKind = hintKind,
             // The QS-tile cell exists only on API 33+ (StatusBarManager
-            // .requestAddTileService) and only until the user confirms it.
-            addTileVisible = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                !prefs.quickTileAdded,
+            // .requestAddTileService). It stays visible after the tile is added,
+            // switching from an "add" CTA to a checked "added" state.
+            addTileVisible = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
+            tileAdded = prefs.quickTileAdded,
         )
     }
 
@@ -66,4 +67,5 @@ data class HotkeysUiState(
     val furiganaHotkey: String,
     val hintKind: HintTextKind,
     val addTileVisible: Boolean,
+    val tileAdded: Boolean,
 )

@@ -290,6 +290,14 @@ object TtsEngine {
                 )
         }
 
+    /** Human label of the active TTS engine (e.g. "Google Text-to-speech"), or
+     *  null when none can be bound. Drives the Settings TTS cell digest. */
+    suspend fun activeEngineLabel(context: Context): String? =
+        lock.withLock {
+            val engine = currentEngine(context) ?: return@withLock null
+            activeEngineLabel(engine)
+        }
+
     /** Speak a short in-language sample with [voice] — the voice picker's
      *  audition. A null [voice] auditions the language's default voice.
      *  Best-effort; no-op when no engine is available. */

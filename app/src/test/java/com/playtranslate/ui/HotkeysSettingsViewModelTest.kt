@@ -12,6 +12,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
  * [HotkeysSettingsViewModel] projects the hotkey + QS-tile state from [Prefs]
@@ -69,11 +70,18 @@ class HotkeysSettingsViewModelTest {
         assertTrue(Prefs(ctx).quickTileAdded)
     }
 
-    @Test fun `add-tile cell is hidden once the tile is added`() {
-        // Seed quickTileAdded before constructing the VM so the initial
-        // projected state (not a reactive update) reflects it — robust
-        // regardless of API level, since addTileVisible derives && !added.
+    @Test @Config(sdk = [34])
+    fun `add-tile cell stays visible but marked added once the tile is added`() {
         Prefs(ctx).quickTileAdded = true
+        val vm = HotkeysSettingsViewModel(app)
+        // On API 33+ the cell stays — it flips from the "add" CTA to a checked
+        // "added" state rather than disappearing.
+        assertTrue(vm.state.value.addTileVisible)
+        assertTrue(vm.state.value.tileAdded)
+    }
+
+    @Test @Config(sdk = [31])
+    fun `add-tile cell is absent below api 33`() {
         val vm = HotkeysSettingsViewModel(app)
         assertFalse(vm.state.value.addTileVisible)
     }

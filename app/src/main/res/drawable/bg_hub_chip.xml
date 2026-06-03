@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 36dp icon-chip background for the Settings hub cell: ptElevated fill,
+     10dp radius, 1dp ptOutline stroke. The glyph inside is tinted separately
+     (ptAccent by default, ptWarning on the Donate row). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/ptElevated" />
+    <corners android:radius="10dp" />
+    <stroke
+        android:width="1dp"
+        android:color="?attr/ptOutline" />
+</shape>

@@ -2,6 +2,7 @@ package com.playtranslate.ui
 
 import android.app.StatusBarManager
 import android.content.ComponentName
+import android.content.res.ColorStateList
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
@@ -21,6 +22,7 @@ import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.PlayTranslateTileService
 import com.playtranslate.R
+import com.playtranslate.themeColor
 import com.playtranslate.language.HintTextKind
 import kotlinx.coroutines.launch
 
@@ -62,7 +64,7 @@ class HotkeysSettingsActivity : SettingsSubPageActivity() {
     }
 
     private fun render(state: HotkeysUiState) {
-        renderAddTile(state.addTileVisible)
+        renderAddTile(state.addTileVisible, state.tileAdded)
 
         renderHotkeyRow(
             row = rowHotkeyTranslation,
@@ -91,19 +93,34 @@ class HotkeysSettingsActivity : SettingsSubPageActivity() {
         }
     }
 
-    private fun renderAddTile(visible: Boolean) {
+    private fun renderAddTile(visible: Boolean, added: Boolean) {
         cardQuickTile.isVisible = visible
         if (!visible) return
         rowAddQuickTile.findViewById<TextView>(R.id.tvRowTitle).text =
             getString(R.string.quick_tile_add_row_title)
         val subtitle = rowAddQuickTile.findViewById<TextView>(R.id.tvRowSubtitle)
-        subtitle.text = getString(R.string.quick_tile_add_row_subtitle)
-        subtitle.isVisible = true
-        rowAddQuickTile.findViewById<ImageView>(R.id.ivRowIcon)
-            ?.setImageResource(R.drawable.ic_add)
-        rowAddQuickTile.setOnClickListener {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) requestAddTile()
+        val icon = rowAddQuickTile.findViewById<ImageView>(R.id.ivRowIcon)
+        if (added) {
+            // Mirror the Enhanced-auto-translate "on" state: an accent check, no
+            // forward affordance, non-interactive (the tile can't be removed from
+            // here — only from the Quick Settings panel).
+            subtitle.setText(R.string.quick_tile_added_row_subtitle)
+            icon?.setImageResource(R.drawable.ic_check)
+            icon?.imageTintList = ColorStateList.valueOf(themeColor(R.attr.ptAccent))
+            rowAddQuickTile.setOnClickListener(null)
+            rowAddQuickTile.isClickable = false
+            rowAddQuickTile.isFocusable = false
+        } else {
+            subtitle.setText(R.string.quick_tile_add_row_subtitle)
+            icon?.setImageResource(R.drawable.ic_add)
+            icon?.imageTintList = ColorStateList.valueOf(themeColor(R.attr.ptTextMuted))
+            rowAddQuickTile.isClickable = true
+            rowAddQuickTile.isFocusable = true
+            rowAddQuickTile.setOnClickListener {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) requestAddTile()
+            }
         }
+        subtitle.isVisible = true
     }
 
     /**

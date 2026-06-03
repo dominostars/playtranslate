@@ -7,8 +7,11 @@ import com.playtranslate.capturableDisplays
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.CaptureLifecycle
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Typeface
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Handler
@@ -19,10 +22,10 @@ import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextWatcher
 import android.text.style.ForegroundColorSpan
+import android.text.style.ImageSpan
 import android.text.style.StyleSpan
 import android.view.Gravity
 import android.view.KeyEvent
-import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
@@ -32,6 +35,8 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.annotation.AttrRes
+import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
@@ -51,7 +56,6 @@ import com.playtranslate.diagnostics.LogExporter
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.blendColors
-import com.playtranslate.compositeOver
 import com.playtranslate.themeColor
 import com.playtranslate.translation.BackendId
 import com.playtranslate.translation.BackendStatus
@@ -87,6 +91,42 @@ import androidx.core.view.isGone
 /** Which accessibility-gated Settings action raised the "accessibility
  *  required" alert — selects the alert's explanatory copy. */
 enum class AccessibilityRequirement { MULTI_DISPLAY, HOTKEY, ENHANCED_AUTO_TRANSLATE }
+
+/** What a tap on the TTS hub cell resolves to. `null` (the
+ *  [RootSettingsViewModel.TtsCell.Loading] case) means non-interactive: the
+ *  picker-vs-setup choice isn't known until engine availability resolves, so a
+ *  tap in the initial bind window must not open the (empty) voice picker on a
+ *  device with no usable engine. */
+internal enum class TtsTap { OPEN_PICKER, OPEN_SETUP }
+
+internal fun ttsTapFor(state: RootSettingsViewModel.TtsCell): TtsTap? = when (state) {
+    RootSettingsViewModel.TtsCell.Loading -> null
+    is RootSettingsViewModel.TtsCell.Available -> TtsTap.OPEN_PICKER
+    RootSettingsViewModel.TtsCell.NoEngine -> TtsTap.OPEN_SETUP
+}
+
+/** An [ImageSpan] drawn [dyPx] higher than ALIGN_BOTTOM would place it, so an
+ *  inline icon optically centers with the surrounding text rather than sitting
+ *  on the baseline. */
+private class OffsetImageSpan(drawable: Drawable, private val dyPx: Int) :
+    ImageSpan(drawable, ALIGN_BOTTOM) {
+    override fun draw(
+        canvas: Canvas,
+        text: CharSequence?,
+        start: Int,
+        end: Int,
+        x: Float,
+        top: Int,
+        y: Int,
+        bottom: Int,
+        paint: Paint,
+    ) {
+        canvas.save()
+        canvas.translate(0f, -dyPx.toFloat())
+        super.draw(canvas, text, start, end, x, top, y, bottom, paint)
+        canvas.restore()
+    }
+}
 
 /**
  * Wires every settings row in dialog_settings.xml to prefs / callbacks.
@@ -285,37 +325,6 @@ class SettingsRenderer(
                 callbacks.onUpdateLanguagePacksTapped(stalePacks)
             }
             applyUpdatePacksWarningTint()
-        }
-    }
-
-    // ── Text-to-Speech section ────────────────────────────────────────────
-
-    /** Wire the state-dependent TTS CONFIGURE cell. Unlike the other cells it
-     *  has no sub-page — it behaves like the old TTS row: engine available →
-     *  a cell showing the selected voice that opens the per-language voice
-     *  picker; no engine → a cell whose subtitle explains the gap and whose
-     *  tap shows the "No Text-to-Speech" alert. The voice / explanation share
-     *  the subtitle slot. Refreshed on resume so a voice picked in the detail
-     *  screen — or a newly-installed engine — shows without leaving root. */
-    private fun renderTtsCell(state: RootSettingsViewModel.TtsCell) {
-        if (isOnboarding) return
-        val row = root.findViewById<View>(R.id.rowConfigTts) ?: return
-        val title = row.findViewById<TextView>(R.id.tvRowTitle)
-        val subtitle = row.findViewById<TextView>(R.id.tvRowSubtitle)
-        title.text = ctx.getString(R.string.settings_cell_tts)
-        when (state) {
-            // Engine check in flight — leave the subtitle hidden (no flash).
-            RootSettingsViewModel.TtsCell.Loading -> subtitle.isGone = true
-            is RootSettingsViewModel.TtsCell.Available -> {
-                subtitle.text = state.voiceLabel
-                subtitle.isVisible = true
-                row.setOnClickListener { callbacks.openTtsVoicePicker() }
-            }
-            RootSettingsViewModel.TtsCell.NoEngine -> {
-                subtitle.text = ctx.getString(R.string.tts_no_engine_row_subtitle)
-                subtitle.isVisible = true
-                row.setOnClickListener { callbacks.openTtsSetup() }
-            }
         }
     }
 
@@ -685,142 +694,278 @@ class SettingsRenderer(
             return
         }
         setGroupHeader(R.id.headerConfigure, ctx.getString(R.string.settings_header_configure))
-        wireConfigureCell(R.id.rowConfigCaptureOverlay, R.string.settings_cell_capture_overlay) {
-            callbacks.openCaptureOverlaySettings()
-        }
-        wireConfigureCell(R.id.rowConfigTranslationServices, R.string.settings_cell_translation_services) {
-            callbacks.openTranslationServicesSettings()
-        }
-        wireConfigureCell(R.id.rowConfigHotkeys, R.string.settings_cell_hotkeys) {
-            callbacks.openHotkeysSettings()
-        }
-        // The Anki + TTS cells are state-dependent — rendered from the VM via
-        // render(), not wired here. The static nav cells above are.
-        wireConfigureCell(R.id.rowConfigAppearance, R.string.settings_cell_appearance) {
-            callbacks.openAppearanceSettings()
-        }
+        // The cells carry VM-driven status digests, so they're bound from
+        // render(); this only sets the static group header + onboarding gate.
     }
 
-    /** Wire the state-dependent Anki CONFIGURE cell: AnkiDroid not installed →
-     *  Play Store link; installed without permission → request the grant;
-     *  installed + granted → navigate to [AnkiSettingsActivity]. Refreshed on
-     *  resume + after the permission result so it flips state without leaving
-     *  the root screen. */
-    private fun renderAnkiCell(state: RootSettingsViewModel.AnkiCell) {
-        if (isOnboarding) return
-        val row = root.findViewById<View>(R.id.rowConfigAnki) ?: return
-        val title = row.findViewById<TextView>(R.id.tvRowTitle)
-        val subtitle = row.findViewById<TextView>(R.id.tvRowSubtitle)
-        when (state) {
-            RootSettingsViewModel.AnkiCell.GetApp -> {
-                title.text = ctx.getString(R.string.anki_settings_get_ankidroid_title)
-                subtitle.text = ctx.getString(R.string.anki_section_description, ctx.getString(R.string.app_name))
-                subtitle.isVisible = true
-                row.setOnClickListener {
-                    ctx.startActivity(Intent(Intent.ACTION_VIEW, ctx.getString(R.string.anki_play_store_url).toUri()))
-                }
-            }
-            RootSettingsViewModel.AnkiCell.GrantAccess -> {
-                title.text = ctx.getString(R.string.settings_cell_anki)
-                subtitle.text = ctx.getString(R.string.anki_settings_grant_access_subtitle, ctx.getString(R.string.app_name))
-                subtitle.isVisible = true
-                row.setOnClickListener { callbacks.requestAnkiPermission() }
-            }
-            RootSettingsViewModel.AnkiCell.Navigate -> {
-                title.text = ctx.getString(R.string.settings_cell_anki)
-                subtitle.isGone = true
-                row.setOnClickListener { callbacks.openAnkiSettings() }
-            }
-        }
+    /** Bind the six CONFIGURE hub cells (icon chip + title + status digest +
+     *  trailing) from the VM state. Re-run on each emission — the digests are
+     *  the dynamic part; icons / titles / clicks are constant. */
+    private fun bindConfigureCells(state: RootSettingsViewModel.UiState) {
+        bindHubCell(
+            root.findViewById(R.id.rowConfigCaptureOverlay),
+            HubCell(
+                iconRes = R.drawable.ic_capture,
+                title = ctx.getString(R.string.settings_cell_capture_overlay),
+                summary = state.captureSummary,
+                onClick = { callbacks.openCaptureOverlaySettings() },
+            ),
+        )
+        bindHubCell(
+            root.findViewById(R.id.rowConfigTranslationServices),
+            HubCell(
+                iconRes = R.drawable.ic_translate,
+                title = ctx.getString(R.string.settings_cell_translation_services),
+                summary = translationSummary(state),
+                onClick = { callbacks.openTranslationServicesSettings() },
+            ),
+        )
+        bindHubCell(
+            root.findViewById(R.id.rowConfigHotkeys),
+            HubCell(
+                iconRes = R.drawable.ic_game_controller,
+                title = ctx.getString(R.string.settings_cell_hotkeys),
+                summary = state.hotkeysSummary,
+                onClick = { callbacks.openHotkeysSettings() },
+            ),
+        )
+        bindAnkiCell(state.anki)
+        bindTtsCell(state.tts)
+        bindHubCell(
+            root.findViewById(R.id.rowConfigAppearance),
+            HubCell(
+                iconRes = R.drawable.ic_palette,
+                title = ctx.getString(R.string.settings_cell_appearance),
+                summary = state.appearanceSummary,
+                isLast = true,
+                onClick = { callbacks.openAppearanceSettings() },
+            ),
+        )
     }
 
-    /** A CONFIGURE row rendered as a title + chevron nav cell (empty value). */
-    private fun wireConfigureCell(rowId: Int, @StringRes titleRes: Int, onTap: () -> Unit) {
-        val row = root.findViewById<View>(rowId)
-        row.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(titleRes)
-        row.findViewById<TextView>(R.id.tvRowValue).text = ""
-        row.setOnClickListener { onTap() }
+    /** Anki cell: get-app (external) / grant (lock) / deck·card-type (chevron). */
+    private fun bindAnkiCell(state: RootSettingsViewModel.AnkiCell) {
+        val cell = when (state) {
+            RootSettingsViewModel.AnkiCell.GetApp -> HubCell(
+                iconRes = R.drawable.ic_card_stack,
+                title = ctx.getString(R.string.settings_cell_anki),
+                summary = ctx.getString(R.string.settings_anki_get_app_summary),
+                trailing = Trailing.EXTERNAL,
+                onClick = {
+                    ctx.startActivity(
+                        Intent(Intent.ACTION_VIEW, ctx.getString(R.string.anki_play_store_url).toUri()),
+                    )
+                },
+            )
+            RootSettingsViewModel.AnkiCell.GrantAccess -> HubCell(
+                iconRes = R.drawable.ic_card_stack,
+                title = ctx.getString(R.string.settings_cell_anki),
+                summary = ctx.getString(R.string.settings_anki_grant_summary),
+                trailing = Trailing.LOCK,
+                onClick = { callbacks.requestAnkiPermission() },
+            )
+            is RootSettingsViewModel.AnkiCell.Navigate -> HubCell(
+                iconRes = R.drawable.ic_card_stack,
+                title = ctx.getString(R.string.settings_cell_anki),
+                summary = ctx.getString(R.string.settings_anki_digest, state.deckName, state.cardName),
+                onClick = { callbacks.openAnkiSettings() },
+            )
+        }
+        bindHubCell(root.findViewById(R.id.rowConfigAnki), cell)
+    }
+
+    /** TTS cell (no sub-page): engine available → "engine · voice" + voice
+     *  picker; no engine → CTA + the "No Text-to-Speech" alert. */
+    private fun bindTtsCell(state: RootSettingsViewModel.TtsCell) {
+        val summary: CharSequence? = when (state) {
+            RootSettingsViewModel.TtsCell.Loading -> null
+            is RootSettingsViewModel.TtsCell.Available ->
+                state.engineLabel?.let { "$it · ${state.voiceLabel}" } ?: state.voiceLabel
+            RootSettingsViewModel.TtsCell.NoEngine -> ctx.getString(R.string.tts_no_engine_row_subtitle)
+        }
+        // Loading → ttsTapFor is null → non-interactive (see TtsTap): a tap
+        // before availability resolves must not open the dead picker.
+        val onClick: (() -> Unit)? = when (ttsTapFor(state)) {
+            TtsTap.OPEN_PICKER -> ({ callbacks.openTtsVoicePicker() })
+            TtsTap.OPEN_SETUP -> ({ callbacks.openTtsSetup() })
+            null -> null
+        }
+        bindHubCell(
+            root.findViewById(R.id.rowConfigTts),
+            HubCell(
+                iconRes = R.drawable.ic_text_to_speech,
+                title = ctx.getString(R.string.settings_cell_tts),
+                summary = summary,
+                onClick = onClick,
+            ),
+        )
+    }
+
+    /** Translation digest: cloud + online half · cloud-off + offline half, the
+     *  two glyphs inlined as muted ImageSpans ahead of each name. */
+    private fun translationSummary(state: RootSettingsViewModel.UiState): CharSequence {
+        val sb = SpannableStringBuilder()
+        appendSummaryIcon(sb, R.drawable.ic_cloud)
+        sb.append(" ").append(state.translationOnline).append(" · ")
+        appendSummaryIcon(sb, R.drawable.ic_cloud_off)
+        sb.append(" ").append(state.translationOffline)
+        return sb
+    }
+
+    private fun appendSummaryIcon(sb: SpannableStringBuilder, @DrawableRes iconRes: Int) {
+        val px = (14 * ctx.resources.displayMetrics.density).toInt()
+        val drawable = ContextCompat.getDrawable(ctx, iconRes)?.mutate() ?: return
+        drawable.setTint(ctx.themeColor(R.attr.ptTextMuted))
+        drawable.setBounds(0, 0, px, px)
+        val start = sb.length
+        sb.append(" ")
+        val dy = (2 * ctx.resources.displayMetrics.density).toInt()
+        sb.setSpan(OffsetImageSpan(drawable, dy), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
 
     // ── Support ──────────────────────────────────────────────────────────
 
     private fun setupSupportSection() {
-        wireLinkRow(rowDiscord, ctx.getString(R.string.settings_support_discord_title),
-            ctx.getString(R.string.settings_support_discord_subtitle),
-            "https://go.playtranslate.com/discord")
-
-        // Export logs row
-        val rowExportLogs = root.findViewById<View>(R.id.rowExportLogs)
-        rowExportLogs.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.settings_debug_export_logs_title)
-        val tvExportSub = rowExportLogs.findViewById<TextView>(R.id.tvRowSubtitle)
-        tvExportSub.text = ctx.getString(R.string.settings_debug_export_logs_subtitle)
-        tvExportSub.isVisible = true
-        rowExportLogs.setOnClickListener {
-            lifecycleScope.launch {
-                val files = withContext(Dispatchers.IO) {
-                    runCatching {
-                        val logFile = LogExporter.exportLogcat(ctx)
-                        listOf(logFile) + LogExporter.getCrashFiles(ctx)
-                    }
-                }
-                files.fold(
-                    onSuccess = {
-                        if (ctx is android.app.Activity) {
-                            LogExporter.shareFiles(ctx, it,
-                                ctx.getString(R.string.settings_debug_export_logs_subject))
-                        }
-                    },
-                    onFailure = {
-                        Toast.makeText(ctx,
-                            ctx.getString(R.string.settings_debug_export_logs_failed,
-                                it.javaClass.simpleName),
-                            Toast.LENGTH_LONG).show()
-                    }
-                )
-            }
-        }
-
-        wireLinkRow(rowDonate, ctx.getString(R.string.settings_support_donate_title),
-            ctx.getString(R.string.settings_support_donate_subtitle,
-                ctx.getString(R.string.app_name)),
-            "https://go.playtranslate.com/donate")
-        applyDonateRowTint()
+        val discordUrl = "https://go.playtranslate.com/discord"
+        bindHubCell(
+            rowDiscord,
+            HubCell(
+                iconRes = R.drawable.ic_discord,
+                title = ctx.getString(R.string.settings_support_discord_title),
+                summary = ctx.getString(R.string.settings_support_discord_subtitle),
+                trailing = Trailing.EXTERNAL,
+                onClick = { openUrl(discordUrl) },
+                onLongClick = { copyUrl(discordUrl) },
+            ),
+        )
+        bindHubCell(
+            root.findViewById(R.id.rowExportLogs),
+            HubCell(
+                iconRes = R.drawable.ic_export_notes,
+                title = ctx.getString(R.string.settings_debug_export_logs_title),
+                summary = ctx.getString(R.string.settings_debug_export_logs_subtitle),
+                // Same external-link affordance as the link rows — export leaves
+                // the app via the system share sheet.
+                trailing = Trailing.EXTERNAL,
+                onClick = { exportLogs() },
+            ),
+        )
+        val donateUrl = "https://go.playtranslate.com/donate"
+        bindHubCell(
+            rowDonate,
+            HubCell(
+                iconRes = R.drawable.ic_volunteer_activism,
+                iconTint = R.attr.ptWarning,
+                title = ctx.getString(R.string.settings_support_donate_title),
+                summary = ctx.getString(
+                    R.string.settings_support_donate_subtitle, ctx.getString(R.string.app_name),
+                ),
+                trailing = Trailing.EXTERNAL,
+                isLast = true,
+                onClick = { openUrl(donateUrl) },
+                onLongClick = { copyUrl(donateUrl) },
+            ),
+        )
     }
 
-    /** Tints the donate row with a soft 10% accent blend so the support CTA
-     *  reads as a highlighted call-to-action without being loud. Bottom
-     *  corners track the parent card's radius (donate is the last row in
-     *  its card); top corners stay square so the row abuts the divider
-     *  above it cleanly. The row's selectableItemBackground ripple gets
-     *  moved to foreground so the custom background doesn't kill it. */
-    private fun applyDonateRowTint() {
-        val parentCard = rowDonate.parent?.parent as? MaterialCardView
-        val radiusPx = parentCard?.radius
-            ?: ctx.resources.getDimension(R.dimen.pt_radius)
-        val accent = ctx.themeColor(R.attr.ptAccent)
-        val card = ctx.themeColor(R.attr.ptCard)
-        val effectiveDivider = compositeOver(ctx.themeColor(R.attr.ptDivider), card)
-        val fill = blendColors(accent, card, 0.10f)
-        val stroke = blendColors(accent, effectiveDivider, 0.10f)
-        val dp = ctx.resources.displayMetrics.density
-        rowDonate.background = GradientDrawable().apply {
-            setColor(fill)
-            setStroke((1 * dp).toInt(), stroke)
-            cornerRadii = floatArrayOf(
-                0f, 0f,
-                0f, 0f,
-                radiusPx, radiusPx,
-                radiusPx, radiusPx,
+    private fun openUrl(url: String) {
+        ctx.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+    }
+
+    /** Long-press affordance on the external-link rows: copy the URL + toast. */
+    private fun copyUrl(url: String) {
+        val clipboard =
+            ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("URL", url))
+        Toast.makeText(ctx, ctx.getString(R.string.toast_link_copied), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun exportLogs() {
+        lifecycleScope.launch {
+            val files = withContext(Dispatchers.IO) {
+                runCatching {
+                    val logFile = LogExporter.exportLogcat(ctx)
+                    listOf(logFile) + LogExporter.getCrashFiles(ctx)
+                }
+            }
+            files.fold(
+                onSuccess = {
+                    if (ctx is android.app.Activity) {
+                        LogExporter.shareFiles(
+                            ctx, it, ctx.getString(R.string.settings_debug_export_logs_subject),
+                        )
+                    }
+                },
+                onFailure = {
+                    Toast.makeText(
+                        ctx,
+                        ctx.getString(R.string.settings_debug_export_logs_failed, it.javaClass.simpleName),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                },
             )
         }
-        val ripple = ctx.obtainStyledAttributes(
-            intArrayOf(android.R.attr.selectableItemBackground)
-        ).run {
-            val d = getDrawable(0)
-            recycle()
-            d
+    }
+
+    // ── Hub cell binder ────────────────────────────────────────────────────
+
+    enum class Trailing { CHEVRON, EXTERNAL, LOCK, NONE }
+
+    /** A Settings hub cell: icon chip + title + status summary + trailing
+     *  affordance. See design_handoff_settings_cell. */
+    data class HubCell(
+        @DrawableRes val iconRes: Int,
+        @AttrRes val iconTint: Int = R.attr.ptAccent,
+        val title: String,
+        val summary: CharSequence?,
+        val trailing: Trailing = Trailing.CHEVRON,
+        val isLast: Boolean = false,
+        /** null → the cell is non-interactive (no ripple, no action). */
+        val onClick: (() -> Unit)?,
+        /** Long-press action — e.g. copy the URL on external-link rows. */
+        val onLongClick: (() -> Unit)? = null,
+    )
+
+    private fun bindHubCell(row: View, cell: HubCell) {
+        val icon = row.findViewById<ImageView>(R.id.hubRowIcon)
+        icon.setImageResource(cell.iconRes)
+        icon.imageTintList = ColorStateList.valueOf(ctx.themeColor(cell.iconTint))
+        row.findViewById<TextView>(R.id.hubRowTitle).text = cell.title
+        val summaryView = row.findViewById<TextView>(R.id.hubRowSummary)
+        if (cell.summary.isNullOrEmpty()) {
+            summaryView.isGone = true
+        } else {
+            summaryView.text = cell.summary
+            summaryView.isVisible = true
         }
-        rowDonate.foreground = ripple
+        val trailing = row.findViewById<ImageView>(R.id.hubRowTrailing)
+        val trailingRes = when (cell.trailing) {
+            Trailing.CHEVRON -> R.drawable.ic_chevron_right
+            Trailing.EXTERNAL -> R.drawable.ic_open_in_new
+            Trailing.LOCK -> R.drawable.ic_lock
+            Trailing.NONE -> null
+        }
+        if (trailingRes == null) {
+            trailing.isGone = true
+        } else {
+            trailing.setImageResource(trailingRes)
+            trailing.isVisible = true
+        }
+        row.findViewById<View>(R.id.hubRowDivider).isVisible = !cell.isLast
+        val click = cell.onClick
+        if (click != null) {
+            row.isClickable = true
+            row.setOnClickListener { click() }
+        } else {
+            row.setOnClickListener(null)
+            row.isClickable = false
+        }
+        val longClick = cell.onLongClick
+        if (longClick != null) {
+            row.setOnLongClickListener { longClick(); true }
+        } else {
+            row.setOnLongClickListener(null)
+        }
     }
 
     // ── Debug section ────────────────────────────────────────────────────
@@ -923,15 +1068,15 @@ class SettingsRenderer(
 
     // ── Refresh methods (called externally) ──────────────────────────────
 
-    /** Render the VM-owned root state: language names + the Anki/TTS cells.
-     *  Called by the host on every [RootSettingsViewModel] emission. The power
-     *  card, stale-pack card, support, debug + footer are NOT here — they're
-     *  live-system-state or static and stay imperative (see the class header). */
+    /** Render the VM-owned root state: language names + every CONFIGURE cell
+     *  (icon chip + title + status digest). Called by the host on each
+     *  [RootSettingsViewModel] emission. The power card, stale-pack card,
+     *  Support cells (static), debug + footer are NOT here. */
     fun render(state: RootSettingsViewModel.UiState) {
         rowSourceLang.findViewById<TextView>(R.id.tvSourceLangValue).text = state.sourceName
         rowTargetLang.findViewById<TextView>(R.id.tvTargetLangValue).text = state.targetName
-        renderAnkiCell(state.anki)
-        renderTtsCell(state.tts)
+        if (isOnboarding) return
+        bindConfigureCells(state)
     }
 
     /** Settings's response to [Prefs.showOverlayIcon] changing externally
@@ -943,34 +1088,5 @@ class SettingsRenderer(
         refreshCaptureLifecycleButton()
     }
 
-
-    // ── Private helpers ──────────────────────────────────────────────────
-
-    /** Add a 1dp inset divider to a container (for dynamically-built row lists). */
-    private fun addInsetDivider(container: LinearLayout) {
-        val divider = LayoutInflater.from(ctx)
-            .inflate(R.layout.settings_row_divider, container, false)
-        container.addView(divider)
-    }
-
-    /** Wire an existing link row view (from <include>) with title, subtitle, and URL. */
-    private fun wireLinkRow(row: View, title: String, subtitle: String, url: String) {
-        row.findViewById<TextView>(R.id.tvRowTitle).text = title
-        val tvSub = row.findViewById<TextView>(R.id.tvRowSubtitle)
-        if (subtitle.isNotEmpty()) {
-            tvSub.text = subtitle
-            tvSub.isVisible = true
-        }
-        row.setOnClickListener {
-            ctx.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
-        }
-        row.setOnLongClickListener {
-            val clipboard =
-                ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("URL", url))
-            Toast.makeText(ctx, ctx.getString(R.string.toast_link_copied), Toast.LENGTH_SHORT).show()
-            true
-        }
-    }
 
 }

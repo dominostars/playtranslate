@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Settings "hub cell": icon chip · title + status summary (flex) · trailing
+     affordance. No background/corners of its own — those belong to the hosting
+     MaterialCardView. Paints only its ripple + an optional in-cell divider
+     (GONE on the last cell in a card). Bound by SettingsRenderer.bindHubCell.
+     See design_handoff_settings_cell/README.md. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/hubRowRoot"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="14dp">
+
+        <!-- Slot 1: icon chip -->
+        <FrameLayout
+            android:id="@+id/hubRowChip"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@drawable/bg_hub_chip">
+
+            <ImageView
+                android:id="@+id/hubRowIcon"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                app:tint="?attr/ptAccent" />
+        </FrameLayout>
+
+        <!-- Slot 2: text block (title + single-line summary) -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginHorizontal="14dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/hubRowTitle"
+                style="@style/Text.PT.RowTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+
+            <TextView
+                android:id="@+id/hubRowSummary"
+                style="@style/Text.PT.RowSubtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:singleLine="true"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <!-- Slot 3: trailing affordance (chevron / external / lock / none) -->
+        <ImageView
+            android:id="@+id/hubRowTrailing"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_chevron_right"
+            app:tint="?attr/ptTextMuted" />
+    </LinearLayout>
+
+    <!-- In-cell divider, inset flush with the text block. GONE on the last
+         cell in a card (set via bindHubCell's isLast flag). -->
+    <View
+        android:id="@+id/hubRowDivider"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginStart="66dp"
+        android:background="?attr/ptDivider" />
+</LinearLayout>

@@ -431,32 +431,22 @@
                         android:layout_height="wrap_content"
                         android:orientation="vertical">
 
-                        <include layout="@layout/settings_row_value"
+                        <include layout="@layout/settings_row_hub"
                             android:id="@+id/rowConfigCaptureOverlay" />
 
-                        <include layout="@layout/settings_row_divider" />
-
-                        <include layout="@layout/settings_row_value"
+                        <include layout="@layout/settings_row_hub"
                             android:id="@+id/rowConfigTranslationServices" />
 
-                        <include layout="@layout/settings_row_divider" />
-
-                        <include layout="@layout/settings_row_value"
+                        <include layout="@layout/settings_row_hub"
                             android:id="@+id/rowConfigHotkeys" />
 
-                        <include layout="@layout/settings_row_divider" />
-
-                        <include layout="@layout/settings_row_value_multiline"
+                        <include layout="@layout/settings_row_hub"
                             android:id="@+id/rowConfigAnki" />
 
-                        <include layout="@layout/settings_row_divider" />
-
-                        <include layout="@layout/settings_row_value_multiline"
+                        <include layout="@layout/settings_row_hub"
                             android:id="@+id/rowConfigTts" />
 
-                        <include layout="@layout/settings_row_divider" />
-
-                        <include layout="@layout/settings_row_value"
+                        <include layout="@layout/settings_row_hub"
                             android:id="@+id/rowConfigAppearance" />
 
                     </LinearLayout>
@@ -484,17 +474,13 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
 
-                    <include layout="@layout/settings_row_link"
+                    <include layout="@layout/settings_row_hub"
                         android:id="@+id/rowDiscord" />
 
-                    <include layout="@layout/settings_row_divider" />
-
-                    <include layout="@layout/settings_row_link"
+                    <include layout="@layout/settings_row_hub"
                         android:id="@+id/rowExportLogs" />
 
-                    <include layout="@layout/settings_row_divider" />
-
-                    <include layout="@layout/settings_row_link"
+                    <include layout="@layout/settings_row_hub"
                         android:id="@+id/rowDonate" />
 
                 </LinearLayout>
