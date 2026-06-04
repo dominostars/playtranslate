@@ -3,6 +3,7 @@ package com.playtranslate
 import android.app.Activity
 import android.app.Application
 import android.content.ComponentCallbacks2
+import android.os.Build
 import android.os.Bundle
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.diagnostics.CrashHandler
@@ -206,7 +207,11 @@ class PlayTranslateApplication : Application() {
          *  is showing on, or null if none is. Live-read via
          *  [Activity.getDisplay] — no cached value, so an in-place display
          *  swap (no onPause/onResume) is reflected immediately. */
-        fun foregroundDisplayId(): Int? = resumedActivity?.get()?.display?.displayId
+        fun foregroundDisplayId(): Int? {
+            val act = resumedActivity?.get() ?: return null
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) act.display?.displayId
+            else @Suppress("DEPRECATION") act.windowManager.defaultDisplay.displayId
+        }
 
         /** Pre-populate the resumed-activity registry from inside an
          *  activity's own onResume, *before* anything in that resume path

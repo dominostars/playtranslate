@@ -2,6 +2,7 @@ package com.playtranslate.ui
 
 import android.app.Activity
 import android.content.Intent
+import android.os.Build
 import android.provider.Settings
 import com.playtranslate.R
 import com.playtranslate.themeColor
@@ -15,6 +16,23 @@ import com.playtranslate.themeColor
  * instead of routing back through a host callback.
  */
 fun Activity.showAccessibilityRequiredAlert(requirement: AccessibilityRequirement) {
+    // Below API 30 the accessibility takeScreenshot path doesn't exist (the
+    // service is component-disabled — see res/values/bools.xml), so these
+    // features can't be unlocked by enabling Accessibility. Tell the user they
+    // need Android 11 instead of pointing at settings that can't help.
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+        OverlayAlert.Builder(this)
+            .hideIcon()
+            .setTitle(getString(R.string.requires_android_11_title))
+            .setMessage(getString(R.string.requires_android_11_message))
+            .addButton(
+                getString(android.R.string.ok),
+                themeColor(R.attr.ptAccent),
+                themeColor(R.attr.ptAccentOn),
+            ) { /* informational — just dismiss */ }
+            .show()
+        return
+    }
     val message = when (requirement) {
         AccessibilityRequirement.MULTI_DISPLAY ->
             getString(R.string.a11y_required_displays_message)

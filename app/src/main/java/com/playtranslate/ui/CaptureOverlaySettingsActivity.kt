@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.hardware.display.DisplayManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -448,7 +449,11 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         }
         dm.registerDisplayListener(displayListener, null)
 
-        val myDisplayId = display?.displayId ?: Display.DEFAULT_DISPLAY
+        val myDisplayId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            display?.displayId ?: Display.DEFAULT_DISPLAY
+        } else {
+            @Suppress("DEPRECATION") windowManager.defaultDisplay.displayId
+        }
         val backend = CaptureBackendResolver.active()
         val mgr = backend.captureSource?.takeIf { backend.canCaptureWithoutPrompting }
         displays.forEach { display ->

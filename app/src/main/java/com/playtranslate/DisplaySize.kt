@@ -2,6 +2,7 @@ package com.playtranslate
 
 import android.content.Context
 import android.graphics.Point
+import android.os.Build
 import android.util.Log
 import android.view.WindowInsets
 import android.view.WindowManager
@@ -36,24 +37,55 @@ import android.view.WindowMetrics
  *  context, or `null` if the query throws. The catch is a safety net for OEM /
  *  future-OS variance — callers fall back to coarser metrics rather than
  *  crash. */
-fun Context.displayWindowMetrics(): WindowMetrics? = try {
-    createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
-        .getSystemService(WindowManager::class.java)
-        ?.currentWindowMetrics
-} catch (e: RuntimeException) {
-    Log.w("DisplaySize", "windowMetrics query failed; using fallback metrics", e)
-    null
+fun Context.displayWindowMetrics(): WindowMetrics? {
+    // createWindowContext + currentWindowMetrics are API 30. Below R there is
+    // no window context at all; callers fall back to coarser metrics (see
+    // [displaySizePx] / [statusBarHeightPx]).
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+    return try {
+        createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
+            .getSystemService(WindowManager::class.java)
+            ?.currentWindowMetrics
+    } catch (e: RuntimeException) {
+        Log.w("DisplaySize", "windowMetrics query failed; using fallback metrics", e)
+        null
+    }
 }
 
 /** Full pixel size of this context's display in its current rotation. Falls
  *  back to [android.util.DisplayMetrics] if the window-metrics query fails. */
 fun Context.displaySizePx(): Point {
-    displayWindowMetrics()?.bounds?.let { return Point(it.width(), it.height()) }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        displayWindowMetrics()?.bounds?.let { return Point(it.width(), it.height()) }
+    } else {
+        // API 29 has no window context. getRealSize from the display context's
+        // default display reports the correct post-rotation panel size here
+        // (verified on-device: matches the window-context value), keeping the
+        // capture bitmap and overlay coordinate spaces 1:1 so OCR boxes align.
+        val wm = getSystemService(WindowManager::class.java)
+        if (wm != null) {
+            val p = Point()
+            @Suppress("DEPRECATION") wm.defaultDisplay.getRealSize(p)
+            if (p.x > 0 && p.y > 0) return p
+        }
+    }
     val dm = resources.displayMetrics
     return Point(dm.widthPixels, dm.heightPixels)
 }
 
 /** Status-bar inset height in pixels on this context's display, or 0. */
-fun Context.statusBarHeightPx(): Int =
-    displayWindowMetrics()?.windowInsets
-        ?.getInsets(WindowInsets.Type.statusBars())?.top ?: 0
+fun Context.statusBarHeightPx(): Int {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        return displayWindowMetrics()?.windowInsets
+            ?.getInsets(WindowInsets.Type.statusBars())?.top ?: 0
+    }
+    // API 29: framework status_bar_height dimen — the pre-window-context path.
+    val resId = resources.getIdentifier("status_bar_height", "dimen", "android")
+    // Static metric — it doesn't track runtime status-bar visibility (e.g. a
+    // fullscreen game hiding the bar) the way the API 30+ window-context inset
+    // above does. That's acceptable: this value is only the OCR-crop top floor,
+    // and the crop offset is carried back when boxes map to screen coordinates
+    // (OverlayToolkit.runOcrPipeline → cropTop → showLiveOverlay), so it never
+    // shifts box POSITIONS. Box accuracy comes from the panel size, not this.
+    return if (resId > 0) resources.getDimensionPixelSize(resId) else 0
+}

@@ -1,6 +1,7 @@
 package com.playtranslate.capture
 
 import android.content.Context
+import android.os.Build
 import android.provider.Settings
 import com.playtranslate.CaptureService
 import com.playtranslate.OverlayUiController
@@ -21,9 +22,14 @@ object CaptureBackendResolver {
     @Volatile
     private var useMediaProjection = false
 
-    /** The capture backend the app should use right now. */
+    /** The capture backend the app should use right now. Below API 30 the
+     *  accessibility `takeScreenshot` path doesn't exist, so MediaProjection is
+     *  the only possible backend regardless of the cached flag. */
     fun active(): CaptureBackend =
-        if (useMediaProjection) MediaProjectionCaptureBackend else AccessibilityCaptureBackend
+        if (useMediaProjection || Build.VERSION.SDK_INT < Build.VERSION_CODES.R)
+            MediaProjectionCaptureBackend
+        else
+            AccessibilityCaptureBackend
 
     /** Convenience: the active backend's overlay UI controller, or null while
      *  it isn't ready. Overlay-producing call sites route through this. */
@@ -49,10 +55,16 @@ object CaptureBackendResolver {
      * icon(s).
      */
     fun reresolve(context: Context) {
-        // Accessibility takes precedence: when its service is enabled, use it
+        // Below API 30 MediaProjection is the only capture backend (no
+        // accessibility takeScreenshot) — select it unconditionally so no surface
+        // ever offers the impossible accessibility upgrade. Overlay permission
+        // gates *readiness* (see OnboardingViewModel / requestMediaProjectionControls),
+        // not backend identity, so it's deliberately not part of this choice.
+        // On API 30+: accessibility takes precedence when its service is enabled,
         // even if "display over other apps" is also granted.
-        val want = !PlayTranslateAccessibilityService.isEnabled(context) &&
-            Settings.canDrawOverlays(context)
+        val want = Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
+            (!PlayTranslateAccessibilityService.isEnabled(context) &&
+                Settings.canDrawOverlays(context))
         if (want == useMediaProjection) return
         CaptureService.instance?.let { svc ->
             if (svc.isLive) svc.stopLive()

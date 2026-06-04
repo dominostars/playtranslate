@@ -19,7 +19,10 @@
 #endif
 
 static inline int mnn_chat_should_log(int prio) {
-    return __android_log_is_loggable(prio, LOG_TAG, LOG_MIN_LEVEL);
+    // __android_log_is_loggable is API 30+; unavailable at our minSdk (29).
+    // Its per-tag system-property override isn't needed for this helper, so
+    // gate purely on the compile-time threshold (severity >= LOG_MIN_LEVEL).
+    return prio >= LOG_MIN_LEVEL;
 }
 
 #if LOG_MIN_LEVEL <= ANDROID_LOG_VERBOSE

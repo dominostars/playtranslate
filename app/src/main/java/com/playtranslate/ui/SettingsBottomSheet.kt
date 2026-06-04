@@ -413,35 +413,12 @@ class SettingsBottomSheet : DialogFragment() {
 
     // ── Accessibility-required alert ─────────────────────────────────────
 
-    /** OverlayAlert shown when the user attempts an accessibility-gated
-     *  Settings action — switching capture displays or setting a hotkey —
-     *  while the service is disabled. The accent button opens Accessibility
-     *  Settings; the cancel button just dismisses. Icon-less, matching the
-     *  TG / Qwen confirmation dialogs. */
+    /** Delegates to the shared [Activity.showAccessibilityRequiredAlert] so the
+     *  alert — including its API-29 "requires Android 11" variant — lives in one
+     *  place. Dead today (SettingsRenderer never invokes this host callback), but
+     *  kept consistent so a future re-wiring can't reintroduce a divergent copy. */
     private fun showAccessibilityRequiredAlert(requirement: AccessibilityRequirement) {
-        val ctx = context ?: return
-        val message = when (requirement) {
-            AccessibilityRequirement.MULTI_DISPLAY ->
-                getString(R.string.a11y_required_displays_message)
-            AccessibilityRequirement.HOTKEY ->
-                getString(R.string.a11y_required_hotkey_message)
-            AccessibilityRequirement.ENHANCED_AUTO_TRANSLATE ->
-                getString(R.string.a11y_required_enhanced_message)
-        }
-        OverlayAlert.Builder(ctx)
-            .hideIcon()
-            .setTitle(getString(R.string.a11y_required_alert_title))
-            .setMessage(message)
-            .addButton(
-                getString(R.string.btn_open_a11y_settings),
-                ctx.themeColor(R.attr.ptAccent),
-                ctx.themeColor(R.attr.ptAccentOn),
-            ) {
-                startActivity(android.content.Intent(
-                    android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            }
-            .addCancelButton(getString(android.R.string.cancel))
-            .show()
+        activity?.showAccessibilityRequiredAlert(requirement)
     }
 
     // ── MediaProjection controls ─────────────────────────────────────────

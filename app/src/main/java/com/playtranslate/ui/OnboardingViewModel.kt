@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -90,8 +91,16 @@ class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
             PackageManager.PERMISSION_GRANTED
         // captureReady only requires the accessibility page when the *active*
         // backend depends on the service; MediaProjection does not.
-        val captureReady = PlayTranslateAccessibilityService.isEnabled(app) ||
-            !CaptureBackendResolver.active().requiresAccessibilityService
+        val captureReady = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            // API 29: MediaProjection is the only backend, so active() is always MP
+            // and the !requiresAccessibilityService proxy below is always true — it
+            // can't gate the capture step. "Ready" here means the overlay permission
+            // the MediaProjection floating controls need has been granted.
+            Settings.canDrawOverlays(app)
+        } else {
+            PlayTranslateAccessibilityService.isEnabled(app) ||
+                !CaptureBackendResolver.active().requiresAccessibilityService
+        }
         val singleScreen = Prefs.isSingleScreen(app)
         return computeReadiness(languageConfigured, notifGranted, captureReady, singleScreen)
     }

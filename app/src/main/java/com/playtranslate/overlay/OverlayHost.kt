@@ -5,7 +5,9 @@ import android.content.Context
 import android.graphics.PixelFormat
 import android.graphics.Point
 import android.hardware.display.DisplayManager
+import android.os.Build
 import android.util.Log
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
@@ -82,11 +84,30 @@ class OverlayHost(
         displayId: Int,
     ): Boolean {
         params.type = windowType
+        val fullScreen = params.width == WindowManager.LayoutParams.MATCH_PARENT &&
+            params.height == WindowManager.LayoutParams.MATCH_PARENT
         applyFullScreenOverlayDefaults(params)
+        // Below API 30, MATCH_PARENT resolves to the content area (it excludes the
+        // nav bar), so a full-screen overlay measures short — and the OCR-box scale
+        // (overlayHeight / captureHeight) drifts off 1.0, compressing every box.
+        // fitInsetsTypes=0 fixes this on R+; below R, pin the window to an explicit
+        // size equal to the capture's displaySizePx so overlay == capture by
+        // construction. Validated on API 29 (overlay 1080x1920 == capture 1080x1920).
+        if (fullScreen && Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            context.getSystemService(DisplayManager::class.java)?.getDisplay(displayId)
+                ?.let { display ->
+                    val size = context.createDisplayContext(display).displaySizePx()
+                    if (size.x > 0 && size.y > 0) {
+                        params.width = size.x
+                        params.height = size.y
+                        params.gravity = Gravity.TOP or Gravity.START
+                    }
+                }
+        }
         return try {
             wm.addView(view, params)
             overlayWindows += OverlayHandle(view, wm, params, displayId)
-            logOverlayGeometry(view, params, displayId)
+            logOverlayGeometry(view, params, displayId, fullScreen)
             logFocusableOverlay("add", view, params, displayId)
             true
         } catch (e: Exception) {
@@ -122,11 +143,11 @@ class OverlayHost(
         view: View,
         params: WindowManager.LayoutParams,
         displayId: Int,
+        fullScreen: Boolean,
     ) {
-        val fullScreenParams =
-            params.width == WindowManager.LayoutParams.MATCH_PARENT &&
-                params.height == WindowManager.LayoutParams.MATCH_PARENT
-        if (!fullScreenParams) return
+        // [fullScreen] is the caller's MATCH_PARENT intent, captured *before*
+        // addOverlayWindow may pin an explicit size on API < 30.
+        if (!fullScreen) return
         view.doOnLayout {
             val display = context.getSystemService(DisplayManager::class.java)?.getDisplay(displayId)
             val ds = if (display != null)
@@ -290,7 +311,19 @@ class OverlayHost(
                     params.height == WindowManager.LayoutParams.MATCH_PARENT
             if (!fullScreen) return
             params.flags = params.flags or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-            params.fitInsetsTypes = 0
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                // fitInsetsTypes=0 makes MATCH_PARENT span the full display.
+                params.fitInsetsTypes = 0
+            } else {
+                // Pre-30 has no fitInsetsTypes. FLAG_LAYOUT_IN_SCREEN pins the
+                // window ORIGIN to the screen top-left (under the status bar);
+                // [addOverlayWindow] pins an explicit full-display SIZE. Together
+                // (origin 0,0 + size == capture) the overlay matches the capture
+                // bitmap so OCR boxes align.
+                @Suppress("DEPRECATION")
+                params.flags = params.flags or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+            }
             if (params.layoutInDisplayCutoutMode ==
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
             ) {
