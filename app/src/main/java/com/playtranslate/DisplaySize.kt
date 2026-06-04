@@ -79,13 +79,16 @@ fun Context.statusBarHeightPx(): Int {
         return displayWindowMetrics()?.windowInsets
             ?.getInsets(WindowInsets.Type.statusBars())?.top ?: 0
     }
-    // API 29: framework status_bar_height dimen — the pre-window-context path.
-    val resId = resources.getIdentifier("status_bar_height", "dimen", "android")
-    // Static metric — it doesn't track runtime status-bar visibility (e.g. a
-    // fullscreen game hiding the bar) the way the API 30+ window-context inset
-    // above does. That's acceptable: this value is only the OCR-crop top floor,
-    // and the crop offset is carried back when boxes map to screen coordinates
-    // (OverlayToolkit.runOcrPipeline → cropTop → showLiveOverlay), so it never
-    // shifts box POSITIONS. Box accuracy comes from the panel size, not this.
-    return if (resId > 0) resources.getDimensionPixelSize(resId) else 0
+    // API 29: there is no reliable way to read the *current* status-bar inset
+    // here — only a focused window tracks bar visibility, and the captured app
+    // owns focus during capture (a background overlay always reports a static
+    // value). This is only the OCR-crop top floor, so a static status_bar_height
+    // would crop that many pixels off EVERY capture even when the bar is hidden,
+    // losing the top of a fullscreen game. Return 0 (OCR the full frame):
+    // status-bar content that is actually present (clock, icons) is dropped
+    // downstream by LayoutAnalyzer's source-language group filter, so it never
+    // becomes a box, and cropTop carries back the same — box positions are
+    // unaffected. (API 30+ above reads the live inset, so it crops the bar only
+    // when it's actually showing.)
+    return 0
 }
