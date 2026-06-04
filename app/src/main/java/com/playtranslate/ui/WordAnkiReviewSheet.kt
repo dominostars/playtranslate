@@ -34,6 +34,7 @@ import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
+import com.playtranslate.tts.ttsTextForWord
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TatoebaClient
 import com.playtranslate.language.TranslationManagerProvider
@@ -504,7 +505,9 @@ class WordAnkiReviewSheet : DialogFragment() {
             parent = parent,
             lang = sourceLangId,
             rowLabel = word,
-            previewText = { word },
+            // Preview the kana reading (JA) so the audition matches the audio
+            // the card will carry (see ttsTextForWord).
+            previewText = { ttsTextForWord(word, reading.ifBlank { null }, sourceLangId) },
             initialChecked = Prefs(ctx).ankiWordAudioEnabled,
             onCheckedChange = { Prefs(ctx).ankiWordAudioEnabled = it },
             voiceOverride = { wordTabVoice },

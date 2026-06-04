@@ -163,7 +163,14 @@ class DragLookupController(
             scope,
             TtsAlertTarget.Overlay(magnifier.rawCtx, overlayHost, magnifier.wm, displayId),
         ) {
-            lastWord?.let { LensSpeakChip.Request(it, Prefs(popup.ctx).sourceLangId) }
+            lastWord?.let { word ->
+                LensSpeakChip.Request(
+                    word,
+                    Prefs(popup.ctx).sourceLangId,
+                    // Speak the displayed kana reading (JA) so audio matches the lens.
+                    reading = currentEntry?.headwordDisplay(word)?.reading,
+                )
+            }
         }
         // Lens dismissal post-drag fires [onSettled] so the service can
         // restore region indicator + live mode. If a new drag starts and

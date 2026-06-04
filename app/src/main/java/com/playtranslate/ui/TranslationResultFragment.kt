@@ -1001,7 +1001,7 @@ class TranslationResultFragment : Fragment() {
                         lens,
                         viewLifecycleOwner.lifecycleScope,
                         TtsAlertTarget.InActivity(activity),
-                    ) { LensSpeakChip.Request(word, prefs.sourceLangId) }
+                    ) { LensSpeakChip.Request(word, prefs.sourceLangId, reading = popupReading) }
                 }
                 setWordHighlight(span.first)
                 wordLens?.show(

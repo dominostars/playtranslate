@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.fragment.app.Fragment
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.tts.TtsEngine
+import com.playtranslate.tts.ttsTextForWord
 import java.io.File
 
 /**
@@ -97,11 +98,16 @@ suspend fun Context.sendSentenceCard(
     // Per-target-word audio. TtsEngine serialises utterances internally,
     // so a sequential loop matches the sheet's existing wall-clock cost.
     // Words whose synth returns null are skipped — the rest of the card
-    // still lands.
+    // still lands. Synthesize the kana reading (JA) so the card audio
+    // matches the displayed reading; keyed by the same WordEntry.word the
+    // media files are stored under.
+    val readingByWord = input.words.associate { it.word to it.reading }
     val wordAudioFiles: Map<String, File> = buildMap {
         for (word in input.targetWordAudioWords) {
             TtsEngine.synthesizeToFile(
-                ctx, word, input.sourceLangId,
+                ctx,
+                ttsTextForWord(word, readingByWord[word]?.ifBlank { null }, input.sourceLangId),
+                input.sourceLangId,
                 voiceNameOverride = input.wordAudioVoices[word],
             )?.let { put(word, it) }
         }
@@ -164,7 +170,9 @@ suspend fun Context.sendWordCard(
     val ctx = this
     val audioFile: File? = if (input.includeWordAudio) {
         TtsEngine.synthesizeToFile(
-            ctx, input.word, input.sourceLangId,
+            ctx,
+            ttsTextForWord(input.word, input.reading.ifBlank { null }, input.sourceLangId),
+            input.sourceLangId,
             voiceNameOverride = input.wordVoice,
         )
     } else null

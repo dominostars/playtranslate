@@ -49,6 +49,7 @@ import com.playtranslate.model.KanjiDetail
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.unambiguousFallbackPos
 import com.playtranslate.tts.TtsEngine
+import com.playtranslate.tts.ttsTextForWord
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -894,7 +895,16 @@ class WordDetailBottomSheet : DialogFragment() {
                 )
             })
         }
-        readingRow.addView(buildSpeakChip(written, sourceLangId, leading = reading == null))
+        // Speak the kana reading (when known) rather than the kanji surface,
+        // so the audio matches the reading shown above — the system engine's
+        // own kanji→reading guess can diverge (初夏 → はつか vs しょか).
+        readingRow.addView(
+            buildSpeakChip(
+                ttsTextForWord(written, reading, sourceLangId),
+                sourceLangId,
+                leading = reading == null,
+            )
+        )
         block.addView(readingRow)
 
         if (isCommon || freqStars > 0) {
@@ -919,17 +929,18 @@ class WordDetailBottomSheet : DialogFragment() {
     }
 
     /**
-     * Speak chip for the header reading row. Tapping it reads [word] aloud
-     * through [TtsEngine], swapping the icon for an indeterminate spinner
-     * while the request is in flight. A bordered circle roughly the height
-     * of the reading line sits inside a larger 44dp tap target.
+     * Speak chip for the header reading row. Tapping it reads [speakText]
+     * aloud through [TtsEngine] — the caller resolves this to the kana
+     * reading or the surface form — swapping the icon for an indeterminate
+     * spinner while the request is in flight. A bordered circle roughly the
+     * height of the reading line sits inside a larger 44dp tap target.
      *
      * When [leading] — the chip starts the row, with no reading before it —
      * the circle is pinned to the start edge so it lines up under the
      * headword; otherwise it is centred in the tap target and offset a
      * little past the reading.
      */
-    private fun buildSpeakChip(word: String, lang: SourceLangId, leading: Boolean): View {
+    private fun buildSpeakChip(speakText: String, lang: SourceLangId, leading: Boolean): View {
         val ctx = requireContext()
         val muted = ctx.themeColor(R.attr.ptTextMuted)
         val tint = ColorStateList.valueOf(muted)
@@ -985,7 +996,7 @@ class WordDetailBottomSheet : DialogFragment() {
                         // ourselves now that TtsEngine treats null as
                         // "engine default" rather than "look up pref."
                         val voice = Prefs(ctx).ttsVoiceName(lang)
-                        val failure: String? = when (TtsEngine.speak(ctx, word, lang, voiceNameOverride = voice)) {
+                        val failure: String? = when (TtsEngine.speak(ctx, speakText, lang, voiceNameOverride = voice)) {
                             TtsEngine.SpeakResult.Spoken -> null
                             TtsEngine.SpeakResult.NoEngine ->
                                 "No text-to-speech engine is available"

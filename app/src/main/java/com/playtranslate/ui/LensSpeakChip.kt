@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import com.playtranslate.Prefs
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.tts.TtsEngine
+import com.playtranslate.tts.ttsTextForWord
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,8 +28,11 @@ class LensSpeakChip(
     private val alertTarget: TtsAlertTarget,
     private val request: () -> Request?,
 ) {
-    /** The word to speak and the language it is in. */
-    data class Request(val word: String, val lang: SourceLangId)
+    /** The word to speak and the language it is in. [reading] is the kana
+     *  reading shown to the user, when known; for Japanese it is spoken in
+     *  place of the kanji surface so the audio matches the displayed reading
+     *  (see [ttsTextForWord]). Null when there is no reading to prefer. */
+    data class Request(val word: String, val lang: SourceLangId, val reading: String? = null)
 
     /** In-flight speak coroutine — guards against overlapping taps. */
     private var job: Job? = null
@@ -47,7 +51,9 @@ class LensSpeakChip(
                 // that TtsEngine takes null to mean "engine default."
                 val voice = Prefs(alertTarget.context).ttsVoiceName(req.lang)
                 val result = TtsEngine.speak(
-                    alertTarget.context, req.word, req.lang,
+                    alertTarget.context,
+                    ttsTextForWord(req.word, req.reading, req.lang),
+                    req.lang,
                     voiceNameOverride = voice,
                 )
                 withContext(Dispatchers.Main) {

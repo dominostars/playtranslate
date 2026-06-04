@@ -26,6 +26,7 @@ import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.themeColor
+import com.playtranslate.tts.ttsTextForWord
 import java.io.File
 
 /**
@@ -572,11 +573,14 @@ class SentenceAnkiContentFragment : Fragment() {
                     // "explicit Default", not "look up the pref again".
                     wordVoices.getOrPut(entry.word) { prefs.ttsVoiceName(lang) }
                     val word = entry.word
+                    val reading = entry.reading
                     val handle = addCompactAudioToggleRow(
                         parent = wordsCard,
                         lang = lang,
                         label = word,
-                        previewText = { word },
+                        // Preview the kana reading (JA) so the audition matches
+                        // the audio the card will carry (see ttsTextForWord).
+                        previewText = { ttsTextForWord(word, reading.ifBlank { null }, lang) },
                         initialChecked = seeded,
                         onCheckedChange = { checked ->
                             wordAudioEnabled[word] = checked
