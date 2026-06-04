@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.content.Context
 import androidx.fragment.app.Fragment
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.tts.TtsEngine
 import com.playtranslate.tts.ttsTextForWord
 import java.io.File
@@ -90,8 +91,12 @@ suspend fun Context.sendSentenceCard(
 ): AnkiSendResult {
     val ctx = this
     val audioFile: File? = if (input.includeSentenceAudio) {
+        // Speak the kana pronunciation so the engine doesn't re-guess compound
+        // readings (初夏 → はつか) in the card's sentence audio; identity for non-JA.
+        val spokenOriginal = SourceLanguageEngines.get(ctx, input.sourceLangId)
+            .spokenForm(input.original)
         TtsEngine.synthesizeToFile(
-            ctx, input.original, input.sourceLangId,
+            ctx, spokenOriginal, input.sourceLangId,
             voiceNameOverride = input.sentenceVoice,
         )
     } else null

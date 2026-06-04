@@ -459,6 +459,9 @@ fun Fragment.addCompactAudioToggleRow(
     voiceOverride: () -> String? = { null },
     /** See [addAnkiAudioSection]'s `onVoicePillTap`. */
     onVoicePillTap: (() -> Unit)? = null,
+    /** Async transform applied to the preview text before TTS — lets a JA
+     *  sentence cell audition its kana pronunciation. See [AnkiAudioPreviewChip]. */
+    prepare: suspend (String) -> String = { it },
 ): AnkiAudioToggleHandle {
     val ctx = requireContext()
     val inflater = android.view.LayoutInflater.from(ctx)
@@ -482,7 +485,7 @@ fun Fragment.addCompactAudioToggleRow(
         ellipsize = TextUtils.TruncateAt.END
     }
     val switch = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-    val chip = AnkiAudioPreviewChip(this, lang, previewText, voiceOverride)
+    val chip = AnkiAudioPreviewChip(this, lang, previewText, voiceOverride, prepare)
     row.addView(chip.view, 0)
     val pill: VoicePillView? = if (onVoicePillTap != null) {
         val p = VoicePillView(this, lang)

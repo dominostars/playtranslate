@@ -5,6 +5,8 @@ import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.model.CharacterDetail
 import com.playtranslate.model.DictionaryResponse
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Japanese source-language engine. Thin forwarder over the existing
@@ -81,6 +83,13 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
                 baseEnd = it.endOffset,
                 hintText = it.reading,
             )
+        }
+
+    override suspend fun spokenForm(text: String): String =
+        withContext(Dispatchers.Default) {
+            // A tokenizer failure falls back to the surface — same text the
+            // engine got before this hook existed, never a crash.
+            runCatching { Deinflector.spokenForm(text) }.getOrDefault(text)
         }
 
     override fun close() {

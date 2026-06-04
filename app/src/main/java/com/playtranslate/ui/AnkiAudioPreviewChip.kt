@@ -42,6 +42,10 @@ class AnkiAudioPreviewChip(
      *  the latest pick without needing to swap chips. Null = engine
      *  default (NOT a pref fallback — the chip's owner controls that). */
     private val voiceOverride: () -> String? = { null },
+    /** Async transform applied to [previewText] before it is spoken, so the
+     *  preview matches the audio the card will carry — a JA sentence cell
+     *  passes the engine's kana pronunciation. Default is identity. */
+    private val prepare: suspend (String) -> String = { it },
 ) {
     private enum class State { IDLE, LOADING, PLAYING }
 
@@ -150,13 +154,16 @@ class AnkiAudioPreviewChip(
             State.LOADING -> return               // ignore taps mid-load
             State.IDLE -> Unit
         }
-        val text = previewText().trim()
-        if (text.isEmpty()) return
+        val raw = previewText().trim()
+        if (raw.isEmpty()) return
         val gen = ++generation
         job = fragment.viewLifecycleOwner.lifecycleScope.launch {
             state = State.LOADING
             render()
             try {
+                // Speak what the card will carry — a JA sentence cell renders
+                // [raw] to its kana pronunciation; default identity otherwise.
+                val text = prepare(raw)
                 // The chip is an Anki per-cell component — null in
                 // voiceOverride() means "user picked Default for this
                 // cell", and that's exactly what TtsEngine treats null

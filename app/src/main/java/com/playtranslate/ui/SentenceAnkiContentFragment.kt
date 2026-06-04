@@ -25,6 +25,7 @@ import androidx.fragment.app.Fragment
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.themeColor
 import com.playtranslate.tts.ttsTextForWord
 import java.io.File
@@ -325,6 +326,9 @@ class SentenceAnkiContentFragment : Fragment() {
             onCheckedChange = { prefs.ankiSentenceAudioEnabled = it },
             voiceOverride = { sentenceVoice },
             onVoicePillTap = { launchVoicePicker(PickTarget.Sentence, sentenceVoice) },
+            // Audition the kana pronunciation so the preview matches the card's
+            // sentence audio (初夏 → しょか, not はつか); identity for non-JA.
+            prepare = { SourceLanguageEngines.get(ctx, lang).spokenForm(it) },
         )
         // Track edits — the chip re-reads via its previewText lambda, but
         // the row's visible label is a one-shot text= and won't follow

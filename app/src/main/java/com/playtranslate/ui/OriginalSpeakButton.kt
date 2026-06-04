@@ -5,6 +5,7 @@ import android.widget.ImageButton
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.themeColor
 import com.playtranslate.tts.TtsEngine
 import kotlinx.coroutines.CoroutineScope
@@ -61,8 +62,12 @@ class OriginalSpeakButton(
                 // Live-mode caller — resolve the global voice pref now
                 // that TtsEngine takes null to mean "engine default."
                 val voice = Prefs(alertTarget.context).ttsVoiceName(req.lang)
+                // Speak the kana pronunciation so the engine doesn't re-guess
+                // compound readings (初夏 → はつか); identity for non-JA.
+                val spoken = SourceLanguageEngines.get(alertTarget.context, req.lang)
+                    .spokenForm(req.text)
                 val result = TtsEngine.speak(
-                    alertTarget.context, req.text, req.lang, awaitCompletion = true,
+                    alertTarget.context, spoken, req.lang, awaitCompletion = true,
                     voiceNameOverride = voice,
                 )
                 withContext(Dispatchers.Main) {

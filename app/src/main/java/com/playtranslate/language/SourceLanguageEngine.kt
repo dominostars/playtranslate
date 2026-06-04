@@ -91,6 +91,13 @@ interface SourceLanguageEngine {
     /** Hint-text annotations. Only JA returns non-empty (furigana) in Phase 1. */
     fun annotateForHintText(text: String): List<HintTextAnnotation> = emptyList()
 
+    /** The text to feed a TTS engine to speak [text] aloud. Default returns
+     *  [text] unchanged. Japanese overrides it with a kana rendering so the
+     *  system engine doesn't re-guess compound readings (初夏 → はつか). Stays
+     *  identity for languages whose "reading" isn't speakable kana — Chinese
+     *  readings are pinyin, Korean/Latin surfaces are already phonetic. */
+    suspend fun spokenForm(text: String): String = text
+
     fun close()
 }
 

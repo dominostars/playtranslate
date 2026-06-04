@@ -93,6 +93,26 @@ object Deinflector {
             )
         }
 
+    /**
+     * Render [text] to the kana a TTS engine should speak — each token's
+     * reading, concatenated. Hands the system engine an unambiguous reading
+     * instead of letting it re-guess compound kanji (初夏 → はつか instead of
+     * the dictionary's しょか); these are the same per-token readings that draw
+     * the furigana, so the audio matches what's shown. Particle sound changes
+     * (は→わ) and prosody are left to the engine, which already handles them.
+     *
+     * Tokens Kuromoji can't read (names, symbols, latin, digits) fall through
+     * as their surface so the engine still voices them. JA-only — callers
+     * reach it through [com.playtranslate.language.SourceLanguageEngine.spokenForm],
+     * whose default leaves other languages untouched.
+     */
+    fun spokenForm(text: String): String = buildString {
+        for (t in rawTokenInfos(text)) {
+            val kana = t.reading?.let { katakanaToHiragana(it) }
+            append(kana ?: t.surface)
+        }
+    }
+
     /** Convert katakana to hiragana (Kuromoji returns katakana, JMdict stores hiragana). */
     fun katakanaToHiragana(text: String): String = buildString {
         for (c in text) {
