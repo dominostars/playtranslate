@@ -90,6 +90,7 @@ class MnnTranslator private constructor(private val context: Context) {
         val didReload = ensureLoaded(modelPath, availMemFloorBytes)
         val pair = source to target
         val sb = StringBuilder()
+        val inferStartNs = System.nanoTime()
         when (promptStyle) {
             PromptStyle.StandardChat -> {
                 if (didReload || systemPair != pair) {
@@ -173,6 +174,11 @@ class MnnTranslator private constructor(private val context: Context) {
                 ).collect { token -> sb.append(token) }
             }
         }
+        Log.i(
+            TAG,
+            "MNN-TIMING inference: firstAfterLoad=$didReload style=$promptStyle " +
+                "elapsed=${(System.nanoTime() - inferStartNs) / 1_000_000}ms chars=${text.length}",
+        )
         // Defensive cleanup: a clean run terminates at the model's EOS marker
         // via Llm::is_stop and the decoded text won't include the marker, but
         // strip any leaked tokens to be safe (e.g. if a future model variant

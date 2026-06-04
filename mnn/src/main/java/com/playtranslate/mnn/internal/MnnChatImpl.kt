@@ -1,6 +1,7 @@
 package com.playtranslate.mnn.internal
 
 import android.content.Context
+import android.os.StatFs
 import android.util.Log
 import com.playtranslate.mnn.InferenceEngine
 import com.playtranslate.mnn.UnsupportedArchitectureException
@@ -74,7 +75,7 @@ internal class MnnChatImpl private constructor(
     // adversarial review (May 22 2026) for the framing.
     @FastNative private external fun init(nativeLibDir: String)
     private external fun load(modelDir: String): Int
-    private external fun prepare(): Int
+    private external fun prepare(mmapDir: String): Int
     @FastNative private external fun systemInfo(): String
     private external fun processSystemPrompt(systemPrompt: String): Int
     @FastNative private external fun nativeResetForNextPrompt(): Int
@@ -139,13 +140,35 @@ internal class MnnChatImpl private constructor(
                 Log.i(TAG, "Loading MNN model from $pathToModelDir")
                 _state.value = InferenceEngine.State.LoadingModel
                 val configPath = File(pathToModelDir, "config.json").absolutePath
+
+                // Per-model mmap weight-cache dir ("" = mmap off; see
+                // resolveMmapDir + mnn_chat.cpp prepare()). cache=COLD means the
+                // first-ever load (MNN rearranges + writes the cache); WARM
+                // reuses it.
+                val mmapDir = resolveMmapDir(pathToModelDir)
+                val cacheState = when {
+                    mmapDir.isEmpty() -> "OFF"
+                    File(mmapDir).listFiles { f -> f.name.endsWith("sync.static") }?.isNotEmpty() == true -> "WARM"
+                    else -> "COLD"
+                }
+
+                val createStartNs = System.nanoTime()
                 load(configPath).let {
                     if (it != 0) throw UnsupportedArchitectureException()
                 }
-                prepare().let {
+                val createMs = (System.nanoTime() - createStartNs) / 1_000_000
+
+                val prepareStartNs = System.nanoTime()
+                prepare(mmapDir).let {
                     if (it != 0) throw IOException("Failed to prepare MNN runtime (code $it)")
                 }
-                Log.i(TAG, "Model loaded.")
+                val prepareMs = (System.nanoTime() - prepareStartNs) / 1_000_000
+
+                Log.i(
+                    TAG,
+                    "MNN-TIMING load: mmap=${mmapDir.isNotEmpty()} cache=$cacheState " +
+                        "createLLM=${createMs}ms prepare=${prepareMs}ms total=${createMs + prepareMs}ms",
+                )
                 _cancelGeneration = false
                 _state.value = InferenceEngine.State.ModelReady
             } catch (e: Exception) {
@@ -154,6 +177,50 @@ internal class MnnChatImpl private constructor(
                 throw e
             }
         }
+
+    /**
+     * Per-model mmap weight-cache directory, or "" when mmap should be disabled
+     * for this load. With mmap, MNN writes a second, rearranged copy of the
+     * weights (~model size) here and maps it as reclaimable file-backed pages,
+     * so the kernel can page weights out under memory pressure instead of
+     * OOM-killing us. We only enable mmap when there's disk room for that copy;
+     * on insufficient space (or any probe failure) we fall back to the legacy
+     * anonymous-weights load by returning "".
+     *
+     * The dir lives *inside* the model directory (`<modelDir>/.mmap-cache`) on
+     * purpose: [com.playtranslate.translation.llm.ModelHelper] deletes the model
+     * dir recursively (so the cache can't leak), and a re-download/upgrade swaps
+     * the whole dir — so a stale cache can never be served against changed
+     * weights. That matters because MNN does NOT validate the cache against the
+     * model (its cache prefix omits the model UUID).
+     */
+    private fun resolveMmapDir(modelDir: String): String {
+        val weightSize = File(modelDir, "llm.mnn.weight").length()
+        if (weightSize <= 0L) {
+            Log.w(TAG, "MNN-TIMING mmap disabled: cannot size llm.mnn.weight in $modelDir")
+            return ""
+        }
+        val required = weightSize * 11 / 10 + 100L * 1024 * 1024 // ~weight*1.1 + 100 MB headroom
+        val free = try {
+            StatFs(modelDir).availableBytes
+        } catch (e: Exception) {
+            Log.w(TAG, "MNN-TIMING mmap disabled: StatFs failed for $modelDir: ${e.message}")
+            return ""
+        }
+        if (free < required) {
+            Log.w(
+                TAG,
+                "MNN-TIMING mmap disabled: low space free=${free / 1_000_000}MB need=${required / 1_000_000}MB",
+            )
+            return ""
+        }
+        val cacheDir = File(modelDir, ".mmap-cache")
+        if (!cacheDir.exists() && !cacheDir.mkdirs()) {
+            Log.w(TAG, "MNN-TIMING mmap disabled: mkdirs failed for $cacheDir")
+            return ""
+        }
+        return cacheDir.absolutePath
+    }
 
     override suspend fun setSystemPrompt(systemPrompt: String) =
         withContext(mnnDispatcher) {

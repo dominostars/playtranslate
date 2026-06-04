@@ -25,6 +25,23 @@ using MNN::Transformer::LlmStatus;
 static std::unique_ptr<Llm> g_llm;
 static size_t g_system_prompt_position = 0;
 
+namespace {
+// Escape a string for safe embedding as a JSON string value. Android file
+// paths under noBackupFilesDir never contain quotes/backslashes in practice,
+// but we escape defensively so the dynamically-built runtime config handed to
+// Llm::set_config() can never be malformed JSON (the path is the only
+// runtime-variable substring).
+std::string jsonEscapeString(const std::string &s) {
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (char c : s) {
+        if (c == '"' || c == '\\') out.push_back('\\');
+        out.push_back(c);
+    }
+    return out;
+}
+} // namespace
+
 // ----------------------------------------------------------------------------
 // Lifecycle
 // ----------------------------------------------------------------------------
@@ -60,11 +77,16 @@ Java_com_playtranslate_mnn_internal_MnnChatImpl_load(
 extern "C"
 JNIEXPORT jint JNICALL
 Java_com_playtranslate_mnn_internal_MnnChatImpl_prepare(
-        JNIEnv * /*env*/, jobject /*unused*/) {
+        JNIEnv *env, jobject /*unused*/, jstring jmmap_dir) {
     if (!g_llm) {
         LOGe("prepare(): no llm loaded");
         return 1;
     }
+    // Per-model mmap weight-cache dir supplied by MnnChatImpl.loadModel.
+    // Empty string = mmap disabled (the legacy anonymous-weights path).
+    const char *mmap_dir_c = env->GetStringUTFChars(jmmap_dir, nullptr);
+    std::string mmap_dir(mmap_dir_c ? mmap_dir_c : "");
+    if (mmap_dir_c) env->ReleaseStringUTFChars(jmmap_dir, mmap_dir_c);
     // KV reuse + raw prompt feed + greedy sampling.
     //
     // reuse_kv=true: `generate_init` won't wipe the KV between calls, so
@@ -99,12 +121,25 @@ Java_com_playtranslate_mnn_internal_MnnChatImpl_prepare(
     // leaves the default mixed/temperature sampler in place. reuse_kv /
     // use_template are read per-call and tolerate either order, but pinning
     // all three pre-load keeps the contract uniform.
-    const std::string runtime_config =
-        R"({"reuse_kv": true, "use_template": false, "sampler_type": "greedy"})";
+    // When an mmap dir is supplied, add `use_mmap` + `tmp_path` so MNN maps the
+    // (rearranged, cached) weights from disk as reclaimable file-backed pages
+    // instead of holding them in anonymous RAM — the kernel can then page them
+    // out under pressure instead of OOM-killing us. `tmp_path` MUST be a
+    // per-model dir: MNN's weight-cache prefix is keyed only by
+    // forward/precision/memory/power, NOT by model (the modelUUID line is
+    // commented out in CPUBackend.cpp), so a shared dir would serve one model's
+    // rearranged weights to another. `use_cached_mmap` defaults true (warm
+    // reuse across loads); `kvcache_mmap` stays false (KV cache in RAM).
+    std::string runtime_config =
+        R"({"reuse_kv": true, "use_template": false, "sampler_type": "greedy")";
+    if (!mmap_dir.empty()) {
+        runtime_config += R"(, "use_mmap": true, "tmp_path": ")" + jsonEscapeString(mmap_dir) + R"(")";
+    }
+    runtime_config += "}";
     if (!g_llm->set_config(runtime_config)) {
         LOGw("Llm::set_config failed; relying on bundled config.json values");
     }
-    LOGi("Llm::load() (weights + module init)");
+    LOGi("Llm::load() (weights + module init), mmap=%s", mmap_dir.empty() ? "off" : "on");
     if (!g_llm->load()) {
         LOGe("Llm::load() returned false");
         return 2;
