@@ -383,6 +383,20 @@
          remains in Settings for later. -->
     <string name="pack_upgrade_button_later">Update Later</string>
 
+    <!-- Title of the pack-upgrade alert when the user's ACTIVE source pack is
+         a forced (obsolete) upgrade — it can't be deferred, only updated or
+         deleted. The deferrable case keeps pack_upgrade_title. -->
+    <string name="pack_upgrade_mandatory_title">Update Required</string>
+
+    <!-- Body of the mandatory pack-upgrade alert. %1$s = the pack listing
+         (one "Game Language (…)" / "Your Language (…)" entry per line). -->
+    <string name="pack_upgrade_mandatory_message"><xliff:g id="pack_list" example="Game Language (Japanese)">%1$s</xliff:g>\n\nThis update is required — the installed version is no longer supported. Update now, or delete it to choose another language.</string>
+
+    <!-- Destructive secondary button on the mandatory alert: removes the
+         obsolete active pack without waiting for a replacement and returns to
+         language selection. Styled with ptDanger. -->
+    <string name="pack_upgrade_button_delete">Delete</string>
+
     <!-- Title of the progress dialog while the upgrade orchestrator
          runs. -->
     <string name="pack_upgrade_progress_title">Updating language packs</string>

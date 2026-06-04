@@ -61,6 +61,7 @@ import com.playtranslate.language.LanguagePackCatalogLoader
 import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.PackKind
+import com.playtranslate.language.UpgradeMode
 import com.playtranslate.language.PackUpgradeOrchestrator
 import com.playtranslate.language.PreloadResult
 import com.playtranslate.language.SourceLanguageEngines
@@ -1582,17 +1583,68 @@ class MainActivity :
         }
 
         val message = PackUpgradeOrchestrator.describeForAlert(this, stale)
-        OverlayAlert.Builder(this)
-            .setTitle(getString(R.string.pack_upgrade_title))
-            .setMessage(message)
+
+        // Is the user's ACTIVE source pack one of the FORCE upgrades? A FORCE
+        // pack is obsolete and non-functional under this build, so the
+        // readiness gate has already routed (or will, on the next onResume)
+        // this user to the welcome screen — making the active source's upgrade
+        // mandatory, not deferrable. A FORCE pack that ISN'T the active source
+        // stays deferrable (the user's current language still works), so that
+        // case takes the optional path below unchanged.
+        val activeForced = stale.any {
+            it.kind == PackKind.SOURCE &&
+                it.upgradeMode == UpgradeMode.FORCE &&
+                it.sourceLangId == prefs.sourceLangId.packId
+        }
+
+        val builder = OverlayAlert.Builder(this)
+            .setTitle(getString(
+                if (activeForced) R.string.pack_upgrade_mandatory_title
+                else R.string.pack_upgrade_title
+            ))
+            .setMessage(
+                if (activeForced) getString(R.string.pack_upgrade_mandatory_message, message)
+                else message
+            )
             .addButton(
                 getString(R.string.pack_upgrade_button_now),
                 themeColor(R.attr.ptAccent),
             ) {
                 PackUpgradeOrchestrator(this, lifecycleScope).upgradeAll(stale) {
                     onProceed(skipTargetCodes)
+                    // A forced-active user was un-readied to the welcome screen;
+                    // re-derive so the now-current pack routes them back to the
+                    // home. Gated on activeForced so the optional path (where the
+                    // user was never un-readied) stays byte-for-byte.
+                    if (activeForced) refreshReadiness()
                 }
             }
+
+        if (activeForced) {
+            // The welcome rows are wired by setupOnboarding inside onProceed,
+            // which is gated behind THIS alert. The gate is showing the welcome
+            // screen underneath right now, and the user can dismiss this alert
+            // (scrim/back) without choosing — so wire the rows now, or they'd be
+            // dead. Idempotent with onProceed's own call on the [Update Now] path.
+            setupOnboarding()
+            // Per the forced-upgrade spec, the deferral slot becomes a
+            // destructive Delete (ptDanger, matching showDeleteConfirm): discard
+            // the obsolete pack and stay on the welcome screen to pick again. The
+            // gate keeps the user here once the active source is gone, so an
+            // accidental tap is recoverable (re-pick → re-download).
+            builder.addButton(
+                getString(R.string.pack_upgrade_button_delete),
+                themeColor(R.attr.ptDanger),
+                themeColor(R.attr.ptAccentOn),
+            ) {
+                LanguagePackStore.uninstall(applicationContext, prefs.sourceLangId)
+                // Readiness stays Onboarding(LANGUAGE) (still no usable source),
+                // so the StateFlow won't re-emit to re-route — refresh the visible
+                // welcome rows directly so the deleted source shows as unselected.
+                refreshReadiness()
+                refreshWelcomeRowsAndButton()
+            }
+        } else {
             // addCancelButton routes button tap, scrim tap, AND back-press
             // through this handler — those are all explicit user dismissals,
             // so onProceed resumes setupOnboarding/preload/checkTargetPackMigration.
@@ -1601,12 +1653,13 @@ class MainActivity :
             // advance past a choice the user never made. The downstream chain
             // stays gated for this session; next launch's staleness scan
             // re-prompts.
-            .addCancelButton(getString(R.string.pack_upgrade_button_later)) { reason ->
+            builder.addCancelButton(getString(R.string.pack_upgrade_button_later)) { reason ->
                 if (reason == com.playtranslate.ui.DismissReason.USER) {
                     onProceed(skipTargetCodes)
                 }
             }
-            .show()
+        }
+        builder.show()
     }
 
     /**

@@ -26,15 +26,15 @@ import java.util.Locale
  * Walks the stale list sequentially, presenting one [OverlayProgress] dialog
  * for the whole batch. Per-pack steps:
  *
- * 1. **Source-pack-only**: explicit `DictionaryManager.get(ctx).close()` —
- *    [com.playtranslate.dictionary.JapaneseEngine.close] is intentionally a
- *    no-op because `DictionaryManager` is a process-scoped singleton, so the
- *    SourceLanguageEngine eviction inside `uninstall` does NOT close the
- *    dict handle. Without this explicit close, after the directory is
- *    deleted and re-created, `DictionaryManager.db` still references the
- *    old (unlinked) inode and serves ghost results until process kill. The
- *    `instance` + `db = null` pattern in DictionaryManager already supports
- *    lazy reopen on next access.
+ * 1. **Source-pack-only**: explicit `DictionaryManager.get(ctx).close()` +
+ *    `SudachiJapaneseTokenizer.Provider.close()`. [com.playtranslate.dictionary.JapaneseEngine.close]
+ *    now DOES release both handles, but it only runs when the engine cache
+ *    evicts — i.e. via `uninstall` → `releaseForPack`. ADDITIVE upgrades never
+ *    call `uninstall`, so the orchestrator closes directly here (belt-and-
+ *    suspenders on the FORCE path, where `uninstall` would close anyway).
+ *    Without it, after the directory is swapped `DictionaryManager.db` and the
+ *    Sudachi mmap still reference the old (unlinked) inode and serve ghost
+ *    results until process kill; both reopen lazily on next access.
  * 2. `LanguagePackStore.uninstall(...)` — already calls `releaseForPack`
  *    internally; do NOT pre-call it from here.
  * 3. `LanguagePackStore.install(...)` with progress callback updating the
@@ -181,12 +181,13 @@ class PackUpgradeOrchestrator(
         val app = activity.applicationContext
 
         // Step 1: explicit dict handle close. Required for BOTH FORCE and
-        // ADDITIVE modes. JapaneseEngine.close() is a no-op (DictionaryManager
-        // is a process-scoped singleton), so without this explicit close the
-        // singleton retains its SQLite handle to the OLD inode. After install's
-        // safeSwap renames the old dir to backup and promotes the new dir
-        // into place, lookups would still go to the unlinked inode (returning
-        // stale data) until the process restarts. Lazy reopen on next ensureOpen
+        // ADDITIVE modes. JapaneseEngine.close() now releases these handles,
+        // but it only fires on engine-cache eviction (uninstall →
+        // releaseForPack), and ADDITIVE never uninstalls — so close directly
+        // here. Without it, after install's safeSwap renames the old dir to
+        // backup and promotes the new dir, the singleton's SQLite handle (and
+        // the Sudachi mmap) still point at the OLD unlinked inode, returning
+        // stale data until process restart. Lazy reopen on next ensureOpen
         // picks up the new pack.
         if (sid == SourceLangId.JA) {
             DictionaryManager.get(app).close()
@@ -208,24 +209,23 @@ class PackUpgradeOrchestrator(
             reportProgress(dialog, packLabel, progress)
         }
 
-        // Step 4: post-install eviction (BOTH FORCE and ADDITIVE). The Step-1
-        // close handles the singleton at start-of-flight, but in ADDITIVE
-        // mode the OLD pack stays on disk during the long download — any
-        // background path (CaptureService live-mode, in-flight tokenization,
-        // drag-word handlers) can reopen DictionaryManager against the OLD
-        // inode AND the cached `JapaneseEngine` keeps `Deinflector._tokenizer`
-        // pointed at the OLD tokenizer/ bins. After safeSwap, both stay
-        // bound to the unlinked old inodes until process death.
+        // Step 4: post-install eviction (BOTH FORCE and ADDITIVE). Step 1
+        // closed the handles at start-of-flight, but in ADDITIVE mode the OLD
+        // pack stays on disk during the long download — any background path
+        // (CaptureService live-mode, in-flight tokenization, drag-word handlers)
+        // can reopen DictionaryManager against the OLD inode and reopen the
+        // Sudachi Provider against the OLD system_*.dic. After safeSwap both
+        // stay bound to the unlinked old inodes until process death.
         //
-        // Two evictions needed:
-        //   1. DictionaryManager.close() — drops the SQLite handle so the
-        //      next ensureOpen reads the new dict.sqlite at the same path.
-        //   2. SourceLanguageEngines.releaseForPack(packId) — drops the
-        //      cached JapaneseEngine; next get() constructs a new one whose
-        //      init block calls Deinflector.initPackDir(newPackDir), which
-        //      clears _tokenizer so the next tokenize call loads the new
-        //      Kuromoji bins. JapaneseEngine.close() is a no-op (singleton),
-        //      so we have to evict via the engine cache, not the engine itself.
+        // JapaneseEngine.close() now releases both handles, but it only fires
+        // on engine-cache eviction (uninstall → releaseForPack), and ADDITIVE
+        // never uninstalls — so close directly, then drop the cached engine:
+        //   1. DictionaryManager.close() — next ensureOpen reads the new
+        //      dict.sqlite at the same path.
+        //   2. SudachiJapaneseTokenizer.Provider.close() — next analyze reloads
+        //      the new pack's system_*.dic.
+        //   3. SourceLanguageEngines.releaseForPack(packId) — drops the cached
+        //      JapaneseEngine so the next get() re-inits the Provider pack dir.
         //
         // Refcounting keeps any in-flight cursor valid; only NEW lookups
         // pick up the new pack. Stale-data window shrinks from "until

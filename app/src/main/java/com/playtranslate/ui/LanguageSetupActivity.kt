@@ -211,6 +211,18 @@ class LanguageSetupActivity : AppCompatActivity() {
     }
 
     private fun onSourceSelected(id: SourceLangId) {
+        // A forced-upgrade pack (e.g. the obsolete pre-Sudachi ja-v2) is
+        // installed-but-non-functional. Re-selecting it must download a fresh
+        // copy "as if never installed": uninstall first so needsDownload below
+        // becomes true and the download+load path replaces it. uninstall also
+        // releases the old dict/mmap handles (JapaneseEngine.close via
+        // releaseForPack), so the reloaded engine binds to the new pack, not the
+        // unlinked inode. This MUST run before the needsDownload val — captured
+        // false otherwise, which would send us to showLoadingPopup and preload()
+        // a just-deleted pack, crashing with PackMissing.
+        if (LanguagePackStore.isForcedUpgrade(this, id)) {
+            LanguagePackStore.uninstall(this, id)
+        }
         val needsDownload = !LanguagePackStore.isInstalled(this, id)
         // Best-effort ML Kit fallback warm-up result: written on IO inside
         // sourceLoadAction, read on Main in onDone (the withContext boundary

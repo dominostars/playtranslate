@@ -72,8 +72,19 @@ class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
     private fun derive(): AppReadiness {
         val app = getApplication<Application>()
         val prefs = Prefs(app)
+        // A FORCE-stale active source pack (e.g. a pre-Sudachi ja-v2 install) is
+        // installed-but-non-functional: isInstalled() is true because the
+        // dict.sqlite schema is current, yet the tokenizer payload is obsolete.
+        // Treat it as NOT configured so the gate routes to the welcome screen
+        // and the home is never composed for a broken language. Because derive()
+        // re-runs on every onResume (and pref change), this holds across
+        // backgrounding — the mandatory upgrade can't be escaped by sending the
+        // app home and returning. isInstalled is checked first so a schema-
+        // corrupt pack (which isInstalled deletes) short-circuits here.
         val languageConfigured =
-            LanguagePackStore.isInstalled(app, prefs.sourceLangId) && prefs.hasTargetLangBeenSet
+            LanguagePackStore.isInstalled(app, prefs.sourceLangId) &&
+                !LanguagePackStore.isForcedUpgrade(app, prefs.sourceLangId) &&
+                prefs.hasTargetLangBeenSet
         val notifGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(app, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED

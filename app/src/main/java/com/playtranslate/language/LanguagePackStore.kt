@@ -564,6 +564,37 @@ object LanguagePackStore {
         return out
     }
 
+    /**
+     * True iff [id]'s installed source pack is a FORCE (must clean-reinstall)
+     * upgrade by version — its on-disk packVersion is stale AND below the
+     * catalog's `additiveFromVersion` boundary (or the catalog declares no
+     * additive baseline). This is the "old version is obsolete / non-functional
+     * under this build" signal the readiness gate
+     * ([com.playtranslate.ui.OnboardingViewModel]'s `derive`) keys on to refuse
+     * to treat the active source as configured, and that the settings re-select
+     * path uses to force a fresh download.
+     *
+     * Mirrors [staleInstalledPacks]'s FORCE classification for the version case
+     * but deliberately does NOT re-run the JMdict schema probe. A schema-corrupt
+     * JA pack is already handled by [isInstalled], which deletes it and returns
+     * false; every caller pairs this with an [isInstalled] check, so corruption
+     * falls through to "not installed → onboarding/download." Skipping the probe
+     * keeps this to a manifest read + catalog lookup — cheap enough for `derive`
+     * to call on every `onResume` without a second SQLite open.
+     *
+     * False for never-installed packs (those route through onboarding — not a
+     * forced *upgrade*) and for ADDITIVE-eligible stale packs (upgraded in
+     * place, so deferrable).
+     */
+    fun isForcedUpgrade(ctx: Context, id: SourceLangId): Boolean {
+        val app = ctx.applicationContext
+        val manifest = LanguagePackManifestIO.read(manifestFileFor(app, id)) ?: return false
+        val entry = LanguagePackCatalogLoader.entryFor(app, id) ?: return false
+        if (entry.bundled || manifest.packVersion >= entry.packVersion) return false
+        val additiveFrom = entry.additiveFromVersion ?: return true
+        return manifest.packVersion < additiveFrom
+    }
+
     private const val TAG = "LanguagePackStore"
     private const val SUPPORTED_SCHEMA_VERSION = 1
 }

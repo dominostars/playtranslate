@@ -410,7 +410,7 @@
       "script": "CJK_JAPANESE",
       "bundled": false,
       "packVersion": 3,
-      "additiveFromVersion": 2,
+      "additiveFromVersion": 3,
       "size": 95188899,
       "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/ja-v3/ja.zip",
       "sha256": "eba26bd721649148f031e8d9bed802099e9caeb4906ca445b51e196d761e8295",

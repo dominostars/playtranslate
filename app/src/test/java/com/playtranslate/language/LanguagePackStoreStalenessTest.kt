@@ -22,11 +22,11 @@ import java.io.File
  * `noBackupFilesDir/langpacks/<id>/manifest.json` to simulate various
  * installed-pack states.
  *
- * The catalog's current state: `ja` has packVersion=3, additiveFromVersion=2
- * (Sudachi/ja-v3). v2→v3 is ADDITIVE — v2's dict.sqlite already has the current
- * schema, so lookups keep working through the download. v1→v3 is FORCE — v1's
- * dict.sqlite is the pre-rank_score schema, below additiveFromVersion. Other
- * source packs and target packs are at packVersion=1.
+ * The catalog's current state: `ja` has packVersion=3, additiveFromVersion=3
+ * (Sudachi/ja-v3) — a FORCED upgrade. Any installed ja below v3 (v1 or v2) is
+ * below additiveFromVersion, so the v3 upgrade is FORCE (pre-uninstall + clean
+ * reinstall), never a deferrable additive swap. Other source packs and target
+ * packs are at packVersion=1.
  */
 @RunWith(RobolectricTestRunner::class)
 class LanguagePackStoreStalenessTest {
@@ -51,12 +51,12 @@ class LanguagePackStoreStalenessTest {
         )
     }
 
-    @Test fun `ja pack at v2 on disk vs catalog v3 (additiveFromVersion=2) -- stale ADDITIVE`() {
+    @Test fun `ja pack at v2 on disk vs catalog v3 (below additiveFromVersion=3) -- stale FORCE`() {
         writeManifest("ja", packVersion = 2)
-        // v2's dict.sqlite already has the current schema, so additiveFromVersion=2
-        // lets v2 upgrade to v3 ADDITIVELY — definitions / direct lookups keep
-        // working through the download, only the tokenizer swaps. The real ja-v3
-        // upgrade path.
+        // additiveFromVersion=3 makes ja-v3 a forced upgrade: v2 is below the
+        // boundary, so it's FORCE (pre-uninstall + clean reinstall), not a
+        // deferrable additive swap. v2's dict.sqlite is schema-current, so this
+        // is the version-boundary FORCE, not a corruption FORCE.
         writeJaSchemaCurrentDb()
         val stale = LanguagePackStore.staleInstalledPacks(ctx)
         val ja = stale.firstOrNull { it.catalogKey == "ja" }
@@ -66,15 +66,15 @@ class LanguagePackStoreStalenessTest {
         assertEquals(SourceLangId.JA, ja.sourceLangId!!.packId)
         assertNull(ja.targetLangCode)
         assertEquals(
-            "v2 on disk + additiveFromVersion=2 in catalog → ADDITIVE",
-            UpgradeMode.ADDITIVE, ja.upgradeMode,
+            "v2 on disk < additiveFromVersion=3 → FORCE (forced upgrade)",
+            UpgradeMode.FORCE, ja.upgradeMode,
         )
     }
 
     @Test fun `ja pack at v1 on disk vs catalog v3 (below additiveFromVersion) -- stale FORCE`() {
         writeManifest("ja", packVersion = 1)
         // v1's dict.sqlite is the pre-rank_score schema and is below
-        // additiveFromVersion=2, so the v3 upgrade is FORCE (clean reinstall to
+        // additiveFromVersion=3, so the v3 upgrade is FORCE (clean reinstall to
         // the current schema). The loosened probe still accepts the v1 DB as
         // structurally valid so the pack survives to the orderly FORCE upgrade.
         writeJaV1SchemaDb()
@@ -82,23 +82,23 @@ class LanguagePackStoreStalenessTest {
         val ja = stale.firstOrNull { it.catalogKey == "ja" }
         assertNotNull("Expected ja pack to be flagged stale", ja)
         assertEquals(
-            "v1 on disk < additiveFromVersion=2 → FORCE",
+            "v1 on disk < additiveFromVersion=3 → FORCE",
             UpgradeMode.FORCE, ja!!.upgradeMode,
         )
     }
 
     @Test fun `schema-broken ja pack always classifies as FORCE`() {
-        // Manifest says v2 (would qualify for ADDITIVE per additiveFromVersion=2),
-        // but the dict.sqlite is missing required tables — schema probe fails
-        // → FORCE regardless of version. This is the corruption backstop.
-        writeManifest("ja", packVersion = 2)
-        // Don't write a valid dict.sqlite; or write one missing tables.
+        // A v3 pack (NOT version-stale, 3 == catalog 3) whose dict.sqlite is
+        // missing required tables: the schema probe fails → schemaStale → the
+        // pack is flagged FORCE independent of the version boundary. Isolated at
+        // v3 now that every below-v3 pack is already version-FORCE anyway.
+        writeManifest("ja", packVersion = 3)
         writeJaBrokenDb()
         val stale = LanguagePackStore.staleInstalledPacks(ctx)
         val ja = stale.firstOrNull { it.catalogKey == "ja" }
         assertNotNull(ja)
         assertEquals(
-            "Schema probe failure overrides additive eligibility",
+            "Schema probe failure forces FORCE even at the current version",
             UpgradeMode.FORCE, ja!!.upgradeMode,
         )
     }
@@ -236,6 +236,50 @@ class LanguagePackStoreStalenessTest {
         assertFalse(
             "Garbage manifest skipped, not flagged",
             stale.any { it.catalogKey == "ja" },
+        )
+    }
+
+    // ── isForcedUpgrade (readiness gate + settings re-select helper) ─────
+    // Single-pack version-only FORCE check the gate keys on. Unlike
+    // staleInstalledPacks it runs no schema probe (corruption is handled
+    // upstream by isInstalled), so these cases pin the version/additive logic.
+
+    @Test fun `isForcedUpgrade true for ja v2 below additiveFromVersion`() {
+        writeManifest("ja", packVersion = 2)
+        writeJaSchemaCurrentDb()
+        assertTrue(
+            "ja v2 < additiveFromVersion=3 → forced (obsolete) upgrade",
+            LanguagePackStore.isForcedUpgrade(ctx, SourceLangId.JA),
+        )
+    }
+
+    @Test fun `isForcedUpgrade false for current ja v3`() {
+        writeManifest("ja", packVersion = 3)
+        writeJaSchemaCurrentDb()
+        assertFalse(
+            "ja v3 == catalog → not stale, not a forced upgrade",
+            LanguagePackStore.isForcedUpgrade(ctx, SourceLangId.JA),
+        )
+    }
+
+    @Test fun `isForcedUpgrade false when ja never installed`() {
+        // No manifest on disk: a never-installed pack routes through the
+        // onboarding download flow, not a forced *upgrade*.
+        assertFalse(LanguagePackStore.isForcedUpgrade(ctx, SourceLangId.JA))
+    }
+
+    @Test fun `isForcedUpgrade resolves ZH_HANT to the ZH pack`() {
+        // ZH_HANT shares ZH's pack (packId collapse). A stale zh pack on disk
+        // (v0 < additiveFromVersion) must read as forced for BOTH the ZH and
+        // ZH_HANT selections, since the gate keys on the user's chosen variant.
+        writeManifest("zh", packVersion = 0, dirName = "zh")
+        assertTrue(
+            "ZH must see its own forced state",
+            LanguagePackStore.isForcedUpgrade(ctx, SourceLangId.ZH),
+        )
+        assertTrue(
+            "ZH_HANT must collapse to the ZH pack's forced state",
+            LanguagePackStore.isForcedUpgrade(ctx, SourceLangId.ZH_HANT),
         )
     }
 
