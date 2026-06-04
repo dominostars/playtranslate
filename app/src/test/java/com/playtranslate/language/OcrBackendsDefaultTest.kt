@@ -9,8 +9,8 @@ import org.junit.Test
 
 /**
  * Locks in the per-language default OCR backend (= first in the priority list).
- * Headline case: Vietnamese defaults to ML Kit (not the Paddle latin recognizer),
- * while still offering Paddle as a secondary option.
+ * Headline cases: Vietnamese and Turkish default to ML Kit (not the Paddle latin
+ * recognizer), while still offering Paddle as a secondary option.
  */
 class OcrBackendsDefaultTest {
 
@@ -25,8 +25,17 @@ class OcrBackendsDefaultTest {
         )
     }
 
+    @Test fun turkishDefaultsToMlKitButStillOffersPaddle() {
+        val tr = backends(SourceLangId.TR)
+        assertEquals("ML Kit is Turkish's default", OcrBackend.MLKitLatin, tr.first())
+        assertTrue(
+            "Paddle latin stays available as a secondary option for Turkish",
+            tr.any { it is OcrBackend.Paddle && it.recPackKey == "paddle-rec-latin" },
+        )
+    }
+
     @Test fun otherLatinLanguagesStillDefaultToPaddle() {
-        // Control: only Vietnamese flipped — other Latin scripts keep Paddle first.
+        // Control: only VI/TR flipped — other Latin scripts keep Paddle first.
         assertEquals("paddle", backends(SourceLangId.FR).first().selectionToken)
         assertEquals("paddle", backends(SourceLangId.ES).first().selectionToken)
     }
