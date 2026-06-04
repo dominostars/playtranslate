@@ -1588,7 +1588,7 @@ class CaptureService : Service() {
     internal fun noTextMessage(displayId: Int): String {
         val langName = java.util.Locale.forLanguageTag(sourceLang).getDisplayLanguage(java.util.Locale.ENGLISH)
             .replaceFirstChar { it.uppercase(java.util.Locale.ENGLISH) }
-        return getString(R.string.status_no_text, langName, activeRegionForDisplay(displayId).label)
+        return getString(R.string.status_no_text, langName, activeRegionForDisplay(displayId).displayName(this))
     }
 
     /** Flash the region indicator on [displayId] using that display's

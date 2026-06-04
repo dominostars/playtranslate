@@ -837,7 +837,7 @@ class MainActivity :
 
     private fun updateRegionButton() {
         val region = captureService?.activeRegion ?: prefs.primaryDisplayRegion()
-        val label = region.label.ifEmpty { getString(R.string.region_default_full_screen) }
+        val label = region.displayName(this)
         val isInAppOnly = Prefs.shouldUseInAppOnlyMode(this)
         val overlayLive = isLiveMode && !isInAppOnly
         val prefixWord = if (overlayLive) getString(R.string.translate_button_prefix_reload)
@@ -2003,7 +2003,7 @@ class MainActivity :
         val lang = langDisplayName(selectedSourceLang())
         val entry = prefs.primaryDisplayRegion()
         val serviceLabel = captureService?.activeRegion?.label?.takeIf { it.isNotEmpty() }
-        val label = serviceLabel ?: entry.label
+        val label = serviceLabel ?: entry.displayName(this)
         return "Searching for $lang in the \"$label\" area"
     }
 

@@ -42,6 +42,13 @@ data class RegionEntry(
     val id: String = java.util.UUID.randomUUID().toString()
 ) {
     val isFullScreen: Boolean get() = top <= 0f && bottom >= 1f && left <= 0f && right >= 1f
+
+    /** User-facing name for this region. The full-screen default region
+     *  carries an empty [label] sentinel; resolve it to the localized
+     *  "Full screen" string here so callers that describe a region to the
+     *  user don't each have to remember the fallback. */
+    fun displayName(context: Context): String =
+        label.ifEmpty { context.getString(R.string.region_default_full_screen) }
 }
 
 /** Floating-icon snap position for a single display. [edge] encoding:
