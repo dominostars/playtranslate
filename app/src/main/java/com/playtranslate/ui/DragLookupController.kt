@@ -95,6 +95,12 @@ class DragLookupController(
      *  is read from these in [onDragEnd] for the lift-time lookup. */
     private var lastX = 0f
     private var lastY = 0f
+    /** Capture-before-reveal gate. False until the drag's clean screenshot
+     *  has been taken; [onDragStart]/[onDragMove] keep the lens off-screen
+     *  while it's false so the lens can't appear in the captured frame.
+     *  [revealLensAfterCapture] flips it true and brings the lens up once
+     *  the capture returns. Reset on every drag-end path. */
+    private var lensRevealed = false
 
     /** Cached per-line token info for the magnifier label readout. We store
      *  the visible surface (for hit-testing), the dictionary form (the
@@ -357,21 +363,20 @@ class DragLookupController(
         // the same registered handle, so its alpha state under capture
         // stays consistent.
         magnifier.resetToZoom()
+        // Capture-before-reveal: keep the lens off-screen until the clean
+        // screenshot has been taken — [revealLensAfterCapture] brings it up
+        // once requestClean returns. The old code showed the lens here and
+        // relied on the capture pipeline blanking every overlay during the
+        // grab, but on the MediaProjection backend the mirror frame can lag
+        // that blank, so the lens — even its blank placeholder — landed in
+        // the screenshot and masked the very text under the finger. hide()
+        // also takes down any sticky lens left from the previous drag so it
+        // isn't in the frame either.
+        lensRevealed = false
+        magnifier.hide()
         ocrLines = null
         lastSentSentence = null
         lineTokensCache = null
-        // Show the magnifier immediately. It briefly displays a placeholder
-        // pill until [onScreenshotCaptured] feeds in the bitmap (~50 ms).
-        // The screenshot pipeline blanks every registered overlay window
-        // during the actual capture, so showing the magnifier here doesn't
-        // contaminate the captured pixels.
-        val screen = queryScreenSize()
-        magnifier.show(lastX.toInt(), lastY.toInt(), screen.x, screen.y)
-        // Arm the spinner skin BEFORE the first setLabel so the very
-        // first paint of the pill is the loading look — no flash of the
-        // magnifying-glass icon before OCR begins.
-        magnifier.setPillLoading(true)
-        magnifier.setLabel(null, null)
         val thisJob = scope.launch {
             try {
                 if (existingScreenshotPath != null) {
@@ -403,6 +408,24 @@ class DragLookupController(
         }
     }
 
+    /** Capture-before-reveal: bring the lens on screen at the finger's
+     *  current position once the clean screenshot is in hand. Until this
+     *  runs, [onDragStart]/[onDragMove] keep the lens hidden so it can't
+     *  appear in the captured frame. Idempotent, and a no-op if the drag
+     *  already ended (user lifted before the capture finished) — [onDragEnd]'s
+     *  dismiss path owns that case. Runs on the main thread (the OCR
+     *  coroutine is Main-dispatched). */
+    private fun revealLensAfterCapture() {
+        if (lensRevealed || !dragInProgress) return
+        lensRevealed = true
+        val screen = queryScreenSize()
+        magnifier.show(lastX.toInt(), lastY.toInt(), screen.x, screen.y)
+        // Arm the spinner skin before the first setLabel so the first paint
+        // of the pill is the loading look, not the magnifying-glass icon.
+        magnifier.setPillLoading(true)
+        magnifier.setLabel(null, null)
+    }
+
     private suspend fun ocrFromFile(path: String) {
         val bitmap = withContext(Dispatchers.IO) {
             android.graphics.BitmapFactory.decodeFile(path)
@@ -412,6 +435,11 @@ class DragLookupController(
             captureAndOcr()
             return
         }
+        // Source bitmap loaded — reveal the lens (capture-before-reveal). The
+        // file was captured clean upstream, so nothing leaked into it. Job-
+        // identity guard: a stale drag's late job must not reveal into a newer
+        // drag's capture window.
+        if (ocrJob === coroutineContext[Job]) revealLensAfterCapture()
         onScreenshotCaptured(bitmap, path)
         val lines = withContext(Dispatchers.Default) {
             ocrManager.recogniseWithPositions(bitmap, Prefs(popup.ctx).sourceLang)
@@ -450,6 +478,12 @@ class DragLookupController(
     fun onDragMove(rawX: Float, rawY: Float) {
         lastX = rawX
         lastY = rawY
+        // Capture-before-reveal: while the clean screenshot is being taken the
+        // lens stays off-screen so it can't contaminate the frame. Keep
+        // tracking the finger ([revealLensAfterCapture] shows the lens at the
+        // latest position once the capture returns); moves after that fall
+        // through here normally.
+        if (!lensRevealed) return
         val screen = queryScreenSize()
         magnifier.show(rawX.toInt(), rawY.toInt(), screen.x, screen.y)
         refreshLabelAndDwell()
@@ -725,6 +759,7 @@ class DragLookupController(
      *  fires [onSettled] so the service can restore live mode. */
     fun onDragEnd(): Boolean {
         dragInProgress = false
+        lensRevealed = false
         handler.removeCallbacks(dwellRunnable)
         dwellLookupJob?.cancel()
         dwellLookupJob = null
@@ -833,6 +868,7 @@ class DragLookupController(
      */
     fun dismiss() {
         dragInProgress = false
+        lensRevealed = false
         ocrJob?.cancel()
         lookupJob?.cancel()
         handler.removeCallbacks(dwellRunnable)
@@ -855,6 +891,7 @@ class DragLookupController(
         // handler fires onSettled (the post-drag branch). Otherwise a
         // destroy mid-drag with a sticky lens up would suppress settle.
         dragInProgress = false
+        lensRevealed = false
         ocrJob?.cancel()
         lookupJob?.cancel()
         handler.removeCallbacks(dwellRunnable)
@@ -920,6 +957,14 @@ class DragLookupController(
         val bitmap = withTimeoutOrNull(3000L) {
             CaptureBackendResolver.active().captureSource?.requestClean(displayId)
         }
+        // The clean frame was captured with the lens off-screen — now it's
+        // safe to bring the lens up (capture-before-reveal). Reveal even on
+        // failure so the drag still gets its UI, matching the old placeholder
+        // behaviour (there's just no bitmap to zoom). Job-identity guard (same
+        // as the spinner clears below): a previous drag's late-returning
+        // capture must not reveal the lens into THIS drag's in-flight clean
+        // capture.
+        if (ocrJob === coroutineContext[Job]) revealLensAfterCapture()
         if (bitmap == null) {
             Log.w(TAG, "Screenshot failed or timed out")
             return
