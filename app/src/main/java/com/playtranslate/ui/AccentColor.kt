@@ -33,6 +33,8 @@ enum class AccentColor(
         R.style.ThemeOverlay_PT_Accent_Mint, R.string.pt_accent_mint),
     Teal(R.color.pt_accent_teal, R.color.pt_accent_teal_tint,
         R.style.ThemeOverlay_PT_Accent_Teal, R.string.pt_accent_teal),
+    Aqua(R.color.pt_accent_aqua, R.color.pt_accent_aqua_tint,
+        R.style.ThemeOverlay_PT_Accent_Aqua, R.string.pt_accent_aqua),
     Sky(R.color.pt_accent_sky, R.color.pt_accent_sky_tint,
         R.style.ThemeOverlay_PT_Accent_Sky, R.string.pt_accent_sky),
     Steel(R.color.pt_accent_steel, R.color.pt_accent_steel_tint,
@@ -45,7 +47,7 @@ enum class AccentColor(
         R.style.ThemeOverlay_PT_Accent_Rose, R.string.pt_accent_rose);
 
     companion object {
-        val Default = Teal
+        val Default = Aqua
 
         /** Resolves a stored accent name back to an enum, falling back to [Default]. */
         fun byName(name: String?): AccentColor =

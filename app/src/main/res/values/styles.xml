@@ -159,6 +159,12 @@
         <item name="ptTextLink">@color/pt_accent_teal</item>
     </style>
 
+    <style name="ThemeOverlay.PT.Accent.Aqua" parent="">
+        <item name="ptAccent">@color/pt_accent_aqua</item>
+        <item name="ptAccentTint">@color/pt_accent_aqua_tint</item>
+        <item name="ptTextLink">@color/pt_accent_aqua</item>
+    </style>
+
     <style name="ThemeOverlay.PT.Accent.Sky" parent="">
         <item name="ptAccent">@color/pt_accent_sky</item>
         <item name="ptAccentTint">@color/pt_accent_sky_tint</item>

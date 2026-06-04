@@ -55,6 +55,9 @@
     <color name="pt_accent_teal">#FF4DD0C2</color>
     <color name="pt_accent_teal_tint">#1F4DD0C2</color>
 
+    <color name="pt_accent_aqua">#FF00BCD4</color>
+    <color name="pt_accent_aqua_tint">#1F00BCD4</color>
+
     <color name="pt_accent_sky">#FF6BB6E8</color>
     <color name="pt_accent_sky_tint">#1F6BB6E8</color>
 

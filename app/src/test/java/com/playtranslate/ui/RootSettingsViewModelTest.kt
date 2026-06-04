@@ -283,7 +283,7 @@ class RootSettingsViewModelTest {
     @Test fun `appearance digest is theme mode + accent name`() {
         val s = RootSettingsViewModel(app).state.value.appearanceSummary
         assertTrue(s.startsWith("System")) // default theme mode
-        assertTrue(s.endsWith("Teal"))     // default accent
+        assertTrue(s.endsWith("Aqua"))     // default accent
     }
 
     // ── TTS cell tap mapping ──────────────────────────────────────────────
