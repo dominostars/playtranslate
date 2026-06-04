@@ -49,7 +49,7 @@ import com.playtranslate.language.PreloadResult
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
-import com.playtranslate.ocr.registry.OcrModelManager
+import com.playtranslate.language.primeActivePair
 import com.playtranslate.translation.llm.humanSize
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.applyEdgeToEdge
@@ -57,9 +57,7 @@ import com.playtranslate.blendColors
 import com.playtranslate.compositeOver
 import com.playtranslate.applyTheme
 import com.playtranslate.themeColor
-import com.playtranslate.preloadMlKitFallbackModels
 import com.playtranslate.translation.bergamot.BergamotModelManager
-import com.playtranslate.translation.bergamot.BergamotWarmup
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -226,7 +224,7 @@ class LanguageSetupActivity : AppCompatActivity() {
         val needsDownload = !LanguagePackStore.isInstalled(this, id)
         // Best-effort ML Kit fallback warm-up result: written on IO inside
         // sourceLoadAction, read on Main in onDone (the withContext boundary
-        // provides the happens-before). See [preloadMlKitFallbackModels].
+        // provides the happens-before). See [primeActivePair].
         var mlKitReady = true
 
         val sourceLoadAction: suspend (
@@ -260,31 +258,20 @@ class LanguageSetupActivity : AppCompatActivity() {
                     )
                 }
             }
-            // Warm the ML Kit fallback translation model(s) for newSource →
-            // currentTarget (plus EN → target for the definition-translation
-            // path). Best-effort: ML Kit is the degraded last-resort backend
-            // and its GMS-mediated download fails on some devices, but the
-            // dictionary / OCR / online backends don't need it — a miss must
-            // not block adding the language.
-            val currentTarget = Prefs(applicationContext).targetLang
-            val src = SourceLanguageProfiles[id].translationCode
-            mlKitReady =
-                if (BergamotWarmup.ensureForPair(applicationContext, src, currentTarget, warmupProgress)) true
-                else preloadMlKitFallbackModels(src, currentTarget)
-            // Download this source's default OCR engine as a visible step in the
-            // same setup flow (its own progress view, like the source pack +
-            // offline translation models). Best-effort: a network failure leaves
-            // ML Kit as the floor and does NOT abort adding the language; a user
-            // cancel aborts setup like any other step.
-            try {
-                OcrModelManager.downloadDefaultForSource(applicationContext, id) { recv, total ->
-                    ocrProgress(recv, total)
-                }
-            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "default OCR download failed for ${id.code}; using ML Kit floor", e)
-            }
+            // Provision the rest of the active pair's offline assets — the
+            // translation model(s) and this source's OCR recognizer — through
+            // the shared helper so this flow and the pack-upgrade flow can't
+            // drift on what a pair needs (the upgrade flow once skipped OCR).
+            // Best-effort: a miss leaves the dictionary / online backends
+            // working and only the offline tier degraded. mlKitReady gates the
+            // "offline model unavailable" toast in onDone.
+            mlKitReady = primeActivePair(
+                applicationContext,
+                id,
+                Prefs(applicationContext).targetLang,
+                onWarmup = warmupProgress,
+                onOcr = ocrProgress,
+            )
         }
         val onDone: () -> Unit = {
             Prefs(this).sourceLang = id.code

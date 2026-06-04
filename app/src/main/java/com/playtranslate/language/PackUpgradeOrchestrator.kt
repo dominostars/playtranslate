@@ -5,13 +5,12 @@ import android.util.Log
 import androidx.appcompat.app.AlertDialog
 import com.playtranslate.Prefs
 import com.playtranslate.R
-import com.playtranslate.preloadMlKitFallbackModels
-import com.playtranslate.translation.bergamot.BergamotWarmup
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.dictionary.SudachiJapaneseTokenizer
 import com.playtranslate.translation.llm.humanSize
 import com.playtranslate.ui.OverlayProgress
 import com.playtranslate.ui.showBergamotWarmupProgress
+import com.playtranslate.ui.showOcrDownloadProgress
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -43,19 +42,25 @@ import java.util.Locale
  * Target-pack steps mirror source: `uninstallTarget` (which internally
  * calls `TargetGlossDatabaseProvider.release`), then `installTarget`.
  *
- * After every pack reinstalls successfully, primes ML Kit translation
- * models for the user's currently-selected `(prefs.sourceLang, prefs.targetLang)`
- * pair plus the EN → target fallback (matches `TargetPackInstaller.ensureModels`).
- * This avoids the user hitting a second download surprise on first lookup.
+ * After every pack reinstalls successfully, primes the active pair's offline
+ * assets — translation models and the source's OCR recognizer — for the
+ * user's currently-selected `(prefs.sourceLangId, prefs.targetLang)` pair via
+ * the shared [primeActivePair]. This avoids a second download surprise on
+ * first lookup or first capture, and keeps this flow in lockstep with the
+ * source-selection flow (which once differed here by priming translation but
+ * skipping OCR).
  *
- * **Cancel semantics**: Cancel is enabled during the download phase
- * (single-flight, idempotent — `safeSwap` is per-pack atomic so partial
- * completion persists cleanly across pack boundaries). Cancel is disabled
- * during the ML-Kit priming phase (matches `TargetPackInstaller.kt:118-121`).
- * On mid-iteration cancel: completed packs stay installed, in-flight pack
- * rolls back via `LanguagePackStore.install`'s finally block, pending
- * packs not attempted, dialog dismisses. Next-launch scan re-fires for
- * whatever remained stale.
+ * **Cancel semantics**: Cancel stays available throughout — the per-pack
+ * download phase (single-flight, idempotent — `safeSwap` is per-pack atomic
+ * so partial completion persists cleanly across pack boundaries) and the
+ * post-upgrade priming phase (translation + OCR are best-effort and
+ * idempotent, so cancelling just stops the model fetch). Cancel, back-press,
+ * and activity-pause all route through the same dismiss → `activeJob.cancel()`
+ * path. On mid-flight cancel: completed packs stay installed, any in-flight
+ * pack rolls back via `LanguagePackStore.install`'s finally block, pending
+ * packs are not attempted, partially primed models retry lazily (OCR falls
+ * back to the ML Kit floor), the dialog dismisses, and the next-launch scan
+ * re-fires for whatever remained stale.
  */
 class PackUpgradeOrchestrator(
     private val activity: Activity,
@@ -146,24 +151,47 @@ class PackUpgradeOrchestrator(
             }
         }
 
-        // All packs upgraded — prime ML Kit so the user doesn't hit a
-        // second download surprise on first lookup. Disable cancel during
-        // this phase per the orchestrator's contract.
+        // All packs upgraded — prime the active pair's offline assets
+        // (translation models + the source's OCR recognizer) so the user
+        // doesn't hit a second download surprise on first lookup or first
+        // capture. Shared with the source-selection flow via [primeActivePair]
+        // so the two can't disagree on what a pair needs — this flow used to
+        // prime translation but silently skip OCR. Cancel stays available:
+        // priming is best-effort and idempotent, so cancelling here just stops
+        // the model fetch — the packs are already installed, and the models
+        // retry lazily (OCR falls back to the ML Kit floor).
         activity.runOnUiThread {
-            dialog.hideCancel()
             dialog.setIndeterminate(true)
             dialog.setMessage(activity.getString(R.string.pack_upgrade_priming_models))
         }
         try {
-            withContext(Dispatchers.IO) { primeMlKit(dialog) }
+            withContext(Dispatchers.IO) {
+                val prefs = Prefs(activity.applicationContext)
+                primeActivePair(
+                    activity.applicationContext,
+                    prefs.sourceLangId,
+                    prefs.targetLang,
+                    onWarmup = { i, n, recv, total ->
+                        activity.runOnUiThread {
+                            dialog.showBergamotWarmupProgress(activity, i, n, recv, total)
+                        }
+                    },
+                    onOcr = { recv, total ->
+                        activity.runOnUiThread {
+                            dialog.showOcrDownloadProgress(activity, recv, total)
+                        }
+                    },
+                )
+            }
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (e: Exception) {
             // Priming failure isn't worth blocking on — the packs are
-            // installed, the user can still use them. ML Kit will retry
-            // lazily on first translate. (The helper logs ML Kit download
-            // failures per-pair; this only catches the unexpected.)
-            Log.w(TAG, "ML Kit priming failed (non-fatal): ${e.message}")
+            // installed, the user can still use them. Offline translation
+            // retries lazily on first translate; OCR falls back to the ML Kit
+            // floor. (primeActivePair logs per-asset failures; this only
+            // catches the unexpected.)
+            Log.w(TAG, "model priming failed (non-fatal): ${e.message}")
         }
 
         activity.runOnUiThread { dialog.dismiss() }
@@ -294,28 +322,6 @@ class PackUpgradeOrchestrator(
                     )
                 )
             }
-        }
-    }
-
-    private suspend fun primeMlKit(dialog: OverlayProgress) {
-        // Delegates to the shared best-effort warm-up. A failed ML Kit download
-        // must not block a pack upgrade — the packs are installed and the
-        // dictionary / online backends don't need ML Kit. The helper skips the
-        // same-language OCR-only pair and attempts source→target and the
-        // EN→target definition-translation pivot independently (the old inline
-        // version bailed out of the second model if the first threw).
-        val prefs = Prefs(activity.applicationContext)
-        // Translation code, not the raw stored source: Traditional Chinese
-        // (zh-Hant) must resolve to "zh" for both Bergamot and ML Kit, which
-        // ship Simplified-only. Matches CaptureService / LanguageSetupActivity.
-        val sourceCode = SourceLanguageProfiles[prefs.sourceLangId].translationCode
-        val warmed = BergamotWarmup.ensureForPair(
-            activity.applicationContext, sourceCode, prefs.targetLang
-        ) { i, n, recv, total ->
-            activity.runOnUiThread { dialog.showBergamotWarmupProgress(activity, i, n, recv, total) }
-        }
-        if (!warmed) {
-            preloadMlKitFallbackModels(sourceCode, prefs.targetLang)
         }
     }
 
