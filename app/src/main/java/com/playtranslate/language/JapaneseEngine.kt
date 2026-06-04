@@ -1,6 +1,7 @@
 package com.playtranslate.language
 
 import android.content.Context
+import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.dictionary.SudachiJapaneseTokenizer
 import com.playtranslate.model.CharacterDetail
@@ -88,9 +89,21 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
 
     override suspend fun spokenForm(text: String): String =
         withContext(Dispatchers.Default) {
-            // A tokenizer failure falls back to the surface — same text the
-            // engine got before this hook existed, never a crash.
-            runCatching { Deinflector.spokenForm(text) }.getOrDefault(text)
+            // Feed TTS the SAME per-token readings the furigana shows — Sudachi's
+            // readingForm — so the spoken kana matches what's displayed (初夏 →
+            // しょか, not the engine's own guess はつか). Mirrors tokenizeForFurigana's
+            // reading source, so audio == display by construction. Provider.analyze
+            // is fail-soft to empty, so a tokenizer failure speaks the surface
+            // text rather than emitting silence.
+            val tokens = SudachiJapaneseTokenizer.Provider.analyze(text)
+            if (tokens.isEmpty()) {
+                text
+            } else buildString {
+                for (t in tokens) {
+                    val kana = t.reading?.let { Deinflector.katakanaToHiragana(it) }
+                    append(kana ?: t.surface)
+                }
+            }
         }
 
     override fun close() {
