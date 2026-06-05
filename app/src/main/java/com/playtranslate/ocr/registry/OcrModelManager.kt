@@ -112,15 +112,31 @@ object OcrModelManager {
     fun availableBackends(ctx: Context, id: SourceLangId): List<OcrBackend> =
         SourceLanguageProfiles[id].ocrBackends.filter { isBackendAvailable(ctx, it) }
 
-    /** Chosen backend for [id]: the stored selection if still available + deliverable,
-     *  else the ML Kit floor (so existing languages with no/stale choice stay on ML Kit).
-     *  NULL for a no-floor language (Cyrillic) whose recognizer isn't deliverable on
-     *  this device — there is simply no backend to run. */
-    fun selectedBackend(ctx: Context, id: SourceLangId): OcrBackend? {
-        val profile = SourceLanguageProfiles[id]
-        val token = Prefs(ctx).ocrBackendToken(id)
-        return availableBackends(ctx, id).firstOrNull { it.selectionToken == token } ?: profile.mlKitFloor
-    }
+    /** Chosen backend for [id]: the stored selection if still deliverable, else the
+     *  ML Kit floor, else — for a no-floor language (Cyrillic) — its single deliverable
+     *  recognizer. NULL only when nothing is deliverable on this device (a no-floor
+     *  language on a 32-bit process). See [resolveSelectedBackend] for the rule. */
+    fun selectedBackend(ctx: Context, id: SourceLangId): OcrBackend? =
+        resolveSelectedBackend(
+            available = availableBackends(ctx, id),
+            token = Prefs(ctx).ocrBackendToken(id),
+            mlKitFloor = SourceLanguageProfiles[id].mlKitFloor,
+        )
+
+    /** PURE selection rule (JVM-testable): the [token]'s backend if it's in
+     *  [available], else [mlKitFloor], else the top [available] backend. The final
+     *  fallback keeps the OCR token NON-load-bearing for no-floor languages (Cyrillic,
+     *  where [mlKitFloor] is null): a missing/stale token resolves to the same backend
+     *  the installed pack already represents, so [currentPlan] never orphans an
+     *  installed no-floor pack and [engineForSelected] never drops to the empty engine
+     *  over a bookkeeping gap. Returns null only when [available] is empty and there is
+     *  no floor (a no-floor language with no deliverable recognizer on this device). */
+    fun resolveSelectedBackend(
+        available: List<OcrBackend>,
+        token: String?,
+        mlKitFloor: OcrBackend?,
+    ): OcrBackend? =
+        available.firstOrNull { it.selectionToken == token } ?: mlKitFloor ?: available.firstOrNull()
 
     /** True iff [id] has an ML Kit OCR recognizer that needs no download — the
      *  always-available floor. False for scripts ML Kit can't read (Cyrillic),

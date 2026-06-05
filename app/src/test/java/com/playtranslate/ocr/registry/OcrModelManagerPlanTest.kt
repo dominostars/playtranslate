@@ -14,6 +14,8 @@ class OcrModelManagerPlanTest {
     private val cjk = OcrBackend.Paddle("paddle-rec-cjk")   // shared by ja/zh/en
     private val meiki = OcrBackend.Meiki("meiki-ja")
     private val mlkit = OcrBackend.MLKitJapanese
+    private val cyr = OcrBackend.Paddle("paddle-rec-cyrillic")   // Russian: no ML Kit floor
+    private val latin = OcrBackend.Paddle("paddle-rec-latin")
 
     private fun plan(langs: Map<SourceLangId, OcrBackend>, installed: Set<String>) =
         OcrModelManager.plan(langs.keys, { langs.getValue(it) }, installed)
@@ -68,5 +70,29 @@ class OcrModelManagerPlanTest {
         assertEquals(setOf("meiki-ja"), p.required) // RU adds nothing
         assertEquals(emptySet<String>(), p.toDownload)
         assertEquals(emptySet<String>(), p.toDelete)
+    }
+
+    // ── resolveSelectedBackend: the OCR token must stay NON-load-bearing ──────
+    // A no-floor language (Russian) whose token is missing/stale must still
+    // resolve to its installed recognizer, or currentPlan would orphan the pack
+    // and engineForSelected would drop to the empty engine.
+
+    @Test fun noFloorLangResolvesToItsOnlyBackendWhenTokenMissingOrStale() {
+        assertEquals(cyr, OcrModelManager.resolveSelectedBackend(listOf(cyr), token = null, mlKitFloor = null))
+        assertEquals(cyr, OcrModelManager.resolveSelectedBackend(listOf(cyr), token = "stale", mlKitFloor = null))
+    }
+
+    @Test fun storedTokenWinsWhenItMatchesAvailable() {
+        assertEquals(latin, OcrModelManager.resolveSelectedBackend(listOf(latin, mlkit), token = "paddle", mlKitFloor = mlkit))
+    }
+
+    @Test fun flooredLangFallsBackToMlKitFloorWhenTokenMissing() {
+        // Unchanged for floored languages: mlKitFloor short-circuits the no-floor fallback.
+        assertEquals(mlkit, OcrModelManager.resolveSelectedBackend(listOf(latin, mlkit), token = null, mlKitFloor = mlkit))
+    }
+
+    @Test fun noDeliverableBackendAndNoFloorIsNull() {
+        // No-floor language on a 32-bit device: nothing deliverable → null.
+        assertEquals(null, OcrModelManager.resolveSelectedBackend(emptyList(), token = null, mlKitFloor = null))
     }
 }
