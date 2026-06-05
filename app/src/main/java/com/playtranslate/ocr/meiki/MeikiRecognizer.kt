@@ -36,6 +36,7 @@ class MeikiRecognizer(private val session: MeikiSession) : TextRecognizer {
         wholeRegionInput = false,
         threadSafe = false,
         selfPreprocesses = true,
+        emitsSubLineBoxes = false,
     )
 
     private var cachedBitmap: Bitmap? = null

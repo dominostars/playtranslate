@@ -27,6 +27,7 @@ class PaddleDetector(private val session: PaddleOcrSession) : TextDetector {
         wholeRegionInput = false,
         threadSafe = false,
         selfPreprocesses = true,
+        emitsSubLineBoxes = true,
     )
 
     override suspend fun detect(image: OcrImage): List<DetectedRegion> =

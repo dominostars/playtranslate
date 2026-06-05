@@ -28,4 +28,9 @@ data class OcrCapabilities(
     val threadSafe: Boolean,
     /** Does its own preprocessing; the pipeline must NOT apply an OcrPreprocessingRecipe and must pass the original bitmap. */
     val selfPreprocesses: Boolean,
+    /** Detector emits sub-line (e.g. per-word) boxes that must be assembled into
+     *  lines before recognition (PaddleOCR DBNet on spaced scripts). Read only by
+     *  [com.playtranslate.ocr.composites.DetectThenRecognize], which runs
+     *  LineAssembler when set. */
+    val emitsSubLineBoxes: Boolean,
 )

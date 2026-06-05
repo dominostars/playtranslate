@@ -86,6 +86,7 @@ class OcrEngineRegistry {
             wholeRegionInput = false,
             threadSafe = true,
             selfPreprocesses = true,
+            emitsSubLineBoxes = false,
         )
         override suspend fun recognize(image: OcrImage): List<RecognizedRegion> = emptyList()
         override fun close() {}

@@ -1,6 +1,8 @@
 package com.playtranslate.ocr.composites
 
+import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ocr.core.DetectedRegion
+import com.playtranslate.ocr.core.LineAssembler
 import com.playtranslate.ocr.core.OcrCapabilities
 import com.playtranslate.ocr.core.OcrEngine
 import com.playtranslate.ocr.core.OcrImage
@@ -41,6 +43,9 @@ class DetectThenRecognize(
         wholeRegionInput = recognizer.capabilities.wholeRegionInput,
         threadSafe = detector.capabilities.threadSafe && recognizer.capabilities.threadSafe,
         selfPreprocesses = detector.capabilities.selfPreprocesses,
+        // Composite presents LINE-level output post-assembly; the detector's
+        // emitsSubLineBoxes is consumed internally by runStages, not forwarded.
+        emitsSubLineBoxes = false,
     )
 
     private val mutex: Mutex? = if (capabilities.threadSafe) null else Mutex()
@@ -53,15 +58,26 @@ class DetectThenRecognize(
     private suspend fun runStages(image: OcrImage): List<RecognizedRegion> {
         val detected: List<DetectedRegion> = detector.detect(image)
         coroutineContext.ensureActive()
-        // A whole-region recognizer (capabilities.wholeRegionInput) would cluster
-        // detector boxes into bubble crops here via the shared LayoutAnalyzer; no
-        // in-scope engine needs that yet, so detector regions feed 1:1.
-        val out = ArrayList<RecognizedRegion>(detected.size)
+        val recognized = ArrayList<RecognizedRegion>(detected.size)
         for (region in detected) {
             coroutineContext.ensureActive()
-            recognizer.recognize(image, region)?.let { out += it }
+            recognizer.recognize(image, region)?.let { recognized += it }
         }
-        return out
+        // Post-recognition line assembly. A detector that emits sub-line (per-word)
+        // boxes — PaddleOCR DBNet on word-spaced scripts — is recognized 1:1 above,
+        // each box from its OWN true DBNet deskew quad; the recognized word-regions
+        // are then stitched into lines here. Doing this AFTER recognition (rather
+        // than merging detector boxes into one fabricated AABB crop before) keeps
+        // each word's true-quad recognition, so slanted/perspective text and mixed
+        // font sizes can't corrupt OCR. Gated on wordsSeparatedByWhitespace: only
+        // word-spaced scripts fragment and need re-joining; no-space CJK doesn't.
+        // (Distinct from the whole-region bubble-clustering a wholeRegionInput
+        // recognizer would need.)
+        return if (detector.capabilities.emitsSubLineBoxes && needsLineAssembly(image.sourceLang)) {
+            LineAssembler.assembleLines(recognized)
+        } else {
+            recognized
+        }
     }
 
     override fun close() {
@@ -74,3 +90,11 @@ class DetectThenRecognize(
         recognizer.close()
     }
 }
+
+/** True for source languages whose words are whitespace-separated (Latin,
+ *  Cyrillic, Korean) — the scripts where PaddleOCR DBNet fragments a line into
+ *  per-word boxes that [LineAssembler] reassembles. No-space scripts (CJK:
+ *  ja/zh/zh-Hant) don't fragment and may be written vertically, so they are left
+ *  untouched. Same profile lookup MlKitOcr uses for word spacing. */
+private fun needsLineAssembly(sourceLang: String): Boolean =
+    SourceLanguageProfiles.forCode(sourceLang)?.wordsSeparatedByWhitespace == true

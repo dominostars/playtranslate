@@ -37,6 +37,7 @@ class MlKitOcr(options: TextRecognizerOptionsInterface) : OcrEngine {
         wholeRegionInput = false,
         threadSafe = true,
         selfPreprocesses = false,
+        emitsSubLineBoxes = false,
     )
 
     override suspend fun recognize(image: OcrImage): List<RecognizedRegion> {

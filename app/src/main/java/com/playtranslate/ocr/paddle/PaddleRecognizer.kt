@@ -31,6 +31,7 @@ class PaddleRecognizer(private val session: PaddleOcrSession) : TextRecognizer {
         wholeRegionInput = false,
         threadSafe = false,
         selfPreprocesses = true,
+        emitsSubLineBoxes = false,
     )
 
     private var cachedBitmap: Bitmap? = null

@@ -31,6 +31,7 @@ class MangaOcrRecognizer(private val session: MangaOcrSession) : TextRecognizer 
         wholeRegionInput = false,
         threadSafe = false,
         selfPreprocesses = true,
+        emitsSubLineBoxes = false,
     )
 
     private var cachedBitmap: Bitmap? = null

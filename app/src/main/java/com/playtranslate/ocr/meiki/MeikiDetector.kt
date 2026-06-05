@@ -26,6 +26,7 @@ class MeikiDetector(private val session: MeikiSession) : TextDetector {
         wholeRegionInput = false,
         threadSafe = false,
         selfPreprocesses = true,
+        emitsSubLineBoxes = false,
     )
 
     override suspend fun detect(image: OcrImage): List<DetectedRegion> =
