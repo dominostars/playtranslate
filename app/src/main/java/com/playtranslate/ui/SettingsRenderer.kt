@@ -350,7 +350,7 @@ class SettingsRenderer(
             offlineReadinessJob = lifecycleScope.launch {
                 val ready = withContext(Dispatchers.IO) {
                     com.playtranslate.translation.OfflineModelReclaimer
-                        .isOfflineTranslationReady(ctx, sourceId, targetLang)
+                        .isOfflineTranslationReady(sourceId, targetLang)
                 }
                 if (!ready) {
                     val targetName = java.util.Locale.forLanguageTag(targetLang)

@@ -19,7 +19,15 @@ import com.playtranslate.language.TranslationManagerProvider
  */
 class MlKitBackend : TranslationBackend {
 
-    override val id: BackendId = "mlkit"
+    companion object {
+        /** Stable backend id. Offline-readiness checks reference it to treat ML
+         *  Kit specially: usable for every pair, but offline-ready only once its
+         *  per-language models are downloaded (unlike Bergamot / on-device LLMs,
+         *  whose isUsable already implies the model is on disk). */
+        const val ID: BackendId = "mlkit"
+    }
+
+    override val id: BackendId = ID
     override val displayName: String = "ML Kit"
     override val priority: Int = 30
     override val requiresInternet: Boolean = false

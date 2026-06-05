@@ -67,6 +67,22 @@ internal class FakeDegradedBackend(
     }
 }
 
+/** Offline backend (Bergamot / on-device LLM / ML Kit stand-in) with a
+ *  controllable [usable], so offline-readiness tests can model enabled/disabled +
+ *  installed state. [requiresInternet] is false — it's the offline tier. */
+internal class FakeOfflineBackend(
+    override val id: BackendId,
+    override val priority: Int = 10,
+    override val displayName: String = "fake-offline-$id",
+    override val status: BackendStatus = BackendStatus.Hidden,
+    private val usable: Boolean = true,
+) : TranslationBackend {
+    override val requiresInternet: Boolean = false
+    override val isDegradedFallback: Boolean = false
+    override fun isUsable(source: String, target: String): Boolean = usable
+    override suspend fun translate(text: String, source: String, target: String): String = "offline-$id"
+}
+
 /** Fake backend that implements [Cooldownable], for verifying the
  *  registry's skip-when-down logic. Tests set [cooldownState] up front
  *  with the desired in-cooldown / ready state. */

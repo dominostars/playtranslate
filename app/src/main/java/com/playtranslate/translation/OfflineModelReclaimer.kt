@@ -143,24 +143,33 @@ object OfflineModelReclaimer {
 
     /**
      * Concept-B readiness: is offline TRANSLATION available for the active pair
-     * ([sourceId] → [targetLang]) without a network? True when source == target,
-     * when Bergamot's required direction(s) are installed (English-pivot aware),
-     * or when every ML Kit language model the pair needs ({source, target, en})
-     * is already downloaded. Drives the Settings "Download offline models" cell;
-     * the app still works ONLINE when this is false. Suspend — ML Kit's
-     * downloaded-model state lives behind a GMS round-trip.
+     * ([sourceId] → [targetLang]) without a network, given the user's CURRENT
+     * backend config? Mirrors the translation waterfall so it can't drift from
+     * what actually runs (the bug it replaces counted Bergamot's files even when
+     * the backend was disabled): true when source==target, when any non-ML-Kit
+     * offline backend (Bergamot / on-device LLM) is actually USABLE for the pair
+     * (its `isUsable` already implies enabled + the model on disk), or when ML Kit
+     * — usable for every pair, but offline-ready only once its per-language models
+     * are downloaded — has the pair's models. Drives the Settings "Download offline
+     * models" cell; the app still works ONLINE when this is false. [offlineBackends]
+     * + [downloadedMlKit] are injectable for tests. Suspend — ML Kit's model state
+     * is a GMS round-trip.
      */
     suspend fun isOfflineTranslationReady(
-        ctx: Context,
         sourceId: SourceLangId,
         targetLang: String,
+        offlineBackends: List<TranslationBackend> =
+            TranslationBackendRegistry.orderedBackends().filter { !it.requiresInternet },
+        downloadedMlKit: suspend () -> Set<String> = { downloadedMlKitCodes() },
     ): Boolean {
         val src = SourceLanguageProfiles[sourceId].translationCode
-        if (src == targetLang) return true
-        if (BergamotModelManager(ctx).isInstalled(src, targetLang)) return true
-        val needed = setOf(src, targetLang, TranslateLanguage.ENGLISH)
-        val downloaded = downloadedMlKitCodes()
-        return needed.all { it in downloaded }
+        if (src.equals(targetLang, ignoreCase = true)) return true
+        if (offlineBackends.any { it.id != MlKitBackend.ID && it.isUsable(src, targetLang) }) return true
+        if (offlineBackends.any { it.id == MlKitBackend.ID && it.isUsable(src, targetLang) }) {
+            val downloaded = downloadedMlKit()
+            return setOf(src, targetLang, TranslateLanguage.ENGLISH).all { it in downloaded }
+        }
+        return false
     }
 
     private suspend fun downloadedMlKitCodes(): Set<String> =
