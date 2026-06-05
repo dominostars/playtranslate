@@ -3,6 +3,8 @@ package com.playtranslate.ocr.registry
 import com.playtranslate.language.OcrBackend
 import com.playtranslate.language.SourceLangId
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -94,5 +96,25 @@ class OcrModelManagerPlanTest {
     @Test fun noDeliverableBackendAndNoFloorIsNull() {
         // No-floor language on a 32-bit device: nothing deliverable → null.
         assertEquals(null, OcrModelManager.resolveSelectedBackend(emptyList(), token = null, mlKitFloor = null))
+    }
+
+    // ── requiredOcrReady: completeness must imply the engine can load ────────
+    // A no-floor language must NOT read as OCR-ready on a device that can't run
+    // its only backend, even if the pack files are present — else isFullyInstalled
+    // is true while engineForSelected yields the empty engine.
+
+    @Test fun noFloorOnIncompatibleDeviceIsNotReadyEvenWithPackOnDisk() {
+        // mnnAvailable=false → availableBackends empty → selectedBackend null,
+        // even though the pack files are on disk (isInstalled = true).
+        assertFalse(OcrModelManager.requiredOcrReady(hasFloor = false, selected = null, isInstalled = { true }))
+    }
+
+    @Test fun noFloorReadyOnlyWhenResolvedBackendsPacksInstalled() {
+        assertFalse(OcrModelManager.requiredOcrReady(hasFloor = false, selected = cyr, isInstalled = { false }))
+        assertTrue(OcrModelManager.requiredOcrReady(hasFloor = false, selected = cyr, isInstalled = { true }))
+    }
+
+    @Test fun flooredLangIsAlwaysReady() {
+        assertTrue(OcrModelManager.requiredOcrReady(hasFloor = true, selected = null, isInstalled = { false }))
     }
 }

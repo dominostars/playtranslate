@@ -143,13 +143,32 @@ object OcrModelManager {
      *  whose only OCR is a downloadable MNN pack. PURE (profile-only). */
     fun hasMlKitFloor(id: SourceLangId): Boolean = SourceLanguageProfiles[id].mlKitFloor != null
 
-    /** True iff [id]'s mandatory OCR is satisfied: it has an ML Kit floor, or —
-     *  for a no-floor language — its recognizer pack(s) are installed (SHA-checked).
-     *  A no-floor language with the pack absent is "not provisioned" for OCR. */
-    fun isRequiredOcrInstalled(ctx: Context, id: SourceLangId): Boolean {
-        if (hasMlKitFloor(id)) return true
-        val packs = SourceLanguageProfiles[id].ocrBackends.flatMap { it.packKeys }
-        return packs.isNotEmpty() && packs.all { OcrPackModelHelper(it).isInstalled(ctx) }
+    /** True iff [id]'s mandatory OCR is satisfied. A floored language always is
+     *  (ML Kit needs no pack); a no-floor language (Russian) is iff the backend it
+     *  would actually resolve to is deliverable on this device AND its packs are on
+     *  disk — see [requiredOcrReady]. */
+    fun isRequiredOcrInstalled(ctx: Context, id: SourceLangId): Boolean =
+        requiredOcrReady(
+            hasFloor = hasMlKitFloor(id),
+            selected = selectedBackend(ctx, id),
+            isInstalled = { OcrPackModelHelper(it).isInstalled(ctx) },
+        )
+
+    /** PURE readiness rule (JVM-testable): a floored language is always OCR-ready;
+     *  a no-floor language is ready iff [selected] (the backend [resolveSelectedBackend]
+     *  picks — non-null only when runtime-compatible + shippable on this device) has
+     *  all its packs on disk. Tying readiness to the RESOLVED backend, not raw profile
+     *  packKeys, guarantees `isFullyInstalled ⇒ engineForSelected loads a real engine`:
+     *  a no-floor language can't read as installed on a device that can't run its only
+     *  recognizer (the arm64-only Cyrillic pack on a 32-bit process). */
+    fun requiredOcrReady(
+        hasFloor: Boolean,
+        selected: OcrBackend?,
+        isInstalled: (String) -> Boolean,
+    ): Boolean {
+        if (hasFloor) return true
+        val backend = selected ?: return false
+        return backend.packKeys.isNotEmpty() && backend.packKeys.all(isInstalled)
     }
 
     /** Concept-A completeness: [id]'s dictionary pack is present AND its required
