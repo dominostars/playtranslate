@@ -186,11 +186,15 @@ class PackUpgradeOrchestrator(
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (e: Exception) {
-            // Priming failure isn't worth blocking on — the packs are
-            // installed, the user can still use them. Offline translation
-            // retries lazily on first translate; OCR falls back to the ML Kit
-            // floor. (primeActivePair logs per-asset failures; this only
-            // catches the unexpected.)
+            // Priming failure isn't worth blocking on — the dict/gloss packs are
+            // installed and usable. Offline translation retries lazily on first
+            // translate; a missing OCR recognizer degrades to the ML Kit floor for
+            // a floored source, or — for a no-floor source (Russian) — to no OCR,
+            // recovered by re-selecting the source (isFullyInstalled is runtime-aware,
+            // so an absent pack shows as "not installed"). Unreachable here regardless:
+            // the active source's recognizer was installed fail-closed at selection
+            // and re-prime only fetches MISSING packs. (primeActivePair logs per-asset
+            // failures; this only catches the unexpected.)
             Log.w(TAG, "model priming failed (non-fatal): ${e.message}")
         }
 
