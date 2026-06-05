@@ -51,7 +51,7 @@ class LanguageTest {
     @Test fun `JA profile has correct translation code and OCR backend`() {
         val profile = SourceLanguageProfiles[SourceLangId.JA]
         assertEquals(TranslateLanguage.JAPANESE, profile.translationCode)
-        assertEquals(OcrBackend.MLKitJapanese, profile.ocrBackend)
+        assertEquals(OcrBackend.MLKitJapanese, profile.mlKitFloor)
         assertEquals(HintTextKind.FURIGANA, profile.hintTextKind)
         assertEquals(TextDirection.LTR, profile.textDirection)
         assertEquals(ScriptFamily.CJK_JAPANESE, profile.scriptFamily)
@@ -60,7 +60,7 @@ class LanguageTest {
     @Test fun `EN profile has correct translation code and OCR backend`() {
         val profile = SourceLanguageProfiles[SourceLangId.EN]
         assertEquals(TranslateLanguage.ENGLISH, profile.translationCode)
-        assertEquals(OcrBackend.MLKitLatin, profile.ocrBackend)
+        assertEquals(OcrBackend.MLKitLatin, profile.mlKitFloor)
         assertEquals(HintTextKind.NONE, profile.hintTextKind)
         assertEquals(TextDirection.LTR, profile.textDirection)
         assertEquals(ScriptFamily.LATIN, profile.scriptFamily)
@@ -70,7 +70,7 @@ class LanguageTest {
     @Test fun `ZH profile has correct translation code and OCR backend`() {
         val profile = SourceLanguageProfiles[SourceLangId.ZH]
         assertEquals(TranslateLanguage.CHINESE, profile.translationCode)
-        assertEquals(OcrBackend.MLKitChinese, profile.ocrBackend)
+        assertEquals(OcrBackend.MLKitChinese, profile.mlKitFloor)
         assertEquals(HintTextKind.PINYIN, profile.hintTextKind)
         assertEquals(false, profile.preferTraditional)
         assertEquals(SourceLangId.ZH.displayName(), profile.id.displayName())
@@ -79,10 +79,22 @@ class LanguageTest {
     @Test fun `ZH_HANT profile shares ZH traits but prefers traditional`() {
         val profile = SourceLanguageProfiles[SourceLangId.ZH_HANT]
         assertEquals(TranslateLanguage.CHINESE, profile.translationCode)
-        assertEquals(OcrBackend.MLKitChinese, profile.ocrBackend)
+        assertEquals(OcrBackend.MLKitChinese, profile.mlKitFloor)
         assertEquals(HintTextKind.PINYIN, profile.hintTextKind)
         assertEquals(true, profile.preferTraditional)
         assertEquals(SourceLangId.ZH_HANT.displayName(), profile.id.displayName())
+    }
+
+    @Test fun `RU profile has no ML Kit floor and Cyrillic traits`() {
+        val profile = SourceLanguageProfiles[SourceLangId.RU]
+        assertEquals(TranslateLanguage.RUSSIAN, profile.translationCode)
+        // First source language with no ML Kit OCR floor — its only recognizer
+        // is the downloadable, arm64-only Cyrillic Paddle pack.
+        assertNull(profile.mlKitFloor)
+        assertEquals(ScriptFamily.CYRILLIC, profile.scriptFamily)
+        assertEquals(TextDirection.LTR, profile.textDirection)
+        assertEquals(HintTextKind.NONE, profile.hintTextKind)
+        assertEquals(true, profile.wordsSeparatedByWhitespace)
     }
 
     @Test fun `ZH_HANT shares pack with ZH`() {

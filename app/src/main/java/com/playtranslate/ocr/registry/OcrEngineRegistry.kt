@@ -1,5 +1,6 @@
 package com.playtranslate.ocr.registry
 
+import android.util.Log
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
@@ -7,14 +8,18 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.playtranslate.language.OcrBackend
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.ocr.core.OcrCapabilities
 import com.playtranslate.ocr.core.OcrEngine
+import com.playtranslate.ocr.core.OcrImage
+import com.playtranslate.ocr.core.OcrOrientationSupport
+import com.playtranslate.ocr.core.RecognizedRegion
 import com.playtranslate.ocr.engines.mlkit.MlKitOcr
 import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Builds and caches the [OcrEngine] for a source language — the named factory
  * that "recipe" collapses into. Each source language maps (via its
- * `SourceLanguageProfile.ocrBackend`) to a constructed engine; one engine per
+ * `SourceLanguageProfile.mlKitFloor`) to a constructed engine; one engine per
  * backend, cached and reused. [closeAll] releases them (called from
  * `OcrManager.releaseAll` at TRIM_MEMORY_COMPLETE).
  *
@@ -34,7 +39,16 @@ class OcrEngineRegistry {
         OcrModelManager.engineForSelected(sourceLang)?.let { return it }
         val profile = SourceLanguageProfiles.forCode(sourceLang)
             ?: SourceLanguageProfiles[SourceLangId.JA]
-        return engines.getOrPut(profile.ocrBackend) { create(profile.ocrBackend) }
+        // A no-floor language (Cyrillic etc.) reaches here only if its mandatory
+        // recognizer pack is absent — selection gates against that (see
+        // OcrModelManager.isFullyInstalled), so this is defense-in-depth: return an
+        // empty engine (no OCR) instead of NPE-ing on a null floor, and leave a
+        // breadcrumb so a gate hole is diagnosable rather than silently text-less.
+        val floor = profile.mlKitFloor ?: run {
+            Log.w(TAG, "no OCR backend for '$sourceLang' (no ML Kit floor, pack absent); returning empty engine")
+            return EmptyOcrEngine
+        }
+        return engines.getOrPut(floor) { create(floor) }
     }
 
     /** Close + drop every cached engine. Caller must guarantee no in-flight OCR. */
@@ -57,5 +71,27 @@ class OcrEngineRegistry {
         // in engineFor (Phase 2 resolution), never through this ML-Kit factory.
         is OcrBackend.Meiki -> error("Meiki built via MeikiBridge in engineFor, not create()")
         is OcrBackend.Paddle -> error("Paddle built via PaddleOcrBridge in engineFor, not create()")
+    }
+
+    /** No-OCR engine for a source language with no usable backend (a no-floor
+     *  language whose recognizer pack isn't installed). Yields zero regions so the
+     *  pipeline degrades to "no text" rather than crashing on a null floor.
+     *  Reaching this is a gate failure (see [engineFor]); the Log.w there is the
+     *  breadcrumb. */
+    private object EmptyOcrEngine : OcrEngine {
+        override val capabilities = OcrCapabilities(
+            orientation = OcrOrientationSupport.HORIZONTAL_ONLY,
+            emitsCharBoxes = false,
+            emitsElementBoxes = false,
+            wholeRegionInput = false,
+            threadSafe = true,
+            selfPreprocesses = true,
+        )
+        override suspend fun recognize(image: OcrImage): List<RecognizedRegion> = emptyList()
+        override fun close() {}
+    }
+
+    private companion object {
+        const val TAG = "OcrEngineRegistry"
     }
 }

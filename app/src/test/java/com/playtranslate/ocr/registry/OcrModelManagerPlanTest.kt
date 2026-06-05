@@ -55,4 +55,18 @@ class OcrModelManagerPlanTest {
         assertEquals(emptySet<String>(), p.required)
         assertEquals(emptySet<String>(), p.toDownload)
     }
+
+    /** A no-floor language whose backend isn't deliverable on this device
+     *  resolves to a null selectedBackend; plan must treat it as requiring no
+     *  packs (and not crash on the null). */
+    @Test fun nullBackendContributesNoRequiredPacks() {
+        val p = OcrModelManager.plan(
+            setOf(SourceLangId.RU, SourceLangId.JA),
+            { id -> if (id == SourceLangId.RU) null else meiki },
+            installedPacks = setOf("meiki-ja"),
+        )
+        assertEquals(setOf("meiki-ja"), p.required) // RU adds nothing
+        assertEquals(emptySet<String>(), p.toDownload)
+        assertEquals(emptySet<String>(), p.toDelete)
+    }
 }

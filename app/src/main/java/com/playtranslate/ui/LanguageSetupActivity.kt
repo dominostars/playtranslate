@@ -42,6 +42,7 @@ import com.google.mlkit.nl.translate.TranslateLanguage
 import com.playtranslate.translation.OfflineModelReclaimer
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.language.DownloadProgress
 import com.playtranslate.language.InstallResult
 import com.playtranslate.language.LanguagePackStore
@@ -177,27 +178,45 @@ class LanguageSetupActivity : AppCompatActivity() {
         val currentId = storedId.takeIf { LanguagePackStore.isInstalled(this, it) }
 
         fun toRow(id: SourceLangId): LangRow {
-            val installed = LanguagePackStore.isInstalled(this, id)
             val isSelected = currentId != null && id == currentId
             // Deleting any variant that shares the selected pack (ZH ↔ ZH_HANT)
             // would pull files out from under the current engine, so treat the
             // sibling as non-deletable too — its trash just stays hidden.
             val sharesPackWithSelection = currentId != null && id.packId == currentId.packId
+            // "Fully installed" = dictionary present AND required OCR available.
+            // For a no-floor language (Russian) a missing Cyrillic pack reads as
+            // not-installed → no trash; re-selecting re-downloads it (Concept A).
+            val fullyInstalled = OcrModelManager.isFullyInstalled(this, id)
+            // A no-floor language can't OCR on a 32-bit device (its arm64-only
+            // recognizer can't run) — show the row disabled instead of dead-ending.
+            val unavailable = OcrModelManager.isOcrUnavailableOnDevice(this, id)
             return LangRow(
                 titleNorm = normalizeWithMap(id.displayName()),
                 endonymNorm = normalizeWithMap(id.displayName(id.locale)),
-                isSelected = isSelected,
-                canDelete = installed && !sharesPackWithSelection,
-                onRowClick = { onSourceSelected(id) },
+                isSelected = isSelected && !unavailable,
+                canDelete = fullyInstalled && !sharesPackWithSelection,
+                disabled = unavailable,
+                disabledReason = if (unavailable) getString(R.string.lang_setup_requires_64bit) else null,
+                onRowClick = {
+                    if (unavailable) {
+                        Toast.makeText(
+                            this,
+                            getString(R.string.lang_setup_requires_64bit_msg, id.displayName()),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    } else {
+                        onSourceSelected(id)
+                    }
+                },
                 onTrashClick = { handleSourceDeleteTap(id) },
             )
         }
 
-        // Suggested: any source whose pack is already installed — bundled
-        // (JA) or downloaded (ZH / ZH_HANT share the same pack, EN, ES).
-        // Unlike the target picker this does NOT include the device locale,
-        // per user request.
-        val suggested = allIds.filter { LanguagePackStore.isInstalled(this, it) }
+        // Suggested: any source that is FULLY installed (dict + required OCR) —
+        // bundled (JA) or downloaded. A no-floor language whose OCR pack is
+        // missing is excluded so it isn't surfaced as ready. Unlike the target
+        // picker this does NOT include the device locale, per user request.
+        val suggested = allIds.filter { OcrModelManager.isFullyInstalled(this, it) }
 
         bindLanguagePage(
             LanguagePageData(
@@ -271,6 +290,11 @@ class LanguageSetupActivity : AppCompatActivity() {
                 Prefs(applicationContext).targetLang,
                 onWarmup = warmupProgress,
                 onOcr = ocrProgress,
+                // No-floor languages (Russian) have no ML Kit OCR fallback, so the
+                // recognizer download is mandatory: a failure throws here, the load
+                // popup shows an error, and the selection is NOT persisted (the dict
+                // stays; isFullyInstalled reports not-installed until a retry).
+                ocrRequired = !OcrModelManager.hasMlKitFloor(id),
             )
         }
         val onDone: () -> Unit = {
@@ -648,6 +672,12 @@ class LanguageSetupActivity : AppCompatActivity() {
         val endonymNorm: NormalizedText,
         val isSelected: Boolean,
         val canDelete: Boolean,
+        /** Greyed-out, non-selectable (e.g. a no-floor language whose OCR can't
+         *  run on this device); [onRowClick] explains why instead of selecting. */
+        val disabled: Boolean = false,
+        /** Shown in the endonym slot for a [disabled] row (e.g. "Requires a
+         *  64-bit device"); overrides the endonym. */
+        val disabledReason: String? = null,
         val onRowClick: () -> Unit,
         val onTrashClick: () -> Unit,
     ) {
@@ -706,9 +736,14 @@ class LanguageSetupActivity : AppCompatActivity() {
         view.findViewById<TextView>(R.id.tvRowTitle).text = highlighted(row.titleNorm, query)
 
         // Endonym subtitle — hidden when it would merely repeat the title
-        // (e.g. the UI language is this row's own language).
+        // (e.g. the UI language is this row's own language). A disabled row reuses
+        // this slot for its reason text instead (see LangRow.disabledReason).
         val tvEndonym = view.findViewById<TextView>(R.id.tvRowEndonym)
-        if (row.endonymNorm.original.isBlank() ||
+        val reason = row.disabledReason
+        if (reason != null) {
+            tvEndonym.visibility = View.VISIBLE
+            tvEndonym.text = reason
+        } else if (row.endonymNorm.original.isBlank() ||
             row.endonymNorm.original.equals(row.titleNorm.original, ignoreCase = true)
         ) {
             tvEndonym.visibility = View.GONE
@@ -716,6 +751,10 @@ class LanguageSetupActivity : AppCompatActivity() {
             tvEndonym.visibility = View.VISIBLE
             tvEndonym.text = highlighted(row.endonymNorm, query)
         }
+
+        // Disabled rows render dimmed; the row stays clickable so the tap can
+        // explain why (onRowClick shows a toast rather than selecting).
+        view.alpha = if (row.disabled) 0.5f else 1f
 
         view.setOnClickListener {
             val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager

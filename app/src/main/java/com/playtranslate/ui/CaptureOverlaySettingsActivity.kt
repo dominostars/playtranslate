@@ -532,7 +532,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         card?.visibility = View.VISIBLE
         setGroupHeader(R.id.headerOcr, R.string.settings_header_ocr)
 
-        val selectedToken = OcrModelManager.selectedBackend(this, id).selectionToken
+        val selectedToken = OcrModelManager.selectedBackend(this, id)?.selectionToken
         // The language's recommended engine (top of the priority list) wears the
         // "Default" badge.
         val defaultToken = backends.first().selectionToken
@@ -750,7 +750,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         val dependents = LanguagePackStore.installedCodes(this)
             .filter { it != id }
             .filter { other ->
-                OcrModelManager.selectedBackend(this, other).packKeys.any { it in backend.packKeys }
+                OcrModelManager.selectedBackend(this, other)?.packKeys?.any { it in backend.packKeys } == true
             }
             .sortedBy { it.displayName() }
         val message = if (dependents.isEmpty()) {

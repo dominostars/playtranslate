@@ -476,6 +476,23 @@
         }
       ]
     },
+    "ru": {
+      "display": "Russian",
+      "script": "CYRILLIC",
+      "bundled": false,
+      "packVersion": 1,
+      "additiveFromVersion": 1,
+      "size": 5500000,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/ru-v1/ru.zip",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "licenses": [
+        {
+          "component": "Wiktionary",
+          "license": "CC-BY-SA-3.0",
+          "attribution": "© Wiktionary contributors, https://en.wiktionary.org/"
+        }
+      ]
+    },
     "en": {
       "display": "English",
       "script": "LATIN",

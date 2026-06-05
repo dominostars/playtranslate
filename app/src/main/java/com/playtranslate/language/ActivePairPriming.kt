@@ -34,6 +34,10 @@ private const val TAG = "ActivePairPriming"
  *   and, via its [SourceLanguageProfiles] translation code, the translation
  *   models — e.g. Traditional Chinese resolves to "zh" for the Simplified-only
  *   Bergamot/ML Kit models).
+ * @param ocrRequired when true, the source's OCR recognizer is mandatory (a
+ *   no-floor language like Russian has no ML Kit fallback): if the pack isn't
+ *   installed after the best-effort download, throw so the caller aborts the
+ *   selection. Default false keeps OCR best-effort (the pack-upgrade path).
  * @return whether the offline translation path is ready (Bergamot loaded, or
  *   all ML Kit fallback models present). Callers surface this how they like —
  *   a toast in setup; logged-only during a pack upgrade.
@@ -44,6 +48,7 @@ suspend fun primeActivePair(
     targetLang: String,
     onWarmup: (index: Int, count: Int, received: Long, total: Long) -> Unit = { _, _, _, _ -> },
     onOcr: (received: Long, total: Long) -> Unit = { _, _ -> },
+    ocrRequired: Boolean = false,
 ): Boolean {
     val app = ctx.applicationContext
     val translationCode = SourceLanguageProfiles[sourceId].translationCode
@@ -75,6 +80,18 @@ suspend fun primeActivePair(
         throw e
     } catch (e: Exception) {
         Log.w(TAG, "default OCR download failed for ${sourceId.code}; using ML Kit floor", e)
+    }
+
+    // For a no-floor source (Russian/Cyrillic) OCR is mandatory — there is no ML
+    // Kit fallback. downloadDefaultForSource is best-effort (it logs failures
+    // rather than throwing), so enforce the requirement as a post-condition: if
+    // the pack still isn't installed, throw so the caller's catch surfaces an
+    // error and does NOT persist the selection. The dictionary stays installed;
+    // isFullyInstalled then reads "not installed" until a retry lands the pack.
+    if (ocrRequired && !OcrModelManager.isRequiredOcrInstalled(app, sourceId)) {
+        throw IllegalStateException(
+            "required OCR pack missing for ${sourceId.code} after download attempt"
+        )
     }
 
     return translationReady

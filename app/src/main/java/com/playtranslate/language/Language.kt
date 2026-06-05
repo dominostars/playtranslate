@@ -32,6 +32,7 @@ enum class SourceLangId(val code: String) {
     RO("ro"),
     CA("ca"),
     KO("ko"),
+    RU("ru"),
     // AR — deferred (requires Tesseract OCR backend; see project_phase5_arabic.md)
     ;
 
@@ -87,7 +88,7 @@ enum class SourceLangId(val code: String) {
 }
 
 /** Broad script family, used for OCR / segmentation / rendering decisions. */
-enum class ScriptFamily { LATIN, CJK_JAPANESE, CJK_CHINESE, CJK_KOREAN, ARABIC, DEVANAGARI }
+enum class ScriptFamily { LATIN, CJK_JAPANESE, CJK_CHINESE, CJK_KOREAN, ARABIC, DEVANAGARI, CYRILLIC }
 
 /** Text direction for rendering source text. */
 enum class TextDirection { LTR, RTL }
@@ -165,7 +166,11 @@ data class SourceLanguageProfile(
     val id: SourceLangId,
     val scriptFamily: ScriptFamily,
     val textDirection: TextDirection,
-    val ocrBackend: OcrBackend,
+    /** The ML Kit OCR recognizer that needs no download — the always-available
+     *  floor. Null for scripts ML Kit can't read (e.g. Cyrillic), where the only
+     *  OCR is a downloadable MNN recognizer (see
+     *  [com.playtranslate.ocr.registry.OcrModelManager.hasMlKitFloor]). */
+    val mlKitFloor: OcrBackend?,
     val hintTextKind: HintTextKind,
     val wordsSeparatedByWhitespace: Boolean,
     val isScriptChar: (Char) -> Boolean,
@@ -174,11 +179,14 @@ data class SourceLanguageProfile(
     val preferTraditional: Boolean = false,
 ) {
     /**
-     * On-device OCR backends in PRIORITY order (highest first); [ocrBackend]
-     * (ML Kit) is the always-present floor. Availability = which backends appear.
-     * PaddleOCR recognizer packs are SHARED by key — ja/zh/en all name
-     * "paddle-rec-cjk", so `OcrModelManager` dedups/reclaims via the shared key
-     * with no special-casing (the detector is bundled in the APK).
+     * On-device OCR backends in PRIORITY order (highest first); [mlKitFloor]
+     * (ML Kit) is the floor when present, and null for scripts ML Kit can't
+     * read (e.g. Cyrillic) — those languages have only their downloadable MNN
+     * recognizer, so a missing/incompatible pack means no OCR at all (gated by
+     * `OcrModelManager`). Availability = which backends appear. PaddleOCR
+     * recognizer packs are SHARED by key — ja/zh/en all name "paddle-rec-cjk",
+     * so `OcrModelManager` dedups/reclaims via the shared key with no
+     * special-casing (the detector is bundled in the APK).
      */
     val ocrBackends: List<OcrBackend>
         get() = buildList {
@@ -188,8 +196,8 @@ data class SourceLanguageProfile(
             // reliably (Vietnamese's dense diacritics; Turkish's dotless ı/İ, ğ, ş).
             // Putting the ML Kit floor first makes it the default; Paddle stays in
             // the list as a secondary, user-selectable option.
-            val mlKitDefault = id == SourceLangId.VI || id == SourceLangId.TR
-            if (mlKitDefault) add(ocrBackend)
+            val mlKitDefault = (id == SourceLangId.VI || id == SourceLangId.TR) && mlKitFloor != null
+            if (mlKitDefault) add(mlKitFloor)  // smart-cast non-null via mlKitDefault
             when (scriptFamily) {
                 ScriptFamily.CJK_JAPANESE, ScriptFamily.CJK_CHINESE ->
                     add(OcrBackend.Paddle("paddle-rec-cjk"))
@@ -198,9 +206,11 @@ data class SourceLanguageProfile(
                 // so it dedups with ja/zh; other Latin scripts use the latin rec.
                 ScriptFamily.LATIN ->
                     add(OcrBackend.Paddle(if (id == SourceLangId.EN) "paddle-rec-cjk" else "paddle-rec-latin"))
-                ScriptFamily.ARABIC, ScriptFamily.DEVANAGARI -> {} // no Paddle pack yet
+                ScriptFamily.CYRILLIC -> add(OcrBackend.Paddle("paddle-rec-cyrillic"))
+                ScriptFamily.ARABIC, ScriptFamily.DEVANAGARI -> {} // packs exist; profiles not wired yet
             }
-            if (!mlKitDefault) add(ocrBackend) // ML Kit floor, last (unless already first)
+            // ML Kit floor last (unless already first, or null for no-floor scripts).
+            if (!mlKitDefault) mlKitFloor?.let { add(it) }
         }
 }
 
@@ -215,7 +225,7 @@ object SourceLanguageProfiles {
             id = SourceLangId.JA,
             scriptFamily = ScriptFamily.CJK_JAPANESE,
             textDirection = TextDirection.LTR,
-            ocrBackend = OcrBackend.MLKitJapanese,
+            mlKitFloor = OcrBackend.MLKitJapanese,
             hintTextKind = HintTextKind.FURIGANA,
             wordsSeparatedByWhitespace = false,
             isScriptChar = { c ->
@@ -231,7 +241,7 @@ object SourceLanguageProfiles {
             id = SourceLangId.EN,
             scriptFamily = ScriptFamily.LATIN,
             textDirection = TextDirection.LTR,
-            ocrBackend = OcrBackend.MLKitLatin,
+            mlKitFloor = OcrBackend.MLKitLatin,
             hintTextKind = HintTextKind.NONE,
             wordsSeparatedByWhitespace = true,
             isScriptChar = { c ->
@@ -245,7 +255,7 @@ object SourceLanguageProfiles {
             id = SourceLangId.ZH,
             scriptFamily = ScriptFamily.CJK_CHINESE,
             textDirection = TextDirection.LTR,
-            ocrBackend = OcrBackend.MLKitChinese,
+            mlKitFloor = OcrBackend.MLKitChinese,
             hintTextKind = HintTextKind.PINYIN,
             wordsSeparatedByWhitespace = false,
             isScriptChar = CJK_CHAR_CHECK,
@@ -255,7 +265,7 @@ object SourceLanguageProfiles {
             id = SourceLangId.ZH_HANT,
             scriptFamily = ScriptFamily.CJK_CHINESE,
             textDirection = TextDirection.LTR,
-            ocrBackend = OcrBackend.MLKitChinese,
+            mlKitFloor = OcrBackend.MLKitChinese,
             hintTextKind = HintTextKind.PINYIN,
             wordsSeparatedByWhitespace = false,
             isScriptChar = CJK_CHAR_CHECK,
@@ -266,7 +276,7 @@ object SourceLanguageProfiles {
             id = SourceLangId.ES,
             scriptFamily = ScriptFamily.LATIN,
             textDirection = TextDirection.LTR,
-            ocrBackend = OcrBackend.MLKitLatin,
+            mlKitFloor = OcrBackend.MLKitLatin,
             hintTextKind = HintTextKind.NONE,
             wordsSeparatedByWhitespace = true,
             isScriptChar = { c ->
@@ -280,7 +290,7 @@ object SourceLanguageProfiles {
             id = SourceLangId.FR,
             scriptFamily = ScriptFamily.LATIN,
             textDirection = TextDirection.LTR,
-            ocrBackend = OcrBackend.MLKitLatin,
+            mlKitFloor = OcrBackend.MLKitLatin,
             hintTextKind = HintTextKind.NONE,
             wordsSeparatedByWhitespace = true,
             isScriptChar = { c ->
@@ -306,7 +316,7 @@ object SourceLanguageProfiles {
             id = SourceLangId.TR,
             scriptFamily = ScriptFamily.LATIN,
             textDirection = TextDirection.LTR,
-            ocrBackend = OcrBackend.MLKitLatin,
+            mlKitFloor = OcrBackend.MLKitLatin,
             hintTextKind = HintTextKind.NONE,
             wordsSeparatedByWhitespace = true,
             isScriptChar = { c ->
@@ -323,7 +333,7 @@ object SourceLanguageProfiles {
             id = SourceLangId.HU,
             scriptFamily = ScriptFamily.LATIN,
             textDirection = TextDirection.LTR,
-            ocrBackend = OcrBackend.MLKitLatin,
+            mlKitFloor = OcrBackend.MLKitLatin,
             hintTextKind = HintTextKind.NONE,
             wordsSeparatedByWhitespace = true,
             isScriptChar = { c ->
@@ -339,7 +349,7 @@ object SourceLanguageProfiles {
             id = SourceLangId.RO,
             scriptFamily = ScriptFamily.LATIN,
             textDirection = TextDirection.LTR,
-            ocrBackend = OcrBackend.MLKitLatin,
+            mlKitFloor = OcrBackend.MLKitLatin,
             hintTextKind = HintTextKind.NONE,
             wordsSeparatedByWhitespace = true,
             isScriptChar = { c ->
@@ -357,7 +367,7 @@ object SourceLanguageProfiles {
             id = SourceLangId.VI,
             scriptFamily = ScriptFamily.LATIN,
             textDirection = TextDirection.LTR,
-            ocrBackend = OcrBackend.MLKitLatin,
+            mlKitFloor = OcrBackend.MLKitLatin,
             hintTextKind = HintTextKind.NONE,
             wordsSeparatedByWhitespace = true,
             isScriptChar = { c ->
@@ -374,7 +384,7 @@ object SourceLanguageProfiles {
             id = SourceLangId.KO,
             scriptFamily = ScriptFamily.CJK_KOREAN,
             textDirection = TextDirection.LTR,
-            ocrBackend = OcrBackend.MLKitKorean,
+            mlKitFloor = OcrBackend.MLKitKorean,
             // Modern Korean game text is Hangul-only; no character-level
             // reading annotations needed. Hanja (rare in games) would use
             // ReadingAttribute from Nori, out of scope for V1.
@@ -394,6 +404,23 @@ object SourceLanguageProfiles {
             },
             translationCode = TranslateLanguage.KOREAN,
         ),
+        SourceLangId.RU to SourceLanguageProfile(
+            id = SourceLangId.RU,
+            scriptFamily = ScriptFamily.CYRILLIC,
+            textDirection = TextDirection.LTR,
+            // No ML Kit Cyrillic recognizer — Russian's only OCR is the arm64-only
+            // paddle-rec-cyrillic pack, so there is no always-present floor. A
+            // missing/incompatible pack means no OCR (see OcrModelManager.hasMlKitFloor).
+            mlKitFloor = null,
+            hintTextKind = HintTextKind.NONE,
+            // Korean DOES use whitespace; Russian likewise (drives OCR line-grouping
+            // cosmetics only — LatinEngine tokenizes via ICU BreakIterator + Snowball).
+            wordsSeparatedByWhitespace = true,
+            // Cyrillic + Cyrillic Supplement basic block; mirrors
+            // OcrManager.isSourceLangChar("ru") (U+0400..U+04FF).
+            isScriptChar = { c -> c in 'Ѐ'..'ӿ' },
+            translationCode = TranslateLanguage.RUSSIAN,
+        ),
     )
 
     /** Standard Latin-script profile: basic ASCII + Latin-1 Supplement. Used
@@ -407,7 +434,7 @@ object SourceLanguageProfiles {
             id = id,
             scriptFamily = ScriptFamily.LATIN,
             textDirection = TextDirection.LTR,
-            ocrBackend = OcrBackend.MLKitLatin,
+            mlKitFloor = OcrBackend.MLKitLatin,
             hintTextKind = HintTextKind.NONE,
             wordsSeparatedByWhitespace = true,
             isScriptChar = { c ->

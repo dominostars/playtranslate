@@ -44,6 +44,21 @@ class OcrBackendsDefaultTest {
         assertEquals("meiki", backends(SourceLangId.JA).first().selectionToken)
     }
 
+    @Test fun russianHasOnlyTheCyrillicPaddleRecognizerAndNoMlKitFloor() {
+        val ru = backends(SourceLangId.RU)
+        assertEquals("Cyrillic Paddle is Russian's only backend", 1, ru.size)
+        assertTrue(ru.any { it is OcrBackend.Paddle && it.recPackKey == "paddle-rec-cyrillic" })
+        assertFalse(
+            "Russian has no ML Kit floor (no ML Kit Cyrillic recognizer)",
+            OcrModelManager.hasMlKitFloor(SourceLangId.RU),
+        )
+    }
+
+    @Test fun flooredLanguagesReportAnMlKitFloor() {
+        assertTrue(OcrModelManager.hasMlKitFloor(SourceLangId.JA))
+        assertTrue(OcrModelManager.hasMlKitFloor(SourceLangId.EN))
+    }
+
     // ── Native-runtime (arm64/MNN) gate ──────────────────────────────────
     // The app ships an armeabi-v7a slice (installs on 32-bit) but :mnn is
     // arm64-only, so the MNN-backed OCR engines must be runtime-incompatible on

@@ -331,6 +331,12 @@
          the offline translation fallback is unavailable. -->
     <string name="lang_setup_offline_model_unavailable">Offline translation isn\'t available on this device right now. Dictionary lookups and online translation still work.</string>
 
+    <!-- Shown in a source-language row that can't OCR on this device: a script
+         with no ML Kit recognizer (e.g. Cyrillic) whose downloadable recognizer
+         needs a 64-bit CPU. First is the row subtitle, second the tap toast. -->
+    <string name="lang_setup_requires_64bit">Requires a 64-bit device</string>
+    <string name="lang_setup_requires_64bit_msg">%1$s needs a 64-bit device to recognize text, which this device isn\'t.</string>
+
     <!-- Button to delete an installed language pack from disk. -->
     <string name="lang_delete_pack">Delete language pack</string>
 

@@ -42,10 +42,10 @@ object OcrModelManager {
     /** PURE: desired packs = ⋃ chosen backend's packKeys over installed languages. */
     fun plan(
         installedLangs: Set<SourceLangId>,
-        selectedBackend: (SourceLangId) -> OcrBackend,
+        selectedBackend: (SourceLangId) -> OcrBackend?,
         installedPacks: Set<String>,
     ): Plan {
-        val required = installedLangs.flatMapTo(HashSet()) { selectedBackend(it).packKeys }
+        val required = installedLangs.flatMapTo(HashSet()) { selectedBackend(it)?.packKeys.orEmpty() }
         return Plan(required, required - installedPacks, installedPacks - required)
     }
 
@@ -113,12 +113,41 @@ object OcrModelManager {
         SourceLanguageProfiles[id].ocrBackends.filter { isBackendAvailable(ctx, it) }
 
     /** Chosen backend for [id]: the stored selection if still available + deliverable,
-     *  else the ML Kit floor (so existing languages with no/stale choice stay on ML Kit). */
-    fun selectedBackend(ctx: Context, id: SourceLangId): OcrBackend {
+     *  else the ML Kit floor (so existing languages with no/stale choice stay on ML Kit).
+     *  NULL for a no-floor language (Cyrillic) whose recognizer isn't deliverable on
+     *  this device — there is simply no backend to run. */
+    fun selectedBackend(ctx: Context, id: SourceLangId): OcrBackend? {
         val profile = SourceLanguageProfiles[id]
         val token = Prefs(ctx).ocrBackendToken(id)
-        return availableBackends(ctx, id).firstOrNull { it.selectionToken == token } ?: profile.ocrBackend
+        return availableBackends(ctx, id).firstOrNull { it.selectionToken == token } ?: profile.mlKitFloor
     }
+
+    /** True iff [id] has an ML Kit OCR recognizer that needs no download — the
+     *  always-available floor. False for scripts ML Kit can't read (Cyrillic),
+     *  whose only OCR is a downloadable MNN pack. PURE (profile-only). */
+    fun hasMlKitFloor(id: SourceLangId): Boolean = SourceLanguageProfiles[id].mlKitFloor != null
+
+    /** True iff [id]'s mandatory OCR is satisfied: it has an ML Kit floor, or —
+     *  for a no-floor language — its recognizer pack(s) are installed (SHA-checked).
+     *  A no-floor language with the pack absent is "not provisioned" for OCR. */
+    fun isRequiredOcrInstalled(ctx: Context, id: SourceLangId): Boolean {
+        if (hasMlKitFloor(id)) return true
+        val packs = SourceLanguageProfiles[id].ocrBackends.flatMap { it.packKeys }
+        return packs.isNotEmpty() && packs.all { OcrPackModelHelper(it).isInstalled(ctx) }
+    }
+
+    /** Concept-A completeness: [id]'s dictionary pack is present AND its required
+     *  OCR is available. Drives the language-selection trash-can and the blocking
+     *  OCR download at selection — a no-floor language (Russian) without its
+     *  recognizer pack reads as "not installed" (no trash; re-select to download). */
+    fun isFullyInstalled(ctx: Context, id: SourceLangId): Boolean =
+        LanguagePackStore.isInstalled(ctx, id) && isRequiredOcrInstalled(ctx, id)
+
+    /** True iff [id] cannot OCR on THIS device: no ML Kit floor AND no
+     *  runtime-compatible recognizer (e.g. Russian on a 32-bit device, where the
+     *  arm64-only Cyrillic MNN pack can't run). Drives the disabled source row. */
+    fun isOcrUnavailableOnDevice(ctx: Context, id: SourceLangId): Boolean =
+        !hasMlKitFloor(id) && availableBackends(ctx, id).isEmpty()
 
     private fun installedPacks(ctx: Context): Set<String> =
         ALL_PACK_KEYS.filterTo(HashSet()) { helper(it).isInstalled(ctx) }
@@ -194,7 +223,7 @@ object OcrModelManager {
         onBytes: (received: Long, total: Long) -> Unit,
     ) {
         setDefaultBackendIfUnset(ctx, id)
-        val needed = selectedBackend(ctx, id).packKeys.filter { !OcrPackModelHelper(it).isInstalled(ctx) }
+        val needed = selectedBackend(ctx, id)?.packKeys?.filter { !OcrPackModelHelper(it).isInstalled(ctx) }.orEmpty()
         for (key in needed) {
             downloadPack(ctx, key) { p ->
                 if (p is OnDeviceLlmDownloader.Progress.Downloading) onBytes(p.received, p.total)

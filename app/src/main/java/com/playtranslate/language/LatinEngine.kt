@@ -18,14 +18,16 @@ import org.tartarus.snowball.ext.ItalianStemmer
 import org.tartarus.snowball.ext.NorwegianStemmer
 import org.tartarus.snowball.ext.PortugueseStemmer
 import org.tartarus.snowball.ext.RomanianStemmer
+import org.tartarus.snowball.ext.RussianStemmer
 import org.tartarus.snowball.ext.SpanishStemmer
 import org.tartarus.snowball.ext.SwedishStemmer
 import org.tartarus.snowball.ext.TurkishStemmer
 import java.util.Locale
 
 /**
- * Source-language engine for Latin-script languages. Combines three
- * off-the-shelf parts:
+ * Source-language engine for whitespace-segmented languages with a Snowball
+ * stemmer and a Wiktionary pack — the Latin set plus Cyrillic (Russian). The
+ * machinery keys off [langId], not script. Combines three off-the-shelf parts:
  *
  *  - **Tokenization**: ICU [BreakIterator] with the language's [Locale].
  *  - **Stemming**: Lucene's Snowball stemmer for the language. Nullable —
@@ -139,6 +141,7 @@ class LatinEngine(
             SourceLangId.HU -> HungarianStemmer()
             SourceLangId.RO -> RomanianStemmer()
             SourceLangId.CA -> CatalanStemmer()
+            SourceLangId.RU -> RussianStemmer()
             // Vietnamese and Indonesian have no Snowball stemmer. Vietnamese
             // is fully isolating (no inflection to strip). Indonesian has
             // prefix morphology (ber-, me-, di-, ter-) that Snowball doesn't

@@ -137,11 +137,12 @@ object SourceLanguageEngines {
         SourceLangId.ZH -> ChineseEngine(app, SourceLangId.ZH)
         SourceLangId.ZH_HANT -> ChineseEngine(app, SourceLangId.ZH_HANT)
         SourceLangId.KO -> KoreanEngine(app)
-        // Everything else is Latin-script via LatinEngine.
+        // Latin set + Russian (Cyrillic) share the whitespace/Snowball/Wiktionary
+        // engine — it keys off the language id, not the script.
         SourceLangId.EN, SourceLangId.ES, SourceLangId.FR, SourceLangId.DE,
         SourceLangId.IT, SourceLangId.PT, SourceLangId.NL, SourceLangId.TR,
         SourceLangId.VI, SourceLangId.ID, SourceLangId.SV, SourceLangId.DA,
         SourceLangId.NO, SourceLangId.FI, SourceLangId.HU, SourceLangId.RO,
-        SourceLangId.CA -> LatinEngine(app, id)
+        SourceLangId.CA, SourceLangId.RU -> LatinEngine(app, id)
     }
 }
