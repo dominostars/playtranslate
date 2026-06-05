@@ -68,7 +68,12 @@ class SettingsBottomSheet : DialogFragment() {
     private val requestAnkiPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) rootVm.refresh()
+        if (granted) {
+            // Unlock the cell, then push the detail page as if the now-unlocked
+            // cell were tapped. See [openAnkiSettingsPage].
+            rootVm.refresh()
+            openAnkiSettingsPage()
+        }
     }
 
     /** Voice picker now returns the choice via setResult rather than
@@ -290,9 +295,7 @@ class SettingsBottomSheet : DialogFragment() {
                     this@SettingsBottomSheet.requestMediaProjectionControls()
                 }
                 override fun openAnkiSettings() {
-                    startActivity(
-                        android.content.Intent(requireContext(), AnkiSettingsActivity::class.java)
-                    )
+                    openAnkiSettingsPage()
                 }
             }
         )
@@ -313,6 +316,18 @@ class SettingsBottomSheet : DialogFragment() {
                 onSourceLangChanged?.invoke()
             }
         }
+    }
+
+    /** Push the Anki detail page (deck / card-type / field-mapping). Shared by
+     *  the [SettingsRenderer.Callbacks.openAnkiSettings] cell tap and the
+     *  post-grant path in [requestAnkiPermission], so granting access from the
+     *  Settings cell lands the user straight in setup — exactly as if they'd
+     *  tapped the now-unlocked cell. The word-review and translation-result
+     *  grant flows use their own launchers and are unaffected. */
+    private fun openAnkiSettingsPage() {
+        startActivity(
+            android.content.Intent(requireContext(), AnkiSettingsActivity::class.java)
+        )
     }
 
     /** Kick off [com.playtranslate.language.PackUpgradeOrchestrator] for the
