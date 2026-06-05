@@ -186,6 +186,27 @@
 
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Download offline models — Concept B. Same styling/position as the
+                 Update card; revealed by SettingsRenderer when the active pair
+                 lacks offline translation (a "go offline" nudge — the app still
+                 works online). Starts gone; the readiness check is async. -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardOfflineModels"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:visibility="gone"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <include layout="@layout/settings_row_value_multiline"
+                    android:id="@+id/rowOfflineModels" />
+
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- ══════════════════════════════════════════════════════ -->
             <!-- TOP SECTION — one card containing:                    -->
             <!--   • Power cell (Allow screen capture / status)        -->

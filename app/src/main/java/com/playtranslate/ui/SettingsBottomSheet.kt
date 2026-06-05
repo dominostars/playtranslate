@@ -57,6 +57,11 @@ class SettingsBottomSheet : DialogFragment() {
     private var renderer: SettingsRenderer? = null
     private val rootVm: RootSettingsViewModel by viewModels()
 
+    /** In-flight "Download offline models" priming job (Concept B). Held so the
+     *  OverlayProgress dismiss can cancel it; on the Activity scope so a Settings
+     *  dismiss doesn't kill the download mid-flight (mirrors startPackUpgrade). */
+    private var offlinePrimeJob: kotlinx.coroutines.Job? = null
+
     /** The live MediaProjection session this sheet holds a teardown listener
      *  on while resumed (kept so onPause unregisters from the same one).
      *  MediaProjection "active" is held consent, not a pref our observers
@@ -286,6 +291,9 @@ class SettingsBottomSheet : DialogFragment() {
                 ) {
                     this@SettingsBottomSheet.startPackUpgrade(stalePacks)
                 }
+                override fun onDownloadOfflineModelsTapped() {
+                    this@SettingsBottomSheet.startOfflineModelPrime()
+                }
                 override fun showAccessibilityRequiredAlert(
                     requirement: AccessibilityRequirement
                 ) {
@@ -353,6 +361,54 @@ class SettingsBottomSheet : DialogFragment() {
                     runCatching { renderer?.refreshLanguageSection() }
                 }
             }
+    }
+
+    /** Download the active pair's offline assets (the "Download offline models"
+     *  cell tap) behind an OverlayProgress, then refresh the Language section so
+     *  the warning cell hides once translation is ready. Mirrors [startPackUpgrade]'s
+     *  Activity-scope + decorView-dialog discipline, and reuses the idempotent
+     *  [com.playtranslate.language.primeActivePair] so OCR + translation
+     *  provisioning stays in one place. OCR stays best-effort here (default
+     *  ocrRequired=false) — the active source's recognizer is already provisioned
+     *  by selection, so in practice this fetches the translation models. */
+    private fun startOfflineModelPrime() {
+        val activity = activity as? androidx.appcompat.app.AppCompatActivity ?: return
+        val prefs = Prefs(activity.applicationContext)
+        val dialog = OverlayProgress.Builder(activity)
+            .setTitle(activity.getString(R.string.lang_section_offline_models_title))
+            .setMessage(activity.getString(R.string.pack_upgrade_priming_models))
+            .setOnDismiss { offlinePrimeJob?.cancel() }
+            .show()
+        offlinePrimeJob = activity.lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    com.playtranslate.language.primeActivePair(
+                        activity.applicationContext,
+                        prefs.sourceLangId,
+                        prefs.targetLang,
+                        onWarmup = { i, n, recv, total ->
+                            activity.runOnUiThread {
+                                dialog.showBergamotWarmupProgress(activity, i, n, recv, total)
+                            }
+                        },
+                        onOcr = { recv, total ->
+                            activity.runOnUiThread {
+                                dialog.showOcrDownloadProgress(activity, recv, total)
+                            }
+                        },
+                    )
+                }
+            } catch (_: kotlin.coroutines.cancellation.CancellationException) {
+                // User cancelled via the dialog — priming is idempotent; partial
+                // downloads resume on the next attempt, nothing to roll back.
+            } catch (e: Exception) {
+                android.util.Log.w("SettingsBottomSheet", "offline model prime failed (non-fatal)", e)
+            }
+            activity.runOnUiThread { dialog.dismiss() }
+            if (isAdded && view != null) {
+                runCatching { renderer?.refreshLanguageSection() }
+            }
+        }
     }
 
     // ── Accessibility-required alert ─────────────────────────────────────

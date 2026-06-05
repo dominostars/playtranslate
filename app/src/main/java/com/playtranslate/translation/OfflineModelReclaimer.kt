@@ -141,6 +141,28 @@ object OfflineModelReclaimer {
         }
     }
 
+    /**
+     * Concept-B readiness: is offline TRANSLATION available for the active pair
+     * ([sourceId] → [targetLang]) without a network? True when source == target,
+     * when Bergamot's required direction(s) are installed (English-pivot aware),
+     * or when every ML Kit language model the pair needs ({source, target, en})
+     * is already downloaded. Drives the Settings "Download offline models" cell;
+     * the app still works ONLINE when this is false. Suspend — ML Kit's
+     * downloaded-model state lives behind a GMS round-trip.
+     */
+    suspend fun isOfflineTranslationReady(
+        ctx: Context,
+        sourceId: SourceLangId,
+        targetLang: String,
+    ): Boolean {
+        val src = SourceLanguageProfiles[sourceId].translationCode
+        if (src == targetLang) return true
+        if (BergamotModelManager(ctx).isInstalled(src, targetLang)) return true
+        val needed = setOf(src, targetLang, TranslateLanguage.ENGLISH)
+        val downloaded = downloadedMlKitCodes()
+        return needed.all { it in downloaded }
+    }
+
     private suspend fun downloadedMlKitCodes(): Set<String> =
         try {
             suspendCancellableCoroutine<Set<TranslateRemoteModel>> { cont ->

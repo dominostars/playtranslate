@@ -433,6 +433,10 @@
          section of Settings, shown when staleInstalledPacks() is
          non-empty. -->
     <string name="lang_section_update_packs_title">Update language packs</string>
+    <!-- "Download offline models" warning cell (Concept B): shown when the active
+         pair has no offline translation downloaded. %1$s = source language, %2$s = target. -->
+    <string name="lang_section_offline_models_title">Download offline models</string>
+    <string name="lang_section_offline_models_subtitle">Offline translation for %1$s → %2$s isn\'t downloaded. The app still works online.</string>
 
     <!-- Empty-state when MediaProjection reports no eligible displays. -->
     <string name="settings_no_displays_found">No displays found</string>

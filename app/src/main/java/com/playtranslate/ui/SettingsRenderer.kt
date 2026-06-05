@@ -187,6 +187,12 @@ class SettingsRenderer(
         fun onUpdateLanguagePacksTapped(
             stalePacks: List<com.playtranslate.language.StalePack>
         )
+
+        /** Tap on the "Download offline models" row. Implementer runs
+         *  [com.playtranslate.language.primeActivePair] for the active pair on the
+         *  Activity's lifecycleScope behind an OverlayProgress, then calls
+         *  [SettingsRenderer.refreshLanguageSection] so the cell hides once ready. */
+        fun onDownloadOfflineModelsTapped()
     }
 
     // ── View references for refresh ─────────────────────────────────────
@@ -195,6 +201,13 @@ class SettingsRenderer(
     private val rowTargetLang: View = root.findViewById(R.id.rowTargetLang)
     private val cardUpdateLanguagePacks: MaterialCardView = root.findViewById(R.id.cardUpdateLanguagePacks)
     private val rowUpdateLanguagePacks: View = root.findViewById(R.id.rowUpdateLanguagePacks)
+    private val cardOfflineModels: MaterialCardView = root.findViewById(R.id.cardOfflineModels)
+    private val rowOfflineModels: View = root.findViewById(R.id.rowOfflineModels)
+
+    /** In-flight offline-translation readiness check (Concept B). Cancelled +
+     *  restarted on each setupLanguageSection so a refresh can't race a stale
+     *  result onto the card. */
+    private var offlineReadinessJob: Job? = null
 
     private val rowOverlayIcon: View = root.findViewById(R.id.rowOverlayIcon)
     private val overlayIconPreviewSlot: FrameLayout = rowOverlayIcon.findViewById(R.id.overlayIconPreviewSlot)
@@ -321,19 +334,55 @@ class SettingsRenderer(
             rowUpdateLanguagePacks.setOnClickListener {
                 callbacks.onUpdateLanguagePacksTapped(stalePacks)
             }
-            applyUpdatePacksWarningTint()
+            applyWarningTint(cardUpdateLanguagePacks)
+        }
+
+        // ── Download offline models (Concept B) ──────────────────────────────
+        // The readiness check is a suspend GMS round-trip (unlike the synchronous
+        // stale-pack scan), so the card starts hidden and reveals only if the
+        // active pair lacks offline translation. Cancel any prior in-flight check
+        // so a refresh can't race an earlier result onto the card.
+        offlineReadinessJob?.cancel()
+        cardOfflineModels.isGone = true
+        if (activity != null) {
+            val sourceId = prefs.sourceLangId
+            val targetLang = prefs.targetLang
+            offlineReadinessJob = lifecycleScope.launch {
+                val ready = withContext(Dispatchers.IO) {
+                    com.playtranslate.translation.OfflineModelReclaimer
+                        .isOfflineTranslationReady(ctx, sourceId, targetLang)
+                }
+                if (!ready) {
+                    val targetName = java.util.Locale.forLanguageTag(targetLang)
+                        .getDisplayLanguage(java.util.Locale.getDefault())
+                        .replaceFirstChar { it.uppercase(java.util.Locale.getDefault()) }
+                    cardOfflineModels.isVisible = true
+                    rowOfflineModels.findViewById<TextView>(R.id.tvRowTitle).text =
+                        ctx.getString(R.string.lang_section_offline_models_title)
+                    rowOfflineModels.findViewById<TextView>(R.id.tvRowSubtitle).text =
+                        ctx.getString(
+                            R.string.lang_section_offline_models_subtitle,
+                            sourceId.displayName(),
+                            targetName,
+                        )
+                    rowOfflineModels.setOnClickListener {
+                        callbacks.onDownloadOfflineModelsTapped()
+                    }
+                    applyWarningTint(cardOfflineModels)
+                }
+            }
         }
     }
 
-    /** Tint the Update language packs card with the warning attention color
-     *  — blend recipe `blendColors(attention, baseCard, 0.20f)` with a full-
-     *  strength stroke. Conveys "this pack is degraded; tap to fix" with a
-     *  consistent visual weight for recoverable-state warnings. */
-    private fun applyUpdatePacksWarningTint() {
+    /** Tint a Language-section warning card (Update packs / Download offline
+     *  models) with the attention color — blend `blendColors(warning, baseCard,
+     *  0.20f)` with a full-strength stroke. One recipe so both recoverable-state
+     *  warnings carry the same visual weight. */
+    private fun applyWarningTint(card: MaterialCardView) {
         val baseCard = ctx.themeColor(R.attr.ptCard)
         val warning = ctx.themeColor(R.attr.ptWarning)
-        cardUpdateLanguagePacks.setCardBackgroundColor(blendColors(warning, baseCard, 0.20f))
-        cardUpdateLanguagePacks.strokeColor = warning
+        card.setCardBackgroundColor(blendColors(warning, baseCard, 0.20f))
+        card.strokeColor = warning
     }
 
     /** Public shim for the Settings cell callback to refresh the Language
