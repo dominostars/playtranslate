@@ -1,0 +1,10 @@
+# Python deps for the language-pack build scripts (build_latin_dict.py,
+# build_target_pack.py, build_jmdict.py, etc.).
+#
+#   python3 -m venv .venv && . .venv/bin/activate && pip install -r scripts/requirements.txt
+#
+# build_latin_dict.py needs wordfreq (frequency cut + scoring) and
+# snowballstemmer (stem-indexed headword rows, which must match Lucene's
+# org.tartarus.snowball.ext.*Stemmer used by LatinEngine at runtime).
+wordfreq
+snowballstemmer

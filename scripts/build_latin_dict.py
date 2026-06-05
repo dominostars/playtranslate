@@ -220,6 +220,7 @@ SNOWBALL_ALGO_FOR_LANG: dict[str, Optional[str]] = {
     "hu": "hungarian",
     "ro": "romanian",
     "ca": "catalan",
+    "ru": "russian",
     "vi": None,
     "id": None,
     "ko": None,
