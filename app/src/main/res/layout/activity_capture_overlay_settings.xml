@@ -268,6 +268,19 @@
                         android:layout_marginStart="@dimen/pt_row_h_padding"
                         android:background="?attr/ptDivider" />
 
+                    <!-- Touches refresh translation toggle (always shown).
+                         Title/subtitle + checked state wired in
+                         CaptureOverlaySettingsActivity.setupAutoTranslateSection. -->
+                    <include layout="@layout/settings_row_switch"
+                        android:id="@+id/rowTouchesRefresh" />
+
+                    <View
+                        android:id="@+id/dividerTouchesRefresh"
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="@dimen/pt_row_h_padding"
+                        android:background="?attr/ptDivider" />
+
                     <!-- Capture interval (value-row style) -->
                     <LinearLayout
                         android:id="@+id/rowCaptureInterval"

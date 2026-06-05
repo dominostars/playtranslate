@@ -3,6 +3,7 @@ package com.playtranslate.capture
 import android.view.Display
 import com.playtranslate.CaptureService
 import com.playtranslate.OverlayUiController
+import com.playtranslate.Prefs
 import com.playtranslate.overlay.OverlayHost
 
 /**
@@ -48,7 +49,15 @@ object MediaProjectionCaptureBackend : CaptureBackend {
     override val fallbackDisplay: Int = Display.DEFAULT_DISPLAY
 
     override fun startInputMonitoring(displayId: Int, onGameInput: () -> Unit) {
-        overlayHost?.addTouchSentinel(displayId, onGameInput)
+        // Touch is this backend's only refresh trigger (no gamepad path), so
+        // the "Touches refresh translation" gate wraps the sentinel callback
+        // itself. Read at touch-time; defaults to refreshing if the service is
+        // somehow gone (preserving the prior always-refresh behavior).
+        overlayHost?.addTouchSentinel(displayId) {
+            val refresh = CaptureService.instance
+                ?.let { Prefs(it).touchesRefreshTranslation } ?: true
+            if (refresh) onGameInput()
+        }
     }
 
     override fun stopInputMonitoring(displayId: Int) {

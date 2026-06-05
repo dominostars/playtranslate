@@ -1654,6 +1654,9 @@
          selected — discloses that the toggle is overridden. -->
     <string name="settings_hide_overlays_ignored_multi_display">Ignored when more than one display is selected — overlays render on each.</string>
 
+    <!-- Row title for the "touching screen refreshes translation" toggle. -->
+    <string name="settings_touches_refresh_title">Touching screen refreshes translation</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
          ═══════════════════════════════════════════════════════════════ -->

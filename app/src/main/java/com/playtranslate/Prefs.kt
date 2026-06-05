@@ -573,6 +573,15 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("hide_game_overlays", false)
         set(v) = sp.edit { putBoolean("hide_game_overlays", v) }
 
+    /** When on (the default), touching the game screen during auto translation
+     *  dismisses the current overlay and re-captures. Off makes screen touches
+     *  a no-op for refresh; the detection loop and gamepad input still refresh.
+     *  Read at touch-time (see the touch-sentinel callbacks), so toggling takes
+     *  effect immediately without restarting live mode. */
+    var touchesRefreshTranslation: Boolean
+        get() = sp.getBoolean("touches_refresh_translation", true)
+        set(v) = sp.edit { putBoolean("touches_refresh_translation", v) }
+
     /**
      * One-shot migration of the legacy `auto_translation_mode` ordinal pref
      * (used on the shipped `main` branch, where 0 = OVERLAYS and

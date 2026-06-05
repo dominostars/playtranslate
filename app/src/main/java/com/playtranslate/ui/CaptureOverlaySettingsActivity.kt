@@ -84,6 +84,8 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     private lateinit var overlayModeToggleContainer: FrameLayout
     private lateinit var rowHideOverlays: View
     private lateinit var switchHideOverlays: MaterialSwitch
+    private lateinit var rowTouchesRefresh: View
+    private lateinit var switchTouchesRefresh: MaterialSwitch
 
     // ── Capture-display refs + state ──────────────────────────────────────
     private lateinit var captureDisplaySection: View
@@ -106,6 +108,8 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         overlayModeToggleContainer = findViewById(R.id.overlayModeToggleContainer)
         rowHideOverlays = findViewById(R.id.rowHideOverlays)
         switchHideOverlays = rowHideOverlays.findViewById(R.id.switchRowToggle)
+        rowTouchesRefresh = findViewById(R.id.rowTouchesRefresh)
+        switchTouchesRefresh = rowTouchesRefresh.findViewById(R.id.switchRowToggle)
         captureDisplaySection = findViewById(R.id.captureDisplaySection)
         llDisplayOptions = findViewById(R.id.llDisplayOptions)
 
@@ -232,6 +236,18 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
             }
             rowHideOverlays.setOnClickListener { switchHideOverlays.toggle() }
         }
+
+        // -- Touches refresh translation toggle (always shown) --
+        // The capture backends' touch sentinels read this pref at touch-time,
+        // so flipping it takes effect immediately — no live-mode restart, just
+        // persist (unlike the overlay-mode / hide-overlays toggles above).
+        rowTouchesRefresh.findViewById<TextView>(R.id.tvRowTitle).text =
+            getString(R.string.settings_touches_refresh_title)
+        switchTouchesRefresh.isChecked = prefs.touchesRefreshTranslation
+        switchTouchesRefresh.setOnCheckedChangeListener { _, checked ->
+            prefs.touchesRefreshTranslation = checked
+        }
+        rowTouchesRefresh.setOnClickListener { switchTouchesRefresh.toggle() }
 
         setupCaptureInterval()
     }

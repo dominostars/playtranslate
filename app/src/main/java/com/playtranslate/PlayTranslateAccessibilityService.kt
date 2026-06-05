@@ -444,7 +444,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             debugHandler.postDelayed(touchTimeoutRunnable, TOUCH_HOLD_TIMEOUT_MS)
             // Display-bound dispatch — only the touched display's overlay is
             // invalidated; other displays keep their own scene detection.
-            fireOnGameInputForDisplay(displayId)
+            // Gated by "Touches refresh translation": when off, a screen touch
+            // still updates touch/hotkey state above but no longer dismisses-
+            // and-recaptures. Gamepad input is unaffected — it routes through
+            // fireOnGameInput (not ForDisplay), not this sentinel.
+            if (Prefs(this).touchesRefreshTranslation) {
+                fireOnGameInputForDisplay(displayId)
+            }
         }
     }
 
