@@ -121,7 +121,7 @@ internal class MnnChatImpl private constructor(
         }
     }
 
-    override suspend fun loadModel(pathToModelDir: String) =
+    override suspend fun loadModel(pathToModelDir: String, useMmap: Boolean) =
         withContext(mnnDispatcher) {
             check(_state.value is InferenceEngine.State.Initialized) {
                 "Cannot load model in ${_state.value.javaClass.simpleName}!"
@@ -144,8 +144,9 @@ internal class MnnChatImpl private constructor(
                 // Per-model mmap weight-cache dir ("" = mmap off; see
                 // resolveMmapDir + mnn_chat.cpp prepare()). cache=COLD means the
                 // first-ever load (MNN rearranges + writes the cache); WARM
-                // reuses it.
-                val mmapDir = resolveMmapDir(pathToModelDir)
+                // reuses it. mmap is opt-in per model (the "start anyway" path),
+                // so the default load stays on the faster anonymous-weights path.
+                val mmapDir = if (useMmap) resolveMmapDir(pathToModelDir) else ""
                 val cacheState = when {
                     mmapDir.isEmpty() -> "OFF"
                     File(mmapDir).listFiles { f -> f.name.endsWith("sync.static") }?.isNotEmpty() == true -> "WARM"

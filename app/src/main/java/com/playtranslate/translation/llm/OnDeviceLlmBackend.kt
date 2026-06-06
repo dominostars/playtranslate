@@ -210,12 +210,12 @@ abstract class OnDeviceLlmBackend(
             // and download progress UI carry the state distinction; this line
             // is purely informational about resource cost.
             //
-            // availMemFloorBytes is what MnnTranslator.preflightMemory checks
-            // per-translation. totalMemFloorBytes is the device-class gate;
-            // it bakes in headroom for the OS and other apps, so the user-facing
-            // status line shows the per-call number (which is what they'd see
-            // if a translation transiently fails). Devices below
-            // totalMemFloorBytes never see this string — they get the
+            // availMemFloorBytes is the per-call resident floor: the enable-time
+            // gate warns below it, and MnnTranslator picks mmap vs. anonymous
+            // weights against it at load time. totalMemFloorBytes is the
+            // device-class gate; it bakes in headroom for the OS and other apps,
+            // so the user-facing status line shows the per-call number. Devices
+            // below totalMemFloorBytes never see this string — they get the
             // hardware-incompatibility reason from hardwareIncompatibilityReason().
             val memStr = availMemFloorBytes.toGbDisplay()
             return when {

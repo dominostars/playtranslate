@@ -8,7 +8,6 @@ import com.playtranslate.mnn.MnnChat
 import com.playtranslate.mnn.isModelLoaded
 import com.playtranslate.translation.gemma.GemmaE2BChatTemplate
 import com.playtranslate.translation.hymt.HyMtChatTemplate
-import com.playtranslate.translation.llm.OnDeviceLlmTransientException
 import com.playtranslate.translation.llm.PromptStyle
 import com.playtranslate.translation.qwen.QwenChatTemplate
 import kotlinx.coroutines.flow.firstOrNull
@@ -223,12 +222,12 @@ class MnnTranslator private constructor(private val context: Context) {
     private suspend fun ensureLoaded(modelPath: String, availMemFloorBytes: Long): Boolean {
         if (loadedModelPath == modelPath && engine.state.value.isModelLoaded) return false
 
-        // **Swap-cleanup runs BEFORE preflight.** If a different model is
-        // loaded, free its working set first so the preflight memory check
-        // sees the post-unload state. Without this ordering, swapping from
-        // a low-floor backend (Qwen-MNN ~1.5 GB) to a high-floor one
-        // (E2B ~3.5 GB) on a tight 6 GB device would trip the floor check
-        // even though there'd be plenty of memory after the prior unload.
+        // **Swap-cleanup runs BEFORE the availMem read.** If a different model
+        // is loaded, free its working set first so the mmap-vs-anon decision
+        // sees the post-unload state. Without this ordering, swapping from a
+        // low-floor backend (Qwen-MNN ~1.5 GB) to a high-floor one (E2B ~3.5 GB)
+        // on a tight 6 GB device would needlessly pick mmap even though there'd
+        // be plenty of memory after the prior unload.
         if (engine.state.value.isModelLoaded && loadedModelPath != modelPath) {
             Log.i(TAG, "Swap-cleanup: unloading $loadedModelPath before loading $modelPath")
             runCatching { engine.cleanUp() }
@@ -237,7 +236,15 @@ class MnnTranslator private constructor(private val context: Context) {
             systemPair = null
         }
 
-        preflightMemory(availMemFloorBytes)
+        // Decide mmap-vs-anonymous at load ("initialization") time from live
+        // availMem. Below the model's resident floor → load weights as
+        // reclaimable, file-backed mmap pages: slower (~16%), but the kernel can
+        // page them out under pressure instead of OOM-killing us, and the load
+        // proceeds where the anon path would have. Above it → the faster anon
+        // path. We no longer skip-and-fall-through on low memory — we adapt.
+        // (availMem under-counts reclaimable cached-process RAM, so this errs
+        // toward mmap on busy high-RAM devices: a safe, conservative default.)
+        val useMmap = lowOnMemory(availMemFloorBytes)
 
         // Error recovery — distinct from swap-cleanup. State::Error from a
         // prior translate() (e.g. JNI returned non-zero) must be cleared via
@@ -260,22 +267,21 @@ class MnnTranslator private constructor(private val context: Context) {
                 throw IllegalStateException("MNN engine failed to initialize: ${s.exception.message}", s.exception)
             }
         }
-        engine.loadModel(modelPath)
+        engine.loadModel(modelPath, useMmap)
         loadedModelPath = modelPath
         systemPair = null
         return true
     }
 
-    private fun preflightMemory(availMemFloorBytes: Long) {
+    /** Live availMem < the model's resident floor — the signal to load in mmap
+     *  (reclaimable) mode rather than anonymous. Read at load time, so the
+     *  loaded instance keeps whichever mode the conditions chose until it is
+     *  reloaded. */
+    private fun lowOnMemory(availMemFloorBytes: Long): Boolean {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val mi = ActivityManager.MemoryInfo()
         am.getMemoryInfo(mi)
-        if (mi.availMem < availMemFloorBytes) {
-            throw OnDeviceLlmTransientException(
-                "Low memory (${mi.availMem / 1_000_000} MB available, need ${availMemFloorBytes / 1_000_000} MB); " +
-                    "falling through to next backend"
-            )
-        }
+        return mi.availMem < availMemFloorBytes
     }
 
     companion object {

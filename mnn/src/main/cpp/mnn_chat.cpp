@@ -122,18 +122,24 @@ Java_com_playtranslate_mnn_internal_MnnChatImpl_prepare(
     // use_template are read per-call and tolerate either order, but pinning
     // all three pre-load keeps the contract uniform.
     // When an mmap dir is supplied, add `use_mmap` + `tmp_path` so MNN maps the
-    // (rearranged, cached) weights from disk as reclaimable file-backed pages
-    // instead of holding them in anonymous RAM — the kernel can then page them
-    // out under pressure instead of OOM-killing us. `tmp_path` MUST be a
-    // per-model dir: MNN's weight-cache prefix is keyed only by
-    // forward/precision/memory/power, NOT by model (the modelUUID line is
-    // commented out in CPUBackend.cpp), so a shared dir would serve one model's
-    // rearranged weights to another. `use_cached_mmap` defaults true (warm
-    // reuse across loads); `kvcache_mmap` stays false (KV cache in RAM).
+    // (rearranged) weights from disk as reclaimable file-backed pages instead of
+    // holding them in anonymous RAM — the kernel can then page them out under
+    // pressure instead of OOM-killing us.
+    //
+    // [EXPERIMENT] Testing whether the warm-restore SIGSEGV in
+    // createExecutionWithExternal is a chunk-boundary bug. The cache crash
+    // reproduced with the default `mmap_size` of 1024 (1 GiB), which splits the
+    // ~3 GB model across 3 `.static` chunks; SEGV_ACCERR (read past a mapping)
+    // is consistent with the warm remap miscomputing an offset across a chunk
+    // boundary. Force one big chunk (`mmap_size: 4096` → ~4 GiB) so the whole
+    // model is a single mapping, and re-enable the cache to exercise the warm
+    // path. If warm loads stop crashing, cached mmap is viable (cheap warm
+    // reloads + reclaimable). If they still crash, revert to use_cached_mmap=false.
+    // `kvcache_mmap` stays false (KV cache in RAM).
     std::string runtime_config =
         R"({"reuse_kv": true, "use_template": false, "sampler_type": "greedy")";
     if (!mmap_dir.empty()) {
-        runtime_config += R"(, "use_mmap": true, "tmp_path": ")" + jsonEscapeString(mmap_dir) + R"(")";
+        runtime_config += R"(, "use_mmap": true, "use_cached_mmap": true, "mmap_size": 4096, "tmp_path": ")" + jsonEscapeString(mmap_dir) + R"(")";
     }
     runtime_config += "}";
     if (!g_llm->set_config(runtime_config)) {

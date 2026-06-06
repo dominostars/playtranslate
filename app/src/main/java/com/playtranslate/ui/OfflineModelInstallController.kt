@@ -352,8 +352,11 @@ class OfflineModelInstallController(
             .setTitle(activity.getString(R.string.llm_low_memory_title))
             .setMessage(activity.getString(R.string.llm_low_memory_message, modelDisplayName, needStr, freeStr))
             .hideIcon()
-            .addButton(activity.getString(R.string.llm_low_memory_recheck), activity.themeColor(R.attr.ptAccent)) {
-                checkAvailMemAndProceed(backend, modelDisplayName, onProceed, allowDelete, onDelete, onCancel)
+            .addButton(activity.getString(R.string.llm_low_memory_start_anyway), activity.themeColor(R.attr.ptAccent)) {
+                // Enable despite the low-memory warning. mmap-vs-anon is decided
+                // automatically at load time from live availMem (see
+                // MnnTranslator.ensureLoaded) — no persisted flag here.
+                onProceed()
             }
         if (allowDelete && onDelete != null) {
             builder.addButton(

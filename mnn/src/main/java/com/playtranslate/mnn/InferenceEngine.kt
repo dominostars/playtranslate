@@ -25,8 +25,13 @@ interface InferenceEngine {
      *
      * @throws UnsupportedArchitectureException if the model's config is not
      *   recognized or its weights fail to load.
+     *
+     * @param useMmap when true, load the weights as reclaimable, file-backed
+     *   mmap pages (survives memory pressure, ~16% slower); when false, the
+     *   faster anonymous-resident load. Driven by the per-model "start anyway"
+     *   flag — see [com.playtranslate.translation.llm.OnDeviceLlmBackend].
      */
-    suspend fun loadModel(pathToModelDir: String)
+    suspend fun loadModel(pathToModelDir: String, useMmap: Boolean)
 
     /**
      * Decode the system prompt as a prefill-only pass (max_new_tokens=0) and
