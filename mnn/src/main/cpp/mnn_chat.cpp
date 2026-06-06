@@ -142,6 +142,12 @@ Java_com_playtranslate_mnn_internal_MnnChatImpl_prepare(
     // launch's first load too. Treated as structural (single-device validation
     // above) — re-validate warm loads on new SoC / precision classes before a
     // wide rollout.
+    //
+    // Built by concatenation; the object's closing brace is appended by the
+    // `+= "}"` below, so the literal on the next line deliberately ends with an
+    // OPEN object (…"greedy", no `}`) — the "greedy" value IS closed. Final JSON:
+    //   no mmap: {"reuse_kv":true,"use_template":false,"sampler_type":"greedy"}
+    //   w/ mmap: {…,"use_mmap":true,"use_cached_mmap":true,"mmap_size":4096,"tmp_path":"<dir>"}
     std::string runtime_config =
         R"({"reuse_kv": true, "use_template": false, "sampler_type": "greedy")";
     if (!mmap_dir.empty()) {
