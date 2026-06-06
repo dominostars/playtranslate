@@ -477,22 +477,28 @@ class OverlayUiController(
         screenshotW: Int, screenshotH: Int,
         pinholeMode: Boolean = false,
         oneShot: Boolean = false,
+        verticalTextTarget: Boolean = false,
     ) {
         // Overlay is appearing — dismiss loading spinner across all icons.
         setIconsLoading(false)
 
         val displayId = display.displayId
-        // Reuse the existing view only if BOTH its pinhole mode AND its
-        // oneShot flag match. Either differing means the window flags
-        // (FLAG_NOT_TOUCHABLE), params.alpha, mask alpha, or tap-to-dismiss
-        // listener would need to change — those are fixed at construction
-        // and at addOverlayWindow time, so the safe move is to tear down
-        // and recreate. In the current call flow neither transition hits
-        // this reuse path (beginHoldPreview/endHoldPreview teardown ensures
-        // a fresh create), but this guard prevents a future caller from
-        // silently inheriting stale touchability.
+        // Reuse the existing view only if its pinhole mode, oneShot flag, AND
+        // verticalTextTarget all match. The first two differing means the
+        // window flags (FLAG_NOT_TOUCHABLE), params.alpha, mask alpha, or
+        // tap-to-dismiss listener would need to change — those are fixed at
+        // construction and at addOverlayWindow time. verticalTextTarget is also
+        // a constructor val (it selects the per-box render path) and derives
+        // from the user-mutable target-language pref, so a mid-session target
+        // switch must force a fresh view rather than silently reuse the stale
+        // render mode. In the current call flow none of these transitions hit
+        // this reuse path (beginHoldPreview/endHoldPreview teardown ensures a
+        // fresh create), but the guard prevents a future caller from silently
+        // inheriting a stale view.
         val existing = translationOverlayHandles[displayId]
-        if (existing != null && existing.pinholeMode == pinholeMode && existing.oneShot == oneShot) {
+        if (existing != null && existing.pinholeMode == pinholeMode && existing.oneShot == oneShot &&
+            existing.verticalTextTarget == verticalTextTarget
+        ) {
             existing.setBoxes(boxes, cropLeft, cropTop, screenshotW, screenshotH)
             return
         }
@@ -561,6 +567,7 @@ class OverlayUiController(
             maskAlpha = mainMaskAlpha,
             oneShot = oneShot,
             boostContrast = mainBoostContrast,
+            verticalTextTarget = verticalTextTarget,
             onDismiss = if (mainTouchable) {
                 { CaptureService.instance?.dismissLiveOverlay(displayId) }
             } else null,

@@ -77,6 +77,14 @@ class TranslationOverlayView(
      *  actually renders) and in any cell where the overlay composites at
      *  full opacity. */
     private val boostContrast: Boolean = false,
+    /** True when the session's TARGET language is written vertically (ja/zh/ko
+     *  — see [com.playtranslate.language.targetSupportsVerticalText]); vertical
+     *  OCR boxes then render as upright top-to-bottom RTL columns
+     *  ([VerticalTextView]) instead of a 90°-rotated horizontal line. Public so
+     *  [OverlayUiController]'s view-reuse guard can compare it — it derives from
+     *  a user-mutable pref, so a target switch must force a fresh view (a ctor
+     *  val can't be refreshed by [setBoxes]). */
+    val verticalTextTarget: Boolean = false,
     /** When non-null, this overlay handles its own dismissal. ACTION_DOWN
      *  touches dismiss immediately (race-safe against the hold-release
      *  callback and second-finger taps during a hold), and TalkBack's
@@ -293,11 +301,41 @@ class TranslationOverlayView(
                 val rectW = rect.width().toInt().coerceAtLeast(1)
                 val rectH = rect.height().toInt().coerceAtLeast(1)
                 val isVertical = box.orientation == TextOrientation.VERTICAL
+                // Upright tategaki only when the box is vertical AND the target
+                // language is written vertically; other vertical boxes (e.g. a
+                // Latin translation) keep the 90° rotation path below.
+                val stackVertically =
+                    isVertical && verticalTextTarget && box.translatedText.isNotEmpty()
 
-                val child: View = if (box.translatedText.isEmpty()) {
-                    buildSkeletonView(rectW, rectH, box.lineCount, box.bgColor, box.textColor, box.alignment, isVertical)
-                } else {
-                    OutlinedTextView(context).apply {
+                // Shared background fill for every non-skeleton child. Pinholes
+                // need opaque bg (pinholes handle transparency); without
+                // pinholes, native alpha (~224 = 88% opaque). When
+                // [boostContrast] is on (MP backend where the BSP clamps window
+                // α to ~0.8), the composited box only ends up at ~80% over the
+                // game, so we push the sampled bgColor *away from* the sampled
+                // textColor's luminance to preserve readability. Pinhole
+                // detection math is invariant under bg colour changes because
+                // overlay_rendered reflects whatever colour we actually drew —
+                // so this fill is load-bearing on the vertical path too: a
+                // transparent box would break renderToOffscreen's reference and
+                // oscillate REMOVE.
+                val fillColor = when {
+                    boostContrast -> pushBgAwayFromText(box.bgColor, box.textColor)
+                    pinholeMode -> box.bgColor or 0xFF000000.toInt()
+                    else -> box.bgColor
+                }
+
+                val child: View = when {
+                    box.translatedText.isEmpty() ->
+                        buildSkeletonView(rectW, rectH, box.lineCount, box.bgColor, box.textColor, box.alignment, isVertical)
+                    stackVertically -> VerticalTextView(context).apply {
+                        text = box.translatedText
+                        textColor = box.textColor
+                        outlineColor = box.textColor xor 0x00FFFFFF  // invert RGB, keep alpha
+                        outlineWidth = 1f * dp
+                        setBackgroundColor(fillColor)
+                    }
+                    else -> OutlinedTextView(context).apply {
                         text = box.translatedText
                         setTextColor(box.textColor)
                         outlineColor = box.textColor xor 0x00FFFFFF  // invert RGB, keep alpha
@@ -314,27 +352,7 @@ class TranslationOverlayView(
                         else
                             Gravity.CENTER_VERTICAL
                         setPadding(textMargin, textMargin, textMargin, textMargin)
-                        // Pinholes need opaque bg (pinholes handle transparency).
-                        // Without pinholes, use native alpha (~224 = 88% opaque).
-                        //
-                        // When [boostContrast] is on (MP backend where the
-                        // BSP clamps window α to ~0.8 regardless of what we
-                        // request), the composited box only ends up at ~80%
-                        // over the game. To preserve text readability we
-                        // push the sampled bgColor *away from* the sampled
-                        // textColor's luminance: dark text → brighter bg,
-                        // light text → darker bg. Pinhole detection math is
-                        // invariant under bg colour changes because
-                        // overlay_rendered (used in predicted-blend
-                        // computation) reflects whatever colour we
-                        // actually drew.
-                        setBackgroundColor(
-                            when {
-                                boostContrast -> pushBgAwayFromText(box.bgColor, box.textColor)
-                                pinholeMode -> box.bgColor or 0xFF000000.toInt()
-                                else -> box.bgColor
-                            }
-                        )
+                        setBackgroundColor(fillColor)
                         TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
                             this, minTextSizeSp, maxTextSizeSp, 1, TypedValue.COMPLEX_UNIT_SP
                         )
@@ -343,23 +361,37 @@ class TranslationOverlayView(
 
                 child.setTag(R.id.tag_bg_color, box.bgColor)
 
-                if (isVertical && box.translatedText.isNotEmpty()) {
-                    // Vertical text: create view with swapped dimensions (width=rectH,
-                    // height=rectW) so auto-sizing picks a readable font, then rotate
-                    // 90° CW so text reads top-to-bottom in the original narrow box.
-                    val lp = LayoutParams(rectH, rectW)
-                    addView(child, lp)
-                    child.rotation = 90f
-                    // Position so the visual center aligns with the original box center.
-                    // After rotation, the (rectH × rectW) layout visually becomes (rectW × rectH).
-                    child.translationX = rect.centerX() - rectH / 2f
-                    child.translationY = rect.centerY() - rectW / 2f
-                } else {
-                    val lp = LayoutParams(rectW, rectH).apply {
-                        leftMargin = rect.left.toInt()
-                        topMargin = rect.top.toInt()
+                when {
+                    stackVertically -> {
+                        // Upright column(s): non-rotated, fills the box footprint
+                        // (anchored top-left; VerticalTextView lays out RTL within).
+                        val lp = LayoutParams(rectW, rectH).apply {
+                            leftMargin = rect.left.toInt()
+                            topMargin = rect.top.toInt()
+                        }
+                        addView(child, lp)
                     }
-                    addView(child, lp)
+                    isVertical && box.translatedText.isNotEmpty() -> {
+                        // Latin/other target in a vertical box: create view with
+                        // swapped dimensions (width=rectH, height=rectW) so
+                        // auto-sizing picks a readable font, then rotate 90° CW so
+                        // text reads top-to-bottom in the original narrow box.
+                        val lp = LayoutParams(rectH, rectW)
+                        addView(child, lp)
+                        child.rotation = 90f
+                        // Position so the visual center aligns with the original box
+                        // center. After rotation the (rectH × rectW) layout visually
+                        // becomes (rectW × rectH).
+                        child.translationX = rect.centerX() - rectH / 2f
+                        child.translationY = rect.centerY() - rectW / 2f
+                    }
+                    else -> {
+                        val lp = LayoutParams(rectW, rectH).apply {
+                            leftMargin = rect.left.toInt()
+                            topMargin = rect.top.toInt()
+                        }
+                        addView(child, lp)
+                    }
                 }
             }
         }

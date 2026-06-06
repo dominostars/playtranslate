@@ -56,6 +56,7 @@ import com.playtranslate.capture.MediaProjectionController
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.language.targetSupportsVerticalText
 import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.ui.DegradedWarningKind
 import com.playtranslate.ui.TextBox
@@ -1694,7 +1695,11 @@ class CaptureService : Service() {
         val display = dm.getDisplay(displayId)
         if (display == null) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: display=null for id=$displayId"); return }
         Log.d("FuriganaDbg", "showLiveOverlay: ${boxes.size} boxes, crop=($cropLeft,$cropTop), screen=${screenshotW}x$screenshotH on display $displayId")
-        ui.showTranslationOverlay(display, boxes, cropLeft, cropTop, screenshotW, screenshotH, pinholeMode, oneShot)
+        val verticalTextTarget = targetSupportsVerticalText(Prefs(this).targetLang)
+        ui.showTranslationOverlay(
+            display, boxes, cropLeft, cropTop, screenshotW, screenshotH,
+            pinholeMode, oneShot, verticalTextTarget,
+        )
     }
 
     /** Capture a clean screenshot via the active capture backend. */
