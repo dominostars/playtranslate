@@ -6,6 +6,7 @@ import com.playtranslate.ocr.core.LayoutAnalyzer
 import com.playtranslate.ocr.core.LayoutGroup
 import com.playtranslate.ocr.core.OcrEngine
 import com.playtranslate.ocr.core.OcrImage
+import com.playtranslate.ocr.core.RecognizedTextNormalizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -59,7 +60,12 @@ object OcrPipeline {
         val scaleFactor =
             if (processed === bitmap) 1f else processed.width.toFloat() / bitmap.width
         try {
-            val regions = engine.recognize(OcrImage(processed, sourceLang, screenshotWidth))
+            val recognized = engine.recognize(OcrImage(processed, sourceLang, screenshotWidth))
+            // Shared text normalization (pipe-trim / UI-decoration / noise) for EVERY
+            // engine — folds in passes that used to live only in the ML Kit adapter, so
+            // Meiki/Paddle/manga-ocr get them too. LayoutAnalyzer.analyze (this is its
+            // sole production caller) assumes its input is already normalized.
+            val regions = RecognizedTextNormalizer.normalize(recognized, sourceLang)
             if (regions.isEmpty()) return@withContext null
             val groups = LayoutAnalyzer.analyze(
                 regions = regions,

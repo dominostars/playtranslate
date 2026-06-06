@@ -10,37 +10,24 @@ import com.playtranslate.ocr.core.RecognizedRegion
 import com.playtranslate.ocr.core.RegionOrigin
 
 /**
- * Maps ML Kit's [Text] into the vendor-neutral model — ONE [RecognizedRegion]
- * per kept ML Kit line ([RegionOrigin.LINE]). All ML-Kit-specific quirk handling
- * lives here:
- *  - the line-level garbling / single-char filter (needs ML Kit's
- *    `recognizedLanguage` + `confidence`, which aren't vendor-neutral),
- *  - per-element pipe-trim + UI-decoration stripping (dialogue cursors/borders),
- *  - per-character symbol extraction (offset-aligned [CharBox]es),
- *  - orientation detection and the hanging-punctuation align hint.
+ * Maps ML Kit's [Text] into the vendor-neutral model — ONE [RecognizedRegion] per
+ * ML Kit line ([RegionOrigin.LINE]). This now owns only what is irreducibly
+ * ML-Kit-specific: building the element (word) + character tiers from ML Kit's
+ * symbol soup ([extractElementSymbols], offset-aligned [CharBox]es), inserting word
+ * spaces for whitespace-separated scripts, and orientation detection.
+ *
+ * Text cleaning that used to live here — pipe-trim, UI-decoration stripping, and the
+ * line noise/garble filter — moved to the shared, vendor-neutral
+ * [com.playtranslate.ocr.core.RecognizedTextNormalizer] so every engine gets it; the
+ * hanging-punctuation align hint is computed on demand in
+ * [com.playtranslate.ocr.core.LayoutAnalyzer.effectiveAlignLeft].
  *
  * Coordinates are in the INPUT bitmap's space — i.e. the (possibly preprocessed/
  * upscaled) bitmap ML Kit was given. The `OcrPipeline` owns preprocessing and
  * normalizes the final `OcrResult` boxes back to original-bitmap coordinates, so
  * this mapper does NOT divide by any scaleFactor.
- *
- * This is a faithful extraction of the former `OcrManager.recognise` element
- * walk + the `groupLinesByProximity` line filter; behavior is verified
- * end-to-end by the group-structure snapshot diff. `detectOrientation`,
- * `effectiveAlignLeft`, and `isSourceLangChar` are reused from [OcrManager] for
- * now (they are ML-Kit-typed / shared language logic); a later cleanup can
- * relocate them once the keystone behavior is locked.
  */
 object MlKitTextMapper {
-
-    /** UI-only symbols that are never meaningful dialogue text on their own. */
-    private val UI_DECORATION_CHARS = setOf(
-        // Arrows / triangles used as dialogue-advance or selection cursors
-        '▼', '▽', '▲', '△', '▸', '▾', '◂', '◀', '▶', '►', '◄',
-        '↓', '↑', '←', '→', '↵', '↩',
-        // Angle brackets used as decorative dialogue borders
-        '<', '>', '＜', '＞', '〈', '〉', '《', '》', '«', '»'
-    )
 
     /**
      * Convert [visionText] to per-line regions. [addWordSpaces] inserts spaces
@@ -50,10 +37,13 @@ object MlKitTextMapper {
     fun map(visionText: Text, sourceLang: String, addWordSpaces: Boolean): List<RecognizedRegion> {
         val out = mutableListOf<RecognizedRegion>()
         for (block in visionText.textBlocks) {
+            // ML Kit's one cleaning input the shared normalizer can't re-derive: a block
+            // whose language ML Kit couldn't classify (null/"und") is where a lone
+            // non-kanji glyph is most likely a stray OCR fragment. Carried per region.
             val blockLang = block.recognizedLanguage
+            val languageUndetermined = blockLang == null || blockLang == "und"
             for (line in block.lines) {
                 val bb = line.boundingBox ?: continue
-                if (!keepLine(line, blockLang, sourceLang)) continue
                 val walked = walkLine(line, addWordSpaces)
                 if (walked.text.isBlank()) continue
                 val orientation = OcrManager.detectOrientation(line)
@@ -64,7 +54,6 @@ object MlKitTextMapper {
                     orientation = orientation,
                     elements = walked.elements,
                     chars = walked.chars,
-                    effectiveAlignLeft = OcrManager.effectiveAlignLeft(line),
                 )
                 out += RecognizedRegion(
                     text = walked.text,
@@ -73,33 +62,11 @@ object MlKitTextMapper {
                     confidence = lineConfidence(line),
                     lines = listOf(recLine),
                     origin = RegionOrigin.LINE,
+                    languageUndetermined = languageUndetermined,
                 )
             }
         }
         return out
-    }
-
-    /**
-     * The line-noise filter formerly inside `groupLinesByProximity`: drop
-     * single-character lines that aren't real words (unless kanji on an
-     * undetermined-language block), and drop garbled multi-char lines that are
-     * mostly non-source characters AND low confidence. Verbatim thresholds.
-     */
-    private fun keepLine(line: Text.Line, blockLang: String?, sourceLang: String): Boolean {
-        if (line.text.trim().length <= 1) {
-            if (blockLang == null || blockLang == "und") {
-                val c = line.text.trim().firstOrNull() ?: return false
-                val isKanji = c in '一'..'鿿' || c in '㐀'..'䶿'
-                if (!isKanji) return false
-            }
-        }
-        if (android.os.Build.VERSION.SDK_INT >= 31 && line.text.trim().length > 1) {
-            val text = line.text.trim()
-            val sourceCount = text.count { c -> OcrManager.isSourceLangChar(c, sourceLang) }
-            val ratio = sourceCount.toFloat() / text.length
-            if (ratio < 0.30f && line.confidence < 0.35f) return false
-        }
-        return true
     }
 
     private fun lineConfidence(line: Text.Line): Float =
@@ -112,49 +79,35 @@ object MlKitTextMapper {
     )
 
     /**
-     * Walk a line's elements, applying the same pipe-trim + UI-decoration filter
-     * + optional word-spacing the former `recognise` walk used, and collecting
-     * per-element boxes (drives `segments`) and per-character symbols (drives
-     * drag-lookup + furigana). Coordinates are kept in input-bitmap space.
+     * Walk a line's elements: insert word spaces for whitespace-separated scripts and
+     * collect per-element boxes (drives `segments`) + per-character symbols (drives
+     * drag-lookup + furigana). Text cleaning is no longer done here — the assembled
+     * line is cleaned by the shared
+     * [com.playtranslate.ocr.core.RecognizedTextNormalizer]. Coordinates are kept in
+     * input-bitmap space.
      */
     private fun walkLine(line: Text.Line, addWordSpaces: Boolean): Walked {
         val lineBuilder = StringBuilder()
         val elements = mutableListOf<ElementBox>()
         val chars = mutableListOf<CharBox>()
         var lineCharCount = 0
-        line.elements.forEachIndexed { ei, element ->
-            if (!isUiDecoration(element.text)) {
-                var text = element.text
-                if (ei == 0) text = text.trimStart('|').trimStart()
-                if (ei == line.elements.lastIndex) text = text.trimEnd('|').trimEnd()
-                if (text.isNotEmpty()) {
-                    if (addWordSpaces && lineCharCount > 0) {
-                        lineBuilder.append(' ')
-                        lineCharCount++
-                    }
-                    val elementOffset = lineCharCount
-                    lineBuilder.append(text)
-                    lineCharCount += text.length
-                    element.boundingBox?.let { ebb ->
-                        elements += ElementBox(text = text, box = OcrBox.upright(ebb))
-                    }
-                    chars += extractElementSymbols(element, text, elementOffset)
+        line.elements.forEach { element ->
+            val text = element.text
+            if (text.isNotEmpty()) {
+                if (addWordSpaces && lineCharCount > 0) {
+                    lineBuilder.append(' ')
+                    lineCharCount++
                 }
+                val elementOffset = lineCharCount
+                lineBuilder.append(text)
+                lineCharCount += text.length
+                element.boundingBox?.let { ebb ->
+                    elements += ElementBox(text = text, box = OcrBox.upright(ebb))
+                }
+                chars += extractElementSymbols(element, text, elementOffset)
             }
         }
         return Walked(lineBuilder.toString(), elements, chars)
-    }
-
-    /**
-     * True for OCR elements that are pure UI decoration (dialogue-advance arrows,
-     * decorative angle brackets) rather than dialogue text. Only matches elements
-     * whose ENTIRE content is decoration, so real text containing similar
-     * characters is never dropped.
-     */
-    private fun isUiDecoration(text: String): Boolean {
-        val t = text.trim()
-        if (t.isEmpty()) return false
-        return t.all { it in UI_DECORATION_CHARS }
     }
 
     /**

@@ -116,13 +116,6 @@ data class RecognizedLine(
     val elements: List<ElementBox> = emptyList(),
     /** Character tier; drives precise furigana + drag hit-testing. Empty if unavailable. */
     val chars: List<CharBox> = emptyList(),
-    /**
-     * Effective left edge for hanging-punctuation alignment compensation,
-     * precomputed by the engine adapter when it has glyph data (e.g. ML Kit's
-     * first-symbol box). Null = [LayoutAnalyzer] derives it (or skips it when
-     * there is no text, as in pre-recognition clustering).
-     */
-    val effectiveAlignLeft: Int? = null,
 )
 
 /**
@@ -140,6 +133,16 @@ data class RecognizedRegion(
     val confidence: Float = -1f,
     val lines: List<RecognizedLine> = emptyList(),
     val origin: RegionOrigin = RegionOrigin.LINE,
+    /**
+     * True when the recognizer could not determine this region's language/script
+     * (ML Kit's block `recognizedLanguage` is null/"und"). [RecognizedTextNormalizer]
+     * treats a lone non-kanji glyph with no language context as a stray OCR fragment —
+     * the only signal that catches a stray *source-script* kana, and the only one
+     * available when [confidence] is absent (pre-API-31 ML Kit). Specialist recognizers
+     * (Meiki/Paddle/manga-ocr) are language-specific by construction, so they leave
+     * this false.
+     */
+    val languageUndetermined: Boolean = false,
 )
 
 /**

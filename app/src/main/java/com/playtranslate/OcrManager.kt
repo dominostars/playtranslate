@@ -323,42 +323,6 @@ class OcrManager private constructor() {
         val instance: OcrManager by lazy { OcrManager() }
 
         /**
-         * Characters that should not be treated as the body-text left edge when
-         * they appear as a line's first glyph: opening punctuation that visually
-         * hangs to the left of body text (brackets, quotes, middle dots), plus
-         * glyphs OCR commonly misreads for them. See [effectiveAlignLeft].
-         */
-        private val HANGING_PUNCT_LEFT = setOf(
-            '「', '『', '（', '【', '〔', '《', '〈',
-            '(', '[', '{',
-            '・', '·',
-            '“', '‘', '"', '\'',
-            ',',
-        )
-
-        /**
-         * Effective left edge of [line] for paragraph-alignment checks. If the
-         * line begins with a [HANGING_PUNCT_LEFT] character, the returned left is
-         * shifted right past that glyph so a body line beneath `「こんにちは`
-         * aligns to where `こ` starts. Returns the raw [Rect.left] when no
-         * adjustment applies, or null if [line] has no bounding box.
-         *
-         * Reused by [com.playtranslate.ocr.engines.mlkit.MlKitTextMapper] to
-         * populate `RecognizedLine.effectiveAlignLeft`.
-         */
-        internal fun effectiveAlignLeft(line: Text.Line): Int? {
-            val box = line.boundingBox ?: return null
-            val firstChar = line.text.firstOrNull { !it.isWhitespace() && it != '|' }
-                ?: return box.left
-            if (firstChar !in HANGING_PUNCT_LEFT) return box.left
-            val symbolWidth = line.elements.firstOrNull()
-                ?.symbols?.firstOrNull()?.boundingBox?.width()
-            val cap = (box.height() * 1.5f).toInt()
-            val charWidth = (symbolWidth ?: box.height()).coerceAtMost(cap)
-            return box.left + charWidth
-        }
-
-        /**
          * Detects whether a Text.Line is vertical (tategaki) or horizontal based
          * on ML Kit's reported angle and bounding box geometry. ~90° (or a tall
          * aspect ratio on multi-char lines) indicates vertical. Single-character
