@@ -2111,11 +2111,10 @@
     <string name="settings_support_discord_subtitle">Get help and chat with other players.</string>
 
     <!-- Row title — donation link. -->
-    <string name="settings_support_donate_title">Buy me a coffee</string>
+    <string name="settings_support_donate_title">Support PlayTranslate</string>
 
-    <!-- Subtitle on the donation row.  %1$s = app name; "Ko-Fi" is the
-         donation platform brand. -->
-    <string name="settings_support_donate_subtitle"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> is free, support development on <xliff:g id="brand_kofi" example="Ko-Fi">Ko-Fi</xliff:g></string>
+    <!-- Subtitle on the donation row. -->
+    <string name="settings_support_donate_subtitle">A free, open source labor of love. Help keep it going.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Debug section (developer-only; visible in debug

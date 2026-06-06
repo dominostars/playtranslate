@@ -896,9 +896,7 @@ class SettingsRenderer(
                 iconRes = R.drawable.ic_volunteer_activism,
                 iconTint = R.attr.ptWarning,
                 title = ctx.getString(R.string.settings_support_donate_title),
-                summary = ctx.getString(
-                    R.string.settings_support_donate_subtitle, ctx.getString(R.string.app_name),
-                ),
+                summary = ctx.getString(R.string.settings_support_donate_subtitle),
                 trailing = Trailing.EXTERNAL,
                 isLast = true,
                 onClick = { openUrl(donateUrl) },
