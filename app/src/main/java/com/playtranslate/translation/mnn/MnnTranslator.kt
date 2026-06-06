@@ -212,6 +212,28 @@ class MnnTranslator private constructor(private val context: Context) {
         systemPair = null
     }
 
+    /**
+     * Unload the resident model **only if** it is the one at [modelPath].
+     * Used before deleting that model's files / mmap cache: while a model is
+     * loaded in mmap mode its `.static` cache is mmap'd, and unlinking a
+     * still-mapped file reclaims no disk until the mapping is released — so the
+     * caller must release it first. Gated on the path so it never tears down a
+     * *different* resident model (enabled siblings stay loaded). Mutex-serialized
+     * like [unloadModel]. Returns true if a model was unloaded.
+     */
+    suspend fun unloadIfLoaded(modelPath: String): Boolean = mutex.withLock {
+        if (loadedModelPath != modelPath) return@withLock false
+        val state = engine.state.value
+        if (state.isModelLoaded || state is InferenceEngine.State.Error) {
+            Log.i(TAG, "Unloading MNN model before its files/cache are removed: $modelPath")
+            runCatching { engine.cleanUp() }
+                .onFailure { Log.w(TAG, "unloadIfLoaded() encountered $it (ignored)") }
+        }
+        loadedModelPath = null
+        systemPair = null
+        true
+    }
+
     /** Best-effort full teardown. Safe to call at app teardown. */
     fun close() {
         runCatching {

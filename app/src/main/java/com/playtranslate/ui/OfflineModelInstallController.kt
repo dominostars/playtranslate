@@ -315,10 +315,22 @@ class OfflineModelInstallController(
             .addButton(activity.getString(m.disableKeep), activity.themeColor(R.attr.ptAccent)) {
                 m.setEnabled(activity, false)
                 // Disabled but kept: drop the mmap weight cache (~model-sized).
-                // The delete branch below already wipes it via model.delete().
-                m.model.deleteMmapCache(activity)
-                // Re-render the row so the Disk cell drops the cache size + tint.
-                binder.refreshAllBackendStatuses()
+                // If this model is currently resident in mmap mode its .static
+                // cache is mapped, and unlinking a mapped file reclaims no disk
+                // until the mapping drops — so release it first. setEnabled(false)
+                // above keeps the waterfall from reloading it underneath us.
+                // (The delete branch below wipes the cache via model.delete().)
+                // Unlike that branch, this cleanup is best-effort: if the Activity
+                // dies mid-unload it's skipped, leaving only a recoverable stale
+                // cache — the confirmed action here (disable) already persisted.
+                activity.lifecycleScope.launch {
+                    MnnTranslator.getInstance(activity)
+                        .unloadIfLoaded(m.model.file(activity).absolutePath)
+                    m.model.deleteMmapCache(activity)
+                    // Re-render so the Disk cell drops the (now actually freed)
+                    // cache size + tint.
+                    binder.refreshAllBackendStatuses()
+                }
             }
             .addButton(
                 activity.getString(m.disableDelete),
@@ -326,9 +338,18 @@ class OfflineModelInstallController(
                 activity.themeColor(R.attr.ptDanger),
             ) {
                 m.setEnabled(activity, false)
+                // Delete synchronously: the user confirmed deletion, so it must
+                // not be lost if the Activity is torn down while an async unload
+                // waits on the engine mutex (an in-flight translate can hold it).
+                // Then release the engine's mapping of the now-deleted files so the
+                // disk is reclaimed — unlinking a still-mmap'd file frees nothing
+                // until the mapping drops. Gated on the path so a different resident
+                // model isn't torn down; deferring reclaim to this unload is fine
+                // for a delete (the model dir is already gone either way).
+                val modelPath = m.model.file(activity).absolutePath
                 m.model.delete(activity)
                 activity.lifecycleScope.launch {
-                    MnnTranslator.getInstance(activity).unloadModel()
+                    MnnTranslator.getInstance(activity).unloadIfLoaded(modelPath)
                 }
                 binder.refreshAllBackendStatuses()
             }
