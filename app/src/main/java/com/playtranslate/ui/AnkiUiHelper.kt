@@ -31,6 +31,7 @@ import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
 import com.playtranslate.tts.TtsEngine
+import com.playtranslate.tts.TtsVoiceLabels
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -331,21 +332,18 @@ class AnkiAudioToggleHandle internal constructor(
     }
 }
 
-/** Resolves a per-cell voice override into the pill's display label —
- *  "Default" or "Voice N", matching the existing Voice-row scheme. The
- *  index lookup goes through [TtsEngine.voicesFor], which is suspending
- *  because the engine bind is asynchronous. */
+/** Resolves a per-cell voice override into the pill's display label, sharing
+ *  [TtsVoiceLabels] with the picker and Settings digest so the three stay in
+ *  sync. The default case short-circuits to avoid the [TtsEngine.voicesFor]
+ *  engine bind (suspending) when there's nothing to resolve. */
 internal suspend fun computeVoicePillLabel(
     ctx: android.content.Context,
     lang: SourceLangId,
     voice: String?,
 ): String = if (voice == null) {
-    ctx.getString(R.string.anki_voice_default)
+    ctx.getString(R.string.tts_voice_default)
 } else {
-    val voices = TtsEngine.voicesFor(ctx, lang)
-    val idx = voices.indexOfFirst { it.name == voice }
-    if (idx >= 0) ctx.getString(R.string.anki_voice_numbered, idx + 1)
-    else ctx.getString(R.string.anki_voice_default)
+    TtsVoiceLabels.titleFor(ctx, TtsEngine.voicesFor(ctx, lang), voice)
 }
 
 /**

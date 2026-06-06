@@ -21,6 +21,7 @@ import com.playtranslate.translation.Cooldownable
 import com.playtranslate.translation.TranslationBackend
 import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.tts.TtsEngine
+import com.playtranslate.tts.TtsVoiceLabels
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -294,10 +295,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
         if (!TtsEngine.isEngineAvailable(ctx)) return TtsCell.NoEngine
         val lang = prefs.sourceLangId
         val voices = TtsEngine.voicesFor(ctx, lang)
-        val savedName = prefs.ttsVoiceName(lang)
-        val idx = if (savedName == null) -1 else voices.indexOfFirst { it.name == savedName }
-        val voiceLabel = if (idx >= 0) str(R.string.tts_voice_numbered, idx + 1)
-                         else str(R.string.tts_voice_default)
+        val voiceLabel = TtsVoiceLabels.titleFor(ctx, voices, prefs.ttsVoiceName(lang))
         return TtsCell.Available(TtsEngine.activeEngineLabel(ctx), voiceLabel)
     }
 

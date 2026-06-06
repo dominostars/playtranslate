@@ -805,13 +805,6 @@
     <!-- contentDescription for the audio-preview play button. -->
     <string name="anki_audio_preview_content_description">Preview audio</string>
 
-    <!-- Value shown when the engine's default voice is in use. -->
-    <string name="anki_voice_default">Default</string>
-
-    <!-- Value shown when a numbered voice is selected.
-         %1$d = the 1-based index of the voice in the picker list. -->
-    <string name="anki_voice_numbered">Voice <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
-
     <!-- ═══════════════════════════════════════════════════════════════
          CARD TYPE PICKER + FIELD MAPPING (Settings → Anki → Card Type).
          ═══════════════════════════════════════════════════════════════ -->
@@ -1922,12 +1915,22 @@
          been picked.  %1$d = the 1-based index. -->
     <string name="tts_voice_numbered">Voice <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
 
+    <!-- Voice title when a language's voices span multiple regions and a
+         region carries more than one voice.  %1$s = region (e.g. "China"),
+         %2$d = 1-based index within that region. -->
+    <string name="tts_voice_region_numbered"><xliff:g id="region" example="China">%1$s</xliff:g> <xliff:g id="region_index" example="2">%2$d</xliff:g></string>
+
     <!-- Right-side value when the engine's default voice is in use. -->
     <string name="tts_voice_default">Default</string>
 
     <!-- Subtitle shown on the voice picker activity row for the
          engine-default option. -->
     <string name="tts_voice_default_subtitle">The engine\'s default voice</string>
+
+    <!-- Appended to a voice's subtitle when the engine lists the voice but
+         hasn't downloaded it yet (KEY_FEATURE_NOT_INSTALLED); picking it
+         would otherwise silently fall back to another voice. -->
+    <string name="tts_voice_needs_download">Needs download</string>
 
     <!-- Row title shown in Settings when no TTS engine is installed. -->
     <string name="tts_no_engine_row_title">Set up Text-to-Speech</string>

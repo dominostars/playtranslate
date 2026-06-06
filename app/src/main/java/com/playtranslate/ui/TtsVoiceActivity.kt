@@ -21,6 +21,7 @@ import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.applyTheme
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.tts.TtsEngine
+import com.playtranslate.tts.TtsVoiceLabels
 import kotlinx.coroutines.launch
 
 /**
@@ -128,11 +129,12 @@ class TtsVoiceActivity : AppCompatActivity() {
         ) { select(null) }
 
         voices.forEachIndexed { index, voice ->
+            val label = TtsVoiceLabels.forVoice(this, voices, index)
             addRow(
                 inflater,
                 isFirst = false,
-                title = getString(R.string.tts_voice_numbered, index + 1),
-                subtitle = voiceInfo(voice),
+                title = label.title,
+                subtitle = label.subtitle,
                 selected = selectedName == voice.name,
             ) { select(voice.name) }
         }
@@ -169,22 +171,6 @@ class TtsVoiceActivity : AppCompatActivity() {
         lifecycleScope.launch {
             TtsEngine.previewVoice(this@TtsVoiceActivity, voice, lang)
         }
-    }
-
-    /** One-line API summary for a voice row: region (when the voice carries
-     *  one) + quality tier + offline/online. */
-    private fun voiceInfo(voice: Voice): String {
-        val quality = when {
-            voice.quality >= Voice.QUALITY_VERY_HIGH -> "Very high quality"
-            voice.quality >= Voice.QUALITY_HIGH -> "High quality"
-            voice.quality >= Voice.QUALITY_NORMAL -> "Normal quality"
-            voice.quality >= Voice.QUALITY_LOW -> "Low quality"
-            else -> "Very low quality"
-        }
-        val network = if (voice.isNetworkConnectionRequired) "Online" else "Offline"
-        val region = voice.locale.displayCountry
-        return if (region.isNotBlank()) "$region · $quality · $network"
-        else "$quality · $network"
     }
 
     companion object {
