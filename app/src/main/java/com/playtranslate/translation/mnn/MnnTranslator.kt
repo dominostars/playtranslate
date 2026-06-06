@@ -321,7 +321,15 @@ class MnnTranslator private constructor(private val context: Context) {
             Log.w(TAG, "StatFs failed for $modelPath: ${e.message}; treating mmap cache as not fitting")
             return false
         }
-        return free >= weightBytes + 100L * 1024 * 1024
+        if (free < weightBytes + 100L * 1024 * 1024) return false
+        // Disk room is there; ensure the cache dir itself is creatable too, so a
+        // mkdir failure also falls through to a lighter backend rather than
+        // letting resolveMmapDir() return "" and silently downgrade to anon.
+        if (!cacheDir.exists() && !cacheDir.mkdirs()) {
+            Log.w(TAG, "mmap cache dir can't be created: $cacheDir; treating as not fitting")
+            return false
+        }
+        return true
     }
 
     companion object {

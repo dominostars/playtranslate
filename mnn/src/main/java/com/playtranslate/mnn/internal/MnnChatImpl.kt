@@ -147,6 +147,15 @@ internal class MnnChatImpl private constructor(
                 // reuses it. mmap is opt-in per model (the "start anyway" path),
                 // so the default load stays on the faster anonymous-weights path.
                 val mmapDir = if (useMmap) resolveMmapDir(pathToModelDir) else ""
+                if (useMmap && mmapDir.isEmpty()) {
+                    // Defense-in-depth: MnnTranslator already verified the cache
+                    // dir is creatable and won't anon-load at this memory level.
+                    // If it vanished/failed since (e.g. a concurrent onTrimMemory
+                    // cache delete), refuse rather than silently downgrade to the
+                    // OOM-prone anon path — the caller falls through to a lighter
+                    // backend instead.
+                    throw IOException("mmap cache dir unavailable; refusing anon fallback under low memory")
+                }
                 val cacheState = when {
                     mmapDir.isEmpty() -> "OFF"
                     File(mmapDir).listFiles { f -> f.name.endsWith("sync.static") }?.isNotEmpty() == true -> "WARM"
