@@ -1,7 +1,6 @@
 package com.playtranslate.mnn.internal
 
 import android.content.Context
-import android.os.StatFs
 import android.util.Log
 import com.playtranslate.mnn.InferenceEngine
 import com.playtranslate.mnn.MMAP_CACHE_DIR_NAME
@@ -181,44 +180,28 @@ internal class MnnChatImpl private constructor(
         }
 
     /**
-     * Per-model mmap weight-cache directory, or "" when mmap should be disabled
-     * for this load. With mmap, MNN writes a second, rearranged copy of the
-     * weights (~model size) here and maps it as reclaimable file-backed pages,
-     * so the kernel can page weights out under memory pressure instead of
-     * OOM-killing us. We only enable mmap when there's disk room for that copy;
-     * on insufficient space (or any probe failure) we fall back to the legacy
-     * anonymous-weights load by returning "".
+     * Per-model mmap weight-cache directory (`<modelDir>/.mmap-cache`), created
+     * if needed; returns "" only if it can't be created (then the caller loads
+     * without mmap). With mmap, MNN writes a rearranged copy of the weights here
+     * and maps it as reclaimable, file-backed pages.
      *
-     * The dir lives *inside* the model directory (`<modelDir>/.mmap-cache`) on
-     * purpose: [com.playtranslate.translation.llm.ModelHelper] deletes the model
-     * dir recursively (so the cache can't leak), and a re-download/upgrade swaps
-     * the whole dir — so a stale cache can never be served against changed
-     * weights. That matters because MNN does NOT validate the cache against the
-     * model (its cache prefix omits the model UUID).
+     * Disk-space sufficiency (sized to the real cache footprint) and warm/cold
+     * suitability are decided *upstream* in
+     * [com.playtranslate.translation.mnn.MnnTranslator], which falls through to
+     * a lighter backend when the cache can't fit rather than OOM-ing on the anon
+     * path — so this method no longer probes free space.
+     *
+     * The dir lives *inside* the model directory on purpose:
+     * [com.playtranslate.translation.llm.ModelHelper] deletes the model dir
+     * recursively (so the cache can't leak), and a re-download/upgrade swaps the
+     * whole dir — so a stale cache can never be served against changed weights.
+     * That matters because MNN does NOT validate the cache against the model
+     * (its cache prefix omits the model UUID).
      */
     private fun resolveMmapDir(modelDir: String): String {
-        val weightSize = File(modelDir, "llm.mnn.weight").length()
-        if (weightSize <= 0L) {
-            Log.w(TAG, "MNN-TIMING mmap disabled: cannot size llm.mnn.weight in $modelDir")
-            return ""
-        }
-        val required = weightSize * 11 / 10 + 100L * 1024 * 1024 // ~weight*1.1 + 100 MB headroom
-        val free = try {
-            StatFs(modelDir).availableBytes
-        } catch (e: Exception) {
-            Log.w(TAG, "MNN-TIMING mmap disabled: StatFs failed for $modelDir: ${e.message}")
-            return ""
-        }
-        if (free < required) {
-            Log.w(
-                TAG,
-                "MNN-TIMING mmap disabled: low space free=${free / 1_000_000}MB need=${required / 1_000_000}MB",
-            )
-            return ""
-        }
         val cacheDir = File(modelDir, MMAP_CACHE_DIR_NAME)
         if (!cacheDir.exists() && !cacheDir.mkdirs()) {
-            Log.w(TAG, "MNN-TIMING mmap disabled: mkdirs failed for $cacheDir")
+            Log.w(TAG, "mmap cache dir mkdirs failed for $cacheDir; loading without mmap")
             return ""
         }
         return cacheDir.absolutePath

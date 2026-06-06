@@ -2,14 +2,18 @@ package com.playtranslate.translation.mnn
 
 import android.app.ActivityManager
 import android.content.Context
+import android.os.StatFs
 import android.util.Log
 import com.playtranslate.mnn.InferenceEngine
+import com.playtranslate.mnn.MMAP_CACHE_DIR_NAME
 import com.playtranslate.mnn.MnnChat
 import com.playtranslate.mnn.isModelLoaded
 import com.playtranslate.translation.gemma.GemmaE2BChatTemplate
 import com.playtranslate.translation.hymt.HyMtChatTemplate
+import com.playtranslate.translation.llm.OnDeviceLlmTransientException
 import com.playtranslate.translation.llm.PromptStyle
 import com.playtranslate.translation.qwen.QwenChatTemplate
+import java.io.File
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -246,6 +250,18 @@ class MnnTranslator private constructor(private val context: Context) {
         // toward mmap on busy high-RAM devices: a safe, conservative default.)
         val useMmap = lowOnMemory(availMemFloorBytes)
 
+        // Low memory means we need mmap (reclaimable weights). If its on-disk
+        // cache can't fit, falling back to the anon path would load the full
+        // weights into already-tight RAM and risk an OOM-kill — so instead fail
+        // out here and let the waterfall fall through to a lighter backend
+        // (online / ML Kit / Bergamot). The check is sized to the real cache
+        // footprint, so we never start a write we can't finish.
+        if (useMmap && !mmapCacheCanFit(modelPath)) {
+            throw OnDeviceLlmTransientException(
+                "Low memory and insufficient disk for the mmap weight cache; falling through to next backend"
+            )
+        }
+
         // Error recovery — distinct from swap-cleanup. State::Error from a
         // prior translate() (e.g. JNI returned non-zero) must be cleared via
         // cleanUp() before we can re-load; without this branch sibling
@@ -282,6 +298,30 @@ class MnnTranslator private constructor(private val context: Context) {
         val mi = ActivityManager.MemoryInfo()
         am.getMemoryInfo(mi)
         return mi.availMem < availMemFloorBytes
+    }
+
+    /** True if the mmap weight cache for the model at [modelPath] is already on
+     *  disk (warm — no write needed), or there's room to write it (cold). The
+     *  cache is a rearranged copy of the model's externalized weights, so we
+     *  require free space >= the sum of its weight files plus headroom.
+     *  Deliberately conservative: it counts every `*.weight` / `*.bin`, even
+     *  ones that may not externalize, so it can occasionally fall through when
+     *  the cache would just fit — preferable to a half-written cache when the
+     *  disk fills mid-load (not a catchable failure). */
+    private fun mmapCacheCanFit(modelPath: String): Boolean {
+        val cacheDir = File(modelPath, MMAP_CACHE_DIR_NAME)
+        if (cacheDir.listFiles()?.any { it.name.endsWith("sync.static") } == true) return true
+        val weightBytes = File(modelPath).listFiles()
+            ?.filter { it.isFile && (it.name.endsWith(".weight") || it.name.endsWith(".bin")) }
+            ?.sumOf { it.length() } ?: 0L
+        if (weightBytes <= 0L) return false
+        val free = try {
+            StatFs(modelPath).availableBytes
+        } catch (e: Exception) {
+            Log.w(TAG, "StatFs failed for $modelPath: ${e.message}; treating mmap cache as not fitting")
+            return false
+        }
+        return free >= weightBytes + 100L * 1024 * 1024
     }
 
     companion object {
