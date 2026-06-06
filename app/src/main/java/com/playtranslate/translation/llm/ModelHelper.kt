@@ -1,7 +1,9 @@
 package com.playtranslate.translation.llm
 
 import android.content.Context
+import android.system.Os
 import com.playtranslate.language.CatalogEntry
+import com.playtranslate.mnn.MMAP_CACHE_DIR_NAME
 import java.io.File
 
 /**
@@ -87,5 +89,36 @@ interface ModelHelper {
             }
         } else true
         return partialGone && tmpGone
+    }
+
+    /** The per-model mmap weight-cache directory (directory-mode helpers only),
+     *  where MNN writes the rearranged, mmap'd weights. Lives inside [file], so
+     *  it's already wiped with the model on [delete]. */
+    fun mmapCacheDir(ctx: Context): File = File(file(ctx), MMAP_CACHE_DIR_NAME)
+
+    /** Delete the mmap weight cache, if present. Called when the model is
+     *  *disabled* — a disabled model shouldn't keep its (~model-sized)
+     *  reclaimable-weights cache around. No-op for file-mode helpers and when
+     *  no cache exists. */
+    fun deleteMmapCache(ctx: Context): Boolean {
+        if (!isDirectoryMode()) return true
+        val dir = mmapCacheDir(ctx)
+        return if (!dir.exists()) true else dir.deleteRecursively()
+    }
+
+    /** Actual on-disk bytes used by the mmap weight cache (0 when absent). Uses
+     *  block usage, not logical length, so a sparse cache file (MNN
+     *  over-allocates the mmap chunk) is reported at its true footprint. */
+    fun mmapCacheBytes(ctx: Context): Long {
+        if (!isDirectoryMode()) return 0L
+        val dir = mmapCacheDir(ctx)
+        if (!dir.exists()) return 0L
+        return dir.walkTopDown().filter { it.isFile }.sumOf { f ->
+            try {
+                Os.stat(f.absolutePath).st_blocks * 512L
+            } catch (e: Exception) {
+                f.length()
+            }
+        }
     }
 }

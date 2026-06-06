@@ -9,6 +9,11 @@ import com.playtranslate.translation.Tone
 import com.playtranslate.translation.TranslationBackend
 import com.playtranslate.translation.mnn.MnnTranslator
 
+/** Disk footprint for an on-device model's Settings row: [human] is the
+ *  formatted base-plus-mmap-cache total; [hasCache] is true when the mmap
+ *  weight cache is on disk (drives the warning tint). */
+data class DiskFootprint(val human: String, val hasCache: Boolean)
+
 /**
  * Shared base for on-device LLM translation backends. Concrete subclasses
  * provide configuration: [id], [displayName], [priority], [quality],
@@ -71,6 +76,15 @@ abstract class OnDeviceLlmBackend(
     /** Public read-through for the settings UI: pretty-formatted on-disk
      *  size (e.g. "1.48 GB"). Wraps [ModelHelper.humanSize]. */
     fun humanSize(): String = modelHelper.humanSize(context)
+
+    /** Settings-row disk footprint: the base model size plus the on-disk mmap
+     *  weight cache when present. [DiskFootprint.hasCache] drives the warning
+     *  tint — the cache is an extra ~model-sized copy that exists only while the
+     *  model is in use (dropped on disable/delete). */
+    fun diskFootprint(): DiskFootprint {
+        val cacheBytes = modelHelper.mmapCacheBytes(context)
+        return DiskFootprint(humanSize(modelHelper.expectedSize(context) + cacheBytes), cacheBytes > 0L)
+    }
 
     final override val requiresInternet: Boolean = false
     // false matches the abstraction (users opt into the on-device tier; they

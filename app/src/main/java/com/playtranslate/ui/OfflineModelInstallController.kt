@@ -314,6 +314,11 @@ class OfflineModelInstallController(
             .hideIcon()
             .addButton(activity.getString(m.disableKeep), activity.themeColor(R.attr.ptAccent)) {
                 m.setEnabled(activity, false)
+                // Disabled but kept: drop the mmap weight cache (~model-sized).
+                // The delete branch below already wipes it via model.delete().
+                m.model.deleteMmapCache(activity)
+                // Re-render the row so the Disk cell drops the cache size + tint.
+                binder.refreshAllBackendStatuses()
             }
             .addButton(
                 activity.getString(m.disableDelete),

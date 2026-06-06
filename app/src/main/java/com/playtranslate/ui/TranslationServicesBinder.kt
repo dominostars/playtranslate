@@ -1012,16 +1012,21 @@ class TranslationServicesBinder(
             else -> onDeviceLlm?.availMemFloorBytes?.toGbDisplay()
                 ?: ctx.getString(R.string.offline_backend_mlkit_ram)
         }
+        // On-device LLM rows show base + on-disk mmap-cache size, tinted with a
+        // warning color when the cache is present (it's an extra ~model-sized
+        // copy that lives only while the model is in use).
+        val diskFootprint = onDeviceLlm?.diskFootprint()
         val diskText = when {
             backend is BergamotBackend ->
                 ctx.getString(R.string.offline_backend_bergamot_disk)
-            else -> onDeviceLlm?.humanSize()
-                ?: ctx.getString(R.string.offline_backend_mlkit_disk)
+            diskFootprint != null -> diskFootprint.human
+            else -> ctx.getString(R.string.offline_backend_mlkit_disk)
         }
         bindMonoCell(row.findViewById(R.id.cellRam),
             R.string.offline_backend_ram_label, ramText)
         bindMonoCell(row.findViewById(R.id.cellDisk),
-            R.string.offline_backend_disk_label, diskText)
+            R.string.offline_backend_disk_label, diskText,
+            warning = diskFootprint?.hasCache == true)
 
         updateOfflineStatusIconAndSwitch(row, backend)
         // ML Kit gets no switch — user-confirmed deviation from C7. GONE
@@ -1070,9 +1075,14 @@ class TranslationServicesBinder(
         }
     }
 
-    private fun bindMonoCell(cell: View, @StringRes labelRes: Int, value: String) {
+    private fun bindMonoCell(cell: View, @StringRes labelRes: Int, value: String, warning: Boolean = false) {
         cell.findViewById<TextView>(R.id.tvStatLabel).setText(labelRes)
-        cell.findViewById<TextView>(R.id.tvStatValue).text = value
+        cell.findViewById<TextView>(R.id.tvStatValue).apply {
+            text = value
+            // Reset to the default (?attr/ptText) when not warning — rows are
+            // recycled, so a previously-warned cell must clear its tint.
+            setTextColor(cell.context.themeColor(if (warning) R.attr.ptWarning else R.attr.ptText))
+        }
     }
 
     /** Status icon (downloaded-check / cloud-down / busy spinner) plus the

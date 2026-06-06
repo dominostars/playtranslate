@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.StatFs
 import android.util.Log
 import com.playtranslate.mnn.InferenceEngine
+import com.playtranslate.mnn.MMAP_CACHE_DIR_NAME
 import com.playtranslate.mnn.UnsupportedArchitectureException
 import dalvik.annotation.optimization.FastNative
 import kotlinx.coroutines.CancellationException
@@ -215,7 +216,7 @@ internal class MnnChatImpl private constructor(
             )
             return ""
         }
-        val cacheDir = File(modelDir, ".mmap-cache")
+        val cacheDir = File(modelDir, MMAP_CACHE_DIR_NAME)
         if (!cacheDir.exists() && !cacheDir.mkdirs()) {
             Log.w(TAG, "MNN-TIMING mmap disabled: mkdirs failed for $cacheDir")
             return ""
