@@ -126,16 +126,22 @@ Java_com_playtranslate_mnn_internal_MnnChatImpl_prepare(
     // holding them in anonymous RAM — the kernel can then page them out under
     // pressure instead of OOM-killing us.
     //
-    // [EXPERIMENT] Testing whether the warm-restore SIGSEGV in
-    // createExecutionWithExternal is a chunk-boundary bug. The cache crash
-    // reproduced with the default `mmap_size` of 1024 (1 GiB), which splits the
-    // ~3 GB model across 3 `.static` chunks; SEGV_ACCERR (read past a mapping)
-    // is consistent with the warm remap miscomputing an offset across a chunk
-    // boundary. Force one big chunk (`mmap_size: 4096` → ~4 GiB) so the whole
-    // model is a single mapping, and re-enable the cache to exercise the warm
-    // path. If warm loads stop crashing, cached mmap is viable (cheap warm
-    // reloads + reclaimable). If they still crash, revert to use_cached_mmap=false.
+    // `mmap_size: 4096` (~4 GiB) is load-bearing, not a tuning knob. The default
+    // 1024 (1 GiB) splits the ~3 GB model across 3 `.static` chunks, and the warm
+    // restore then SIGSEGV'd (SEGV_ACCERR) in createExecutionWithExternal reading
+    // an external-weight offset across a chunk boundary. A single chunk large
+    // enough to hold the whole model removes the boundary entirely — a structural
+    // fix, not a device-specific workaround. Validated cold→warm with no crash
+    // across Gemma E2B (multimodal Omni), Hunyuan-MT and Qwen 3.5 (text-only) on
+    // an SD 8 Gen 2; warm reloads run ~0.2–0.3 s vs ~3–4 s cold. `use_cached_mmap:
+    // true` keeps the rearranged cache on disk so warm reloads reuse it;
     // `kvcache_mmap` stays false (KV cache in RAM).
+    //
+    // Caveat: a native warm-restore crash can't fall through in-process, and the
+    // cache persists across launches, so a regression would re-crash on the next
+    // launch's first load too. Treated as structural (single-device validation
+    // above) — re-validate warm loads on new SoC / precision classes before a
+    // wide rollout.
     std::string runtime_config =
         R"({"reuse_kv": true, "use_template": false, "sampler_type": "greedy")";
     if (!mmap_dir.empty()) {
@@ -143,6 +149,16 @@ Java_com_playtranslate_mnn_internal_MnnChatImpl_prepare(
     }
     runtime_config += "}";
     if (!g_llm->set_config(runtime_config)) {
+        if (!mmap_dir.empty()) {
+            // mmap was requested because the device is below the resident-memory
+            // floor, where the caller deliberately avoids the anonymous-weights
+            // load (it can OOM-kill us). If set_config didn't apply, use_mmap /
+            // tmp_path never took effect and load() would silently load anon —
+            // exactly that OOM path, with no chance to fall through. Fail instead,
+            // so MnnChatImpl throws and the waterfall drops to a lighter backend.
+            LOGe("Llm::set_config failed with mmap requested; refusing anonymous fallback");
+            return 3;
+        }
         LOGw("Llm::set_config failed; relying on bundled config.json values");
     }
     LOGi("Llm::load() (weights + module init), mmap=%s", mmap_dir.empty() ? "off" : "on");
