@@ -87,7 +87,7 @@ Java_com_playtranslate_mnn_internal_MnnChatImpl_prepare(
     const char *mmap_dir_c = env->GetStringUTFChars(jmmap_dir, nullptr);
     std::string mmap_dir(mmap_dir_c ? mmap_dir_c : "");
     if (mmap_dir_c) env->ReleaseStringUTFChars(jmmap_dir, mmap_dir_c);
-    // KV reuse + raw prompt feed + greedy sampling.
+    // KV reuse + raw prompt feed + greedy sampling + normal precision.
     //
     // reuse_kv=true: `generate_init` won't wipe the KV between calls, so
     //   `eraseHistory(sys_pos, current)` in `nativeResetForNextPrompt` actually
@@ -108,6 +108,15 @@ Java_com_playtranslate_mnn_internal_MnnChatImpl_prepare(
     //   which adds non-determinism the translation pipeline doesn't want and
     //   runs slower per token.
     //
+    // precision=normal: full-precision accumulation. The taobao-mnn bundles
+    //   default to `precision: low` (aggressive fp16 throughout), which on the
+    //   2B-class CJK->EN models flips enough logits to yield short, clipped,
+    //   sometimes meaning-reversed translations — the quality "trap" the
+    //   Gemma 4 E2B spike isolated (mnn-spike/SPIKE_REPORT.md, "`precision: low`
+    //   is a TRAP"). The validated `config_reuse.json` recipe uses `normal`;
+    //   without pinning it here the bundle's `low` default silently wins and
+    //   the on-device translations regress even though the prompt is correct.
+    //
     // Each shipped model's `config.json` typically carries these values, but
     // the canonical source for some entries (e.g. the Hunyuan-MT 1.5 bundle
     // fetched directly from wangjazz/Hunyuan-MT1.5-1.8B-MNN via the
@@ -116,11 +125,12 @@ Java_com_playtranslate_mnn_internal_MnnChatImpl_prepare(
     // a belt-and-suspenders override that pins our preferred runtime config
     // regardless of what the upstream `config.json` happens to contain.
     //
-    // MUST run BEFORE load(): MNN constructs the sampler during load() from
-    // whatever config is set then, so setting `sampler_type` afterwards
-    // leaves the default mixed/temperature sampler in place. reuse_kv /
+    // MUST run BEFORE load(): MNN constructs the sampler AND configures the
+    // backend precision during load() from whatever config is set then, so
+    // setting `sampler_type` / `precision` afterwards leaves the defaults
+    // (mixed/temperature sampler, the bundle's precision) in place. reuse_kv /
     // use_template are read per-call and tolerate either order, but pinning
-    // all three pre-load keeps the contract uniform.
+    // all four pre-load keeps the contract uniform.
     // When an mmap dir is supplied, add `use_mmap` + `tmp_path` so MNN maps the
     // (rearranged) weights from disk as reclaimable file-backed pages instead of
     // holding them in anonymous RAM — the kernel can then page them out under
@@ -145,11 +155,11 @@ Java_com_playtranslate_mnn_internal_MnnChatImpl_prepare(
     //
     // Built by concatenation; the object's closing brace is appended by the
     // `+= "}"` below, so the literal on the next line deliberately ends with an
-    // OPEN object (…"greedy", no `}`) — the "greedy" value IS closed. Final JSON:
-    //   no mmap: {"reuse_kv":true,"use_template":false,"sampler_type":"greedy"}
+    // OPEN object (…"normal", no `}`) — the "normal" value IS closed. Final JSON:
+    //   no mmap: {"reuse_kv":true,"use_template":false,"sampler_type":"greedy","precision":"normal"}
     //   w/ mmap: {…,"use_mmap":true,"use_cached_mmap":true,"mmap_size":4096,"tmp_path":"<dir>"}
     std::string runtime_config =
-        R"({"reuse_kv": true, "use_template": false, "sampler_type": "greedy")";
+        R"({"reuse_kv": true, "use_template": false, "sampler_type": "greedy", "precision": "normal")";
     if (!mmap_dir.empty()) {
         runtime_config += R"(, "use_mmap": true, "use_cached_mmap": true, "mmap_size": 4096, "tmp_path": ")" + jsonEscapeString(mmap_dir) + R"(")";
     }
