@@ -65,13 +65,39 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         style = Paint.Style.STROKE
         strokeWidth = 1.5f * resources.displayMetrics.density
     }
+    /** Base (undimmed) arrow colour — deliberately off pure white. Pure white
+     *  drives all three OLED subpixels at max (blue ages fastest), so a static
+     *  white arrow is the icon's main burn-in risk; a light silver cuts emitted
+     *  light ~25% with no perceptible change against the dark disc. */
+    private val arrowColor = "#C0C0C0".toColorInt()
     private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
-        style = Paint.Style.FILL
+        color = arrowColor
+        // Stroked chevron, not a solid triangle: far fewer lit subpixels, and
+        // every lit pixel is thin enough that the slow micro-orbit fully cycles
+        // it (a fill's core would never get an off-frame to recover in).
+        style = Paint.Style.STROKE
+        strokeWidth = 1.8f * resources.displayMetrics.density
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
     }
     // Scratch objects reused in onLayout/onDraw — allocating per frame is lint DrawAllocation.
     private val gestureRect = Rect()
     private val gestureRectList = listOf(gestureRect)
+
+    // ── OLED burn-in mitigation ─────────────────────────────────────────
+    // The edge chevron is the only bright, static, always-on element, so it
+    // drives burn-in. Three mitigations stack and are all draw-time only (no
+    // window moves, so the touch target / gestures / persistence stay
+    // untouched): the silver *stroked* chevron above lowers luminance and
+    // lit-pixel count; [dimLevel] fades the whole glyph after inactivity; and
+    // [orbitDy] slowly slides it a few px so no subpixel stays lit forever.
+    private var dimLevel = 1f
+    private var dimAnimator: ValueAnimator? = null
+    private val circleBaseAlpha = 0xCC
+    private val borderBaseAlpha = 0x66
+    private val arrowBaseAlpha = 0xFF
+    private var orbitDy = 0f
+    private var orbitStep = 0
 
     // ── Loading spinner (separate overlay window) ──────────────────────
     private var spinnerView: View? = null
@@ -289,6 +315,18 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         private const val FLING_THRESHOLD = 600f // px/s
         private const val TAP_THRESHOLD_DP = 18f
         private const val SNAP_DURATION_MS = 250L
+        /** Idle delay before the icon fades, and the dimmed level (fraction of
+         *  full). 0.6 cuts emitted light ~40% — meaningful burn-in relief while
+         *  staying comfortably visible, including the live-mode status colour. */
+        private const val IDLE_DIM_DELAY_MS = 60_000L
+        private const val IDLE_DIM_LEVEL = 0.6f
+        private const val DIM_FADE_MS = 600L
+        private const val UNDIM_FADE_MS = 150L
+        /** Vertical micro-orbit: a slow ±4px triangle wave, 1px every 30s (an
+         *  8-min cycle). Sub-perceptual on a peripheral handle, but enough that
+         *  the thin chevron's pixels each get regular off-frames. */
+        private const val ORBIT_STEP_MS = 30_000L
+        private val ORBIT_WAVE = intArrayOf(0, 1, 2, 3, 4, 3, 2, 1, 0, -1, -2, -3, -4, -3, -2, -1)
     }
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
@@ -317,33 +355,41 @@ class FloatingOverlayIcon(context: Context) : View(context) {
             return
         }
         // Compact (always): circle pushed off-screen so only ~1/4 is visible.
+        // Burn-in: paints are alpha-scaled by dimLevel (idle fade) and the whole
+        // glyph rides the slow vertical micro-orbit via a canvas translate.
         val compactOffset = r * 0.5f
         val cx = if (currentEdge == Edge.LEFT) center - compactOffset else center + compactOffset
+        canvas.save()
+        canvas.translate(0f, orbitDy)
+        applyDim(circlePaint, circleBaseAlpha)
         canvas.drawCircle(cx, center, r, circlePaint)
+        applyDim(borderPaint, borderBaseAlpha)
         canvas.drawCircle(cx, center, r, borderPaint)
         // Arrow in the visible slice, nudged toward the screen edge.
         val arrowNudge = r * 0.65f
         val arrowCx = if (currentEdge == Edge.LEFT) cx + arrowNudge else cx - arrowNudge
+        applyDim(arrowPaint, arrowBaseAlpha)
         drawEdgeArrow(canvas, arrowCx, center, r * 0.22f)
+        canvas.restore()
     }
 
-    /** Draws a small arrow pointing toward the screen center (away from the edge). */
+    /** Draws a small chevron pointing toward the screen center (away from the
+     *  edge). Stroked and open (no base bar) — see [arrowPaint]. */
     private fun drawEdgeArrow(canvas: Canvas, cx: Float, cy: Float, size: Float) {
         val path = android.graphics.Path()
         val hw = size * 0.5f  // half-width (horizontal)
         val hh = size * 0.7f  // half-height (vertical)
         if (currentEdge == Edge.LEFT) {
-            // Arrow pointing right (toward screen)
-            path.moveTo(cx + hw, cy)
-            path.lineTo(cx - hw * 0.3f, cy - hh)
+            // Chevron pointing right (toward screen): arms meet at the tip.
+            path.moveTo(cx - hw * 0.3f, cy - hh)
+            path.lineTo(cx + hw, cy)
             path.lineTo(cx - hw * 0.3f, cy + hh)
         } else {
-            // Arrow pointing left (toward screen)
-            path.moveTo(cx - hw, cy)
-            path.lineTo(cx + hw * 0.3f, cy - hh)
+            // Chevron pointing left (toward screen).
+            path.moveTo(cx + hw * 0.3f, cy - hh)
+            path.lineTo(cx - hw, cy)
             path.lineTo(cx + hw * 0.3f, cy + hh)
         }
-        path.close()
         canvas.drawPath(path, arrowPaint)
     }
 
@@ -412,6 +458,7 @@ class FloatingOverlayIcon(context: Context) : View(context) {
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         onAnyTouch?.invoke()
+        wakeFromIdle()
         parent?.requestDisallowInterceptTouchEvent(true)
 
         when (event.actionMasked) {
@@ -615,9 +662,78 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         p.y = cy - viewHalf
     }
 
+    // ── OLED burn-in mitigation: idle-dim + micro-orbit drivers ─────────
+    private fun applyDim(paint: Paint, baseAlpha: Int) {
+        paint.alpha = (baseAlpha * dimLevel).toInt().coerceIn(0, 255)
+    }
+
+    private val idleDimRunnable = object : Runnable {
+        override fun run() {
+            if (hasActiveGesture) {
+                // Finger still down (e.g. a long hold-for-translation) — don't
+                // dim mid-gesture; re-arm and let the lift re-evaluate.
+                postDelayed(this, IDLE_DIM_DELAY_MS)
+            } else {
+                animateDim(IDLE_DIM_LEVEL)
+            }
+        }
+    }
+
+    private fun animateDim(target: Float) {
+        if (dimLevel == target && dimAnimator?.isRunning != true) return
+        dimAnimator?.cancel()
+        // Gentle fade out, quick restore.
+        val dur = if (target < dimLevel) DIM_FADE_MS else UNDIM_FADE_MS
+        dimAnimator = ValueAnimator.ofFloat(dimLevel, target).apply {
+            duration = dur
+            addUpdateListener { dimLevel = it.animatedValue as Float; invalidate() }
+            start()
+        }
+    }
+
+    /** Restore full brightness and restart the idle countdown — driven off
+     *  every touch so the icon is never dim while in use. */
+    private fun wakeFromIdle() {
+        removeCallbacks(idleDimRunnable)
+        animateDim(1f)
+        postDelayed(idleDimRunnable, IDLE_DIM_DELAY_MS)
+    }
+
+    private val orbitRunnable = object : Runnable {
+        override fun run() {
+            orbitStep = (orbitStep + 1) % ORBIT_WAVE.size
+            orbitDy = ORBIT_WAVE[orbitStep].toFloat()
+            invalidate()
+            postDelayed(this, ORBIT_STEP_MS)
+        }
+    }
+
+    private fun startOrbit() {
+        removeCallbacks(orbitRunnable)
+        postDelayed(orbitRunnable, ORBIT_STEP_MS)
+    }
+
+    private fun stopOrbit() {
+        removeCallbacks(orbitRunnable)
+        orbitStep = 0
+        orbitDy = 0f
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        dimLevel = 1f
+        postDelayed(idleDimRunnable, IDLE_DIM_DELAY_MS)
+        startOrbit()
+    }
+
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         hideSpinnerWindow()
+        removeCallbacks(idleDimRunnable)
+        dimAnimator?.cancel()
+        dimAnimator = null
+        dimLevel = 1f
+        stopOrbit()
     }
 
     /** Call when the icon is permanently removed, not just temporarily detached.
