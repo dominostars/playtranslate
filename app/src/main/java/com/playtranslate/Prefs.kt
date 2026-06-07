@@ -6,10 +6,13 @@ import android.hardware.display.DisplayManager
 import com.playtranslate.BuildConfig
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.security.SecretCipher
+import com.playtranslate.security.SecretCodec
 import com.playtranslate.ui.AccentColor
 import com.playtranslate.ui.ThemeMode
 import org.json.JSONArray
 import org.json.JSONObject
+import androidx.annotation.VisibleForTesting
 import androidx.core.content.edit
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -65,7 +68,15 @@ data class IconPosition(val edge: Int, val fraction: Float) {
 /**
  * Simple wrapper around [SharedPreferences] for persisting user settings.
  */
-class Prefs(context: Context) {
+class Prefs internal constructor(
+    context: Context,
+    private val codec: SecretCodec,
+) {
+
+    /** Production constructor — always the AndroidKeyStore-backed [SecretCipher].
+     *  The [codec] seam on the primary constructor exists only so JVM tests can
+     *  inject a fake (AndroidKeyStore is instrumented-only). */
+    constructor(context: Context) : this(context, SecretCipher)
 
     private val sp: SharedPreferences =
         context.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
@@ -304,14 +315,76 @@ class Prefs(context: Context) {
         return if (id.isNotEmpty()) list.find { it.id == id } ?: list.first() else list.first()
     }
 
+    // ── Encrypted secret storage (online-backend API keys) ───────────────
+    // The four API-key fields below are encrypted at rest through [codec]
+    // (AndroidKeyStore AES-GCM in production), each value bound to its
+    // preference key as AAD so a ciphertext can't be moved between slots. The
+    // [default] (a baked BuildConfig key for DeepL, "" otherwise) is the
+    // bootstrap value used ONLY when the key is genuinely absent. Two other
+    // paths deliberately do NOT fall through to it: an explicitly-cleared key
+    // is stored as a literal "" (never removed), and a present-but-
+    // undecryptable key reads as "" (fail-closed) — so a lost/rotated keystore
+    // key, or a blob shuffled between slots, can never silently substitute the
+    // baked DeepL key for the one the user stored.
+
+    @VisibleForTesting
+    internal fun readSecret(key: String, default: String): String {
+        val stored = sp.getString(key, null) ?: return default   // absent → bootstrap default
+        if (stored.isEmpty()) return ""                           // explicitly cleared → no key
+        return codec.decrypt(key, stored) ?: ""                   // unreadable/wrong-slot → no key, NOT default
+    }
+
+    private fun writeSecret(key: String, value: String) = sp.edit {
+        if (value.isEmpty()) putString(key, "")
+        // Fail-closed: if encryption is unavailable, persist nothing rather
+        // than fall back to plaintext (and leave any existing value intact).
+        else putString(key, codec.encrypt(key, value) ?: return@edit)
+    }
+
+    /**
+     * Re-encrypt any pre-existing plaintext API keys in place, exactly once.
+     * Runs first in [migrateLegacyPrefs], before any property read.
+     *
+     * Atomic by construction: every ciphertext is staged in memory and
+     * committed together with the done-marker in a single [edit]. Either all
+     * present keys encrypt and commit (with the marker), or nothing is written
+     * and it retries cleanly next launch — so no partial or double-encryption
+     * state is reachable.
+     *
+     * Serialized on [SECRET_MIGRATION_LOCK]: [Prefs] is constructed from many
+     * components, some off the main thread (the translation key-providers run
+     * on Dispatchers.IO), so two first-launch constructors could otherwise both
+     * pass the marker check and the second could read a key the first already
+     * encrypted and double-encrypt it. The lock is process-wide (companion)
+     * because [Prefs] is not a singleton; the in-lock recheck is standard
+     * double-checked locking. With it, "every stored value is plaintext" holds
+     * whenever the marker is absent, so no ciphertext detection is needed.
+     */
+    private fun migrateSecretsToEncrypted() {
+        if (sp.contains(KEY_SECRETS_ENCRYPTED_MIGRATED)) return
+        synchronized(SECRET_MIGRATION_LOCK) {
+            if (sp.contains(KEY_SECRETS_ENCRYPTED_MIGRATED)) return
+            val updates = HashMap<String, String>()
+            for (key in listOf(KEY_DEEPL_KEY, KEY_GEMINI_KEY, KEY_OPENAI_KEY, KEY_DEEPSEEK_KEY)) {
+                val raw = sp.getString(key, null)?.takeIf { it.isNotEmpty() } ?: continue
+                val enc = codec.encrypt(key, raw) ?: return
+                updates[key] = enc
+            }
+            sp.edit {
+                updates.forEach { (key, enc) -> putString(key, enc) }
+                putBoolean(KEY_SECRETS_ENCRYPTED_MIGRATED, true)
+            }
+        }
+    }
+
     /**
      * DeepL API key.  Defaults to the value baked into the build via
      * local.properties (your personal device build).  Empty on distributed
      * builds — user must enter their own key in Settings.
      */
     var deeplApiKey: String
-        get() = sp.getString(KEY_DEEPL_KEY, BuildConfig.DEEPL_API_KEY) ?: ""
-        set(v) = sp.edit { putString(KEY_DEEPL_KEY, v) }
+        get() = readSecret(KEY_DEEPL_KEY, BuildConfig.DEEPL_API_KEY)
+        set(v) = writeSecret(KEY_DEEPL_KEY, v)
 
     /** User's explicit "use DeepL?" toggle. Independent of [deeplApiKey]
      *  presence — disabling DeepL preserves the saved key so a later
@@ -339,8 +412,8 @@ class Prefs(context: Context) {
     /** Gemini API key from AI Studio (https://aistudio.google.com/app/apikey).
      *  Empty by default — users must enter their own key in Settings. */
     var geminiApiKey: String
-        get() = sp.getString(KEY_GEMINI_KEY, "") ?: ""
-        set(v) = sp.edit { putString(KEY_GEMINI_KEY, v) }
+        get() = readSecret(KEY_GEMINI_KEY, "")
+        set(v) = writeSecret(KEY_GEMINI_KEY, v)
 
     /** User's explicit "use Gemini?" toggle. Independent of [geminiApiKey]
      *  presence — disabling Gemini preserves the saved key so a later
@@ -359,8 +432,8 @@ class Prefs(context: Context) {
 
     /** OpenAI API key from https://platform.openai.com/api-keys. */
     var openaiApiKey: String
-        get() = sp.getString(KEY_OPENAI_KEY, "") ?: ""
-        set(v) = sp.edit { putString(KEY_OPENAI_KEY, v) }
+        get() = readSecret(KEY_OPENAI_KEY, "")
+        set(v) = writeSecret(KEY_OPENAI_KEY, v)
 
     /** User's explicit "use OpenAI?" toggle. See [geminiEnabled] for the
      *  no-auto-enable rationale. */
@@ -375,8 +448,8 @@ class Prefs(context: Context) {
 
     /** DeepSeek API key from https://platform.deepseek.com/api_keys. */
     var deepseekApiKey: String
-        get() = sp.getString(KEY_DEEPSEEK_KEY, "") ?: ""
-        set(v) = sp.edit { putString(KEY_DEEPSEEK_KEY, v) }
+        get() = readSecret(KEY_DEEPSEEK_KEY, "")
+        set(v) = writeSecret(KEY_DEEPSEEK_KEY, v)
 
     /** User's explicit "use DeepSeek?" toggle. Default false; explicit
      *  opt-in like every other paid LLM backend. */
@@ -598,6 +671,9 @@ class Prefs(context: Context) {
      * acceptable cost given the internal audience.
      */
     fun migrateLegacyPrefs() {
+        // Encrypt any legacy plaintext API keys before anything reads them.
+        migrateSecretsToEncrypted()
+
         val legacyKey = "auto_translation_mode"
         if (sp.contains(legacyKey)) {
             val legacyOrdinal = try {
@@ -938,6 +1014,12 @@ class Prefs(context: Context) {
         private const val KEY_ANKI_AUDIO_MAPPING_MIGRATED = "anki_audio_mapping_migrated"
         private const val KEY_REGION_LIST    = "region_list"
         private const val KEY_DEEPL_KEY      = "deepl_api_key"
+        private const val KEY_SECRETS_ENCRYPTED_MIGRATED = "secrets_encrypted_migrated"
+
+        /** Process-wide guard so the one-shot secret migration runs exactly
+         *  once even if two threads construct [Prefs] concurrently on the first
+         *  launch after upgrade (see [migrateSecretsToEncrypted]). */
+        private val SECRET_MIGRATION_LOCK = Any()
         const val KEY_DEEPL_ENABLED          = "deepl_enabled"
         const val KEY_LINGVA_ENABLED         = "lingva_enabled"
         const val KEY_BERGAMOT_ENABLED       = "bergamot_enabled"
