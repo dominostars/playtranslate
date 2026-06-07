@@ -33,7 +33,7 @@ class FstTargetGlossDatabase private constructor(
     override fun lookup(sourceLang: String, written: String, reading: String?): List<TargetSense>? {
         val rows = lookupKey(sourceLang, written) ?: return null
         if (reading != null) {
-            val matching = rows.filter { it.reading == reading }
+            val matching = rows.filter { PinyinFormatter.readingsEqual(it.reading, reading) }
             if (matching.isNotEmpty()) return matching.map { it.toSense() }
         }
         val empty = rows.filter { it.reading.isEmpty() }

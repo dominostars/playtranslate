@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- API 30+: AccessibilityService.takeScreenshot exists, so the
+         accessibility capture backend is available. -->
+    <bool name="accessibility_service_enabled">true</bool>
+</resources>

@@ -760,7 +760,7 @@ object LayoutAnalyzer {
         if (sorted.isEmpty()) return emptyList()
         val boxes = sorted.map { it.box.bounds }
         val alignLefts: List<Int?> = if (orientation == TextOrientation.HORIZONTAL) {
-            sorted.map { it.lines.firstOrNull()?.effectiveAlignLeft ?: it.box.bounds.left }
+            sorted.map { region -> region.lines.firstOrNull()?.let { effectiveAlignLeft(it) } ?: region.box.bounds.left }
         } else {
             List(sorted.size) { null }
         }
@@ -831,21 +831,60 @@ object LayoutAnalyzer {
     }
 
     /**
-     * Classify a horizontal group's alignment (LEFT/CENTER). Model-typed twin of
-     * the former OcrManager.classifyGroupAlignment(List<Text.Line>); uses each
-     * line's precomputed [RecognizedLine.effectiveAlignLeft] hint. Left wins on
-     * ties — same-width left-aligned lines satisfy both checks and we never
-     * falsely center actually-left text.
+     * Opening punctuation that visually hangs to the LEFT of body text (brackets,
+     * quotes, middle dots), plus glyphs OCR commonly misreads for them. When such a
+     * glyph is a line's first character its box left-edge is an outdented anchor;
+     * [effectiveAlignLeft] shifts the alignment reference right past it so a body
+     * line beneath `「こんにちは` aligns to where `こ` starts. Moved here (vendor-
+     * neutral) from the former ML-Kit-only `OcrManager` so EVERY engine's lines get
+     * the compensation, not just ML Kit's.
+     */
+    private val HANGING_PUNCT_LEFT = setOf(
+        '「', '『', '（', '【', '〔', '《', '〈',
+        '(', '[', '{',
+        '・', '·',
+        '“', '‘', '"', '\'',
+        ',',
+    )
+
+    /**
+     * Effective left edge of [line] for paragraph-alignment checks (grouping +
+     * [classifyGroupAlignment]). If the line begins with a [HANGING_PUNCT_LEFT]
+     * glyph, the anchor is shifted right past it — to the right edge of that
+     * punctuation's own char box, matched by offset. The char tier may be sparse (a
+     * missing symbol is allowed), so we must NOT take `chars.first()` blindly: if the
+     * punctuation glyph has no box that would be the first *body* glyph, whose right
+     * edge over-shoots past the body. When the punctuation box is absent we fall back
+     * to a line-height approximation (box.left ≈ the punctuation's left edge on a
+     * hanging-punct line) — also the path for char-less engines (PaddleOCR / manga-ocr).
+     * Otherwise the raw box left. Computed on demand here (not precomputed per-engine)
+     * so it is identical for all engines and the model carries no precompute/consume
+     * split. Assumes [line] is already text-normalized (leading pipes/decoration
+     * stripped by [RecognizedTextNormalizer]).
+     */
+    internal fun effectiveAlignLeft(line: RecognizedLine): Int {
+        val box = line.box.bounds
+        val firstIdx = line.text.indexOfFirst { !it.isWhitespace() }
+        if (firstIdx < 0) return box.left
+        if (line.text[firstIdx] !in HANGING_PUNCT_LEFT) return box.left
+        val punct = line.chars.firstOrNull { it.charOffset == firstIdx }
+        return punct?.box?.bounds?.right ?: (box.left + box.height())
+    }
+
+    /**
+     * Classify a horizontal group's alignment (LEFT/CENTER) from each line's
+     * [effectiveAlignLeft] (hanging-punct-compensated) vs its center. Left wins on
+     * ties — same-width left-aligned lines satisfy both checks and we never falsely
+     * center actually-left text.
      */
     internal fun classifyGroupAlignment(lines: List<RecognizedLine>): TextAlignment {
         if (lines.size < 2) return TextAlignment.LEFT
         val boxes = lines.map { it.box.bounds }
-        val effectiveLefts = lines.mapNotNull { it.effectiveAlignLeft }
-        if (effectiveLefts.size < 2) return TextAlignment.LEFT
         val refH = boxes.maxOf { it.height() }
         if (refH <= 0) return TextAlignment.LEFT
         val tol = (refH * 0.5f).toInt()
-        val leftSpread = effectiveLefts.max() - effectiveLefts.min()
+        val lefts = lines.map { effectiveAlignLeft(it) }
+        val leftSpread = lefts.max() - lefts.min()
         val centerXs = boxes.map { it.centerX() }
         val centerSpread = centerXs.max() - centerXs.min()
         if (leftSpread <= tol) return TextAlignment.LEFT

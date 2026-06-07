@@ -14,10 +14,10 @@ android {
 
     defaultConfig {
         applicationId = "com.playtranslate"
-        minSdk = 30
+        minSdk = 29
         targetSdk = 36
         versionCode = 9
-        versionName = "2.2.0"
+        versionName = "2.3.0-alpha"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -95,8 +95,26 @@ android {
             // pack (see scripts/build_zh_dict.py --hanlp-jar);
             // ChineseEngine installs a PackAwareHanlpAdapter that
             // redirects HanLP's file reads to the pack's tokenizer/
-            // dir. Strips ~23 MB of HanLP classpath resources.
-            excludes += "data/dictionary/**"
+            // dir. Strips ~22 MB of HanLP classpath resources.
+            //
+            // CAUTION: opencc4j ALSO ships dictionaries under data/dictionary/
+            // (~1.1 MB of OpenCC STPhrases/TWVariants/HKVariants/… flat *.txt
+            // files it loads via getResourceAsStream at runtime). A blanket
+            // `data/dictionary/**` exclude strips those too and crashes the
+            // Traditional-Chinese converter (ExceptionInInitializerError → null
+            // resource stream in STPhraseData.<clinit>). So strip HanLP's entries
+            // by name and let opencc4j's OpenCC tables survive. Both deps are
+            // version-pinned, so this file list is stable; revisit on upgrade.
+            excludes += "data/dictionary/CoreNatureDictionary*"
+            excludes += "data/dictionary/stopwords.txt.bin"
+            excludes += "data/dictionary/custom/**"
+            excludes += "data/dictionary/organization/**"
+            excludes += "data/dictionary/other/**"
+            excludes += "data/dictionary/person/**"
+            excludes += "data/dictionary/pinyin/**"
+            excludes += "data/dictionary/place/**"
+            excludes += "data/dictionary/synonym/**"
+            excludes += "data/dictionary/tc/**"
             excludes += "data/model/**"
         }
     }
@@ -157,6 +175,11 @@ dependencies {
 
     // HanLP CRF segmenter (Phase 4: Chinese word segmentation)
     implementation(libs.hanlp)
+
+    // OpenCC (opencc4j): render-time Simplified->Traditional Chinese conversion
+    // for Traditional target output (s2t / s2tw phrase-level / s2hk glyph-level).
+    // Pure-JVM, Apache-2.0; no NDK, so it runs on every ABI.
+    implementation(libs.opencc4j)
 
     // Unit tests
     testImplementation(libs.junit)

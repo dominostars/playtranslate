@@ -456,6 +456,17 @@ class RegionPickerSheet : DialogFragment() {
         showSelectedOverlay()
     }
 
+    /** Re-show the persistent region preview after it was torn down out from
+     *  under us. A hold-to-translate launched from the picker runs a one-shot
+     *  whose post-capture region flash shares the single indicator slot with
+     *  this preview and force-removes it; the hold-end path only restores
+     *  overlays in live mode, so the non-live picker preview needs an explicit
+     *  re-show when the user releases the button. */
+    fun reshowSelectedOverlay() {
+        if (!isAdded || isDetached) return
+        showSelectedOverlay()
+    }
+
     // ── Overlay helpers ────────────────────────────────────────────────────
 
     private val isLive get() = com.playtranslate.CaptureService.instance?.liveModeState?.value == true

@@ -235,7 +235,8 @@ class MainActivity :
             val dm = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
             val displays = dm.displays
             val presentation = dm.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION)
-            val winBounds = windowManager.currentWindowMetrics.bounds
+            val winBounds = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+                windowManager.currentWindowMetrics.bounds else android.graphics.Rect()
             android.util.Log.i(TAG_DISPLAY_DUMP,
                 "[$reason] displays=${displays.size} presentation=${presentation.size} " +
                     "multiWindow=$isInMultiWindowMode " +
@@ -836,6 +837,13 @@ class MainActivity :
             ?.refreshFromPrefs()
     }
 
+    /** Bring back the region picker's preview overlay after a hold-to-translate
+     *  one-shot evicted it (see RegionPickerSheet.reshowSelectedOverlay). */
+    private fun reshowRegionPreview() {
+        (supportFragmentManager.findFragmentByTag(RegionPickerSheet.TAG) as? RegionPickerSheet)
+            ?.reshowSelectedOverlay()
+    }
+
     private fun updateRegionButton() {
         val region = captureService?.activeRegion ?: prefs.primaryDisplayRegion()
         val label = region.displayName(this)
@@ -950,6 +958,9 @@ class MainActivity :
                 translateHoldActive = false
                 captureService?.holdEnd()
                 selectTab(selectedTab) // restore button colors
+                // The one-shot's post-capture region flash tears down the
+                // region picker's persistent preview; bring it back on release.
+                if (selectedTab == Tab.REGIONS) reshowRegionPreview()
             }
             false
         }
@@ -1920,8 +1931,9 @@ class MainActivity :
         // default. Styling matches a committed selection; if the user wants
         // something else they tap the row. Tapping Continue without having
         // picked explicitly runs the install flow for this default.
-        yourVal.text = tgtLocale.getDisplayLanguage(tgtLocale)
-            .replaceFirstChar { it.uppercase(tgtLocale) }
+        yourVal.text = com.playtranslate.language.ChineseScriptVariant.targetDisplayName(
+            effectiveTarget, p.targetChineseVariant, tgtLocale,
+        )
         yourVal.setTextColor(themeColor(R.attr.ptTextMuted))
 
         btnWelcomeContinue.text = getString(
@@ -2018,7 +2030,12 @@ class MainActivity :
     // ── Display detection ─────────────────────────────────────────────────
 
     private fun findGameDisplayId(): Int {
-        val myDisplayId = display?.displayId ?: Display.DEFAULT_DISPLAY
+        val myDisplayId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            display?.displayId ?: Display.DEFAULT_DISPLAY
+        } else {
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.displayId
+        }
 
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         return displayManager.displays

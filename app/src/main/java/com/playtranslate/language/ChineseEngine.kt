@@ -4,9 +4,11 @@ import android.content.Context
 import com.hankcs.hanlp.HanLP
 import com.hankcs.hanlp.corpus.io.IIOAdapter
 import com.hankcs.hanlp.dictionary.py.Pinyin
+import com.hankcs.hanlp.seg.common.Term
 import com.playtranslate.model.CharacterDetail
 import com.playtranslate.model.DictionaryResponse
 import com.playtranslate.model.HanziDetail
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -14,6 +16,36 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.OutputStream
+
+/**
+ * Like [runCatching] but cancellation-safe: rethrows [CancellationException]
+ * so coroutine cancellation still propagates, and degrades any OTHER failure
+ * to null. Bare `runCatching` in a coroutine swallows cancellation, which can
+ * let an abandoned send fall through and still create a card. Also lets
+ * [Error] (OOM, etc.) propagate — only [Exception] degrades.
+ */
+internal inline fun <T> runCatchingNonCancellable(block: () -> T): T? =
+    try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
+
+/**
+ * Floats the entry whose headword reading matches [reading] to the front, so
+ * `entries.first()` / `headwordDisplay` reflect a context-resolved heteronym
+ * choice. A null/blank hint, or no matching entry, leaves the response in its
+ * original frequency order. Extracted and `internal` so the selection is
+ * JVM-unit-testable without HanLP.
+ */
+internal fun DictionaryResponse.preferReading(reading: String?): DictionaryResponse {
+    if (reading.isNullOrEmpty()) return this
+    val idx = entries.indexOfFirst { e -> e.headwords.any { it.reading == reading } }
+    if (idx <= 0) return this
+    return copy(entries = listOf(entries[idx]) + entries.filterIndexed { i, _ -> i != idx })
+}
 
 /**
  * Chinese source-language engine. Uses HanLP's CRF/perceptron segmenter for
@@ -99,12 +131,21 @@ class ChineseEngine(
 
     override suspend fun tokenize(text: String): List<TokenSpan> = withContext(Dispatchers.Default) {
         val terms = HanLP.segment(text)
+        // Context-resolved per-surface reading corrections for heteronyms
+        // (东西 dōngxī/dōngxi, standalone 还 hái/huán), carried on
+        // TokenSpan.reading as a hint that lookup() honors. Setting it HERE is
+        // the single source of truth: every reading writer funnels through
+        // tokenize → resolver.lookup → lookup (the result-screen ViewModel, the
+        // Anki word cache, drag/one-tap), so all of them get the corrected
+        // reading without per-call-site patching. Absent for unambiguous or
+        // conflicting surfaces → freq-default, exactly as before.
+        val corrections = contextualReadings(terms, text)
         terms.filter { isLookupWorthy(it.word) }
-            .map { TokenSpan(surface = it.word, lookupForm = it.word, reading = null) }
+            .map { TokenSpan(surface = it.word, lookupForm = it.word, reading = corrections[it.word]) }
     }
 
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? =
-        dict.lookup(word, profile.preferTraditional)
+        dict.lookup(word, profile.preferTraditional)?.preferReading(reading)
 
     /**
      * CC-CEDICT contains most common hanzi as single-character entries with
@@ -145,6 +186,87 @@ class ChineseEngine(
             }
             annotations
         }
+
+    /**
+     * Per-surface, context-resolved pinyin OVERRIDES for the heteronyms in
+     * [text] — a `{surface → reading}` map containing ONLY surfaces whose
+     * contextual reading differs from CC-CEDICT's frequency default. The
+     * caller applies it over the existing surface-keyed word readings before
+     * building the card, so the existing (robust, surface-keyed) annotation
+     * path renders the contextually-correct pinyin with no second code path.
+     *
+     * Heteronym fix: CC-CEDICT lists readings per entry and the display
+     * defaults to the most frequent, so homographs (东西 dōngxī/dōngxi, 大夫
+     * dàfū/dàifu) and standalone heteronyms (地 dì/de, 还 hái/huán) could show
+     * the wrong pinyin. Here we reuse the caller's HanLP segmentation, take
+     * HanLP's phrase-aware per-hanzi pinyin for the whole sentence (the
+     * convertToPinyinList signal the live overlay already uses), and for each
+     * AMBIGUOUS surface pick the CC-CEDICT candidate whose syllables best match
+     * that context.
+     *
+     * Per-surface, first-occurrence-wins: a surface that genuinely takes two
+     * different readings in one sentence resolves to the first occurrence's —
+     * a rare, bounded limitation that is the price of keeping this to a single
+     * annotation path. Anything not in the map keeps its frequency-default
+     * reading, so coverage and robustness stay exactly the existing path's.
+     */
+    private suspend fun contextualReadings(terms: List<Term>, text: String): Map<String, String> {
+        if (text.isBlank()) return emptyMap()
+        // HanLP's phrase-aware per-hanzi pinyin is the context signal — computed
+        // lazily so a sentence with no ambiguous surface skips the extra pass.
+        // The caller's already-segmented `terms` are reused, so we never
+        // re-segment (tokenize already paid for HanLP.segment).
+        val charPinyin: List<Pinyin>? by lazy { runCatchingNonCancellable { HanLP.convertToPinyinList(text) } }
+        val occurrences = mutableListOf<HeteronymOccurrence>()
+        val candidatesBySurface = HashMap<String, List<String>>()
+        var cursor = 0
+        for (term in terms) {
+            val word = term.word ?: continue
+            if (word.isEmpty()) continue
+            // Align the term to the source text so we can slice its per-char
+            // pinyin; greedy from the running cursor is robust to whitespace
+            // HanLP may drop between terms.
+            val found = text.indexOf(word, cursor)
+            val begin = if (found >= 0) found else cursor
+            cursor = begin + word.length
+            if (!word.any(::isHanziChar)) continue
+            if (found < 0) continue              // normalized surface, not in source text
+            // CC-CEDICT lookup is surface-keyed, so resolve candidates once per
+            // surface. Reading-only query (no sense/gloss build) — we only need
+            // the candidate readings to detect a heteronym and disambiguate.
+            // Cancellation propagates; a dict hiccup degrades to no correction
+            // for this surface rather than aborting the send.
+            val candidates = candidatesBySurface.getOrPut(word) {
+                runCatchingNonCancellable { dict.candidateReadings(word) } ?: emptyList()
+            }
+            if (candidates.size < 2) continue    // unambiguous → frequency default is correct
+            // Record EVERY ambiguous occurrence with its positional context;
+            // resolveOverrides decides per surface and suppresses any surface
+            // whose occurrences disagree, so a repeat is never made worse.
+            occurrences += HeteronymOccurrence(word, candidates, contextSyllables(word, begin, charPinyin))
+        }
+        return PinyinDisambiguator.resolveOverrides(occurrences)
+    }
+
+    /**
+     * HanLP's per-hanzi tone-marked pinyin for [word] at [begin] in the
+     * analyzed text. Returns null (→ caller uses frequency-first) when the
+     * word isn't pure hanzi or any character lacks a pinyin, so the syllable
+     * list always aligns 1:1 with the hanzi a candidate reading splits into.
+     */
+    private fun contextSyllables(word: String, begin: Int, charPinyin: List<Pinyin>?): List<String>? {
+        if (charPinyin == null || !word.all(::isHanziChar)) return null
+        val syllables = ArrayList<String>(word.length)
+        for (k in word.indices) {
+            val p = charPinyin.getOrNull(begin + k) ?: return null
+            if (p == Pinyin.none5) return null
+            syllables.add(p.pinyinWithToneMark ?: return null)
+        }
+        return syllables
+    }
+
+    private fun isHanziChar(c: Char): Boolean =
+        c.code in 0x4e00..0x9fff || c.code in 0x3400..0x4dbf
 
     override fun close() {
         dict.close()

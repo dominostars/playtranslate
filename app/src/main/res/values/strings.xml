@@ -651,6 +651,13 @@
          refresh, touch-through overlays, hotkeys, multi-display). -->
     <string name="a11y_required_enhanced_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uses these enhanced controls to improve the auto-translate experience.</string>
 
+    <!-- Shown on API 29 (Android 10) when the user taps an accessibility-gated
+         feature (multi-display, hotkeys, enhanced auto-translate). The
+         accessibility capture path is API 30+, so the feature can't be offered —
+         this replaces the "enable Accessibility" prompt with an Android-11 notice. -->
+    <string name="requires_android_11_title">Requires Android 11</string>
+    <string name="requires_android_11_message">This feature requires Android 11 or newer.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          ENHANCED AUTO-TRANSLATE ROW (top of AUTO-TRANSLATE section).
          Gated on accessibility.  Off shows a MaterialSwitch + the

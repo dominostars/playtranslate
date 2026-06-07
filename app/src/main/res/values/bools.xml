@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        The accessibility capture path uses AccessibilityService.takeScreenshot,
+        which is API 30+. Below that the service can't capture anything, so the
+        component is disabled here (overridden to true in values-v30). Disabled,
+        it never appears in system Accessibility settings and never binds, so
+        PlayTranslateAccessibilityService.isEnabled() is false on API 29 and
+        MediaProjection is the sole capture backend.
+    -->
+    <bool name="accessibility_service_enabled">false</bool>
+</resources>

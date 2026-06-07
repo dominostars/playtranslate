@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Point
 import android.graphics.Rect
+import android.os.Build
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
@@ -219,6 +220,11 @@ class FloatingOverlayIcon(context: Context) : View(context) {
      *  code consults these insets so "Edge.LEFT" means "left of the safe
      *  area" instead of "left of the display". */
     private fun cutoutSafeInsetX(): Pair<Int, Int> {
+        // WindowMetrics.windowInsets is API 30+. displayWindowMetrics() already
+        // returns null below R, but guard explicitly so the API-30 member access
+        // is off the API-29 compile path. Pre-30 the icon skips cutout-safe
+        // insetting (no notch handling) — acceptable.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return 0 to 0
         val cutout = context.displayWindowMetrics()?.windowInsets?.displayCutout
             ?: return 0 to 0
         return cutout.safeInsetLeft to cutout.safeInsetRight

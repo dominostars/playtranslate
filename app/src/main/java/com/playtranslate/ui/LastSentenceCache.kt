@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.content.Context
 import android.util.Log
 import com.playtranslate.Prefs
+import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.model.headwordFor
 import com.playtranslate.language.DefinitionGlossTranslators
@@ -339,7 +340,8 @@ object LastSentenceCache {
         val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
         val resolver = DefinitionResolver(engine, targetGlossDb,
             mlKitTranslator?.let { WordTranslator(it::translate) }, prefs.targetLang,
-            DefinitionGlossTranslators.forTarget(prefs.targetLang))
+            DefinitionGlossTranslators.forTarget(prefs.targetLang),
+            ChineseScriptConverter.forTarget(prefs.targetLang, prefs.targetChineseVariant))
         val tokenResults = engine.tokenize(sentence)
         val results = linkedMapOf<String, Triple<String, String, Int>>()
         val surfaces = linkedMapOf<String, String>()

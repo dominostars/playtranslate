@@ -12,6 +12,7 @@ import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.capturableDisplays
+import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
@@ -145,7 +146,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
         // (installed models, keys), so a pref signal can't carry it.
         viewModelScope.launch {
             prefs.observe(
-                Prefs.KEY_SOURCE_LANG, Prefs.KEY_TARGET_LANG,
+                Prefs.KEY_SOURCE_LANG, Prefs.KEY_TARGET_LANG, Prefs.KEY_TARGET_CHINESE_VARIANT,
                 Prefs.KEY_QUICK_TILE_ADDED, Prefs.KEY_HOTKEY_TRANSLATION, Prefs.KEY_HOTKEY_FURIGANA,
                 Prefs.KEY_THEME_MODE, Prefs.KEY_ACCENT_NAME,
             ).collect {
@@ -307,10 +308,12 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
                 .getDisplayLanguage(Locale.getDefault())
                 .replaceFirstChar { it.uppercase(Locale.getDefault()) }
 
-    private fun resolveTargetName(): String {
-        val locale = Locale.forLanguageTag(prefs.targetLang)
-        return locale.getDisplayLanguage(locale).replaceFirstChar { it.uppercase(locale) }
-    }
+    private fun resolveTargetName(): String =
+        ChineseScriptVariant.targetDisplayName(
+            prefs.targetLang,
+            prefs.targetChineseVariant,
+            Locale.forLanguageTag(prefs.targetLang),
+        )
 
     private fun str(@StringRes id: Int, vararg args: Any): String =
         getApplication<Application>().getString(id, *args)

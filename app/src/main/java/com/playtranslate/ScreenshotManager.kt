@@ -3,6 +3,7 @@ package com.playtranslate
 import android.accessibilityservice.AccessibilityService
 import android.graphics.Bitmap
 import android.util.Log
+import android.os.Build
 import android.view.Choreographer
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CoroutineScope
@@ -312,6 +313,11 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
      *   restore overlays as early as possible — the copy runs in the background.
      */
     private suspend fun doTakeScreenshot(displayId: Int, onCaptured: (() -> Unit)? = null): Bitmap? {
+        // AccessibilityService.takeScreenshot is API 30+. Below that the
+        // accessibility backend is never active (the service is component-disabled
+        // and the resolver forces MediaProjection), so this path is unreachable —
+        // the guard keeps the API-30 calls off the API-29 compile path.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
         lastCaptureTimeMs = System.currentTimeMillis()
         return withTimeoutOrNull(3000L) {
             suspendCancellableCoroutine { cont ->

@@ -97,6 +97,26 @@ enum class TextDirection { LTR, RTL }
 enum class TextOrientation { HORIZONTAL, VERTICAL }
 
 /**
+ * True when [targetCode] is a language conventionally typeset top-to-bottom in
+ * vertical columns (tategaki): Japanese, Chinese, and Korean. Drives whether
+ * the translation overlay stacks glyphs upright in a vertical OCR box (see
+ * [com.playtranslate.ui.VerticalTextView]) instead of rotating a horizontal
+ * line 90°. All three are square-cell scripts that stack cleanly, and all use
+ * right-to-left column progression when vertical (Classical-Chinese-derived),
+ * so no per-language direction branching is needed.
+ *
+ * Latin and other ragged-width scripts are excluded — stacking them reads
+ * poorly, so they keep the rotation path.
+ *
+ * Real target codes come from ML Kit (TranslateLanguage), which only emits the
+ * bare `"zh"` for Chinese; the `zh-Hant` / `zh-*` matches below are defensive.
+ */
+fun targetSupportsVerticalText(targetCode: String): Boolean {
+    val c = targetCode.lowercase(java.util.Locale.ROOT)
+    return c == "ja" || c == "ko" || c == "zh" || c.startsWith("zh-") || c.startsWith("zh_")
+}
+
+/**
  * Block-level horizontal alignment of an OCR'd paragraph. Detected post-grouping
  * from the geometry of the constituent line rects (see
  * [com.playtranslate.OcrManager.Companion.classifyGroupAlignment]). LEFT is the

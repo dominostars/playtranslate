@@ -109,6 +109,31 @@ class ChineseDictionaryManager private constructor(private val context: Context)
         if (ids.isNotEmpty()) buildResponse(database, ids, preferTraditional) else null
     }
 
+    /**
+     * Tone-marked readings for [surface] — one per matching entry, in
+     * frequency-descending order, deduped. Reading-only: it skips the
+     * sense/gloss/headword construction that [lookup]/[buildEntry] perform, for
+     * callers (heteronym disambiguation) that only need the candidate readings.
+     * Mirrors [buildEntry]'s primary-reading pick (lowest `position`, run
+     * through [PinyinFormatter.numberedToToneMarks]).
+     */
+    suspend fun candidateReadings(surface: String): List<String> = withContext(Dispatchers.IO) {
+        val database = ensureOpen() ?: return@withContext emptyList()
+        val readings = ArrayList<String>()
+        for (id in queryEntryIds(database, surface)) {
+            database.rawQuery(
+                "SELECT text FROM reading WHERE entry_id=? ORDER BY position LIMIT 1",
+                arrayOf(id.toString()),
+            ).use { c ->
+                if (c.moveToFirst()) {
+                    c.getString(0)?.takeIf { it.isNotBlank() }
+                        ?.let { readings.add(PinyinFormatter.numberedToToneMarks(it)) }
+                }
+            }
+        }
+        readings.distinct()
+    }
+
     fun close() {
         db?.close()
         db = null

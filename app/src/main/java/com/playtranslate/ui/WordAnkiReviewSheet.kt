@@ -23,6 +23,7 @@ import androidx.lifecycle.lifecycleScope
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
+import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
 import com.playtranslate.applyDialogEdgeToEdge
@@ -652,11 +653,13 @@ class WordAnkiReviewSheet : DialogFragment() {
         val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, targetLangCode)
         val mlKit = TranslationManagerProvider.get(engine.profile.translationCode, targetLangCode)
         val enToTargetWrapper = DefinitionGlossTranslators.forTarget(targetLangCode)
+        val charConverter = ChineseScriptConverter.forTarget(targetLangCode, prefs.targetChineseVariant)
         val resolver = DefinitionResolver(
             engine, targetGlossDb,
             mlKit?.let { WordTranslator(it::translate) },
             targetLangCode,
             enToTargetWrapper,
+            charConverter,
         )
         val defResult = withContext(Dispatchers.IO) { resolver.lookup(word, readingHint) }
         val response = defResult?.response
@@ -744,8 +747,13 @@ class WordAnkiReviewSheet : DialogFragment() {
                         }
                     }
                 }
-                tatoebaPairs = effective
-                applyMoreExamples(effective)
+                // Localize Tatoeba / fallback example targets to the chosen
+                // Traditional variant (this path bypasses DefinitionResolver).
+                val localized = charConverter?.let { c ->
+                    effective?.map { it.copy(target = c.convert(it.target)) }
+                } ?: effective
+                tatoebaPairs = localized
+                applyMoreExamples(localized)
             }
         }
     }

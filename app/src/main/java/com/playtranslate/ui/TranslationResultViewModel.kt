@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.playtranslate.Prefs
+import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.language.DefinitionGlossTranslators
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
@@ -288,6 +289,7 @@ class TranslationResultViewModel : ViewModel() {
             engine, targetGlossDb,
             mlKit?.let { WordTranslator(it::translate) }, prefs.targetLang,
             DefinitionGlossTranslators.forTarget(prefs.targetLang),
+            ChineseScriptConverter.forTarget(prefs.targetLang, prefs.targetChineseVariant),
         )
 
         val allTokens = withContext(Dispatchers.IO) { engine.tokenize(text) }

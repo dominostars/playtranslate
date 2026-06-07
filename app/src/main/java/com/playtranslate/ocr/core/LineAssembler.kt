@@ -34,7 +34,8 @@ import kotlin.math.abs
  *    mean height (EasyOCR `height_ths` — the mixed-font-size guard);
  *  - splits a band on horizontal gaps > [GAP_THS]× the line height (column breaks).
  *
- * Pure geometry in [assembleLineIndices]; [assembleLines] adds the text stitch.
+ * Pure geometry in [assembleLineIndices]; [assembleLines] adds the text + char-box
+ * stitch (carrying per-word [CharBox]es into the line with offsets rebased).
  * Pinned by `LineAssemblyTest`.
  */
 object LineAssembler {
@@ -124,7 +125,14 @@ object LineAssembler {
     }
 
     /** Stitch one line's word-regions into one region: union box, member texts
-     *  joined left-to-right by a single space, mean confidence. */
+     *  joined left-to-right by a single space, mean confidence, and the members'
+     *  per-character boxes carried through with each [CharBox.charOffset] rebased into
+     *  the joined text. A recognizer that emits char boxes per WORD (PaddleOCR) would
+     *  otherwise lose all of them here — and word separation IS PaddleOCR's main path
+     *  for alphabetic scripts — so drag-lookup/furigana would fall back to proportional
+     *  on exactly that path. Each member carries its chars on its single recognized
+     *  line (line.text == member text); the inserted join spaces get no symbol, matching
+     *  the rest of the symbol pipeline (and what consumers expect — they index by offset). */
     private fun mergeLine(members: List<RecognizedRegion>): RecognizedRegion {
         val ordered = members.sortedBy { it.box.bounds.left }
         val text = ordered.joinToString(" ") { it.text }
@@ -136,12 +144,26 @@ object LineAssembler {
         val box = OcrBox.upright(union)
         val confs = ordered.map { it.confidence }.filter { it >= 0f }
         val confidence = if (confs.isEmpty()) -1f else confs.average().toFloat()
+        // Shift each member's word-local char offsets by where that member's text starts
+        // in the space-joined line (cumulative prior member lengths + one space each), so
+        // the carried chars still index the merged [text]. Members without chars (e.g.
+        // ML Kit) contribute none — the line just has fewer symbols, which is fine.
+        val chars = ArrayList<CharBox>()
+        var base = 0
+        for (m in ordered) {
+            for (line in m.lines) for (ch in line.chars) {
+                chars += ch.copy(charOffset = ch.charOffset + base)
+            }
+            base += m.text.length + 1
+        }
         return RecognizedRegion(
             text = text,
             box = box,
             orientation = TextOrientation.HORIZONTAL,
             confidence = confidence,
-            lines = listOf(RecognizedLine(text = text, box = box, orientation = TextOrientation.HORIZONTAL)),
+            lines = listOf(RecognizedLine(
+                text = text, box = box, orientation = TextOrientation.HORIZONTAL, chars = chars,
+            )),
             origin = RegionOrigin.LINE,
         )
     }
