@@ -231,18 +231,13 @@ class ChineseEngine(
             cursor = begin + word.length
             if (!word.any(::isHanziChar)) continue
             if (found < 0) continue              // normalized surface, not in source text
-            // CC-CEDICT lookup is surface-keyed, so resolve candidates once per surface.
+            // CC-CEDICT lookup is surface-keyed, so resolve candidates once per
+            // surface. Reading-only query (no sense/gloss build) — we only need
+            // the candidate readings to detect a heteronym and disambiguate.
+            // Cancellation propagates; a dict hiccup degrades to no correction
+            // for this surface rather than aborting the send.
             val candidates = candidatesBySurface.getOrPut(word) {
-                // Cancellation propagates; a dictionary hiccup (e.g. the DB
-                // closed by a live-mode sentence swap mid-send) degrades to no
-                // correction for this surface rather than aborting the send.
-                runCatchingNonCancellable {
-                    dict.lookup(word, profile.preferTraditional)
-                        ?.entries
-                        ?.mapNotNull { it.headwords.firstOrNull()?.reading?.takeIf(String::isNotBlank) }
-                        ?.distinct()
-                        .orEmpty()
-                } ?: emptyList()
+                runCatchingNonCancellable { dict.candidateReadings(word) } ?: emptyList()
             }
             if (candidates.size < 2) continue    // unambiguous → frequency default is correct
             // Record EVERY ambiguous occurrence with its positional context;
