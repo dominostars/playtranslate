@@ -104,4 +104,10 @@ class PinyinDisambiguatorTest {
         ))
         assertEquals(emptyMap<String, String>(), overrides)
     }
+
+    @Test fun `disambiguates a ü-bearing heteronym`() {
+        // 率: lǜ ('rate') vs shuài ('lead'). With ü now folded consistently by
+        // PinyinFormatter, the candidate matches HanLP's clean context syllable.
+        assertEquals("lǜ", PinyinDisambiguator.choose(listOf("lǜ", "shuài"), listOf("lǜ")))
+    }
 }

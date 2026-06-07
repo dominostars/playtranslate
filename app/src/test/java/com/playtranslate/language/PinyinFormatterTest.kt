@@ -39,4 +39,38 @@ class PinyinFormatterTest {
     @Test fun `numberedToToneMarks is idempotent on tone-marked input`() {
         assertEquals("dōng xī", PinyinFormatter.numberedToToneMarks("dōng xī"))
     }
+
+    @Test fun `numberedToToneMarks folds CC-CEDICT u colon to ü`() {
+        assertEquals("nǚ", PinyinFormatter.numberedToToneMarks("nu:3"))        // 女
+        assertEquals("lǜ", PinyinFormatter.numberedToToneMarks("lu:4"))        // 绿/律
+        assertEquals("lǚ", PinyinFormatter.numberedToToneMarks("lu:3"))        // 旅
+        assertEquals("nǚ rén", PinyinFormatter.numberedToToneMarks("nu:3 ren2")) // 女人
+        assertEquals("Lǚ", PinyinFormatter.numberedToToneMarks("Lu:3"))        // 吕 (surname, capitalized)
+        assertEquals("lü", PinyinFormatter.numberedToToneMarks("lu:5"))        // neutral tone keeps ü
+    }
+
+    @Test fun `numberedToToneMarks still folds legacy v to ü`() {
+        assertEquals("lǜ", PinyinFormatter.numberedToToneMarks("lv4"))
+    }
+
+    @Test fun `numberedToToneMarks leaves unnumbered strings exact (no ü folding)`() {
+        // ü folding must only happen on numbered pinyin syllables; an
+        // unnumbered/non-pinyin token with a 'v' or 'u:' must pass through
+        // verbatim (idempotency/exactness that readingsEqual relies on).
+        assertEquals("version", PinyinFormatter.numberedToToneMarks("version"))
+        assertEquals("vw", PinyinFormatter.numberedToToneMarks("vw"))
+        assertEquals("u:x", PinyinFormatter.numberedToToneMarks("u:x"))
+        assertTrue(PinyinFormatter.readingsEqual("version", "version"))
+    }
+
+    @Test fun `readingsEqual matches u colon numbered against tone-marked ü`() {
+        assertTrue(PinyinFormatter.readingsEqual("nu:3", "nǚ"))
+        assertTrue(PinyinFormatter.readingsEqual("nu:3", "nu:3"))
+        assertFalse(PinyinFormatter.readingsEqual("nu:3", "nǔ:"))
+    }
+
+    @Test fun `canonicalReading lowercases and folds ü`() {
+        assertEquals("nǚ", PinyinFormatter.canonicalReading("Nǚ"))
+        assertEquals("dōng", PinyinFormatter.canonicalReading("DŌNG"))
+    }
 }

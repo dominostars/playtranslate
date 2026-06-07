@@ -123,9 +123,11 @@ internal object PinyinDisambiguator {
         return out
     }
 
-    /** Lowercase + v/u: → ü so CC-CEDICT and HanLP spellings compare equal. */
+    /** Case/ü-normalized form for the tone-exact comparison. Delegates to the
+     *  single canonical normalizer in [PinyinFormatter] so the disambiguator
+     *  and the target-gloss reading match share one ü/locale policy. */
     private fun normToned(syllable: String): String =
-        syllable.lowercase().replace("u:", "ü").replace('v', 'ü')
+        PinyinFormatter.canonicalReading(syllable)
 
     /** [normToned] with tone diacritics stripped (ǎ → a). ü collapses to u —
      *  acceptable for a coarse tiebreak. */
