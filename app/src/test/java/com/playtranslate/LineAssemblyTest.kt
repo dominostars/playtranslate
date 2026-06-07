@@ -2,6 +2,7 @@ package com.playtranslate
 
 import android.graphics.Rect
 import com.playtranslate.language.TextOrientation
+import com.playtranslate.ocr.core.CharBox
 import com.playtranslate.ocr.core.LineAssembler
 import com.playtranslate.ocr.core.OcrBox
 import com.playtranslate.ocr.core.RecognizedLine
@@ -222,5 +223,38 @@ class LineAssemblyTest {
         val survived = out.first { it.orientation == TextOrientation.VERTICAL }
         assertEquals(column.box.bounds, survived.box.bounds)
         assertEquals(column.text, survived.text)
+    }
+
+    @Test
+    fun assembleLines_carriesMemberCharsWithRebasedOffsets() {
+        // Two words on one row, each recognized with WORD-LOCAL char boxes (PaddleOCR's
+        // per-word output). After assembly the merged line is "ab cd" and every charOffset
+        // must be shifted to index the joined text — c→3, d→4 — with the join space
+        // (index 2) carrying no symbol. Word separation is PaddleOCR's main path for
+        // alphabetic scripts, so this is where the char-box feature has to survive.
+        fun ch(text: String, offset: Int, l: Int, r: Int) =
+            CharBox(text, OcrBox.upright(box(l, 0, r, 20)), offset)
+        fun word(text: String, l: Int, r: Int, chars: List<CharBox>): RecognizedRegion {
+            val b = OcrBox.upright(box(l, 0, r, 20))
+            return RecognizedRegion(
+                text = text, box = b, orientation = TextOrientation.HORIZONTAL, confidence = 0.9f,
+                lines = listOf(RecognizedLine(text, b, TextOrientation.HORIZONTAL, chars = chars)),
+                origin = RegionOrigin.LINE,
+            )
+        }
+        val out = LineAssembler.assembleLines(
+            listOf(
+                word("ab", 0, 20, listOf(ch("a", 0, 0, 10), ch("b", 1, 10, 20))),
+                word("cd", 30, 50, listOf(ch("c", 0, 30, 40), ch("d", 1, 40, 50))),
+            ),
+        )
+        assertEquals(1, out.size)
+        val line = out[0].lines.single()
+        assertEquals("ab cd", line.text)
+        assertEquals(listOf("a", "b", "c", "d"), line.chars.map { it.text })
+        assertEquals(listOf(0, 1, 3, 4), line.chars.map { it.charOffset })
+        // Absolute char geometry is preserved, not re-derived from the union box.
+        assertEquals(30, line.chars[2].box.bounds.left)
+        assertEquals(50, line.chars[3].box.bounds.right)
     }
 }

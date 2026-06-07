@@ -19,7 +19,10 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 //
-// PaddleOCR PP-OCRv5 pipeline driver for the spike harness (androidTest-only).
+// PaddleOCR PP-OCRv5 pipeline driver. Backs production via the composable
+// detect() + recognizeQuad() halves (PaddleDetector/PaddleRecognizer); the
+// detectAndRecognize()/recognizeCrops() entry points below are the original
+// spike configs (androidTest).
 //
 // Wraps two MnnInterpreter sessions: the DBNet detector and the CRNN/SVTR
 // recognizer (.mnn files converted from official PaddlePaddle weights, staged
@@ -58,8 +61,22 @@ class PaddleOcrSession private constructor(
         val recMs: Long,
     )
 
-    /** Recognizer-only result for one supplied crop (hybrid configs). */
-    data class CropResult(val text: String, val confidence: Float)
+    /** One decoded character plus the fraction along the recognition strip's reading
+     *  axis at which its CTC run *fires* (the run's leading edge — see [decodeCtc]).
+     *  [charOffset] is the UTF-16 index of the character's start in the decoded text.
+     *  The recognizer maps these to [com.playtranslate.ocr.core.CharBox]es. */
+    data class DecodedChar(val text: String, val charOffset: Int, val firingFraction: Float)
+
+    /** Recognizer result for one crop. [chars] are CTC-derived per-character positions
+     *  (empty unless populated by [decodeCtc]); [stripVertical] is warpCrop's rotation
+     *  decision — the ground-truth axis the firing fractions run along (set by
+     *  [recognizeQuad]; false for the un-rotated rect crops of [recognizeCrops]). */
+    data class CropResult(
+        val text: String,
+        val confidence: Float,
+        val chars: List<DecodedChar> = emptyList(),
+        val stripVertical: Boolean = false,
+    )
 
     // ── Config 2/3: full PaddleOCR pipeline ──────────────────────────────────
 
@@ -172,7 +189,10 @@ class PaddleOcrSession private constructor(
     internal fun recognizeQuad(srcMat: Mat, quad: Array<Point>): CropResult? {
         val crop = DbNet.warpCrop(srcMat, quad, Cfg.REC_HEIGHT) ?: return null
         return try {
-            recognizeMat(crop)
+            // Stamp the axis the CTC firing fractions run along with warpCrop's OWN
+            // rotation decision (same quad), so the recognizer's char-box geometry can't
+            // transpose against the strip it actually read.
+            recognizeMat(crop).copy(stripVertical = DbNet.isVerticalQuad(quad))
         } finally {
             crop.release()
         }
@@ -283,35 +303,9 @@ class PaddleOcrSession private constructor(
 
     // ── CTC greedy decode ────────────────────────────────────────────────────
 
-    /** logits is shape 1,T,C (softmax already applied for mobile; argmax is
-     *  invariant to that). Greedy: per-timestep argmax, collapse repeats, drop
-     *  blank at index 0. Confidence is the mean max-prob over kept timesteps. */
-    private fun ctcDecode(logits: FloatArray, shape: IntArray): CropResult {
-        val dims = shape.filter { it >= 1 }
-        val c = dims.last()
-        val t = if (dims.size >= 2) dims[dims.size - 2] else logits.size / c
-        val labels = labelsFor(c)
-
-        val sb = StringBuilder()
-        var prev = -1
-        var probSum = 0f
-        var probCount = 0
-        for (ti in 0 until t) {
-            val off = ti * c
-            var best = 0; var bestV = logits[off]
-            for (ci in 1 until c) {
-                val v = logits[off + ci]
-                if (v > bestV) { bestV = v; best = ci }
-            }
-            if (best != 0 && best != prev) {
-                sb.append(labels[best])
-                probSum += bestV; probCount++
-            }
-            prev = best
-        }
-        val conf = if (probCount > 0) probSum / probCount else 0f
-        return CropResult(sb.toString(), conf)
-    }
+    /** Resolve the label table for this output width, then run the pure [decodeCtc]. */
+    private fun ctcDecode(logits: FloatArray, shape: IntArray): CropResult =
+        decodeCtc(logits, shape, labelsFor(shape.filter { it >= 1 }.last()))
 
     /** Build the label table for recognizer output dimension c. PP-OCR puts
      *  blank at index 0; remaining indices map to the charset, optionally with a
@@ -405,6 +399,46 @@ class PaddleOcrSession private constructor(
 
     companion object {
         private const val TAG = "PaddleOcrSession"
+
+        /** Pure CTC greedy decode (no session state; [labels] is the resolved table,
+         *  index 0 = blank). [logits] is shape 1,T,C (softmax already applied for
+         *  mobile; argmax is invariant). Per-timestep argmax, collapse repeats, drop
+         *  blank. Emission fires on `best != prev` — the FIRST timestep of a glyph's
+         *  run — so each [DecodedChar.firingFraction] = (ti+0.5)/t is the run's LEADING
+         *  edge, not its center (peaky CTC usually makes runs length-1, so the bias is
+         *  ~one stride). [DecodedChar.charOffset] is the UTF-16 index of the character
+         *  in the decoded text. Confidence is the mean max-prob over kept timesteps.
+         *  Unit-pinned by PaddleCtcDecodeTest. */
+        internal fun decodeCtc(logits: FloatArray, shape: IntArray, labels: List<String>): CropResult {
+            val dims = shape.filter { it >= 1 }
+            val c = dims.last()
+            val t = if (dims.size >= 2) dims[dims.size - 2] else if (c > 0) logits.size / c else 0
+
+            val sb = StringBuilder()
+            val chars = ArrayList<DecodedChar>()
+            var prev = -1
+            var probSum = 0f
+            var probCount = 0
+            for (ti in 0 until t) {
+                val off = ti * c
+                var best = 0; var bestV = logits[off]
+                for (ci in 1 until c) {
+                    val v = logits[off + ci]
+                    if (v > bestV) { bestV = v; best = ci }
+                }
+                if (best != 0 && best != prev) {
+                    val label = labels[best]
+                    // charOffset BEFORE append = UTF-16 start index (high surrogate for
+                    // a non-BMP glyph) — matches the line.text indexing furigana/drag use.
+                    chars += DecodedChar(text = label, charOffset = sb.length, firingFraction = (ti + 0.5f) / t)
+                    sb.append(label)
+                    probSum += bestV; probCount++
+                }
+                prev = best
+            }
+            val conf = if (probCount > 0) probSum / probCount else 0f
+            return CropResult(sb.toString(), conf, chars)
+        }
 
         /** Debug crop-dump target. When non-null, every pre-recognition crop is
          *  written here as a PNG (see [dumpCrop]). Null in production → no-op.

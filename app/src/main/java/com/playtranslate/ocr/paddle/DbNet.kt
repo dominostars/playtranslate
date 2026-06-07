@@ -19,8 +19,9 @@ import kotlin.math.roundToInt
 
 /**
  * DBNet detector postprocessing + crop rectification via OpenCV — the geometry
- * half of [PaddleOcrSession]'s full pipeline. Pure functions; no MNN, no model
- * state. androidTest-only.
+ * half of [PaddleOcrSession]'s pipeline. Pure functions; no MNN, no model state.
+ * Production: backs the PaddleOCR detector/recognizer path (Russian + opt-in CJK),
+ * not test-only.
  *
  * Turns the detector's probability map into oriented text-region quadrilaterals
  * (in original-bitmap coordinates) and warps each into a horizontal strip the
@@ -46,6 +47,13 @@ internal object DbNet {
     private const val UNCLIP_RATIO = 1.1     // DBPostProcess.unclip_ratio (PP default 1.5)
     private const val MIN_SIZE = 3.0         // reject boxes whose short side < this (det-map px)
     private const val MAX_CANDIDATES = 1000
+    // Aspect past which a deskewed quad is a vertical (tategaki) column, which
+    // [warpCrop] rotates 90° CCW into a horizontal strip. SINGLE SOURCE OF TRUTH:
+    // the recognizer keys its char-box axis off [isVerticalQuad] (this same test on
+    // the QUAD), so synthesized char geometry can never silently transpose against
+    // the rotation warpCrop actually applied. (The detector's orientation *label*
+    // is a separate AABB-based test — it tags the line, but must NOT drive geometry.)
+    private const val VERTICAL_ASPECT = 1.5
 
     /** A detected text region: [points] are the 4 corners in ORIGINAL-bitmap
      *  coordinates; [aabb] is their axis-aligned bounding box. */
@@ -129,7 +137,7 @@ internal object DbNet {
         // hypothesis — it COLLAPSED most vertical columns to empty output, i.e.
         // CW is the wrong orientation for the recognizer. Reverted. Direction is
         // load-bearing for recognition working at all, not a small-kana lever.)
-        if (boxH > boxW * 1.5) {
+        if (isVerticalWH(boxW, boxH)) {
             val rot = Mat()
             Core.rotate(cur, rot, Core.ROTATE_90_COUNTERCLOCKWISE)
             cur.release(); cur = rot
@@ -146,6 +154,20 @@ internal object DbNet {
         Imgproc.resize(cur, out, Size(finalW.toDouble(), targetH.toDouble()), 0.0, 0.0, interp)
         cur.release()
         return out
+    }
+
+    /** Whether [warpCrop] rotates a quad of these deskewed dims as a vertical column. */
+    private fun isVerticalWH(boxW: Double, boxH: Double): Boolean = boxH > boxW * VERTICAL_ASPECT
+
+    /** Whether [warpCrop] will rotate [pts] as a vertical (tategaki) column — i.e. the
+     *  recognition strip reads top→bottom, so timestep 0 maps to the column TOP. Mirrors
+     *  the dimension computation in [warpCrop], keyed off the QUAD (not an AABB) so it
+     *  matches the strip the recognizer actually sees. Used to set the char-box axis. */
+    internal fun isVerticalQuad(pts: Array<Point>): Boolean {
+        val o = orderPoints(pts)
+        val boxW = max(dist(o[0], o[1]), dist(o[3], o[2]))
+        val boxH = max(dist(o[0], o[3]), dist(o[1], o[2]))
+        return isVerticalWH(boxW, boxH)
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

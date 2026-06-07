@@ -16,8 +16,9 @@ import org.opencv.core.Point
 /**
  * [TextRecognizer] over PaddleOCR's CRNN/SVTR. Perspective-warps each
  * [DetectedRegion]'s quad (via [PaddleOcrSession.recognizeQuad], preserving
- * deskew) and recognizes it. Line-level — no char/element boxes (so drag-lookup
- * + furigana fall back to proportional positioning). Caches the bitmap->Mat
+ * deskew) and recognizes it. Synthesizes per-character boxes from the CTC firing
+ * positions ([synthesizeCharBoxes]) so drag-lookup + furigana place precisely
+ * instead of falling back to proportional; still no element (word) boxes. Caches the bitmap->Mat
  * conversion across a frame's regions ([com.playtranslate.ocr.composites.DetectThenRecognize]
  * feeds one image's regions sequentially). `threadSafe = false` (single MNN
  * session, shared with [PaddleDetector] and serialized by the composite's mutex).
@@ -26,7 +27,7 @@ class PaddleRecognizer(private val session: PaddleOcrSession) : TextRecognizer {
 
     override val capabilities = OcrCapabilities(
         orientation = OcrOrientationSupport.BOTH,
-        emitsCharBoxes = false,
+        emitsCharBoxes = true,
         emitsElementBoxes = false,
         wholeRegionInput = false,
         threadSafe = false,
@@ -43,7 +44,12 @@ class PaddleRecognizer(private val session: PaddleOcrSession) : TextRecognizer {
         val pts = Array(4) { Point(quad[it].x.toDouble(), quad[it].y.toDouble()) }
         val r = session.recognizeQuad(matFor(image.bitmap), pts) ?: return null
         if (r.text.isBlank()) return null
-        val line = RecognizedLine(text = r.text, box = region.box, orientation = region.orientation)
+        // CTC firing positions → per-char boxes. Axis = r.stripVertical (warpCrop's own
+        // rotation), geometry = the region AABB. Empty unless decode emitted positions.
+        val chars = synthesizeCharBoxes(r.chars, region.box.bounds, r.stripVertical)
+        val line = RecognizedLine(
+            text = r.text, box = region.box, orientation = region.orientation, chars = chars,
+        )
         return RecognizedRegion(
             text = r.text,
             box = region.box,
