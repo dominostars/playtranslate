@@ -836,6 +836,13 @@ class MainActivity :
             ?.refreshFromPrefs()
     }
 
+    /** Bring back the region picker's preview overlay after a hold-to-translate
+     *  one-shot evicted it (see RegionPickerSheet.reshowSelectedOverlay). */
+    private fun reshowRegionPreview() {
+        (supportFragmentManager.findFragmentByTag(RegionPickerSheet.TAG) as? RegionPickerSheet)
+            ?.reshowSelectedOverlay()
+    }
+
     private fun updateRegionButton() {
         val region = captureService?.activeRegion ?: prefs.primaryDisplayRegion()
         val label = region.displayName(this)
@@ -950,6 +957,9 @@ class MainActivity :
                 translateHoldActive = false
                 captureService?.holdEnd()
                 selectTab(selectedTab) // restore button colors
+                // The one-shot's post-capture region flash tears down the
+                // region picker's persistent preview; bring it back on release.
+                if (selectedTab == Tab.REGIONS) reshowRegionPreview()
             }
             false
         }
