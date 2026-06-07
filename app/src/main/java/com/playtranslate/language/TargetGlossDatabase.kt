@@ -42,37 +42,42 @@ interface TargetGlossLookup {
 class TargetGlossDatabase private constructor(private val db: SQLiteDatabase) : TargetGlossLookup {
 
     /**
-     * Look up target-language senses for a source headword.
-     * Tries reading-specific match first, falls back to reading-agnostic.
+     * Look up target-language senses for a source headword. Tries a
+     * reading-specific match first — numbered↔tone-marked-insensitive via
+     * [PinyinFormatter.readingsEqual], so a tone-marked ZH hint matches the
+     * numbered CFDICT/HanDeDict keys — then falls back to reading-agnostic.
      */
     override fun lookup(sourceLang: String, written: String, reading: String?): List<TargetSense>? {
+        val rows = allRows(sourceLang, written)
+        if (rows.isEmpty()) return null
         if (reading != null) {
-            val result = query(sourceLang, written, reading)
-            if (result != null) return result
+            val matched = rows.filter { PinyinFormatter.readingsEqual(it.first, reading) }.map { it.second }
+            if (matched.isNotEmpty()) return matched
         }
         // Fall back to empty-reading entries (WITHOUT ROWID tables can't have NULL in PK)
-        return query(sourceLang, written, "")
+        return rows.filter { it.first.isEmpty() }.map { it.second }.ifEmpty { null }
     }
 
-    private fun query(sourceLang: String, written: String, reading: String?): List<TargetSense>? {
-        val sql = if (reading != null)
-            "SELECT sense_ord, pos, glosses, source FROM glosses WHERE source_lang=? AND written=? AND reading=? ORDER BY sense_ord"
-        else
-            "SELECT sense_ord, pos, glosses, source FROM glosses WHERE source_lang=? AND written=? AND reading='' ORDER BY sense_ord"
-        val args = if (reading != null) arrayOf(sourceLang, written, reading) else arrayOf(sourceLang, written)
-        db.rawQuery(sql, args).use { c ->
-            if (!c.moveToFirst()) return null
-            val senses = mutableListOf<TargetSense>()
-            do {
-                senses += TargetSense(
+    /** All rows for the headword as (reading, sense), in sense_ord order.
+     *  The reading column is matched in Kotlin so numbered ZH pinyin can be
+     *  compared tone-mark-insensitively (SQL can't normalize). */
+    private fun allRows(sourceLang: String, written: String): List<Pair<String, TargetSense>> {
+        val out = mutableListOf<Pair<String, TargetSense>>()
+        db.rawQuery(
+            "SELECT sense_ord, pos, glosses, source, reading FROM glosses " +
+                "WHERE source_lang=? AND written=? ORDER BY sense_ord",
+            arrayOf(sourceLang, written),
+        ).use { c ->
+            while (c.moveToNext()) {
+                out += (c.getString(4) ?: "") to TargetSense(
                     senseOrd = c.getInt(0),
                     pos = c.getString(1).split(',').filter { it.isNotBlank() },
                     glosses = c.getString(2).split('\t').filter { it.isNotBlank() },
                     source = c.getString(3),
                 )
-            } while (c.moveToNext())
-            return senses
+            }
         }
+        return out
     }
 
     fun close() { db.close() }

@@ -36,6 +36,18 @@ object PinyinFormatter {
         }
 
     /**
+     * True when [a] and [b] denote the same reading regardless of whether
+     * pinyin is numbered ("dong1 xi1") or tone-marked ("dōng xī").
+     * [numberedToToneMarks] is idempotent and a no-op on strings without a
+     * trailing tone digit (kana, already-tone-marked pinyin), so this stays an
+     * exact comparison for Japanese/Korean readings and only bridges the
+     * numbered↔tone-marked gap between the ZH source dict (tone-marked when the
+     * app reads it) and the CFDICT/HanDeDict target packs (stored numbered).
+     */
+    fun readingsEqual(a: String, b: String): Boolean =
+        a == b || numberedToToneMarks(a) == numberedToToneMarks(b)
+
+    /**
      * CC-CEDICT definitions embed pinyin cross-references in brackets, e.g.
      * `"capital of Hebei Province 河北省[He2 bei3 sheng3] in China"`. Convert
      * only the content inside `[...]` so numeric tones become accents while
