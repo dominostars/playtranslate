@@ -286,6 +286,14 @@ def parse_cfdict(cfdict_path: str, source_label: str) -> Tuple[List[tuple], Set[
     """
     rows = []
     covered = set()
+    # Track sense_ord across each headword's reading-agnostic fallback rows.
+    # A ZH heteronym (one simplified hanzi with multiple CEDICT lines, each
+    # with a different pinyin) emits multiple `reading=''` fallback rows. With
+    # the previous hardcoded sense_ord=0 they all shared PK
+    # (source_lang, written, reading='', sense_ord=0) and downstream
+    # INSERT OR IGNORE dropped all but the first — silently losing the other
+    # readings' senses from the runtime's reading-agnostic fallback path.
+    fallback_ord_by_word: Dict[str, int] = {}
     print(f"Parsing {source_label} from {cfdict_path}...")
 
     with open(cfdict_path, "r", encoding="utf-8") as f:
@@ -323,12 +331,15 @@ def parse_cfdict(cfdict_path: str, source_label: str) -> Tuple[List[tuple], Set[
                 "zh", simplified, pinyin, 0, "",
                 gloss_str, source_label, "", "", "",
             ))
-            # Also emit without reading for fallback
+            # Also emit without reading for fallback (PK-uniqued per heteronym
+            # by the per-word counter)
             if pinyin:
+                fallback_ord = fallback_ord_by_word.get(simplified, 0)
                 rows.append((
-                    "zh", simplified, "", 0, "",
+                    "zh", simplified, "", fallback_ord, "",
                     gloss_str, source_label, "", "", "",
                 ))
+                fallback_ord_by_word[simplified] = fallback_ord + 1
             covered.add(simplified)
 
     print(f"  {source_label}: {len(rows)} rows, {len(covered)} headwords covered")
