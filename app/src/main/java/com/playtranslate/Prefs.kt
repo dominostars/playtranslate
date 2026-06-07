@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.hardware.display.DisplayManager
 import com.playtranslate.BuildConfig
 import com.google.mlkit.nl.translate.TranslateLanguage
+import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.security.SecretCipher
 import com.playtranslate.security.SecretCodec
@@ -122,6 +123,19 @@ class Prefs internal constructor(
     var targetLang: String
         get() = sp.getString(KEY_TARGET_LANG, TranslateLanguage.ENGLISH) ?: TranslateLanguage.ENGLISH
         set(v) = sp.edit { putString(KEY_TARGET_LANG, v) }
+
+    /**
+     * The Chinese script variant for target output, meaningful only when
+     * [targetLang] == "zh" (Chinese). All four variants share that one backend
+     * code; this picks Simplified vs Traditional/TW/HK, applied as a render-time
+     * OpenCC transform. Stored as [ChineseScriptVariant.code]; unknown/unset →
+     * [ChineseScriptVariant.SIMPLIFIED] so existing `targetLang="zh"` users and
+     * every non-Chinese target read as Simplified (a no-op). Write it together
+     * with [targetLang] on selection; reset to Simplified when leaving Chinese.
+     */
+    var targetChineseVariant: ChineseScriptVariant
+        get() = ChineseScriptVariant.fromCode(sp.getString(KEY_TARGET_CHINESE_VARIANT, null))
+        set(v) = sp.edit { putString(KEY_TARGET_CHINESE_VARIANT, v.code) }
 
     /** True iff the user has explicitly picked a target language at least once.
      *  The [targetLang] getter returns an English fallback for unsaved values,
@@ -988,6 +1002,7 @@ class Prefs internal constructor(
 
         const val KEY_SOURCE_LANG    = "source_lang"
         const val KEY_TARGET_LANG    = "target_lang"
+        const val KEY_TARGET_CHINESE_VARIANT = "target_chinese_variant"
 
         /** The pref keys whose writes affect onboarding readiness — the source/
          *  target language pick and the debug force-single toggle. The

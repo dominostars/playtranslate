@@ -1930,8 +1930,9 @@ class MainActivity :
         // default. Styling matches a committed selection; if the user wants
         // something else they tap the row. Tapping Continue without having
         // picked explicitly runs the install flow for this default.
-        yourVal.text = tgtLocale.getDisplayLanguage(tgtLocale)
-            .replaceFirstChar { it.uppercase(tgtLocale) }
+        yourVal.text = com.playtranslate.language.ChineseScriptVariant.targetDisplayName(
+            effectiveTarget, p.targetChineseVariant, tgtLocale,
+        )
         yourVal.setTextColor(themeColor(R.attr.ptTextMuted))
 
         btnWelcomeContinue.text = getString(

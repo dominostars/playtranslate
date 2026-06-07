@@ -55,7 +55,10 @@ import com.playtranslate.capture.MediaProjectionCaptureSource
 import com.playtranslate.capture.MediaProjectionController
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.overlay.OverlayHost
+import com.playtranslate.language.ChineseScriptVariant
+import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.language.targetSupportsVerticalText
 import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.ui.DegradedWarningKind
@@ -546,7 +549,26 @@ class CaptureService : Service() {
         val source: String,
         val target: String,
         val deeplKey: String,
-    )
+        /** Chinese script choice; meaningful only when [target] == "zh". */
+        val chineseVariant: ChineseScriptVariant,
+        /** True when the OCR'd source is already Traditional (ZH_HANT) — so a
+         *  same-language passthrough must NOT be re-run through a Simplified→
+         *  Traditional pass. Only [source]/[target] feed the cache key, so these
+         *  extra fields don't fragment the shared "zh" cache. */
+        val sourceIsTraditional: Boolean,
+    ) {
+        /** OpenCC converter for Traditional Chinese output, or null when no
+         *  conversion applies (non-Chinese target, Simplified, or an already-
+         *  Traditional source passthrough). */
+        private val chineseConverter: ChineseScriptConverter?
+            get() = ChineseScriptConverter.forTarget(target, chineseVariant, sourceIsTraditional)
+
+        /** Convert a finished target-language string to the chosen Traditional
+         *  variant. No-op for non-Chinese / Simplified targets. Applied strictly
+         *  at read/return time — never before a cache write (the cache stores
+         *  Simplified, shared across all variants). */
+        fun localize(text: String): String = chineseConverter?.convert(text) ?: text
+    }
 
     /** Capture a [TranslationTarget] from current [Prefs]. Called once at
      *  the outermost layer of each translation entry point; downstream calls
@@ -559,6 +581,8 @@ class CaptureService : Service() {
             source = SourceLanguageProfiles[prefs.sourceLangId].translationCode,
             target = prefs.targetLang,
             deeplKey = prefs.deeplApiKey,
+            chineseVariant = prefs.targetChineseVariant,
+            sourceIsTraditional = prefs.sourceLangId == SourceLangId.ZH_HANT,
         )
     }
 
@@ -1876,8 +1900,10 @@ class CaptureService : Service() {
 
     /** Synchronous cache lookup for previously translated text. Returns null
      *  if not cached for the current pair. */
-    fun getCachedTranslation(sourceText: String): String? =
-        translationCache[cacheKey(sourceText, snapshotTranslationTarget())]?.first
+    fun getCachedTranslation(sourceText: String): String? {
+        val target = snapshotTranslationTarget()
+        return translationCache[cacheKey(sourceText, target)]?.first?.let { target.localize(it) }
+    }
 
     /**
      * Translates each group in parallel, using cached results for groups
@@ -1909,7 +1935,11 @@ class CaptureService : Service() {
         // fallback should drop.
         if (target.source == target.target) {
             setDegraded(false)
-            return groupTexts.map { GroupTranslation(it, null, null) }
+            // Edge case: Chinese source → Chinese-Traditional target. The OCR
+            // text is the result, but a Simplified (ZH) source still needs
+            // s2t/s2tw/s2hk applied; an already-Traditional (ZH_HANT) source is
+            // a no-op (target.localize handles both via sourceIsTraditional).
+            return groupTexts.map { GroupTranslation(target.localize(it), null, null) }
         }
 
         // Reconcile the cache's preferred-backend identity BEFORE the
@@ -1991,6 +2021,9 @@ class CaptureService : Service() {
                 ?: freshByKey[key]
                 ?: GroupTranslation("", null, null)
         }
+            // Convert to the chosen Traditional variant AFTER the cache read, so
+            // the shared "zh" cache keeps storing Simplified for every variant.
+            .map { it.copy(text = target.localize(it.text)) }
     }
 
     private suspend fun translateGroups(groupTexts: List<String>): GroupTranslation {
@@ -2003,9 +2036,10 @@ class CaptureService : Service() {
 
     /** On-demand translation for a single text string (used by edit overlay, drag-sentence, etc.). */
     internal suspend fun translateOnce(text: String): GroupTranslation {
-        val outcome = translate(text, snapshotTranslationTarget())
+        val target = snapshotTranslationTarget()
+        val outcome = translate(text, target)
         setDegraded(outcome.kind)
-        return GroupTranslation(outcome.text, outcome.note, outcome.backendDisplayName)
+        return GroupTranslation(target.localize(outcome.text), outcome.note, outcome.backendDisplayName)
     }
 
     /**

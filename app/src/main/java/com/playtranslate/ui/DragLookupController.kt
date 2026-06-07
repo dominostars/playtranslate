@@ -21,6 +21,7 @@ import com.playtranslate.OcrManager
 import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.Prefs
+import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.language.DefinitionGlossTranslators
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
@@ -1076,7 +1077,8 @@ class DragLookupController(
         val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
         val resolver = DefinitionResolver(engine, targetGlossDb,
             mlKitTranslator?.let { WordTranslator(it::translate) }, prefs.targetLang,
-            DefinitionGlossTranslators.forTarget(prefs.targetLang))
+            DefinitionGlossTranslators.forTarget(prefs.targetLang),
+            ChineseScriptConverter.forTarget(prefs.targetLang, prefs.targetChineseVariant))
         val defResult = withContext(Dispatchers.IO) { resolver.lookup(lookupForm, matchedToken?.reading) }
         val response = defResult?.response
         // Wiktionary source packs split each POS section into its own entry;

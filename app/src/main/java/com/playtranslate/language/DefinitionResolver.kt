@@ -3,6 +3,7 @@ package com.playtranslate.language
 import android.util.Log
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.DictionaryResponse
+import com.playtranslate.translation.ChineseScriptConverter
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -67,6 +68,11 @@ class DefinitionResolver(
     private val mlKitTranslator: WordTranslator?,
     private val targetLang: String,
     private val enToTargetTranslator: WordTranslator? = null,
+    /** Renders target-language glosses to the chosen Traditional Chinese variant.
+     *  Null = no conversion (non-Chinese / Simplified target). Every gloss source
+     *  (native pack, ML Kit, en→target) emits Simplified, so this is the single
+     *  point that localizes Tier-1/2/3 output to Traditional. */
+    private val converter: ChineseScriptConverter? = null,
 ) {
     suspend fun lookup(word: String, reading: String?): DefinitionResult? {
         val response = engine.lookup(word, reading)
@@ -102,7 +108,7 @@ class DefinitionResolver(
                     // English ordinals (they don't — see the long
                     // discussion when this path was added).
                     Log.d(TAG, "  -> Native target-driven (${senses.first().source}, ${senses.size} target senses, sourceLang=$sourceLang, targetLang=$targetLang)")
-                    return DefinitionResult.Native(response, senses, senses.first().source)
+                    return localize(DefinitionResult.Native(response, senses, senses.first().source))
                 }
             }
             Log.d(TAG, "  Tier 1: no match in target DB")
@@ -120,7 +126,9 @@ class DefinitionResolver(
                 if (translated.isNotBlank() && !translated.equals(headword, ignoreCase = true)) {
                     val translatedDefs = translateDefinitions(response)
                     Log.d(TAG, "  -> MachineTranslated (translatedDefs=${translatedDefs?.size})")
-                    return DefinitionResult.MachineTranslated(response, translated, translatedDefs)
+                    // [translated] passed the identity check above on its RAW
+                    // (pre-conversion) value; localize() converts it afterward.
+                    return localize(DefinitionResult.MachineTranslated(response, translated, translatedDefs))
                 }
                 Log.d(TAG, "  Tier 2: identity translation, falling through")
             } catch (e: kotlin.coroutines.cancellation.CancellationException) {
@@ -135,7 +143,29 @@ class DefinitionResolver(
         // Tier 3: English fallback (with translated definitions when possible)
         val translatedDefs = translateDefinitions(response)
         Log.d(TAG, "  -> EnglishFallback (translatedDefs=${translatedDefs?.size})")
-        return DefinitionResult.EnglishFallback(response, translatedDefs)
+        return localize(DefinitionResult.EnglishFallback(response, translatedDefs))
+    }
+
+    /**
+     * Converts every target-language string in [result] to the chosen
+     * Traditional Chinese variant. No-op when [converter] is null (non-Chinese /
+     * Simplified target). All gloss sources emit Simplified, so this single pass
+     * covers native pack senses, the MT'd headword, and translated definitions.
+     */
+    private fun localize(result: DefinitionResult): DefinitionResult {
+        val c = converter ?: return result
+        return when (result) {
+            is DefinitionResult.Native -> result.copy(
+                targetSenses = result.targetSenses.map { s -> s.copy(glosses = s.glosses.map(c::convert)) },
+            )
+            is DefinitionResult.MachineTranslated -> result.copy(
+                translatedHeadword = c.convert(result.translatedHeadword),
+                translatedDefinitions = result.translatedDefinitions?.map(c::convert),
+            )
+            is DefinitionResult.EnglishFallback -> result.copy(
+                translatedDefinitions = result.translatedDefinitions?.map(c::convert),
+            )
+        }
     }
 
     /**
@@ -167,7 +197,7 @@ class DefinitionResolver(
                 sense.examples.map { ex ->
                     async {
                         if (ex.text.isBlank()) return@async ""
-                        try {
+                        val t = try {
                             translator.translate(ex.text)
                         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                             throw e
@@ -175,6 +205,7 @@ class DefinitionResolver(
                             Log.d(TAG, "Example translation failed: ${e.message}")
                             ex.translation  // stored English — wrong language but better than nothing
                         }
+                        converter?.convert(t) ?: t
                     }
                 }.awaitAll()
             }

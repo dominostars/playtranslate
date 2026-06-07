@@ -353,9 +353,8 @@ class SettingsRenderer(
                         .isOfflineTranslationReady(sourceId, targetLang)
                 }
                 if (!ready) {
-                    val targetName = java.util.Locale.forLanguageTag(targetLang)
-                        .getDisplayLanguage(java.util.Locale.getDefault())
-                        .replaceFirstChar { it.uppercase(java.util.Locale.getDefault()) }
+                    val targetName = com.playtranslate.language.ChineseScriptVariant
+                        .targetDisplayName(targetLang, prefs.targetChineseVariant)
                     cardOfflineModels.isVisible = true
                     rowOfflineModels.findViewById<TextView>(R.id.tvRowTitle).text =
                         ctx.getString(R.string.lang_section_offline_models_title)

@@ -43,6 +43,7 @@ import com.playtranslate.translation.OfflineModelReclaimer
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.ocr.registry.OcrModelManager
+import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.DownloadProgress
 import com.playtranslate.language.InstallResult
 import com.playtranslate.language.LanguagePackStore
@@ -328,13 +329,15 @@ class LanguageSetupActivity : AppCompatActivity() {
 
     private fun showTargetList() {
         val collator = Collator.getInstance(Locale.getDefault())
-        val allLangs = TranslateLanguage.getAllLanguages()
-            .map { code -> code to targetDisplayName(code) }
-            .sortedWith(compareBy(collator) { it.second })
+        val prefs = Prefs(this)
+        val currentTarget = prefs.targetLang
+        val currentVariant = prefs.targetChineseVariant
+        val chineseSelected = ChineseScriptVariant.isChineseTarget(currentTarget)
+        // All four Chinese variants share the single target-zh pack.
+        val chineseInstalled =
+            LanguagePackStore.isTargetInstalled(this, ChineseScriptVariant.BACKEND_CODE)
 
-        val currentTarget = Prefs(this).targetLang
-
-        fun toRow(code: String, displayName: String): LangRow {
+        fun plainRow(code: String, displayName: String): LangRow {
             // English has no gloss pack to manage, so trash never applies.
             val installed = code != "en" && LanguagePackStore.isTargetInstalled(this, code)
             val isSelected = code == currentTarget
@@ -348,40 +351,87 @@ class LanguageSetupActivity : AppCompatActivity() {
             )
         }
 
-        // Suggested: device-locale language (if supported) + any target packs
-        // already installed. Surfaces the likely target(s) without removing
-        // them from the canonical alphabetical list below.
+        fun chineseRow(variant: ChineseScriptVariant): LangRow = LangRow(
+            titleNorm = normalizeWithMap(variant.displayLabel()),
+            endonymNorm = normalizeWithMap(variant.displayLabel(Locale.forLanguageTag(variant.code))),
+            isSelected = chineseSelected && variant == currentVariant,
+            // The four variants share one pack, so deleting any one removes it:
+            // hide trash across the whole group whenever a Chinese variant is the
+            // selected target (mirrors the source ZH/ZH_HANT sharesPackWithSelection).
+            canDelete = chineseInstalled && !chineseSelected,
+            onRowClick = { onTargetSelected(ChineseScriptVariant.BACKEND_CODE, variant) },
+            onTrashClick = { handleChineseTargetDeleteTap() },
+        )
+
+        // One row per ML Kit target, EXCEPT the bare "zh" — it expands into the
+        // four Chinese script-variant rows, all backed by the single target-zh pack.
+        val plain = TranslateLanguage.getAllLanguages()
+            .filter { it != ChineseScriptVariant.BACKEND_CODE }
+            .map { code -> val n = targetDisplayName(code); n to plainRow(code, n) }
+        val chinese = ChineseScriptVariant.all.map { v -> v.displayLabel() to chineseRow(v) }
+        val sorted = (plain + chinese).sortedWith(compareBy(collator) { it.first })
+
+        // Suggested: device-locale language (if supported) + any installed target
+        // packs. For Chinese, collapse to a single row (the selected variant, else
+        // Simplified) so the four don't clutter the shortcut list.
         val deviceLang = Locale.getDefault().language
-        val suggested = allLangs.filter { (code, _) ->
-            code == deviceLang || LanguagePackStore.isTargetInstalled(this, code)
-        }
+        val suggestedPlain = TranslateLanguage.getAllLanguages()
+            .filter { it != ChineseScriptVariant.BACKEND_CODE }
+            .filter { it == deviceLang || LanguagePackStore.isTargetInstalled(this, it) }
+            .map { code -> val n = targetDisplayName(code); n to plainRow(code, n) }
+        val suggestedChinese =
+            if (deviceLang == ChineseScriptVariant.BACKEND_CODE || chineseInstalled) {
+                val v = if (chineseSelected) currentVariant else ChineseScriptVariant.SIMPLIFIED
+                listOf(v.displayLabel() to chineseRow(v))
+            } else emptyList()
+        val suggested = (suggestedPlain + suggestedChinese).sortedWith(compareBy(collator) { it.first })
 
         bindLanguagePage(
             LanguagePageData(
                 toolbarTitle = getString(R.string.lang_translate_to),
-                allRows = allLangs.map { (c, n) -> toRow(c, n) },
-                suggestedRows = suggested.map { (c, n) -> toRow(c, n) },
+                allRows = sorted.map { it.second },
+                suggestedRows = suggested.map { it.second },
             )
         )
     }
 
-    private fun onTargetSelected(code: String) {
+    private fun onTargetSelected(
+        code: String,
+        chineseVariant: ChineseScriptVariant = ChineseScriptVariant.SIMPLIFIED,
+    ) {
         val sourceId = selectedSource ?: Prefs(this).sourceLangId
         val sourceLangCode = SourceLanguageProfiles[sourceId].translationCode
         // Capture the previous target before installAndLoad runs so we can
         // evict its cached FST after the new one is in place. Eviction is
         // gated on installation success — we never drop the previous pack
         // until the new one is fully downloaded and loaded, so a failed
-        // switch keeps the prior selection working.
+        // switch keeps the prior selection working. (Switching between Chinese
+        // variants keeps code=="zh", so previousTarget==code and the shared FST
+        // is correctly NOT evicted.)
         val previousTarget = Prefs(this).targetLang
         targetInstaller.installAndLoad(
             sourceLangCode = sourceLangCode,
             targetCode = code,
             onSuccess = {
-                Prefs(this@LanguageSetupActivity).targetLang = code
+                val prefs = Prefs(this@LanguageSetupActivity)
+                prefs.targetLang = code
+                // Persist the Chinese script choice atomically with the backend
+                // code. For non-Chinese targets this resets any stale variant to
+                // Simplified (a no-op for them); for Chinese it selects TW/HK/etc.
+                prefs.targetChineseVariant = chineseVariant
                 if (previousTarget.isNotBlank() && previousTarget != code) {
                     TargetGlossDatabaseProvider.release(previousTarget)
                 }
+                // LastSentenceCache stores ALREADY-LOCALIZED translation + gloss
+                // output keyed only by sentence text. A target/variant change —
+                // including Simplified⇄Traditional, which keeps targetLang=="zh" so
+                // no language-code invalidation fires — would otherwise serve the
+                // stale script when the panel/sheet reopens for the same sentence.
+                // Drop it so the next view recomputes. Safe at this point: a
+                // foreground picker success, navigating away, with no capture or
+                // Anki sheet mid-await. (CaptureService's TranslationCache needs no
+                // clear — it stores canonical Simplified and converts on read.)
+                LastSentenceCache.clear()
                 selectionDelegate?.onTargetSelectionDone(code)
                 finish()
             },
@@ -883,6 +933,28 @@ class LanguageSetupActivity : AppCompatActivity() {
                 BergamotModelManager(applicationContext).deleteForTarget(code)
                 // Reclaim this target's ML Kit model too, unless it's still needed
                 // as a source (or is the selected pair).
+                OfflineModelReclaimer.reclaimMlKitIfUnneeded(applicationContext, code)
+            }
+            showCurrentPage()
+        }
+    }
+
+    /** Delete for any Chinese variant row. All four share the single target-zh
+     *  pack, so the confirm names every variant that goes at once and the
+     *  teardown runs once on "zh" (mirrors [handleSourceDeleteTap]'s ZH/ZH_HANT
+     *  shared-pack branch). canDelete already hid the trash while a Chinese
+     *  variant was the selected target, so nothing is pulled from under it. */
+    private fun handleChineseTargetDeleteTap() {
+        val variants = ChineseScriptVariant.all.joinToString("\n") { it.displayLabel() }
+        showDeleteConfirm(
+            title = "Delete Languages?",
+            message = "This will remove the shared Chinese definition data:\n\n" +
+                "$variants\n\nYou can redownload later.",
+        ) {
+            val code = ChineseScriptVariant.BACKEND_CODE
+            LanguagePackStore.uninstallTarget(applicationContext, code)
+            lifecycleScope.launch {
+                BergamotModelManager(applicationContext).deleteForTarget(code)
                 OfflineModelReclaimer.reclaimMlKitIfUnneeded(applicationContext, code)
             }
             showCurrentPage()

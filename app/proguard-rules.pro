@@ -82,6 +82,16 @@
 -keep class com.hankcs.hanlp.** { *; }
 -dontwarn com.hankcs.hanlp.**
 
+# ── OpenCC (opencc4j: Simplified⇄Traditional Chinese) ─────────────────────────
+# opencc4j reads its bundled conversion dictionaries from classpath resources
+# and resolves segment/format components reflectively; it also pulls the
+# com.github.houbb.heaven util lib. Keep both namespaces so a minified release
+# build doesn't strip the converter or its dictionary data — otherwise render-
+# time Traditional Chinese conversion silently falls back to Simplified.
+-keep class com.github.houbb.opencc4j.** { *; }
+-keep class com.github.houbb.heaven.** { *; }
+-dontwarn com.github.houbb.**
+
 # ── OkHttp / Okio (bundled rules handle most cases; add dontwarn for extras) ──
 -dontwarn okhttp3.internal.platform.**
 -dontwarn org.conscrypt.**

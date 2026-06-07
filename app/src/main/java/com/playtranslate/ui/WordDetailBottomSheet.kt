@@ -26,6 +26,7 @@ import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
 import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
+import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
 import com.playtranslate.applyDialogEdgeToEdge
@@ -255,9 +256,11 @@ class WordDetailBottomSheet : DialogFragment() {
             val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, targetLangCode)
             val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, targetLangCode)
             val enToTargetWrapper = DefinitionGlossTranslators.forTarget(targetLangCode)
+            val charConverter =
+                ChineseScriptConverter.forTarget(targetLangCode, Prefs(appCtx).targetChineseVariant)
             val resolver = DefinitionResolver(engine, targetGlossDb,
                 mlKitTranslator?.let { WordTranslator(it::translate) }, targetLangCode,
-                enToTargetWrapper)
+                enToTargetWrapper, charConverter)
             val defResult = withContext(Dispatchers.IO) { resolver.lookup(word, readingHint) }
             val response = defResult?.response
             // Wiktionary-derived source packs (en/de/fr/es/...) split each
@@ -367,7 +370,17 @@ class WordDetailBottomSheet : DialogFragment() {
                             }.awaitAll()
                         }
                     }
-                    applyMoreExamples(pairs, entryExampleFallback)
+                    // Localize the target-language example sentences to the
+                    // chosen Traditional variant. Tatoeba cmn is mostly Simplified
+                    // and the en→target fallback emits Simplified; this path
+                    // bypasses DefinitionResolver, so convert here.
+                    val localizedPairs = charConverter?.let { c ->
+                        pairs?.map { it.copy(target = c.convert(it.target)) }
+                    } ?: pairs
+                    val localizedFallback = charConverter?.let { c ->
+                        entryExampleFallback.map { it.copy(target = c.convert(it.target)) }
+                    } ?: entryExampleFallback
+                    applyMoreExamples(localizedPairs, localizedFallback)
                 }
             }
         }
@@ -804,6 +817,11 @@ class WordDetailBottomSheet : DialogFragment() {
                 }
 
                 if (needsMt && enToTargetTranslator != null) {
+                    // Localize Simplified MT output to the chosen Traditional
+                    // variant (this path bypasses DefinitionResolver).
+                    val charConverter = ChineseScriptConverter.forTarget(
+                        targetLangCode, Prefs(requireContext().applicationContext).targetChineseVariant,
+                    )
                     // Launch translations on the viewLifecycleOwner scope so
                     // buildContent returns immediately and the Anki button /
                     // more-examples setup in onViewCreated isn't blocked
@@ -820,7 +838,11 @@ class WordDetailBottomSheet : DialogFragment() {
                                 withContext(Dispatchers.IO) { enToTargetTranslator.translate(source) }
                             }.getOrNull()
                             if (!translated.isNullOrBlank() && isAdded) {
-                                meaningsRegistry[index]?.text = dedupeMtCsv(translated)
+                                // MT emits Simplified; convert to the chosen
+                                // Traditional variant. The kanji/hanzi breakdown
+                                // bypasses DefinitionResolver, so convert here.
+                                val localized = charConverter?.convert(translated) ?: translated
+                                meaningsRegistry[index]?.text = dedupeMtCsv(localized)
                             }
                         }
                     }

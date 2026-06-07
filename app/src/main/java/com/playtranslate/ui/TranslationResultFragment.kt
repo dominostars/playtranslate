@@ -27,6 +27,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
+import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.language.DefinitionGlossTranslators
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
@@ -792,7 +793,8 @@ class TranslationResultFragment : Fragment() {
                 val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
                 val resolver = DefinitionResolver(engine, targetGlossDb,
                     mlKitTranslator?.let { WordTranslator(it::translate) }, prefs.targetLang,
-                    DefinitionGlossTranslators.forTarget(prefs.targetLang))
+                    DefinitionGlossTranslators.forTarget(prefs.targetLang),
+                    ChineseScriptConverter.forTarget(prefs.targetLang, prefs.targetChineseVariant))
                 val defResult = withContext(Dispatchers.IO) {
                     resolver.lookup(lookupForm, reading.ifEmpty { null })
                 }
@@ -1289,9 +1291,9 @@ class TranslationResultFragment : Fragment() {
 
     private fun targetLangDisplayName(): String {
         val code = selectedTargetLang()
-        val locale = Locale.forLanguageTag(code)
-        return locale.getDisplayLanguage(locale)
-            .replaceFirstChar { it.uppercase(locale) }
+        val variant = Prefs(requireContext().applicationContext).targetChineseVariant
+        return com.playtranslate.language.ChineseScriptVariant
+            .targetDisplayName(code, variant, Locale.forLanguageTag(code))
     }
 
     private fun copyToClipboard(text: String) {
