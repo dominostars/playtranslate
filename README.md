@@ -22,7 +22,7 @@ To report issues, receive support, or make requests, please join the [Discord se
 
 ## How to Use
 
-1. [Download the latest release by clicking here](../../releases/download/v2.2.1/PlayTranslate-2.2.1.apk)
+1. [Download the latest release by clicking here](../../releases/download/v2.3.0/PlayTranslate-2.3.0.apk)
 2. On your Android, enable **Settings → Security → Install unknown apps** for your file manager or browser
 3. Open the APK and tap Install
 4. On first launch, follow the onboarding steps to grant the necessary permissions
@@ -170,7 +170,7 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 ### Libraries and services
 
 - [ML Kit](https://developers.google.com/ml-kit): on-device OCR and translation
-- [Kuromoji](https://github.com/atilika/kuromoji): Japanese morphological analysis
+- [Sudachi](https://github.com/WorksApplications/Sudachi): Japanese morphological analysis (Apache 2.0)
 - [HanLP](https://github.com/hankcs/HanLP): Chinese word segmentation
 - [KOMORAN](https://github.com/shineware/KOMORAN): Korean morphological analysis
 - [Snowball stemmers](https://snowballstem.org/) via [Apache Lucene](https://lucene.apache.org/): Latin/European stemming
@@ -178,6 +178,10 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 - [AnkiDroid](https://github.com/ankidroid/Anki-Android): flashcard integration
 - [MNN](https://github.com/alibaba/MNN): on-device LLM and OCR inference engine (Apache 2.0)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR): on-device OCR — the bundled PP-OCRv5 text detector plus per-script recognizers (Apache 2.0)
+- [docTR](https://github.com/mindee/doctr) and [EasyOCR](https://github.com/JaidedAI/EasyOCR): line-grouping logic adapted for OCR word-box assembly (Apache 2.0)
+- [OpenCV](https://opencv.org/): image preprocessing for OCR — DBNet contour postprocessing and crop rectification (Apache 2.0)
+- [OpenCC4j](https://github.com/houbb/opencc4j): Simplified/Traditional Chinese conversion (Apache 2.0)
+- [slimt](https://github.com/jerinphilip/slimt): tiny [Marian](https://marian-nmt.github.io/)-based NMT engine that runs the Bergamot offline models
 
 ### (Optional) Downloadable Offline Models
 
@@ -187,6 +191,7 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 - Hunyuan-MT 1.5 1.8B (Tencent): translation-specialised model, downloadable as an optional offline pack (Tencent HY Community License — not available in the EU, UK, or South Korea)
 - [PaddleOCR PP-OCRv5 recognizers](https://github.com/PaddlePaddle/PaddleOCR): per-script OCR recognizer packs (Chinese/Japanese/English, Latin, Korean), downloadable per source language (Apache 2.0)
 - [Meiki](https://github.com/rtr46/meikiocr): high-accuracy Japanese OCR model (D-FINE), downloadable as an optional offline pack (LGPL 3.0)
+- [Firefox Translations (Bergamot)](https://github.com/mozilla/firefox-translations-models): Mozilla's offline NMT model pairs, downloadable for offline translation
 
 ### Linguistic data
 
