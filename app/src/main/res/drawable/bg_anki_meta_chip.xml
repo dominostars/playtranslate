@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Subtle neutral chip for the words-list meta row (Common / "in Anki"
+     badges), matching the magnifying-lens meta-row badges: a lightly
+     rounded ptSurface fill that sits one step off the ptCard list surface.
+     The lens uses ptCard-on-ptSurface; the list surface is ptCard, so the
+     equivalent step here is ptSurface (and ptSurface stays visible on the
+     white ptCard in light theme, where ptCard == ptElevated). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/ptSurface" />
+    <corners android:radius="4dp" />
+</shape>

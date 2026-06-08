@@ -10,6 +10,10 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import java.io.File
 import androidx.core.net.toUri
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 private const val TAG = "AnkiManager"
 
@@ -40,15 +44,48 @@ class AnkiManager(private val context: Context) {
 
         private const val AUTHORITY = "com.ichi2.anki.flashcards"
         private const val FILE_PROVIDER_AUTHORITY = "com.playtranslate.fileprovider"
-        const val MODEL_NAME = "PlayTranslate v004"
+        // Bumped v004 → v005 to add the TargetWord field (the dragged/looked-up
+        // headword) so sentence cards persist their target word and the
+        // "already in Anki" detector can match it. Existing v004 cards keep
+        // working under their old model.
+        const val MODEL_NAME = "PlayTranslate v005"
+        /** Shared by every synthetic PlayTranslate model version so the
+         *  card-type picker hides old versions (v004…) too, not just current. */
+        private const val MODEL_NAME_PREFIX = "PlayTranslate v"
 
         /** AnkiDroid field separator (ASCII 31, unit separator) */
         private const val SEP = "\u001f"
 
         private val DECK_URI  = "content://$AUTHORITY/decks".toUri()
         private val NOTE_URI  = "content://$AUTHORITY/notes".toUri()
+        /** Raw-SQL counterpart to [NOTE_URI]: `selection` is a WHERE clause on
+         *  the notes table (columns _id, mid, flds, sfld, csum, tags…) rather
+         *  than Anki browser-search syntax. Used to hit the csum index. */
+        private val NOTES_V2_URI = "content://$AUTHORITY/notes_v2".toUri()
         private val MODEL_URI = "content://$AUTHORITY/models".toUri()
         private val MEDIA_URI = "content://$AUTHORITY/media".toUri()
+
+        private val _noteAddedTick = MutableStateFlow(0)
+        /** Bumped after each successful note insert. UI surfaces that show
+         *  "already in Anki" badges collect this to refresh without lifecycle
+         *  plumbing — it fires even while a review dialog is on top (the host
+         *  fragment stays STARTED), which an onResume hook does not. */
+        val noteAddedTick: StateFlow<Int> = _noteAddedTick.asStateFlow()
+
+        /** Field names commonly holding the target vocab across mining
+         *  templates (Yomitan / Migaku / JP·ZH·KO decks). Used by
+         *  [decksByWord]'s field-name search so a word counts even when it
+         *  isn't the note's first field (e.g. sentence cards). */
+        private val MATCH_FIELDS = listOf(
+            "Expression", "TargetWord", "Target", "Word", "Vocabulary", "Vocab",
+            "Front", "Term", "Reading", "Kanji", "Hanzi", "Hangul", "Headword",
+            "単語", "言葉", "表現", "词", "单词", "단어", "표현",
+        )
+
+        /** Escapes a value for use inside a quoted Anki browser-search term. */
+        private fun ankiSearchEscape(s: String): String =
+            s.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("*", "\\*").replace("_", "\\_")
     }
 
     fun isAnkiDroidInstalled(): Boolean = try {
@@ -84,15 +121,116 @@ class AnkiManager(private val context: Context) {
     }
 
     /**
+     * For each of [words], returns the distinct names of the Anki decks that
+     * already contain a note whose **first field** (HTML-stripped) exactly
+     * equals that word — across every deck and note type, not just
+     * PlayTranslate's. Words with no match are omitted from the result.
+     *
+     * Detection rides Anki's `csum` index (first-field checksum) via the
+     * raw-SQL [NOTES_V2_URI]; each candidate is then verified by comparing
+     * the stripped first field (guarding the 32-bit-hash collision), and the
+     * owning deck(s) are read from each note's `cards` sub-URI.
+     *
+     * Best-effort and silent: returns an empty map when AnkiDroid is absent,
+     * permission is missing, or any query fails. Callers should gate on
+     * [isAnkiDroidInstalled] + [hasPermission] and must invoke this from a
+     * background thread (binder IPC).
+     */
+    fun decksByWord(words: List<String>): Map<String, List<String>> {
+        val cleaned = words.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        if (cleaned.isEmpty()) return emptyMap()
+
+        val cleanedSet = cleaned.toHashSet()
+
+        // Note ids PER queried word, from two complementary sources. Each hit is
+        // attributed to the specific word it matched, so a batched query for
+        // many words never cross-credits one word's note to another:
+        //  A) csum — the note's FIRST field equals the word (Anki's duplicate
+        //     key; HTML-stripped, so it catches PlayTranslate's own HTML cards
+        //     and any note type whose first/sort field is the plain word).
+        //     Attributed only to the word equal to field[0] — which is also the
+        //     32-bit-hash collision guard.
+        //  B) field-name search, run PER WORD so Anki's exact field match ties
+        //     each hit to that word — catches the word in a recognized vocab
+        //     field that isn't the first field (e.g. a sentence card's
+        //     TargetWord / Word field). Either query failing is non-fatal.
+        val noteIdsByWord = HashMap<String, MutableSet<Long>>()
+
+        try {
+            val csums = cleaned.map { AnkiCsum.checksum(AnkiCsum.stripHtml(it)) }.distinct()
+            val sel = "csum IN (${csums.joinToString(",") { "?" }})"
+            context.contentResolver.query(
+                NOTES_V2_URI, arrayOf("_id", "flds"), sel,
+                csums.map { it.toString() }.toTypedArray(), null,
+            )?.use { c ->
+                val idCol = c.getColumnIndex("_id")
+                val fCol = c.getColumnIndex("flds")
+                if (idCol >= 0 && fCol >= 0) while (c.moveToNext()) {
+                    val first = AnkiCsum.stripHtml((c.getString(fCol) ?: "").substringBefore(SEP))
+                    if (first in cleanedSet) {
+                        noteIdsByWord.getOrPut(first) { mutableSetOf() }.add(c.getLong(idCol))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "decksByWord csum query failed: ${e.message}", e)
+        }
+
+        for (w in cleaned) {
+            try {
+                val q = ankiSearchEscape(w)
+                val sel = MATCH_FIELDS.joinToString(" OR ") { f -> "$f:\"$q\"" }
+                context.contentResolver.query(
+                    NOTE_URI, arrayOf("_id"), sel, null, null,
+                )?.use { c ->
+                    val idCol = c.getColumnIndex("_id")
+                    if (idCol >= 0) while (c.moveToNext()) {
+                        noteIdsByWord.getOrPut(w) { mutableSetOf() }.add(c.getLong(idCol))
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "decksByWord field search failed for '$w': ${e.message}", e)
+            }
+        }
+
+        if (noteIdsByWord.isEmpty()) return emptyMap()
+
+        val deckNames = getDecks()
+        val result = HashMap<String, List<String>>()
+        for ((word, noteIds) in noteIdsByWord) {
+            val deckIds = linkedSetOf<Long>()
+            for (noteId in noteIds) {
+                try {
+                    val cardsUri = Uri.withAppendedPath(NOTE_URI, "$noteId/cards")
+                    context.contentResolver.query(
+                        cardsUri, arrayOf("deck_id"), null, null, null,
+                    )?.use { c ->
+                        val didCol = c.getColumnIndex("deck_id")
+                        if (didCol < 0) return@use
+                        while (c.moveToNext()) deckIds.add(c.getLong(didCol))
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "decksByWord cards query failed (note $noteId): ${e.message}", e)
+                }
+            }
+            val names = deckIds.mapNotNull { deckNames[it] }.distinct()
+            Log.d(TAG, "decksByWord '$word': notes=$noteIds deckIds=$deckIds names=$names")
+            if (names.isNotEmpty()) result[word] = names
+        }
+        return result
+    }
+
+    /**
      * Returns the ID of the "PlayTranslate" model, creating it if it doesn't exist yet.
      * Returns null on failure.
      */
     fun getOrCreateModel(): Long? {
-        val expectedFields = listOf("Expression", "Back").joinToString(SEP)
+        val expectedFields = listOf("Expression", "Back", "TargetWord").joinToString(SEP)
 
-        // Find any existing PlayTranslate model whose field_names match the expected 2-field schema.
-        // Name-only matching is unreliable because old models with the same name but different
-        // fields may already exist in AnkiDroid from a previous version.
+        // Find any existing PlayTranslate model whose field_names match the
+        // expected 3-field schema. Name-only matching is unreliable because old
+        // models with the same name but different fields may already exist in
+        // AnkiDroid from a previous version.
         try {
             context.contentResolver.query(MODEL_URI, null, null, null, null)?.use { cursor ->
                 val idCol     = cursor.getColumnIndex("_id")
@@ -114,12 +252,15 @@ class AnkiManager(private val context: Context) {
         }
         Log.d(TAG, "Creating new Anki model '$MODEL_NAME'")
 
-        // 2-field model: Expression (source text front) + Back (full HTML blob).
+        // 3-field model: Expression (source text front) + Back (full HTML blob)
+        // + TargetWord (the dragged/looked-up headword, plain text). TargetWord
+        // isn't shown by the template — it exists so sentence cards persist
+        // their target word and the "already in Anki" detector can match it.
         // qfmt centers and enlarges the expression text.
         // afmt shows only {{Back}} — the Back field already contains the full card back
         // (image, annotated sentence, translation, definitions), so no FrontSide duplication
         // and no auto-generated \n\n separator artifacts.
-        val fieldNames = listOf("Expression", "Back").joinToString(SEP)
+        val fieldNames = listOf("Expression", "Back", "TargetWord").joinToString(SEP)
         val qfmt = """<div style="text-align:center;font-size:1.5em;padding:20px;line-height:1.5;">{{Expression}}</div>"""
         val afmt = """{{Back}}"""
         val css = """
@@ -199,7 +340,7 @@ class AnkiManager(private val context: Context) {
                     val type  = if (typeCol  >= 0) cursor.getInt(typeCol)  else 0
                     val sortf = if (sortfCol >= 0) cursor.getInt(sortfCol) else 0
                     if (type == 1) continue                  // cloze — out of scope
-                    if (name == MODEL_NAME) continue         // synthetic v004 reached via Default sentinel
+                    if (name.startsWith(MODEL_NAME_PREFIX)) continue  // synthetic PlayTranslate model (any version)
                     result += ModelInfo(id, name, fieldNames, type, sortf)
                 }
             }
@@ -293,6 +434,8 @@ class AnkiManager(private val context: Context) {
             } catch (e: Exception) {
                 Log.e(TAG, "cards enumeration failed: ${e.message}", e)
             }
+            // Note landed — wake any "already in Anki" badge surfaces.
+            _noteAddedTick.update { it + 1 }
             true
         } catch (e: Exception) {
             Log.e(TAG, "addNote failed: ${e.message}", e)

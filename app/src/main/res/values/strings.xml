@@ -240,6 +240,13 @@
     <!-- Badge label shown beside common dictionary entries. -->
     <string name="word_detail_common">Common</string>
 
+    <!-- Badge text when a looked-up word already has an Anki card in more
+         than one deck (single-deck case shows the deck's name instead). -->
+    <string name="word_anki_in_decks"><xliff:g id="count" example="3">%1$d</xliff:g> Anki decks</string>
+    <!-- Content description for the "already in Anki" badge; %1$s is the
+         visible label (a deck name or the "N Anki decks" text). -->
+    <string name="word_anki_deck_badge_cd">Already in Anki: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
+
     <!-- Stroke-count abbreviation shown inside a small badge next to a
          kanji's numeric stroke count (e.g. "12 STR"). Short enough to fit
          a three-glyph pill. Japanese builds may prefer "画" (kaku). -->

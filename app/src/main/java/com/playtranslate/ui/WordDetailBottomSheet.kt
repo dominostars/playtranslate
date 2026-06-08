@@ -24,6 +24,8 @@ import com.playtranslate.themeColor
 
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
+import androidx.appcompat.content.res.AppCompatResources
+import kotlinx.coroutines.flow.drop
 import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
 import com.playtranslate.translation.ChineseScriptConverter
@@ -146,6 +148,15 @@ class WordDetailBottomSheet : DialogFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        // Keep this sheet's deck badge live if a card is added from within it
+        // (the review sheet sits on top, but this fragment stays STARTED).
+        viewLifecycleOwner.lifecycleScope.launch {
+            AnkiManager.noteAddedTick.drop(1).collect {
+                val flow = headerBadgeFlow ?: return@collect
+                val word = headerWord ?: return@collect
+                maybeAddAnkiDeckBadge(flow, word)
+            }
+        }
         ViewCompat.setOnApplyWindowInsetsListener(view) { v, insets ->
             val sys = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
@@ -619,6 +630,12 @@ class WordDetailBottomSheet : DialogFragment() {
      *  down into the toolbar's empty left slot as the user scrolls. */
     private var bigHeadwordView: TextView? = null
 
+    /** Header badge row + its headword, retained so the deck badge can be
+     *  re-queried when a card is added (via [AnkiManager.noteAddedTick]). */
+    private var headerBadgeFlow: FlowLayout? = null
+    private var headerWord: String? = null
+    private val deckPillTag = "anki_deck_pill"
+
     /** In-flight TTS request from the header speak chip — cancelled when the
      *  view is torn down so a tapped pronunciation doesn't outlive the sheet. */
     private var speakJob: Job? = null
@@ -929,25 +946,70 @@ class WordDetailBottomSheet : DialogFragment() {
         )
         block.addView(readingRow)
 
-        if (isCommon || freqStars > 0) {
-            val badgeRow = LinearLayout(ctx).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).also { it.topMargin = dp(8) }
-            }
-            if (isCommon) {
-                badgeRow.addView(buildCommonPill())
-            }
-            if (freqStars > 0) {
-                badgeRow.addView(buildStarRow(freqStars))
-            }
-            block.addView(badgeRow)
+        // Badges: Common pill, star rating, and — resolved asynchronously —
+        // the "already in Anki" deck pill. Built unconditionally as a wrapping
+        // FlowLayout so a word that is ONLY in a deck still has a row to attach
+        // to, and a long deck name wraps to a second line instead of clipping.
+        val badgeRow = FlowLayout(ctx).apply {
+            lineSpacingPx = dp(4)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).also { it.topMargin = dp(8) }
         }
+        if (isCommon) badgeRow.addView(buildCommonPill())
+        if (freqStars > 0) badgeRow.addView(buildStarRow(freqStars))
+        badgeRow.isVisible = badgeRow.childCount > 0
+        block.addView(badgeRow)
+        headerBadgeFlow = badgeRow
+        headerWord = written
+        maybeAddAnkiDeckBadge(badgeRow, written)
 
         parent.addView(block)
+    }
+
+    /**
+     * Asynchronously checks whether [word] already has an Anki note and, if
+     * so, appends a passive deck pill to [badgeRow] (revealing the row even
+     * when the word carries no Common/stars badge). Silent when AnkiDroid is
+     * absent, unauthorized, or the word isn't mined.
+     */
+    private fun maybeAddAnkiDeckBadge(badgeRow: FlowLayout, word: String) {
+        val ctx = requireContext()
+        val anki = AnkiManager(ctx)
+        if (!anki.isAnkiDroidInstalled() || !anki.hasPermission()) return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val decks = withContext(Dispatchers.IO) {
+                anki.decksByWord(listOf(word))[word].orEmpty()
+            }
+            if (!isAdded) return@launch
+            // Idempotent across refreshes (noteAddedTick can re-run this): drop
+            // any prior deck pill before re-adding.
+            for (i in badgeRow.childCount - 1 downTo 0) {
+                if (badgeRow.getChildAt(i).tag == deckPillTag) badgeRow.removeViewAt(i)
+            }
+            if (decks.isNotEmpty()) {
+                val pill = AnkiDeckBadge.buildPill(
+                    ctx = ctx,
+                    deckNames = decks,
+                    textColor = ctx.themeColor(R.attr.ptAccent),
+                    background = AppCompatResources.getDrawable(ctx, R.drawable.bg_word_common_pill)
+                        ?: return@launch,
+                    textSizeSp = 11f,
+                    horizontalPadPx = dp(10),
+                    verticalPadPx = dp(3),
+                )
+                if (pill != null) {
+                    pill.tag = deckPillTag
+                    pill.layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                    ).also { it.marginStart = dp(6) }
+                    badgeRow.addView(pill)
+                }
+            }
+            badgeRow.isVisible = badgeRow.childCount > 0
+        }
     }
 
     /**

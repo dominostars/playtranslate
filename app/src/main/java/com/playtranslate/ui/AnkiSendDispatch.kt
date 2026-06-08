@@ -202,9 +202,18 @@ suspend fun Context.dispatchSendToAnki(
 
     val (modelId, fields) = when (target) {
         ModelTarget.Legacy -> {
-            val v004 = withContext(Dispatchers.IO) { anki.getOrCreateModel() }
+            val legacyModel = withContext(Dispatchers.IO) { anki.getOrCreateModel() }
                 ?: return AnkiSendResult.Failed(R.string.anki_send_failed_message)
-            v004 to listOf(legacyFront(), legacyBack(imageFilename, audioFilename, wordAudioFilenames))
+            // 3rd field = TargetWord. Reuse the structured builder's EXPRESSION
+            // output, which is the plain looked-up/highlighted headword for both
+            // word and sentence cards — so sentence cards persist their target
+            // word and the "already in Anki" detector can match it.
+            val targetWord = structured(imageFilename, audioFilename, wordAudioFilenames).expression
+            legacyModel to listOf(
+                legacyFront(),
+                legacyBack(imageFilename, audioFilename, wordAudioFilenames),
+                targetWord,
+            )
         }
         is ModelTarget.Basic -> {
             val outputs = structured(imageFilename, audioFilename, wordAudioFilenames)

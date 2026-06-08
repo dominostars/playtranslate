@@ -1245,7 +1245,18 @@ class DragLookupController(
         currentSentence = sentence
         prefetchWordLookups(sentence)
 
-        return popupData to popupData.machineTranslatedLabel()
+        // Fold in which Anki deck(s) already contain this headword. Gated and
+        // best-effort; runs on IO and is carried by PopupData so the lens
+        // renders it in one pass and the popup cache reuses it on re-show.
+        val anki = AnkiManager(context)
+        val withDecks = if (anki.isAnkiDroidInstalled() && anki.hasPermission()) {
+            val decks = withContext(Dispatchers.IO) {
+                anki.decksByWord(listOf(popupData.word))[popupData.word].orEmpty()
+            }
+            if (decks.isEmpty()) popupData else popupData.copy(ankiDecks = decks)
+        } else popupData
+
+        return withDecks to withDecks.machineTranslatedLabel()
     }
 
     /** Convert the controller's popup-shaped data into the lens's data
@@ -1261,6 +1272,7 @@ class DragLookupController(
             senses = senses,
             freqScore = freqScore,
             isCommon = isCommon,
+            ankiDecks = ankiDecks,
         )
 
     private fun PopupData.machineTranslatedLabel(): String? =
@@ -1275,7 +1287,11 @@ class DragLookupController(
         val freqScore: Int,
         val isCommon: Boolean,
         val entry: DictionaryEntry?,
-        val machineTranslated: Boolean = false
+        val machineTranslated: Boolean = false,
+        /** Names of Anki decks already containing [word]; folded in after the
+         *  dictionary resolve so the lens shows it and the popup cache keeps
+         *  it for re-shows. */
+        val ankiDecks: List<String> = emptyList(),
     )
 
     private fun findLineAt(x: Int, y: Int, lines: List<OcrManager.OcrLine>): OcrManager.OcrLine? {

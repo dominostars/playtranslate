@@ -37,11 +37,12 @@
         android:layout_weight="1"
         android:orientation="vertical">
 
-        <LinearLayout
+        <!-- Reading + badges (Common, stars, and the runtime-added "in Anki"
+             deck pill). FlowLayout so a long deck name wraps to a new line. -->
+        <com.playtranslate.ui.FlowLayout
+            android:id="@+id/itemBadgeFlow"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:layout_height="wrap_content">
 
             <TextView
                 android:id="@+id/tvItemReading"
@@ -49,6 +50,20 @@
                 android:layout_height="wrap_content"
                 android:textColor="?attr/ptTextHint"
                 android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/tvItemCommon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_anki_meta_chip"
+                android:paddingHorizontal="5dp"
+                android:paddingVertical="1dp"
+                android:text="@string/word_detail_common"
+                android:textColor="?attr/ptTextMuted"
+                android:textSize="9sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
 
             <TextView
                 android:id="@+id/tvItemFreq"
@@ -59,7 +74,7 @@
                 android:textSize="10sp"
                 android:visibility="gone" />
 
-        </LinearLayout>
+        </com.playtranslate.ui.FlowLayout>
 
         <TextView
             android:id="@+id/tvItemMeaning"

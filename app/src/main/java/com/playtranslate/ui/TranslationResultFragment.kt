@@ -44,9 +44,11 @@ import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.drop
 import java.util.Locale
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.isVisible
+import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.view.isGone
 
 /**
@@ -114,6 +116,14 @@ class TranslationResultFragment : Fragment() {
     private lateinit var tvTranslationNote: TextView
     private lateinit var tvMainWordsLoading: TextView
     private lateinit var mainWordsContainer: LinearLayout
+
+    /** Session cache of headword → Anki deck names, shared by the words list
+     *  and the in-app word lens so re-renders / re-taps don't re-query. */
+    private val ankiDecksByWord = HashMap<String, List<String>>()
+    private val deckPillTag = "anki_deck_pill"
+    /** Badge flows from the last word-list render, so onResume / a successful
+     *  in-app send can refresh the deck badges in place (no row re-inflate). */
+    private var lastRenderedFlows: Map<String, List<FlowLayout>> = emptyMap()
     private lateinit var btnCopyOriginal: ImageButton
     private lateinit var btnCopyTranslation: ImageButton
     private lateinit var btnEditOriginal: ImageButton
@@ -203,6 +213,13 @@ class TranslationResultFragment : Fragment() {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { vm.result.collect { renderResult(it) } }
                 launch { vm.wordLookups.collect { renderWordLookups(it) } }
+                // Refresh deck badges when a card is added anywhere in the app
+                // (word detail, review sheet, one-tap). Fires while those
+                // dialogs are on top — this fragment stays STARTED beneath them,
+                // which an onResume hook would miss.
+                launch {
+                    AnkiManager.noteAddedTick.drop(1).collect { refreshWordBadges() }
+                }
             }
         }
     }
@@ -624,6 +641,7 @@ class TranslationResultFragment : Fragment() {
                     R.string.anki_added_success
                 Toast.makeText(requireContext(), msgRes, Toast.LENGTH_SHORT).show()
                 pill.setLoading(false)
+                refreshWordBadges()
             }
             is AnkiSendResult.Failed -> {
                 val ctx = requireContext()
@@ -735,6 +753,7 @@ class TranslationResultFragment : Fragment() {
                     else
                         R.string.anki_added_success
                     Toast.makeText(requireContext(), msgRes, Toast.LENGTH_SHORT).show()
+                    refreshWordBadges()
                 }
                 is AnkiSendResult.Failed -> {
                     Toast.makeText(requireContext(), result.messageRes,
@@ -1028,6 +1047,7 @@ class TranslationResultFragment : Fragment() {
                     anchorHeight = lineH,
                 )
                 wordLens?.setDefinitions(lensData, popupLabel)
+                wordLens?.let { maybeUpdateLensDecks(it, lensData, popupLabel, word) }
                 wordLens?.makeInteractive()
             } catch (_: Exception) {}
         }
@@ -1216,11 +1236,127 @@ class TranslationResultFragment : Fragment() {
         mainWordsContainer.removeAllViews()
         if (rows.isEmpty()) return
         val inflater = LayoutInflater.from(requireContext())
+        val flowsByWord = HashMap<String, MutableList<FlowLayout>>()
         rows.forEachIndexed { idx, rowState ->
             if (idx > 0) mainWordsContainer.addView(inflateWordDivider())
             val row = inflater.inflate(R.layout.item_word_lookup, mainWordsContainer, false)
             bindWordRow(row, rowState)
             mainWordsContainer.addView(row)
+            flowsByWord.getOrPut(rowState.displayWord) { mutableListOf() }
+                .add(row.findViewById(R.id.itemBadgeFlow))
+        }
+        lastRenderedFlows = flowsByWord
+        loadAnkiDeckBadges(rows.map { it.displayWord }, flowsByWord)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Deck membership can change while we're away (a card added here, in the
+        // review sheet, or in AnkiDroid). Re-evaluate so badges aren't stuck on
+        // the cached pre-add state.
+        refreshWordBadges()
+    }
+
+    /** Clears the per-word cache and re-queries deck membership for the
+     *  currently-rendered rows, updating each badge in place. No-op until the
+     *  list is built. */
+    private fun refreshWordBadges() {
+        if (!this::mainWordsContainer.isInitialized || mainWordsContainer.childCount == 0) return
+        val flows = lastRenderedFlows
+        if (flows.isEmpty()) return
+        ankiDecksByWord.clear()
+        val anki = AnkiManager(requireContext())
+        if (!anki.isAnkiDroidInstalled() || !anki.hasPermission()) {
+            flows.values.flatten().forEach { addOrUpdateDeckPill(it, null) }
+            return
+        }
+        val words = flows.keys.toList()
+        viewLifecycleOwner.lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) { anki.decksByWord(words) }
+            if (!isAdded) return@launch
+            for ((word, fl) in flows) {
+                val decks = result[word].orEmpty()
+                ankiDecksByWord[word] = decks
+                fl.forEach { addOrUpdateDeckPill(it, decks) }
+            }
+        }
+    }
+
+    /** Batched "already in Anki" lookup for the words list. Caches results
+     *  (shared with the in-app lens) and adds a deck pill to each matching
+     *  row's badge flow. Gated + silent; words already in [ankiDecksByWord]
+     *  were applied during bind, so only the rest are queried. */
+    private fun loadAnkiDeckBadges(
+        words: List<String>,
+        flowsByWord: Map<String, List<FlowLayout>>,
+    ) {
+        val anki = AnkiManager(requireContext())
+        if (!anki.isAnkiDroidInstalled() || !anki.hasPermission()) return
+        val uncached = words.distinct().filter { it !in ankiDecksByWord }
+        if (uncached.isEmpty()) return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) { anki.decksByWord(uncached) }
+            if (!isAdded) return@launch
+            for (w in uncached) {
+                val decks = result[w].orEmpty()
+                ankiDecksByWord[w] = decks
+                if (decks.isEmpty()) continue
+                flowsByWord[w]?.forEach { addOrUpdateDeckPill(it, decks) }
+            }
+        }
+    }
+
+    /** Adds (or replaces) the passive "in Anki" deck pill inside [flow].
+     *  Idempotent via a view tag so re-binding a row never stacks pills. */
+    private fun addOrUpdateDeckPill(flow: FlowLayout, decks: List<String>?) {
+        for (i in flow.childCount - 1 downTo 0) {
+            if (flow.getChildAt(i).tag == deckPillTag) flow.removeViewAt(i)
+        }
+        if (decks.isNullOrEmpty()) return
+        val ctx = requireContext()
+        val d = resources.displayMetrics.density
+        // Subtle neutral chip matching the magnifying-lens meta row: ptSurface
+        // fill (one step off the ptCard list surface) with ptTextMuted text/icon.
+        val pill = AnkiDeckBadge.buildPill(
+            ctx = ctx,
+            deckNames = decks,
+            textColor = ctx.themeColor(R.attr.ptTextMuted),
+            background = AppCompatResources.getDrawable(ctx, R.drawable.bg_anki_meta_chip)
+                ?: return,
+            textSizeSp = 9f,
+            horizontalPadPx = (5 * d).toInt(),
+            verticalPadPx = (1 * d).toInt(),
+        ) ?: return
+        pill.tag = deckPillTag
+        pill.layoutParams = ViewGroup.MarginLayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).also { it.marginStart = (6 * d).toInt() }
+        flow.addView(pill)
+    }
+
+    /** In-app word lens counterpart: once decks are known, re-render the lens
+     *  body so its meta row carries the same deck pill. Reuses the words-list
+     *  cache and no-ops when the lens has since been dismissed/replaced. */
+    private fun maybeUpdateLensDecks(
+        lens: MagnifierLens,
+        base: MagnifierLens.LensDefinitionData,
+        label: String?,
+        word: String,
+    ) {
+        ankiDecksByWord[word]?.let { cached ->
+            if (cached.isNotEmpty()) lens.setDefinitions(base.copy(ankiDecks = cached), label)
+            return
+        }
+        val anki = AnkiManager(requireContext())
+        if (!anki.isAnkiDroidInstalled() || !anki.hasPermission()) return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val decks = withContext(Dispatchers.IO) {
+                anki.decksByWord(listOf(word))[word].orEmpty()
+            }
+            if (!isAdded) return@launch
+            ankiDecksByWord[word] = decks
+            if (decks.isEmpty() || wordLens !== lens) return@launch
+            lens.setDefinitions(base.copy(ankiDecks = decks), label)
         }
     }
 
@@ -1235,6 +1371,13 @@ class TranslationResultFragment : Fragment() {
         } else {
             tvFreq.isGone = true
         }
+        row.findViewById<TextView>(R.id.tvItemCommon).isVisible = rowState.isCommon
+        // Show any already-known Anki decks immediately (cache / re-render);
+        // uncached words are filled in by renderWordRows' batched query.
+        addOrUpdateDeckPill(
+            row.findViewById(R.id.itemBadgeFlow),
+            ankiDecksByWord[rowState.displayWord],
+        )
         row.setOnClickListener {
             host?.onInteraction()
             val ready = (vm.result.value as? ResultState.Ready)?.result

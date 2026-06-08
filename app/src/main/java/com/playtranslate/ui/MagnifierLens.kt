@@ -92,6 +92,9 @@ class MagnifierLens(
         val senses: List<WordLookupPopup.SenseDisplay>,
         val freqScore: Int,
         val isCommon: Boolean,
+        /** Names of Anki decks already containing this word; renders a passive
+         *  deck pill in the meta row when non-empty. */
+        val ankiDecks: List<String> = emptyList(),
     )
 
     private val density = rawCtx.resources.displayMetrics.density
@@ -1359,12 +1362,14 @@ class MagnifierLens(
             // alongside the stars and skip the in-body header.
             val distinctPos = data.senses.map { it.pos.trim() }.filter { it.isNotEmpty() }.distinct()
             val singlePos = distinctPos.singleOrNull()
-            val hasMetaContent = data.isCommon || data.freqScore > 0 || singlePos != null
+            val hasMetaContent = data.isCommon || data.freqScore > 0 ||
+                singlePos != null || data.ankiDecks.isNotEmpty()
 
             if (hasMetaContent) {
-                val metaRow = LinearLayout(ctx).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
+                // FlowLayout (not horizontal LinearLayout) so a long deck name
+                // wraps below the badges instead of clipping in the lens.
+                val metaRow = FlowLayout(ctx).apply {
+                    lineSpacingPx = dp(2f)
                     setPadding(0, 0, 0, dp(4f))
                 }
                 if (data.isCommon) {
@@ -1400,6 +1405,28 @@ class MagnifierLens(
                             setPadding(dp(8f), 0, 0, 0)
                         }
                     })
+                }
+                if (data.ankiDecks.isNotEmpty()) {
+                    AnkiDeckBadge.buildPill(
+                        ctx = ctx,
+                        deckNames = data.ankiDecks,
+                        textColor = panelSecondaryText,
+                        background = GradientDrawable().apply {
+                            setColor(panelBadgeBg)
+                            cornerRadius = density * 4f
+                        },
+                        textSizeSp = 9f,
+                        horizontalPadPx = dp(5f),
+                        verticalPadPx = dp(1f),
+                    )?.let { pill ->
+                        if (data.isCommon || data.freqScore > 0 || singlePos != null) {
+                            pill.layoutParams = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                            ).also { it.marginStart = dp(6f) }
+                        }
+                        metaRow.addView(pill)
+                    }
                 }
                 definitionsContent.addView(metaRow)
             }
