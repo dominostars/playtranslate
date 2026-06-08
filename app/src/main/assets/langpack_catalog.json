@@ -794,9 +794,9 @@
       "bundled": false,
       "packVersion": 2,
       "additiveFromVersion": 1,
-      "size": 55476819,
+      "size": 55478363,
       "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-fr-v2/fr.zip",
-      "sha256": "079c51f90873cef2abbb1ffa9c4d890bc8a2768d32175a7e62bb44435212c413",
+      "sha256": "e007cfa49704e90c58bb96cebfaf76e4ed4ecc02a8dda8b21dee784c255117db",
       "licenses": [
         {
           "component": "CFDICT",
