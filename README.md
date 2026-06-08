@@ -75,7 +75,7 @@ PlayTranslate translates from **21 game languages** (the text it can read off th
 | French                | Français         | fr       |
 | Portuguese            | Português        | pt       |
 | German                | Deutsch          | de       |
-| Russian               | русский          | ru       |
+| Russian               | Русский          | ru       |
 | Vietnamese            | Tiếng Việt       | vi       |
 | Turkish               | Türkçe           | tr       |
 | Turkish               | Türkçe           | tr       |
