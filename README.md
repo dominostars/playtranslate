@@ -67,23 +67,25 @@ PlayTranslate translates from **21 game languages** (the text it can read off th
 | Language              | Native name      | Code     |
 |-----------------------|------------------|----------|
 | English               | English          | en       |
+| Japanese              | 日本語           | ja       |
 | Chinese (Simplified)  | 简体中文          | zh       |
+| Chinese (Traditional) | 繁體中文          | zh-Hant  |
+| Korean                | 한국어           | ko       |
 | Spanish               | Español          | es       |
 | French                | Français         | fr       |
 | Portuguese            | Português        | pt       |
-| Indonesian            | Bahasa Indonesia | id       |
 | German                | Deutsch          | de       |
-| Japanese              | 日本語           | ja       |
+| Russian               | русский          | ru       |
 | Vietnamese            | Tiếng Việt       | vi       |
 | Turkish               | Türkçe           | tr       |
-| Korean                | 한국어           | ko       |
+| Turkish               | Türkçe           | tr       |
 | Italian               | Italiano         | it       |
-| Chinese (Traditional) | 繁體中文          | zh-Hant  |
 | Romanian              | Română           | ro       |
 | Dutch                 | Nederlands       | nl       |
 | Hungarian             | Magyar           | hu       |
 | Swedish               | Svenska          | sv       |
 | Catalan               | Català           | ca       |
+| Indonesian            | Bahasa Indonesia | id       |
 | Danish                | Dansk            | da       |
 | Finnish               | Suomi            | fi       |
 | Norwegian             | Norsk            | no       |
