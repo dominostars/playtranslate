@@ -845,6 +845,27 @@ class DragLookupController(
                     // renders, so the bitmap can be released.
                     handOffDragBitmap()
                 }
+                // Fill the "already in Anki" deck badge AFTER the definitions
+                // are up, so the Anki query never delays them. Runs in this
+                // lookupJob (a new lookup cancels it) and is isolated so an
+                // Anki failure can't dismiss an already-shown lens.
+                try {
+                    val anki = AnkiManager(context)
+                    if (anki.isAnkiDroidInstalled() && anki.hasPermission()) {
+                        val decks = withContext(Dispatchers.IO) {
+                            anki.decksByWord(listOf(popupData.word))[popupData.word].orEmpty()
+                        }
+                        if (decks.isNotEmpty()) withContext(Dispatchers.Main) {
+                            magnifier.setDefinitions(
+                                popupData.toLensData().copy(ankiDecks = decks), label,
+                            )
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Lens deck badge fill failed: ${e.message}")
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1245,18 +1266,10 @@ class DragLookupController(
         currentSentence = sentence
         prefetchWordLookups(sentence)
 
-        // Fold in which Anki deck(s) already contain this headword. Gated and
-        // best-effort; runs on IO and is carried by PopupData so the lens
-        // renders it in one pass and the popup cache reuses it on re-show.
-        val anki = AnkiManager(context)
-        val withDecks = if (anki.isAnkiDroidInstalled() && anki.hasPermission()) {
-            val decks = withContext(Dispatchers.IO) {
-                anki.decksByWord(listOf(popupData.word))[popupData.word].orEmpty()
-            }
-            if (decks.isEmpty()) popupData else popupData.copy(ankiDecks = decks)
-        } else popupData
-
-        return withDecks to withDecks.machineTranslatedLabel()
+        // The "already in Anki" deck badge is filled in AFTER the definitions
+        // render (see onDragEnd), so the dictionary lookup is never delayed by
+        // the Anki content-provider query.
+        return popupData to popupData.machineTranslatedLabel()
     }
 
     /** Convert the controller's popup-shaped data into the lens's data
@@ -1272,7 +1285,6 @@ class DragLookupController(
             senses = senses,
             freqScore = freqScore,
             isCommon = isCommon,
-            ankiDecks = ankiDecks,
         )
 
     private fun PopupData.machineTranslatedLabel(): String? =
@@ -1288,10 +1300,6 @@ class DragLookupController(
         val isCommon: Boolean,
         val entry: DictionaryEntry?,
         val machineTranslated: Boolean = false,
-        /** Names of Anki decks already containing [word]; folded in after the
-         *  dictionary resolve so the lens shows it and the popup cache keeps
-         *  it for re-shows. */
-        val ankiDecks: List<String> = emptyList(),
     )
 
     private fun findLineAt(x: Int, y: Int, lines: List<OcrManager.OcrLine>): OcrManager.OcrLine? {
