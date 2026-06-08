@@ -173,6 +173,24 @@ object LanguagePackStore {
         val app = ctx.applicationContext
         val entry = LanguagePackCatalogLoader.entryFor(app, id)
             ?: return@withContext InstallResult.Failed("No catalog entry for ${id.code}")
+
+        // Idempotency: an already-installed pack at or above the catalog's
+        // packVersion needs no download — installing it is a no-op Success. This
+        // is what lets the OCR-upgrade nudge route a CURRENT source pack through
+        // the upgrade flow purely to re-prime its OCR recognizer (the post-upgrade
+        // priming step) without re-fetching the whole dictionary. It never
+        // short-circuits a real upgrade: a FORCE upgrade pre-uninstalls (so
+        // isInstalled is false here) and an ADDITIVE upgrade is version-stale (so
+        // the >= check fails) — both still download. A schema-corrupt JA pack is
+        // deleted by isInstalled() (returns false), so it re-downloads too.
+        if (!entry.bundled && isInstalled(app, id)) {
+            val onDisk = LanguagePackManifestIO.read(manifestFileFor(app, id))
+            if (onDisk != null && onDisk.packVersion >= entry.packVersion) {
+                Log.d(TAG, "Pack ${id.code} already current (v${onDisk.packVersion} >= catalog v${entry.packVersion}); skipping download")
+                return@withContext InstallResult.Success
+            }
+        }
+
         if (entry.bundled) {
             return@withContext InstallResult.Failed("${id.code} is a bundled pack; cannot download")
         }
@@ -593,6 +611,28 @@ object LanguagePackStore {
         if (entry.bundled || manifest.packVersion >= entry.packVersion) return false
         val additiveFrom = entry.additiveFromVersion ?: return true
         return manifest.packVersion < additiveFrom
+    }
+
+    /**
+     * A synthetic [StalePack] for [id]'s CURRENT (not version-stale) source pack,
+     * used to drive the OCR-upgrade nudge through the normal upgrade flow. It
+     * carries no version delta — [install]'s idempotency guard no-ops the dict
+     * re-download — so running it only triggers the orchestrator's post-upgrade
+     * priming, which fetches the source's now-default OCR recognizer. ADDITIVE so
+     * the flow never pre-uninstalls the working pack. Null when [id] has no
+     * downloadable catalog entry (bundled or absent), so there's nothing to route.
+     */
+    fun ocrUpgradeStalePack(ctx: Context, id: SourceLangId): StalePack? {
+        val sid = id.packId
+        val entry = LanguagePackCatalogLoader.entryFor(ctx.applicationContext, sid) ?: return null
+        if (entry.bundled) return null
+        return StalePack(
+            catalogKey = sid.code,
+            displayName = entry.display,
+            kind = PackKind.SOURCE,
+            upgradeMode = UpgradeMode.ADDITIVE,
+            sourceLangId = sid,
+        )
     }
 
     private const val TAG = "LanguagePackStore"

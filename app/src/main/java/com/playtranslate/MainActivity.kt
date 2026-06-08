@@ -1582,7 +1582,36 @@ class MainActivity :
      * can skip those targets to avoid double-prompting the user.
      */
     private fun maybePromptForPackUpgrade(onProceed: (skipTargetCodes: Set<String>) -> Unit) {
-        val stale = LanguagePackStore.staleInstalledPacks(this)
+        val stale = LanguagePackStore.staleInstalledPacks(this).toMutableList()
+
+        // Grandfathered-user OCR migration for the active source (a floored source
+        // whose user predates PaddleOCR/Meiki and still sits on the ML Kit floor).
+        // Only when the source is actually INSTALLED: on a fresh install / wiped
+        // data prefs.sourceLangId defaults to JA with no pack on disk, and this
+        // must not fire before onboarding.
+        val activeSource = prefs.sourceLangId
+        if (LanguagePackStore.isInstalled(this, activeSource)) {
+            val ocr = com.playtranslate.ocr.registry.OcrModelManager
+            // (a) The better default's pack is already on disk (e.g. the shared CJK
+            //     recognizer downloaded for another language) → adopt it silently:
+            //     no UI, no download, just move the token off the floor (which also
+            //     keeps the launch orphan-sweep from reclaiming the pack).
+            ocr.adoptInstalledDefaultOcr(this, activeSource)
+            // (b) Else the recognizer still needs downloading → fold a synthetic
+            //     "update the source pack" entry into this flow; its post-upgrade
+            //     priming fetches the recognizer and the dict re-install no-ops
+            //     (idempotency guard in LanguagePackStore.install). Skipped when the
+            //     pair already has a real stale entry — that upgrade's own
+            //     active-pair priming already covers the recognizer.
+            val pairAlreadyStale = stale.any {
+                (it.kind == PackKind.SOURCE && it.sourceLangId == activeSource.packId) ||
+                    (it.kind == PackKind.TARGET && it.targetLangCode == prefs.targetLang)
+            }
+            if (!pairAlreadyStale && ocr.isDefaultOcrUpgradeAvailable(this, activeSource)) {
+                LanguagePackStore.ocrUpgradeStalePack(this, activeSource)?.let { stale += it }
+            }
+        }
+
         val skipTargetCodes: Set<String> = stale
             .filter { it.kind == PackKind.TARGET }
             .mapNotNull { it.targetLangCode }

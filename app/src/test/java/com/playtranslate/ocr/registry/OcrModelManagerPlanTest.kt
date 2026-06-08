@@ -117,4 +117,45 @@ class OcrModelManagerPlanTest {
     @Test fun flooredLangIsAlwaysReady() {
         assertTrue(OcrModelManager.requiredOcrReady(hasFloor = true, selected = null, isInstalled = { false }))
     }
+
+    // ── decideOcrMigration: the launch-time grandfathered-OCR decision table ──
+    // Floored source + no stored choice + a better-than-floor default ⇒ ADOPT when
+    // its packs are already on disk (token switch, no download) else OFFER_DOWNLOAD.
+    // Everything else is NONE.
+    private fun migrate(choice: Boolean, floor: OcrBackend?, best: OcrBackend?, installed: Boolean) =
+        OcrModelManager.decideOcrMigration(choice, floor, best, isInstalled = { installed })
+
+    @Test fun migrationNoneWhenUserAlreadyChose() {
+        // An explicit choice (incl. an explicit ML Kit pick) is never overridden.
+        assertEquals(OcrModelManager.OcrMigration.NONE, migrate(choice = true, floor = mlkit, best = meiki, installed = false))
+    }
+
+    @Test fun migrationNoneForNoFloorSource() {
+        // No ML Kit floor (Russian): the non-load-bearing token already resolves to
+        // the lone recognizer, so there is nothing to migrate.
+        assertEquals(OcrModelManager.OcrMigration.NONE, migrate(choice = false, floor = null, best = cyr, installed = true))
+    }
+
+    @Test fun migrationNoneWhenDefaultIsTheFloor() {
+        // Vietnamese/Turkish: the floor IS the top default.
+        assertEquals(OcrModelManager.OcrMigration.NONE, migrate(choice = false, floor = mlkit, best = mlkit, installed = false))
+    }
+
+    @Test fun migrationNoneWhenNoDeliverableBackend() {
+        assertEquals(OcrModelManager.OcrMigration.NONE, migrate(choice = false, floor = mlkit, best = null, installed = false))
+    }
+
+    @Test fun migrationNoneWhenBestHasNoPacks() {
+        // A pack-less non-floor "best" (no recognizer to fetch or adopt) is a no-op.
+        assertEquals(OcrModelManager.OcrMigration.NONE, migrate(choice = false, floor = mlkit, best = OcrBackend.MLKitKorean, installed = false))
+    }
+
+    @Test fun migrationAdoptWhenDefaultPackAlreadyInstalled() {
+        // The shared recognizer is already on disk (downloaded for another language).
+        assertEquals(OcrModelManager.OcrMigration.ADOPT, migrate(choice = false, floor = mlkit, best = cjk, installed = true))
+    }
+
+    @Test fun migrationOfferDownloadWhenDefaultPackMissing() {
+        assertEquals(OcrModelManager.OcrMigration.OFFER_DOWNLOAD, migrate(choice = false, floor = mlkit, best = meiki, installed = false))
+    }
 }
