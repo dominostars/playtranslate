@@ -27,10 +27,6 @@
     <string name="app_name" translatable="false">PlayTranslate</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
-         SUPPORT (Settings → SUPPORT card)
-         ═══════════════════════════════════════════════════════════════ -->
-
-    <!-- ═══════════════════════════════════════════════════════════════
          ACTIONS — generic button labels reused in multiple places.
          ═══════════════════════════════════════════════════════════════ -->
 
@@ -342,7 +338,7 @@
          with no ML Kit recognizer (e.g. Cyrillic) whose downloadable recognizer
          needs a 64-bit CPU. First is the row subtitle, second the tap toast. -->
     <string name="lang_setup_requires_64bit">Requires a 64-bit device</string>
-    <string name="lang_setup_requires_64bit_msg">%1$s needs a 64-bit device to recognize text, which this device isn\'t.</string>
+    <string name="lang_setup_requires_64bit_msg"><xliff:g id="language" example="Russian">%1$s</xliff:g> needs a 64-bit device to recognize text, which this device isn\'t.</string>
 
     <!-- Button to delete an installed language pack from disk. -->
     <string name="lang_delete_pack">Delete language pack</string>
@@ -443,7 +439,7 @@
     <!-- "Download offline models" warning cell (Concept B): shown when the active
          pair has no offline translation downloaded. %1$s = source language, %2$s = target. -->
     <string name="lang_section_offline_models_title">Download offline models</string>
-    <string name="lang_section_offline_models_subtitle">Offline translation for %1$s → %2$s isn\'t downloaded. The app still works online.</string>
+    <string name="lang_section_offline_models_subtitle">Offline translation for <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> → <xliff:g id="target_language" example="English">%2$s</xliff:g> isn\'t downloaded. The app still works online.</string>
 
     <!-- Empty-state when MediaProjection reports no eligible displays. -->
     <string name="settings_no_displays_found">No displays found</string>
@@ -1179,14 +1175,39 @@
     <string name="bergamot_row_title" translatable="false">Firefox Translations (Bergamot)</string>
     <string name="offline_backend_bergamot_ram" translatable="false">&lt; 1 GB</string>
     <string name="offline_backend_bergamot_disk" translatable="false">~50 MB</string>
-    <string name="bergamot_status_downloading">Downloading… %1$s / %2$s</string>
+    <!-- In-flight status on the Bergamot row's download progress dialog.
+         %1$s = bytes-so-far formatted (e.g. "12 MB"); %2$s = total bytes
+         formatted (e.g. "50 MB"). -->
+    <string name="bergamot_status_downloading">Downloading… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%2$s</xliff:g></string>
+
+    <!-- Error toast shown when the Firefox Translations (Bergamot) model
+         download fails. "Firefox Translations" is a brand; keep spelling. -->
     <string name="bergamot_download_failed">Couldn\'t download the Firefox Translations model</string>
+
+    <!-- Title of the confirmation dialog shown when the user toggles the
+         Bergamot offline backend off for this language pair. -->
     <string name="bergamot_disable_title">Turn off Firefox Translations?</string>
+
+    <!-- Body of the same disable-confirmation dialog. -->
     <string name="bergamot_disable_message">It will stop translating this language pair offline. You can keep the downloaded model or delete it to free space.</string>
+
+    <!-- Disable-dialog button — keep the model on disk, only turn the
+         backend off. -->
     <string name="bergamot_disable_keep">Just turn off</string>
+
+    <!-- Disable-dialog button — delete the downloaded model to reclaim
+         disk space. -->
     <string name="bergamot_disable_delete">Delete model</string>
-    <string name="bergamot_warmup_downloading">Downloading offline model… %1$s / %2$s</string>
-    <string name="bergamot_warmup_downloading_multi">Downloading offline model %1$d of %2$d… %3$s / %4$s</string>
+
+    <!-- Progress line shown while the Bergamot model downloads on demand
+         the first time a translation needs it (warm-up). %1$s = bytes-so-far
+         formatted; %2$s = total bytes formatted. -->
+    <string name="bergamot_warmup_downloading">Downloading offline model… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%2$s</xliff:g></string>
+
+    <!-- Same warm-up progress line when several model files download in
+         sequence. %1$d = current file number (1-based); %2$d = total file
+         count; %3$s = bytes-so-far formatted; %4$s = total bytes formatted. -->
+    <string name="bergamot_warmup_downloading_multi">Downloading offline model <xliff:g id="file_index" example="1">%1$d</xliff:g> of <xliff:g id="file_count" example="2">%2$d</xliff:g>… <xliff:g id="bytes_so_far" example="12 MB">%3$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%4$s</xliff:g></string>
     <!-- Inert reason line shown on the Bergamot row (in place of the stat grid +
          switch, like the LLM hardware-unsupported lines) when Mozilla's model
          set has no path for the current source→target language pair. -->
@@ -1270,18 +1291,47 @@
     <string name="qwen_mnn_disable_keep">Disable only</string>
     <string name="qwen_mnn_disable_delete">Delete model</string>
 
-    <!-- ── MNN-backed Qwen 3.5 2B (fast on-device tier; replaces Qwen 2.5) ── -->
+    <!-- ── MNN-backed Qwen 3.5 2B (fast on-device tier; replaces Qwen 2.5).
+            Mirrors the Qwen 2.5 strings above: %1$s = required RAM,
+            %2$s = on-disk size, except where noted. ──────────────────── -->
+
     <string name="qwen35_2b_mnn_display_name" translatable="false">Qwen 3.5 2B</string>
+
+    <!-- Status line before download. -->
     <string name="qwen35_2b_mnn_status_not_downloaded">Requires <xliff:g id="ram" example="6 GB">%1$s</xliff:g> memory, <xliff:g id="disk_size" example="1.3 GB">%2$s</xliff:g> on disk</string>
+
+    <!-- Status line shown when the model is on disk but the user toggled
+         it off.  %1$s = on-disk size. -->
     <string name="qwen35_2b_mnn_status_downloaded_disabled">Downloaded but disabled (<xliff:g id="disk_size" example="1.3 GB">%1$s</xliff:g> on disk)</string>
+
+    <!-- Status line once download is complete AND the model is enabled. -->
     <string name="qwen35_2b_mnn_status_ready">Requires <xliff:g id="ram" example="6 GB">%1$s</xliff:g> memory, <xliff:g id="disk_size" example="1.3 GB">%2$s</xliff:g> on disk</string>
+
+    <!-- In-flight download status.  %1$s = bytes-so-far formatted with
+         unit; %2$s = total bytes formatted. -->
     <string name="qwen35_2b_mnn_status_downloading">Downloading… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> of <xliff:g id="bytes_total" example="1.3 GB">%2$s</xliff:g></string>
+
+    <!-- Status line during SHA verification. -->
     <string name="qwen35_2b_mnn_status_verifying">Verifying download…</string>
+
+    <!-- Title of the disable-confirmation dialog. -->
     <string name="qwen35_2b_mnn_disable_title">Disable <xliff:g id="brand_qwen" example="Qwen 3.5 2B">Qwen 3.5 2B</xliff:g>?</string>
+
+    <!-- Body of the same dialog.  %1$s = on-disk size (so the user knows
+         what they'd reclaim by deleting). -->
     <string name="qwen35_2b_mnn_disable_message">The <xliff:g id="disk_size" example="1.3 GB">%1$s</xliff:g> model is installed. You can keep it for later or delete it to free up space.</string>
+
+    <!-- Error toast on download failure.  %1$s = error description. -->
     <string name="qwen35_2b_mnn_download_failed">Download failed: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <!-- Title of the metered-connection confirmation dialog. -->
     <string name="qwen35_2b_mnn_metered_warning_title">Download on metered network?</string>
+
+    <!-- Body of the metered-connection confirmation dialog.  %1$s = the
+         human-readable file size of the model (e.g. "1.3 GB"). -->
     <string name="qwen35_2b_mnn_metered_warning_message"><xliff:g id="brand_qwen" example="Qwen 3.5 2B">Qwen 3.5 2B</xliff:g> is <xliff:g id="download_size" example="1.3 GB">%1$s</xliff:g>. This network is marked as metered. Continue?</string>
+
+    <!-- Disable-dialog buttons. -->
     <string name="qwen35_2b_mnn_disable_keep">Disable only</string>
     <string name="qwen35_2b_mnn_disable_delete">Delete model</string>
 
@@ -1846,6 +1896,11 @@
          bytes-so-far formatted (e.g. "12 MB"); %2$s = total bytes
          formatted (e.g. "84 MB"). -->
     <string name="install_downloading_with_bytes">Downloading… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> of <xliff:g id="bytes_total" example="84 MB">%2$s</xliff:g></string>
+
+    <!-- Progress line while a source-language OCR recognizer model is
+         downloading (e.g. the PaddleOCR pack) during language setup.
+         %1$s = bytes-so-far formatted (e.g. "12 MB"); %2$s = total bytes
+         formatted (e.g. "47 MB"). -->
     <string name="lang_setup_downloading_ocr_model">Downloading OCR model… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> of <xliff:g id="bytes_total" example="47 MB">%2$s</xliff:g></string>
 
     <!-- Body of the progress dialog while target-language definitions
@@ -1876,19 +1931,58 @@
          engine available for the current source language. Engine names
          (Meiki / PaddleOCR / ML Kit) are proper nouns, not translated. -->
     <string name="settings_header_ocr">Image-to-text (OCR)</string>
+    <!-- Subtitle on an OCR-engine cell that ships inside the app and needs
+         no download (ML Kit), shown in the slot where other engines show
+         their model's download size. -->
     <string name="settings_ocr_note_builtin">Built-in</string>
+
+    <!-- Small badge on the recommended/default OCR engine for the current
+         source language. -->
     <string name="settings_ocr_default_badge">Default</string>
+
+    <!-- Footer under the OCR engine list, suggesting the user try a
+         different engine when on-screen text is being misread. -->
     <string name="settings_ocr_footer">If PlayTranslate is having a hard time accurately reading the screen text, try experimenting with different selections. Different OCR tools may work better for different font types or text orientations.</string>
+
+    <!-- contentDescription for the trash icon on a downloaded OCR-engine
+         cell.  %1$s = engine display name. -->
     <string name="settings_ocr_delete_cd">Delete <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
+
+    <!-- Title of the delete-OCR-model confirmation dialog.  %1$s = engine
+         display name. -->
     <string name="settings_ocr_delete_title">Delete <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g>?</string>
+
+    <!-- Body of the delete dialog when the model is used only by the
+         current language.  %1$s = engine display name. -->
     <string name="settings_ocr_delete_msg">This removes the <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> model from this device. You can download it again later.</string>
+
+    <!-- Body of the delete dialog when the model is shared by several
+         languages.  %1$s = engine display name; %2$s = the other languages
+         that share it (a comma-separated, runtime-built list). -->
     <string name="settings_ocr_delete_shared_msg"><xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> is also used by these languages. Deleting frees the space now; it\'ll download again next time you switch to one:\n\n<xliff:g id="languages" example="Chinese">%2$s</xliff:g></string>
+
+    <!-- Destructive confirm button on the delete dialog. -->
     <string name="settings_ocr_delete_confirm">Delete</string>
-    <string name="settings_ocr_downloading_title">Downloading <xliff:g id="engine">%1$s</xliff:g></string>
+
+    <!-- Title of the progress dialog while an OCR model downloads.
+         %1$s = engine display name. -->
+    <string name="settings_ocr_downloading_title">Downloading <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
+
+    <!-- Initial body of the OCR-download progress dialog, before any bytes
+         have transferred. -->
     <string name="settings_ocr_downloading_msg">Starting…</string>
+
+    <!-- OCR-download progress body during SHA verification. -->
     <string name="settings_ocr_verifying">Verifying…</string>
+
+    <!-- OCR-download progress body while the downloaded model is being
+         unpacked / installed. -->
     <string name="settings_ocr_installing">Installing…</string>
+
+    <!-- Error shown when an OCR model download fails. -->
     <string name="settings_ocr_download_failed">Couldn\'t download the OCR model. Check your connection and try again.</string>
+    <!-- More Settings section group headers (same ALL-CAPS rendering note
+         as the top of this section). One short noun-phrase heading each. -->
     <string name="settings_header_anki" translatable="false">Anki</string>
     <string name="settings_header_text_to_speech">Text-to-speech</string>
     <string name="settings_header_appearance">Appearance</string>
@@ -1906,16 +2000,35 @@
 
     <!-- Hub-cell status digests (the summary line under each cell title). -->
     <string name="settings_digest_none">None</string>
-    <!-- Capture cell digest: shown when 2+ displays are selected (e.g. "2 Displays"). -->
-    <string name="settings_capture_displays_count">%1$d Displays</string>
+    <!-- Capture cell digest: shown when 2+ displays are selected
+         (e.g. "2 Displays").  %1$d = the number of selected displays. -->
+    <string name="settings_capture_displays_count"><xliff:g id="count" example="2">%1$d</xliff:g> Displays</string>
+
+    <!-- Hotkeys hub-cell digest fragments, joined into a summary like
+         "Add tile · Translation, Furigana". -->
+    <!-- Prompt fragment shown when the Quick Settings tile hasn't been
+         added yet (Android 13+ only). -->
     <string name="settings_hotkeys_tile_add">Add tile</string>
+    <!-- Empty-state digest shown when no hotkeys are bound. -->
     <string name="settings_hotkeys_none">No hotkeys set</string>
+    <!-- Digest fragment naming the bound translation-overlay hotkey. -->
     <string name="settings_hotkeys_translation">Translation</string>
+    <!-- Digest fragment naming the bound furigana hotkey (Japanese). -->
     <string name="settings_hotkeys_furigana">Furigana</string>
+    <!-- Digest fragment naming the bound pinyin hotkey (Chinese). -->
     <string name="settings_hotkeys_pinyin">Pinyin</string>
-    <string name="settings_anki_digest">Deck %1$s · Card type %2$s</string>
+
+    <!-- Anki hub-cell digest.  %1$s = selected deck name; %2$s = selected
+         card-type name (each falls back to "Default" below). -->
+    <string name="settings_anki_digest">Deck <xliff:g id="deck_name" example="Vocabulary">%1$s</xliff:g> · Card type <xliff:g id="card_type_name" example="Lapis sentence">%2$s</xliff:g></string>
+    <!-- Fallback name shown in the Anki digest when no deck / card type
+         has been chosen yet. -->
     <string name="settings_anki_default">Default</string>
+    <!-- Anki hub-cell digest shown when AnkiDroid isn't installed —
+         prompts the user to install it. -->
     <string name="settings_anki_get_app_summary">Download AnkiDroid free on Google Play</string>
+    <!-- Anki hub-cell digest shown when AnkiDroid is installed but the
+         access permission hasn't been granted. -->
     <string name="settings_anki_grant_summary">Grant permissions to use AnkiDroid</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
