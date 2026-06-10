@@ -436,12 +436,21 @@ class TranslationResultFragment : Fragment() {
                 val result = state.result
                 tvOriginal.setSegments(result.segments)
                 tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
-                tvTranslation.text = result.translatedText
+                // A blank translation on a Ready result means a re-translate is
+                // in flight: the edit-overlay commit clears the old translation
+                // (updateOriginalText) before the new one lands (updateTranslation).
+                // Show the same "Translating…" placeholder as the Translating
+                // state instead of an empty card, and suppress the now-stale
+                // backend label until the fresh translation returns.
+                val retranslating = result.translatedText.isBlank()
+                tvTranslation.text =
+                    if (retranslating) getString(R.string.status_translating)
+                    else result.translatedText
                 val warning = result.note
                 val sourceLabel = result.backendDisplayName?.let {
                     getString(R.string.translation_source_label, it)
                 }
-                val bottomLabel = warning ?: sourceLabel
+                val bottomLabel = if (retranslating) null else (warning ?: sourceLabel)
                 tvTranslationNote.text = bottomLabel ?: ""
                 tvTranslationNote.visibility = if (bottomLabel != null) View.VISIBLE else View.GONE
                 tvTranslationNote.setTypeface(
