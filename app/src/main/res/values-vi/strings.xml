@@ -1,0 +1,1296 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    PlayTranslate Vietnamese (vi) localization.
+
+    Auto-localized from res/values/strings.xml. Per-string translator
+    notes live in that default file; this file keeps only section banners.
+
+    Formatting preserved from the source:
+      • <xliff:g …>…</xliff:g> wraps placeholders / brand names — never
+        translate or reorder their inner content (the %1$s, %2$d, … inside).
+      • <b>…</b> renders bold. \n is a newline. \{ \} are escaped braces.
+      • Brand names (PlayTranslate, Anki, DeepL, Qwen, …) stay untranslated.
+      • translatable="false" entries are omitted and fall back to English.
+      • Plurals use only the "other" category (Vietnamese has no count plural).
+-->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ACTIONS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="btn_translate_once">Dùng mà không lưu</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ACCESSIBILITY SERVICE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="accessibility_service_description"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> dùng dịch vụ Hỗ trợ tiếp cận để chụp ảnh màn hình trò chơi và hiển thị một biểu tượng nổi. Không có nội dung giao diện, sự kiện nhập liệu hay dữ liệu cá nhân nào bị đọc hoặc theo dõi.</string>
+
+    <string name="accessibility_service_summary">Để dịch văn bản trò chơi trên màn hình</string>
+
+    <string name="accessibility_dialog_title">Cần quyền Hỗ trợ tiếp cận</string>
+
+    <string name="accessibility_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> cần quyền Hỗ trợ tiếp cận để chụp ảnh màn hình trò chơi trên màn hình phía trên trong khi vẫn mở trên màn hình phía dưới.\n\n<xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> không đọc bất kỳ nội dung giao diện nào, không theo dõi thao tác nhập liệu hay truy cập bất kỳ dữ liệu cá nhân nào — ứng dụng chỉ chụp ảnh màn hình khi bạn nhấn Dịch hoặc bắt đầu chế độ trực tiếp.\n\nVào Cài đặt → Hỗ trợ tiếp cận → Ứng dụng đã tải xuống → <xliff:g id="app_name3" example="PlayTranslate">PlayTranslate</xliff:g> → Bật.</string>
+
+    <string name="accessibility_dialog_open">Mở Cài đặt Hỗ trợ tiếp cận</string>
+
+    <string name="status_accessibility_needed">Hãy bật <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> trong Cài đặt Hỗ trợ tiếp cận trước</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         QUICK SETTINGS TILE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tile_subtitle_a11y_required">Bật trợ năng</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         STATUS MESSAGES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="status_idle">Nhấn Dịch để chụp màn hình trò chơi</string>
+
+    <string name="status_hold_hint">Nhấn giữ Vùng hoặc Tự động để mở menu chọn nhanh</string>
+
+    <string name="words_none">Không phát hiện từ nào</string>
+
+    <string name="status_capturing">Đang chụp màn hình…</string>
+
+    <string name="status_ocr">Đang nhận dạng văn bản…</string>
+
+    <string name="status_translating">Đang dịch…</string>
+
+    <string name="status_no_text">Không phát hiện văn bản <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> trong \"<xliff:g id="region_label" example="Dialogue box">%2$s</xliff:g>\"</string>
+
+    <string name="status_error">Lỗi: <xliff:g id="error_message" example="Network timeout">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         NOTIFICATION
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="notif_channel_name">Chụp màn hình</string>
+
+    <string name="notif_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> đang hoạt động</string>
+
+    <string name="notif_text">Nhấn để quay lại <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ONBOARDING
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="onboarding_welcome_title">Chào mừng bạn đến với <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>!</string>
+
+    <string name="onboarding_welcome_tagline">Ứng dụng đồng hành giúp bạn chơi trò chơi bằng các ngôn ngữ khác.</string>
+
+    <string name="onboarding_welcome_body">Đang chơi thứ gì đó bạn không hiểu? Biến văn bản trên màn hình thành bản dịch ngay lập tức.\n\nĐang học một ngôn ngữ? Định nghĩa theo từng từ, hướng dẫn cách đọc (furigana, pinyin) và thẻ ghi nhớ <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> chỉ với một lần nhấn.</string>
+
+    <string name="onboarding_welcome_row_placeholder">Nhấn để chọn</string>
+
+    <string name="onboarding_welcome_continue">Tiếp tục</string>
+
+    <string name="onboarding_welcome_select_source">Chọn ngôn ngữ trò chơi</string>
+
+    <string name="onboarding_notif_title">Cho phép thông báo</string>
+
+    <string name="onboarding_notif_body">Android yêu cầu các ứng dụng chạy nền phải hiển thị một thông báo trên thanh trạng thái khi đang hoạt động.\n\nThông báo này sẽ không bao giờ gửi cảnh báo, âm thanh hay biểu ngữ — chỉ là một chỉ báo cố định, lặng lẽ cho biết <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> đang chạy.</string>
+
+    <string name="onboarding_a11y_hint">Tìm <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
+
+    <string name="onboarding_a11y_title">Hiển thị trên các ứng dụng khác</string>
+
+    <string name="onboarding_a11y_body"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> cần hiển thị trên các ứng dụng khác để:\n• Hiển thị văn bản đã dịch lên trên trò chơi của bạn\n• Hiển thị các nút điều khiển màn hình trò chơi\n• Tra từ bằng cách kéo trên văn bản trò chơi</string>
+
+    <string name="btn_grant_permission">Cấp quyền</string>
+
+    <string name="btn_open_a11y_settings">Mở Cài đặt Hỗ trợ tiếp cận</string>
+
+    <string name="btn_open_overlay_settings">Mở Cài đặt</string>
+
+    <string name="restricted_settings_title">Cho phép Cài đặt bị hạn chế</string>
+
+    <string name="restricted_settings_message">Từ trang cài đặt Android của <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, hãy chọn nút có ba dấu chấm (⋮) ở góc trên bên phải, rồi chọn \"Cho phép cài đặt bị hạn chế\". Sau khi xác thực, bạn sẽ có thể bật quyền trợ năng.</string>
+
+    <string name="btn_open_app_settings">Mở Cài đặt <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         WORD DETAIL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="word_detail_not_found">Không tìm thấy mục từ điển cho \"<xliff:g id="word" example="聞く">%1$s</xliff:g>\"</string>
+
+    <string name="word_detail_more_examples">Thêm ví dụ</string>
+
+    <string name="word_detail_more_examples_loading">Đang tải ví dụ…</string>
+
+    <string name="word_detail_more_examples_error">Không thể tải ví dụ.</string>
+
+    <string name="word_detail_tatoeba_attribution">Câu trích từ <xliff:g id="brand_tatoeba" example="Tatoeba">Tatoeba</xliff:g> · <xliff:g id="license_cc_by_2_fr" example="CC BY 2.0 FR">CC BY 2.0 FR</xliff:g></string>
+
+    <string name="word_detail_common">Thông dụng</string>
+
+    <string name="word_anki_in_decks"><xliff:g id="count" example="3">%1$d</xliff:g> bộ thẻ Anki</string>
+    <string name="word_anki_deck_badge_cd">Đã có trong Anki: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
+
+    <string name="word_detail_stroke_abbr">Nét</string>
+
+    <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
+
+    <string name="word_detail_label_format"><xliff:g id="label" example="READING">%1$s</xliff:g>:</string>
+
+    <plurals name="word_detail_senses_count">
+        <item quantity="other"><xliff:g id="senses_count" example="3">%d</xliff:g> nghĩa</item>
+    </plurals>
+
+    <plurals name="word_detail_chars_count">
+        <item quantity="other"><xliff:g id="char_count" example="3">%d</xliff:g> ký tự</item>
+    </plurals>
+
+    <string name="word_detail_group_definitions">Định nghĩa</string>
+
+    <string name="word_detail_group_kanji">Kanji</string>
+
+    <string name="word_detail_group_hanzi">Chữ Hán</string>
+
+    <string name="word_detail_mt_banner">Dịch bằng máy</string>
+
+    <string name="word_detail_mt_banner_named">Dịch bằng máy: <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
+
+    <string name="word_detail_char_meanings_mt">Dịch bằng máy · <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — general
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_title">Cài đặt</string>
+
+    <string name="lang_translate_from">Ngôn ngữ trò chơi</string>
+
+    <string name="lang_translate_to">Ngôn ngữ của bạn</string>
+
+    <string name="lang_download">Tải xuống</string>
+
+    <string name="lang_download_error_title">Tải xuống thất bại</string>
+
+    <string name="lang_setup_preloading_message">Đang nạp trước, vui lòng đợi một chút</string>
+
+    <string name="lang_setup_offline_model_unavailable">Hiện chưa có bản dịch ngoại tuyến trên thiết bị này. Tra từ điển và dịch trực tuyến vẫn hoạt động.</string>
+
+    <string name="lang_setup_requires_64bit">Cần thiết bị 64-bit</string>
+    <string name="lang_setup_requires_64bit_msg"><xliff:g id="language" example="Russian">%1$s</xliff:g> cần thiết bị 64-bit để nhận dạng văn bản, nhưng thiết bị này thì không.</string>
+
+    <string name="lang_delete_pack">Xóa gói ngôn ngữ</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         LANGUAGE PICKER — search and filter
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="lang_search_hint">Tìm ngôn ngữ</string>
+
+    <string name="lang_search_clear_cd">Xóa tìm kiếm</string>
+
+    <string name="lang_search_no_results">Không có kết quả</string>
+
+    <string name="lang_section_suggested">Đề xuất</string>
+
+    <string name="lang_section_all">Tất cả</string>
+
+    <plurals name="lang_search_match_count">
+        <item quantity="other"><xliff:g id="count" example="5">%d</xliff:g> kết quả</item>
+    </plurals>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         PACK-UPGRADE FLOW
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="pack_upgrade_title">Có bản cập nhật gói ngôn ngữ</string>
+
+    <string name="pack_upgrade_button_now">Cập nhật ngay</string>
+
+    <string name="pack_upgrade_button_later">Để sau</string>
+
+    <string name="pack_upgrade_mandatory_title">Cần cập nhật</string>
+
+    <string name="pack_upgrade_mandatory_message"><xliff:g id="pack_list" example="Game Language (Japanese)">%1$s</xliff:g>\n\nBản cập nhật này là bắt buộc — phiên bản đã cài không còn được hỗ trợ. Hãy cập nhật ngay, hoặc xóa nó để chọn ngôn ngữ khác.</string>
+
+    <string name="pack_upgrade_button_delete">Xóa</string>
+
+    <string name="pack_upgrade_progress_title">Đang cập nhật gói ngôn ngữ</string>
+
+    <string name="pack_upgrade_progress_format">Đang tải <xliff:g id="pack_name" example="Japanese">%1$s</xliff:g>…</string>
+
+    <string name="pack_upgrade_progress_format_with_bytes">Đang tải <xliff:g id="pack_name" example="Japanese">%1$s</xliff:g>… <xliff:g id="bytes_so_far" example="12 MB">%2$s</xliff:g> / <xliff:g id="bytes_total" example="84 MB">%3$s</xliff:g></string>
+
+    <string name="pack_upgrade_priming_models">Đang nạp mô hình dịch…</string>
+
+    <string name="pack_upgrade_label_source">Ngôn ngữ trò chơi (<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>)</string>
+
+    <string name="pack_upgrade_label_target">Ngôn ngữ của bạn (<xliff:g id="target_language" example="English">%1$s</xliff:g>)</string>
+
+    <string name="lang_section_update_packs_title">Cập nhật gói ngôn ngữ</string>
+    <string name="lang_section_offline_models_title">Tải mô hình ngoại tuyến</string>
+    <string name="lang_section_offline_models_subtitle">Chưa tải bản dịch ngoại tuyến cho <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> → <xliff:g id="target_language" example="English">%2$s</xliff:g>. Ứng dụng vẫn hoạt động trực tuyến.</string>
+
+    <string name="settings_no_displays_found">Không tìm thấy màn hình nào</string>
+
+    <string name="settings_capture_display_footer">Chọn một hoặc nhiều màn hình. Màn hình bạn đang dùng để xem <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> sẽ được bỏ qua.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         DEEPL — settings hints
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="hint_deepl_key">Dán khóa API <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> của bạn vào đây</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION FALLBACK NOTES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="note_mlkit_no_internet">⚠ Không có kết nối internet — đang hiển thị bản dịch ngoại tuyến (chất lượng thấp hơn).</string>
+
+    <string name="note_mlkit_service_unavailable">⚠ Dịch vụ dịch thuật không khả dụng — đang hiển thị bản dịch ngoại tuyến (chất lượng thấp hơn).</string>
+
+    <string name="note_low_memory_fallback">⚠ Bộ nhớ thấp — đang hiển thị bản dịch ngoại tuyến (chất lượng thấp hơn).</string>
+
+    <string name="translation_source_label">Dịch bởi <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
+
+    <string name="error_live_mode_unsupported_backend">Chế độ trực tiếp không khả dụng với phương thức chụp màn hình hiện tại.</string>
+
+    <string name="error_screen_capture_denied">Đã dừng chế độ trực tiếp — quyền chụp màn hình đã bị từ chối.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SECTION HEADERS (translation-result screen)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="section_original">Bản gốc</string>
+
+    <string name="section_translation">Bản dịch</string>
+
+    <string name="section_words">Từ</string>
+
+    <string name="words_loading">Đang tra từ…</string>
+
+    <string name="lens_loading">Đang tra…</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         REGION PICKER
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="label_select_region">Chọn vùng</string>
+
+    <string name="region_overlay_drag_instruction">Kéo các cạnh để giới hạn việc chụp màn hình trong vùng này</string>
+
+    <string name="label_edit">Chỉnh sửa</string>
+
+    <string name="label_done">Xong</string>
+
+    <string name="label_add_custom_region">+ Thêm vùng tùy chỉnh</string>
+
+    <string name="label_add_custom_region_title">Thêm vùng tùy chỉnh</string>
+
+    <string name="label_region_drag_hint">Kéo khung vùng trên màn hình trò chơi để chọn khu vực bạn muốn. Kéo cạnh trên hoặc cạnh dưới, hoặc kéo phần giữa để di chuyển toàn bộ khung.</string>
+
+    <string name="label_region_name">Tên vùng</string>
+
+    <string name="hint_region_name">ví dụ: Hộp thoại</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING ICON CELL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_show_overlay_icon">Thao tác biểu tượng nổi</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CAPTURE LIFECYCLE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="capture_lifecycle_start">Bật</string>
+
+    <string name="capture_lifecycle_stop">Tắt</string>
+
+    <string name="capture_lifecycle_state_on">Bật</string>
+
+    <string name="capture_lifecycle_state_off">Tắt</string>
+
+    <string name="capture_lifecycle_on_title">Đã cho phép chụp màn hình</string>
+
+    <string name="capture_lifecycle_off_title">Cho phép chụp màn hình</string>
+
+    <string name="capture_lifecycle_on_subtitle">Sẵn sàng để dịch</string>
+
+    <string name="capture_lifecycle_off_subtitle">Bắt buộc để đọc văn bản trò chơi</string>
+
+    <string name="game_screen_controls_title">Điều khiển màn hình trò chơi</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MEDIAPROJECTION OVERLAY-PERMISSION DIALOG
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="mp_overlay_permission_title">Hiển thị trên các ứng dụng khác</string>
+
+    <string name="mp_overlay_permission_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> cần quyền hiển thị trên các ứng dụng khác để các nút điều khiển màn hình trò chơi nổi có thể hiện lên trên trò chơi của bạn.</string>
+
+    <string name="mp_overlay_permission_button">Mở cài đặt</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING-ICON GESTURE HINTS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="overlay_icon_gesture_drag"><b>Kéo</b> qua các từ để xem định nghĩa nhanh</string>
+
+    <string name="overlay_icon_gesture_hold"><b>Giữ</b> để xem trước bản dịch</string>
+
+    <string name="overlay_icon_gesture_tap"><b>Nhấn</b> để mở menu nhanh</string>
+
+    <string name="overlay_icon_a11y_required_title">Cần quyền Hỗ trợ tiếp cận</string>
+
+    <string name="overlay_icon_a11y_required_message">Biểu tượng nổi cần quyền Hỗ trợ tiếp cận để vẽ lên màn hình trò chơi.\n\nVào Cài đặt → Hỗ trợ tiếp cận → Ứng dụng đã tải xuống → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → Bật.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ACCESSIBILITY-REQUIRED ALERT
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="a11y_required_alert_title">Cần quyền Hỗ trợ tiếp cận</string>
+
+    <string name="a11y_required_displays_message">Việc đổi màn hình hoặc dịch nhiều màn hình cùng lúc cần quyền Hỗ trợ tiếp cận. Quyền này cho phép <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> chụp bất kỳ màn hình nào, không chỉ màn hình chính.</string>
+
+    <string name="a11y_required_hotkey_message">Việc đặt phím tắt cần quyền Hỗ trợ tiếp cận. Quyền này cho phép <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> nhận biết các phím bạn nhấn khi chơi.</string>
+
+    <string name="a11y_required_enhanced_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> dùng các điều khiển nâng cao này để cải thiện trải nghiệm tự động dịch.</string>
+
+    <string name="requires_android_11_title">Cần Android 11</string>
+    <string name="requires_android_11_message">Tính năng này cần Android 11 trở lên.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ENHANCED AUTO-TRANSLATE ROW
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="enhanced_auto_translate_title">Tự động dịch nâng cao</string>
+
+    <string name="enhanced_auto_translate_subtitle_off">Dễ đọc hơn, phản hồi nhanh hơn, ổn định hơn. Cần quyền trợ năng.</string>
+
+    <string name="enhanced_auto_translate_subtitle_on">Đã bật</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ANKI INTEGRATION
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_deck_picker_empty">Không tìm thấy bộ thẻ nào</string>
+
+    <string name="anki_deck_picker_loading">Đang tải bộ thẻ…</string>
+
+    <string name="anki_card_type_picker_loading">Đang tải loại thẻ…</string>
+
+    <string name="anki_not_installed_title">Tạo thẻ ghi nhớ để ôn tập</string>
+
+    <string name="anki_not_installed_message">Lưu lại những từ bạn khám phá khi chơi và ôn tập sau.\n\n<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> có thể lưu câu đã dịch, từ vựng và ảnh chụp màn hình trực tiếp vào <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>, một ứng dụng thẻ ghi nhớ lặp lại ngắt quãng miễn phí.</string>
+
+    <string name="anki_not_installed_get">Tải <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_section_description">Bạn đang học ngôn ngữ? Tạo thẻ ghi nhớ bằng <xliff:g id="target_language" example="English">%1$s</xliff:g> từ những từ và câu chưa biết, rồi ôn tập sau bằng <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>, một ứng dụng thẻ ghi nhớ lặp lại ngắt quãng miễn phí và phổ biến.</string>
+
+    <string name="anki_permission_rationale_title">Cần quyền <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_permission_rationale_message">Để thêm thẻ ghi nhớ vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>, <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> cần quyền truy cập <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>.\n\nNhấn Tiếp tục để cấp quyền này.</string>
+
+    <string name="btn_continue">Tiếp tục</string>
+
+    <string name="anki_permission_denied">Quyền bị từ chối — hãy cấp quyền trong cài đặt <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_no_deck_selected">Không tìm thấy bộ thẻ nào trong <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_added_no_audio">Đã thêm vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (không có âm thanh)</string>
+
+    <string name="anki_added_success">Đã thêm vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="anki_adding_in_progress">Đang thêm vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>…</string>
+
+    <string name="anki_send_failed_title">Không thể thêm thẻ</string>
+
+    <string name="anki_send_failed_message"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> không chấp nhận thẻ. Hãy đảm bảo <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g> đang chạy, rồi thử lại.</string>
+
+    <string name="anki_mode_sentence">Câu</string>
+
+    <string name="anki_mode_word">Từ</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ANKI REVIEW SHEET
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_sheet_title_new_card">Thẻ <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> mới</string>
+
+    <string name="anki_deck_row_label">Bộ thẻ</string>
+
+    <string name="anki_deck_row_empty">Chọn bộ thẻ</string>
+
+    <string name="anki_deck_label_format">Bộ thẻ: <xliff:g id="deck_name" example="Vocabulary">%1$s</xliff:g></string>
+
+    <string name="anki_save_button_label">Lưu thẻ <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="anki_group_original">Bản gốc</string>
+
+    <string name="anki_group_translation">Bản dịch</string>
+
+    <string name="anki_group_words_count">Từ trên thẻ · <xliff:g id="words_count" example="3">%d</xliff:g></string>
+
+    <string name="anki_group_definitions">Định nghĩa</string>
+
+    <string name="anki_group_screenshot">Ảnh chụp màn hình</string>
+
+    <string name="anki_words_helper">Những từ này sẽ được đưa vào thẻ <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>. Nhấn vào một từ để làm nổi bật nó trong thẻ. Nhấn × để xóa nó khỏi thẻ.</string>
+
+    <string name="anki_translation_error">Không thể dịch</string>
+
+    <string name="anki_word_remove_content_description">Xóa khỏi thẻ</string>
+
+    <string name="anki_screenshot_remove_content_description">Xóa ảnh chụp màn hình</string>
+
+    <string name="anki_group_audio">Âm thanh</string>
+
+    <string name="anki_audio_preview_content_description">Nghe thử âm thanh</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CARD TYPE PICKER + FIELD MAPPING
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_card_type_row_label">Loại thẻ</string>
+
+    <string name="anki_card_type_row_empty">Mặc định (<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>)</string>
+
+    <string name="anki_card_type_pick_title">Chọn loại thẻ</string>
+
+    <string name="anki_card_type_no_models">Không tìm thấy loại thẻ nào trong <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_card_type_stale_fallback">Loại thẻ không còn tồn tại; đang dùng mặc định</string>
+
+    <string name="anki_card_type_section_default">Mặc định</string>
+
+    <string name="anki_card_type_section_custom">Loại thẻ</string>
+
+    <string name="anki_card_type_edit_mapping_row_label">Chỉnh sửa ánh xạ trường</string>
+
+    <string name="anki_field_mapping_title">Cấu hình <xliff:g id="card_type_name" example="Lapis sentence">%1$s</xliff:g></string>
+
+    <string name="anki_field_mapping_save">Lưu</string>
+
+    <string name="anki_field_mapping_unconfigured">Hãy cấu hình các trường cho loại thẻ này trước khi gửi</string>
+
+    <string name="anki_sort_field_empty">Hãy ánh xạ một giá trị cho “<xliff:g id="sort_field_name" example="Expression">%1$s</xliff:g>” — <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> dùng trường này để nhận diện ghi chú, và giá trị rỗng sẽ khiến thẻ bị từ chối do trùng lặp khi gửi.</string>
+
+    <string name="anki_models_unavailable">Không thể kết nối <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> để tra loại thẻ. Hãy thử lại sau giây lát.</string>
+
+    <string name="anki_card_type_basic_no_mapping">Loại thẻ cơ bản không cần ánh xạ trường — Mặt trước và Mặt sau được điền tự động tùy theo việc bạn đang lưu một từ hay một câu.</string>
+
+    <string name="anki_content_source_pick_title">Ánh xạ \"<xliff:g id="field_name" example="Expression">%1$s</xliff:g>\"</string>
+
+    <string name="anki_long_press_footer">MẸO HAY: Nếu bạn muốn tạo thẻ ngay lập tức mà không cần chỉnh sửa, hãy nhấn giữ bất kỳ nút nào thường đưa bạn đến trang tạo thẻ <xliff:g id="brand_anki" example="anki">anki</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CONTENT SOURCE LABELS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_content_none">Trống</string>
+    <string name="anki_content_none_desc">Không gửi gì — trường <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> sẽ để trống.</string>
+
+    <string name="anki_content_expression">Từ / từ gốc</string>
+    <string name="anki_content_expression_desc">Dạng từ điển của từ được làm nổi bật, không có dấu ngoặc. Ví dụ: 聞く</string>
+
+    <string name="anki_content_expression_furigana">Từ / từ gốc kèm furigana</string>
+    <string name="anki_content_expression_furigana_desc">Dạng từ điển kèm dấu ngoặc furigana cho từng kanji, dùng cho các trường hiển thị qua \{\{furigana:\}\}. Ví dụ: 聞[き]く</string>
+
+    <string name="anki_content_reading">Cách đọc của từ (kana)</string>
+    <string name="anki_content_reading_desc">Cách đọc thuần kana của từ được làm nổi bật. Ví dụ: きく</string>
+
+    <string name="anki_content_sentence">Câu nguồn</string>
+    <string name="anki_content_sentence_desc">Câu nguồn với từ được làm nổi bật in đậm. Ví dụ: 友達に<b>聞いた</b></string>
+
+    <string name="anki_content_sentence_furigana">Câu nguồn kèm furigana</string>
+    <string name="anki_content_sentence_furigana_desc">Câu nguồn kèm dấu ngoặc furigana cho từng kanji, dùng cho các trường hiển thị qua \{\{furigana:\}\}. Ví dụ: 友達[ともだち]に<b>聞[き]いた</b></string>
+
+    <string name="anki_content_sentence_translation">Câu đã dịch</string>
+    <string name="anki_content_sentence_translation_desc">Bản dịch của câu nguồn theo ngôn ngữ đích bạn đã chọn.</string>
+
+    <string name="anki_content_definition">Định nghĩa</string>
+    <string name="anki_content_definition_desc">Định nghĩa từ điển của từ được làm nổi bật, được định dạng dưới dạng HTML.</string>
+
+    <string name="anki_content_examples">Câu ví dụ</string>
+    <string name="anki_content_examples_desc">Câu ví dụ từ <xliff:g id="brand_tatoeba" example="Tatoeba">Tatoeba</xliff:g> cho từ được làm nổi bật, khi có sẵn.</string>
+
+    <string name="anki_content_picture">Ảnh chụp màn hình</string>
+    <string name="anki_content_picture_desc">Ảnh chụp màn hình trò chơi, được bọc trong thẻ &lt;img&gt; sẵn sàng cho trường Hình ảnh / Ảnh chụp màn hình.</string>
+
+    <string name="anki_content_word_audio">Âm thanh của từ</string>
+    <string name="anki_content_word_audio_desc">Âm thanh đọc của từ, sẵn sàng cho trường Âm thanh của từ.</string>
+
+    <string name="anki_content_sentence_audio">Âm thanh của câu</string>
+    <string name="anki_content_sentence_audio_desc">Âm thanh đọc của câu, sẵn sàng cho trường Âm thanh của câu.</string>
+
+    <string name="anki_content_frequency">Sao tần suất</string>
+    <string name="anki_content_frequency_desc">Xếp hạng tần suất của từ được làm nổi bật dưới dạng sao. Ví dụ: ★★★</string>
+
+    <string name="anki_content_part_of_speech">Từ loại</string>
+    <string name="anki_content_part_of_speech_desc">Nhãn từ loại cho từ được làm nổi bật (chỉ thẻ ở chế độ từ). Ví dụ: noun</string>
+
+    <string name="anki_content_words_table">Danh sách từ (thẻ câu)</string>
+    <string name="anki_content_words_table_desc">Danh sách được định dạng gồm mọi từ mà <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> phát hiện trong câu, kèm cách đọc và định nghĩa.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CARD-TYPE STATE FLAGS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_content_flag_vocabulary">Dấu thẻ từ vựng (x)</string>
+    <string name="anki_content_flag_vocabulary_desc">Chỉ phát ra \"x\" khi gửi ở chế độ từ — dùng cho các trường mẫu như “Is Vocabulary Card” của <xliff:g id="brand_migaku" example="Migaku">Migaku</xliff:g>.</string>
+
+    <string name="anki_content_flag_sentence">Dấu thẻ câu (x)</string>
+    <string name="anki_content_flag_sentence_desc">Chỉ phát ra \"x\" khi gửi ở chế độ câu — dùng cho các trường mẫu như “IsSentenceCard” của <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> hoặc <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+
+    <string name="anki_content_flag_targeted_sentence">Dấu thẻ câu có từ mục tiêu (x)</string>
+    <string name="anki_content_flag_targeted_sentence_desc">Phát ra \"x\" khi gửi câu có một từ mục tiêu được làm nổi bật — dùng cho “IsTargetedSentenceCard” của <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+
+    <string name="anki_content_flag_always_on">Dấu luôn bật (x)</string>
+    <string name="anki_content_flag_always_on_desc">Luôn phát ra \"x\". Dùng cho các trường mẫu mà bạn muốn bật vô điều kiện.</string>
+
+    <string name="anki_content_section_content">Nội dung</string>
+    <string name="anki_content_section_flag">Cờ loại thẻ</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC CHROME
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="cd_back">Quay lại</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         APPEARANCE — theme mode and accent picker
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="pt_theme_mode_system">Theo hệ thống</string>
+    <string name="pt_theme_mode_dark">Tối</string>
+    <string name="pt_theme_mode_light">Sáng</string>
+
+    <string name="pt_accent_label">Màu nhấn</string>
+
+    <string name="pt_accent_coral">San hô</string>
+    <string name="pt_accent_amber">Hổ phách</string>
+    <string name="pt_accent_lime">Xanh chanh</string>
+    <string name="pt_accent_mint">Bạc hà</string>
+    <string name="pt_accent_teal">Xanh mòng két</string>
+    <string name="pt_accent_aqua">Xanh ngọc</string>
+    <string name="pt_accent_sky">Xanh da trời</string>
+    <string name="pt_accent_steel">Xám thép</string>
+    <string name="pt_accent_violet">Tím</string>
+    <string name="pt_accent_orchid">Hoa cà</string>
+    <string name="pt_accent_rose">Hồng</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         DEEPL — detail screen
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="deepl_settings_save">Lưu</string>
+
+    <string name="deepl_settings_close_cd">Đóng</string>
+
+    <string name="deepl_settings_get_key_title">Lấy khóa API <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> miễn phí</string>
+
+    <string name="deepl_settings_get_key_subtitle">Gói miễn phí gồm 500.000 ký tự mỗi tháng, nhưng cần thẻ tín dụng để đăng ký</string>
+
+    <string name="deepl_settings_about"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> là một dịch vụ dịch nổi tiếng với kết quả chất lượng cao, đặc biệt là với các ngôn ngữ châu Âu.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC LLM BACKEND SETTINGS (OpenAI / Gemini / DeepSeek)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="llm_backend_api_key_label">Khóa API</string>
+
+    <string name="llm_backend_model_label">Mô hình</string>
+
+    <string name="llm_backend_get_key_title_fmt">Lấy khóa API <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g></string>
+
+    <string name="llm_backend_model_custom_entry">Tùy chỉnh…</string>
+
+    <string name="llm_model_picker_loading">Đang tải mô hình…</string>
+
+    <string name="llm_model_picker_fetch_failed">Không thể lấy danh sách mô hình. Hãy kiểm tra khóa API, hoặc nhập id mô hình qua Tùy chỉnh….</string>
+
+    <string name="llm_backend_invalid_key_alert_title">Không thể xác minh khóa API</string>
+
+    <string name="llm_backend_invalid_key_alert_message_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> đã từ chối khóa bạn nhập. Hãy kiểm tra lại tại <xliff:g id="dev_console_url" example="platform.openai.com">%2$s</xliff:g> và thử lại.</string>
+
+    <string name="llm_backend_invalid_key_alert_button">OK</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS FOOTERS (Translation Service sections)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tr_service_order_footer">Bản dịch sẽ thử lần lượt từng dịch vụ đã bật theo thứ tự hiển thị, chuyển sang dịch vụ khác khi một dịch vụ không khả dụng. Các dịch vụ dịch trực tuyến sẽ nhận văn bản đã chụp. Hãy xem lại chính sách quyền riêng tư của từng nhà cung cấp trước khi bật.</string>
+
+    <string name="tr_service_offline_footer">Bản dịch ngoại tuyến được dùng dự phòng khi bản dịch trực tuyến không khả dụng. Bản dịch của <xliff:g id="brand_mlkit" example="MLKit">MLKit</xliff:g> kém, nhưng các lựa chọn khác có thể rất chậm và nặng, hãy thận trọng khi dùng chúng để tự động dịch.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         PER-BACKEND STATUS LINE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tr_service_status_loading">Đang kiểm tra mức sử dụng…</string>
+
+    <string name="tr_service_status_quota_fmt">Đã dùng <xliff:g id="used" example="120,345">%1$s</xliff:g> / <xliff:g id="total" example="500,000">%2$s</xliff:g> ký tự</string>
+
+    <string name="tr_service_status_quota_with_reset_fmt"><xliff:g id="quota_line" example="120,345 / 500,000 characters used">%1$s</xliff:g> · đặt lại vào <xliff:g id="reset_date" example="Jun 1">%2$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         BACKEND QUALITY / SPEED LABELS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tr_service_quality_bad">Chất lượng kém</string>
+    <string name="tr_service_quality_okay">Chất lượng tạm ổn</string>
+    <string name="tr_service_quality_good">Chất lượng tốt</string>
+    <string name="tr_service_quality_better">Chất lượng tốt hơn</string>
+
+    <string name="tr_service_speed_very_slow">Rất chậm</string>
+    <string name="tr_service_speed_slow">Chậm</string>
+    <string name="tr_service_speed_okay">Tốc độ tạm ổn</string>
+    <string name="tr_service_speed_fast">Nhanh</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         OFFLINE BACKEND ROW
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="offline_backend_quality_label">Chất lượng</string>
+    <string name="offline_backend_speed_label">Tốc độ</string>
+    <string name="offline_backend_ram_label">Bộ nhớ</string>
+    <string name="offline_backend_disk_label">Lưu trữ</string>
+
+    <!-- ── Firefox Translations (Bergamot) offline row ──────────────── -->
+    <string name="bergamot_status_downloading">Đang tải… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%2$s</xliff:g></string>
+
+    <string name="bergamot_download_failed">Không thể tải mô hình Firefox Translations</string>
+
+    <string name="bergamot_disable_title">Tắt Firefox Translations?</string>
+
+    <string name="bergamot_disable_message">Việc này sẽ ngừng dịch ngoại tuyến cho cặp ngôn ngữ này. Bạn có thể giữ lại mô hình đã tải hoặc xóa nó để giải phóng dung lượng.</string>
+
+    <string name="bergamot_disable_keep">Chỉ tắt</string>
+
+    <string name="bergamot_disable_delete">Xóa mô hình</string>
+
+    <string name="bergamot_warmup_downloading">Đang tải mô hình ngoại tuyến… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%2$s</xliff:g></string>
+
+    <string name="bergamot_warmup_downloading_multi">Đang tải mô hình ngoại tuyến <xliff:g id="file_index" example="1">%1$d</xliff:g>/<xliff:g id="file_count" example="2">%2$d</xliff:g>… <xliff:g id="bytes_so_far" example="12 MB">%3$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%4$s</xliff:g></string>
+    <string name="bergamot_pair_unsupported">Không hỗ trợ cho cặp ngôn ngữ hiện tại</string>
+
+    <string name="offline_backend_downloaded_cd">Đã tải xuống</string>
+    <string name="offline_backend_not_downloaded_cd">Chưa tải xuống</string>
+    <string name="offline_backend_enabled_cd">Đã bật</string>
+    <string name="offline_backend_disabled_cd">Đã tắt</string>
+
+    <string name="offline_backend_row_a11y_fmt"><xliff:g id="title" example="Qwen 2.5 1.5B">%1$s</xliff:g>. Chất lượng: <xliff:g id="quality" example="Good quality">%2$s</xliff:g>. Tốc độ: <xliff:g id="speed" example="Okay speed">%3$s</xliff:g>. Cần bộ nhớ <xliff:g id="ram" example="4 GB">%4$s</xliff:g>. Lưu trữ <xliff:g id="disk_size" example="1.2 GB">%5$s</xliff:g>. <xliff:g id="downloaded_state" example="Downloaded">%6$s</xliff:g>. <xliff:g id="enabled_state" example="Enabled">%7$s</xliff:g>.</string>
+
+    <string name="offline_backend_row_a11y_no_speed_fmt"><xliff:g id="title" example="ML Kit">%1$s</xliff:g>. Chất lượng: <xliff:g id="quality" example="Bad quality">%2$s</xliff:g>. Cần bộ nhớ <xliff:g id="ram" example="&lt; 1 GB">%3$s</xliff:g>. Lưu trữ <xliff:g id="disk_size" example="~30 MB">%4$s</xliff:g>. <xliff:g id="downloaded_state" example="Downloaded">%5$s</xliff:g>. <xliff:g id="enabled_state" example="Enabled">%6$s</xliff:g>.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC DOWNLOAD UI
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="model_download_extracting">Đang giải nén…</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ON-DEVICE LLM TRANSLATION MODELS (MNN-backed)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- ── Qwen 2.5 1.5B ──────────────────────────────────────────── -->
+
+    <string name="qwen_mnn_status_not_downloaded">Cần bộ nhớ <xliff:g id="ram" example="4 GB">%1$s</xliff:g>, lưu trữ <xliff:g id="disk_size" example="1.2 GB">%2$s</xliff:g></string>
+
+    <string name="qwen_mnn_status_downloaded_disabled">Đã tải nhưng bị tắt (lưu trữ <xliff:g id="disk_size" example="1.2 GB">%1$s</xliff:g>)</string>
+
+    <string name="qwen_mnn_status_ready">Cần bộ nhớ <xliff:g id="ram" example="4 GB">%1$s</xliff:g>, lưu trữ <xliff:g id="disk_size" example="1.2 GB">%2$s</xliff:g></string>
+
+    <string name="qwen_mnn_status_downloading">Đang tải… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="1.2 GB">%2$s</xliff:g></string>
+
+    <string name="qwen_mnn_status_verifying">Đang xác minh tệp đã tải…</string>
+
+    <string name="qwen_mnn_disable_title">Tắt <xliff:g id="brand_qwen" example="Qwen">Qwen</xliff:g> (MNN)?</string>
+
+    <string name="qwen_mnn_disable_message">Mô hình <xliff:g id="disk_size" example="1.2 GB">%1$s</xliff:g> đã được cài. Bạn có thể giữ lại để dùng sau hoặc xóa để giải phóng dung lượng.</string>
+
+    <string name="qwen_mnn_download_failed">Tải xuống thất bại: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="qwen_mnn_metered_warning_title">Tải trên mạng có đo lượng dữ liệu?</string>
+
+    <string name="qwen_mnn_metered_warning_message"><xliff:g id="brand_qwen" example="Qwen 2.5 1.5B (MNN)">Qwen 2.5 1.5B (MNN)</xliff:g> có dung lượng <xliff:g id="download_size" example="1.2 GB">%1$s</xliff:g>. Mạng này được đánh dấu là có đo lượng dữ liệu. Tiếp tục?</string>
+
+    <string name="qwen_mnn_disable_keep">Chỉ tắt</string>
+    <string name="qwen_mnn_disable_delete">Xóa mô hình</string>
+
+    <!-- ── Qwen 3.5 2B ────────────────────────────────────────────── -->
+
+    <string name="qwen35_2b_mnn_status_not_downloaded">Cần bộ nhớ <xliff:g id="ram" example="6 GB">%1$s</xliff:g>, lưu trữ <xliff:g id="disk_size" example="1.3 GB">%2$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_status_downloaded_disabled">Đã tải nhưng bị tắt (lưu trữ <xliff:g id="disk_size" example="1.3 GB">%1$s</xliff:g>)</string>
+
+    <string name="qwen35_2b_mnn_status_ready">Cần bộ nhớ <xliff:g id="ram" example="6 GB">%1$s</xliff:g>, lưu trữ <xliff:g id="disk_size" example="1.3 GB">%2$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_status_downloading">Đang tải… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="1.3 GB">%2$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_status_verifying">Đang xác minh tệp đã tải…</string>
+
+    <string name="qwen35_2b_mnn_disable_title">Tắt <xliff:g id="brand_qwen" example="Qwen 3.5 2B">Qwen 3.5 2B</xliff:g>?</string>
+
+    <string name="qwen35_2b_mnn_disable_message">Mô hình <xliff:g id="disk_size" example="1.3 GB">%1$s</xliff:g> đã được cài. Bạn có thể giữ lại để dùng sau hoặc xóa để giải phóng dung lượng.</string>
+
+    <string name="qwen35_2b_mnn_download_failed">Tải xuống thất bại: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_metered_warning_title">Tải trên mạng có đo lượng dữ liệu?</string>
+
+    <string name="qwen35_2b_mnn_metered_warning_message"><xliff:g id="brand_qwen" example="Qwen 3.5 2B">Qwen 3.5 2B</xliff:g> có dung lượng <xliff:g id="download_size" example="1.3 GB">%1$s</xliff:g>. Mạng này được đánh dấu là có đo lượng dữ liệu. Tiếp tục?</string>
+
+    <string name="qwen35_2b_mnn_disable_keep">Chỉ tắt</string>
+    <string name="qwen35_2b_mnn_disable_delete">Xóa mô hình</string>
+
+    <string name="deprecated_badge_label">Ngừng hỗ trợ</string>
+
+    <!-- ── Gemma 4 E2B ────────────────────────────────────────────── -->
+
+    <string name="gemma_e2b_mnn_status_not_downloaded">Cần bộ nhớ <xliff:g id="ram" example="6 GB">%1$s</xliff:g>, lưu trữ <xliff:g id="disk_size" example="2.1 GB">%2$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_status_downloaded_disabled">Đã tải nhưng bị tắt (lưu trữ <xliff:g id="disk_size" example="2.1 GB">%1$s</xliff:g>)</string>
+
+    <string name="gemma_e2b_mnn_status_ready">Cần bộ nhớ <xliff:g id="ram" example="6 GB">%1$s</xliff:g>, lưu trữ <xliff:g id="disk_size" example="2.1 GB">%2$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_status_downloading">Đang tải… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="2.1 GB">%2$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_status_verifying">Đang xác minh tệp đã tải…</string>
+
+    <string name="gemma_e2b_mnn_disable_title">Tắt <xliff:g id="brand_gemma" example="Gemma 4 E2B">Gemma 4 E2B</xliff:g>?</string>
+
+    <string name="gemma_e2b_mnn_disable_message">Mô hình <xliff:g id="disk_size" example="2.1 GB">%1$s</xliff:g> đã được cài. Bạn có thể giữ lại để dùng sau hoặc xóa để giải phóng dung lượng.</string>
+
+    <string name="gemma_e2b_mnn_download_failed">Tải xuống thất bại: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_metered_warning_title">Tải trên mạng có đo lượng dữ liệu?</string>
+
+    <string name="gemma_e2b_mnn_metered_warning_message"><xliff:g id="brand_gemma" example="Gemma 4 E2B">Gemma 4 E2B</xliff:g> có dung lượng <xliff:g id="download_size" example="2.1 GB">%1$s</xliff:g>. Mạng này được đánh dấu là có đo lượng dữ liệu. Tiếp tục?</string>
+
+    <string name="gemma_e2b_mnn_disable_keep">Chỉ tắt</string>
+    <string name="gemma_e2b_mnn_disable_delete">Xóa mô hình</string>
+
+    <!-- ── Tencent Hunyuan-MT 1.5 1.8B ────────────────────────────── -->
+
+    <string name="hymt_status_not_downloaded">Cần bộ nhớ <xliff:g id="ram" example="4 GB">%1$s</xliff:g>, lưu trữ <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g></string>
+
+    <string name="hymt_status_downloaded_disabled">Đã tải nhưng bị tắt (lưu trữ <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g>)</string>
+
+    <string name="hymt_status_ready">Cần bộ nhớ <xliff:g id="ram" example="4 GB">%1$s</xliff:g>, lưu trữ <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g></string>
+
+    <string name="hymt_status_downloading">Đang tải… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="1.5 GB">%2$s</xliff:g></string>
+
+    <string name="hymt_status_verifying">Đang xác minh tệp đã tải…</string>
+
+    <string name="hymt_disable_title">Tắt <xliff:g id="brand_hunyuan" example="Hunyuan-MT">Hunyuan-MT</xliff:g>?</string>
+
+    <string name="hymt_disable_message">Mô hình <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> đã được cài. Bạn có thể giữ lại để dùng sau hoặc xóa để giải phóng dung lượng.</string>
+
+    <string name="hymt_download_failed">Tải xuống thất bại: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="hymt_metered_warning_title">Tải trên mạng có đo lượng dữ liệu?</string>
+
+    <string name="hymt_metered_warning_message"><xliff:g id="brand_hunyuan15" example="Hunyuan-MT 1.5">Hunyuan-MT 1.5</xliff:g> có dung lượng <xliff:g id="download_size" example="1.5 GB">%1$s</xliff:g>. Mạng này được đánh dấu là có đo lượng dữ liệu. Tiếp tục?</string>
+
+    <string name="hymt_disable_keep">Chỉ tắt</string>
+    <string name="hymt_disable_delete">Xóa mô hình</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         HUNYUAN-MT LEGAL ATTESTATION (legal text — translated faithfully)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="hymt_legal_title">Thông báo pháp lý và hạn chế khu vực</string>
+
+    <string name="hymt_legal_message">Mô hình <xliff:g id="brand_hunyuan15" example="Hunyuan-MT 1.5">Hunyuan-MT 1.5</xliff:g> của <xliff:g id="brand_tencent" example="Tencent">Tencent</xliff:g> được cấp phép theo <xliff:g id="license_name" example="Tencent HY Community License Agreement">Tencent HY Community License Agreement</xliff:g>. Giấy phép này loại trừ việc sử dụng trong Liên minh châu Âu, Vương quốc Anh và Hàn Quốc.\n\nBằng việc nhấn “Đồng ý”, bạn xác nhận và cam đoan rằng:\n\n(1) Bạn hiện không cư trú hay đang ở trong EU, Vương quốc Anh hoặc Hàn Quốc.\n\n(2) Bạn sẽ không sử dụng kết quả đầu ra của mô hình này để cải thiện bất kỳ mô hình AI nào khác (theo <xliff:g id="license_section" example="§5(b)">§5(b)</xliff:g> của giấy phép).</string>
+
+    <string name="hymt_legal_agree">Tôi đồng ý — Bật <xliff:g id="brand_hunyuan" example="Hunyuan">Hunyuan</xliff:g></string>
+
+    <string name="hymt_legal_cancel">Hủy</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         COLD-LAUNCH MIGRATION ALERT
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="legacy_engines_removed_title">Đã cập nhật bản dịch ngoại tuyến</string>
+    <string name="legacy_engines_removed_message">Các trình dịch ngoại tuyến cũ của bạn (<xliff:g id="brand_qwen" example="Qwen">Qwen</xliff:g> và <xliff:g id="brand_translategemma" example="TranslateGemma">TranslateGemma</xliff:g>) đã được gỡ bỏ và thay bằng các phiên bản dựa trên MNN nhanh hơn. Hãy mở Cài đặt để bật trình dịch mới.</string>
+    <string name="legacy_engines_removed_button_settings">Cài đặt</string>
+    <string name="legacy_engines_removed_button_cancel">Hủy</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         LLM HARDWARE-UNSUPPORTED STATUS LINES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="llm_hardware_unsupported_arm64">Không hỗ trợ trên thiết bị này (cần CPU arm64)</string>
+
+    <string name="llm_hardware_unsupported_ram">Không hỗ trợ trên thiết bị này (cần ít nhất <xliff:g id="min_ram_gb" example="4">%1$d</xliff:g> GB RAM)</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         PRE-TOGGLE LOW-MEMORY GATE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="llm_low_memory_title">Không đủ bộ nhớ trống</string>
+
+    <string name="llm_low_memory_message"><xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> cần khoảng <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g> bộ nhớ trống để chạy. Hiện chỉ còn <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g> trống.\n\nHãy đóng các ứng dụng khác để giải phóng bộ nhớ, hoặc hủy nếu mô hình này không phù hợp với thiết bị của bạn.</string>
+
+    <string name="llm_low_memory_recheck">Kiểm tra lại bộ nhớ</string>
+
+    <string name="llm_low_memory_start_anyway">Vẫn bắt đầu</string>
+
+    <string name="llm_low_memory_delete">Xóa mô hình</string>
+
+    <string name="llm_low_memory_cancel">Hủy</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         WARNING-TONE LLM STATUS LINE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="llm_status_low_memory_badge">Bộ nhớ thấp — đang dịch bằng phương án dự phòng</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING-ICON MENU WARNING PILL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="degraded_warning_offline">Ngoại tuyến — chất lượng bản dịch bị giảm</string>
+    <string name="degraded_warning_low_memory">Bộ nhớ thấp — chất lượng bản dịch bị giảm</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MAIN SCREEN — bottom-bar and overflow-menu items
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="nav_settings">Cài đặt</string>
+
+    <string name="nav_regions">Vùng</string>
+
+    <string name="live_mode_auto_label">Tự động</string>
+
+    <string name="live_mode_pause_label">Tạm dừng</string>
+
+    <string name="live_mode_auto_translate_label">Tự động dịch</string>
+
+    <string name="live_mode_pause_auto_label">Tạm dừng tự động</string>
+
+    <string name="live_mode_auto_with_hint"><xliff:g id="hint_label" example="Furigana">%1$s</xliff:g> tự động</string>
+
+    <string name="menu_capture_region">Vùng chụp</string>
+
+    <string name="menu_translations">Bản dịch</string>
+
+    <string name="menu_close">Đóng</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC BUTTON LABELS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="btn_save">Lưu</string>
+
+    <string name="btn_cancel">Hủy</string>
+
+    <string name="btn_clear">Xóa</string>
+
+    <string name="btn_ok">OK</string>
+
+    <string name="btn_not_now">Để sau</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CUSTOM-REGION SHEET
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="btn_save_to_list">Lưu vào danh sách</string>
+
+    <string name="custom_region_edit_title">Chỉnh sửa <xliff:g id="region_label" example="Dialogue box">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         REGION PICKER SHEET
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="region_picker_editing_title">Đang chỉnh sửa vùng</string>
+
+    <string name="region_default_full_screen">Toàn màn hình</string>
+
+    <string name="region_label_current_capture">Vùng chụp hiện tại</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MAIN-SCREEN BIG TRANSLATE BUTTON
+         (prefix is joined to the region label by code with a space)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="translate_button_prefix_translate">Dịch</string>
+
+    <string name="translate_button_prefix_reload">Tải lại</string>
+
+    <string name="translate_button_subtitle_hold_to_hide_translations">Giữ để ẩn bản dịch trên màn hình trò chơi</string>
+
+    <string name="translate_button_subtitle_hold_to_show_translations_instead_of_hint">Giữ để hiện bản dịch thay vì <xliff:g id="hint_label" example="furigana">%1$s</xliff:g></string>
+
+    <string name="translate_button_subtitle_hold_to_show_hint">Giữ để hiện <xliff:g id="hint_label" example="furigana">%1$s</xliff:g> trên màn hình trò chơi</string>
+
+    <string name="translate_button_subtitle_hold_to_show_translations">Giữ để hiện bản dịch trên màn hình trò chơi</string>
+
+    <string name="hint_label_pinyin_lower">pinyin</string>
+    <string name="hint_label_furigana_lower">furigana</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING ICON LONG-PRESS MENU
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="floating_icon_close_label_turn_off">Tắt</string>
+
+    <string name="floating_icon_close_label_hide">Ẩn</string>
+
+    <string name="floating_menu_btn_capture_region">Vùng\nchụp</string>
+
+    <string name="floating_menu_drag_instruction">Kéo ngón tay để chụp một khu vực cụ thể</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         DEEPL SETTINGS — API-key field label
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="deepl_api_key_field_label">Khóa API <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         AUTO-TRANSLATE DIALOG
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_overlay_mode_title">Chế độ lớp phủ</string>
+
+    <string name="settings_overlay_mode_subtitle">Lớp phủ nào sẽ hiển thị trong chế độ tự động hoặc khi giữ để xem trước.</string>
+
+    <string name="settings_capture_interval_title">Khoảng thời gian chụp</string>
+
+    <string name="settings_capture_interval_seconds_suffix">giây</string>
+
+    <string name="settings_capture_interval_hint">Tần suất chụp màn hình trò chơi trong khi tự động dịch. Tối thiểu <xliff:g id="min_seconds" example="1">%1$s</xliff:g> giây.</string>
+
+    <string name="overlay_mode_option_translation">Bản dịch</string>
+
+    <string name="overlay_mode_option_furigana">Furigana</string>
+
+    <string name="overlay_mode_option_pinyin">Pinyin</string>
+
+    <string name="settings_hide_overlays_during_auto_mode">Ẩn lớp phủ trong chế độ tự động</string>
+
+    <string name="settings_hide_overlays_ignored_multi_display">Bị bỏ qua khi chọn nhiều màn hình — lớp phủ sẽ hiển thị trên mỗi màn hình.</string>
+
+    <string name="settings_touches_refresh_title">Chạm màn hình để làm mới bản dịch</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         HOTKEY SETUP DIALOG
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="dialog_hotkey_setup_title">Đặt phím tắt</string>
+
+    <string name="dialog_hotkey_setup_instruction">Giữ phím trong 2 giây</string>
+
+    <string name="dialog_hotkey_setup_countdown">Giữ <xliff:g id="remaining_seconds" example="1.4">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION-RESULT SCREEN — toolbar + per-row buttons
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="cd_translation_result_back">Quay lại</string>
+
+    <string name="cd_copy_translation">Sao chép bản dịch</string>
+
+    <string name="cd_toggle_translation_visibility">Bật/tắt hiển thị bản dịch</string>
+
+    <string name="cd_toggle_inline_furigana">Bật/tắt furigana nội dòng</string>
+
+    <string name="cd_read_original_aloud">Đọc to văn bản gốc</string>
+
+    <string name="cd_edit_original">Chỉnh sửa văn bản gốc</string>
+
+    <string name="cd_copy_original">Sao chép văn bản gốc</string>
+
+    <string name="cd_toggle_original_visibility">Bật/tắt hiển thị văn bản gốc</string>
+
+    <string name="cd_toggle_words_visibility">Bật/tắt hiển thị từ</string>
+
+    <string name="cd_close">Đóng</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         REGION-PICKER ROW — per-row icon contentDescriptions
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="cd_drag_to_reorder">Kéo để sắp xếp lại</string>
+
+    <string name="cd_delete_region">Xóa vùng</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MAIN ACTIVITY DIALOGS (crash / update / target-pack migration)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="crash_dialog_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> đã gặp sự cố trước đó</string>
+
+    <string name="crash_dialog_message">Gửi báo cáo sự cố cho nhà phát triển? Báo cáo bao gồm dấu vết ngăn xếp, nhật ký ứng dụng gần đây và bất kỳ văn bản nào mà <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> nhận dạng (OCR) hoặc tra cứu gần đây. Không có thông tin tài khoản.</string>
+
+    <string name="crash_dialog_send">Gửi</string>
+
+    <string name="crash_dialog_discard">Xóa báo cáo</string>
+
+    <string name="crash_dialog_later">Để sau</string>
+
+    <string name="crash_email_subject">Sự cố <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> – v<xliff:g id="version" example="2.2.0">%1$s</xliff:g></string>
+
+    <string name="crash_email_body">Các bước tái hiện:\n\n(Không bắt buộc — mô tả những gì bạn đang làm khi sự cố xảy ra.)\n\nThông tin thiết bị được đính kèm trong tệp.</string>
+
+    <string name="update_dialog_title">Có bản cập nhật</string>
+
+    <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> đã có trên <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <string name="update_dialog_view_release">Xem bản phát hành</string>
+
+    <string name="update_dialog_skip">Bỏ qua phiên bản này</string>
+
+    <string name="update_dialog_ask_again_later">Hỏi lại sau</string>
+
+    <string name="toast_no_browser_available">Không có trình duyệt nào</string>
+
+    <string name="target_pack_migration_title">Đã có định nghĩa <xliff:g id="target_language" example="Spanish">%1$s</xliff:g></string>
+
+    <string name="target_pack_migration_message">Đã có gói định nghĩa <xliff:g id="target_language" example="Spanish">%1$s</xliff:g>. Tải xuống để có định nghĩa từ bằng <xliff:g id="target_language2" example="Spanish">%2$s</xliff:g> thay vì tiếng Anh?</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         OVERLAY UI CONTROLLER — confirmation dialogs
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="overlay_turn_off_title">Tắt <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g>?</string>
+
+    <string name="overlay_turn_off_message">Bật lại trong ứng dụng <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
+
+    <string name="overlay_hide_controls_title">Ẩn các nút điều khiển màn hình trò chơi của <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g>?</string>
+
+    <string name="overlay_hide_controls_message">“Ẩn tạm thời” sẽ đưa nó trở lại trong lần tiếp theo bạn mở <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g>. “Tắt” sẽ vô hiệu hóa nó cho đến khi được bật lại trong cài đặt.</string>
+
+    <string name="overlay_hide_for_now">Ẩn tạm thời</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         LANGUAGE PACK / TARGET-PACK INSTALLER DIALOGS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="install_downloading_generic">Đang tải xuống</string>
+
+    <string name="install_downloading_with_bytes">Đang tải… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="84 MB">%2$s</xliff:g></string>
+
+    <string name="lang_setup_downloading_ocr_model">Đang tải mô hình OCR… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="47 MB">%2$s</xliff:g></string>
+
+    <string name="install_downloading_definitions">Đang tải định nghĩa</string>
+
+    <string name="install_downloading_definitions_with_bytes">Đang tải định nghĩa… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="84 MB">%2$s</xliff:g></string>
+
+    <string name="install_downloading_translation_model">Đang tải mô hình dịch</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — section group headers
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_header_auto_translate">Tự động dịch</string>
+    <string name="settings_header_hotkeys">Phím tắt</string>
+    <string name="settings_header_capture_display">Màn hình chụp</string>
+    <string name="settings_header_online_translations">Dịch trực tuyến</string>
+    <string name="settings_header_offline_translations">Dịch ngoại tuyến</string>
+    <string name="settings_header_ocr">Chuyển ảnh thành văn bản (OCR)</string>
+    <string name="settings_ocr_note_builtin">Tích hợp sẵn</string>
+
+    <string name="settings_ocr_default_badge">Mặc định</string>
+
+    <string name="settings_ocr_footer">Nếu PlayTranslate gặp khó khăn trong việc đọc chính xác văn bản trên màn hình, hãy thử các lựa chọn khác nhau. Các công cụ OCR khác nhau có thể hoạt động tốt hơn với những kiểu phông chữ hoặc hướng văn bản khác nhau.</string>
+
+    <string name="settings_ocr_delete_cd">Xóa <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
+
+    <string name="settings_ocr_delete_title">Xóa <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g>?</string>
+
+    <string name="settings_ocr_delete_msg">Việc này sẽ gỡ mô hình <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> khỏi thiết bị này. Bạn có thể tải lại sau.</string>
+
+    <string name="settings_ocr_delete_shared_msg">Các ngôn ngữ này cũng dùng <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g>. Việc xóa sẽ giải phóng dung lượng ngay bây giờ; mô hình sẽ được tải lại vào lần tới bạn chuyển sang một trong các ngôn ngữ đó:\n\n<xliff:g id="languages" example="Chinese">%2$s</xliff:g></string>
+
+    <string name="settings_ocr_delete_confirm">Xóa</string>
+
+    <string name="settings_ocr_downloading_title">Đang tải <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
+
+    <string name="settings_ocr_downloading_msg">Đang bắt đầu…</string>
+
+    <string name="settings_ocr_verifying">Đang xác minh…</string>
+
+    <string name="settings_ocr_installing">Đang cài đặt…</string>
+
+    <string name="settings_ocr_download_failed">Không thể tải mô hình OCR. Hãy kiểm tra kết nối và thử lại.</string>
+    <string name="settings_header_text_to_speech">Chuyển văn bản thành giọng nói</string>
+    <string name="settings_header_appearance">Giao diện</string>
+    <string name="settings_header_support">Hỗ trợ</string>
+
+    <string name="settings_header_configure">Cấu hình</string>
+    <string name="settings_cell_appearance">Giao diện</string>
+    <string name="settings_cell_hotkeys">Phím tắt</string>
+    <string name="settings_cell_capture_overlay">Chụp &amp; lớp phủ</string>
+    <string name="settings_cell_anki">Thẻ ghi nhớ Anki</string>
+    <string name="settings_cell_translation_services">Dịch vụ dịch thuật</string>
+    <string name="settings_cell_tts">Chuyển văn bản thành giọng nói</string>
+
+    <string name="settings_digest_none">Không có</string>
+    <string name="settings_capture_displays_count"><xliff:g id="count" example="2">%1$d</xliff:g> màn hình</string>
+
+    <string name="settings_hotkeys_tile_add">Thêm ô</string>
+    <string name="settings_hotkeys_none">Chưa đặt phím tắt</string>
+    <string name="settings_hotkeys_translation">Bản dịch</string>
+    <string name="settings_hotkeys_furigana">Furigana</string>
+    <string name="settings_hotkeys_pinyin">Pinyin</string>
+
+    <string name="settings_anki_digest">Bộ thẻ <xliff:g id="deck_name" example="Vocabulary">%1$s</xliff:g> · Loại thẻ <xliff:g id="card_type_name" example="Lapis sentence">%2$s</xliff:g></string>
+    <string name="settings_anki_default">Mặc định</string>
+    <string name="settings_anki_get_app_summary">Tải AnkiDroid miễn phí trên Google Play</string>
+    <string name="settings_anki_grant_summary">Cấp quyền để dùng AnkiDroid</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Text-to-Speech section
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tts_voice_row_title">Giọng nói</string>
+
+    <string name="tts_voice_numbered">Giọng <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
+
+    <string name="tts_voice_region_numbered"><xliff:g id="region" example="China">%1$s</xliff:g> <xliff:g id="region_index" example="2">%2$d</xliff:g></string>
+
+    <string name="tts_voice_default">Mặc định</string>
+
+    <string name="tts_voice_default_subtitle">Giọng nói mặc định của công cụ</string>
+
+    <string name="tts_voice_needs_download">Cần tải xuống</string>
+
+    <string name="tts_no_engine_row_title">Thiết lập chuyển văn bản thành giọng nói</string>
+
+    <string name="tts_no_engine_row_subtitle">Không có công cụ chuyển văn bản thành giọng nói nào khả dụng. Nhấn để thêm một công cụ.</string>
+
+    <string name="tts_voice_picker_title">Giọng nói</string>
+
+    <string name="tts_voices_section_header">GIỌNG <xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
+
+    <string name="tts_no_engine_dialog_title">Không có công cụ đọc văn bản</string>
+
+    <string name="tts_no_engine_dialog_message">Không có công cụ chuyển văn bản thành giọng nói nào để đọc to các từ. Hãy cài đặt một công cụ — hoặc nếu thiết bị của bạn đã có sẵn, hãy bật nó trong cài đặt của Android.</string>
+
+    <string name="tts_no_engine_get_google">Tải Google TTS</string>
+
+    <string name="tts_no_engine_open_settings">Mở cài đặt TTS</string>
+
+    <string name="tts_language_unsupported_dialog_title">Ngôn ngữ không được hỗ trợ</string>
+
+    <string name="tts_language_unsupported_with_engine_message"><xliff:g id="engine_name" example="Google TTS">%1$s</xliff:g> là công cụ đang hoạt động, nhưng không hỗ trợ <xliff:g id="source_language" example="Japanese">%2$s</xliff:g>.</string>
+
+    <string name="tts_language_unsupported_unknown_engine_message">Công cụ chuyển văn bản thành giọng nói đang hoạt động không hỗ trợ <xliff:g id="source_language" example="Japanese">%1$s</xliff:g>.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Quick Settings tile row (Android 13+)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="quick_tile_add_row_title">Thêm ô Cài đặt nhanh</string>
+
+    <string name="quick_tile_add_row_subtitle">Bật/tắt <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> từ thanh trạng thái của bạn</string>
+
+    <string name="quick_tile_added_row_subtitle">Đã thêm vào Cài đặt nhanh</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Hotkeys section
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="hotkey_not_set_subtitle">Chưa đặt</string>
+
+    <string name="hotkey_show_translations_title">Phím tắt: giữ để hiện Bản dịch</string>
+
+    <string name="hotkey_show_translations_dialog_title">Hiện bản dịch</string>
+
+    <string name="hotkey_show_hint_title">Phím tắt: giữ để hiện <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <string name="hotkey_show_hint_dialog_title">Hiện <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Capture Display section
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="capture_display_row_label">Màn hình <xliff:g id="display_id" example="0">%1$d</xliff:g>  —  <xliff:g id="display_name" example="Built-in screen">%2$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Online Translations (cooldown / unavailable states)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="backend_status_unavailable_default">Không khả dụng</string>
+
+    <string name="backend_cooldown_retry_at">Thử lại lúc</string>
+
+    <string name="backend_cooldown_retry_on">Thử lại vào</string>
+
+    <string name="backend_cooldown_status_fmt"><xliff:g id="description" example="Rate limited">%1$s</xliff:g> · <xliff:g id="retry_word" example="Retry at">%2$s</xliff:g> <xliff:g id="retry_time" example="3:42 PM">%3$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Offline Translations / accessibility numeric labels
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="a11y_quality_label">Chất lượng</string>
+
+    <string name="a11y_speed_label">Tốc độ:</string>
+
+    <string name="a11y_quality_label_colon">Chất lượng:</string>
+
+    <string name="a11y_out_of_5_stars">trên 5 sao</string>
+
+    <string name="a11y_speed_label_comma">Tốc độ</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Anki rows + deck/card-type fallback labels
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_deck_not_selected_subtitle">Chưa chọn</string>
+
+    <string name="anki_settings_get_ankidroid_title">Tải <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> miễn phí trên Google Play</string>
+
+    <string name="anki_settings_grant_access_title">Cấp quyền truy cập <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_settings_grant_access_subtitle">Để thêm thẻ ghi nhớ vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>, <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> cần quyền truy cập <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Support section rows
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_support_discord_title">Tham gia <xliff:g id="brand_discord" example="Discord">Discord</xliff:g></string>
+
+    <string name="settings_support_discord_subtitle">Nhận trợ giúp và trò chuyện với những người chơi khác.</string>
+
+    <string name="settings_support_donate_title">Ủng hộ PlayTranslate</string>
+
+    <string name="settings_support_donate_subtitle">Một sản phẩm tâm huyết, miễn phí và mã nguồn mở. Hãy giúp duy trì nó.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Debug section (developer-only)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_debug_force_single_screen">Buộc một màn hình</string>
+    <string name="settings_debug_show_ocr_boxes">Hiện khung OCR</string>
+    <string name="settings_debug_show_detection_log">Hiện nhật ký phát hiện</string>
+    <string name="settings_debug_log_pinhole">Ghi nhật ký số liệu pinhole của chế độ trực tiếp</string>
+    <string name="settings_debug_save_ocr_seed">Lưu các bản chụp OCR làm seed</string>
+    <string name="settings_debug_log_grouping">Ghi nhật ký quyết định nhóm OCR</string>
+    <string name="settings_debug_force_crash_title">Buộc gặp sự cố</string>
+
+    <string name="settings_debug_export_logs_title">Xuất nhật ký</string>
+
+    <string name="settings_debug_export_logs_subtitle">Chia sẻ nhật ký gần đây cho báo cáo lỗi</string>
+
+    <string name="settings_debug_export_logs_subject">Nhật ký <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="settings_debug_export_logs_failed">Xuất nhật ký thất bại: <xliff:g id="exception_class" example="FileNotFoundException">%1$s</xliff:g></string>
+
+    <string name="settings_footer_version"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> v<xliff:g id="version" example="2.2.0">%2$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC TOASTS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="toast_link_copied">Đã sao chép liên kết</string>
+
+    <string name="toast_copied">Đã sao chép</string>
+
+    <string name="toast_no_logs_to_share">Không có nhật ký để chia sẻ</string>
+
+    <string name="toast_no_crash_report">Không có báo cáo sự cố để gửi</string>
+
+    <string name="share_chooser_share_logs">Chia sẻ nhật ký</string>
+
+</resources>

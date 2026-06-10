@@ -1,0 +1,1296 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    PlayTranslate Simplified Chinese (zh-rCN) localization.
+
+    Auto-localized from res/values/strings.xml. Per-string translator
+    notes live in that default file; this file keeps only section banners.
+
+    Formatting preserved from the source:
+      • <xliff:g …>…</xliff:g> wraps placeholders / brand names — never
+        translate or reorder their inner content (the %1$s, %2$d, … inside).
+      • <b>…</b> renders bold. \n is a newline. \{ \} are escaped braces.
+      • Brand names (PlayTranslate, Anki, DeepL, Qwen, …) stay untranslated.
+      • translatable="false" entries are omitted and fall back to English.
+      • Plurals use only the "other" category (Chinese has no count plural).
+-->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ACTIONS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="btn_translate_once">不保存直接使用</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ACCESSIBILITY SERVICE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="accessibility_service_description"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 使用无障碍服务截取游戏画面并显示悬浮图标。不会读取或监控任何界面内容、输入事件或个人数据。</string>
+
+    <string name="accessibility_service_summary">用于翻译屏幕上的游戏文字</string>
+
+    <string name="accessibility_dialog_title">需要无障碍权限</string>
+
+    <string name="accessibility_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 需要无障碍权限，以便在底部屏幕保持打开的同时，截取顶部屏幕上的游戏画面。\n\n<xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> 不会读取任何界面内容、监控输入或访问任何个人数据——仅在你点按“翻译”或开启实时模式时才会截图。\n\n依次前往：设置 → 无障碍 → 已下载的应用 → <xliff:g id="app_name3" example="PlayTranslate">PlayTranslate</xliff:g> → 启用。</string>
+
+    <string name="accessibility_dialog_open">打开无障碍设置</string>
+
+    <string name="status_accessibility_needed">请先在无障碍设置中启用 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         QUICK SETTINGS TILE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tile_subtitle_a11y_required">启用无障碍</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         STATUS MESSAGES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="status_idle">点按“翻译”以截取游戏画面</string>
+
+    <string name="status_hold_hint">长按“区域”或“自动”打开快速选择菜单</string>
+
+    <string name="words_none">未检测到单词</string>
+
+    <string name="status_capturing">正在截取画面…</string>
+
+    <string name="status_ocr">正在识别文字…</string>
+
+    <string name="status_translating">正在翻译…</string>
+
+    <string name="status_no_text">未在“<xliff:g id="region_label" example="Dialogue box">%2$s</xliff:g>”中检测到<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>文字</string>
+
+    <string name="status_error">错误：<xliff:g id="error_message" example="Network timeout">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         NOTIFICATION
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="notif_channel_name">屏幕截取</string>
+
+    <string name="notif_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 正在运行</string>
+
+    <string name="notif_text">点按返回 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ONBOARDING
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="onboarding_welcome_title">欢迎使用 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>！</string>
+
+    <string name="onboarding_welcome_tagline">助你畅玩外语游戏的伴侣应用。</string>
+
+    <string name="onboarding_welcome_body">在玩看不懂的游戏？立即翻译屏幕上的文字。\n\n正在学习一门语言？提供逐词释义、读音指南（振假名、拼音），以及一键创建 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 抽认卡。</string>
+
+    <string name="onboarding_welcome_row_placeholder">点按选择</string>
+
+    <string name="onboarding_welcome_continue">继续</string>
+
+    <string name="onboarding_welcome_select_source">选择游戏语言</string>
+
+    <string name="onboarding_notif_title">允许通知</string>
+
+    <string name="onboarding_notif_body">Android 要求在后台运行的应用在运行期间显示状态栏通知。\n\n这绝不会发送提醒、声音或横幅——只会有一个安静的常驻提示，表明 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 正在运行。</string>
+
+    <string name="onboarding_a11y_hint">请查找 <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
+
+    <string name="onboarding_a11y_title">显示在其他应用的上层</string>
+
+    <string name="onboarding_a11y_body"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> 需要显示在其他应用的上层，以便：\n• 在游戏上层显示翻译文字\n• 显示游戏画面控件\n• 通过在游戏文字上拖动来查词</string>
+
+    <string name="btn_grant_permission">授予权限</string>
+
+    <string name="btn_open_a11y_settings">打开无障碍设置</string>
+
+    <string name="btn_open_overlay_settings">打开设置</string>
+
+    <string name="restricted_settings_title">允许受限设置</string>
+
+    <string name="restricted_settings_message">在 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 的 Android 设置页面，点按右上角的三点（⋮）按钮，然后选择“允许受限设置”。完成身份验证后，你应该就能开启无障碍权限了。</string>
+
+    <string name="btn_open_app_settings">打开 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 设置</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         WORD DETAIL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="word_detail_not_found">未找到“<xliff:g id="word" example="聞く">%1$s</xliff:g>”的词典词条</string>
+
+    <string name="word_detail_more_examples">更多例句</string>
+
+    <string name="word_detail_more_examples_loading">正在加载例句…</string>
+
+    <string name="word_detail_more_examples_error">无法加载例句。</string>
+
+    <string name="word_detail_tatoeba_attribution">例句来自 <xliff:g id="brand_tatoeba" example="Tatoeba">Tatoeba</xliff:g> · <xliff:g id="license_cc_by_2_fr" example="CC BY 2.0 FR">CC BY 2.0 FR</xliff:g></string>
+
+    <string name="word_detail_common">常用</string>
+
+    <string name="word_anki_in_decks"><xliff:g id="count" example="3">%1$d</xliff:g> 个 Anki 牌组</string>
+    <string name="word_anki_deck_badge_cd">已加入 Anki：<xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
+
+    <string name="word_detail_stroke_abbr">画</string>
+
+    <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
+
+    <string name="word_detail_label_format"><xliff:g id="label" example="READING">%1$s</xliff:g>：</string>
+
+    <plurals name="word_detail_senses_count">
+        <item quantity="other"><xliff:g id="senses_count" example="3">%d</xliff:g> 个释义</item>
+    </plurals>
+
+    <plurals name="word_detail_chars_count">
+        <item quantity="other"><xliff:g id="char_count" example="3">%d</xliff:g> 个字</item>
+    </plurals>
+
+    <string name="word_detail_group_definitions">释义</string>
+
+    <string name="word_detail_group_kanji">汉字</string>
+
+    <string name="word_detail_group_hanzi">汉字</string>
+
+    <string name="word_detail_mt_banner">机器翻译</string>
+
+    <string name="word_detail_mt_banner_named">机器翻译：<xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
+
+    <string name="word_detail_char_meanings_mt">机器翻译 · <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — general
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_title">设置</string>
+
+    <string name="lang_translate_from">游戏语言</string>
+
+    <string name="lang_translate_to">你的语言</string>
+
+    <string name="lang_download">下载</string>
+
+    <string name="lang_download_error_title">下载失败</string>
+
+    <string name="lang_setup_preloading_message">正在准备，请稍候</string>
+
+    <string name="lang_setup_offline_model_unavailable">此设备目前无法使用离线翻译。词典查询和在线翻译仍可正常使用。</string>
+
+    <string name="lang_setup_requires_64bit">需要 64 位设备</string>
+    <string name="lang_setup_requires_64bit_msg"><xliff:g id="language" example="Russian">%1$s</xliff:g>的文字识别需要 64 位设备，但此设备不支持。</string>
+
+    <string name="lang_delete_pack">删除语言包</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         LANGUAGE PICKER — search and filter
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="lang_search_hint">搜索语言</string>
+
+    <string name="lang_search_clear_cd">清除搜索</string>
+
+    <string name="lang_search_no_results">无结果</string>
+
+    <string name="lang_section_suggested">推荐</string>
+
+    <string name="lang_section_all">全部</string>
+
+    <plurals name="lang_search_match_count">
+        <item quantity="other"><xliff:g id="count" example="5">%d</xliff:g> 个结果</item>
+    </plurals>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         PACK-UPGRADE FLOW
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="pack_upgrade_title">有可用的语言包更新</string>
+
+    <string name="pack_upgrade_button_now">立即更新</string>
+
+    <string name="pack_upgrade_button_later">稍后更新</string>
+
+    <string name="pack_upgrade_mandatory_title">需要更新</string>
+
+    <string name="pack_upgrade_mandatory_message"><xliff:g id="pack_list" example="Game Language (Japanese)">%1$s</xliff:g>\n\n此更新为必需项——已安装的版本不再受支持。请立即更新，或删除它以选择其他语言。</string>
+
+    <string name="pack_upgrade_button_delete">删除</string>
+
+    <string name="pack_upgrade_progress_title">正在更新语言包</string>
+
+    <string name="pack_upgrade_progress_format">正在下载<xliff:g id="pack_name" example="Japanese">%1$s</xliff:g>…</string>
+
+    <string name="pack_upgrade_progress_format_with_bytes">正在下载<xliff:g id="pack_name" example="Japanese">%1$s</xliff:g>… <xliff:g id="bytes_so_far" example="12 MB">%2$s</xliff:g> / <xliff:g id="bytes_total" example="84 MB">%3$s</xliff:g></string>
+
+    <string name="pack_upgrade_priming_models">正在加载翻译模型…</string>
+
+    <string name="pack_upgrade_label_source">游戏语言（<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>）</string>
+
+    <string name="pack_upgrade_label_target">你的语言（<xliff:g id="target_language" example="English">%1$s</xliff:g>）</string>
+
+    <string name="lang_section_update_packs_title">更新语言包</string>
+    <string name="lang_section_offline_models_title">下载离线模型</string>
+    <string name="lang_section_offline_models_subtitle">尚未下载<xliff:g id="source_language" example="Japanese">%1$s</xliff:g> → <xliff:g id="target_language" example="English">%2$s</xliff:g>的离线翻译。应用仍可在线使用。</string>
+
+    <string name="settings_no_displays_found">未找到显示屏</string>
+
+    <string name="settings_capture_display_footer">请选择一个或多个屏幕。你当前查看 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 的屏幕将被跳过。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         DEEPL — settings hints
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="hint_deepl_key">在此粘贴你的 <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> API 密钥</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION FALLBACK NOTES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="note_mlkit_no_internet">⚠ 无网络连接——显示离线翻译（质量较低）。</string>
+
+    <string name="note_mlkit_service_unavailable">⚠ 翻译服务不可用——显示离线翻译（质量较低）。</string>
+
+    <string name="note_low_memory_fallback">⚠ 内存不足——显示离线翻译（质量较低）。</string>
+
+    <string name="translation_source_label">由 <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g> 翻译</string>
+
+    <string name="error_live_mode_unsupported_backend">当前的屏幕截取方式不支持实时模式。</string>
+
+    <string name="error_screen_capture_denied">实时模式已停止——屏幕截取权限被拒绝。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SECTION HEADERS (translation-result screen)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="section_original">原文</string>
+
+    <string name="section_translation">译文</string>
+
+    <string name="section_words">单词</string>
+
+    <string name="words_loading">正在查询单词…</string>
+
+    <string name="lens_loading">正在查询…</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         REGION PICKER
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="label_select_region">选择区域</string>
+
+    <string name="region_overlay_drag_instruction">拖动边缘以将屏幕截取限制在此区域</string>
+
+    <string name="label_edit">编辑</string>
+
+    <string name="label_done">完成</string>
+
+    <string name="label_add_custom_region">+ 添加自定义区域</string>
+
+    <string name="label_add_custom_region_title">添加自定义区域</string>
+
+    <string name="label_region_drag_hint">在游戏画面上拖动区域框以选择你想要的范围。拖动上边缘或下边缘，或拖动中间部分来移动整个框。</string>
+
+    <string name="label_region_name">区域名称</string>
+
+    <string name="hint_region_name">例如：对话框</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING ICON CELL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_show_overlay_icon">悬浮图标操作</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CAPTURE LIFECYCLE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="capture_lifecycle_start">开启</string>
+
+    <string name="capture_lifecycle_stop">关闭</string>
+
+    <string name="capture_lifecycle_state_on">开</string>
+
+    <string name="capture_lifecycle_state_off">关</string>
+
+    <string name="capture_lifecycle_on_title">已允许屏幕截取</string>
+
+    <string name="capture_lifecycle_off_title">允许屏幕截取</string>
+
+    <string name="capture_lifecycle_on_subtitle">已准备好翻译</string>
+
+    <string name="capture_lifecycle_off_subtitle">读取游戏文字所必需</string>
+
+    <string name="game_screen_controls_title">游戏画面控件</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MEDIAPROJECTION OVERLAY-PERMISSION DIALOG
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="mp_overlay_permission_title">显示在其他应用的上层</string>
+
+    <string name="mp_overlay_permission_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 需要“显示在其他应用的上层”权限，以便悬浮的游戏画面控件能够显示在游戏上层。</string>
+
+    <string name="mp_overlay_permission_button">打开设置</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING-ICON GESTURE HINTS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="overlay_icon_gesture_drag">在单词上<b>拖动</b>可快速查看释义</string>
+
+    <string name="overlay_icon_gesture_hold"><b>长按</b>可预览翻译</string>
+
+    <string name="overlay_icon_gesture_tap"><b>点按</b>可打开快捷菜单</string>
+
+    <string name="overlay_icon_a11y_required_title">需要无障碍权限</string>
+
+    <string name="overlay_icon_a11y_required_message">悬浮图标需要无障碍权限才能在游戏画面上绘制。\n\n依次前往：设置 → 无障碍 → 已下载的应用 → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → 启用。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ACCESSIBILITY-REQUIRED ALERT
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="a11y_required_alert_title">需要无障碍权限</string>
+
+    <string name="a11y_required_displays_message">切换屏幕或同时翻译多个屏幕需要无障碍权限。它能让 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 截取任意显示屏，而不仅仅是主屏幕。</string>
+
+    <string name="a11y_required_hotkey_message">设置快捷键需要无障碍权限。它能让 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 检测你在游戏时按下的按键。</string>
+
+    <string name="a11y_required_enhanced_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 使用这些增强控制来改善自动翻译体验。</string>
+
+    <string name="requires_android_11_title">需要 Android 11</string>
+    <string name="requires_android_11_message">此功能需要 Android 11 或更高版本。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ENHANCED AUTO-TRANSLATE ROW
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="enhanced_auto_translate_title">增强自动翻译</string>
+
+    <string name="enhanced_auto_translate_subtitle_off">更易读、更灵敏、更稳定。需要无障碍权限。</string>
+
+    <string name="enhanced_auto_translate_subtitle_on">已启用</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ANKI INTEGRATION
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_deck_picker_empty">未找到牌组</string>
+
+    <string name="anki_deck_picker_loading">正在加载牌组…</string>
+
+    <string name="anki_card_type_picker_loading">正在加载卡片类型…</string>
+
+    <string name="anki_not_installed_title">创建抽认卡以供复习</string>
+
+    <string name="anki_not_installed_message">保存你在游戏中发现的单词，稍后再复习。\n\n<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 可以将翻译后的句子、词汇和截图直接保存到 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>——一款免费的间隔重复抽认卡应用。</string>
+
+    <string name="anki_not_installed_get">获取 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_section_description">你是语言学习者吗？从不认识的单词和句子创建<xliff:g id="target_language" example="English">%1$s</xliff:g>抽认卡，稍后使用 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>（一款免费且热门的间隔重复抽认卡应用）来复习。</string>
+
+    <string name="anki_permission_rationale_title">需要 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 权限</string>
+
+    <string name="anki_permission_rationale_message">要向 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 添加抽认卡，<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 需要访问 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 的权限。\n\n点按“继续”以授予此权限。</string>
+
+    <string name="btn_continue">继续</string>
+
+    <string name="anki_permission_denied">权限被拒绝——请在 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 设置中授予</string>
+
+    <string name="anki_no_deck_selected">在 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 中未找到牌组</string>
+
+    <string name="anki_added_no_audio">已添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>（音频不可用）</string>
+
+    <string name="anki_added_success">已添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="anki_adding_in_progress">正在添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>…</string>
+
+    <string name="anki_send_failed_title">无法添加卡片</string>
+
+    <string name="anki_send_failed_message"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 未接受该卡片。请确保 <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g> 正在运行，然后重试。</string>
+
+    <string name="anki_mode_sentence">句子</string>
+
+    <string name="anki_mode_word">单词</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ANKI REVIEW SHEET
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_sheet_title_new_card">新建 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 卡片</string>
+
+    <string name="anki_deck_row_label">牌组</string>
+
+    <string name="anki_deck_row_empty">选择牌组</string>
+
+    <string name="anki_deck_label_format">牌组：<xliff:g id="deck_name" example="Vocabulary">%1$s</xliff:g></string>
+
+    <string name="anki_save_button_label">保存 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 卡片</string>
+
+    <string name="anki_group_original">原文</string>
+
+    <string name="anki_group_translation">译文</string>
+
+    <string name="anki_group_words_count">卡片内的单词 · <xliff:g id="words_count" example="3">%d</xliff:g></string>
+
+    <string name="anki_group_definitions">释义</string>
+
+    <string name="anki_group_screenshot">截图</string>
+
+    <string name="anki_words_helper">这些单词将包含在 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 卡片中。点按单词可在卡片中高亮显示。点按 × 可将其从卡片中移除。</string>
+
+    <string name="anki_translation_error">无法翻译</string>
+
+    <string name="anki_word_remove_content_description">从卡片中移除</string>
+
+    <string name="anki_screenshot_remove_content_description">移除截图</string>
+
+    <string name="anki_group_audio">音频</string>
+
+    <string name="anki_audio_preview_content_description">预览音频</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CARD TYPE PICKER + FIELD MAPPING
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_card_type_row_label">卡片类型</string>
+
+    <string name="anki_card_type_row_empty">默认（<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>）</string>
+
+    <string name="anki_card_type_pick_title">选择卡片类型</string>
+
+    <string name="anki_card_type_no_models">在 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 中未找到卡片类型</string>
+
+    <string name="anki_card_type_stale_fallback">卡片类型已不存在，将使用默认类型</string>
+
+    <string name="anki_card_type_section_default">默认</string>
+
+    <string name="anki_card_type_section_custom">卡片类型</string>
+
+    <string name="anki_card_type_edit_mapping_row_label">编辑字段映射</string>
+
+    <string name="anki_field_mapping_title">配置 <xliff:g id="card_type_name" example="Lapis sentence">%1$s</xliff:g></string>
+
+    <string name="anki_field_mapping_save">保存</string>
+
+    <string name="anki_field_mapping_unconfigured">发送前请为此卡片类型配置字段</string>
+
+    <string name="anki_sort_field_empty">请为“<xliff:g id="sort_field_name" example="Expression">%1$s</xliff:g>”映射一个值——<xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 使用此字段来识别笔记，空值会在发送时被视为重复而遭拒。</string>
+
+    <string name="anki_models_unavailable">无法连接 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 以查询卡片类型。请稍后重试。</string>
+
+    <string name="anki_card_type_basic_no_mapping">基础卡片类型不需要字段映射——“正面”和“背面”会根据你保存的是单词还是句子自动填充。</string>
+
+    <string name="anki_content_source_pick_title">映射“<xliff:g id="field_name" example="Expression">%1$s</xliff:g>”</string>
+
+    <string name="anki_long_press_footer">专业提示：如果你想不经编辑直接创建卡片，可长按任何通常会带你进入 <xliff:g id="brand_anki" example="anki">anki</xliff:g> 卡片创建页面的按钮</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CONTENT SOURCE LABELS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_content_none">空</string>
+    <string name="anki_content_none_desc">不发送任何内容——<xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 字段保持为空。</string>
+
+    <string name="anki_content_expression">单词／词头</string>
+    <string name="anki_content_expression_desc">高亮单词的词典形式，不带括号。示例：聞く</string>
+
+    <string name="anki_content_expression_furigana">单词／词头（带振假名）</string>
+    <string name="anki_content_expression_furigana_desc">带逐字振假名括注的词典形式，适用于通过 \{\{furigana:\}\} 渲染的字段。示例：聞[き]く</string>
+
+    <string name="anki_content_reading">单词读音（假名）</string>
+    <string name="anki_content_reading_desc">高亮单词的纯假名读音。示例：きく</string>
+
+    <string name="anki_content_sentence">原文句子</string>
+    <string name="anki_content_sentence_desc">原文句子，高亮单词以粗体显示。示例：友達に<b>聞いた</b></string>
+
+    <string name="anki_content_sentence_furigana">原文句子（带振假名）</string>
+    <string name="anki_content_sentence_furigana_desc">带逐字振假名括注的原文句子，适用于通过 \{\{furigana:\}\} 渲染的字段。示例：友達[ともだち]に<b>聞[き]いた</b></string>
+
+    <string name="anki_content_sentence_translation">翻译后的句子</string>
+    <string name="anki_content_sentence_translation_desc">原文句子在你所选目标语言中的翻译。</string>
+
+    <string name="anki_content_definition">释义</string>
+    <string name="anki_content_definition_desc">高亮单词的词典释义，以 HTML 格式呈现。</string>
+
+    <string name="anki_content_examples">例句</string>
+    <string name="anki_content_examples_desc">高亮单词的 <xliff:g id="brand_tatoeba" example="Tatoeba">Tatoeba</xliff:g> 例句（如有）。</string>
+
+    <string name="anki_content_picture">截图</string>
+    <string name="anki_content_picture_desc">游戏画面的截图，包裹在 &lt;img&gt; 标记中，可直接用于图片／截图字段。</string>
+
+    <string name="anki_content_word_audio">单词音频</string>
+    <string name="anki_content_word_audio_desc">单词的文字转语音音频，可用于单词音频字段。</string>
+
+    <string name="anki_content_sentence_audio">句子音频</string>
+    <string name="anki_content_sentence_audio_desc">句子的文字转语音音频，可用于句子音频字段。</string>
+
+    <string name="anki_content_frequency">词频星级</string>
+    <string name="anki_content_frequency_desc">以星星表示的高亮单词词频评级。示例：★★★</string>
+
+    <string name="anki_content_part_of_speech">词性</string>
+    <string name="anki_content_part_of_speech_desc">高亮单词的词性标签（仅限单词模式卡片）。示例：noun</string>
+
+    <string name="anki_content_words_table">单词列表（句子卡片）</string>
+    <string name="anki_content_words_table_desc"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 在句子中检测到的所有单词的格式化列表，包含读音和释义。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CARD-TYPE STATE FLAGS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_content_flag_vocabulary">词汇卡片标记 (x)</string>
+    <string name="anki_content_flag_vocabulary_desc">仅在单词模式发送时输出“x”——用于 <xliff:g id="brand_migaku" example="Migaku">Migaku</xliff:g> 的“Is Vocabulary Card”等模板字段。</string>
+
+    <string name="anki_content_flag_sentence">句子卡片标记 (x)</string>
+    <string name="anki_content_flag_sentence_desc">仅在句子模式发送时输出“x”——用于 <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> 或 <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> 的“IsSentenceCard”等模板字段。</string>
+
+    <string name="anki_content_flag_targeted_sentence">目标句子卡片标记 (x)</string>
+    <string name="anki_content_flag_targeted_sentence_desc">仅在含高亮目标单词的句子发送时输出“x”——用于 <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> 的“IsTargetedSentenceCard”。</string>
+
+    <string name="anki_content_flag_always_on">始终开启标记 (x)</string>
+    <string name="anki_content_flag_always_on_desc">始终输出“x”。用于你希望无条件启用的模板字段。</string>
+
+    <string name="anki_content_section_content">内容</string>
+    <string name="anki_content_section_flag">卡片类型标记</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC CHROME
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="cd_back">返回</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         APPEARANCE — theme mode and accent picker
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="pt_theme_mode_system">跟随系统</string>
+    <string name="pt_theme_mode_dark">深色</string>
+    <string name="pt_theme_mode_light">浅色</string>
+
+    <string name="pt_accent_label">强调色</string>
+
+    <string name="pt_accent_coral">珊瑚色</string>
+    <string name="pt_accent_amber">琥珀色</string>
+    <string name="pt_accent_lime">青柠色</string>
+    <string name="pt_accent_mint">薄荷色</string>
+    <string name="pt_accent_teal">蓝绿色</string>
+    <string name="pt_accent_aqua">水蓝色</string>
+    <string name="pt_accent_sky">天蓝色</string>
+    <string name="pt_accent_steel">钢蓝色</string>
+    <string name="pt_accent_violet">紫罗兰色</string>
+    <string name="pt_accent_orchid">兰花紫</string>
+    <string name="pt_accent_rose">玫瑰色</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         DEEPL — detail screen
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="deepl_settings_save">保存</string>
+
+    <string name="deepl_settings_close_cd">关闭</string>
+
+    <string name="deepl_settings_get_key_title">获取免费 <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> API 密钥</string>
+
+    <string name="deepl_settings_get_key_subtitle">免费方案每月包含 50 万个字符，但注册时需要信用卡</string>
+
+    <string name="deepl_settings_about"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> 是一项以高质量输出著称的翻译服务，尤其擅长欧洲语言。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC LLM BACKEND SETTINGS (OpenAI / Gemini / DeepSeek)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="llm_backend_api_key_label">API 密钥</string>
+
+    <string name="llm_backend_model_label">模型</string>
+
+    <string name="llm_backend_get_key_title_fmt">获取 <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> API 密钥</string>
+
+    <string name="llm_backend_model_custom_entry">自定义…</string>
+
+    <string name="llm_model_picker_loading">正在加载模型…</string>
+
+    <string name="llm_model_picker_fetch_failed">无法获取模型列表。请检查 API 密钥，或通过“自定义…”输入模型 ID。</string>
+
+    <string name="llm_backend_invalid_key_alert_title">无法验证 API 密钥</string>
+
+    <string name="llm_backend_invalid_key_alert_message_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> 拒绝了你输入的密钥。请在 <xliff:g id="dev_console_url" example="platform.openai.com">%2$s</xliff:g> 仔细核对后重试。</string>
+
+    <string name="llm_backend_invalid_key_alert_button">好的</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS FOOTERS (Translation Service sections)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tr_service_order_footer">翻译会按所示顺序依次尝试每项已启用的服务，当某项不可用时切换到下一项。在线翻译服务会接收截取到的文字。启用前请查看各提供商的隐私政策。</string>
+
+    <string name="tr_service_offline_footer">在线翻译不可用时，离线翻译将作为后备方案。<xliff:g id="brand_mlkit" example="MLKit">MLKit</xliff:g> 翻译质量较差，但其他选项可能非常缓慢且耗费资源，请谨慎将它们用于自动翻译。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         PER-BACKEND STATUS LINE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tr_service_status_loading">正在查询用量…</string>
+
+    <string name="tr_service_status_quota_fmt">已使用 <xliff:g id="used" example="120,345">%1$s</xliff:g> / <xliff:g id="total" example="500,000">%2$s</xliff:g> 个字符</string>
+
+    <string name="tr_service_status_quota_with_reset_fmt"><xliff:g id="quota_line" example="120,345 / 500,000 characters used">%1$s</xliff:g> · <xliff:g id="reset_date" example="Jun 1">%2$s</xliff:g>重置</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         BACKEND QUALITY / SPEED LABELS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tr_service_quality_bad">质量差</string>
+    <string name="tr_service_quality_okay">质量一般</string>
+    <string name="tr_service_quality_good">质量良好</string>
+    <string name="tr_service_quality_better">质量更佳</string>
+
+    <string name="tr_service_speed_very_slow">非常慢</string>
+    <string name="tr_service_speed_slow">慢</string>
+    <string name="tr_service_speed_okay">速度一般</string>
+    <string name="tr_service_speed_fast">快</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         OFFLINE BACKEND ROW
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="offline_backend_quality_label">质量</string>
+    <string name="offline_backend_speed_label">速度</string>
+    <string name="offline_backend_ram_label">内存</string>
+    <string name="offline_backend_disk_label">存储</string>
+
+    <!-- ── Firefox Translations (Bergamot) offline row ──────────────── -->
+    <string name="bergamot_status_downloading">正在下载… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%2$s</xliff:g></string>
+
+    <string name="bergamot_download_failed">无法下载 Firefox Translations 模型</string>
+
+    <string name="bergamot_disable_title">关闭 Firefox Translations？</string>
+
+    <string name="bergamot_disable_message">将停止离线翻译此语言对。你可以保留已下载的模型，或删除它以释放空间。</string>
+
+    <string name="bergamot_disable_keep">仅关闭</string>
+
+    <string name="bergamot_disable_delete">删除模型</string>
+
+    <string name="bergamot_warmup_downloading">正在下载离线模型… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%2$s</xliff:g></string>
+
+    <string name="bergamot_warmup_downloading_multi">正在下载离线模型（<xliff:g id="file_index" example="1">%1$d</xliff:g>/<xliff:g id="file_count" example="2">%2$d</xliff:g>）… <xliff:g id="bytes_so_far" example="12 MB">%3$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%4$s</xliff:g></string>
+    <string name="bergamot_pair_unsupported">当前语言对不受支持</string>
+
+    <string name="offline_backend_downloaded_cd">已下载</string>
+    <string name="offline_backend_not_downloaded_cd">未下载</string>
+    <string name="offline_backend_enabled_cd">已启用</string>
+    <string name="offline_backend_disabled_cd">已禁用</string>
+
+    <string name="offline_backend_row_a11y_fmt"><xliff:g id="title" example="Qwen 2.5 1.5B">%1$s</xliff:g>。质量：<xliff:g id="quality" example="Good quality">%2$s</xliff:g>。速度：<xliff:g id="speed" example="Okay speed">%3$s</xliff:g>。需要内存：<xliff:g id="ram" example="4 GB">%4$s</xliff:g>。占用存储：<xliff:g id="disk_size" example="1.2 GB">%5$s</xliff:g>。<xliff:g id="downloaded_state" example="Downloaded">%6$s</xliff:g>。<xliff:g id="enabled_state" example="Enabled">%7$s</xliff:g>。</string>
+
+    <string name="offline_backend_row_a11y_no_speed_fmt"><xliff:g id="title" example="ML Kit">%1$s</xliff:g>。质量：<xliff:g id="quality" example="Bad quality">%2$s</xliff:g>。需要内存：<xliff:g id="ram" example="&lt; 1 GB">%3$s</xliff:g>。占用存储：<xliff:g id="disk_size" example="~30 MB">%4$s</xliff:g>。<xliff:g id="downloaded_state" example="Downloaded">%5$s</xliff:g>。<xliff:g id="enabled_state" example="Enabled">%6$s</xliff:g>。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC DOWNLOAD UI
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="model_download_extracting">正在解压…</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ON-DEVICE LLM TRANSLATION MODELS (MNN-backed)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- ── Qwen 2.5 1.5B ──────────────────────────────────────────── -->
+
+    <string name="qwen_mnn_status_not_downloaded">需要内存 <xliff:g id="ram" example="4 GB">%1$s</xliff:g>，占用存储 <xliff:g id="disk_size" example="1.2 GB">%2$s</xliff:g></string>
+
+    <string name="qwen_mnn_status_downloaded_disabled">已下载但已禁用（占用存储 <xliff:g id="disk_size" example="1.2 GB">%1$s</xliff:g>）</string>
+
+    <string name="qwen_mnn_status_ready">需要内存 <xliff:g id="ram" example="4 GB">%1$s</xliff:g>，占用存储 <xliff:g id="disk_size" example="1.2 GB">%2$s</xliff:g></string>
+
+    <string name="qwen_mnn_status_downloading">正在下载… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="1.2 GB">%2$s</xliff:g></string>
+
+    <string name="qwen_mnn_status_verifying">正在验证下载…</string>
+
+    <string name="qwen_mnn_disable_title">禁用 <xliff:g id="brand_qwen" example="Qwen">Qwen</xliff:g>（MNN）？</string>
+
+    <string name="qwen_mnn_disable_message">已安装该 <xliff:g id="disk_size" example="1.2 GB">%1$s</xliff:g> 模型。你可以保留以备后用，或删除它以释放空间。</string>
+
+    <string name="qwen_mnn_download_failed">下载失败：<xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="qwen_mnn_metered_warning_title">在按流量计费的网络上下载？</string>
+
+    <string name="qwen_mnn_metered_warning_message"><xliff:g id="brand_qwen" example="Qwen 2.5 1.5B (MNN)">Qwen 2.5 1.5B (MNN)</xliff:g> 大小为 <xliff:g id="download_size" example="1.2 GB">%1$s</xliff:g>。此网络被标记为按流量计费。是否继续？</string>
+
+    <string name="qwen_mnn_disable_keep">仅禁用</string>
+    <string name="qwen_mnn_disable_delete">删除模型</string>
+
+    <!-- ── Qwen 3.5 2B ────────────────────────────────────────────── -->
+
+    <string name="qwen35_2b_mnn_status_not_downloaded">需要内存 <xliff:g id="ram" example="6 GB">%1$s</xliff:g>，占用存储 <xliff:g id="disk_size" example="1.3 GB">%2$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_status_downloaded_disabled">已下载但已禁用（占用存储 <xliff:g id="disk_size" example="1.3 GB">%1$s</xliff:g>）</string>
+
+    <string name="qwen35_2b_mnn_status_ready">需要内存 <xliff:g id="ram" example="6 GB">%1$s</xliff:g>，占用存储 <xliff:g id="disk_size" example="1.3 GB">%2$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_status_downloading">正在下载… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="1.3 GB">%2$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_status_verifying">正在验证下载…</string>
+
+    <string name="qwen35_2b_mnn_disable_title">禁用 <xliff:g id="brand_qwen" example="Qwen 3.5 2B">Qwen 3.5 2B</xliff:g>？</string>
+
+    <string name="qwen35_2b_mnn_disable_message">已安装该 <xliff:g id="disk_size" example="1.3 GB">%1$s</xliff:g> 模型。你可以保留以备后用，或删除它以释放空间。</string>
+
+    <string name="qwen35_2b_mnn_download_failed">下载失败：<xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_metered_warning_title">在按流量计费的网络上下载？</string>
+
+    <string name="qwen35_2b_mnn_metered_warning_message"><xliff:g id="brand_qwen" example="Qwen 3.5 2B">Qwen 3.5 2B</xliff:g> 大小为 <xliff:g id="download_size" example="1.3 GB">%1$s</xliff:g>。此网络被标记为按流量计费。是否继续？</string>
+
+    <string name="qwen35_2b_mnn_disable_keep">仅禁用</string>
+    <string name="qwen35_2b_mnn_disable_delete">删除模型</string>
+
+    <string name="deprecated_badge_label">已弃用</string>
+
+    <!-- ── Gemma 4 E2B ────────────────────────────────────────────── -->
+
+    <string name="gemma_e2b_mnn_status_not_downloaded">需要内存 <xliff:g id="ram" example="6 GB">%1$s</xliff:g>，占用存储 <xliff:g id="disk_size" example="2.1 GB">%2$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_status_downloaded_disabled">已下载但已禁用（占用存储 <xliff:g id="disk_size" example="2.1 GB">%1$s</xliff:g>）</string>
+
+    <string name="gemma_e2b_mnn_status_ready">需要内存 <xliff:g id="ram" example="6 GB">%1$s</xliff:g>，占用存储 <xliff:g id="disk_size" example="2.1 GB">%2$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_status_downloading">正在下载… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="2.1 GB">%2$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_status_verifying">正在验证下载…</string>
+
+    <string name="gemma_e2b_mnn_disable_title">禁用 <xliff:g id="brand_gemma" example="Gemma 4 E2B">Gemma 4 E2B</xliff:g>？</string>
+
+    <string name="gemma_e2b_mnn_disable_message">已安装该 <xliff:g id="disk_size" example="2.1 GB">%1$s</xliff:g> 模型。你可以保留以备后用，或删除它以释放空间。</string>
+
+    <string name="gemma_e2b_mnn_download_failed">下载失败：<xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_metered_warning_title">在按流量计费的网络上下载？</string>
+
+    <string name="gemma_e2b_mnn_metered_warning_message"><xliff:g id="brand_gemma" example="Gemma 4 E2B">Gemma 4 E2B</xliff:g> 大小为 <xliff:g id="download_size" example="2.1 GB">%1$s</xliff:g>。此网络被标记为按流量计费。是否继续？</string>
+
+    <string name="gemma_e2b_mnn_disable_keep">仅禁用</string>
+    <string name="gemma_e2b_mnn_disable_delete">删除模型</string>
+
+    <!-- ── Tencent Hunyuan-MT 1.5 1.8B ────────────────────────────── -->
+
+    <string name="hymt_status_not_downloaded">需要内存 <xliff:g id="ram" example="4 GB">%1$s</xliff:g>，占用存储 <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g></string>
+
+    <string name="hymt_status_downloaded_disabled">已下载但已禁用（占用存储 <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g>）</string>
+
+    <string name="hymt_status_ready">需要内存 <xliff:g id="ram" example="4 GB">%1$s</xliff:g>，占用存储 <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g></string>
+
+    <string name="hymt_status_downloading">正在下载… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="1.5 GB">%2$s</xliff:g></string>
+
+    <string name="hymt_status_verifying">正在验证下载…</string>
+
+    <string name="hymt_disable_title">禁用 <xliff:g id="brand_hunyuan" example="Hunyuan-MT">Hunyuan-MT</xliff:g>？</string>
+
+    <string name="hymt_disable_message">已安装该 <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> 模型。你可以保留以备后用，或删除它以释放空间。</string>
+
+    <string name="hymt_download_failed">下载失败：<xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="hymt_metered_warning_title">在按流量计费的网络上下载？</string>
+
+    <string name="hymt_metered_warning_message"><xliff:g id="brand_hunyuan15" example="Hunyuan-MT 1.5">Hunyuan-MT 1.5</xliff:g> 大小为 <xliff:g id="download_size" example="1.5 GB">%1$s</xliff:g>。此网络被标记为按流量计费。是否继续？</string>
+
+    <string name="hymt_disable_keep">仅禁用</string>
+    <string name="hymt_disable_delete">删除模型</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         HUNYUAN-MT LEGAL ATTESTATION (legal text — translated faithfully)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="hymt_legal_title">法律声明及区域限制</string>
+
+    <string name="hymt_legal_message"><xliff:g id="brand_tencent" example="Tencent">Tencent</xliff:g> 的 <xliff:g id="brand_hunyuan15" example="Hunyuan-MT 1.5">Hunyuan-MT 1.5</xliff:g> 模型依据 <xliff:g id="license_name" example="Tencent HY Community License Agreement">Tencent HY Community License Agreement</xliff:g> 授权。该许可证排除在欧盟、英国和韩国境内的使用。\n\n点按“同意”即表示你声明并保证：\n\n(1) 你目前并未居住于或身处欧盟、英国或韩国境内。\n\n(2) 你不会使用本模型的输出来改进任何其他 AI 模型（依据本许可证的 <xliff:g id="license_section" example="§5(b)">§5(b)</xliff:g>）。</string>
+
+    <string name="hymt_legal_agree">同意并启用 <xliff:g id="brand_hunyuan" example="Hunyuan">Hunyuan</xliff:g></string>
+
+    <string name="hymt_legal_cancel">取消</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         COLD-LAUNCH MIGRATION ALERT
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="legacy_engines_removed_title">离线翻译已更新</string>
+    <string name="legacy_engines_removed_message">你的旧版离线翻译器（<xliff:g id="brand_qwen" example="Qwen">Qwen</xliff:g> 和 <xliff:g id="brand_translategemma" example="TranslateGemma">TranslateGemma</xliff:g>）已被移除，并替换为更快的基于 MNN 的版本。打开“设置”以启用新的翻译器。</string>
+    <string name="legacy_engines_removed_button_settings">设置</string>
+    <string name="legacy_engines_removed_button_cancel">取消</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         LLM HARDWARE-UNSUPPORTED STATUS LINES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="llm_hardware_unsupported_arm64">此设备不支持（需要 arm64 CPU）</string>
+
+    <string name="llm_hardware_unsupported_ram">此设备不支持（至少需要 <xliff:g id="min_ram_gb" example="4">%1$d</xliff:g> GB 内存）</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         PRE-TOGGLE LOW-MEMORY GATE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="llm_low_memory_title">可用内存不足</string>
+
+    <string name="llm_low_memory_message"><xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> 运行时大约需要 <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g> 的可用内存。目前仅有 <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g> 可用。\n\n请关闭其他应用以释放内存，或在此模型不适合你的设备时取消。</string>
+
+    <string name="llm_low_memory_recheck">重新检查内存</string>
+
+    <string name="llm_low_memory_start_anyway">仍然启动</string>
+
+    <string name="llm_low_memory_delete">删除模型</string>
+
+    <string name="llm_low_memory_cancel">取消</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         WARNING-TONE LLM STATUS LINE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="llm_status_low_memory_badge">内存不足——翻译正在使用后备方案</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING-ICON MENU WARNING PILL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="degraded_warning_offline">离线——翻译质量已降低</string>
+    <string name="degraded_warning_low_memory">内存不足——翻译质量已降低</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MAIN SCREEN — bottom-bar and overflow-menu items
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="nav_settings">设置</string>
+
+    <string name="nav_regions">区域</string>
+
+    <string name="live_mode_auto_label">自动</string>
+
+    <string name="live_mode_pause_label">暂停</string>
+
+    <string name="live_mode_auto_translate_label">自动翻译</string>
+
+    <string name="live_mode_pause_auto_label">暂停自动</string>
+
+    <string name="live_mode_auto_with_hint">自动<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <string name="menu_capture_region">截取区域</string>
+
+    <string name="menu_translations">翻译记录</string>
+
+    <string name="menu_close">关闭</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC BUTTON LABELS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="btn_save">保存</string>
+
+    <string name="btn_cancel">取消</string>
+
+    <string name="btn_clear">清除</string>
+
+    <string name="btn_ok">好的</string>
+
+    <string name="btn_not_now">暂不</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CUSTOM-REGION SHEET
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="btn_save_to_list">保存到列表</string>
+
+    <string name="custom_region_edit_title">编辑<xliff:g id="region_label" example="Dialogue box">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         REGION PICKER SHEET
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="region_picker_editing_title">编辑区域</string>
+
+    <string name="region_default_full_screen">全屏</string>
+
+    <string name="region_label_current_capture">当前截取区域</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MAIN-SCREEN BIG TRANSLATE BUTTON
+         (prefix is joined to the region label by code with a space)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="translate_button_prefix_translate">翻译</string>
+
+    <string name="translate_button_prefix_reload">重新翻译</string>
+
+    <string name="translate_button_subtitle_hold_to_hide_translations">长按以在游戏画面上隐藏翻译</string>
+
+    <string name="translate_button_subtitle_hold_to_show_translations_instead_of_hint">长按以显示翻译而非<xliff:g id="hint_label" example="furigana">%1$s</xliff:g></string>
+
+    <string name="translate_button_subtitle_hold_to_show_hint">长按以在游戏画面上显示<xliff:g id="hint_label" example="furigana">%1$s</xliff:g></string>
+
+    <string name="translate_button_subtitle_hold_to_show_translations">长按以在游戏画面上显示翻译</string>
+
+    <string name="hint_label_pinyin_lower">拼音</string>
+    <string name="hint_label_furigana_lower">振假名</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING ICON LONG-PRESS MENU
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="floating_icon_close_label_turn_off">关闭</string>
+
+    <string name="floating_icon_close_label_hide">隐藏</string>
+
+    <string name="floating_menu_btn_capture_region">截取\n区域</string>
+
+    <string name="floating_menu_drag_instruction">拖动手指以截取特定区域</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         DEEPL SETTINGS — API-key field label
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="deepl_api_key_field_label"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> API 密钥</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         AUTO-TRANSLATE DIALOG
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_overlay_mode_title">叠加层模式</string>
+
+    <string name="settings_overlay_mode_subtitle">在自动模式或长按预览时显示哪些叠加内容。</string>
+
+    <string name="settings_capture_interval_title">截取间隔</string>
+
+    <string name="settings_capture_interval_seconds_suffix">秒</string>
+
+    <string name="settings_capture_interval_hint">在自动翻译期间截取游戏画面的频率。最短 <xliff:g id="min_seconds" example="1">%1$s</xliff:g> 秒。</string>
+
+    <string name="overlay_mode_option_translation">翻译</string>
+
+    <string name="overlay_mode_option_furigana">振假名</string>
+
+    <string name="overlay_mode_option_pinyin">拼音</string>
+
+    <string name="settings_hide_overlays_during_auto_mode">在自动模式下隐藏叠加层</string>
+
+    <string name="settings_hide_overlays_ignored_multi_display">选择多个显示屏时此项被忽略——叠加层会在每个屏幕上渲染。</string>
+
+    <string name="settings_touches_refresh_title">触摸屏幕刷新翻译</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         HOTKEY SETUP DIALOG
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="dialog_hotkey_setup_title">设置快捷键</string>
+
+    <string name="dialog_hotkey_setup_instruction">按住按键 2 秒</string>
+
+    <string name="dialog_hotkey_setup_countdown">按住 <xliff:g id="remaining_seconds" example="1.4">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION-RESULT SCREEN — toolbar + per-row buttons
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="cd_translation_result_back">返回</string>
+
+    <string name="cd_copy_translation">复制译文</string>
+
+    <string name="cd_toggle_translation_visibility">切换译文可见性</string>
+
+    <string name="cd_toggle_inline_furigana">切换内嵌振假名</string>
+
+    <string name="cd_read_original_aloud">朗读原文</string>
+
+    <string name="cd_edit_original">编辑原文</string>
+
+    <string name="cd_copy_original">复制原文</string>
+
+    <string name="cd_toggle_original_visibility">切换原文可见性</string>
+
+    <string name="cd_toggle_words_visibility">切换单词可见性</string>
+
+    <string name="cd_close">关闭</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         REGION-PICKER ROW — per-row icon contentDescriptions
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="cd_drag_to_reorder">拖动以重新排序</string>
+
+    <string name="cd_delete_region">删除区域</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MAIN ACTIVITY DIALOGS (crash / update / target-pack migration)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="crash_dialog_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 上次发生了崩溃</string>
+
+    <string name="crash_dialog_message">将崩溃报告发送给开发者吗？它包含堆栈跟踪、近期应用日志，以及 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 最近 OCR 识别或查询过的任何文字。不含账户信息。</string>
+
+    <string name="crash_dialog_send">发送</string>
+
+    <string name="crash_dialog_discard">丢弃</string>
+
+    <string name="crash_dialog_later">稍后</string>
+
+    <string name="crash_email_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 崩溃 – v<xliff:g id="version" example="2.2.0">%1$s</xliff:g></string>
+
+    <string name="crash_email_body">重现步骤：\n\n（可选——描述发生此问题时你正在进行的操作。）\n\n设备信息已包含在附件中。</string>
+
+    <string name="update_dialog_title">有可用更新</string>
+
+    <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> 已在 <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> 上发布。</string>
+
+    <string name="update_dialog_view_release">查看新版本</string>
+
+    <string name="update_dialog_skip">跳过此版本</string>
+
+    <string name="update_dialog_ask_again_later">稍后再问</string>
+
+    <string name="toast_no_browser_available">没有可用的浏览器</string>
+
+    <string name="target_pack_migration_title"><xliff:g id="target_language" example="Spanish">%1$s</xliff:g>释义现已可用</string>
+
+    <string name="target_pack_migration_message">现已提供<xliff:g id="target_language" example="Spanish">%1$s</xliff:g>释义包。是否下载它，以便用<xliff:g id="target_language2" example="Spanish">%2$s</xliff:g>而非英语显示单词释义？</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         OVERLAY UI CONTROLLER — confirmation dialogs
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="overlay_turn_off_title">关闭 <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g>？</string>
+
+    <string name="overlay_turn_off_message">在 <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> 应用中重新开启</string>
+
+    <string name="overlay_hide_controls_title">隐藏 <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> 游戏画面控件？</string>
+
+    <string name="overlay_hide_controls_message">“暂时隐藏”会在你下次打开 <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> 时让它重新出现。“关闭”会将其停用，直到你在设置中重新启用。</string>
+
+    <string name="overlay_hide_for_now">暂时隐藏</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         LANGUAGE PACK / TARGET-PACK INSTALLER DIALOGS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="install_downloading_generic">正在下载</string>
+
+    <string name="install_downloading_with_bytes">正在下载… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="84 MB">%2$s</xliff:g></string>
+
+    <string name="lang_setup_downloading_ocr_model">正在下载 OCR 模型… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="47 MB">%2$s</xliff:g></string>
+
+    <string name="install_downloading_definitions">正在下载释义</string>
+
+    <string name="install_downloading_definitions_with_bytes">正在下载释义… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="84 MB">%2$s</xliff:g></string>
+
+    <string name="install_downloading_translation_model">正在下载翻译模型</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — section group headers
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_header_auto_translate">自动翻译</string>
+    <string name="settings_header_hotkeys">快捷键</string>
+    <string name="settings_header_capture_display">截取显示屏</string>
+    <string name="settings_header_online_translations">在线翻译</string>
+    <string name="settings_header_offline_translations">离线翻译</string>
+    <string name="settings_header_ocr">图像转文字（OCR）</string>
+    <string name="settings_ocr_note_builtin">内置</string>
+
+    <string name="settings_ocr_default_badge">默认</string>
+
+    <string name="settings_ocr_footer">如果 PlayTranslate 难以准确读取屏幕文字，请尝试不同的选项。不同的 OCR 工具可能更适合不同的字体类型或文字方向。</string>
+
+    <string name="settings_ocr_delete_cd">删除 <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
+
+    <string name="settings_ocr_delete_title">删除 <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g>？</string>
+
+    <string name="settings_ocr_delete_msg">这将从此设备移除 <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> 模型。你之后可以重新下载。</string>
+
+    <string name="settings_ocr_delete_shared_msg"><xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> 也被以下语言使用。现在删除可释放空间；下次切换到其中之一时会重新下载：\n\n<xliff:g id="languages" example="Chinese">%2$s</xliff:g></string>
+
+    <string name="settings_ocr_delete_confirm">删除</string>
+
+    <string name="settings_ocr_downloading_title">正在下载 <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
+
+    <string name="settings_ocr_downloading_msg">正在开始…</string>
+
+    <string name="settings_ocr_verifying">正在验证…</string>
+
+    <string name="settings_ocr_installing">正在安装…</string>
+
+    <string name="settings_ocr_download_failed">无法下载 OCR 模型。请检查你的网络连接后重试。</string>
+    <string name="settings_header_text_to_speech">文字转语音</string>
+    <string name="settings_header_appearance">外观</string>
+    <string name="settings_header_support">支持</string>
+
+    <string name="settings_header_configure">配置</string>
+    <string name="settings_cell_appearance">外观</string>
+    <string name="settings_cell_hotkeys">快捷键</string>
+    <string name="settings_cell_capture_overlay">截取与叠加层</string>
+    <string name="settings_cell_anki">Anki 抽认卡</string>
+    <string name="settings_cell_translation_services">翻译服务</string>
+    <string name="settings_cell_tts">文字转语音</string>
+
+    <string name="settings_digest_none">无</string>
+    <string name="settings_capture_displays_count"><xliff:g id="count" example="2">%1$d</xliff:g> 台显示屏</string>
+
+    <string name="settings_hotkeys_tile_add">添加图块</string>
+    <string name="settings_hotkeys_none">未设置快捷键</string>
+    <string name="settings_hotkeys_translation">翻译</string>
+    <string name="settings_hotkeys_furigana">振假名</string>
+    <string name="settings_hotkeys_pinyin">拼音</string>
+
+    <string name="settings_anki_digest">牌组 <xliff:g id="deck_name" example="Vocabulary">%1$s</xliff:g> · 卡片类型 <xliff:g id="card_type_name" example="Lapis sentence">%2$s</xliff:g></string>
+    <string name="settings_anki_default">默认</string>
+    <string name="settings_anki_get_app_summary">在 Google Play 免费下载 AnkiDroid</string>
+    <string name="settings_anki_grant_summary">授予权限以使用 AnkiDroid</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Text-to-Speech section
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tts_voice_row_title">语音</string>
+
+    <string name="tts_voice_numbered">语音 <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
+
+    <string name="tts_voice_region_numbered"><xliff:g id="region" example="China">%1$s</xliff:g> <xliff:g id="region_index" example="2">%2$d</xliff:g></string>
+
+    <string name="tts_voice_default">默认</string>
+
+    <string name="tts_voice_default_subtitle">引擎的默认语音</string>
+
+    <string name="tts_voice_needs_download">需要下载</string>
+
+    <string name="tts_no_engine_row_title">设置文字转语音</string>
+
+    <string name="tts_no_engine_row_subtitle">没有可用的语音引擎。点按以添加一个。</string>
+
+    <string name="tts_voice_picker_title">语音</string>
+
+    <string name="tts_voices_section_header"><xliff:g id="language" example="JAPANESE">%1$s</xliff:g>语音</string>
+
+    <string name="tts_no_engine_dialog_title">无文字转语音引擎</string>
+
+    <string name="tts_no_engine_dialog_message">没有可用的文字转语音引擎来朗读单词。请安装一个——或者，如果你的设备已有引擎，请在 Android 的设置中启用它。</string>
+
+    <string name="tts_no_engine_get_google">获取 Google TTS</string>
+
+    <string name="tts_no_engine_open_settings">打开 TTS 设置</string>
+
+    <string name="tts_language_unsupported_dialog_title">不支持该语言</string>
+
+    <string name="tts_language_unsupported_with_engine_message">当前引擎是 <xliff:g id="engine_name" example="Google TTS">%1$s</xliff:g>，但不支持<xliff:g id="source_language" example="Japanese">%2$s</xliff:g>。</string>
+
+    <string name="tts_language_unsupported_unknown_engine_message">当前的文字转语音引擎不支持<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Quick Settings tile row (Android 13+)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="quick_tile_add_row_title">添加快捷设置图块</string>
+
+    <string name="quick_tile_add_row_subtitle">从状态栏切换 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="quick_tile_added_row_subtitle">已添加到快捷设置</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Hotkeys section
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="hotkey_not_set_subtitle">未设置</string>
+
+    <string name="hotkey_show_translations_title">快捷键：长按以显示翻译</string>
+
+    <string name="hotkey_show_translations_dialog_title">显示翻译</string>
+
+    <string name="hotkey_show_hint_title">快捷键：长按以显示<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <string name="hotkey_show_hint_dialog_title">显示<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Capture Display section
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="capture_display_row_label">显示屏 <xliff:g id="display_id" example="0">%1$d</xliff:g>  —  <xliff:g id="display_name" example="Built-in screen">%2$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Online Translations (cooldown / unavailable states)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="backend_status_unavailable_default">不可用</string>
+
+    <string name="backend_cooldown_retry_at">重试于</string>
+
+    <string name="backend_cooldown_retry_on">重试于</string>
+
+    <string name="backend_cooldown_status_fmt"><xliff:g id="description" example="Rate limited">%1$s</xliff:g> · <xliff:g id="retry_word" example="Retry at">%2$s</xliff:g> <xliff:g id="retry_time" example="3:42 PM">%3$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Offline Translations / accessibility numeric labels
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="a11y_quality_label">质量</string>
+
+    <string name="a11y_speed_label">速度：</string>
+
+    <string name="a11y_quality_label_colon">质量：</string>
+
+    <string name="a11y_out_of_5_stars">颗星（满分 5 颗）</string>
+
+    <string name="a11y_speed_label_comma">速度</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Anki rows + deck/card-type fallback labels
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_deck_not_selected_subtitle">未选择</string>
+
+    <string name="anki_settings_get_ankidroid_title">在 Google Play 免费获取 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_settings_grant_access_title">授予 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 访问权限</string>
+
+    <string name="anki_settings_grant_access_subtitle">要向 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 添加抽认卡，<xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> 需要访问 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 的权限。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Support section rows
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_support_discord_title">加入 <xliff:g id="brand_discord" example="Discord">Discord</xliff:g></string>
+
+    <string name="settings_support_discord_subtitle">获取帮助，并与其他玩家交流。</string>
+
+    <string name="settings_support_donate_title">支持 PlayTranslate</string>
+
+    <string name="settings_support_donate_subtitle">一款免费、开源的用心之作。帮助它持续发展。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Debug section (developer-only)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_debug_force_single_screen">强制单屏</string>
+    <string name="settings_debug_show_ocr_boxes">显示 OCR 框</string>
+    <string name="settings_debug_show_detection_log">显示检测日志</string>
+    <string name="settings_debug_log_pinhole">记录实时模式针孔指标</string>
+    <string name="settings_debug_save_ocr_seed">将 OCR 截取保存为种子</string>
+    <string name="settings_debug_log_grouping">记录 OCR 分组决策</string>
+    <string name="settings_debug_force_crash_title">强制崩溃</string>
+
+    <string name="settings_debug_export_logs_title">导出日志</string>
+
+    <string name="settings_debug_export_logs_subtitle">分享近期日志以提交错误报告</string>
+
+    <string name="settings_debug_export_logs_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 日志</string>
+
+    <string name="settings_debug_export_logs_failed">导出日志失败：<xliff:g id="exception_class" example="FileNotFoundException">%1$s</xliff:g></string>
+
+    <string name="settings_footer_version"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> v<xliff:g id="version" example="2.2.0">%2$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC TOASTS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="toast_link_copied">链接已复制</string>
+
+    <string name="toast_copied">已复制</string>
+
+    <string name="toast_no_logs_to_share">没有可分享的日志</string>
+
+    <string name="toast_no_crash_report">没有可发送的崩溃报告</string>
+
+    <string name="share_chooser_share_logs">分享日志</string>
+
+</resources>

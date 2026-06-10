@@ -1,0 +1,36 @@
+# Spanish (values-es) targeted review
+
+*(Targeted hotlist pass + whole-file scans, not a full string-by-string review.)*
+
+## Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| hymt_legal_message | ❌ | "Al tocar Aceptar, declaras y garantizas que:" | "Al tocar \"Acepto: activar Hunyuan\", declaras y garantizas que:" (or at minimum "Al tocar \"Acepto\"") | The button (hymt_legal_agree) is **"Acepto: activar Hunyuan"** — there is no "Aceptar" button in this dialog. Same exact-match failure as the other 5 languages. Everything else in the legal block is solid: §5(b) kept, "la Unión Europea, el Reino Unido y Corea del Sur" kept, "declaras y garantizas" carries the affirm-and-warrant force, and clause (1) "No resides ni te encuentras actualmente en…" covers both residing and located with a single clean negation. |
+| settings_header_ocr | ⚠️ | "Imagen a texto (OCR)" | "Reconocimiento de texto (OCR)" | "Imagen a texto" is a calque of "Image-to-text"; not idiomatic as a section header. |
+| status_idle | ⚠️ | "Toca Traducir para capturar la pantalla del juego" | "Toca \"Traducir\" para capturar la pantalla del juego" | Genuine garden path: *tocar + infinitive* is the idiom "it's someone's turn / it's time to" — "toca traducir" reads as "time to translate." Quoting the button name kills the misreading. Name matches the real button (translate_button_prefix_translate = "Traducir"). |
+| status_hold_hint | ⚠️ | "Mantén presionado Regiones o Auto para ver menús de selección rápida" | "Mantén presionado \"Regiones\" o \"Auto\" para ver menús de selección rápida" | Unmarked button names; "presionado Regiones" also momentarily reads as a failed participle agreement (Regiones is fem. pl.). Quotes fix both. Names do match nav_regions = "Regiones", live_mode_auto_label = "Auto". |
+| tts_language_unsupported_with_engine_message | ⚠️ | "…pero no es compatible con \<lang\>." | "…pero no es compatible con el \<lang\>." | Renders "no es compatible con japonés" — Spanish needs the article with language names ("con el japonés"). Safe fix: all Spanish language names are masculine, so "el" before the placeholder always agrees. Same fix for **tts_language_unsupported_unknown_engine_message** ("…activo no es compatible con el \<lang\>"). |
+| pack_upgrade_mandatory_message | ⚠️ | "Actualiza ahora o elimínala para elegir otro idioma." | "Actualiza ahora o elimina el paquete instalado para elegir otro idioma." | "elimínala" has two feminine candidates — "Esta actualización" (the clause subject) and "la versión instalada". Reading it as "delete the update" is the natural-but-wrong parse. Name the referent explicitly. |
+| settings_capture_interval_hint | ⚠️ | "Mínimo \<n\> segundos." | "Mínimo: \<n\> s." | When the value is "1" this renders "Mínimo 1 segundos" — ungrammatical. The unit abbreviation sidesteps agreement for both "0.5" and "1". (EN has the same flaw, but es shouldn't inherit it.) |
+| accessibility_dialog_message | ⚠️ | "Ajustes → Accesibilidad → Apps instaladas → …" | "Ajustes → Accesibilidad → Aplicaciones descargadas → …" | Stock Android Spanish names that accessibility section «Aplicaciones descargadas»; "Apps instaladas" is inherited from the EN drift ("Installed apps"). Same path in **overlay_icon_a11y_required_message**. "Ajustes → Accesibilidad" itself matches Android es. |
+| quick_tile_add_row_title | 💬 | "Añadir mosaico a Ajustes rápidos" | judge: "Añadir función a Ajustes rápidos" or keep | Cross-locale mix: "mosaico" is the es-419 SystemUI term for tile, while "Ajustes rápidos" is the es-ES name (es-419 says "Configuración rápida"; es-ES QS edit uses "funciones"). Understandable as-is; flagging for awareness, not insisting. Same word in **settings_hotkeys_tile_add** ("Añadir mosaico") — at least it's internally consistent. |
+| floating_menu_btn_capture_region | 💬 | "Región de\ncaptura" | "Capturar\nregión" | First line is 9 chars vs EN's 7 at 9sp under a 54dp icon — borderline. The verb form is also more action-shaped for a menu button, and shorter (8/6). |
+
+Checked clean: live_mode_auto_with_hint ("Auto Furigana" parallels the "Auto" toggle — fine); anki_sort_field_empty ("errores de rechazo por duplicado al enviar" is clear, no gibberish calque); anki_permission_rationale_message / anki_settings_grant_access_subtitle (comma cleanly separates "…a Anki, PlayTranslate necesita…", and "Toca Continuar" matches btn_continue = "Continuar"); label_region_drag_hint (repeating "arrastra el centro para mover todo el cuadro" preserves the middle-only scoping); translate_button_prefix_translate/_reload ("Traducir/Recargar Pantalla completa" composes fine); backend_cooldown_status_fmt + retry_at/retry_on ("Límite… · Reintentar a las 3:42" / "Reintentar el 1 jun" read naturally; only edge case is "a las 1:00" where "a la" would be strictly correct — not worth a string change); onboarding_a11y_title / mp_overlay_permission_title ("Mostrar sobre otras apps" = exact es-419 Android wording; es-ES says "aplicaciones" but this is fine for neutral); crash_dialog_discard ("Descartar" — exactly right, not Cancelar/Eliminar); btn_clear ("Borrar" is the standard Android es term for Clear, correct for wiping a field); nav_settings/live_mode_pause_label/nav_regions/live_mode_auto_label ("Ajustes"/"Pausar"/"Regiones"/"Auto" — all short, agreed Settings term used, no Configuración anywhere).
+
+## Scan results
+- **Apostrophes:** 0 unescaped `'` in the entire file (PCRE negative-lookbehind scan) — clean.
+- **Register:** no `usted`/`ustedes`, no vosotros forms, no -áis/-éis verbs; tú-imperatives throughout; verbs uniform ("toca" ×11, "presionado/presionas" ×12, zero "pulsa") — clean.
+- **Inverted punctuation:** all 21 strings containing ?/! open with ¿/¡ (incl. mid-string questions like "…¿Continuar?"); no ?/! in multi-line continuation content — clean.
+- **Brands:** PlayTranslate ×36, DeepL ×13, AnkiDroid ×15, Anki always as-is; no translated brand forms found — clean.
+- **Regionalisms:** zero hits for ordenador/computadora/coger/enchufar/celular/vosotros — vocabulary is neutral throughout.
+
+## Verdicts
+- **Register:** pass — consistent informal tú, neutral international.
+- **Terminology:** pass — mazo (8, no "baraja"), atajo (7), texto a voz (8, no "síntesis de voz"), captura de pantalla (9), Accesibilidad (14), "red de uso medido" (8, internally consistent and acceptable — Android uses both "de/con uso medido" across surfaces), paquete(s) de idioma consistent ("paquete de definiciones" is a distinct, correct concept).
+- **Android-settings wording:** mostly pass — «Ajustes», «Accesibilidad», «Ajustes rápidos», «Mostrar sobre otras apps» all match; the one drift is «Apps instaladas» vs stock «Aplicaciones descargadas» (inherited from EN).
+- **Inverted punctuation:** pass.
+- **Legal text:** fix required — content and force are correct, but the quoted button name ("Aceptar") doesn't match the actual button ("Acepto: activar Hunyuan").
+- **Truncation:** pass — all 8sp bar labels short; one 💬 on the two-line floating button.
+- **Overall:** **fix-then-ship** — one ❌ (legal button mismatch) and six ⚠️, all one-line string edits; no structural problems. Caveat: this was a targeted hotlist pass, not a full review.

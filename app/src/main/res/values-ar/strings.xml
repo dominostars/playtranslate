@@ -1,0 +1,1180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    PlayTranslate Arabic (ar) localization. RTL — review layouts.
+
+    Auto-localized from res/values/strings.xml. Per-string translator
+    notes live in that default file; this file keeps only section banners.
+
+    Formatting preserved from the source:
+      • <xliff:g …>…</xliff:g> wraps placeholders / brand names — never
+        translate or reorder their inner content (the %1$s, %2$d, … inside).
+      • <b>…</b> renders bold. \n is a newline. \{ \} are escaped braces.
+        Brand names stay untranslated. « » are quote glyphs (no escaping).
+      • translatable="false" entries are omitted and fall back to English.
+      • Plurals use zero/one/two/few/many/other. one & two use the noun
+        form without the numeral (idiomatic Arabic), so they omit %d.
+      • Nav arrows use ← (forward in RTL); ؟ is the Arabic question mark.
+-->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+
+    <!-- ═══ ACTIONS ═══ -->
+
+    <string name="btn_translate_once">الاستخدام دون حفظ</string>
+
+    <!-- ═══ ACCESSIBILITY SERVICE ═══ -->
+
+    <string name="accessibility_service_description">يستخدم <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> خدمة إمكانية الوصول لالتقاط صور لشاشة اللعبة وعرض أيقونة عائمة. لا تتم قراءة أو مراقبة أي محتوى للواجهة أو أحداث إدخال أو بيانات شخصية.</string>
+
+    <string name="accessibility_service_summary">لترجمة نص اللعبة على الشاشة</string>
+
+    <string name="accessibility_dialog_title">إذن إمكانية الوصول مطلوب</string>
+
+    <string name="accessibility_dialog_message">يحتاج <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> إلى إذن إمكانية الوصول لالتقاط صور لشاشة اللعبة على الشاشة العلوية مع بقائه مفتوحًا على الشاشة السفلية.\n\nلا يقرأ <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> أي محتوى للواجهة، ولا يراقب الإدخال، ولا يصل إلى أي بيانات شخصية — فهو يلتقط الصور فقط عند الضغط على ترجمة أو بدء الوضع المباشر.\n\nانتقل إلى الإعدادات ← إمكانية الوصول ← التطبيقات التي تم تنزيلها ← <xliff:g id="app_name3" example="PlayTranslate">PlayTranslate</xliff:g> ← تفعيل.</string>
+
+    <string name="accessibility_dialog_open">فتح إعدادات إمكانية الوصول</string>
+
+    <string name="status_accessibility_needed">فعّل <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> في إعدادات إمكانية الوصول أولاً</string>
+
+    <!-- ═══ QUICK SETTINGS TILE ═══ -->
+
+    <string name="tile_subtitle_a11y_required">تفعيل إمكانية الوصول</string>
+
+    <!-- ═══ STATUS MESSAGES ═══ -->
+
+    <string name="status_idle">اضغط على ترجمة لالتقاط شاشة اللعبة</string>
+
+    <string name="status_hold_hint">اضغط مطولاً على «المناطق» أو «تلقائي» لقوائم الاختيار السريع</string>
+
+    <string name="words_none">لم يتم اكتشاف أي كلمات</string>
+
+    <string name="status_capturing">جارٍ التقاط الشاشة…</string>
+
+    <string name="status_ocr">جارٍ التعرف على النص…</string>
+
+    <string name="status_translating">جارٍ الترجمة…</string>
+
+    <string name="status_no_text">لم يتم اكتشاف نص <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> في «<xliff:g id="region_label" example="Dialogue box">%2$s</xliff:g>»</string>
+
+    <string name="status_error">خطأ: <xliff:g id="error_message" example="Network timeout">%1$s</xliff:g></string>
+
+    <!-- ═══ NOTIFICATION ═══ -->
+
+    <string name="notif_channel_name">التقاط الشاشة</string>
+
+    <string name="notif_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> نشط</string>
+
+    <string name="notif_text">اضغط للعودة إلى <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <!-- ═══ ONBOARDING ═══ -->
+
+    <string name="onboarding_welcome_title">مرحبًا بك في <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>!</string>
+
+    <string name="onboarding_welcome_tagline">تطبيقك المرافق للعب الألعاب بلغات أخرى.</string>
+
+    <string name="onboarding_welcome_body">هل تلعب شيئًا لا تفهمه؟ حوّل النص الموجود على الشاشة إلى ترجمات فورًا.\n\nهل تتعلم لغة؟ تعريفات كلمة بكلمة، وأدلة قراءة (فوريغانا، بينيين)، وبطاقات <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> بضغطة واحدة.</string>
+
+    <string name="onboarding_welcome_row_placeholder">اضغط للاختيار</string>
+
+    <string name="onboarding_welcome_continue">متابعة</string>
+
+    <string name="onboarding_welcome_select_source">اختر لغة اللعبة</string>
+
+    <string name="onboarding_notif_title">السماح بالإشعارات</string>
+
+    <string name="onboarding_notif_body">يتطلب Android من التطبيقات التي تعمل في الخلفية عرض إشعار في شريط الحالة أثناء نشاطها.\n\nلن يرسل هذا أبدًا تنبيهات أو أصواتًا أو لافتات — بل مجرد مؤشر هادئ ودائم يشير إلى أن <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> قيد التشغيل.</string>
+
+    <string name="onboarding_a11y_hint">ابحث عن <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
+
+    <string name="onboarding_a11y_title">العرض فوق التطبيقات الأخرى</string>
+
+    <string name="onboarding_a11y_body">يحتاج <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> إلى العرض فوق التطبيقات الأخرى من أجل:\n• عرض النص المترجَم فوق لعبتك\n• عرض عناصر تحكم شاشة اللعبة\n• البحث عن الكلمات بالسحب فوق نص اللعبة</string>
+
+    <string name="btn_grant_permission">منح الإذن</string>
+
+    <string name="btn_open_a11y_settings">فتح إعدادات إمكانية الوصول</string>
+
+    <string name="btn_open_overlay_settings">فتح الإعدادات</string>
+
+    <string name="restricted_settings_title">السماح بالإعدادات المقيَّدة</string>
+
+    <string name="restricted_settings_message">من صفحة إعدادات Android الخاصة بـ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>، اضغط على زر النقاط الثلاث (⋮) في أعلى اليسار ثم اختر «السماح بالإعدادات المقيَّدة». بعد المصادقة، ستتمكن من تفعيل أذونات إمكانية الوصول.</string>
+
+    <string name="btn_open_app_settings">فتح إعدادات <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <!-- ═══ WORD DETAIL ═══ -->
+
+    <string name="word_detail_not_found">لم يتم العثور على مدخل في القاموس لـ «<xliff:g id="word" example="聞く">%1$s</xliff:g>»</string>
+
+    <string name="word_detail_more_examples">المزيد من الأمثلة</string>
+
+    <string name="word_detail_more_examples_loading">جارٍ تحميل الأمثلة…</string>
+
+    <string name="word_detail_more_examples_error">تعذّر تحميل الأمثلة.</string>
+
+    <string name="word_detail_tatoeba_attribution">جمل من <xliff:g id="brand_tatoeba" example="Tatoeba">Tatoeba</xliff:g> · <xliff:g id="license_cc_by_2_fr" example="CC BY 2.0 FR">CC BY 2.0 FR</xliff:g></string>
+
+    <string name="word_detail_common">شائع</string>
+
+    <string name="word_anki_in_decks">مجموعات Anki: <xliff:g id="count" example="3">%1$d</xliff:g></string>
+    <string name="word_anki_deck_badge_cd">موجودة بالفعل في Anki: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
+
+    <string name="word_detail_stroke_abbr">خط</string>
+
+    <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
+
+    <string name="word_detail_label_format"><xliff:g id="label" example="READING">%1$s</xliff:g>:</string>
+
+    <plurals name="word_detail_senses_count">
+        <item quantity="zero"><xliff:g id="senses_count" example="0">%d</xliff:g> معنى</item>
+        <item quantity="one">معنى واحد</item>
+        <item quantity="two">معنيان</item>
+        <item quantity="few"><xliff:g id="senses_count" example="3">%d</xliff:g> معانٍ</item>
+        <item quantity="many"><xliff:g id="senses_count" example="11">%d</xliff:g> معنى</item>
+        <item quantity="other"><xliff:g id="senses_count" example="100">%d</xliff:g> معنى</item>
+    </plurals>
+
+    <plurals name="word_detail_chars_count">
+        <item quantity="zero"><xliff:g id="char_count" example="0">%d</xliff:g> حرف</item>
+        <item quantity="one">حرف واحد</item>
+        <item quantity="two">حرفان</item>
+        <item quantity="few"><xliff:g id="char_count" example="3">%d</xliff:g> أحرف</item>
+        <item quantity="many"><xliff:g id="char_count" example="11">%d</xliff:g> حرفًا</item>
+        <item quantity="other"><xliff:g id="char_count" example="100">%d</xliff:g> حرف</item>
+    </plurals>
+
+    <string name="word_detail_group_definitions">التعريفات</string>
+
+    <string name="word_detail_group_kanji">كانجي</string>
+
+    <string name="word_detail_group_hanzi">هانزي</string>
+
+    <string name="word_detail_mt_banner">ترجمة آلية</string>
+
+    <string name="word_detail_mt_banner_named">ترجمة آلية: <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
+
+    <string name="word_detail_char_meanings_mt">ترجمة آلية · <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
+
+    <!-- ═══ SETTINGS — general ═══ -->
+
+    <string name="settings_title">الإعدادات</string>
+
+    <string name="lang_translate_from">لغة اللعبة</string>
+
+    <string name="lang_translate_to">لغتك</string>
+
+    <string name="lang_download">تنزيل</string>
+
+    <string name="lang_download_error_title">فشل التنزيل</string>
+
+    <string name="lang_setup_preloading_message">جارٍ التحميل المسبق، يُرجى الانتظار دقيقة</string>
+
+    <string name="lang_setup_offline_model_unavailable">الترجمة دون اتصال غير متاحة على هذا الجهاز حاليًا. لا يزال البحث في القاموس والترجمة عبر الإنترنت يعملان.</string>
+
+    <string name="lang_setup_requires_64bit">يتطلب جهازًا بمعمارية 64 بت</string>
+    <string name="lang_setup_requires_64bit_msg">يتطلب التعرف على نص <xliff:g id="language" example="Russian">%1$s</xliff:g> جهازًا بمعمارية 64 بت، وهذا الجهاز ليس كذلك.</string>
+
+    <string name="lang_delete_pack">حذف حزمة اللغة</string>
+
+    <!-- ═══ LANGUAGE PICKER ═══ -->
+
+    <string name="lang_search_hint">البحث عن اللغات</string>
+
+    <string name="lang_search_clear_cd">مسح البحث</string>
+
+    <string name="lang_search_no_results">لا توجد نتائج</string>
+
+    <string name="lang_section_suggested">المقترحة</string>
+
+    <string name="lang_section_all">الكل</string>
+
+    <plurals name="lang_search_match_count">
+        <item quantity="zero"><xliff:g id="count" example="0">%d</xliff:g> نتيجة</item>
+        <item quantity="one">نتيجة واحدة</item>
+        <item quantity="two">نتيجتان</item>
+        <item quantity="few"><xliff:g id="count" example="3">%d</xliff:g> نتائج</item>
+        <item quantity="many"><xliff:g id="count" example="11">%d</xliff:g> نتيجة</item>
+        <item quantity="other"><xliff:g id="count" example="100">%d</xliff:g> نتيجة</item>
+    </plurals>
+
+    <!-- ═══ PACK-UPGRADE FLOW ═══ -->
+
+    <string name="pack_upgrade_title">تتوفر تحديثات لحزم اللغة</string>
+
+    <string name="pack_upgrade_button_now">التحديث الآن</string>
+
+    <string name="pack_upgrade_button_later">التحديث لاحقًا</string>
+
+    <string name="pack_upgrade_mandatory_title">التحديث مطلوب</string>
+
+    <string name="pack_upgrade_mandatory_message"><xliff:g id="pack_list" example="Game Language (Japanese)">%1$s</xliff:g>\n\nهذا التحديث إلزامي — الإصدار المثبَّت لم يعد مدعومًا. حدّث الآن، أو احذفه لاختيار لغة أخرى.</string>
+
+    <string name="pack_upgrade_button_delete">حذف</string>
+
+    <string name="pack_upgrade_progress_title">جارٍ تحديث حزم اللغة</string>
+
+    <string name="pack_upgrade_progress_format">جارٍ تنزيل <xliff:g id="pack_name" example="Japanese">%1$s</xliff:g>…</string>
+
+    <string name="pack_upgrade_progress_format_with_bytes">جارٍ تنزيل <xliff:g id="pack_name" example="Japanese">%1$s</xliff:g>… <xliff:g id="bytes_so_far" example="12 MB">%2$s</xliff:g> من <xliff:g id="bytes_total" example="84 MB">%3$s</xliff:g></string>
+
+    <string name="pack_upgrade_priming_models">جارٍ تحميل نماذج الترجمة…</string>
+
+    <string name="pack_upgrade_label_source">لغة اللعبة (<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>)</string>
+
+    <string name="pack_upgrade_label_target">لغتك (<xliff:g id="target_language" example="English">%1$s</xliff:g>)</string>
+
+    <string name="lang_section_update_packs_title">تحديث حزم اللغة</string>
+    <string name="lang_section_offline_models_title">تنزيل النماذج دون اتصال</string>
+    <string name="lang_section_offline_models_subtitle">لم يتم تنزيل الترجمة دون اتصال لـ <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> ← <xliff:g id="target_language" example="English">%2$s</xliff:g>. لا يزال التطبيق يعمل عبر الإنترنت.</string>
+
+    <string name="settings_no_displays_found">لم يتم العثور على أي شاشات</string>
+
+    <string name="settings_capture_display_footer">اختر شاشة واحدة أو أكثر. يتم تخطي الشاشة التي تشاهد <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> عليها.</string>
+
+    <!-- ═══ DEEPL — settings hints ═══ -->
+
+    <string name="hint_deepl_key">الصق مفتاح API الخاص بـ <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> هنا</string>
+
+    <!-- ═══ TRANSLATION FALLBACK NOTES ═══ -->
+
+    <string name="note_mlkit_no_internet">⚠ لا يوجد اتصال بالإنترنت — يتم عرض الترجمة دون اتصال (جودة أقل).</string>
+
+    <string name="note_mlkit_service_unavailable">⚠ خدمة الترجمة غير متاحة — يتم عرض الترجمة دون اتصال (جودة أقل).</string>
+
+    <string name="note_low_memory_fallback">⚠ ذاكرة منخفضة — يتم عرض الترجمة دون اتصال (جودة أقل).</string>
+
+    <string name="translation_source_label">تمت الترجمة بواسطة <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
+
+    <string name="error_live_mode_unsupported_backend">الوضع المباشر غير متاح مع طريقة التقاط الشاشة الحالية.</string>
+
+    <string name="error_screen_capture_denied">تم إيقاف الوضع المباشر — تم رفض إذن التقاط الشاشة.</string>
+
+    <!-- ═══ SECTION HEADERS (translation-result screen) ═══ -->
+
+    <string name="section_original">النص الأصلي</string>
+
+    <string name="section_translation">الترجمة</string>
+
+    <string name="section_words">الكلمات</string>
+
+    <string name="words_loading">جارٍ البحث عن الكلمات…</string>
+
+    <string name="lens_loading">جارٍ البحث…</string>
+
+    <!-- ═══ REGION PICKER ═══ -->
+
+    <string name="label_select_region">اختيار المنطقة</string>
+
+    <string name="region_overlay_drag_instruction">اسحب الحواف لتقييد التقاط الشاشة بهذه المنطقة</string>
+
+    <string name="label_edit">تعديل</string>
+
+    <string name="label_done">تم</string>
+
+    <string name="label_add_custom_region">+ إضافة منطقة مخصصة</string>
+
+    <string name="label_add_custom_region_title">إضافة منطقة مخصصة</string>
+
+    <string name="label_region_drag_hint">اسحب مربع المنطقة على شاشة اللعبة لتحديد المنطقة المطلوبة. اسحب الحافة العلوية أو السفلية، أو اسحب المنتصف لتحريك المربع بالكامل.</string>
+
+    <string name="label_region_name">اسم المنطقة</string>
+
+    <string name="hint_region_name">مثال: مربع الحوار</string>
+
+    <!-- ═══ FLOATING ICON CELL ═══ -->
+
+    <string name="settings_show_overlay_icon">حول الأيقونة العائمة</string>
+
+    <!-- ═══ CAPTURE LIFECYCLE ═══ -->
+
+    <string name="capture_lifecycle_start">تشغيل</string>
+
+    <string name="capture_lifecycle_stop">إيقاف</string>
+
+    <string name="capture_lifecycle_state_on">مفعّل</string>
+
+    <string name="capture_lifecycle_state_off">معطّل</string>
+
+    <string name="capture_lifecycle_on_title">تم السماح بالتقاط الشاشة</string>
+
+    <string name="capture_lifecycle_off_title">السماح بالتقاط الشاشة</string>
+
+    <string name="capture_lifecycle_on_subtitle">جاهز للترجمة</string>
+
+    <string name="capture_lifecycle_off_subtitle">مطلوب لقراءة نص اللعبة</string>
+
+    <string name="game_screen_controls_title">عناصر تحكم شاشة اللعبة</string>
+
+    <!-- ═══ MEDIAPROJECTION OVERLAY-PERMISSION DIALOG ═══ -->
+
+    <string name="mp_overlay_permission_title">العرض فوق التطبيقات الأخرى</string>
+
+    <string name="mp_overlay_permission_message">يحتاج <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> إلى إذن العرض فوق التطبيقات الأخرى حتى تظهر عناصر التحكم العائمة لشاشة اللعبة فوق لعبتك.</string>
+
+    <string name="mp_overlay_permission_button">فتح الإعدادات</string>
+
+    <!-- ═══ FLOATING-ICON GESTURE HINTS ═══ -->
+
+    <string name="overlay_icon_gesture_drag"><b>اسحب</b> فوق الكلمات للحصول على تعريفات سريعة</string>
+
+    <string name="overlay_icon_gesture_hold"><b>اضغط مطولاً</b> لمعاينة الترجمات</string>
+
+    <string name="overlay_icon_gesture_tap"><b>اضغط</b> لفتح القائمة السريعة</string>
+
+    <string name="overlay_icon_a11y_required_title">إمكانية الوصول مطلوبة</string>
+
+    <string name="overlay_icon_a11y_required_message">تحتاج الأيقونة العائمة إلى إذن إمكانية الوصول للرسم فوق شاشة اللعبة.\n\nانتقل إلى الإعدادات ← إمكانية الوصول ← التطبيقات التي تم تنزيلها ← <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ← تفعيل.</string>
+
+    <!-- ═══ ACCESSIBILITY-REQUIRED ALERT ═══ -->
+
+    <string name="a11y_required_alert_title">إمكانية الوصول مطلوبة</string>
+
+    <string name="a11y_required_displays_message">يتطلب تبديل الشاشات أو ترجمة عدة شاشات في وقت واحد إذن إمكانية الوصول. فهو يتيح لـ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> التقاط أي شاشة، وليس الشاشة الرئيسية فقط.</string>
+
+    <string name="a11y_required_hotkey_message">يتطلب تعيين الاختصارات إذن إمكانية الوصول. فهو يتيح لـ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> اكتشاف المفاتيح التي تضغط عليها أثناء اللعب.</string>
+
+    <string name="a11y_required_enhanced_message">يستخدم <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> عناصر التحكم المحسّنة هذه لتحسين تجربة الترجمة التلقائية.</string>
+
+    <string name="requires_android_11_title">يتطلب Android 11</string>
+    <string name="requires_android_11_message">تتطلب هذه الميزة Android 11 أو أحدث.</string>
+
+    <!-- ═══ ENHANCED AUTO-TRANSLATE ROW ═══ -->
+
+    <string name="enhanced_auto_translate_title">الترجمة التلقائية المحسّنة</string>
+
+    <string name="enhanced_auto_translate_subtitle_off">أكثر وضوحًا واستجابةً واستقرارًا. تتطلب إذن إمكانية الوصول.</string>
+
+    <string name="enhanced_auto_translate_subtitle_on">مفعّلة</string>
+
+    <!-- ═══ ANKI INTEGRATION ═══ -->
+
+    <string name="anki_deck_picker_empty">لم يتم العثور على أي مجموعات</string>
+
+    <string name="anki_deck_picker_loading">جارٍ تحميل المجموعات…</string>
+
+    <string name="anki_card_type_picker_loading">جارٍ تحميل أنواع البطاقات…</string>
+
+    <string name="anki_not_installed_title">إنشاء بطاقة للمراجعة</string>
+
+    <string name="anki_not_installed_message">احفظ الكلمات التي تكتشفها أثناء اللعب وراجعها لاحقًا.\n\nيمكن لـ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> حفظ الجمل المترجمة والمفردات ولقطات الشاشة مباشرةً في <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>، وهو تطبيق مجاني لبطاقات التكرار المتباعد.</string>
+
+    <string name="anki_not_installed_get">الحصول على <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_section_description">هل تتعلم لغة؟ أنشئ بطاقات بلغة <xliff:g id="target_language" example="English">%1$s</xliff:g> من الكلمات والجمل غير المألوفة، وراجعها لاحقًا باستخدام <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>، وهو تطبيق مجاني وشهير لبطاقات التكرار المتباعد.</string>
+
+    <string name="anki_permission_rationale_title">إذن <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> مطلوب</string>
+
+    <string name="anki_permission_rationale_message">لإضافة بطاقات إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>، يحتاج <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> إلى إذن للوصول إلى <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>.\n\nاضغط على متابعة لمنح هذا الإذن.</string>
+
+    <string name="btn_continue">متابعة</string>
+
+    <string name="anki_permission_denied">تم رفض الإذن — امنحه في إعدادات <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_no_deck_selected">لم يتم العثور على أي مجموعات في <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_added_no_audio">تمت الإضافة إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (الصوت غير متاح)</string>
+
+    <string name="anki_added_success">تمت الإضافة إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="anki_adding_in_progress">جارٍ الإضافة إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>…</string>
+
+    <string name="anki_send_failed_title">تعذّرت إضافة البطاقة</string>
+
+    <string name="anki_send_failed_message">لم يقبل <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> البطاقة. تأكد من أن <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g> قيد التشغيل، ثم حاول مرة أخرى.</string>
+
+    <string name="anki_mode_sentence">جملة</string>
+
+    <string name="anki_mode_word">كلمة</string>
+
+    <!-- ═══ ANKI REVIEW SHEET ═══ -->
+
+    <string name="anki_sheet_title_new_card">بطاقة <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> جديدة</string>
+
+    <string name="anki_deck_row_label">المجموعة</string>
+
+    <string name="anki_deck_row_empty">اختر مجموعة</string>
+
+    <string name="anki_deck_label_format">المجموعة: <xliff:g id="deck_name" example="Vocabulary">%1$s</xliff:g></string>
+
+    <string name="anki_save_button_label">حفظ بطاقة <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="anki_group_original">النص الأصلي</string>
+
+    <string name="anki_group_translation">الترجمة</string>
+
+    <string name="anki_group_words_count">الكلمات في البطاقة · <xliff:g id="words_count" example="3">%d</xliff:g></string>
+
+    <string name="anki_group_definitions">التعريفات</string>
+
+    <string name="anki_group_screenshot">لقطة الشاشة</string>
+
+    <string name="anki_words_helper">ستُضمَّن هذه الكلمات في بطاقة <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>. اضغط على كلمة لتمييزها في البطاقة. اضغط على × لإزالتها من البطاقة.</string>
+
+    <string name="anki_translation_error">تعذّرت الترجمة</string>
+
+    <string name="anki_word_remove_content_description">إزالة من البطاقة</string>
+
+    <string name="anki_screenshot_remove_content_description">إزالة لقطة الشاشة</string>
+
+    <string name="anki_group_audio">الصوت</string>
+
+    <string name="anki_audio_preview_content_description">معاينة الصوت</string>
+
+    <!-- ═══ CARD TYPE PICKER + FIELD MAPPING ═══ -->
+
+    <string name="anki_card_type_row_label">نوع البطاقة</string>
+
+    <string name="anki_card_type_row_empty">افتراضي (<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>)</string>
+
+    <string name="anki_card_type_pick_title">اختيار نوع البطاقة</string>
+
+    <string name="anki_card_type_no_models">لم يتم العثور على أنواع بطاقات في <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_card_type_stale_fallback">نوع البطاقة لم يعد موجودًا؛ يتم استخدام الافتراضي</string>
+
+    <string name="anki_card_type_section_default">افتراضي</string>
+
+    <string name="anki_card_type_section_custom">أنواع البطاقات</string>
+
+    <string name="anki_card_type_edit_mapping_row_label">تعديل تعيين الحقول</string>
+
+    <string name="anki_field_mapping_title">تكوين <xliff:g id="card_type_name" example="Lapis sentence">%1$s</xliff:g></string>
+
+    <string name="anki_field_mapping_save">حفظ</string>
+
+    <string name="anki_field_mapping_unconfigured">كوّن الحقول لنوع البطاقة هذا قبل الإرسال</string>
+
+    <string name="anki_sort_field_empty">عيّن قيمة للحقل «<xliff:g id="sort_field_name" example="Expression">%1$s</xliff:g>»: يستخدم <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> هذا الحقل لتحديد الملاحظة، والقيم الفارغة تتسبب في أخطاء رفض التكرار عند الإرسال.</string>
+
+    <string name="anki_models_unavailable">تعذّر الوصول إلى <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> لجلب أنواع البطاقات. حاول مرة أخرى بعد قليل.</string>
+
+    <string name="anki_card_type_basic_no_mapping">أنواع البطاقات الأساسية لا تحتاج إلى تعيين حقول — تتم تعبئة الوجه الأمامي والخلفي تلقائيًا بناءً على ما إذا كنت تحفظ كلمة أو جملة.</string>
+
+    <string name="anki_content_source_pick_title">تعيين «<xliff:g id="field_name" example="Expression">%1$s</xliff:g>»</string>
+
+    <string name="anki_long_press_footer">نصيحة: إذا كنت تريد إنشاء بطاقة على الفور دون تعديل، اضغط مطولاً على أي زر يأخذك عادةً إلى صفحة إنشاء بطاقة <xliff:g id="brand_anki" example="anki">anki</xliff:g></string>
+
+    <!-- ═══ CONTENT SOURCE LABELS ═══ -->
+
+    <string name="anki_content_none">فارغ</string>
+    <string name="anki_content_none_desc">لا يرسل شيئًا — يبقى حقل <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> فارغًا.</string>
+
+    <string name="anki_content_expression">الكلمة / المدخل</string>
+    <string name="anki_content_expression_desc">الصيغة القاموسية للكلمة المميَّزة، دون أقواس. مثال: 聞く</string>
+
+    <string name="anki_content_expression_furigana">الكلمة / المدخل مع فوريغانا</string>
+    <string name="anki_content_expression_furigana_desc">الصيغة القاموسية مع أقواس فوريغانا لكل كانجي، للحقول المعروضة عبر \{\{furigana:\}\}. مثال: 聞[き]く</string>
+
+    <string name="anki_content_reading">قراءة الكلمة (كانا)</string>
+    <string name="anki_content_reading_desc">قراءة الكلمة المميَّزة بالكانا فقط. مثال: きく</string>
+
+    <string name="anki_content_sentence">الجملة المصدر</string>
+    <string name="anki_content_sentence_desc">الجملة المصدر مع الكلمة المميَّزة بخط عريض. مثال: 友達に<b>聞いた</b></string>
+
+    <string name="anki_content_sentence_furigana">الجملة المصدر مع فوريغانا</string>
+    <string name="anki_content_sentence_furigana_desc">الجملة المصدر مع أقواس فوريغانا لكل كانجي، للحقول المعروضة عبر \{\{furigana:\}\}. مثال: 友達[ともだち]に<b>聞[き]いた</b></string>
+
+    <string name="anki_content_sentence_translation">الجملة المترجَمة</string>
+    <string name="anki_content_sentence_translation_desc">ترجمة الجملة المصدر إلى اللغة الهدف التي اخترتها.</string>
+
+    <string name="anki_content_definition">التعريف</string>
+    <string name="anki_content_definition_desc">تعريف (تعريفات) الكلمة المميَّزة من القاموس، بتنسيق HTML.</string>
+
+    <string name="anki_content_examples">جمل أمثلة</string>
+    <string name="anki_content_examples_desc">جمل أمثلة من <xliff:g id="brand_tatoeba" example="Tatoeba">Tatoeba</xliff:g> للكلمة المميَّزة، عند توفّرها.</string>
+
+    <string name="anki_content_picture">لقطة الشاشة</string>
+    <string name="anki_content_picture_desc">لقطة لشاشة اللعبة، مُغلَّفة بترميز &lt;img&gt; وجاهزة لحقل صورة / لقطة شاشة.</string>
+
+    <string name="anki_content_word_audio">صوت الكلمة</string>
+    <string name="anki_content_word_audio_desc">صوت تحويل النص إلى كلام للكلمة، جاهز لحقل Word Audio.</string>
+
+    <string name="anki_content_sentence_audio">صوت الجملة</string>
+    <string name="anki_content_sentence_audio_desc">صوت تحويل النص إلى كلام للجملة، جاهز لحقل Sentence Audio.</string>
+
+    <string name="anki_content_frequency">نجوم التكرار</string>
+    <string name="anki_content_frequency_desc">تقييم تكرار الكلمة المميَّزة على شكل نجوم. مثال: ★★★</string>
+
+    <string name="anki_content_part_of_speech">نوع الكلمة</string>
+    <string name="anki_content_part_of_speech_desc">وسم نوع الكلمة للكلمة المميَّزة (بطاقات وضع الكلمة فقط). مثال: noun</string>
+
+    <string name="anki_content_words_table">قائمة الكلمات (بطاقات الجمل)</string>
+    <string name="anki_content_words_table_desc">قائمة منسَّقة بكل الكلمات التي اكتشفها <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> في الجملة، مع القراءات والتعريفات.</string>
+
+    <!-- ═══ CARD-TYPE STATE FLAGS ═══ -->
+
+    <string name="anki_content_flag_vocabulary">علامة بطاقة المفردات (x)</string>
+    <string name="anki_content_flag_vocabulary_desc">تُخرِج «x» فقط في عمليات الإرسال بوضع الكلمة — استخدمها لحقول القوالب مثل «Is Vocabulary Card» في <xliff:g id="brand_migaku" example="Migaku">Migaku</xliff:g>.</string>
+
+    <string name="anki_content_flag_sentence">علامة بطاقة الجملة (x)</string>
+    <string name="anki_content_flag_sentence_desc">تُخرِج «x» فقط في عمليات الإرسال بوضع الجملة — استخدمها لحقول القوالب مثل «IsSentenceCard» في <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> أو <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+
+    <string name="anki_content_flag_targeted_sentence">علامة بطاقة الجملة المستهدفة (x)</string>
+    <string name="anki_content_flag_targeted_sentence_desc">تُخرِج «x» في عمليات إرسال الجمل التي تحتوي على كلمة هدف مميَّزة — استخدمها لـ «IsTargetedSentenceCard» في <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+
+    <string name="anki_content_flag_always_on">علامة دائمة التفعيل (x)</string>
+    <string name="anki_content_flag_always_on_desc">تُخرِج «x» دائمًا. استخدمها لحقول القوالب التي تريد تفعيلها دون شروط.</string>
+
+    <string name="anki_content_section_content">المحتوى</string>
+    <string name="anki_content_section_flag">علامة نوع البطاقة</string>
+
+    <!-- ═══ GENERIC CHROME ═══ -->
+
+    <string name="cd_back">رجوع</string>
+
+    <!-- ═══ APPEARANCE — theme mode and accent picker ═══ -->
+
+    <string name="pt_theme_mode_system">النظام</string>
+    <string name="pt_theme_mode_dark">داكن</string>
+    <string name="pt_theme_mode_light">فاتح</string>
+
+    <string name="pt_accent_label">لون التمييز</string>
+
+    <string name="pt_accent_coral">مرجاني</string>
+    <string name="pt_accent_amber">كهرماني</string>
+    <string name="pt_accent_lime">ليموني</string>
+    <string name="pt_accent_mint">نعناعي</string>
+    <string name="pt_accent_teal">أزرق مخضر</string>
+    <string name="pt_accent_aqua">مائي</string>
+    <string name="pt_accent_sky">سماوي</string>
+    <string name="pt_accent_steel">فولاذي</string>
+    <string name="pt_accent_violet">بنفسجي</string>
+    <string name="pt_accent_orchid">سحلبي</string>
+    <string name="pt_accent_rose">وردي</string>
+
+    <!-- ═══ DEEPL — detail screen ═══ -->
+
+    <string name="deepl_settings_save">حفظ</string>
+
+    <string name="deepl_settings_close_cd">إغلاق</string>
+
+    <string name="deepl_settings_get_key_title">الحصول على مفتاح API مجاني لـ <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g></string>
+
+    <string name="deepl_settings_get_key_subtitle">تتضمن الخطة المجانية 500,000 حرف شهريًا، لكنها تتطلب بطاقة ائتمان للتسجيل</string>
+
+    <string name="deepl_settings_about"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> هي خدمة ترجمة معروفة بجودتها العالية، خاصةً في اللغات الأوروبية.</string>
+
+    <!-- ═══ GENERIC LLM BACKEND SETTINGS ═══ -->
+
+    <string name="llm_backend_api_key_label">مفتاح API</string>
+
+    <string name="llm_backend_model_label">النموذج</string>
+
+    <string name="llm_backend_get_key_title_fmt">الحصول على مفتاح API لـ <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g></string>
+
+    <string name="llm_backend_model_custom_entry">مخصص…</string>
+
+    <string name="llm_model_picker_loading">جارٍ تحميل النماذج…</string>
+
+    <string name="llm_model_picker_fetch_failed">تعذّر جلب قائمة النماذج. تحقق من مفتاح API، أو اكتب معرّف نموذج عبر «مخصص…».</string>
+
+    <string name="llm_backend_invalid_key_alert_title">تعذّر التحقق من مفتاح API</string>
+
+    <string name="llm_backend_invalid_key_alert_message_fmt">رفض <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> المفتاح الذي أدخلته. تحقق منه مجددًا على <xliff:g id="dev_console_url" example="platform.openai.com">%2$s</xliff:g> وحاول مرة أخرى.</string>
+
+    <string name="llm_backend_invalid_key_alert_button">موافق</string>
+
+    <!-- ═══ SETTINGS FOOTERS ═══ -->
+
+    <string name="tr_service_order_footer">تجرّب الترجمات كل خدمة مفعّلة بالترتيب المعروض، وتنتقل إلى التالية عند عدم توفّر إحداها. تتلقى خدمات الترجمة عبر الإنترنت النص الملتقَط. راجع سياسة الخصوصية لكل مزوّد قبل تفعيله.</string>
+
+    <string name="tr_service_offline_footer">تُستخدم الترجمات دون اتصال كحل بديل عند عدم توفّر الترجمات عبر الإنترنت. ترجمات <xliff:g id="brand_mlkit" example="MLKit">MLKit</xliff:g> سيئة، لكن الخيارات الأخرى قد تكون بطيئة جدًا ومرهقة؛ كن حذرًا عند استخدامها للترجمة التلقائية.</string>
+
+    <!-- ═══ PER-BACKEND STATUS LINE ═══ -->
+
+    <string name="tr_service_status_loading">جارٍ التحقق من الاستخدام…</string>
+
+    <string name="tr_service_status_quota_fmt"><xliff:g id="used" example="120,345">%1$s</xliff:g> / <xliff:g id="total" example="500,000">%2$s</xliff:g> حرف مستخدَم</string>
+
+    <string name="tr_service_status_quota_with_reset_fmt"><xliff:g id="quota_line" example="120,345 / 500,000 characters used">%1$s</xliff:g> · تُعاد التهيئة في <xliff:g id="reset_date" example="Jun 1">%2$s</xliff:g></string>
+
+    <!-- ═══ BACKEND QUALITY / SPEED LABELS ═══ -->
+
+    <string name="tr_service_quality_bad">جودة سيئة</string>
+    <string name="tr_service_quality_okay">جودة مقبولة</string>
+    <string name="tr_service_quality_good">جودة جيدة</string>
+    <string name="tr_service_quality_better">جودة أفضل</string>
+
+    <string name="tr_service_speed_very_slow">بطيء جدًا</string>
+    <string name="tr_service_speed_slow">بطيء</string>
+    <string name="tr_service_speed_okay">سرعة مقبولة</string>
+    <string name="tr_service_speed_fast">سريع</string>
+
+    <!-- ═══ OFFLINE BACKEND ROW ═══ -->
+
+    <string name="offline_backend_quality_label">الجودة</string>
+    <string name="offline_backend_speed_label">السرعة</string>
+    <string name="offline_backend_ram_label">الذاكرة</string>
+    <string name="offline_backend_disk_label">التخزين</string>
+
+    <!-- ── Firefox Translations (Bergamot) offline row ── -->
+    <string name="bergamot_status_downloading">جارٍ التنزيل… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%2$s</xliff:g></string>
+
+    <string name="bergamot_download_failed">تعذّر تنزيل نموذج Firefox Translations</string>
+
+    <string name="bergamot_disable_title">إيقاف Firefox Translations؟</string>
+
+    <string name="bergamot_disable_message">ستتوقف ترجمة هذا الزوج اللغوي دون اتصال. يمكنك الاحتفاظ بالنموذج المنزَّل أو حذفه لتحرير مساحة.</string>
+
+    <string name="bergamot_disable_keep">الإيقاف فقط</string>
+
+    <string name="bergamot_disable_delete">حذف النموذج</string>
+
+    <string name="bergamot_warmup_downloading">جارٍ تنزيل النموذج دون اتصال… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%2$s</xliff:g></string>
+
+    <string name="bergamot_warmup_downloading_multi">جارٍ تنزيل النموذج دون اتصال <xliff:g id="file_index" example="1">%1$d</xliff:g> من <xliff:g id="file_count" example="2">%2$d</xliff:g>… <xliff:g id="bytes_so_far" example="12 MB">%3$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%4$s</xliff:g></string>
+    <string name="bergamot_pair_unsupported">غير مدعوم للزوج اللغوي الحالي</string>
+
+    <string name="offline_backend_downloaded_cd">تم التنزيل</string>
+    <string name="offline_backend_not_downloaded_cd">لم يتم التنزيل</string>
+    <string name="offline_backend_enabled_cd">مفعّل</string>
+    <string name="offline_backend_disabled_cd">معطّل</string>
+
+    <string name="offline_backend_row_a11y_fmt"><xliff:g id="title" example="Qwen 2.5 1.5B">%1$s</xliff:g>. الجودة: <xliff:g id="quality" example="Good quality">%2$s</xliff:g>. السرعة: <xliff:g id="speed" example="Okay speed">%3$s</xliff:g>. يتطلب <xliff:g id="ram" example="4 GB">%4$s</xliff:g> ذاكرة. <xliff:g id="disk_size" example="1.2 GB">%5$s</xliff:g> مساحة تخزين. <xliff:g id="downloaded_state" example="Downloaded">%6$s</xliff:g>. <xliff:g id="enabled_state" example="Enabled">%7$s</xliff:g>.</string>
+
+    <string name="offline_backend_row_a11y_no_speed_fmt"><xliff:g id="title" example="ML Kit">%1$s</xliff:g>. الجودة: <xliff:g id="quality" example="Bad quality">%2$s</xliff:g>. يتطلب <xliff:g id="ram" example="&lt; 1 GB">%3$s</xliff:g> ذاكرة. <xliff:g id="disk_size" example="~30 MB">%4$s</xliff:g> مساحة تخزين. <xliff:g id="downloaded_state" example="Downloaded">%5$s</xliff:g>. <xliff:g id="enabled_state" example="Enabled">%6$s</xliff:g>.</string>
+
+    <!-- ═══ GENERIC DOWNLOAD UI ═══ -->
+
+    <string name="model_download_extracting">جارٍ الاستخراج…</string>
+
+    <!-- ═══ ON-DEVICE LLM TRANSLATION MODELS (MNN-backed) ═══ -->
+
+    <!-- ── Qwen 2.5 1.5B ── -->
+
+    <string name="qwen_mnn_status_not_downloaded">يتطلب <xliff:g id="ram" example="4 GB">%1$s</xliff:g> ذاكرة، <xliff:g id="disk_size" example="1.2 GB">%2$s</xliff:g> مساحة تخزين</string>
+
+    <string name="qwen_mnn_status_downloaded_disabled">تم التنزيل لكنه معطّل (<xliff:g id="disk_size" example="1.2 GB">%1$s</xliff:g> مساحة تخزين)</string>
+
+    <string name="qwen_mnn_status_ready">يتطلب <xliff:g id="ram" example="4 GB">%1$s</xliff:g> ذاكرة، <xliff:g id="disk_size" example="1.2 GB">%2$s</xliff:g> مساحة تخزين</string>
+
+    <string name="qwen_mnn_status_downloading">جارٍ التنزيل… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> من <xliff:g id="bytes_total" example="1.2 GB">%2$s</xliff:g></string>
+
+    <string name="qwen_mnn_status_verifying">جارٍ التحقق من التنزيل…</string>
+
+    <string name="qwen_mnn_disable_title">تعطيل <xliff:g id="brand_qwen" example="Qwen">Qwen</xliff:g> (MNN)؟</string>
+
+    <string name="qwen_mnn_disable_message">النموذج بحجم <xliff:g id="disk_size" example="1.2 GB">%1$s</xliff:g> مثبَّت. يمكنك الاحتفاظ به لوقت لاحق أو حذفه لتحرير مساحة.</string>
+
+    <string name="qwen_mnn_download_failed">فشل التنزيل: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="qwen_mnn_metered_warning_title">التنزيل عبر شبكة محدودة الاستخدام؟</string>
+
+    <string name="qwen_mnn_metered_warning_message">حجم <xliff:g id="brand_qwen" example="Qwen 2.5 1.5B (MNN)">Qwen 2.5 1.5B (MNN)</xliff:g> هو <xliff:g id="download_size" example="1.2 GB">%1$s</xliff:g>. هذه الشبكة مصنَّفة كشبكة محدودة الاستخدام. هل تريد المتابعة؟</string>
+
+    <string name="qwen_mnn_disable_keep">التعطيل فقط</string>
+    <string name="qwen_mnn_disable_delete">حذف النموذج</string>
+
+    <!-- ── Qwen 3.5 2B ── -->
+
+    <string name="qwen35_2b_mnn_status_not_downloaded">يتطلب <xliff:g id="ram" example="6 GB">%1$s</xliff:g> ذاكرة، <xliff:g id="disk_size" example="1.3 GB">%2$s</xliff:g> مساحة تخزين</string>
+
+    <string name="qwen35_2b_mnn_status_downloaded_disabled">تم التنزيل لكنه معطّل (<xliff:g id="disk_size" example="1.3 GB">%1$s</xliff:g> مساحة تخزين)</string>
+
+    <string name="qwen35_2b_mnn_status_ready">يتطلب <xliff:g id="ram" example="6 GB">%1$s</xliff:g> ذاكرة، <xliff:g id="disk_size" example="1.3 GB">%2$s</xliff:g> مساحة تخزين</string>
+
+    <string name="qwen35_2b_mnn_status_downloading">جارٍ التنزيل… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> من <xliff:g id="bytes_total" example="1.3 GB">%2$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_status_verifying">جارٍ التحقق من التنزيل…</string>
+
+    <string name="qwen35_2b_mnn_disable_title">تعطيل <xliff:g id="brand_qwen" example="Qwen 3.5 2B">Qwen 3.5 2B</xliff:g>؟</string>
+
+    <string name="qwen35_2b_mnn_disable_message">النموذج بحجم <xliff:g id="disk_size" example="1.3 GB">%1$s</xliff:g> مثبَّت. يمكنك الاحتفاظ به لوقت لاحق أو حذفه لتحرير مساحة.</string>
+
+    <string name="qwen35_2b_mnn_download_failed">فشل التنزيل: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_metered_warning_title">التنزيل عبر شبكة محدودة الاستخدام؟</string>
+
+    <string name="qwen35_2b_mnn_metered_warning_message">حجم <xliff:g id="brand_qwen" example="Qwen 3.5 2B">Qwen 3.5 2B</xliff:g> هو <xliff:g id="download_size" example="1.3 GB">%1$s</xliff:g>. هذه الشبكة مصنَّفة كشبكة محدودة الاستخدام. هل تريد المتابعة؟</string>
+
+    <string name="qwen35_2b_mnn_disable_keep">التعطيل فقط</string>
+    <string name="qwen35_2b_mnn_disable_delete">حذف النموذج</string>
+
+    <string name="deprecated_badge_label">مهمل</string>
+
+    <!-- ── Gemma 4 E2B ── -->
+
+    <string name="gemma_e2b_mnn_status_not_downloaded">يتطلب <xliff:g id="ram" example="6 GB">%1$s</xliff:g> ذاكرة، <xliff:g id="disk_size" example="2.1 GB">%2$s</xliff:g> مساحة تخزين</string>
+
+    <string name="gemma_e2b_mnn_status_downloaded_disabled">تم التنزيل لكنه معطّل (<xliff:g id="disk_size" example="2.1 GB">%1$s</xliff:g> مساحة تخزين)</string>
+
+    <string name="gemma_e2b_mnn_status_ready">يتطلب <xliff:g id="ram" example="6 GB">%1$s</xliff:g> ذاكرة، <xliff:g id="disk_size" example="2.1 GB">%2$s</xliff:g> مساحة تخزين</string>
+
+    <string name="gemma_e2b_mnn_status_downloading">جارٍ التنزيل… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> من <xliff:g id="bytes_total" example="2.1 GB">%2$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_status_verifying">جارٍ التحقق من التنزيل…</string>
+
+    <string name="gemma_e2b_mnn_disable_title">تعطيل <xliff:g id="brand_gemma" example="Gemma 4 E2B">Gemma 4 E2B</xliff:g>؟</string>
+
+    <string name="gemma_e2b_mnn_disable_message">النموذج بحجم <xliff:g id="disk_size" example="2.1 GB">%1$s</xliff:g> مثبَّت. يمكنك الاحتفاظ به لوقت لاحق أو حذفه لتحرير مساحة.</string>
+
+    <string name="gemma_e2b_mnn_download_failed">فشل التنزيل: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_metered_warning_title">التنزيل عبر شبكة محدودة الاستخدام؟</string>
+
+    <string name="gemma_e2b_mnn_metered_warning_message">حجم <xliff:g id="brand_gemma" example="Gemma 4 E2B">Gemma 4 E2B</xliff:g> هو <xliff:g id="download_size" example="2.1 GB">%1$s</xliff:g>. هذه الشبكة مصنَّفة كشبكة محدودة الاستخدام. هل تريد المتابعة؟</string>
+
+    <string name="gemma_e2b_mnn_disable_keep">التعطيل فقط</string>
+    <string name="gemma_e2b_mnn_disable_delete">حذف النموذج</string>
+
+    <!-- ── Tencent Hunyuan-MT 1.5 1.8B ── -->
+
+    <string name="hymt_status_not_downloaded">يتطلب <xliff:g id="ram" example="4 GB">%1$s</xliff:g> ذاكرة، <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g> مساحة تخزين</string>
+
+    <string name="hymt_status_downloaded_disabled">تم التنزيل لكنه معطّل (<xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> مساحة تخزين)</string>
+
+    <string name="hymt_status_ready">يتطلب <xliff:g id="ram" example="4 GB">%1$s</xliff:g> ذاكرة، <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g> مساحة تخزين</string>
+
+    <string name="hymt_status_downloading">جارٍ التنزيل… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> من <xliff:g id="bytes_total" example="1.5 GB">%2$s</xliff:g></string>
+
+    <string name="hymt_status_verifying">جارٍ التحقق من التنزيل…</string>
+
+    <string name="hymt_disable_title">تعطيل <xliff:g id="brand_hunyuan" example="Hunyuan-MT">Hunyuan-MT</xliff:g>؟</string>
+
+    <string name="hymt_disable_message">النموذج بحجم <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> مثبَّت. يمكنك الاحتفاظ به لوقت لاحق أو حذفه لتحرير مساحة.</string>
+
+    <string name="hymt_download_failed">فشل التنزيل: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="hymt_metered_warning_title">التنزيل عبر شبكة محدودة الاستخدام؟</string>
+
+    <string name="hymt_metered_warning_message">حجم <xliff:g id="brand_hunyuan15" example="Hunyuan-MT 1.5">Hunyuan-MT 1.5</xliff:g> هو <xliff:g id="download_size" example="1.5 GB">%1$s</xliff:g>. هذه الشبكة مصنَّفة كشبكة محدودة الاستخدام. هل تريد المتابعة؟</string>
+
+    <string name="hymt_disable_keep">التعطيل فقط</string>
+    <string name="hymt_disable_delete">حذف النموذج</string>
+
+    <!-- ═══ HUNYUAN-MT LEGAL ATTESTATION (legal text) ═══ -->
+
+    <string name="hymt_legal_title">إشعار قانوني وقيد إقليمي</string>
+
+    <string name="hymt_legal_message">نموذج <xliff:g id="brand_hunyuan15" example="Hunyuan-MT 1.5">Hunyuan-MT 1.5</xliff:g> من <xliff:g id="brand_tencent" example="Tencent">Tencent</xliff:g> مُرخَّص بموجب <xliff:g id="license_name" example="Tencent HY Community License Agreement">Tencent HY Community License Agreement</xliff:g>. يستثني هذا الترخيص الاستخدام داخل الاتحاد الأوروبي والمملكة المتحدة وكوريا الجنوبية.\n\nبالضغط على «أوافق»، فإنك تؤكد وتضمن أن:\n\n(1) أنت لا تقيم ولا تتواجد حاليًا داخل الاتحاد الأوروبي أو المملكة المتحدة أو كوريا الجنوبية.\n\n(2) لن تستخدم مخرجات هذا النموذج لتحسين أي نموذج ذكاء اصطناعي آخر (وفقًا لـ <xliff:g id="license_section" example="§5(b)">§5(b)</xliff:g> من الترخيص).</string>
+
+    <string name="hymt_legal_agree">أوافق — تفعيل <xliff:g id="brand_hunyuan" example="Hunyuan">Hunyuan</xliff:g></string>
+
+    <string name="hymt_legal_cancel">إلغاء</string>
+
+    <!-- ═══ COLD-LAUNCH MIGRATION ALERT ═══ -->
+
+    <string name="legacy_engines_removed_title">تم تحديث الترجمة دون اتصال</string>
+    <string name="legacy_engines_removed_message">تمت إزالة مترجِماتك القديمة للترجمة دون اتصال (<xliff:g id="brand_qwen" example="Qwen">Qwen</xliff:g> و<xliff:g id="brand_translategemma" example="TranslateGemma">TranslateGemma</xliff:g>) واستبدالها بإصدارات أسرع تعتمد على MNN. افتح الإعدادات لتفعيل المترجِم الجديد.</string>
+    <string name="legacy_engines_removed_button_settings">الإعدادات</string>
+    <string name="legacy_engines_removed_button_cancel">إلغاء</string>
+
+    <!-- ═══ LLM HARDWARE-UNSUPPORTED STATUS LINES ═══ -->
+
+    <string name="llm_hardware_unsupported_arm64">غير مدعوم على هذا الجهاز (يتطلب معالج arm64)</string>
+
+    <string name="llm_hardware_unsupported_ram">غير مدعوم على هذا الجهاز (يتطلب <xliff:g id="min_ram_gb" example="4">%1$d</xliff:g> غيغابايت RAM على الأقل)</string>
+
+    <!-- ═══ PRE-TOGGLE LOW-MEMORY GATE ═══ -->
+
+    <string name="llm_low_memory_title">ذاكرة حرة غير كافية</string>
+
+    <string name="llm_low_memory_message">يحتاج <xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> إلى حوالي <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g> من الذاكرة الحرة للعمل. حاليًا <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g> فقط متاحة.\n\nأغلق التطبيقات الأخرى لتحرير الذاكرة، أو ألغِ إذا كان هذا النموذج غير مناسب لجهازك.</string>
+
+    <string name="llm_low_memory_recheck">إعادة فحص الذاكرة</string>
+
+    <string name="llm_low_memory_start_anyway">البدء على أي حال</string>
+
+    <string name="llm_low_memory_delete">حذف النموذج</string>
+
+    <string name="llm_low_memory_cancel">إلغاء</string>
+
+    <!-- ═══ WARNING-TONE LLM STATUS LINE ═══ -->
+
+    <string name="llm_status_low_memory_badge">ذاكرة منخفضة — الترجمة باستخدام بديل</string>
+
+    <!-- ═══ FLOATING-ICON MENU WARNING PILL ═══ -->
+
+    <string name="degraded_warning_offline">دون اتصال — جودة الترجمة منخفضة</string>
+    <string name="degraded_warning_low_memory">ذاكرة منخفضة — جودة الترجمة منخفضة</string>
+
+    <!-- ═══ MAIN SCREEN — bottom-bar and overflow-menu items ═══ -->
+
+    <string name="nav_settings">الإعدادات</string>
+
+    <string name="nav_regions">المناطق</string>
+
+    <string name="live_mode_auto_label">تلقائي</string>
+
+    <string name="live_mode_pause_label">إيقاف مؤقت</string>
+
+    <string name="live_mode_auto_translate_label">الترجمة التلقائية</string>
+
+    <string name="live_mode_pause_auto_label">إيقاف التلقائي مؤقتًا</string>
+
+    <string name="live_mode_auto_with_hint"><xliff:g id="hint_label" example="Furigana">%1$s</xliff:g> تلقائيًا</string>
+
+    <string name="menu_capture_region">منطقة الالتقاط</string>
+
+    <string name="menu_translations">الترجمات</string>
+
+    <string name="menu_close">إغلاق</string>
+
+    <!-- ═══ GENERIC BUTTON LABELS ═══ -->
+
+    <string name="btn_save">حفظ</string>
+
+    <string name="btn_cancel">إلغاء</string>
+
+    <string name="btn_clear">مسح</string>
+
+    <string name="btn_ok">موافق</string>
+
+    <string name="btn_not_now">ليس الآن</string>
+
+    <!-- ═══ CUSTOM-REGION SHEET ═══ -->
+
+    <string name="btn_save_to_list">حفظ في القائمة</string>
+
+    <string name="custom_region_edit_title">تعديل <xliff:g id="region_label" example="Dialogue box">%1$s</xliff:g></string>
+
+    <!-- ═══ REGION PICKER SHEET ═══ -->
+
+    <string name="region_picker_editing_title">تعديل المناطق</string>
+
+    <string name="region_default_full_screen">ملء الشاشة</string>
+
+    <string name="region_label_current_capture">منطقة الالتقاط الحالية</string>
+
+    <!-- ═══ MAIN-SCREEN BIG TRANSLATE BUTTON ═══ -->
+
+    <string name="translate_button_prefix_translate">ترجمة</string>
+
+    <string name="translate_button_prefix_reload">إعادة تحميل</string>
+
+    <string name="translate_button_subtitle_hold_to_hide_translations">اضغط مطولاً لإخفاء الترجمات على شاشة اللعبة</string>
+
+    <string name="translate_button_subtitle_hold_to_show_translations_instead_of_hint">اضغط مطولاً لعرض الترجمات بدلاً من <xliff:g id="hint_label" example="furigana">%1$s</xliff:g></string>
+
+    <string name="translate_button_subtitle_hold_to_show_hint">اضغط مطولاً لعرض <xliff:g id="hint_label" example="furigana">%1$s</xliff:g> على شاشة اللعبة</string>
+
+    <string name="translate_button_subtitle_hold_to_show_translations">اضغط مطولاً لعرض الترجمات على شاشة اللعبة</string>
+
+    <string name="hint_label_pinyin_lower">بينيين</string>
+    <string name="hint_label_furigana_lower">فوريغانا</string>
+
+    <!-- ═══ FLOATING ICON LONG-PRESS MENU ═══ -->
+
+    <string name="floating_icon_close_label_turn_off">إيقاف</string>
+
+    <string name="floating_icon_close_label_hide">إخفاء</string>
+
+    <string name="floating_menu_btn_capture_region">منطقة\nالالتقاط</string>
+
+    <string name="floating_menu_drag_instruction">اسحب بإصبعك لالتقاط منطقة محددة</string>
+
+    <!-- ═══ DEEPL SETTINGS — API-key field label ═══ -->
+
+    <string name="deepl_api_key_field_label">مفتاح API لـ <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g></string>
+
+    <!-- ═══ AUTO-TRANSLATE DIALOG ═══ -->
+
+    <string name="settings_overlay_mode_title">وضع التراكب</string>
+
+    <string name="settings_overlay_mode_subtitle">التراكبات التي يتم عرضها أثناء الوضع التلقائي أو معاينة الضغط المطوّل.</string>
+
+    <string name="settings_capture_interval_title">فاصل الالتقاط</string>
+
+    <string name="settings_capture_interval_seconds_suffix">ث</string>
+
+    <string name="settings_capture_interval_hint">عدد مرات التقاط شاشة اللعبة أثناء الترجمة التلقائية. الحد الأدنى <xliff:g id="min_seconds" example="1">%1$s</xliff:g> ثانية.</string>
+
+    <string name="overlay_mode_option_translation">الترجمة</string>
+
+    <string name="overlay_mode_option_furigana">فوريغانا</string>
+
+    <string name="overlay_mode_option_pinyin">بينيين</string>
+
+    <string name="settings_hide_overlays_during_auto_mode">إخفاء التراكبات أثناء الوضع التلقائي</string>
+
+    <string name="settings_hide_overlays_ignored_multi_display">يتم التجاهل عند تحديد أكثر من شاشة واحدة — تظهر التراكبات على كل منها.</string>
+
+    <string name="settings_touches_refresh_title">لمس الشاشة يحدّث الترجمة</string>
+
+    <!-- ═══ HOTKEY SETUP DIALOG ═══ -->
+
+    <string name="dialog_hotkey_setup_title">تعيين اختصار</string>
+
+    <string name="dialog_hotkey_setup_instruction">اضغط مع الاستمرار على المفتاح (المفاتيح) لمدة ثانيتين</string>
+
+    <string name="dialog_hotkey_setup_countdown">استمر بالضغط <xliff:g id="remaining_seconds" example="1.4">%1$s</xliff:g></string>
+
+    <!-- ═══ TRANSLATION-RESULT SCREEN — toolbar + per-row buttons ═══ -->
+
+    <string name="cd_translation_result_back">رجوع</string>
+
+    <string name="cd_copy_translation">نسخ الترجمة</string>
+
+    <string name="cd_toggle_translation_visibility">إظهار/إخفاء الترجمة</string>
+
+    <string name="cd_toggle_inline_furigana">تبديل فوريغانا المضمّنة</string>
+
+    <string name="cd_read_original_aloud">قراءة النص الأصلي بصوت عالٍ</string>
+
+    <string name="cd_edit_original">تعديل النص الأصلي</string>
+
+    <string name="cd_copy_original">نسخ النص الأصلي</string>
+
+    <string name="cd_toggle_original_visibility">إظهار/إخفاء النص الأصلي</string>
+
+    <string name="cd_toggle_words_visibility">إظهار/إخفاء الكلمات</string>
+
+    <string name="cd_close">إغلاق</string>
+
+    <!-- ═══ REGION-PICKER ROW — per-row icon contentDescriptions ═══ -->
+
+    <string name="cd_drag_to_reorder">اسحب لإعادة الترتيب</string>
+
+    <string name="cd_delete_region">حذف المنطقة</string>
+
+    <!-- ═══ MAIN ACTIVITY DIALOGS ═══ -->
+
+    <string name="crash_dialog_title">تعطّل <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> سابقًا</string>
+
+    <string name="crash_dialog_message">إرسال تقرير التعطل إلى المطوّر؟ يتضمن تتبُّع المكدس وسجلات التطبيق الأخيرة وأي نص تعرّف عليه <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> مؤخرًا عبر OCR أو بحث عنه. لا توجد معلومات حساب.</string>
+
+    <string name="crash_dialog_send">إرسال</string>
+
+    <string name="crash_dialog_discard">تجاهل</string>
+
+    <string name="crash_dialog_later">لاحقًا</string>
+
+    <string name="crash_email_subject">تعطّل <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> – v<xliff:g id="version" example="2.2.0">%1$s</xliff:g></string>
+
+    <string name="crash_email_body">خطوات إعادة الإنتاج:\n\n(اختياري — صف ما كنت تفعله عند حدوث ذلك.)\n\nمعلومات الجهاز مُضمَّنة في الملف المرفق.</string>
+
+    <string name="update_dialog_title">تحديث متاح</string>
+
+    <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> متاح على <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <string name="update_dialog_view_release">عرض الإصدار</string>
+
+    <string name="update_dialog_skip">تخطي هذا الإصدار</string>
+
+    <string name="update_dialog_ask_again_later">اسألني لاحقًا</string>
+
+    <string name="toast_no_browser_available">لا يوجد متصفح متاح</string>
+
+    <string name="target_pack_migration_title">تتوفر تعريفات <xliff:g id="target_language" example="Spanish">%1$s</xliff:g></string>
+
+    <string name="target_pack_migration_message">تتوفر حزمة تعريفات بلغة <xliff:g id="target_language" example="Spanish">%1$s</xliff:g>. هل تريد تنزيلها للحصول على تعريفات الكلمات بلغة <xliff:g id="target_language2" example="Spanish">%2$s</xliff:g> بدلاً من الإنجليزية؟</string>
+
+    <!-- ═══ OVERLAY UI CONTROLLER — confirmation dialogs ═══ -->
+
+    <string name="overlay_turn_off_title">إيقاف <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g>؟</string>
+
+    <string name="overlay_turn_off_message">أعد التشغيل في تطبيق <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
+
+    <string name="overlay_hide_controls_title">إخفاء عناصر تحكم شاشة اللعبة الخاصة بـ <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g>؟</string>
+
+    <string name="overlay_hide_controls_message">«الإخفاء الآن» يعيدها في المرة التالية التي تفتح فيها <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g>. «إيقاف» يعطّلها حتى إعادة تفعيلها في الإعدادات.</string>
+
+    <string name="overlay_hide_for_now">الإخفاء الآن</string>
+
+    <!-- ═══ LANGUAGE PACK / TARGET-PACK INSTALLER DIALOGS ═══ -->
+
+    <string name="install_downloading_generic">جارٍ التنزيل</string>
+
+    <string name="install_downloading_with_bytes">جارٍ التنزيل… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> من <xliff:g id="bytes_total" example="84 MB">%2$s</xliff:g></string>
+
+    <string name="lang_setup_downloading_ocr_model">جارٍ تنزيل نموذج OCR… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> من <xliff:g id="bytes_total" example="47 MB">%2$s</xliff:g></string>
+
+    <string name="install_downloading_definitions">جارٍ تنزيل التعريفات</string>
+
+    <string name="install_downloading_definitions_with_bytes">جارٍ تنزيل التعريفات… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> من <xliff:g id="bytes_total" example="84 MB">%2$s</xliff:g></string>
+
+    <string name="install_downloading_translation_model">جارٍ تنزيل نموذج الترجمة</string>
+
+    <!-- ═══ SETTINGS — section group headers ═══ -->
+
+    <string name="settings_header_auto_translate">الترجمة التلقائية</string>
+    <string name="settings_header_hotkeys">الاختصارات</string>
+    <string name="settings_header_capture_display">شاشة الالتقاط</string>
+    <string name="settings_header_online_translations">الترجمات عبر الإنترنت</string>
+    <string name="settings_header_offline_translations">الترجمات دون اتصال</string>
+    <string name="settings_header_ocr">تحويل الصورة إلى نص (OCR)</string>
+    <string name="settings_ocr_note_builtin">مدمج</string>
+
+    <string name="settings_ocr_default_badge">افتراضي</string>
+
+    <string name="settings_ocr_footer">إذا كان PlayTranslate يواجه صعوبة في قراءة نص الشاشة بدقة، جرّب اختيارات مختلفة. قد تعمل أدوات OCR المختلفة بشكل أفضل مع أنواع الخطوط أو اتجاهات النص المختلفة.</string>
+
+    <string name="settings_ocr_delete_cd">حذف <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
+
+    <string name="settings_ocr_delete_title">حذف <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g>؟</string>
+
+    <string name="settings_ocr_delete_msg">يؤدي هذا إلى إزالة نموذج <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> من هذا الجهاز. يمكنك تنزيله مرة أخرى لاحقًا.</string>
+
+    <string name="settings_ocr_delete_shared_msg">يُستخدم <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> أيضًا بواسطة هذه اللغات. يؤدي الحذف إلى تحرير المساحة الآن؛ وسيتم تنزيله مرة أخرى في المرة التالية التي تبدّل فيها إلى إحداها:\n\n<xliff:g id="languages" example="Chinese">%2$s</xliff:g></string>
+
+    <string name="settings_ocr_delete_confirm">حذف</string>
+
+    <string name="settings_ocr_downloading_title">جارٍ تنزيل <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
+
+    <string name="settings_ocr_downloading_msg">جارٍ البدء…</string>
+
+    <string name="settings_ocr_verifying">جارٍ التحقق…</string>
+
+    <string name="settings_ocr_installing">جارٍ التثبيت…</string>
+
+    <string name="settings_ocr_download_failed">تعذّر تنزيل نموذج OCR. تحقق من اتصالك وحاول مرة أخرى.</string>
+    <string name="settings_header_text_to_speech">تحويل النص إلى كلام</string>
+    <string name="settings_header_appearance">المظهر</string>
+    <string name="settings_header_support">الدعم</string>
+
+    <string name="settings_header_configure">التكوين</string>
+    <string name="settings_cell_appearance">المظهر</string>
+    <string name="settings_cell_hotkeys">الاختصارات</string>
+    <string name="settings_cell_capture_overlay">الالتقاط والتراكب</string>
+    <string name="settings_cell_anki">بطاقات Anki</string>
+    <string name="settings_cell_translation_services">خدمات الترجمة</string>
+    <string name="settings_cell_tts">تحويل النص إلى كلام</string>
+
+    <string name="settings_digest_none">لا شيء</string>
+    <string name="settings_capture_displays_count">عدد الشاشات: <xliff:g id="count" example="2">%1$d</xliff:g></string>
+
+    <string name="settings_hotkeys_tile_add">إضافة مربع</string>
+    <string name="settings_hotkeys_none">لم يتم تعيين اختصارات</string>
+    <string name="settings_hotkeys_translation">الترجمة</string>
+    <string name="settings_hotkeys_furigana">فوريغانا</string>
+    <string name="settings_hotkeys_pinyin">بينيين</string>
+
+    <string name="settings_anki_digest">المجموعة <xliff:g id="deck_name" example="Vocabulary">%1$s</xliff:g> · نوع البطاقة <xliff:g id="card_type_name" example="Lapis sentence">%2$s</xliff:g></string>
+    <string name="settings_anki_default">افتراضي</string>
+    <string name="settings_anki_get_app_summary">نزّل AnkiDroid مجانًا من Google Play</string>
+    <string name="settings_anki_grant_summary">امنح الأذونات لاستخدام AnkiDroid</string>
+
+    <!-- ═══ SETTINGS — Text-to-Speech section ═══ -->
+
+    <string name="tts_voice_row_title">الصوت</string>
+
+    <string name="tts_voice_numbered">الصوت <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
+
+    <string name="tts_voice_region_numbered"><xliff:g id="region" example="China">%1$s</xliff:g> <xliff:g id="region_index" example="2">%2$d</xliff:g></string>
+
+    <string name="tts_voice_default">افتراضي</string>
+
+    <string name="tts_voice_default_subtitle">الصوت الافتراضي للمحرك</string>
+
+    <string name="tts_voice_needs_download">يتطلب تنزيلاً</string>
+
+    <string name="tts_no_engine_row_title">إعداد تحويل النص إلى كلام</string>
+
+    <string name="tts_no_engine_row_subtitle">لا يوجد محرك صوت متاح. اضغط لإضافة واحد.</string>
+
+    <string name="tts_voice_picker_title">الصوت</string>
+
+    <string name="tts_voices_section_header">أصوات <xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
+
+    <string name="tts_no_engine_dialog_title">لا يوجد تحويل نص إلى كلام</string>
+
+    <string name="tts_no_engine_dialog_message">لا يوجد محرك تحويل نص إلى كلام متاح لقراءة الكلمات بصوت عالٍ. ثبّت واحدًا — أو، إذا كان جهازك يحتوي بالفعل على محرك، فعّله في إعدادات Android.</string>
+
+    <string name="tts_no_engine_get_google">الحصول على Google TTS</string>
+
+    <string name="tts_no_engine_open_settings">فتح إعدادات تحويل النص إلى كلام</string>
+
+    <string name="tts_language_unsupported_dialog_title">اللغة غير مدعومة</string>
+
+    <string name="tts_language_unsupported_with_engine_message"><xliff:g id="engine_name" example="Google TTS">%1$s</xliff:g> هو المحرك النشط، لكنه لا يدعم <xliff:g id="source_language" example="Japanese">%2$s</xliff:g>.</string>
+
+    <string name="tts_language_unsupported_unknown_engine_message">المحرك النشط لتحويل النص إلى كلام لا يدعم <xliff:g id="source_language" example="Japanese">%1$s</xliff:g>.</string>
+
+    <!-- ═══ SETTINGS — Quick Settings tile row (Android 13+) ═══ -->
+
+    <string name="quick_tile_add_row_title">إضافة مربع الإعدادات السريعة</string>
+
+    <string name="quick_tile_add_row_subtitle">تبديل <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> من شريط الحالة</string>
+
+    <string name="quick_tile_added_row_subtitle">تمت الإضافة إلى الإعدادات السريعة</string>
+
+    <!-- ═══ SETTINGS — Hotkeys section ═══ -->
+
+    <string name="hotkey_not_set_subtitle">غير معيّن</string>
+
+    <string name="hotkey_show_translations_title">اختصار: اضغط مطولاً لعرض الترجمات</string>
+
+    <string name="hotkey_show_translations_dialog_title">عرض الترجمات</string>
+
+    <string name="hotkey_show_hint_title">اختصار: اضغط مطولاً لعرض <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <string name="hotkey_show_hint_dialog_title">عرض <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <!-- ═══ SETTINGS — Capture Display section ═══ -->
+
+    <string name="capture_display_row_label">الشاشة <xliff:g id="display_id" example="0">%1$d</xliff:g>  —  <xliff:g id="display_name" example="Built-in screen">%2$s</xliff:g></string>
+
+    <!-- ═══ SETTINGS — Online Translations (cooldown / unavailable states) ═══ -->
+
+    <string name="backend_status_unavailable_default">غير متاح</string>
+
+    <string name="backend_cooldown_retry_at">إعادة المحاولة في</string>
+
+    <string name="backend_cooldown_retry_on">إعادة المحاولة في</string>
+
+    <string name="backend_cooldown_status_fmt"><xliff:g id="description" example="Rate limited">%1$s</xliff:g> · <xliff:g id="retry_word" example="Retry at">%2$s</xliff:g> <xliff:g id="retry_time" example="3:42 PM">%3$s</xliff:g></string>
+
+    <!-- ═══ SETTINGS — Offline Translations / accessibility numeric labels ═══ -->
+
+    <string name="a11y_quality_label">الجودة</string>
+
+    <string name="a11y_speed_label">السرعة:</string>
+
+    <string name="a11y_quality_label_colon">الجودة:</string>
+
+    <string name="a11y_out_of_5_stars">من 5 نجوم</string>
+
+    <string name="a11y_speed_label_comma">السرعة</string>
+
+    <!-- ═══ SETTINGS — Anki rows + deck/card-type fallback labels ═══ -->
+
+    <string name="anki_deck_not_selected_subtitle">غير محدد</string>
+
+    <string name="anki_settings_get_ankidroid_title">الحصول على <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> مجانًا من Google Play</string>
+
+    <string name="anki_settings_grant_access_title">منح الوصول إلى <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_settings_grant_access_subtitle">لإضافة بطاقات إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>، يحتاج <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> إلى إذن للوصول إلى <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>.</string>
+
+    <!-- ═══ SETTINGS — Support section rows ═══ -->
+
+    <string name="settings_support_discord_title">الانضمام إلى <xliff:g id="brand_discord" example="Discord">Discord</xliff:g></string>
+
+    <string name="settings_support_discord_subtitle">احصل على المساعدة وتحدث مع لاعبين آخرين.</string>
+
+    <string name="settings_support_donate_title">دعم PlayTranslate</string>
+
+    <string name="settings_support_donate_subtitle">مشروع مجاني ومفتوح المصدر صُنع بشغف. ساعد في استمراره.</string>
+
+    <!-- ═══ SETTINGS — Debug section (developer-only) ═══ -->
+
+    <string name="settings_debug_force_single_screen">فرض شاشة واحدة</string>
+    <string name="settings_debug_show_ocr_boxes">إظهار مربعات OCR</string>
+    <string name="settings_debug_show_detection_log">إظهار سجل الاكتشاف</string>
+    <string name="settings_debug_log_pinhole">تسجيل مقاييس pinhole للوضع المباشر</string>
+    <string name="settings_debug_save_ocr_seed">حفظ التقاطات OCR كبذور</string>
+    <string name="settings_debug_log_grouping">تسجيل قرارات تجميع OCR</string>
+    <string name="settings_debug_force_crash_title">فرض تعطّل</string>
+
+    <string name="settings_debug_export_logs_title">تصدير السجلات</string>
+
+    <string name="settings_debug_export_logs_subtitle">مشاركة السجلات الأخيرة لتقرير خطأ</string>
+
+    <string name="settings_debug_export_logs_subject">سجلات <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="settings_debug_export_logs_failed">فشل تصدير السجلات: <xliff:g id="exception_class" example="FileNotFoundException">%1$s</xliff:g></string>
+
+    <string name="settings_footer_version"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> v<xliff:g id="version" example="2.2.0">%2$s</xliff:g></string>
+
+    <!-- ═══ GENERIC TOASTS ═══ -->
+
+    <string name="toast_link_copied">تم نسخ الرابط</string>
+
+    <string name="toast_copied">تم النسخ</string>
+
+    <string name="toast_no_logs_to_share">لا توجد سجلات للمشاركة</string>
+
+    <string name="toast_no_crash_report">لا يوجد تقرير تعطل للإرسال</string>
+
+    <string name="share_chooser_share_logs">مشاركة السجلات</string>
+
+</resources>

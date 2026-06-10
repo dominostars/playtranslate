@@ -1,0 +1,1165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    PlayTranslate Thai (th) localization.
+
+    Auto-localized from res/values/strings.xml. Per-string translator
+    notes live in that default file; this file keeps only section banners.
+
+    Formatting preserved from the source:
+      • <xliff:g …>…</xliff:g> wraps placeholders / brand names — never
+        translate or reorder their inner content (the %1$s, %2$d, … inside).
+      • <b>…</b> renders bold. \n is a newline. \{ \} are escaped braces.
+        Brand names stay untranslated. “ ” are quote glyphs (no escaping).
+      • translatable="false" entries are omitted and fall back to English.
+      • Plurals use only "other" (Thai has no grammatical plural). Thai is
+        written without spaces between words; spaces only border Latin /
+        numbers / placeholders.
+-->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+
+    <!-- ═══ ACTIONS ═══ -->
+
+    <string name="btn_translate_once">ใช้โดยไม่บันทึก</string>
+
+    <!-- ═══ ACCESSIBILITY SERVICE ═══ -->
+
+    <string name="accessibility_service_description"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ใช้บริการการช่วยเหลือพิเศษเพื่อจับภาพหน้าจอเกมและแสดงไอคอนลอย ไม่มีการอ่านหรือตรวจสอบเนื้อหาในอินเทอร์เฟซ เหตุการณ์การป้อนข้อมูล หรือข้อมูลส่วนตัวใดๆ</string>
+
+    <string name="accessibility_service_summary">สำหรับแปลข้อความในเกมบนหน้าจอ</string>
+
+    <string name="accessibility_dialog_title">ต้องมีสิทธิ์การช่วยเหลือพิเศษ</string>
+
+    <string name="accessibility_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ต้องใช้สิทธิ์การช่วยเหลือพิเศษเพื่อจับภาพหน้าจอเกมบนจอด้านบนในขณะที่ยังเปิดอยู่บนจอด้านล่าง\n\n<xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> ไม่อ่านเนื้อหาในอินเทอร์เฟซ ไม่ตรวจสอบการป้อนข้อมูล และไม่เข้าถึงข้อมูลส่วนตัวใดๆ โดยจะจับภาพหน้าจอเฉพาะเมื่อคุณแตะ “แปล” หรือเริ่มโหมดสดเท่านั้น\n\nไปที่ การตั้งค่า → การช่วยเหลือพิเศษ → แอปที่ดาวน์โหลด → <xliff:g id="app_name3" example="PlayTranslate">PlayTranslate</xliff:g> → เปิดใช้งาน</string>
+
+    <string name="accessibility_dialog_open">เปิดการตั้งค่าการช่วยเหลือพิเศษ</string>
+
+    <string name="status_accessibility_needed">เปิดใช้งาน <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ในการตั้งค่าการช่วยเหลือพิเศษก่อน</string>
+
+    <!-- ═══ QUICK SETTINGS TILE ═══ -->
+
+    <string name="tile_subtitle_a11y_required">เปิดใช้งานการช่วยเหลือพิเศษ</string>
+
+    <!-- ═══ STATUS MESSAGES ═══ -->
+
+    <string name="status_idle">แตะ “แปล” เพื่อจับภาพหน้าจอเกม</string>
+
+    <string name="status_hold_hint">กดค้างที่ “พื้นที่” หรือ “อัตโนมัติ” เพื่อเปิดเมนูเลือกด่วน</string>
+
+    <string name="words_none">ไม่พบคำ</string>
+
+    <string name="status_capturing">กำลังจับภาพหน้าจอ…</string>
+
+    <string name="status_ocr">กำลังจดจำข้อความ…</string>
+
+    <string name="status_translating">กำลังแปล…</string>
+
+    <string name="status_no_text">ไม่พบข้อความภาษา <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> ใน “<xliff:g id="region_label" example="Dialogue box">%2$s</xliff:g>”</string>
+
+    <string name="status_error">ข้อผิดพลาด: <xliff:g id="error_message" example="Network timeout">%1$s</xliff:g></string>
+
+    <!-- ═══ NOTIFICATION ═══ -->
+
+    <string name="notif_channel_name">การจับภาพหน้าจอ</string>
+
+    <string name="notif_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> กำลังทำงาน</string>
+
+    <string name="notif_text">แตะเพื่อกลับไปยัง <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <!-- ═══ ONBOARDING ═══ -->
+
+    <string name="onboarding_welcome_title">ยินดีต้อนรับสู่ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>!</string>
+
+    <string name="onboarding_welcome_tagline">แอปคู่ใจสำหรับเล่นเกมในภาษาอื่น</string>
+
+    <string name="onboarding_welcome_body">กำลังเล่นอะไรที่ไม่เข้าใจอยู่ใช่ไหม เปลี่ยนข้อความบนหน้าจอเป็นคำแปลได้ทันที\n\nกำลังเรียนภาษาอยู่ใช่ไหม มีคำจำกัดความทีละคำ คำแนะนำการอ่าน (ฟุริงานะ พินอิน) และการ์ด <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> ด้วยการแตะเพียงครั้งเดียว</string>
+
+    <string name="onboarding_welcome_row_placeholder">แตะเพื่อเลือก</string>
+
+    <string name="onboarding_welcome_continue">ดำเนินการต่อ</string>
+
+    <string name="onboarding_welcome_select_source">เลือกภาษาของเกม</string>
+
+    <string name="onboarding_notif_title">อนุญาตการแจ้งเตือน</string>
+
+    <string name="onboarding_notif_body">Android กำหนดให้แอปที่ทำงานในเบื้องหลังต้องแสดงการแจ้งเตือนในแถบสถานะขณะที่ทำงานอยู่\n\nระบบจะไม่ส่งการแจ้งเตือน เสียง หรือแบนเนอร์ใดๆ มีเพียงตัวบ่งชี้แบบถาวรที่ไม่รบกวนเพื่อแสดงว่า <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> กำลังทำงานอยู่เท่านั้น</string>
+
+    <string name="onboarding_a11y_hint">มองหา <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
+
+    <string name="onboarding_a11y_title">แสดงทับแอปอื่น</string>
+
+    <string name="onboarding_a11y_body"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> ต้องแสดงทับแอปอื่นเพื่อ:\n• แสดงข้อความที่แปลแล้วทับบนเกมของคุณ\n• แสดงปุ่มควบคุมหน้าจอเกม\n• ค้นหาคำโดยลากบนข้อความในเกม</string>
+
+    <string name="btn_grant_permission">ให้สิทธิ์</string>
+
+    <string name="btn_open_a11y_settings">เปิดการตั้งค่าการช่วยเหลือพิเศษ</string>
+
+    <string name="btn_open_overlay_settings">เปิดการตั้งค่า</string>
+
+    <string name="restricted_settings_title">อนุญาตการตั้งค่าที่ถูกจำกัด</string>
+
+    <string name="restricted_settings_message">ในหน้าการตั้งค่า Android ของ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ให้แตะปุ่มจุดสามจุด (⋮) ที่มุมขวาบน แล้วเลือก “อนุญาตการตั้งค่าที่ถูกจำกัด” หลังจากยืนยันตัวตนแล้ว คุณจะสามารถเปิดสิทธิ์การช่วยเหลือพิเศษได้</string>
+
+    <string name="btn_open_app_settings">เปิดการตั้งค่า <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <!-- ═══ WORD DETAIL ═══ -->
+
+    <string name="word_detail_not_found">ไม่พบรายการในพจนานุกรมสำหรับ “<xliff:g id="word" example="聞く">%1$s</xliff:g>”</string>
+
+    <string name="word_detail_more_examples">ตัวอย่างเพิ่มเติม</string>
+
+    <string name="word_detail_more_examples_loading">กำลังโหลดตัวอย่าง…</string>
+
+    <string name="word_detail_more_examples_error">ไม่สามารถโหลดตัวอย่างได้</string>
+
+    <string name="word_detail_tatoeba_attribution">ประโยคจาก <xliff:g id="brand_tatoeba" example="Tatoeba">Tatoeba</xliff:g> · <xliff:g id="license_cc_by_2_fr" example="CC BY 2.0 FR">CC BY 2.0 FR</xliff:g></string>
+
+    <string name="word_detail_common">ทั่วไป</string>
+
+    <string name="word_anki_in_decks">สำรับ Anki <xliff:g id="count" example="3">%1$d</xliff:g> ชุด</string>
+    <string name="word_anki_deck_badge_cd">มีอยู่ใน Anki แล้ว: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
+
+    <string name="word_detail_stroke_abbr">เส้น</string>
+
+    <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
+
+    <string name="word_detail_label_format"><xliff:g id="label" example="READING">%1$s</xliff:g>:</string>
+
+    <plurals name="word_detail_senses_count">
+        <item quantity="other"><xliff:g id="senses_count" example="3">%d</xliff:g> ความหมาย</item>
+    </plurals>
+
+    <plurals name="word_detail_chars_count">
+        <item quantity="other"><xliff:g id="char_count" example="3">%d</xliff:g> ตัวอักษร</item>
+    </plurals>
+
+    <string name="word_detail_group_definitions">คำจำกัดความ</string>
+
+    <string name="word_detail_group_kanji">คันจิ</string>
+
+    <string name="word_detail_group_hanzi">ฮั่นจื้อ</string>
+
+    <string name="word_detail_mt_banner">แปลด้วยเครื่อง</string>
+
+    <string name="word_detail_mt_banner_named">แปลด้วยเครื่อง: <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
+
+    <string name="word_detail_char_meanings_mt">แปลด้วยเครื่อง · <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
+
+    <!-- ═══ SETTINGS — general ═══ -->
+
+    <string name="settings_title">การตั้งค่า</string>
+
+    <string name="lang_translate_from">ภาษาของเกม</string>
+
+    <string name="lang_translate_to">ภาษาของคุณ</string>
+
+    <string name="lang_download">ดาวน์โหลด</string>
+
+    <string name="lang_download_error_title">ดาวน์โหลดไม่สำเร็จ</string>
+
+    <string name="lang_setup_preloading_message">กำลังโหลดล่วงหน้า โปรดรอสักครู่</string>
+
+    <string name="lang_setup_offline_model_unavailable">ขณะนี้ไม่สามารถใช้การแปลออฟไลน์บนอุปกรณ์นี้ได้ การค้นหาในพจนานุกรมและการแปลออนไลน์ยังใช้งานได้</string>
+
+    <string name="lang_setup_requires_64bit">ต้องใช้อุปกรณ์ 64 บิต</string>
+    <string name="lang_setup_requires_64bit_msg">การจดจำข้อความภาษา <xliff:g id="language" example="Russian">%1$s</xliff:g> ต้องใช้อุปกรณ์ 64 บิต แต่อุปกรณ์นี้ไม่ใช่</string>
+
+    <string name="lang_delete_pack">ลบแพ็กภาษา</string>
+
+    <!-- ═══ LANGUAGE PICKER ═══ -->
+
+    <string name="lang_search_hint">ค้นหาภาษา</string>
+
+    <string name="lang_search_clear_cd">ล้างการค้นหา</string>
+
+    <string name="lang_search_no_results">ไม่มีผลลัพธ์</string>
+
+    <string name="lang_section_suggested">แนะนำ</string>
+
+    <string name="lang_section_all">ทั้งหมด</string>
+
+    <plurals name="lang_search_match_count">
+        <item quantity="other"><xliff:g id="count" example="5">%d</xliff:g> รายการ</item>
+    </plurals>
+
+    <!-- ═══ PACK-UPGRADE FLOW ═══ -->
+
+    <string name="pack_upgrade_title">มีการอัปเดตแพ็กภาษา</string>
+
+    <string name="pack_upgrade_button_now">อัปเดตเดี๋ยวนี้</string>
+
+    <string name="pack_upgrade_button_later">อัปเดตภายหลัง</string>
+
+    <string name="pack_upgrade_mandatory_title">ต้องอัปเดต</string>
+
+    <string name="pack_upgrade_mandatory_message"><xliff:g id="pack_list" example="Game Language (Japanese)">%1$s</xliff:g>\n\nการอัปเดตนี้เป็นข้อบังคับ เนื่องจากเวอร์ชันที่ติดตั้งไม่ได้รับการสนับสนุนอีกต่อไป อัปเดตเดี๋ยวนี้ หรือลบเพื่อเลือกภาษาอื่น</string>
+
+    <string name="pack_upgrade_button_delete">ลบ</string>
+
+    <string name="pack_upgrade_progress_title">กำลังอัปเดตแพ็กภาษา</string>
+
+    <string name="pack_upgrade_progress_format">กำลังดาวน์โหลด <xliff:g id="pack_name" example="Japanese">%1$s</xliff:g>…</string>
+
+    <string name="pack_upgrade_progress_format_with_bytes">กำลังดาวน์โหลด <xliff:g id="pack_name" example="Japanese">%1$s</xliff:g>… <xliff:g id="bytes_so_far" example="12 MB">%2$s</xliff:g> จาก <xliff:g id="bytes_total" example="84 MB">%3$s</xliff:g></string>
+
+    <string name="pack_upgrade_priming_models">กำลังโหลดโมเดลการแปล…</string>
+
+    <string name="pack_upgrade_label_source">ภาษาของเกม (<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>)</string>
+
+    <string name="pack_upgrade_label_target">ภาษาของคุณ (<xliff:g id="target_language" example="English">%1$s</xliff:g>)</string>
+
+    <string name="lang_section_update_packs_title">อัปเดตแพ็กภาษา</string>
+    <string name="lang_section_offline_models_title">ดาวน์โหลดโมเดลออฟไลน์</string>
+    <string name="lang_section_offline_models_subtitle">ยังไม่ได้ดาวน์โหลดการแปลออฟไลน์สำหรับ <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> → <xliff:g id="target_language" example="English">%2$s</xliff:g> แอปยังคงทำงานแบบออนไลน์ได้</string>
+
+    <string name="settings_no_displays_found">ไม่พบจอแสดงผล</string>
+
+    <string name="settings_capture_display_footer">เลือกหน้าจอหนึ่งจอหรือมากกว่า หน้าจอที่คุณกำลังดู <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> อยู่จะถูกข้ามไป</string>
+
+    <!-- ═══ DEEPL — settings hints ═══ -->
+
+    <string name="hint_deepl_key">วางคีย์ API ของ <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> ที่นี่</string>
+
+    <!-- ═══ TRANSLATION FALLBACK NOTES ═══ -->
+
+    <string name="note_mlkit_no_internet">⚠ ไม่มีการเชื่อมต่ออินเทอร์เน็ต — กำลังแสดงการแปลออฟไลน์ (คุณภาพต่ำกว่า)</string>
+
+    <string name="note_mlkit_service_unavailable">⚠ บริการแปลไม่พร้อมใช้งาน — กำลังแสดงการแปลออฟไลน์ (คุณภาพต่ำกว่า)</string>
+
+    <string name="note_low_memory_fallback">⚠ หน่วยความจำต่ำ — กำลังแสดงการแปลออฟไลน์ (คุณภาพต่ำกว่า)</string>
+
+    <string name="translation_source_label">แปลโดย <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
+
+    <string name="error_live_mode_unsupported_backend">โหมดสดไม่พร้อมใช้งานกับวิธีการจับภาพหน้าจอปัจจุบัน</string>
+
+    <string name="error_screen_capture_denied">หยุดโหมดสดแล้ว — สิทธิ์การจับภาพหน้าจอถูกปฏิเสธ</string>
+
+    <!-- ═══ SECTION HEADERS (translation-result screen) ═══ -->
+
+    <string name="section_original">ต้นฉบับ</string>
+
+    <string name="section_translation">คำแปล</string>
+
+    <string name="section_words">คำ</string>
+
+    <string name="words_loading">กำลังค้นหาคำ…</string>
+
+    <string name="lens_loading">กำลังค้นหา…</string>
+
+    <!-- ═══ REGION PICKER ═══ -->
+
+    <string name="label_select_region">เลือกพื้นที่</string>
+
+    <string name="region_overlay_drag_instruction">ลากขอบเพื่อจำกัดการจับภาพหน้าจอให้อยู่ในพื้นที่นี้</string>
+
+    <string name="label_edit">แก้ไข</string>
+
+    <string name="label_done">เสร็จสิ้น</string>
+
+    <string name="label_add_custom_region">+ เพิ่มพื้นที่กำหนดเอง</string>
+
+    <string name="label_add_custom_region_title">เพิ่มพื้นที่กำหนดเอง</string>
+
+    <string name="label_region_drag_hint">ลากกล่องพื้นที่บนหน้าจอเกมเพื่อเลือกบริเวณที่ต้องการ ลากขอบบนหรือขอบล่าง หรือลากตรงกลางเพื่อย้ายทั้งกล่อง</string>
+
+    <string name="label_region_name">ชื่อพื้นที่</string>
+
+    <string name="hint_region_name">เช่น กล่องบทสนทนา</string>
+
+    <!-- ═══ FLOATING ICON CELL ═══ -->
+
+    <string name="settings_show_overlay_icon">เกี่ยวกับไอคอนลอย</string>
+
+    <!-- ═══ CAPTURE LIFECYCLE ═══ -->
+
+    <string name="capture_lifecycle_start">เปิด</string>
+
+    <string name="capture_lifecycle_stop">ปิด</string>
+
+    <string name="capture_lifecycle_state_on">เปิด</string>
+
+    <string name="capture_lifecycle_state_off">ปิด</string>
+
+    <string name="capture_lifecycle_on_title">อนุญาตการจับภาพหน้าจอแล้ว</string>
+
+    <string name="capture_lifecycle_off_title">อนุญาตการจับภาพหน้าจอ</string>
+
+    <string name="capture_lifecycle_on_subtitle">พร้อมแปล</string>
+
+    <string name="capture_lifecycle_off_subtitle">จำเป็นสำหรับการอ่านข้อความในเกม</string>
+
+    <string name="game_screen_controls_title">ปุ่มควบคุมหน้าจอเกม</string>
+
+    <!-- ═══ MEDIAPROJECTION OVERLAY-PERMISSION DIALOG ═══ -->
+
+    <string name="mp_overlay_permission_title">แสดงทับแอปอื่น</string>
+
+    <string name="mp_overlay_permission_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ต้องใช้สิทธิ์ในการแสดงทับแอปอื่น เพื่อให้ปุ่มควบคุมหน้าจอเกมแบบลอยปรากฏอยู่เหนือเกมของคุณได้</string>
+
+    <string name="mp_overlay_permission_button">เปิดการตั้งค่า</string>
+
+    <!-- ═══ FLOATING-ICON GESTURE HINTS ═══ -->
+
+    <string name="overlay_icon_gesture_drag"><b>ลาก</b>บนคำเพื่อดูคำจำกัดความอย่างรวดเร็ว</string>
+
+    <string name="overlay_icon_gesture_hold"><b>กดค้าง</b>เพื่อดูตัวอย่างคำแปล</string>
+
+    <string name="overlay_icon_gesture_tap"><b>แตะ</b>เพื่อเปิดเมนูด่วน</string>
+
+    <string name="overlay_icon_a11y_required_title">ต้องมีการช่วยเหลือพิเศษ</string>
+
+    <string name="overlay_icon_a11y_required_message">ไอคอนลอยต้องใช้สิทธิ์การช่วยเหลือพิเศษเพื่อวาดบนหน้าจอเกม\n\nไปที่ การตั้งค่า → การช่วยเหลือพิเศษ → แอปที่ดาวน์โหลด → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → เปิดใช้งาน</string>
+
+    <!-- ═══ ACCESSIBILITY-REQUIRED ALERT ═══ -->
+
+    <string name="a11y_required_alert_title">ต้องมีการช่วยเหลือพิเศษ</string>
+
+    <string name="a11y_required_displays_message">การสลับหน้าจอหรือการแปลหลายหน้าจอพร้อมกันต้องใช้สิทธิ์การช่วยเหลือพิเศษ ซึ่งช่วยให้ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> จับภาพหน้าจอใดก็ได้ ไม่ใช่แค่หน้าจอหลักเท่านั้น</string>
+
+    <string name="a11y_required_hotkey_message">การตั้งค่าปุ่มลัดต้องใช้สิทธิ์การช่วยเหลือพิเศษ ซึ่งช่วยให้ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ตรวจจับปุ่มที่คุณกดขณะเล่นเกมได้</string>
+
+    <string name="a11y_required_enhanced_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ใช้ปุ่มควบคุมขั้นสูงเหล่านี้เพื่อปรับปรุงประสบการณ์การแปลอัตโนมัติ</string>
+
+    <string name="requires_android_11_title">ต้องใช้ Android 11</string>
+    <string name="requires_android_11_message">ฟีเจอร์นี้ต้องใช้ Android 11 ขึ้นไป</string>
+
+    <!-- ═══ ENHANCED AUTO-TRANSLATE ROW ═══ -->
+
+    <string name="enhanced_auto_translate_title">การแปลอัตโนมัติขั้นสูง</string>
+
+    <string name="enhanced_auto_translate_subtitle_off">อ่านง่ายขึ้น ตอบสนองเร็วขึ้น และเสถียรขึ้น ต้องมีสิทธิ์เข้าถึงการช่วยเหลือพิเศษ</string>
+
+    <string name="enhanced_auto_translate_subtitle_on">เปิดใช้งานแล้ว</string>
+
+    <!-- ═══ ANKI INTEGRATION ═══ -->
+
+    <string name="anki_deck_picker_empty">ไม่พบสำรับ</string>
+
+    <string name="anki_deck_picker_loading">กำลังโหลดสำรับ…</string>
+
+    <string name="anki_card_type_picker_loading">กำลังโหลดประเภทการ์ด…</string>
+
+    <string name="anki_not_installed_title">สร้างการ์ดเพื่อทบทวน</string>
+
+    <string name="anki_not_installed_message">บันทึกคำที่คุณค้นพบขณะเล่นเกมและทบทวนภายหลัง\n\n<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> สามารถบันทึกประโยคที่แปลแล้ว คำศัพท์ และภาพหน้าจอลงใน <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> ได้โดยตรง ซึ่งเป็นแอปการ์ดทบทวนแบบเว้นช่วงที่ใช้ฟรี</string>
+
+    <string name="anki_not_installed_get">รับ <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_section_description">กำลังเรียนภาษาอยู่ใช่ไหม สร้างการ์ดภาษา <xliff:g id="target_language" example="English">%1$s</xliff:g> จากคำและประโยคที่ไม่คุ้นเคย แล้วทบทวนภายหลังด้วย <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> ซึ่งเป็นแอปการ์ดทบทวนแบบเว้นช่วงที่ใช้ฟรีและได้รับความนิยม</string>
+
+    <string name="anki_permission_rationale_title">ต้องมีสิทธิ์ <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_permission_rationale_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ต้องมีสิทธิ์ในการเข้าถึง <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> เพื่อเพิ่มการ์ดไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\n\nแตะดำเนินการต่อเพื่อให้สิทธิ์นี้</string>
+
+    <string name="btn_continue">ดำเนินการต่อ</string>
+
+    <string name="anki_permission_denied">สิทธิ์ถูกปฏิเสธ — ให้สิทธิ์ในการตั้งค่า <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_no_deck_selected">ไม่พบสำรับใน <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_added_no_audio">เพิ่มไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> แล้ว (ไม่มีเสียง)</string>
+
+    <string name="anki_added_success">เพิ่มไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> แล้ว</string>
+
+    <string name="anki_adding_in_progress">กำลังเพิ่มไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>…</string>
+
+    <string name="anki_send_failed_title">ไม่สามารถเพิ่มการ์ดได้</string>
+
+    <string name="anki_send_failed_message"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> ไม่ยอมรับการ์ด ตรวจสอบว่า <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g> กำลังทำงานอยู่ แล้วลองอีกครั้ง</string>
+
+    <string name="anki_mode_sentence">ประโยค</string>
+
+    <string name="anki_mode_word">คำ</string>
+
+    <!-- ═══ ANKI REVIEW SHEET ═══ -->
+
+    <string name="anki_sheet_title_new_card">การ์ด <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> ใหม่</string>
+
+    <string name="anki_deck_row_label">สำรับ</string>
+
+    <string name="anki_deck_row_empty">เลือกสำรับ</string>
+
+    <string name="anki_deck_label_format">สำรับ: <xliff:g id="deck_name" example="Vocabulary">%1$s</xliff:g></string>
+
+    <string name="anki_save_button_label">บันทึกการ์ด <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="anki_group_original">ต้นฉบับ</string>
+
+    <string name="anki_group_translation">คำแปล</string>
+
+    <string name="anki_group_words_count">คำในการ์ด · <xliff:g id="words_count" example="3">%d</xliff:g></string>
+
+    <string name="anki_group_definitions">คำจำกัดความ</string>
+
+    <string name="anki_group_screenshot">ภาพหน้าจอ</string>
+
+    <string name="anki_words_helper">คำเหล่านี้จะถูกรวมไว้ในการ์ด <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> แตะที่คำเพื่อไฮไลต์ในการ์ด แตะ × เพื่อลบออกจากการ์ด</string>
+
+    <string name="anki_translation_error">ไม่สามารถแปลได้</string>
+
+    <string name="anki_word_remove_content_description">ลบออกจากการ์ด</string>
+
+    <string name="anki_screenshot_remove_content_description">ลบภาพหน้าจอ</string>
+
+    <string name="anki_group_audio">เสียง</string>
+
+    <string name="anki_audio_preview_content_description">ฟังตัวอย่างเสียง</string>
+
+    <!-- ═══ CARD TYPE PICKER + FIELD MAPPING ═══ -->
+
+    <string name="anki_card_type_row_label">ประเภทการ์ด</string>
+
+    <string name="anki_card_type_row_empty">ค่าเริ่มต้น (<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>)</string>
+
+    <string name="anki_card_type_pick_title">เลือกประเภทการ์ด</string>
+
+    <string name="anki_card_type_no_models">ไม่พบประเภทการ์ดใน <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_card_type_stale_fallback">ประเภทการ์ดไม่มีอยู่อีกต่อไป กำลังใช้ค่าเริ่มต้น</string>
+
+    <string name="anki_card_type_section_default">ค่าเริ่มต้น</string>
+
+    <string name="anki_card_type_section_custom">ประเภทการ์ด</string>
+
+    <string name="anki_card_type_edit_mapping_row_label">แก้ไขการแมปฟิลด์</string>
+
+    <string name="anki_field_mapping_title">กำหนดค่า <xliff:g id="card_type_name" example="Lapis sentence">%1$s</xliff:g></string>
+
+    <string name="anki_field_mapping_save">บันทึก</string>
+
+    <string name="anki_field_mapping_unconfigured">กำหนดค่าฟิลด์สำหรับประเภทการ์ดนี้ก่อนส่ง</string>
+
+    <string name="anki_sort_field_empty">แมปค่าให้กับฟิลด์ “<xliff:g id="sort_field_name" example="Expression">%1$s</xliff:g>”: <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> ใช้ฟิลด์นี้เพื่อระบุโน้ต และค่าว่างจะทำให้เกิดข้อผิดพลาดการปฏิเสธรายการซ้ำเมื่อส่ง</string>
+
+    <string name="anki_models_unavailable">ไม่สามารถเชื่อมต่อกับ <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> เพื่อดึงประเภทการ์ดได้ ลองอีกครั้งในอีกสักครู่</string>
+
+    <string name="anki_card_type_basic_no_mapping">ประเภทการ์ดพื้นฐานไม่จำเป็นต้องแมปฟิลด์ — ด้านหน้าและด้านหลังจะถูกเติมโดยอัตโนมัติขึ้นอยู่กับว่าคุณกำลังบันทึกคำหรือประโยค</string>
+
+    <string name="anki_content_source_pick_title">แมป “<xliff:g id="field_name" example="Expression">%1$s</xliff:g>”</string>
+
+    <string name="anki_long_press_footer">เคล็ดลับ: หากต้องการสร้างการ์ดทันทีโดยไม่แก้ไข ให้กดค้างที่ปุ่มใดก็ตามที่ปกติจะพาคุณไปยังหน้าสร้างการ์ด <xliff:g id="brand_anki" example="anki">anki</xliff:g></string>
+
+    <!-- ═══ CONTENT SOURCE LABELS ═══ -->
+
+    <string name="anki_content_none">ว่าง</string>
+    <string name="anki_content_none_desc">ไม่ส่งอะไรเลย — ฟิลด์ <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> จะยังคงว่างอยู่</string>
+
+    <string name="anki_content_expression">คำ / คำตั้ง</string>
+    <string name="anki_content_expression_desc">รูปพจนานุกรมของคำที่ไฮไลต์ ไม่มีวงเล็บ ตัวอย่าง: 聞く</string>
+
+    <string name="anki_content_expression_furigana">คำ / คำตั้ง พร้อมฟุริงานะ</string>
+    <string name="anki_content_expression_furigana_desc">รูปพจนานุกรมพร้อมวงเล็บฟุริงานะต่อคันจิ สำหรับฟิลด์ที่แสดงผ่าน \{\{furigana:\}\} ตัวอย่าง: 聞[き]く</string>
+
+    <string name="anki_content_reading">คำอ่าน (คานะ)</string>
+    <string name="anki_content_reading_desc">คำอ่านแบบคานะล้วนของคำที่ไฮไลต์ ตัวอย่าง: きく</string>
+
+    <string name="anki_content_sentence">ประโยคต้นฉบับ</string>
+    <string name="anki_content_sentence_desc">ประโยคต้นฉบับโดยทำคำที่ไฮไลต์เป็นตัวหนา ตัวอย่าง: 友達に<b>聞いた</b></string>
+
+    <string name="anki_content_sentence_furigana">ประโยคต้นฉบับพร้อมฟุริงานะ</string>
+    <string name="anki_content_sentence_furigana_desc">ประโยคต้นฉบับพร้อมวงเล็บฟุริงานะต่อคันจิ สำหรับฟิลด์ที่แสดงผ่าน \{\{furigana:\}\} ตัวอย่าง: 友達[ともだち]に<b>聞[き]いた</b></string>
+
+    <string name="anki_content_sentence_translation">ประโยคที่แปลแล้ว</string>
+    <string name="anki_content_sentence_translation_desc">คำแปลของประโยคต้นฉบับเป็นภาษาเป้าหมายที่คุณเลือก</string>
+
+    <string name="anki_content_definition">คำจำกัดความ</string>
+    <string name="anki_content_definition_desc">คำจำกัดความในพจนานุกรมของคำที่ไฮไลต์ จัดรูปแบบเป็น HTML</string>
+
+    <string name="anki_content_examples">ประโยคตัวอย่าง</string>
+    <string name="anki_content_examples_desc">ประโยคตัวอย่างจาก <xliff:g id="brand_tatoeba" example="Tatoeba">Tatoeba</xliff:g> สำหรับคำที่ไฮไลต์ เมื่อมีให้ใช้งาน</string>
+
+    <string name="anki_content_picture">ภาพหน้าจอ</string>
+    <string name="anki_content_picture_desc">ภาพหน้าจอเกม ห่อด้วยมาร์กอัป &lt;img&gt; พร้อมสำหรับฟิลด์รูปภาพ / ภาพหน้าจอ</string>
+
+    <string name="anki_content_word_audio">เสียงของคำ</string>
+    <string name="anki_content_word_audio_desc">เสียงอ่านออกเสียงของคำ พร้อมสำหรับฟิลด์ Word Audio</string>
+
+    <string name="anki_content_sentence_audio">เสียงของประโยค</string>
+    <string name="anki_content_sentence_audio_desc">เสียงอ่านออกเสียงของประโยค พร้อมสำหรับฟิลด์ Sentence Audio</string>
+
+    <string name="anki_content_frequency">ดาวความถี่</string>
+    <string name="anki_content_frequency_desc">คะแนนความถี่ของคำที่ไฮไลต์ในรูปแบบดาว ตัวอย่าง: ★★★</string>
+
+    <string name="anki_content_part_of_speech">ชนิดของคำ</string>
+    <string name="anki_content_part_of_speech_desc">แท็กชนิดของคำสำหรับคำที่ไฮไลต์ (เฉพาะการ์ดโหมดคำ) ตัวอย่าง: noun</string>
+
+    <string name="anki_content_words_table">รายการคำ (การ์ดประโยค)</string>
+    <string name="anki_content_words_table_desc">รายการที่จัดรูปแบบของทุกคำที่ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ตรวจพบในประโยค พร้อมคำอ่านและคำจำกัดความ</string>
+
+    <!-- ═══ CARD-TYPE STATE FLAGS ═══ -->
+
+    <string name="anki_content_flag_vocabulary">เครื่องหมายการ์ดคำศัพท์ (x)</string>
+    <string name="anki_content_flag_vocabulary_desc">แสดง “x” เฉพาะตอนส่งในโหมดคำเท่านั้น — ใช้สำหรับฟิลด์เทมเพลตเช่น “Is Vocabulary Card” ของ <xliff:g id="brand_migaku" example="Migaku">Migaku</xliff:g></string>
+
+    <string name="anki_content_flag_sentence">เครื่องหมายการ์ดประโยค (x)</string>
+    <string name="anki_content_flag_sentence_desc">แสดง “x” เฉพาะตอนส่งในโหมดประโยคเท่านั้น — ใช้สำหรับฟิลด์เทมเพลตเช่น “IsSentenceCard” ของ <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> หรือ <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g></string>
+
+    <string name="anki_content_flag_targeted_sentence">เครื่องหมายการ์ดประโยคเป้าหมาย (x)</string>
+    <string name="anki_content_flag_targeted_sentence_desc">แสดง “x” ตอนส่งประโยคที่มีคำเป้าหมายไฮไลต์ — ใช้สำหรับ “IsTargetedSentenceCard” ของ <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g></string>
+
+    <string name="anki_content_flag_always_on">เครื่องหมายเปิดตลอด (x)</string>
+    <string name="anki_content_flag_always_on_desc">แสดง “x” เสมอ ใช้สำหรับฟิลด์เทมเพลตที่คุณต้องการเปิดใช้งานโดยไม่มีเงื่อนไข</string>
+
+    <string name="anki_content_section_content">เนื้อหา</string>
+    <string name="anki_content_section_flag">แฟล็กประเภทการ์ด</string>
+
+    <!-- ═══ GENERIC CHROME ═══ -->
+
+    <string name="cd_back">กลับ</string>
+
+    <!-- ═══ APPEARANCE — theme mode and accent picker ═══ -->
+
+    <string name="pt_theme_mode_system">ระบบ</string>
+    <string name="pt_theme_mode_dark">มืด</string>
+    <string name="pt_theme_mode_light">สว่าง</string>
+
+    <string name="pt_accent_label">สีเน้น</string>
+
+    <string name="pt_accent_coral">คอรัล</string>
+    <string name="pt_accent_amber">อำพัน</string>
+    <string name="pt_accent_lime">เขียวมะนาว</string>
+    <string name="pt_accent_mint">มินต์</string>
+    <string name="pt_accent_teal">เขียวอมฟ้า</string>
+    <string name="pt_accent_aqua">ฟ้าน้ำทะเล</string>
+    <string name="pt_accent_sky">ฟ้า</string>
+    <string name="pt_accent_steel">เทาเหล็ก</string>
+    <string name="pt_accent_violet">ม่วง</string>
+    <string name="pt_accent_orchid">กล้วยไม้</string>
+    <string name="pt_accent_rose">กุหลาบ</string>
+
+    <!-- ═══ DEEPL — detail screen ═══ -->
+
+    <string name="deepl_settings_save">บันทึก</string>
+
+    <string name="deepl_settings_close_cd">ปิด</string>
+
+    <string name="deepl_settings_get_key_title">รับคีย์ API ของ <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> ฟรี</string>
+
+    <string name="deepl_settings_get_key_subtitle">แผนฟรีมี 500,000 ตัวอักษรต่อเดือน แต่ต้องใช้บัตรเครดิตในการสมัคร</string>
+
+    <string name="deepl_settings_about"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> เป็นบริการแปลที่ขึ้นชื่อเรื่องคุณภาพสูง โดยเฉพาะในภาษายุโรป</string>
+
+    <!-- ═══ GENERIC LLM BACKEND SETTINGS ═══ -->
+
+    <string name="llm_backend_api_key_label">คีย์ API</string>
+
+    <string name="llm_backend_model_label">โมเดล</string>
+
+    <string name="llm_backend_get_key_title_fmt">รับคีย์ API ของ <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g></string>
+
+    <string name="llm_backend_model_custom_entry">กำหนดเอง…</string>
+
+    <string name="llm_model_picker_loading">กำลังโหลดโมเดล…</string>
+
+    <string name="llm_model_picker_fetch_failed">ไม่สามารถดึงรายการโมเดลได้ ตรวจสอบคีย์ API หรือพิมพ์รหัสโมเดลผ่าน “กำหนดเอง…”</string>
+
+    <string name="llm_backend_invalid_key_alert_title">ไม่สามารถยืนยันคีย์ API ได้</string>
+
+    <string name="llm_backend_invalid_key_alert_message_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> ปฏิเสธคีย์ที่คุณป้อน ตรวจสอบอีกครั้งที่ <xliff:g id="dev_console_url" example="platform.openai.com">%2$s</xliff:g> แล้วลองอีกครั้ง</string>
+
+    <string name="llm_backend_invalid_key_alert_button">ตกลง</string>
+
+    <!-- ═══ SETTINGS FOOTERS ═══ -->
+
+    <string name="tr_service_order_footer">การแปลจะลองใช้แต่ละบริการที่เปิดใช้งานตามลำดับที่แสดง โดยจะเปลี่ยนไปใช้บริการถัดไปเมื่อบริการใดไม่พร้อมใช้งาน บริการแปลออนไลน์จะได้รับข้อความที่จับภาพไว้ โปรดอ่านนโยบายความเป็นส่วนตัวของผู้ให้บริการแต่ละรายก่อนเปิดใช้งาน</string>
+
+    <string name="tr_service_offline_footer">การแปลออฟไลน์ใช้เป็นทางเลือกสำรองเมื่อการแปลออนไลน์ไม่พร้อมใช้งาน การแปลของ <xliff:g id="brand_mlkit" example="MLKit">MLKit</xliff:g> มีคุณภาพไม่ดี แต่ตัวเลือกอื่นอาจช้ามากและใช้ทรัพยากรสูง โปรดระวังเมื่อใช้สำหรับการแปลอัตโนมัติ</string>
+
+    <!-- ═══ PER-BACKEND STATUS LINE ═══ -->
+
+    <string name="tr_service_status_loading">กำลังตรวจสอบการใช้งาน…</string>
+
+    <string name="tr_service_status_quota_fmt"><xliff:g id="used" example="120,345">%1$s</xliff:g> / <xliff:g id="total" example="500,000">%2$s</xliff:g> ตัวอักษรที่ใช้ไป</string>
+
+    <string name="tr_service_status_quota_with_reset_fmt"><xliff:g id="quota_line" example="120,345 / 500,000 characters used">%1$s</xliff:g> · รีเซ็ต <xliff:g id="reset_date" example="Jun 1">%2$s</xliff:g></string>
+
+    <!-- ═══ BACKEND QUALITY / SPEED LABELS ═══ -->
+
+    <string name="tr_service_quality_bad">คุณภาพแย่</string>
+    <string name="tr_service_quality_okay">คุณภาพพอใช้</string>
+    <string name="tr_service_quality_good">คุณภาพดี</string>
+    <string name="tr_service_quality_better">คุณภาพดีมาก</string>
+
+    <string name="tr_service_speed_very_slow">ช้ามาก</string>
+    <string name="tr_service_speed_slow">ช้า</string>
+    <string name="tr_service_speed_okay">ความเร็วพอใช้</string>
+    <string name="tr_service_speed_fast">เร็ว</string>
+
+    <!-- ═══ OFFLINE BACKEND ROW ═══ -->
+
+    <string name="offline_backend_quality_label">คุณภาพ</string>
+    <string name="offline_backend_speed_label">ความเร็ว</string>
+    <string name="offline_backend_ram_label">หน่วยความจำ</string>
+    <string name="offline_backend_disk_label">พื้นที่จัดเก็บ</string>
+
+    <!-- ── Firefox Translations (Bergamot) offline row ── -->
+    <string name="bergamot_status_downloading">กำลังดาวน์โหลด… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%2$s</xliff:g></string>
+
+    <string name="bergamot_download_failed">ไม่สามารถดาวน์โหลดโมเดล Firefox Translations ได้</string>
+
+    <string name="bergamot_disable_title">ปิด Firefox Translations หรือไม่</string>
+
+    <string name="bergamot_disable_message">การแปลคู่ภาษานี้แบบออฟไลน์จะหยุดทำงาน คุณสามารถเก็บโมเดลที่ดาวน์โหลดไว้หรือลบเพื่อเพิ่มพื้นที่ว่างได้</string>
+
+    <string name="bergamot_disable_keep">ปิดเท่านั้น</string>
+
+    <string name="bergamot_disable_delete">ลบโมเดล</string>
+
+    <string name="bergamot_warmup_downloading">กำลังดาวน์โหลดโมเดลออฟไลน์… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%2$s</xliff:g></string>
+
+    <string name="bergamot_warmup_downloading_multi">กำลังดาวน์โหลดโมเดลออฟไลน์ <xliff:g id="file_index" example="1">%1$d</xliff:g> จาก <xliff:g id="file_count" example="2">%2$d</xliff:g>… <xliff:g id="bytes_so_far" example="12 MB">%3$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%4$s</xliff:g></string>
+    <string name="bergamot_pair_unsupported">ไม่รองรับสำหรับคู่ภาษาปัจจุบัน</string>
+
+    <string name="offline_backend_downloaded_cd">ดาวน์โหลดแล้ว</string>
+    <string name="offline_backend_not_downloaded_cd">ยังไม่ได้ดาวน์โหลด</string>
+    <string name="offline_backend_enabled_cd">เปิดใช้งาน</string>
+    <string name="offline_backend_disabled_cd">ปิดใช้งาน</string>
+
+    <string name="offline_backend_row_a11y_fmt"><xliff:g id="title" example="Qwen 2.5 1.5B">%1$s</xliff:g> คุณภาพ: <xliff:g id="quality" example="Good quality">%2$s</xliff:g> ความเร็ว: <xliff:g id="speed" example="Okay speed">%3$s</xliff:g> ต้องใช้หน่วยความจำ <xliff:g id="ram" example="4 GB">%4$s</xliff:g> พื้นที่จัดเก็บ <xliff:g id="disk_size" example="1.2 GB">%5$s</xliff:g> <xliff:g id="downloaded_state" example="Downloaded">%6$s</xliff:g> <xliff:g id="enabled_state" example="Enabled">%7$s</xliff:g></string>
+
+    <string name="offline_backend_row_a11y_no_speed_fmt"><xliff:g id="title" example="ML Kit">%1$s</xliff:g> คุณภาพ: <xliff:g id="quality" example="Bad quality">%2$s</xliff:g> ต้องใช้หน่วยความจำ <xliff:g id="ram" example="&lt; 1 GB">%3$s</xliff:g> พื้นที่จัดเก็บ <xliff:g id="disk_size" example="~30 MB">%4$s</xliff:g> <xliff:g id="downloaded_state" example="Downloaded">%5$s</xliff:g> <xliff:g id="enabled_state" example="Enabled">%6$s</xliff:g></string>
+
+    <!-- ═══ GENERIC DOWNLOAD UI ═══ -->
+
+    <string name="model_download_extracting">กำลังแตกไฟล์…</string>
+
+    <!-- ═══ ON-DEVICE LLM TRANSLATION MODELS (MNN-backed) ═══ -->
+
+    <!-- ── Qwen 2.5 1.5B ── -->
+
+    <string name="qwen_mnn_status_not_downloaded">ต้องใช้หน่วยความจำ <xliff:g id="ram" example="4 GB">%1$s</xliff:g> พื้นที่จัดเก็บ <xliff:g id="disk_size" example="1.2 GB">%2$s</xliff:g></string>
+
+    <string name="qwen_mnn_status_downloaded_disabled">ดาวน์โหลดแล้วแต่ปิดใช้งาน (พื้นที่จัดเก็บ <xliff:g id="disk_size" example="1.2 GB">%1$s</xliff:g>)</string>
+
+    <string name="qwen_mnn_status_ready">ต้องใช้หน่วยความจำ <xliff:g id="ram" example="4 GB">%1$s</xliff:g> พื้นที่จัดเก็บ <xliff:g id="disk_size" example="1.2 GB">%2$s</xliff:g></string>
+
+    <string name="qwen_mnn_status_downloading">กำลังดาวน์โหลด… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> จาก <xliff:g id="bytes_total" example="1.2 GB">%2$s</xliff:g></string>
+
+    <string name="qwen_mnn_status_verifying">กำลังตรวจสอบการดาวน์โหลด…</string>
+
+    <string name="qwen_mnn_disable_title">ปิดใช้งาน <xliff:g id="brand_qwen" example="Qwen">Qwen</xliff:g> (MNN) หรือไม่</string>
+
+    <string name="qwen_mnn_disable_message">มีโมเดลขนาด <xliff:g id="disk_size" example="1.2 GB">%1$s</xliff:g> ติดตั้งอยู่ คุณสามารถเก็บไว้ใช้ภายหลังหรือลบเพื่อเพิ่มพื้นที่ว่างได้</string>
+
+    <string name="qwen_mnn_download_failed">ดาวน์โหลดไม่สำเร็จ: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="qwen_mnn_metered_warning_title">ดาวน์โหลดผ่านเครือข่ายที่จำกัดปริมาณหรือไม่</string>
+
+    <string name="qwen_mnn_metered_warning_message"><xliff:g id="brand_qwen" example="Qwen 2.5 1.5B (MNN)">Qwen 2.5 1.5B (MNN)</xliff:g> มีขนาด <xliff:g id="download_size" example="1.2 GB">%1$s</xliff:g> เครือข่ายนี้ถูกทำเครื่องหมายว่าจำกัดปริมาณ ดำเนินการต่อหรือไม่</string>
+
+    <string name="qwen_mnn_disable_keep">ปิดใช้งานเท่านั้น</string>
+    <string name="qwen_mnn_disable_delete">ลบโมเดล</string>
+
+    <!-- ── Qwen 3.5 2B ── -->
+
+    <string name="qwen35_2b_mnn_status_not_downloaded">ต้องใช้หน่วยความจำ <xliff:g id="ram" example="6 GB">%1$s</xliff:g> พื้นที่จัดเก็บ <xliff:g id="disk_size" example="1.3 GB">%2$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_status_downloaded_disabled">ดาวน์โหลดแล้วแต่ปิดใช้งาน (พื้นที่จัดเก็บ <xliff:g id="disk_size" example="1.3 GB">%1$s</xliff:g>)</string>
+
+    <string name="qwen35_2b_mnn_status_ready">ต้องใช้หน่วยความจำ <xliff:g id="ram" example="6 GB">%1$s</xliff:g> พื้นที่จัดเก็บ <xliff:g id="disk_size" example="1.3 GB">%2$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_status_downloading">กำลังดาวน์โหลด… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> จาก <xliff:g id="bytes_total" example="1.3 GB">%2$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_status_verifying">กำลังตรวจสอบการดาวน์โหลด…</string>
+
+    <string name="qwen35_2b_mnn_disable_title">ปิดใช้งาน <xliff:g id="brand_qwen" example="Qwen 3.5 2B">Qwen 3.5 2B</xliff:g> หรือไม่</string>
+
+    <string name="qwen35_2b_mnn_disable_message">มีโมเดลขนาด <xliff:g id="disk_size" example="1.3 GB">%1$s</xliff:g> ติดตั้งอยู่ คุณสามารถเก็บไว้ใช้ภายหลังหรือลบเพื่อเพิ่มพื้นที่ว่างได้</string>
+
+    <string name="qwen35_2b_mnn_download_failed">ดาวน์โหลดไม่สำเร็จ: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_metered_warning_title">ดาวน์โหลดผ่านเครือข่ายที่จำกัดปริมาณหรือไม่</string>
+
+    <string name="qwen35_2b_mnn_metered_warning_message"><xliff:g id="brand_qwen" example="Qwen 3.5 2B">Qwen 3.5 2B</xliff:g> มีขนาด <xliff:g id="download_size" example="1.3 GB">%1$s</xliff:g> เครือข่ายนี้ถูกทำเครื่องหมายว่าจำกัดปริมาณ ดำเนินการต่อหรือไม่</string>
+
+    <string name="qwen35_2b_mnn_disable_keep">ปิดใช้งานเท่านั้น</string>
+    <string name="qwen35_2b_mnn_disable_delete">ลบโมเดล</string>
+
+    <string name="deprecated_badge_label">เลิกใช้แล้ว</string>
+
+    <!-- ── Gemma 4 E2B ── -->
+
+    <string name="gemma_e2b_mnn_status_not_downloaded">ต้องใช้หน่วยความจำ <xliff:g id="ram" example="6 GB">%1$s</xliff:g> พื้นที่จัดเก็บ <xliff:g id="disk_size" example="2.1 GB">%2$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_status_downloaded_disabled">ดาวน์โหลดแล้วแต่ปิดใช้งาน (พื้นที่จัดเก็บ <xliff:g id="disk_size" example="2.1 GB">%1$s</xliff:g>)</string>
+
+    <string name="gemma_e2b_mnn_status_ready">ต้องใช้หน่วยความจำ <xliff:g id="ram" example="6 GB">%1$s</xliff:g> พื้นที่จัดเก็บ <xliff:g id="disk_size" example="2.1 GB">%2$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_status_downloading">กำลังดาวน์โหลด… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> จาก <xliff:g id="bytes_total" example="2.1 GB">%2$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_status_verifying">กำลังตรวจสอบการดาวน์โหลด…</string>
+
+    <string name="gemma_e2b_mnn_disable_title">ปิดใช้งาน <xliff:g id="brand_gemma" example="Gemma 4 E2B">Gemma 4 E2B</xliff:g> หรือไม่</string>
+
+    <string name="gemma_e2b_mnn_disable_message">มีโมเดลขนาด <xliff:g id="disk_size" example="2.1 GB">%1$s</xliff:g> ติดตั้งอยู่ คุณสามารถเก็บไว้ใช้ภายหลังหรือลบเพื่อเพิ่มพื้นที่ว่างได้</string>
+
+    <string name="gemma_e2b_mnn_download_failed">ดาวน์โหลดไม่สำเร็จ: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_metered_warning_title">ดาวน์โหลดผ่านเครือข่ายที่จำกัดปริมาณหรือไม่</string>
+
+    <string name="gemma_e2b_mnn_metered_warning_message"><xliff:g id="brand_gemma" example="Gemma 4 E2B">Gemma 4 E2B</xliff:g> มีขนาด <xliff:g id="download_size" example="2.1 GB">%1$s</xliff:g> เครือข่ายนี้ถูกทำเครื่องหมายว่าจำกัดปริมาณ ดำเนินการต่อหรือไม่</string>
+
+    <string name="gemma_e2b_mnn_disable_keep">ปิดใช้งานเท่านั้น</string>
+    <string name="gemma_e2b_mnn_disable_delete">ลบโมเดล</string>
+
+    <!-- ── Tencent Hunyuan-MT 1.5 1.8B ── -->
+
+    <string name="hymt_status_not_downloaded">ต้องใช้หน่วยความจำ <xliff:g id="ram" example="4 GB">%1$s</xliff:g> พื้นที่จัดเก็บ <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g></string>
+
+    <string name="hymt_status_downloaded_disabled">ดาวน์โหลดแล้วแต่ปิดใช้งาน (พื้นที่จัดเก็บ <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g>)</string>
+
+    <string name="hymt_status_ready">ต้องใช้หน่วยความจำ <xliff:g id="ram" example="4 GB">%1$s</xliff:g> พื้นที่จัดเก็บ <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g></string>
+
+    <string name="hymt_status_downloading">กำลังดาวน์โหลด… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> จาก <xliff:g id="bytes_total" example="1.5 GB">%2$s</xliff:g></string>
+
+    <string name="hymt_status_verifying">กำลังตรวจสอบการดาวน์โหลด…</string>
+
+    <string name="hymt_disable_title">ปิดใช้งาน <xliff:g id="brand_hunyuan" example="Hunyuan-MT">Hunyuan-MT</xliff:g> หรือไม่</string>
+
+    <string name="hymt_disable_message">มีโมเดลขนาด <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> ติดตั้งอยู่ คุณสามารถเก็บไว้ใช้ภายหลังหรือลบเพื่อเพิ่มพื้นที่ว่างได้</string>
+
+    <string name="hymt_download_failed">ดาวน์โหลดไม่สำเร็จ: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="hymt_metered_warning_title">ดาวน์โหลดผ่านเครือข่ายที่จำกัดปริมาณหรือไม่</string>
+
+    <string name="hymt_metered_warning_message"><xliff:g id="brand_hunyuan15" example="Hunyuan-MT 1.5">Hunyuan-MT 1.5</xliff:g> มีขนาด <xliff:g id="download_size" example="1.5 GB">%1$s</xliff:g> เครือข่ายนี้ถูกทำเครื่องหมายว่าจำกัดปริมาณ ดำเนินการต่อหรือไม่</string>
+
+    <string name="hymt_disable_keep">ปิดใช้งานเท่านั้น</string>
+    <string name="hymt_disable_delete">ลบโมเดล</string>
+
+    <!-- ═══ HUNYUAN-MT LEGAL ATTESTATION (legal text) ═══ -->
+
+    <string name="hymt_legal_title">ประกาศทางกฎหมายและข้อจำกัดตามภูมิภาค</string>
+
+    <string name="hymt_legal_message">โมเดล <xliff:g id="brand_hunyuan15" example="Hunyuan-MT 1.5">Hunyuan-MT 1.5</xliff:g> ของ <xliff:g id="brand_tencent" example="Tencent">Tencent</xliff:g> ได้รับอนุญาตภายใต้ <xliff:g id="license_name" example="Tencent HY Community License Agreement">Tencent HY Community License Agreement</xliff:g> ใบอนุญาตนี้ไม่อนุญาตให้ใช้งานภายในสหภาพยุโรป สหราชอาณาจักร และเกาหลีใต้\n\nเมื่อแตะ “ยอมรับ” ถือว่าคุณยืนยันและรับรองว่า:\n\n(1) ปัจจุบันคุณไม่ได้พำนักหรืออยู่ในสหภาพยุโรป สหราชอาณาจักร หรือเกาหลีใต้\n\n(2) คุณจะไม่ใช้ผลลัพธ์ของโมเดลนี้เพื่อปรับปรุงโมเดล AI อื่นใด (ตาม <xliff:g id="license_section" example="§5(b)">§5(b)</xliff:g> ของใบอนุญาต)</string>
+
+    <string name="hymt_legal_agree">ยอมรับ — เปิดใช้งาน <xliff:g id="brand_hunyuan" example="Hunyuan">Hunyuan</xliff:g></string>
+
+    <string name="hymt_legal_cancel">ยกเลิก</string>
+
+    <!-- ═══ COLD-LAUNCH MIGRATION ALERT ═══ -->
+
+    <string name="legacy_engines_removed_title">อัปเดตการแปลออฟไลน์แล้ว</string>
+    <string name="legacy_engines_removed_message">ตัวแปลออฟไลน์รุ่นเก่าของคุณ (<xliff:g id="brand_qwen" example="Qwen">Qwen</xliff:g> และ <xliff:g id="brand_translategemma" example="TranslateGemma">TranslateGemma</xliff:g>) ถูกลบและแทนที่ด้วยเวอร์ชันที่เร็วกว่าซึ่งใช้ MNN เปิดการตั้งค่าเพื่อเปิดใช้งานตัวแปลใหม่</string>
+    <string name="legacy_engines_removed_button_settings">การตั้งค่า</string>
+    <string name="legacy_engines_removed_button_cancel">ยกเลิก</string>
+
+    <!-- ═══ LLM HARDWARE-UNSUPPORTED STATUS LINES ═══ -->
+
+    <string name="llm_hardware_unsupported_arm64">ไม่รองรับบนอุปกรณ์นี้ (ต้องใช้ CPU แบบ arm64)</string>
+
+    <string name="llm_hardware_unsupported_ram">ไม่รองรับบนอุปกรณ์นี้ (ต้องใช้ RAM อย่างน้อย <xliff:g id="min_ram_gb" example="4">%1$d</xliff:g> GB)</string>
+
+    <!-- ═══ PRE-TOGGLE LOW-MEMORY GATE ═══ -->
+
+    <string name="llm_low_memory_title">หน่วยความจำว่างไม่เพียงพอ</string>
+
+    <string name="llm_low_memory_message"><xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> ต้องใช้หน่วยความจำว่างประมาณ <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g> เพื่อทำงาน ขณะนี้มีว่างเพียง <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g> เท่านั้น\n\nปิดแอปอื่นเพื่อเพิ่มหน่วยความจำว่าง หรือยกเลิกหากโมเดลนี้ไม่เหมาะกับอุปกรณ์ของคุณ</string>
+
+    <string name="llm_low_memory_recheck">ตรวจสอบหน่วยความจำอีกครั้ง</string>
+
+    <string name="llm_low_memory_start_anyway">เริ่มใช้งานเลย</string>
+
+    <string name="llm_low_memory_delete">ลบโมเดล</string>
+
+    <string name="llm_low_memory_cancel">ยกเลิก</string>
+
+    <!-- ═══ WARNING-TONE LLM STATUS LINE ═══ -->
+
+    <string name="llm_status_low_memory_badge">หน่วยความจำต่ำ — กำลังแปลโดยใช้ตัวสำรอง</string>
+
+    <!-- ═══ FLOATING-ICON MENU WARNING PILL ═══ -->
+
+    <string name="degraded_warning_offline">ออฟไลน์ — คุณภาพการแปลลดลง</string>
+    <string name="degraded_warning_low_memory">หน่วยความจำต่ำ — คุณภาพการแปลลดลง</string>
+
+    <!-- ═══ MAIN SCREEN — bottom-bar and overflow-menu items ═══ -->
+
+    <string name="nav_settings">การตั้งค่า</string>
+
+    <string name="nav_regions">พื้นที่</string>
+
+    <string name="live_mode_auto_label">อัตโนมัติ</string>
+
+    <string name="live_mode_pause_label">พัก</string>
+
+    <string name="live_mode_auto_translate_label">แปลอัตโนมัติ</string>
+
+    <string name="live_mode_pause_auto_label">หยุดอัตโนมัติชั่วคราว</string>
+
+    <string name="live_mode_auto_with_hint"><xliff:g id="hint_label" example="Furigana">%1$s</xliff:g>อัตโนมัติ</string>
+
+    <string name="menu_capture_region">พื้นที่จับภาพ</string>
+
+    <string name="menu_translations">การแปล</string>
+
+    <string name="menu_close">ปิด</string>
+
+    <!-- ═══ GENERIC BUTTON LABELS ═══ -->
+
+    <string name="btn_save">บันทึก</string>
+
+    <string name="btn_cancel">ยกเลิก</string>
+
+    <string name="btn_clear">ล้าง</string>
+
+    <string name="btn_ok">ตกลง</string>
+
+    <string name="btn_not_now">ไม่ใช่ตอนนี้</string>
+
+    <!-- ═══ CUSTOM-REGION SHEET ═══ -->
+
+    <string name="btn_save_to_list">บันทึกลงในรายการ</string>
+
+    <string name="custom_region_edit_title">แก้ไข <xliff:g id="region_label" example="Dialogue box">%1$s</xliff:g></string>
+
+    <!-- ═══ REGION PICKER SHEET ═══ -->
+
+    <string name="region_picker_editing_title">กำลังแก้ไขพื้นที่</string>
+
+    <string name="region_default_full_screen">เต็มหน้าจอ</string>
+
+    <string name="region_label_current_capture">พื้นที่จับภาพปัจจุบัน</string>
+
+    <!-- ═══ MAIN-SCREEN BIG TRANSLATE BUTTON ═══ -->
+
+    <string name="translate_button_prefix_translate">แปล</string>
+
+    <string name="translate_button_prefix_reload">โหลดใหม่</string>
+
+    <string name="translate_button_subtitle_hold_to_hide_translations">กดค้างเพื่อซ่อนคำแปลบนหน้าจอเกม</string>
+
+    <string name="translate_button_subtitle_hold_to_show_translations_instead_of_hint">กดค้างเพื่อแสดงคำแปลแทน <xliff:g id="hint_label" example="furigana">%1$s</xliff:g></string>
+
+    <string name="translate_button_subtitle_hold_to_show_hint">กดค้างเพื่อแสดง <xliff:g id="hint_label" example="furigana">%1$s</xliff:g> บนหน้าจอเกม</string>
+
+    <string name="translate_button_subtitle_hold_to_show_translations">กดค้างเพื่อแสดงคำแปลบนหน้าจอเกม</string>
+
+    <string name="hint_label_pinyin_lower">พินอิน</string>
+    <string name="hint_label_furigana_lower">ฟุริงานะ</string>
+
+    <!-- ═══ FLOATING ICON LONG-PRESS MENU ═══ -->
+
+    <string name="floating_icon_close_label_turn_off">ปิด</string>
+
+    <string name="floating_icon_close_label_hide">ซ่อน</string>
+
+    <string name="floating_menu_btn_capture_region">พื้นที่\nจับภาพ</string>
+
+    <string name="floating_menu_drag_instruction">ลากนิ้วเพื่อจับภาพพื้นที่ที่ต้องการ</string>
+
+    <!-- ═══ DEEPL SETTINGS — API-key field label ═══ -->
+
+    <string name="deepl_api_key_field_label">คีย์ API ของ <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g></string>
+
+    <!-- ═══ AUTO-TRANSLATE DIALOG ═══ -->
+
+    <string name="settings_overlay_mode_title">โหมดการซ้อนทับ</string>
+
+    <string name="settings_overlay_mode_subtitle">การซ้อนทับที่จะแสดงระหว่างโหมดอัตโนมัติหรือการกดค้างเพื่อดูตัวอย่าง</string>
+
+    <string name="settings_capture_interval_title">ช่วงเวลาจับภาพ</string>
+
+    <string name="settings_capture_interval_seconds_suffix">วิ</string>
+
+    <string name="settings_capture_interval_hint">ความถี่ในการจับภาพหน้าจอเกมระหว่างการแปลอัตโนมัติ ขั้นต่ำ <xliff:g id="min_seconds" example="1">%1$s</xliff:g> วินาที</string>
+
+    <string name="overlay_mode_option_translation">คำแปล</string>
+
+    <string name="overlay_mode_option_furigana">ฟุริงานะ</string>
+
+    <string name="overlay_mode_option_pinyin">พินอิน</string>
+
+    <string name="settings_hide_overlays_during_auto_mode">ซ่อนการซ้อนทับระหว่างโหมดอัตโนมัติ</string>
+
+    <string name="settings_hide_overlays_ignored_multi_display">ระบบจะไม่ใช้การตั้งค่านี้เมื่อเลือกมากกว่าหนึ่งหน้าจอ — การซ้อนทับจะแสดงบนแต่ละหน้าจอ</string>
+
+    <string name="settings_touches_refresh_title">การแตะหน้าจอจะรีเฟรชคำแปล</string>
+
+    <!-- ═══ HOTKEY SETUP DIALOG ═══ -->
+
+    <string name="dialog_hotkey_setup_title">ตั้งค่าปุ่มลัด</string>
+
+    <string name="dialog_hotkey_setup_instruction">กดปุ่มค้างไว้ 2 วินาที</string>
+
+    <string name="dialog_hotkey_setup_countdown">กดค้าง <xliff:g id="remaining_seconds" example="1.4">%1$s</xliff:g></string>
+
+    <!-- ═══ TRANSLATION-RESULT SCREEN — toolbar + per-row buttons ═══ -->
+
+    <string name="cd_translation_result_back">กลับ</string>
+
+    <string name="cd_copy_translation">คัดลอกคำแปล</string>
+
+    <string name="cd_toggle_translation_visibility">สลับการแสดงคำแปล</string>
+
+    <string name="cd_toggle_inline_furigana">สลับฟุริงานะแบบอินไลน์</string>
+
+    <string name="cd_read_original_aloud">อ่านออกเสียงข้อความต้นฉบับ</string>
+
+    <string name="cd_edit_original">แก้ไขข้อความต้นฉบับ</string>
+
+    <string name="cd_copy_original">คัดลอกต้นฉบับ</string>
+
+    <string name="cd_toggle_original_visibility">สลับการแสดงต้นฉบับ</string>
+
+    <string name="cd_toggle_words_visibility">สลับการแสดงคำ</string>
+
+    <string name="cd_close">ปิด</string>
+
+    <!-- ═══ REGION-PICKER ROW — per-row icon contentDescriptions ═══ -->
+
+    <string name="cd_drag_to_reorder">ลากเพื่อจัดลำดับใหม่</string>
+
+    <string name="cd_delete_region">ลบพื้นที่</string>
+
+    <!-- ═══ MAIN ACTIVITY DIALOGS ═══ -->
+
+    <string name="crash_dialog_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ขัดข้องก่อนหน้านี้</string>
+
+    <string name="crash_dialog_message">ส่งรายงานข้อขัดข้องไปยังผู้พัฒนาหรือไม่ ซึ่งจะรวมถึง stack trace บันทึกแอปล่าสุด และข้อความใดๆ ที่ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> เพิ่งทำ OCR หรือค้นหาเมื่อเร็วๆ นี้ ไม่มีข้อมูลบัญชี</string>
+
+    <string name="crash_dialog_send">ส่ง</string>
+
+    <string name="crash_dialog_discard">ละทิ้ง</string>
+
+    <string name="crash_dialog_later">ภายหลัง</string>
+
+    <string name="crash_email_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ขัดข้อง – v<xliff:g id="version" example="2.2.0">%1$s</xliff:g></string>
+
+    <string name="crash_email_body">ขั้นตอนการทำซ้ำ:\n\n(ไม่บังคับ — อธิบายว่าคุณกำลังทำอะไรอยู่เมื่อเกิดเหตุการณ์นี้)\n\nข้อมูลอุปกรณ์รวมอยู่ในไฟล์แนบ</string>
+
+    <string name="update_dialog_title">มีการอัปเดต</string>
+
+    <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> พร้อมใช้งานบน <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> แล้ว</string>
+
+    <string name="update_dialog_view_release">ดูเวอร์ชัน</string>
+
+    <string name="update_dialog_skip">ข้ามเวอร์ชันนี้</string>
+
+    <string name="update_dialog_ask_again_later">ถามอีกครั้งภายหลัง</string>
+
+    <string name="toast_no_browser_available">ไม่มีเบราว์เซอร์ที่ใช้ได้</string>
+
+    <string name="target_pack_migration_title">มีคำจำกัดความภาษา <xliff:g id="target_language" example="Spanish">%1$s</xliff:g> พร้อมใช้งาน</string>
+
+    <string name="target_pack_migration_message">มีแพ็กคำจำกัดความภาษา <xliff:g id="target_language" example="Spanish">%1$s</xliff:g> พร้อมใช้งาน ดาวน์โหลดเพื่อรับคำจำกัดความของคำเป็นภาษา <xliff:g id="target_language2" example="Spanish">%2$s</xliff:g> แทนภาษาอังกฤษหรือไม่</string>
+
+    <!-- ═══ OVERLAY UI CONTROLLER — confirmation dialogs ═══ -->
+
+    <string name="overlay_turn_off_title">ปิด <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> หรือไม่</string>
+
+    <string name="overlay_turn_off_message">เปิดอีกครั้งในแอป <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
+
+    <string name="overlay_hide_controls_title">ซ่อนปุ่มควบคุมหน้าจอเกมของ <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> หรือไม่</string>
+
+    <string name="overlay_hide_controls_message">“ซ่อนไว้ก่อน” จะนำกลับมาแสดงในครั้งถัดไปที่คุณเปิด <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> “ปิด” จะปิดใช้งานจนกว่าจะเปิดใช้งานอีกครั้งในการตั้งค่า</string>
+
+    <string name="overlay_hide_for_now">ซ่อนไว้ก่อน</string>
+
+    <!-- ═══ LANGUAGE PACK / TARGET-PACK INSTALLER DIALOGS ═══ -->
+
+    <string name="install_downloading_generic">กำลังดาวน์โหลด</string>
+
+    <string name="install_downloading_with_bytes">กำลังดาวน์โหลด… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> จาก <xliff:g id="bytes_total" example="84 MB">%2$s</xliff:g></string>
+
+    <string name="lang_setup_downloading_ocr_model">กำลังดาวน์โหลดโมเดล OCR… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> จาก <xliff:g id="bytes_total" example="47 MB">%2$s</xliff:g></string>
+
+    <string name="install_downloading_definitions">กำลังดาวน์โหลดคำจำกัดความ</string>
+
+    <string name="install_downloading_definitions_with_bytes">กำลังดาวน์โหลดคำจำกัดความ… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> จาก <xliff:g id="bytes_total" example="84 MB">%2$s</xliff:g></string>
+
+    <string name="install_downloading_translation_model">กำลังดาวน์โหลดโมเดลการแปล</string>
+
+    <!-- ═══ SETTINGS — section group headers ═══ -->
+
+    <string name="settings_header_auto_translate">การแปลอัตโนมัติ</string>
+    <string name="settings_header_hotkeys">ปุ่มลัด</string>
+    <string name="settings_header_capture_display">หน้าจอจับภาพ</string>
+    <string name="settings_header_online_translations">การแปลออนไลน์</string>
+    <string name="settings_header_offline_translations">การแปลออฟไลน์</string>
+    <string name="settings_header_ocr">แปลงภาพเป็นข้อความ (OCR)</string>
+    <string name="settings_ocr_note_builtin">ในตัว</string>
+
+    <string name="settings_ocr_default_badge">ค่าเริ่มต้น</string>
+
+    <string name="settings_ocr_footer">หาก PlayTranslate อ่านข้อความบนหน้าจอได้ไม่แม่นยำ ลองทดลองเลือกแบบต่างๆ เครื่องมือ OCR ที่ต่างกันอาจทำงานได้ดีกว่ากับแบบอักษรหรือทิศทางข้อความที่ต่างกัน</string>
+
+    <string name="settings_ocr_delete_cd">ลบ <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
+
+    <string name="settings_ocr_delete_title">ลบ <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> หรือไม่</string>
+
+    <string name="settings_ocr_delete_msg">การดำเนินการนี้จะลบโมเดล <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> ออกจากอุปกรณ์นี้ คุณสามารถดาวน์โหลดอีกครั้งได้ภายหลัง</string>
+
+    <string name="settings_ocr_delete_shared_msg"><xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> ยังถูกใช้โดยภาษาเหล่านี้ด้วย การลบจะเพิ่มพื้นที่ว่างทันที และจะดาวน์โหลดอีกครั้งในครั้งถัดไปที่คุณสลับไปใช้ภาษาใดภาษาหนึ่ง:\n\n<xliff:g id="languages" example="Chinese">%2$s</xliff:g></string>
+
+    <string name="settings_ocr_delete_confirm">ลบ</string>
+
+    <string name="settings_ocr_downloading_title">กำลังดาวน์โหลด <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
+
+    <string name="settings_ocr_downloading_msg">กำลังเริ่ม…</string>
+
+    <string name="settings_ocr_verifying">กำลังตรวจสอบ…</string>
+
+    <string name="settings_ocr_installing">กำลังติดตั้ง…</string>
+
+    <string name="settings_ocr_download_failed">ไม่สามารถดาวน์โหลดโมเดล OCR ได้ ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง</string>
+    <string name="settings_header_text_to_speech">การอ่านออกเสียงข้อความ</string>
+    <string name="settings_header_appearance">ลักษณะที่ปรากฏ</string>
+    <string name="settings_header_support">การสนับสนุน</string>
+
+    <string name="settings_header_configure">กำหนดค่า</string>
+    <string name="settings_cell_appearance">ลักษณะที่ปรากฏ</string>
+    <string name="settings_cell_hotkeys">ปุ่มลัด</string>
+    <string name="settings_cell_capture_overlay">การจับภาพและการซ้อนทับ</string>
+    <string name="settings_cell_anki">แฟลชการ์ด Anki</string>
+    <string name="settings_cell_translation_services">บริการแปล</string>
+    <string name="settings_cell_tts">การอ่านออกเสียงข้อความ</string>
+
+    <string name="settings_digest_none">ไม่มี</string>
+    <string name="settings_capture_displays_count"><xliff:g id="count" example="2">%1$d</xliff:g> หน้าจอ</string>
+
+    <string name="settings_hotkeys_tile_add">เพิ่มไทล์</string>
+    <string name="settings_hotkeys_none">ยังไม่ได้ตั้งค่าปุ่มลัด</string>
+    <string name="settings_hotkeys_translation">การแปล</string>
+    <string name="settings_hotkeys_furigana">ฟุริงานะ</string>
+    <string name="settings_hotkeys_pinyin">พินอิน</string>
+
+    <string name="settings_anki_digest">สำรับ <xliff:g id="deck_name" example="Vocabulary">%1$s</xliff:g> · ประเภทการ์ด <xliff:g id="card_type_name" example="Lapis sentence">%2$s</xliff:g></string>
+    <string name="settings_anki_default">ค่าเริ่มต้น</string>
+    <string name="settings_anki_get_app_summary">ดาวน์โหลด AnkiDroid ฟรีบน Google Play</string>
+    <string name="settings_anki_grant_summary">ให้สิทธิ์เพื่อใช้ AnkiDroid</string>
+
+    <!-- ═══ SETTINGS — Text-to-Speech section ═══ -->
+
+    <string name="tts_voice_row_title">เสียง</string>
+
+    <string name="tts_voice_numbered">เสียง <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
+
+    <string name="tts_voice_region_numbered"><xliff:g id="region" example="China">%1$s</xliff:g> <xliff:g id="region_index" example="2">%2$d</xliff:g></string>
+
+    <string name="tts_voice_default">ค่าเริ่มต้น</string>
+
+    <string name="tts_voice_default_subtitle">เสียงเริ่มต้นของเอนจิน</string>
+
+    <string name="tts_voice_needs_download">ต้องดาวน์โหลด</string>
+
+    <string name="tts_no_engine_row_title">ตั้งค่าการอ่านออกเสียงข้อความ</string>
+
+    <string name="tts_no_engine_row_subtitle">ไม่มีเอนจินเสียงที่ใช้ได้ แตะเพื่อเพิ่ม</string>
+
+    <string name="tts_voice_picker_title">เสียง</string>
+
+    <string name="tts_voices_section_header">เสียงภาษา <xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
+
+    <string name="tts_no_engine_dialog_title">ไม่มีการอ่านออกเสียงข้อความ</string>
+
+    <string name="tts_no_engine_dialog_message">ไม่มีเอนจินการอ่านออกเสียงข้อความที่ใช้อ่านคำออกเสียงได้ ติดตั้งสักหนึ่งตัว — หรือหากอุปกรณ์ของคุณมีเอนจินอยู่แล้ว ให้เปิดใช้งานในการตั้งค่า Android</string>
+
+    <string name="tts_no_engine_get_google">รับ Google TTS</string>
+
+    <string name="tts_no_engine_open_settings">เปิดการตั้งค่าการอ่านออกเสียงข้อความ</string>
+
+    <string name="tts_language_unsupported_dialog_title">ไม่รองรับภาษานี้</string>
+
+    <string name="tts_language_unsupported_with_engine_message"><xliff:g id="engine_name" example="Google TTS">%1$s</xliff:g> เป็นเอนจินที่ใช้งานอยู่ แต่ไม่รองรับภาษา<xliff:g id="source_language" example="Japanese">%2$s</xliff:g></string>
+
+    <string name="tts_language_unsupported_unknown_engine_message">เอนจินการอ่านออกเสียงข้อความที่ใช้งานอยู่ไม่รองรับภาษา<xliff:g id="source_language" example="Japanese">%1$s</xliff:g></string>
+
+    <!-- ═══ SETTINGS — Quick Settings tile row (Android 13+) ═══ -->
+
+    <string name="quick_tile_add_row_title">เพิ่มไทล์การตั้งค่าด่วน</string>
+
+    <string name="quick_tile_add_row_subtitle">เปิด/ปิด <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> จากแถบสถานะ</string>
+
+    <string name="quick_tile_added_row_subtitle">เพิ่มไปยังการตั้งค่าด่วนแล้ว</string>
+
+    <!-- ═══ SETTINGS — Hotkeys section ═══ -->
+
+    <string name="hotkey_not_set_subtitle">ยังไม่ได้ตั้งค่า</string>
+
+    <string name="hotkey_show_translations_title">ปุ่มลัด: กดค้างเพื่อแสดงคำแปล</string>
+
+    <string name="hotkey_show_translations_dialog_title">แสดงคำแปล</string>
+
+    <string name="hotkey_show_hint_title">ปุ่มลัด: กดค้างเพื่อแสดง <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <string name="hotkey_show_hint_dialog_title">แสดง <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <!-- ═══ SETTINGS — Capture Display section ═══ -->
+
+    <string name="capture_display_row_label">หน้าจอ <xliff:g id="display_id" example="0">%1$d</xliff:g>  —  <xliff:g id="display_name" example="Built-in screen">%2$s</xliff:g></string>
+
+    <!-- ═══ SETTINGS — Online Translations (cooldown / unavailable states) ═══ -->
+
+    <string name="backend_status_unavailable_default">ไม่พร้อมใช้งาน</string>
+
+    <string name="backend_cooldown_retry_at">ลองใหม่เวลา</string>
+
+    <string name="backend_cooldown_retry_on">ลองใหม่วันที่</string>
+
+    <string name="backend_cooldown_status_fmt"><xliff:g id="description" example="Rate limited">%1$s</xliff:g> · <xliff:g id="retry_word" example="Retry at">%2$s</xliff:g> <xliff:g id="retry_time" example="3:42 PM">%3$s</xliff:g></string>
+
+    <!-- ═══ SETTINGS — Offline Translations / accessibility numeric labels ═══ -->
+
+    <string name="a11y_quality_label">คุณภาพ</string>
+
+    <string name="a11y_speed_label">ความเร็ว:</string>
+
+    <string name="a11y_quality_label_colon">คุณภาพ:</string>
+
+    <string name="a11y_out_of_5_stars">จาก 5 ดาว</string>
+
+    <string name="a11y_speed_label_comma">ความเร็ว</string>
+
+    <!-- ═══ SETTINGS — Anki rows + deck/card-type fallback labels ═══ -->
+
+    <string name="anki_deck_not_selected_subtitle">ยังไม่ได้เลือก</string>
+
+    <string name="anki_settings_get_ankidroid_title">รับ <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> ฟรีบน Google Play</string>
+
+    <string name="anki_settings_grant_access_title">ให้สิทธิ์เข้าถึง <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_settings_grant_access_subtitle"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> ต้องมีสิทธิ์ในการเข้าถึง <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> เพื่อเพิ่มการ์ดไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <!-- ═══ SETTINGS — Support section rows ═══ -->
+
+    <string name="settings_support_discord_title">เข้าร่วม <xliff:g id="brand_discord" example="Discord">Discord</xliff:g></string>
+
+    <string name="settings_support_discord_subtitle">รับความช่วยเหลือและพูดคุยกับผู้เล่นคนอื่น</string>
+
+    <string name="settings_support_donate_title">สนับสนุน PlayTranslate</string>
+
+    <string name="settings_support_donate_subtitle">โปรเจกต์โอเพนซอร์สที่ใช้ฟรีและสร้างด้วยใจรัก ช่วยให้โปรเจกต์นี้ดำเนินต่อไปได้</string>
+
+    <!-- ═══ SETTINGS — Debug section (developer-only) ═══ -->
+
+    <string name="settings_debug_force_single_screen">บังคับใช้หน้าจอเดียว</string>
+    <string name="settings_debug_show_ocr_boxes">แสดงกล่อง OCR</string>
+    <string name="settings_debug_show_detection_log">แสดงบันทึกการตรวจจับ</string>
+    <string name="settings_debug_log_pinhole">บันทึกเมตริก pinhole ของโหมดสด</string>
+    <string name="settings_debug_save_ocr_seed">บันทึกภาพ OCR เป็นซีด</string>
+    <string name="settings_debug_log_grouping">บันทึกการตัดสินใจจัดกลุ่ม OCR</string>
+    <string name="settings_debug_force_crash_title">บังคับให้ขัดข้อง</string>
+
+    <string name="settings_debug_export_logs_title">ส่งออกบันทึก</string>
+
+    <string name="settings_debug_export_logs_subtitle">แชร์บันทึกล่าสุดสำหรับรายงานข้อบกพร่อง</string>
+
+    <string name="settings_debug_export_logs_subject">บันทึกของ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="settings_debug_export_logs_failed">ส่งออกบันทึกไม่สำเร็จ: <xliff:g id="exception_class" example="FileNotFoundException">%1$s</xliff:g></string>
+
+    <string name="settings_footer_version"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> v<xliff:g id="version" example="2.2.0">%2$s</xliff:g></string>
+
+    <!-- ═══ GENERIC TOASTS ═══ -->
+
+    <string name="toast_link_copied">คัดลอกลิงก์แล้ว</string>
+
+    <string name="toast_copied">คัดลอกแล้ว</string>
+
+    <string name="toast_no_logs_to_share">ไม่มีบันทึกให้แชร์</string>
+
+    <string name="toast_no_crash_report">ไม่มีรายงานข้อขัดข้องให้ส่ง</string>
+
+    <string name="share_chooser_share_logs">แชร์บันทึก</string>
+
+</resources>

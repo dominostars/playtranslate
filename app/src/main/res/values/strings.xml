@@ -62,7 +62,7 @@
          requested (dual-screen capture) and reassures about data
          handling. The trailing line is a step-by-step nav path through
          Android Settings; keep the arrows (→) and the app name. -->
-    <string name="accessibility_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> needs the Accessibility permission to capture screenshots of the game screen on the top display while staying open on the bottom display.\n\n<xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> does not read any UI content, monitor input, or access any personal data — it only takes screenshots when you tap Translate or start live mode.\n\nGo to Settings → Accessibility → Installed apps → <xliff:g id="app_name3" example="PlayTranslate">PlayTranslate</xliff:g> → Enable.</string>
+    <string name="accessibility_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> needs the Accessibility permission to capture screenshots of the game screen on the top display while staying open on the bottom display.\n\n<xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> does not read any UI content, monitor input, or access any personal data — it only takes screenshots when you tap Translate or start live mode.\n\nGo to Settings → Accessibility → Downloaded apps → <xliff:g id="app_name3" example="PlayTranslate">PlayTranslate</xliff:g> → Enable.</string>
 
     <!-- Positive button on the Accessibility-needed dialog: opens the
          system Accessibility Settings activity. -->
@@ -630,7 +630,7 @@
 
     <!-- Body of the same alert. The trailing nav path uses → as the
          separator; keep the app name. -->
-    <string name="overlay_icon_a11y_required_message">The floating overlay icon requires the Accessibility permission to draw on the game screen.\n\nGo to Settings → Accessibility → Installed apps → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → Enable.</string>
+    <string name="overlay_icon_a11y_required_message">The floating overlay icon requires the Accessibility permission to draw on the game screen.\n\nGo to Settings → Accessibility → Downloaded apps → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → Enable.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          ACCESSIBILITY-REQUIRED ALERT (capture-display picker, hotkeys,
@@ -1430,7 +1430,7 @@
     <string name="hymt_legal_title">Legal Notice &amp; Regional Restriction</string>
 
     <!-- Dialog body — see translator caveat above. -->
-    <string name="hymt_legal_message"><xliff:g id="brand_tencent" example="Tencent">Tencent</xliff:g>\'s <xliff:g id="brand_hunyuan15" example="Hunyuan-MT 1.5">Hunyuan-MT 1.5</xliff:g> model is licensed under the <xliff:g id="license_name" example="Tencent HY Community License Agreement">Tencent HY Community License Agreement</xliff:g>. This license excludes use within the European Union, United Kingdom, and South Korea.\n\nBy tapping Agree, you affirm and warrant that:\n\n(1) You are not currently residing or located within the EU, UK, or South Korea.\n\n(2) You will not use the outputs of this model to improve any other AI model (per <xliff:g id="license_section" example="§5(b)">§5(b)</xliff:g> of the license).</string>
+    <string name="hymt_legal_message"><xliff:g id="brand_tencent" example="Tencent">Tencent</xliff:g>\'s <xliff:g id="brand_hunyuan15" example="Hunyuan-MT 1.5">Hunyuan-MT 1.5</xliff:g> model is licensed under the <xliff:g id="license_name" example="Tencent HY Community License Agreement">Tencent HY Community License Agreement</xliff:g>. This license excludes use within the European Union, United Kingdom, and South Korea.\n\nBy tapping "I Agree", you affirm and warrant that:\n\n(1) You are not currently residing or located within the EU, UK, or South Korea.\n\n(2) You will not use the outputs of this model to improve any other AI model (per <xliff:g id="license_section" example="§5(b)">§5(b)</xliff:g> of the license).</string>
 
     <!-- Agree (proceed) button.  Brand stays. -->
     <string name="hymt_legal_agree">I Agree — Enable <xliff:g id="brand_hunyuan" example="Hunyuan">Hunyuan</xliff:g></string>
@@ -1705,7 +1705,7 @@
     <!-- Subtitle hint below the "Capture interval" row, showing the
          minimum allowed value. %1$s = the formatted minimum in seconds
          (may have a decimal, e.g. "0.5", or be an integer, e.g. "1"). -->
-    <string name="settings_capture_interval_hint">How often the game screen is captured during auto translation. Minimum <xliff:g id="min_seconds" example="1">%1$s</xliff:g> seconds.</string>
+    <string name="settings_capture_interval_hint">How often the game screen is captured during auto translation. Minimum: <xliff:g id="min_seconds" example="1">%1$s</xliff:g> sec.</string>
 
     <!-- Overlay mode chooser option — show the translated text. -->
     <string name="overlay_mode_option_translation">Translation</string>
@@ -1930,7 +1930,7 @@
     <!-- OCR engine section (Settings → Capture &amp; overlay): one cell per
          engine available for the current source language. Engine names
          (Meiki / PaddleOCR / ML Kit) are proper nouns, not translated. -->
-    <string name="settings_header_ocr">Image-to-text (OCR)</string>
+    <string name="settings_header_ocr">Text recognition (OCR)</string>
     <!-- Subtitle on an OCR-engine cell that ships inside the app and needs
          no download (ML Kit), shown in the slot where other engines show
          their model's download size. -->

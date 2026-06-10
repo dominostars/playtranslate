@@ -1,0 +1,1299 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    PlayTranslate Spanish (es) localization.
+
+    Auto-localized from res/values/strings.xml. Per-string translator
+    notes live in that default file; this file keeps only section banners.
+
+    Formatting preserved from the source:
+      • <xliff:g …>…</xliff:g> wraps placeholders / brand names — never
+        translate or reorder their inner content (the %1$s, %2$d, … inside).
+      • <b>…</b> renders bold. \n is a newline. \{ \} are escaped braces.
+        \" is an escaped double-quote. Brand names stay untranslated.
+      • translatable="false" entries are omitted and fall back to English.
+      • Plurals use the one / other categories. Register: informal "tú".
+-->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ACTIONS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="btn_translate_once">Usar sin guardar</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ACCESSIBILITY SERVICE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="accessibility_service_description"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> usa el Servicio de Accesibilidad para capturar la pantalla del juego y mostrar un icono flotante. No lee ni supervisa ningún contenido de la interfaz, evento de entrada ni dato personal.</string>
+
+    <string name="accessibility_service_summary">Para traducir el texto del juego en pantalla</string>
+
+    <string name="accessibility_dialog_title">Se necesita el permiso de accesibilidad</string>
+
+    <string name="accessibility_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> necesita el permiso de Accesibilidad para capturar la pantalla del juego en la pantalla superior mientras permanece abierto en la pantalla inferior.\n\n<xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> no lee ningún contenido de la interfaz, no supervisa la entrada ni accede a datos personales: solo hace capturas cuando tocas Traducir o inicias el modo en vivo.\n\nVe a Ajustes → Accesibilidad → Aplicaciones descargadas → <xliff:g id="app_name3" example="PlayTranslate">PlayTranslate</xliff:g> → Activar.</string>
+
+    <string name="accessibility_dialog_open">Abrir ajustes de accesibilidad</string>
+
+    <string name="status_accessibility_needed">Primero activa <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> en los ajustes de accesibilidad</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         QUICK SETTINGS TILE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tile_subtitle_a11y_required">Activar accesibilidad</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         STATUS MESSAGES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="status_idle">Toca «Traducir» para capturar la pantalla del juego</string>
+
+    <string name="status_hold_hint">Mantén presionado «Regiones» o «Auto» para ver menús de selección rápida</string>
+
+    <string name="words_none">No se detectaron palabras</string>
+
+    <string name="status_capturing">Capturando la pantalla…</string>
+
+    <string name="status_ocr">Reconociendo el texto…</string>
+
+    <string name="status_translating">Traduciendo…</string>
+
+    <string name="status_no_text">No se detectó texto en <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> dentro de \"<xliff:g id="region_label" example="Dialogue box">%2$s</xliff:g>\"</string>
+
+    <string name="status_error">Error: <xliff:g id="error_message" example="Network timeout">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         NOTIFICATION
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="notif_channel_name">Captura de pantalla</string>
+
+    <string name="notif_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> está activo</string>
+
+    <string name="notif_text">Toca para volver a <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ONBOARDING
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="onboarding_welcome_title">¡Te damos la bienvenida a <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>!</string>
+
+    <string name="onboarding_welcome_tagline">Tu app complementaria para jugar en otros idiomas.</string>
+
+    <string name="onboarding_welcome_body">¿Juegas algo que no entiendes? Convierte el texto en pantalla en traducciones al instante.\n\n¿Estás aprendiendo un idioma? Definiciones palabra por palabra, guías de lectura (furigana, pinyin) y tarjetas de <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> con un toque.</string>
+
+    <string name="onboarding_welcome_row_placeholder">Toca para elegir</string>
+
+    <string name="onboarding_welcome_continue">Continuar</string>
+
+    <string name="onboarding_welcome_select_source">Selecciona el idioma del juego</string>
+
+    <string name="onboarding_notif_title">Permitir notificaciones</string>
+
+    <string name="onboarding_notif_body">Android exige que las apps que se ejecutan en segundo plano muestren una notificación en la barra de estado mientras están activas.\n\nNunca enviará alertas, sonidos ni banners: solo un indicador discreto y permanente de que <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> está en ejecución.</string>
+
+    <string name="onboarding_a11y_hint">Busca <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
+
+    <string name="onboarding_a11y_title">Mostrar sobre otras apps</string>
+
+    <string name="onboarding_a11y_body"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> necesita mostrarse sobre otras apps para:\n• Mostrar el texto traducido sobre tu juego\n• Mostrar los controles de la pantalla del juego\n• Consultar palabras arrastrando sobre el texto del juego</string>
+
+    <string name="btn_grant_permission">Conceder permiso</string>
+
+    <string name="btn_open_a11y_settings">Abrir ajustes de accesibilidad</string>
+
+    <string name="btn_open_overlay_settings">Abrir ajustes</string>
+
+    <string name="restricted_settings_title">Permitir ajustes restringidos</string>
+
+    <string name="restricted_settings_message">En la página de ajustes de Android de <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, toca el botón de tres puntos (⋮) en la parte superior derecha y selecciona \"Permitir ajustes restringidos\". Después de autenticarte, podrás activar los permisos de accesibilidad.</string>
+
+    <string name="btn_open_app_settings">Abrir los ajustes de <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         WORD DETAIL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="word_detail_not_found">No se encontró ninguna entrada de diccionario para \"<xliff:g id="word" example="聞く">%1$s</xliff:g>\"</string>
+
+    <string name="word_detail_more_examples">Más ejemplos</string>
+
+    <string name="word_detail_more_examples_loading">Cargando ejemplos…</string>
+
+    <string name="word_detail_more_examples_error">No se pudieron cargar los ejemplos.</string>
+
+    <string name="word_detail_tatoeba_attribution">Frases de <xliff:g id="brand_tatoeba" example="Tatoeba">Tatoeba</xliff:g> · <xliff:g id="license_cc_by_2_fr" example="CC BY 2.0 FR">CC BY 2.0 FR</xliff:g></string>
+
+    <string name="word_detail_common">Común</string>
+
+    <string name="word_anki_in_decks"><xliff:g id="count" example="3">%1$d</xliff:g> mazos de Anki</string>
+    <string name="word_anki_deck_badge_cd">Ya está en Anki: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
+
+    <string name="word_detail_stroke_abbr">TRZ</string>
+
+    <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
+
+    <string name="word_detail_label_format"><xliff:g id="label" example="READING">%1$s</xliff:g>:</string>
+
+    <plurals name="word_detail_senses_count">
+        <item quantity="one"><xliff:g id="senses_count" example="1">%d</xliff:g> acepción</item>
+        <item quantity="other"><xliff:g id="senses_count" example="3">%d</xliff:g> acepciones</item>
+    </plurals>
+
+    <plurals name="word_detail_chars_count">
+        <item quantity="one"><xliff:g id="char_count" example="1">%d</xliff:g> carácter</item>
+        <item quantity="other"><xliff:g id="char_count" example="3">%d</xliff:g> caracteres</item>
+    </plurals>
+
+    <string name="word_detail_group_definitions">Definiciones</string>
+
+    <string name="word_detail_group_kanji">Kanji</string>
+
+    <string name="word_detail_group_hanzi">Hanzi</string>
+
+    <string name="word_detail_mt_banner">Traducción automática</string>
+
+    <string name="word_detail_mt_banner_named">Traducción automática: <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
+
+    <string name="word_detail_char_meanings_mt">Traducción automática · <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — general
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_title">Ajustes</string>
+
+    <string name="lang_translate_from">Idioma del juego</string>
+
+    <string name="lang_translate_to">Tu idioma</string>
+
+    <string name="lang_download">Descargar</string>
+
+    <string name="lang_download_error_title">Error de descarga</string>
+
+    <string name="lang_setup_preloading_message">Precargando, espera un momento</string>
+
+    <string name="lang_setup_offline_model_unavailable">La traducción sin conexión no está disponible en este dispositivo ahora mismo. Las consultas al diccionario y la traducción en línea siguen funcionando.</string>
+
+    <string name="lang_setup_requires_64bit">Requiere un dispositivo de 64 bits</string>
+    <string name="lang_setup_requires_64bit_msg">Reconocer texto en <xliff:g id="language" example="Russian">%1$s</xliff:g> requiere un dispositivo de 64 bits, y este dispositivo no lo es.</string>
+
+    <string name="lang_delete_pack">Eliminar paquete de idioma</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         LANGUAGE PICKER — search and filter
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="lang_search_hint">Buscar idiomas</string>
+
+    <string name="lang_search_clear_cd">Borrar búsqueda</string>
+
+    <string name="lang_search_no_results">Sin resultados</string>
+
+    <string name="lang_section_suggested">Sugeridos</string>
+
+    <string name="lang_section_all">Todos</string>
+
+    <plurals name="lang_search_match_count">
+        <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> coincidencia</item>
+        <item quantity="other"><xliff:g id="count" example="5">%d</xliff:g> coincidencias</item>
+    </plurals>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         PACK-UPGRADE FLOW
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="pack_upgrade_title">Actualizaciones de paquetes de idioma disponibles</string>
+
+    <string name="pack_upgrade_button_now">Actualizar ahora</string>
+
+    <string name="pack_upgrade_button_later">Actualizar después</string>
+
+    <string name="pack_upgrade_mandatory_title">Actualización necesaria</string>
+
+    <string name="pack_upgrade_mandatory_message"><xliff:g id="pack_list" example="Game Language (Japanese)">%1$s</xliff:g>\n\nEsta actualización es obligatoria: la versión instalada ya no es compatible. Actualiza ahora o elimina el paquete instalado para elegir otro idioma.</string>
+
+    <string name="pack_upgrade_button_delete">Eliminar</string>
+
+    <string name="pack_upgrade_progress_title">Actualizando paquetes de idioma</string>
+
+    <string name="pack_upgrade_progress_format">Descargando <xliff:g id="pack_name" example="Japanese">%1$s</xliff:g>…</string>
+
+    <string name="pack_upgrade_progress_format_with_bytes">Descargando <xliff:g id="pack_name" example="Japanese">%1$s</xliff:g>… <xliff:g id="bytes_so_far" example="12 MB">%2$s</xliff:g> de <xliff:g id="bytes_total" example="84 MB">%3$s</xliff:g></string>
+
+    <string name="pack_upgrade_priming_models">Cargando modelos de traducción…</string>
+
+    <string name="pack_upgrade_label_source">Idioma del juego (<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>)</string>
+
+    <string name="pack_upgrade_label_target">Tu idioma (<xliff:g id="target_language" example="English">%1$s</xliff:g>)</string>
+
+    <string name="lang_section_update_packs_title">Actualizar paquetes de idioma</string>
+    <string name="lang_section_offline_models_title">Descargar modelos sin conexión</string>
+    <string name="lang_section_offline_models_subtitle">No se ha descargado la traducción sin conexión de <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> → <xliff:g id="target_language" example="English">%2$s</xliff:g>. La app sigue funcionando en línea.</string>
+
+    <string name="settings_no_displays_found">No se encontraron pantallas</string>
+
+    <string name="settings_capture_display_footer">Selecciona una o más pantallas. La pantalla en la que estás viendo <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> se omite.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         DEEPL — settings hints
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="hint_deepl_key">Pega aquí tu clave de API de <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION FALLBACK NOTES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="note_mlkit_no_internet">⚠ Sin conexión a internet: mostrando la traducción sin conexión (menor calidad).</string>
+
+    <string name="note_mlkit_service_unavailable">⚠ Servicio de traducción no disponible: mostrando la traducción sin conexión (menor calidad).</string>
+
+    <string name="note_low_memory_fallback">⚠ Memoria insuficiente: mostrando la traducción sin conexión (menor calidad).</string>
+
+    <string name="translation_source_label">Traducido por <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
+
+    <string name="error_live_mode_unsupported_backend">El modo en vivo no está disponible con el método de captura de pantalla actual.</string>
+
+    <string name="error_screen_capture_denied">Modo en vivo detenido: se denegó el permiso de captura de pantalla.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SECTION HEADERS (translation-result screen)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="section_original">Original</string>
+
+    <string name="section_translation">Traducción</string>
+
+    <string name="section_words">Palabras</string>
+
+    <string name="words_loading">Buscando palabras…</string>
+
+    <string name="lens_loading">Buscando…</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         REGION PICKER
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="label_select_region">Seleccionar región</string>
+
+    <string name="region_overlay_drag_instruction">Arrastra los bordes para limitar las capturas de pantalla a esta región</string>
+
+    <string name="label_edit">Editar</string>
+
+    <string name="label_done">Listo</string>
+
+    <string name="label_add_custom_region">+ Añadir región personalizada</string>
+
+    <string name="label_add_custom_region_title">Añadir región personalizada</string>
+
+    <string name="label_region_drag_hint">Arrastra el cuadro de región en la pantalla del juego para seleccionar el área deseada. Arrastra el borde superior o inferior, o arrastra el centro para mover todo el cuadro.</string>
+
+    <string name="label_region_name">Nombre de la región</string>
+
+    <string name="hint_region_name">p. ej., Cuadro de diálogo</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING ICON CELL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_show_overlay_icon">Sobre el icono flotante</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CAPTURE LIFECYCLE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="capture_lifecycle_start">Activar</string>
+
+    <string name="capture_lifecycle_stop">Desactivar</string>
+
+    <string name="capture_lifecycle_state_on">Activado</string>
+
+    <string name="capture_lifecycle_state_off">Desactivado</string>
+
+    <string name="capture_lifecycle_on_title">Captura de pantalla permitida</string>
+
+    <string name="capture_lifecycle_off_title">Permitir la captura de pantalla</string>
+
+    <string name="capture_lifecycle_on_subtitle">Listo para traducir</string>
+
+    <string name="capture_lifecycle_off_subtitle">Necesario para leer el texto del juego</string>
+
+    <string name="game_screen_controls_title">Controles de la pantalla del juego</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MEDIAPROJECTION OVERLAY-PERMISSION DIALOG
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="mp_overlay_permission_title">Mostrar sobre otras apps</string>
+
+    <string name="mp_overlay_permission_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> necesita permiso para mostrarse sobre otras apps, de modo que los controles flotantes de la pantalla del juego puedan aparecer encima de tu juego.</string>
+
+    <string name="mp_overlay_permission_button">Abrir ajustes</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING-ICON GESTURE HINTS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="overlay_icon_gesture_drag"><b>Arrastra</b> sobre las palabras para ver definiciones rápidas</string>
+
+    <string name="overlay_icon_gesture_hold"><b>Mantén presionado</b> para ver una vista previa de las traducciones</string>
+
+    <string name="overlay_icon_gesture_tap"><b>Toca</b> para abrir el menú rápido</string>
+
+    <string name="overlay_icon_a11y_required_title">Se necesita accesibilidad</string>
+
+    <string name="overlay_icon_a11y_required_message">El icono flotante necesita el permiso de Accesibilidad para dibujar sobre la pantalla del juego.\n\nVe a Ajustes → Accesibilidad → Aplicaciones descargadas → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → Activar.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ACCESSIBILITY-REQUIRED ALERT
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="a11y_required_alert_title">Se necesita accesibilidad</string>
+
+    <string name="a11y_required_displays_message">Cambiar de pantalla o traducir varias pantallas a la vez requiere el permiso de Accesibilidad. Permite que <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> capture cualquier pantalla, no solo la principal.</string>
+
+    <string name="a11y_required_hotkey_message">Configurar atajos requiere el permiso de Accesibilidad. Permite que <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> detecte las teclas que presionas mientras juegas.</string>
+
+    <string name="a11y_required_enhanced_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> usa estos controles avanzados para mejorar la experiencia de traducción automática.</string>
+
+    <string name="requires_android_11_title">Requiere Android 11</string>
+    <string name="requires_android_11_message">Esta función requiere Android 11 o una versión más reciente.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ENHANCED AUTO-TRANSLATE ROW
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="enhanced_auto_translate_title">Traducción automática mejorada</string>
+
+    <string name="enhanced_auto_translate_subtitle_off">Más legible, fluida y estable. Requiere acceso de accesibilidad.</string>
+
+    <string name="enhanced_auto_translate_subtitle_on">Activada</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ANKI INTEGRATION
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_deck_picker_empty">No se encontraron mazos</string>
+
+    <string name="anki_deck_picker_loading">Cargando mazos…</string>
+
+    <string name="anki_card_type_picker_loading">Cargando tipos de tarjeta…</string>
+
+    <string name="anki_not_installed_title">Crear tarjeta para repasar</string>
+
+    <string name="anki_not_installed_message">Guarda las palabras que descubras mientras juegas y repásalas después.\n\n<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> puede guardar frases traducidas, vocabulario y capturas de pantalla directamente en <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>, una app gratuita de tarjetas con repetición espaciada.</string>
+
+    <string name="anki_not_installed_get">Obtener <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_section_description">¿Estás aprendiendo un idioma? Crea tarjetas en <xliff:g id="target_language" example="English">%1$s</xliff:g> a partir de palabras y frases desconocidas y repásalas después con <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>, una app gratuita y popular de tarjetas con repetición espaciada.</string>
+
+    <string name="anki_permission_rationale_title">Se necesita el permiso de <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_permission_rationale_message">Para añadir tarjetas a <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>, <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> necesita permiso para acceder a <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>.\n\nToca Continuar para conceder este permiso.</string>
+
+    <string name="btn_continue">Continuar</string>
+
+    <string name="anki_permission_denied">Permiso denegado: concédelo en los ajustes de <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_no_deck_selected">No se encontraron mazos en <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_added_no_audio">Añadido a <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (audio no disponible)</string>
+
+    <string name="anki_added_success">Añadido a <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="anki_adding_in_progress">Añadiendo a <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>…</string>
+
+    <string name="anki_send_failed_title">No se pudo añadir la tarjeta</string>
+
+    <string name="anki_send_failed_message"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> no aceptó la tarjeta. Asegúrate de que <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g> esté en ejecución e inténtalo de nuevo.</string>
+
+    <string name="anki_mode_sentence">Frase</string>
+
+    <string name="anki_mode_word">Palabra</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ANKI REVIEW SHEET
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_sheet_title_new_card">Nueva tarjeta de <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="anki_deck_row_label">Mazo</string>
+
+    <string name="anki_deck_row_empty">Elige un mazo</string>
+
+    <string name="anki_deck_label_format">Mazo: <xliff:g id="deck_name" example="Vocabulary">%1$s</xliff:g></string>
+
+    <string name="anki_save_button_label">Guardar tarjeta de <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="anki_group_original">Original</string>
+
+    <string name="anki_group_translation">Traducción</string>
+
+    <string name="anki_group_words_count">Palabras en la tarjeta · <xliff:g id="words_count" example="3">%d</xliff:g></string>
+
+    <string name="anki_group_definitions">Definiciones</string>
+
+    <string name="anki_group_screenshot">Captura de pantalla</string>
+
+    <string name="anki_words_helper">Estas palabras se incluirán en la tarjeta de <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>. Toca una palabra para resaltarla en la tarjeta. Toca × para quitarla de la tarjeta.</string>
+
+    <string name="anki_translation_error">No se pudo traducir</string>
+
+    <string name="anki_word_remove_content_description">Quitar de la tarjeta</string>
+
+    <string name="anki_screenshot_remove_content_description">Quitar captura de pantalla</string>
+
+    <string name="anki_group_audio">Audio</string>
+
+    <string name="anki_audio_preview_content_description">Escuchar el audio</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CARD TYPE PICKER + FIELD MAPPING
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_card_type_row_label">Tipo de tarjeta</string>
+
+    <string name="anki_card_type_row_empty">Predeterminado (<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>)</string>
+
+    <string name="anki_card_type_pick_title">Seleccionar tipo de tarjeta</string>
+
+    <string name="anki_card_type_no_models">No se encontraron tipos de tarjeta en <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_card_type_stale_fallback">El tipo de tarjeta ya no existe; usando el predeterminado</string>
+
+    <string name="anki_card_type_section_default">Predeterminado</string>
+
+    <string name="anki_card_type_section_custom">Tipos de tarjeta</string>
+
+    <string name="anki_card_type_edit_mapping_row_label">Editar asignación de campos</string>
+
+    <string name="anki_field_mapping_title">Configurar <xliff:g id="card_type_name" example="Lapis sentence">%1$s</xliff:g></string>
+
+    <string name="anki_field_mapping_save">Guardar</string>
+
+    <string name="anki_field_mapping_unconfigured">Configura los campos de este tipo de tarjeta antes de enviar</string>
+
+    <string name="anki_sort_field_empty">Asigna un valor a \"<xliff:g id="sort_field_name" example="Expression">%1$s</xliff:g>\": <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> usa este campo para identificar la nota, y los valores vacíos provocan errores de rechazo por duplicado al enviar.</string>
+
+    <string name="anki_models_unavailable">No se pudo conectar con <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> para consultar los tipos de tarjeta. Inténtalo de nuevo en un momento.</string>
+
+    <string name="anki_card_type_basic_no_mapping">Los tipos de tarjeta básicos no necesitan asignación de campos: el anverso y el reverso se rellenan automáticamente según si guardas una palabra o una frase.</string>
+
+    <string name="anki_content_source_pick_title">Asignar \"<xliff:g id="field_name" example="Expression">%1$s</xliff:g>\"</string>
+
+    <string name="anki_long_press_footer">CONSEJO: Si quieres crear una tarjeta al instante sin editarla, mantén presionado cualquier botón que normalmente te llevaría a la página de creación de tarjetas de <xliff:g id="brand_anki" example="anki">anki</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CONTENT SOURCE LABELS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_content_none">Vacío</string>
+    <string name="anki_content_none_desc">No envía nada: el campo de <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> permanece vacío.</string>
+
+    <string name="anki_content_expression">Palabra / lema</string>
+    <string name="anki_content_expression_desc">La forma de diccionario de la palabra resaltada, sin corchetes. Ejemplo: 聞く</string>
+
+    <string name="anki_content_expression_furigana">Palabra / lema con furigana</string>
+    <string name="anki_content_expression_furigana_desc">La forma de diccionario con corchetes de furigana por kanji, para campos representados con \{\{furigana:\}\}. Ejemplo: 聞[き]く</string>
+
+    <string name="anki_content_reading">Lectura de la palabra (kana)</string>
+    <string name="anki_content_reading_desc">La lectura solo en kana de la palabra resaltada. Ejemplo: きく</string>
+
+    <string name="anki_content_sentence">Frase de origen</string>
+    <string name="anki_content_sentence_desc">La frase de origen con la palabra resaltada en negrita. Ejemplo: 友達に<b>聞いた</b></string>
+
+    <string name="anki_content_sentence_furigana">Frase de origen con furigana</string>
+    <string name="anki_content_sentence_furigana_desc">La frase de origen con corchetes de furigana por kanji, para campos representados con \{\{furigana:\}\}. Ejemplo: 友達[ともだち]に<b>聞[き]いた</b></string>
+
+    <string name="anki_content_sentence_translation">Frase traducida</string>
+    <string name="anki_content_sentence_translation_desc">La traducción de la frase de origen en el idioma de destino que elegiste.</string>
+
+    <string name="anki_content_definition">Definición</string>
+    <string name="anki_content_definition_desc">La(s) definición(es) de diccionario de la palabra resaltada, con formato HTML.</string>
+
+    <string name="anki_content_examples">Frases de ejemplo</string>
+    <string name="anki_content_examples_desc">Frases de ejemplo de <xliff:g id="brand_tatoeba" example="Tatoeba">Tatoeba</xliff:g> para la palabra resaltada, cuando estén disponibles.</string>
+
+    <string name="anki_content_picture">Captura de pantalla</string>
+    <string name="anki_content_picture_desc">Una captura de la pantalla del juego, envuelta en la etiqueta &lt;img&gt; lista para un campo de Imagen / Captura de pantalla.</string>
+
+    <string name="anki_content_word_audio">Audio de la palabra</string>
+    <string name="anki_content_word_audio_desc">Audio de texto a voz de la palabra, listo para un campo Word Audio.</string>
+
+    <string name="anki_content_sentence_audio">Audio de la frase</string>
+    <string name="anki_content_sentence_audio_desc">Audio de texto a voz de la frase, listo para un campo Sentence Audio.</string>
+
+    <string name="anki_content_frequency">Estrellas de frecuencia</string>
+    <string name="anki_content_frequency_desc">Valoración de frecuencia de la palabra resaltada en estrellas. Ejemplo: ★★★</string>
+
+    <string name="anki_content_part_of_speech">Categoría gramatical</string>
+    <string name="anki_content_part_of_speech_desc">Etiqueta de categoría gramatical de la palabra resaltada (solo tarjetas en modo palabra). Ejemplo: noun</string>
+
+    <string name="anki_content_words_table">Lista de palabras (tarjetas de frase)</string>
+    <string name="anki_content_words_table_desc">Una lista con formato de todas las palabras que <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> detectó en la frase, con lecturas y definiciones.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CARD-TYPE STATE FLAGS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_content_flag_vocabulary">Marcador de tarjeta de vocabulario (x)</string>
+    <string name="anki_content_flag_vocabulary_desc">Emite \"x\" solo en los envíos en modo palabra: úsalo para campos de plantilla como \"Is Vocabulary Card\" de <xliff:g id="brand_migaku" example="Migaku">Migaku</xliff:g>.</string>
+
+    <string name="anki_content_flag_sentence">Marcador de tarjeta de frase (x)</string>
+    <string name="anki_content_flag_sentence_desc">Emite \"x\" solo en los envíos en modo frase: úsalo para campos de plantilla como \"IsSentenceCard\" de <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> o de <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+
+    <string name="anki_content_flag_targeted_sentence">Marcador de tarjeta de frase con objetivo (x)</string>
+    <string name="anki_content_flag_targeted_sentence_desc">Emite \"x\" en los envíos de frase que tienen una palabra objetivo resaltada: úsalo para \"IsTargetedSentenceCard\" de <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+
+    <string name="anki_content_flag_always_on">Marcador siempre activo (x)</string>
+    <string name="anki_content_flag_always_on_desc">Siempre emite \"x\". Úsalo para campos de plantilla que quieras activar de forma incondicional.</string>
+
+    <string name="anki_content_section_content">Contenido</string>
+    <string name="anki_content_section_flag">Marca de tipo de tarjeta</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC CHROME
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="cd_back">Atrás</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         APPEARANCE — theme mode and accent picker
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="pt_theme_mode_system">Sistema</string>
+    <string name="pt_theme_mode_dark">Oscuro</string>
+    <string name="pt_theme_mode_light">Claro</string>
+
+    <string name="pt_accent_label">Color de acento</string>
+
+    <string name="pt_accent_coral">Coral</string>
+    <string name="pt_accent_amber">Ámbar</string>
+    <string name="pt_accent_lime">Lima</string>
+    <string name="pt_accent_mint">Menta</string>
+    <string name="pt_accent_teal">Turquesa</string>
+    <string name="pt_accent_aqua">Aguamarina</string>
+    <string name="pt_accent_sky">Cielo</string>
+    <string name="pt_accent_steel">Acero</string>
+    <string name="pt_accent_violet">Violeta</string>
+    <string name="pt_accent_orchid">Orquídea</string>
+    <string name="pt_accent_rose">Rosa</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         DEEPL — detail screen
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="deepl_settings_save">Guardar</string>
+
+    <string name="deepl_settings_close_cd">Cerrar</string>
+
+    <string name="deepl_settings_get_key_title">Obtener una clave de API gratuita de <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g></string>
+
+    <string name="deepl_settings_get_key_subtitle">El plan gratuito incluye 500.000 caracteres al mes, pero requiere una tarjeta de crédito para registrarse</string>
+
+    <string name="deepl_settings_about"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> es un servicio de traducción conocido por su alta calidad, especialmente en idiomas europeos.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC LLM BACKEND SETTINGS (OpenAI / Gemini / DeepSeek)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="llm_backend_api_key_label">Clave de API</string>
+
+    <string name="llm_backend_model_label">Modelo</string>
+
+    <string name="llm_backend_get_key_title_fmt">Obtener una clave de API de <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g></string>
+
+    <string name="llm_backend_model_custom_entry">Personalizado…</string>
+
+    <string name="llm_model_picker_loading">Cargando modelos…</string>
+
+    <string name="llm_model_picker_fetch_failed">No se pudo obtener la lista de modelos. Comprueba la clave de API o escribe un ID de modelo en Personalizado….</string>
+
+    <string name="llm_backend_invalid_key_alert_title">No se pudo verificar la clave de API</string>
+
+    <string name="llm_backend_invalid_key_alert_message_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> rechazó la clave que introdujiste. Compruébala en <xliff:g id="dev_console_url" example="platform.openai.com">%2$s</xliff:g> e inténtalo de nuevo.</string>
+
+    <string name="llm_backend_invalid_key_alert_button">OK</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS FOOTERS (Translation Service sections)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tr_service_order_footer">Las traducciones prueban cada servicio activado en el orden mostrado y recurren a otro cuando uno no está disponible. Los servicios de traducción en línea reciben el texto capturado. Revisa la política de privacidad de cada proveedor antes de activarlo.</string>
+
+    <string name="tr_service_offline_footer">Las traducciones sin conexión se usan como alternativa cuando las traducciones en línea no están disponibles. Las traducciones de <xliff:g id="brand_mlkit" example="MLKit">MLKit</xliff:g> son malas, pero las otras opciones pueden ser muy lentas y exigentes; ten cuidado al usarlas para la traducción automática.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         PER-BACKEND STATUS LINE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tr_service_status_loading">Comprobando el uso…</string>
+
+    <string name="tr_service_status_quota_fmt"><xliff:g id="used" example="120,345">%1$s</xliff:g> / <xliff:g id="total" example="500,000">%2$s</xliff:g> caracteres usados</string>
+
+    <string name="tr_service_status_quota_with_reset_fmt"><xliff:g id="quota_line" example="120,345 / 500,000 characters used">%1$s</xliff:g> · se restablece el <xliff:g id="reset_date" example="Jun 1">%2$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         BACKEND QUALITY / SPEED LABELS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tr_service_quality_bad">Calidad mala</string>
+    <string name="tr_service_quality_okay">Calidad aceptable</string>
+    <string name="tr_service_quality_good">Buena calidad</string>
+    <string name="tr_service_quality_better">Mejor calidad</string>
+
+    <string name="tr_service_speed_very_slow">Muy lento</string>
+    <string name="tr_service_speed_slow">Lento</string>
+    <string name="tr_service_speed_okay">Velocidad aceptable</string>
+    <string name="tr_service_speed_fast">Rápido</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         OFFLINE BACKEND ROW
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="offline_backend_quality_label">Calidad</string>
+    <string name="offline_backend_speed_label">Velocidad</string>
+    <string name="offline_backend_ram_label">Memoria</string>
+    <string name="offline_backend_disk_label">Almacenamiento</string>
+
+    <!-- ── Firefox Translations (Bergamot) offline row ──────────────── -->
+    <string name="bergamot_status_downloading">Descargando… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%2$s</xliff:g></string>
+
+    <string name="bergamot_download_failed">No se pudo descargar el modelo de Firefox Translations</string>
+
+    <string name="bergamot_disable_title">¿Desactivar Firefox Translations?</string>
+
+    <string name="bergamot_disable_message">Dejará de traducir este par de idiomas sin conexión. Puedes conservar el modelo descargado o eliminarlo para liberar espacio.</string>
+
+    <string name="bergamot_disable_keep">Solo desactivar</string>
+
+    <string name="bergamot_disable_delete">Eliminar modelo</string>
+
+    <string name="bergamot_warmup_downloading">Descargando el modelo sin conexión… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%2$s</xliff:g></string>
+
+    <string name="bergamot_warmup_downloading_multi">Descargando el modelo sin conexión <xliff:g id="file_index" example="1">%1$d</xliff:g> de <xliff:g id="file_count" example="2">%2$d</xliff:g>… <xliff:g id="bytes_so_far" example="12 MB">%3$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%4$s</xliff:g></string>
+    <string name="bergamot_pair_unsupported">No compatible con el par de idiomas actual</string>
+
+    <string name="offline_backend_downloaded_cd">Descargado</string>
+    <string name="offline_backend_not_downloaded_cd">No descargado</string>
+    <string name="offline_backend_enabled_cd">Activado</string>
+    <string name="offline_backend_disabled_cd">Desactivado</string>
+
+    <string name="offline_backend_row_a11y_fmt"><xliff:g id="title" example="Qwen 2.5 1.5B">%1$s</xliff:g>. Calidad: <xliff:g id="quality" example="Good quality">%2$s</xliff:g>. Velocidad: <xliff:g id="speed" example="Okay speed">%3$s</xliff:g>. Requiere <xliff:g id="ram" example="4 GB">%4$s</xliff:g> de memoria. <xliff:g id="disk_size" example="1.2 GB">%5$s</xliff:g> de almacenamiento. <xliff:g id="downloaded_state" example="Downloaded">%6$s</xliff:g>. <xliff:g id="enabled_state" example="Enabled">%7$s</xliff:g>.</string>
+
+    <string name="offline_backend_row_a11y_no_speed_fmt"><xliff:g id="title" example="ML Kit">%1$s</xliff:g>. Calidad: <xliff:g id="quality" example="Bad quality">%2$s</xliff:g>. Requiere <xliff:g id="ram" example="&lt; 1 GB">%3$s</xliff:g> de memoria. <xliff:g id="disk_size" example="~30 MB">%4$s</xliff:g> de almacenamiento. <xliff:g id="downloaded_state" example="Downloaded">%5$s</xliff:g>. <xliff:g id="enabled_state" example="Enabled">%6$s</xliff:g>.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC DOWNLOAD UI
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="model_download_extracting">Extrayendo…</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ON-DEVICE LLM TRANSLATION MODELS (MNN-backed)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- ── Qwen 2.5 1.5B ──────────────────────────────────────────── -->
+
+    <string name="qwen_mnn_status_not_downloaded">Requiere <xliff:g id="ram" example="4 GB">%1$s</xliff:g> de memoria, <xliff:g id="disk_size" example="1.2 GB">%2$s</xliff:g> de almacenamiento</string>
+
+    <string name="qwen_mnn_status_downloaded_disabled">Descargado pero desactivado (<xliff:g id="disk_size" example="1.2 GB">%1$s</xliff:g> de almacenamiento)</string>
+
+    <string name="qwen_mnn_status_ready">Requiere <xliff:g id="ram" example="4 GB">%1$s</xliff:g> de memoria, <xliff:g id="disk_size" example="1.2 GB">%2$s</xliff:g> de almacenamiento</string>
+
+    <string name="qwen_mnn_status_downloading">Descargando… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> de <xliff:g id="bytes_total" example="1.2 GB">%2$s</xliff:g></string>
+
+    <string name="qwen_mnn_status_verifying">Verificando la descarga…</string>
+
+    <string name="qwen_mnn_disable_title">¿Desactivar <xliff:g id="brand_qwen" example="Qwen">Qwen</xliff:g> (MNN)?</string>
+
+    <string name="qwen_mnn_disable_message">El modelo de <xliff:g id="disk_size" example="1.2 GB">%1$s</xliff:g> está instalado. Puedes conservarlo para más tarde o eliminarlo para liberar espacio.</string>
+
+    <string name="qwen_mnn_download_failed">Error de descarga: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="qwen_mnn_metered_warning_title">¿Descargar en una red de uso medido?</string>
+
+    <string name="qwen_mnn_metered_warning_message"><xliff:g id="brand_qwen" example="Qwen 2.5 1.5B (MNN)">Qwen 2.5 1.5B (MNN)</xliff:g> ocupa <xliff:g id="download_size" example="1.2 GB">%1$s</xliff:g>. Esta red está marcada como de uso medido. ¿Continuar?</string>
+
+    <string name="qwen_mnn_disable_keep">Solo desactivar</string>
+    <string name="qwen_mnn_disable_delete">Eliminar modelo</string>
+
+    <!-- ── Qwen 3.5 2B ────────────────────────────────────────────── -->
+
+    <string name="qwen35_2b_mnn_status_not_downloaded">Requiere <xliff:g id="ram" example="6 GB">%1$s</xliff:g> de memoria, <xliff:g id="disk_size" example="1.3 GB">%2$s</xliff:g> de almacenamiento</string>
+
+    <string name="qwen35_2b_mnn_status_downloaded_disabled">Descargado pero desactivado (<xliff:g id="disk_size" example="1.3 GB">%1$s</xliff:g> de almacenamiento)</string>
+
+    <string name="qwen35_2b_mnn_status_ready">Requiere <xliff:g id="ram" example="6 GB">%1$s</xliff:g> de memoria, <xliff:g id="disk_size" example="1.3 GB">%2$s</xliff:g> de almacenamiento</string>
+
+    <string name="qwen35_2b_mnn_status_downloading">Descargando… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> de <xliff:g id="bytes_total" example="1.3 GB">%2$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_status_verifying">Verificando la descarga…</string>
+
+    <string name="qwen35_2b_mnn_disable_title">¿Desactivar <xliff:g id="brand_qwen" example="Qwen 3.5 2B">Qwen 3.5 2B</xliff:g>?</string>
+
+    <string name="qwen35_2b_mnn_disable_message">El modelo de <xliff:g id="disk_size" example="1.3 GB">%1$s</xliff:g> está instalado. Puedes conservarlo para más tarde o eliminarlo para liberar espacio.</string>
+
+    <string name="qwen35_2b_mnn_download_failed">Error de descarga: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_metered_warning_title">¿Descargar en una red de uso medido?</string>
+
+    <string name="qwen35_2b_mnn_metered_warning_message"><xliff:g id="brand_qwen" example="Qwen 3.5 2B">Qwen 3.5 2B</xliff:g> ocupa <xliff:g id="download_size" example="1.3 GB">%1$s</xliff:g>. Esta red está marcada como de uso medido. ¿Continuar?</string>
+
+    <string name="qwen35_2b_mnn_disable_keep">Solo desactivar</string>
+    <string name="qwen35_2b_mnn_disable_delete">Eliminar modelo</string>
+
+    <string name="deprecated_badge_label">Obsoleto</string>
+
+    <!-- ── Gemma 4 E2B ────────────────────────────────────────────── -->
+
+    <string name="gemma_e2b_mnn_status_not_downloaded">Requiere <xliff:g id="ram" example="6 GB">%1$s</xliff:g> de memoria, <xliff:g id="disk_size" example="2.1 GB">%2$s</xliff:g> de almacenamiento</string>
+
+    <string name="gemma_e2b_mnn_status_downloaded_disabled">Descargado pero desactivado (<xliff:g id="disk_size" example="2.1 GB">%1$s</xliff:g> de almacenamiento)</string>
+
+    <string name="gemma_e2b_mnn_status_ready">Requiere <xliff:g id="ram" example="6 GB">%1$s</xliff:g> de memoria, <xliff:g id="disk_size" example="2.1 GB">%2$s</xliff:g> de almacenamiento</string>
+
+    <string name="gemma_e2b_mnn_status_downloading">Descargando… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> de <xliff:g id="bytes_total" example="2.1 GB">%2$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_status_verifying">Verificando la descarga…</string>
+
+    <string name="gemma_e2b_mnn_disable_title">¿Desactivar <xliff:g id="brand_gemma" example="Gemma 4 E2B">Gemma 4 E2B</xliff:g>?</string>
+
+    <string name="gemma_e2b_mnn_disable_message">El modelo de <xliff:g id="disk_size" example="2.1 GB">%1$s</xliff:g> está instalado. Puedes conservarlo para más tarde o eliminarlo para liberar espacio.</string>
+
+    <string name="gemma_e2b_mnn_download_failed">Error de descarga: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_metered_warning_title">¿Descargar en una red de uso medido?</string>
+
+    <string name="gemma_e2b_mnn_metered_warning_message"><xliff:g id="brand_gemma" example="Gemma 4 E2B">Gemma 4 E2B</xliff:g> ocupa <xliff:g id="download_size" example="2.1 GB">%1$s</xliff:g>. Esta red está marcada como de uso medido. ¿Continuar?</string>
+
+    <string name="gemma_e2b_mnn_disable_keep">Solo desactivar</string>
+    <string name="gemma_e2b_mnn_disable_delete">Eliminar modelo</string>
+
+    <!-- ── Tencent Hunyuan-MT 1.5 1.8B ────────────────────────────── -->
+
+    <string name="hymt_status_not_downloaded">Requiere <xliff:g id="ram" example="4 GB">%1$s</xliff:g> de memoria, <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g> de almacenamiento</string>
+
+    <string name="hymt_status_downloaded_disabled">Descargado pero desactivado (<xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> de almacenamiento)</string>
+
+    <string name="hymt_status_ready">Requiere <xliff:g id="ram" example="4 GB">%1$s</xliff:g> de memoria, <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g> de almacenamiento</string>
+
+    <string name="hymt_status_downloading">Descargando… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> de <xliff:g id="bytes_total" example="1.5 GB">%2$s</xliff:g></string>
+
+    <string name="hymt_status_verifying">Verificando la descarga…</string>
+
+    <string name="hymt_disable_title">¿Desactivar <xliff:g id="brand_hunyuan" example="Hunyuan-MT">Hunyuan-MT</xliff:g>?</string>
+
+    <string name="hymt_disable_message">El modelo de <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> está instalado. Puedes conservarlo para más tarde o eliminarlo para liberar espacio.</string>
+
+    <string name="hymt_download_failed">Error de descarga: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="hymt_metered_warning_title">¿Descargar en una red de uso medido?</string>
+
+    <string name="hymt_metered_warning_message"><xliff:g id="brand_hunyuan15" example="Hunyuan-MT 1.5">Hunyuan-MT 1.5</xliff:g> ocupa <xliff:g id="download_size" example="1.5 GB">%1$s</xliff:g>. Esta red está marcada como de uso medido. ¿Continuar?</string>
+
+    <string name="hymt_disable_keep">Solo desactivar</string>
+    <string name="hymt_disable_delete">Eliminar modelo</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         HUNYUAN-MT LEGAL ATTESTATION (legal text — translated faithfully)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="hymt_legal_title">Aviso legal y restricción regional</string>
+
+    <string name="hymt_legal_message">El modelo <xliff:g id="brand_hunyuan15" example="Hunyuan-MT 1.5">Hunyuan-MT 1.5</xliff:g> de <xliff:g id="brand_tencent" example="Tencent">Tencent</xliff:g> tiene licencia conforme al <xliff:g id="license_name" example="Tencent HY Community License Agreement">Tencent HY Community License Agreement</xliff:g>. Esta licencia excluye el uso en la Unión Europea, el Reino Unido y Corea del Sur.\n\nAl tocar «Acepto», declaras y garantizas que:\n\n(1) No resides ni te encuentras actualmente en la UE, el Reino Unido ni Corea del Sur.\n\n(2) No usarás los resultados de este modelo para mejorar ningún otro modelo de IA (conforme a la <xliff:g id="license_section" example="§5(b)">§5(b)</xliff:g> de la licencia).</string>
+
+    <string name="hymt_legal_agree">Acepto: activar <xliff:g id="brand_hunyuan" example="Hunyuan">Hunyuan</xliff:g></string>
+
+    <string name="hymt_legal_cancel">Cancelar</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         COLD-LAUNCH MIGRATION ALERT
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="legacy_engines_removed_title">Traducción sin conexión actualizada</string>
+    <string name="legacy_engines_removed_message">Tus traductores sin conexión anteriores (<xliff:g id="brand_qwen" example="Qwen">Qwen</xliff:g> y <xliff:g id="brand_translategemma" example="TranslateGemma">TranslateGemma</xliff:g>) se han eliminado y se han sustituido por versiones más rápidas basadas en MNN. Abre los Ajustes para activar el nuevo traductor.</string>
+    <string name="legacy_engines_removed_button_settings">Ajustes</string>
+    <string name="legacy_engines_removed_button_cancel">Cancelar</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         LLM HARDWARE-UNSUPPORTED STATUS LINES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="llm_hardware_unsupported_arm64">No compatible con este dispositivo (requiere una CPU arm64)</string>
+
+    <string name="llm_hardware_unsupported_ram">No compatible con este dispositivo (requiere al menos <xliff:g id="min_ram_gb" example="4">%1$d</xliff:g> GB de RAM)</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         PRE-TOGGLE LOW-MEMORY GATE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="llm_low_memory_title">Memoria libre insuficiente</string>
+
+    <string name="llm_low_memory_message"><xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> necesita unos <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g> de memoria libre para funcionar. Ahora mismo solo hay <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g> libres.\n\nCierra otras apps para liberar memoria, o cancela si este modelo no es adecuado para tu dispositivo.</string>
+
+    <string name="llm_low_memory_recheck">Volver a comprobar la memoria</string>
+
+    <string name="llm_low_memory_start_anyway">Iniciar de todos modos</string>
+
+    <string name="llm_low_memory_delete">Eliminar modelo</string>
+
+    <string name="llm_low_memory_cancel">Cancelar</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         WARNING-TONE LLM STATUS LINE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="llm_status_low_memory_badge">Memoria insuficiente: traduciendo con alternativa</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING-ICON MENU WARNING PILL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="degraded_warning_offline">Sin conexión: la calidad de la traducción es menor</string>
+    <string name="degraded_warning_low_memory">Memoria insuficiente: la calidad de la traducción es menor</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MAIN SCREEN — bottom-bar and overflow-menu items
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="nav_settings">Ajustes</string>
+
+    <string name="nav_regions">Regiones</string>
+
+    <string name="live_mode_auto_label">Auto</string>
+
+    <string name="live_mode_pause_label">Pausar</string>
+
+    <string name="live_mode_auto_translate_label">Traducción automática</string>
+
+    <string name="live_mode_pause_auto_label">Pausar automático</string>
+
+    <string name="live_mode_auto_with_hint">Auto <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <string name="menu_capture_region">Región de captura</string>
+
+    <string name="menu_translations">Traducciones</string>
+
+    <string name="menu_close">Cerrar</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC BUTTON LABELS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="btn_save">Guardar</string>
+
+    <string name="btn_cancel">Cancelar</string>
+
+    <string name="btn_clear">Borrar</string>
+
+    <string name="btn_ok">OK</string>
+
+    <string name="btn_not_now">Ahora no</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CUSTOM-REGION SHEET
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="btn_save_to_list">Guardar en la lista</string>
+
+    <string name="custom_region_edit_title">Editar <xliff:g id="region_label" example="Dialogue box">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         REGION PICKER SHEET
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="region_picker_editing_title">Editando regiones</string>
+
+    <string name="region_default_full_screen">Pantalla completa</string>
+
+    <string name="region_label_current_capture">Región de captura actual</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MAIN-SCREEN BIG TRANSLATE BUTTON
+         (prefix is joined to the region label by code with a space)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="translate_button_prefix_translate">Traducir</string>
+
+    <string name="translate_button_prefix_reload">Recargar</string>
+
+    <string name="translate_button_subtitle_hold_to_hide_translations">Mantén presionado para ocultar las traducciones en la pantalla del juego</string>
+
+    <string name="translate_button_subtitle_hold_to_show_translations_instead_of_hint">Mantén presionado para mostrar traducciones en lugar de <xliff:g id="hint_label" example="furigana">%1$s</xliff:g></string>
+
+    <string name="translate_button_subtitle_hold_to_show_hint">Mantén presionado para mostrar <xliff:g id="hint_label" example="furigana">%1$s</xliff:g> en la pantalla del juego</string>
+
+    <string name="translate_button_subtitle_hold_to_show_translations">Mantén presionado para mostrar las traducciones en la pantalla del juego</string>
+
+    <string name="hint_label_pinyin_lower">pinyin</string>
+    <string name="hint_label_furigana_lower">furigana</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING ICON LONG-PRESS MENU
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="floating_icon_close_label_turn_off">Desactivar</string>
+
+    <string name="floating_icon_close_label_hide">Ocultar</string>
+
+    <string name="floating_menu_btn_capture_region">Capturar\nregión</string>
+
+    <string name="floating_menu_drag_instruction">Arrastra el dedo para capturar un área específica</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         DEEPL SETTINGS — API-key field label
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="deepl_api_key_field_label">Clave de API de <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         AUTO-TRANSLATE DIALOG
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_overlay_mode_title">Modo de superposición</string>
+
+    <string name="settings_overlay_mode_subtitle">Qué superposiciones mostrar en el modo automático o en la vista previa al mantener presionado.</string>
+
+    <string name="settings_capture_interval_title">Intervalo de captura</string>
+
+    <string name="settings_capture_interval_seconds_suffix">s</string>
+
+    <string name="settings_capture_interval_hint">Con qué frecuencia se captura la pantalla del juego durante la traducción automática. Mínimo: <xliff:g id="min_seconds" example="1">%1$s</xliff:g> s.</string>
+
+    <string name="overlay_mode_option_translation">Traducción</string>
+
+    <string name="overlay_mode_option_furigana">Furigana</string>
+
+    <string name="overlay_mode_option_pinyin">Pinyin</string>
+
+    <string name="settings_hide_overlays_during_auto_mode">Ocultar superposiciones en el modo automático</string>
+
+    <string name="settings_hide_overlays_ignored_multi_display">Se ignora cuando hay más de una pantalla seleccionada: las superposiciones se muestran en cada una.</string>
+
+    <string name="settings_touches_refresh_title">Tocar la pantalla actualiza la traducción</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         HOTKEY SETUP DIALOG
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="dialog_hotkey_setup_title">Configurar atajo</string>
+
+    <string name="dialog_hotkey_setup_instruction">Mantén presionada(s) la(s) tecla(s) durante 2 segundos</string>
+
+    <string name="dialog_hotkey_setup_countdown">Mantén <xliff:g id="remaining_seconds" example="1.4">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION-RESULT SCREEN — toolbar + per-row buttons
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="cd_translation_result_back">Atrás</string>
+
+    <string name="cd_copy_translation">Copiar traducción</string>
+
+    <string name="cd_toggle_translation_visibility">Mostrar u ocultar la traducción</string>
+
+    <string name="cd_toggle_inline_furigana">Activar o desactivar furigana en línea</string>
+
+    <string name="cd_read_original_aloud">Leer el texto original en voz alta</string>
+
+    <string name="cd_edit_original">Editar el texto original</string>
+
+    <string name="cd_copy_original">Copiar el original</string>
+
+    <string name="cd_toggle_original_visibility">Mostrar u ocultar el original</string>
+
+    <string name="cd_toggle_words_visibility">Mostrar u ocultar las palabras</string>
+
+    <string name="cd_close">Cerrar</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         REGION-PICKER ROW — per-row icon contentDescriptions
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="cd_drag_to_reorder">Arrastra para reordenar</string>
+
+    <string name="cd_delete_region">Eliminar región</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MAIN ACTIVITY DIALOGS (crash / update / target-pack migration)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="crash_dialog_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> se cerró inesperadamente antes</string>
+
+    <string name="crash_dialog_message">¿Enviar el informe de fallos al desarrollador? Incluye un seguimiento de pila, los registros recientes de la app y cualquier texto que <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> haya reconocido por OCR o consultado recientemente. Sin información de la cuenta.</string>
+
+    <string name="crash_dialog_send">Enviar</string>
+
+    <string name="crash_dialog_discard">Descartar</string>
+
+    <string name="crash_dialog_later">Más tarde</string>
+
+    <string name="crash_email_subject">Fallo de <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> – v<xliff:g id="version" example="2.2.0">%1$s</xliff:g></string>
+
+    <string name="crash_email_body">Pasos para reproducirlo:\n\n(Opcional: describe qué estabas haciendo cuando ocurrió.)\n\nLa información del dispositivo está incluida en el archivo adjunto.</string>
+
+    <string name="update_dialog_title">Actualización disponible</string>
+
+    <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> ya está disponible en <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <string name="update_dialog_view_release">Ver la versión</string>
+
+    <string name="update_dialog_skip">Omitir esta versión</string>
+
+    <string name="update_dialog_ask_again_later">Preguntar más tarde</string>
+
+    <string name="toast_no_browser_available">No hay ningún navegador disponible</string>
+
+    <string name="target_pack_migration_title">Definiciones en <xliff:g id="target_language" example="Spanish">%1$s</xliff:g> disponibles</string>
+
+    <string name="target_pack_migration_message">Hay un paquete de definiciones en <xliff:g id="target_language" example="Spanish">%1$s</xliff:g> disponible. ¿Descargarlo para tener definiciones de palabras en <xliff:g id="target_language2" example="Spanish">%2$s</xliff:g> en lugar de inglés?</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         OVERLAY UI CONTROLLER — confirmation dialogs
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="overlay_turn_off_title">¿Desactivar <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g>?</string>
+
+    <string name="overlay_turn_off_message">Vuelve a activarlo en la app <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
+
+    <string name="overlay_hide_controls_title">¿Ocultar los controles de la pantalla del juego de <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g>?</string>
+
+    <string name="overlay_hide_controls_message">\"Ocultar por ahora\" los vuelve a mostrar la próxima vez que abras <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g>. \"Desactivar\" los desactiva hasta que los vuelvas a activar en los ajustes.</string>
+
+    <string name="overlay_hide_for_now">Ocultar por ahora</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         LANGUAGE PACK / TARGET-PACK INSTALLER DIALOGS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="install_downloading_generic">Descargando</string>
+
+    <string name="install_downloading_with_bytes">Descargando… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> de <xliff:g id="bytes_total" example="84 MB">%2$s</xliff:g></string>
+
+    <string name="lang_setup_downloading_ocr_model">Descargando el modelo de OCR… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> de <xliff:g id="bytes_total" example="47 MB">%2$s</xliff:g></string>
+
+    <string name="install_downloading_definitions">Descargando definiciones</string>
+
+    <string name="install_downloading_definitions_with_bytes">Descargando definiciones… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> de <xliff:g id="bytes_total" example="84 MB">%2$s</xliff:g></string>
+
+    <string name="install_downloading_translation_model">Descargando el modelo de traducción</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — section group headers
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_header_auto_translate">Traducción automática</string>
+    <string name="settings_header_hotkeys">Atajos</string>
+    <string name="settings_header_capture_display">Pantalla de captura</string>
+    <string name="settings_header_online_translations">Traducciones en línea</string>
+    <string name="settings_header_offline_translations">Traducciones sin conexión</string>
+    <string name="settings_header_ocr">Reconocimiento de texto (OCR)</string>
+    <string name="settings_ocr_note_builtin">Integrado</string>
+
+    <string name="settings_ocr_default_badge">Predeterminado</string>
+
+    <string name="settings_ocr_footer">Si PlayTranslate tiene dificultades para leer con precisión el texto de la pantalla, prueba con distintas selecciones. Distintas herramientas de OCR pueden funcionar mejor con distintos tipos de fuente u orientaciones de texto.</string>
+
+    <string name="settings_ocr_delete_cd">Eliminar <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
+
+    <string name="settings_ocr_delete_title">¿Eliminar <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g>?</string>
+
+    <string name="settings_ocr_delete_msg">Esto elimina el modelo <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> de este dispositivo. Puedes volver a descargarlo más tarde.</string>
+
+    <string name="settings_ocr_delete_shared_msg"><xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> también lo usan estos idiomas. Eliminarlo libera el espacio ahora; se volverá a descargar la próxima vez que cambies a uno de ellos:\n\n<xliff:g id="languages" example="Chinese">%2$s</xliff:g></string>
+
+    <string name="settings_ocr_delete_confirm">Eliminar</string>
+
+    <string name="settings_ocr_downloading_title">Descargando <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
+
+    <string name="settings_ocr_downloading_msg">Iniciando…</string>
+
+    <string name="settings_ocr_verifying">Verificando…</string>
+
+    <string name="settings_ocr_installing">Instalando…</string>
+
+    <string name="settings_ocr_download_failed">No se pudo descargar el modelo de OCR. Comprueba tu conexión e inténtalo de nuevo.</string>
+    <string name="settings_header_text_to_speech">Texto a voz</string>
+    <string name="settings_header_appearance">Apariencia</string>
+    <string name="settings_header_support">Soporte</string>
+
+    <string name="settings_header_configure">Configurar</string>
+    <string name="settings_cell_appearance">Apariencia</string>
+    <string name="settings_cell_hotkeys">Atajos</string>
+    <string name="settings_cell_capture_overlay">Captura y superposición</string>
+    <string name="settings_cell_anki">Tarjetas de Anki</string>
+    <string name="settings_cell_translation_services">Servicios de traducción</string>
+    <string name="settings_cell_tts">Texto a voz</string>
+
+    <string name="settings_digest_none">Ninguno</string>
+    <string name="settings_capture_displays_count"><xliff:g id="count" example="2">%1$d</xliff:g> pantallas</string>
+
+    <string name="settings_hotkeys_tile_add">Añadir mosaico</string>
+    <string name="settings_hotkeys_none">Sin atajos configurados</string>
+    <string name="settings_hotkeys_translation">Traducción</string>
+    <string name="settings_hotkeys_furigana">Furigana</string>
+    <string name="settings_hotkeys_pinyin">Pinyin</string>
+
+    <string name="settings_anki_digest">Mazo <xliff:g id="deck_name" example="Vocabulary">%1$s</xliff:g> · Tipo de tarjeta <xliff:g id="card_type_name" example="Lapis sentence">%2$s</xliff:g></string>
+    <string name="settings_anki_default">Predeterminado</string>
+    <string name="settings_anki_get_app_summary">Descarga AnkiDroid gratis en Google Play</string>
+    <string name="settings_anki_grant_summary">Concede permisos para usar AnkiDroid</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Text-to-Speech section
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tts_voice_row_title">Voz</string>
+
+    <string name="tts_voice_numbered">Voz <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
+
+    <string name="tts_voice_region_numbered"><xliff:g id="region" example="China">%1$s</xliff:g> <xliff:g id="region_index" example="2">%2$d</xliff:g></string>
+
+    <string name="tts_voice_default">Predeterminada</string>
+
+    <string name="tts_voice_default_subtitle">La voz predeterminada del motor</string>
+
+    <string name="tts_voice_needs_download">Requiere descarga</string>
+
+    <string name="tts_no_engine_row_title">Configurar texto a voz</string>
+
+    <string name="tts_no_engine_row_subtitle">No hay ningún motor de voz disponible. Toca para añadir uno.</string>
+
+    <string name="tts_voice_picker_title">Voz</string>
+
+    <string name="tts_voices_section_header">VOCES EN <xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
+
+    <string name="tts_no_engine_dialog_title">Sin texto a voz</string>
+
+    <string name="tts_no_engine_dialog_message">No hay ningún motor de texto a voz disponible para leer las palabras en voz alta. Instala uno o, si tu dispositivo ya tiene uno, actívalo en los ajustes de Android.</string>
+
+    <string name="tts_no_engine_get_google">Obtener Google TTS</string>
+
+    <string name="tts_no_engine_open_settings">Abrir ajustes de voz</string>
+
+    <string name="tts_language_unsupported_dialog_title">Idioma no compatible</string>
+
+    <string name="tts_language_unsupported_with_engine_message"><xliff:g id="engine_name" example="Google TTS">%1$s</xliff:g> es el motor activo, pero no es compatible con el <xliff:g id="source_language" example="Japanese">%2$s</xliff:g>.</string>
+
+    <string name="tts_language_unsupported_unknown_engine_message">El motor de texto a voz activo no es compatible con el <xliff:g id="source_language" example="Japanese">%1$s</xliff:g>.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Quick Settings tile row (Android 13+)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="quick_tile_add_row_title">Añadir mosaico a Ajustes rápidos</string>
+
+    <string name="quick_tile_add_row_subtitle">Activa o desactiva <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> desde la barra de estado</string>
+
+    <string name="quick_tile_added_row_subtitle">Añadido a Ajustes rápidos</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Hotkeys section
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="hotkey_not_set_subtitle">Sin configurar</string>
+
+    <string name="hotkey_show_translations_title">Atajo: mantén presionado para mostrar traducciones</string>
+
+    <string name="hotkey_show_translations_dialog_title">Mostrar traducciones</string>
+
+    <string name="hotkey_show_hint_title">Atajo: mantén presionado para mostrar <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <string name="hotkey_show_hint_dialog_title">Mostrar <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Capture Display section
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="capture_display_row_label">Pantalla <xliff:g id="display_id" example="0">%1$d</xliff:g>  —  <xliff:g id="display_name" example="Built-in screen">%2$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Online Translations (cooldown / unavailable states)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="backend_status_unavailable_default">No disponible</string>
+
+    <string name="backend_cooldown_retry_at">Reintentar a las</string>
+
+    <string name="backend_cooldown_retry_on">Reintentar el</string>
+
+    <string name="backend_cooldown_status_fmt"><xliff:g id="description" example="Rate limited">%1$s</xliff:g> · <xliff:g id="retry_word" example="Retry at">%2$s</xliff:g> <xliff:g id="retry_time" example="3:42 PM">%3$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Offline Translations / accessibility numeric labels
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="a11y_quality_label">Calidad</string>
+
+    <string name="a11y_speed_label">Velocidad:</string>
+
+    <string name="a11y_quality_label_colon">Calidad:</string>
+
+    <string name="a11y_out_of_5_stars">de 5 estrellas</string>
+
+    <string name="a11y_speed_label_comma">Velocidad</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Anki rows + deck/card-type fallback labels
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_deck_not_selected_subtitle">Sin seleccionar</string>
+
+    <string name="anki_settings_get_ankidroid_title">Obtener <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> gratis en Google Play</string>
+
+    <string name="anki_settings_grant_access_title">Conceder acceso a <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_settings_grant_access_subtitle">Para añadir tarjetas a <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>, <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> necesita permiso para acceder a <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Support section rows
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_support_discord_title">Unirse a <xliff:g id="brand_discord" example="Discord">Discord</xliff:g></string>
+
+    <string name="settings_support_discord_subtitle">Consigue ayuda y chatea con otros jugadores.</string>
+
+    <string name="settings_support_donate_title">Apoyar a PlayTranslate</string>
+
+    <string name="settings_support_donate_subtitle">Un proyecto gratuito y de código abierto hecho con cariño. Ayuda a mantenerlo.</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Debug section (developer-only)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_debug_force_single_screen">Forzar pantalla única</string>
+    <string name="settings_debug_show_ocr_boxes">Mostrar cuadros de OCR</string>
+    <string name="settings_debug_show_detection_log">Mostrar registro de detección</string>
+    <string name="settings_debug_log_pinhole">Registrar métricas de pinhole del modo en vivo</string>
+    <string name="settings_debug_save_ocr_seed">Guardar capturas de OCR como semillas</string>
+    <string name="settings_debug_log_grouping">Registrar decisiones de agrupación de OCR</string>
+    <string name="settings_debug_force_crash_title">Forzar fallo</string>
+
+    <string name="settings_debug_export_logs_title">Exportar registros</string>
+
+    <string name="settings_debug_export_logs_subtitle">Comparte registros recientes para un informe de error</string>
+
+    <string name="settings_debug_export_logs_subject">Registros de <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="settings_debug_export_logs_failed">Error al exportar los registros: <xliff:g id="exception_class" example="FileNotFoundException">%1$s</xliff:g></string>
+
+    <string name="settings_footer_version"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> v<xliff:g id="version" example="2.2.0">%2$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC TOASTS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="toast_link_copied">Enlace copiado</string>
+
+    <string name="toast_copied">Copiado</string>
+
+    <string name="toast_no_logs_to_share">No hay registros para compartir</string>
+
+    <string name="toast_no_crash_report">No hay ningún informe de fallos para enviar</string>
+
+    <string name="share_chooser_share_logs">Compartir registros</string>
+
+</resources>
