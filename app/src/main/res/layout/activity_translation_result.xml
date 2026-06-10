@@ -57,6 +57,38 @@
             android:layout_height="match_parent"
             android:visibility="gone" />
 
+        <!-- Edit overlay: covers the result/word area when editing the
+             original text. Opaque ?attr/ptBg so it hides the result
+             beneath; the top bar (back button) stays visible above it.
+             Mirrors the editOverlay in activity_main.xml. -->
+        <LinearLayout
+            android:id="@+id/editOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:background="?attr/ptBg"
+            android:visibility="gone">
+
+            <!-- Editable text fills entire overlay; keyboard shows "Go" action -->
+            <EditText
+                android:id="@+id/etEditOriginal"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="top|start"
+                android:paddingHorizontal="14dp"
+                android:paddingTop="12dp"
+                android:textSize="24sp"
+                android:textColor="?attr/ptText"
+                android:lineSpacingMultiplier="1.5"
+                android:background="@null"
+                android:inputType="textMultiLine"
+                android:imeOptions="actionGo"
+                android:hint="@string/cd_edit_original"
+                android:importantForAutofill="no"
+                android:scrollbars="vertical" />
+
+        </LinearLayout>
+
     </FrameLayout>
 
 </LinearLayout>

@@ -58,6 +58,22 @@ class TranslationResultActivity :
 
     private var captureService: CaptureService? = null
 
+    /** Edit-original overlay views (parity with MainActivity's edit
+     *  overlay). The standalone result screen now supports editing the
+     *  original text just like the in-app dual-screen path. */
+    private lateinit var editOverlay: LinearLayout
+    private lateinit var etEditOriginal: android.widget.EditText
+
+    /** In-flight re-translate after an edit. Cancelled before launching a
+     *  fresh one so a slow backend reply can't overwrite a newer edit.
+     *  Unlike MainActivity, there's no live-capture pipeline here to also
+     *  cancel it — this is a one-shot screen. */
+    private var editTranslationJob: kotlinx.coroutines.Job? = null
+
+    /** Tracks keyboard visibility so dismissing the IME commits the edit,
+     *  matching MainActivity's commit-on-keyboard-hide behavior. */
+    private var wasKeyboardVisible = false
+
     /** True once [onServiceConnected] has fired — gates reads of
      *  [captureService] for any caller that needs an active binder. */
     private var serviceConnected = false
@@ -145,9 +161,7 @@ class TranslationResultActivity :
     override fun getAnkiPermissionLauncher() = requestAnkiPermission
 
     override fun onEditOriginalRequested() {
-        // No-op — the standalone result screen has no edit overlay UI.
-        // (The Edit button on the original card is visible but inert
-        //  here; that's a pre-existing UX wart, not new behavior.)
+        showEditOverlay()
     }
 
     override fun onUserScrolled() {
@@ -211,6 +225,10 @@ class TranslationResultActivity :
         tracker.bind(this)
 
         findViewById<ImageButton>(R.id.btnBack).setOnClickListener { finish() }
+
+        editOverlay = findViewById(R.id.editOverlay)
+        etEditOriginal = findViewById(R.id.etEditOriginal)
+        setupEditOverlay()
 
         if (isDragWordMode) setupDragWordTabs(savedInstanceState)
 
@@ -581,6 +599,73 @@ class TranslationResultActivity :
 
     private fun applyTheme() {
         com.playtranslate.applyTheme(this)
+    }
+
+    // ── Edit original overlay (parity with MainActivity) ──────────────────
+
+    /** Prefer the fragment's on-screen text (preserves OCR line breaks)
+     *  and fall back to the VM's settled result. Bails if neither is
+     *  available — nothing to edit yet. */
+    private fun showEditOverlay() {
+        val displayed = resultFragment?.getDisplayedOriginalText()?.takeIf { it.isNotBlank() }
+        val currentText = displayed
+            ?: (vm.result.value as? ResultState.Ready)?.result?.originalText
+            ?: return
+        etEditOriginal.setText(currentText)
+        etEditOriginal.setSelection(currentText.length)
+        editOverlay.visibility = View.VISIBLE
+        etEditOriginal.requestFocus()
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+        imm.showSoftInput(etEditOriginal, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    private fun commitEdit() {
+        if (editOverlay.visibility != View.VISIBLE) return
+        editOverlay.visibility = View.GONE
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+        imm.hideSoftInputFromWindow(etEditOriginal.windowToken, 0)
+        val newText = etEditOriginal.text?.toString()?.trim() ?: return
+        if (newText.isBlank()) return
+
+        vm.updateOriginalText(newText, applicationContext)
+
+        editTranslationJob?.cancel()
+        editTranslationJob = lifecycleScope.launch {
+            try {
+                // Route through the service so edit re-translations pick up the
+                // current language pair via translateOnce's self-heal and inherit
+                // the full backend waterfall (mirrors MainActivity.commitEdit).
+                val svc = captureService
+                if (svc == null) {
+                    vm.updateTranslation("—")
+                    return@launch
+                }
+                val groupTranslation = svc.translateOnce(newText)
+                vm.updateTranslation(groupTranslation.text, groupTranslation.backendDisplayName)
+            } catch (_: Exception) {
+                vm.updateTranslation("—")
+            }
+        }
+    }
+
+    private fun setupEditOverlay() {
+        etEditOriginal.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_GO) {
+                commitEdit()
+                true
+            } else false
+        }
+
+        window.decorView.viewTreeObserver.addOnGlobalLayoutListener {
+            val rect = android.graphics.Rect()
+            window.decorView.getWindowVisibleDisplayFrame(rect)
+            val screenHeight = window.decorView.height
+            val keyboardVisible = (screenHeight - rect.bottom) > screenHeight * 0.15f
+            if (wasKeyboardVisible && !keyboardVisible && editOverlay.visibility == View.VISIBLE) {
+                commitEdit()
+            }
+            wasKeyboardVisible = keyboardVisible
+        }
     }
 
     private enum class Tab { SENTENCE, WORD }
