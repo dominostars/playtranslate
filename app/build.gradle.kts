@@ -72,6 +72,15 @@ android {
         buildConfig = true
     }
 
+    androidResources {
+        // Generate res/xml/localeConfig from the values-* folders and wire
+        // android:localeConfig into the merged manifest, so the app appears
+        // under Settings -> System -> Languages -> App Languages on Android 13+.
+        // The unqualified values/ resources are English; declared in
+        // res/resources.properties (unqualifiedResLocale).
+        generateLocaleConfig = true
+    }
+
     packaging {
         // MNN ships standard .so libs that work fine with modern (mmap-loaded)
         // packaging. The legacy-packaging flag that lived here for `:llama`'s
