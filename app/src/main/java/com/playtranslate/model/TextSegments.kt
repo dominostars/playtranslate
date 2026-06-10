@@ -48,17 +48,21 @@ object TextSegments {
     }
 
     /**
-     * Grouped lines: [LINE_SEPARATOR] between lines within a group,
-     * [GROUP_SEPARATOR] between groups. Blank lines and empty groups are
-     * skipped. The canonical OCR-result projection.
+     * One content segment per group's already-combined text, [GROUP_SEPARATOR]
+     * between groups; blank groups are skipped. The canonical OCR-result
+     * projection: pass each group's `.text` (exactly the per-group string sent
+     * to the translator) so the rendered source is paragraph-grouped to mirror
+     * the per-group translation layout, instead of exposing the intra-group OCR
+     * line breaks. The group text already carries its language-appropriate
+     * intra-group join (space for whitespace languages, none for CJK), set in
+     * [com.playtranslate.ocr.core.LayoutAnalyzer].
      */
-    fun ofGroups(groups: List<List<String>>): List<TextSegment> {
+    fun ofGroupTexts(groupTexts: List<String>): List<TextSegment> {
         val out = mutableListOf<TextSegment>()
-        for (lines in groups) {
-            val group = ofLines(lines)
-            if (group.isEmpty()) continue
+        for (text in groupTexts) {
+            if (text.isBlank()) continue
             if (out.isNotEmpty()) out += TextSegment(GROUP_SEPARATOR, isSeparator = true)
-            out += group
+            out += TextSegment(text)
         }
         return out
     }

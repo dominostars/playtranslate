@@ -213,11 +213,14 @@ class OcrManager private constructor() {
 
         // `segments` is a display-only projection of the result: ClickableTextView
         // concatenates it to render the original text and tap-to-lookup re-tokenizes
-        // by character offset (boundaries unused). Derive it — like every other
-        // producer — through the shared TextSegments helper instead of reinventing
-        // the layout here. Engine-agnostic: line.text is the one tier EVERY engine
-        // emits (the element tier is empty for PaddleOCR / whole-region recognizers).
-        val segments = TextSegments.ofGroups(ocrGroups.map { grp -> grp.lines.map { it.text } })
+        // by character offset (boundaries unused). Derive it through the shared
+        // TextSegments helper. Render paragraph-grouped from each group's combined
+        // `.text` (exactly the per-group string sent to the translator) so the
+        // source mirrors the translation's group layout instead of exposing the
+        // intra-group OCR line breaks. grp.text is engine-agnostic — it's the
+        // translation input every engine produces, and already carries its
+        // language-appropriate intra-group join (LayoutAnalyzer.buildLayoutGroup).
+        val segments = TextSegments.ofGroupTexts(ocrGroups.map { it.text })
 
         val fullText = groups.joinToString(" ") { it.text }.trim()
         val debugBoxes = if (collectDebugBoxes) buildDebugBoxes(groups, scaleFactor) else null

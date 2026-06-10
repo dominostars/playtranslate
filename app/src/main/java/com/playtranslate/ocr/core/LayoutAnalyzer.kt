@@ -747,7 +747,15 @@ object LayoutAnalyzer {
         } else {
             rawGroups.map { SplitGroup(it) }
         }
-        return split.mapNotNull { buildLayoutGroup(it) }
+        // Join a group's lines with a space only for whitespace-delimited
+        // languages; CJK/Thai (wordsSeparatedByWhitespace = false) get no
+        // separator so the merged paragraph reads naturally AND the translator
+        // receives clean source (`今日はいい天気` not `今日は いい天気`). Default to
+        // a space when the profile is unknown — only languages we KNOW omit
+        // inter-word spaces drop it, so every other language keeps prior behavior.
+        val lineJoin =
+            if (SourceLanguageProfiles.forCode(sourceLang)?.wordsSeparatedByWhitespace == false) "" else " "
+        return split.mapNotNull { buildLayoutGroup(it, lineJoin) }
     }
 
     /** Extract boxes + align-left hints from sorted regions, run the kernel,
@@ -812,10 +820,10 @@ object LayoutAnalyzer {
         return true
     }
 
-    private fun buildLayoutGroup(sg: SplitGroup): LayoutGroup? {
+    private fun buildLayoutGroup(sg: SplitGroup, lineJoin: String): LayoutGroup? {
         val regions = sg.regions
         if (regions.isEmpty()) return null
-        val text = regions.joinToString(" ") { it.text }.trim()
+        val text = regions.joinToString(lineJoin) { it.text }.trim()
         if (text.isBlank()) return null
         val lines = regions.flatMap { it.lines }
         val rects = regions.map { it.box.bounds }
