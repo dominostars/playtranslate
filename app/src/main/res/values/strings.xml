@@ -2286,14 +2286,10 @@
          pair, rendered like «Japanese → English». %1$s = source language name,
          %2$s = target language name. -->
     <string name="dictionary_lang_pair"><xliff:g id="source" example="Japanese">%1$s</xliff:g> → <xliff:g id="target" example="English">%2$s</xliff:g></string>
-    <!-- Centered message in the dictionary-lookup results area while a lookup runs. -->
-    <string name="dictionary_status_looking_up">Looking up words…</string>
-    <!-- Centered message in the dictionary-lookup results area when a non-empty query has no matches. -->
+    <!-- Shown in the dictionary-lookup status-row count label when a non-empty query has no matches. -->
     <string name="dictionary_status_no_results">No results</string>
-    <!-- Centered message in the dictionary-lookup results area when the lookup itself failed (dictionary unavailable, pack error). -->
+    <!-- Shown in the dictionary-lookup status-row count label when the lookup itself failed (dictionary unavailable, pack error). -->
     <string name="dictionary_status_error">Couldn\'t look that up</string>
-    <!-- Centered prompt in the dictionary-lookup results area when the search field is empty. -->
-    <string name="dictionary_status_idle">Type a word to look it up</string>
 
     <!-- Row title in Debug — share recent logs for a bug report. -->
     <string name="settings_debug_export_logs_title">Export logs</string>

@@ -39,10 +39,11 @@ class DictionaryLookupViewModel(app: Application) : AndroidViewModel(app) {
     enum class Mode { IDLE, PREFIX, SEGMENTATION }
 
     data class UiState(
-        /** The query the current [rows] / empty-state belong to — NOT the live
-         *  keystroke during a load. Kept consistent with [rows] so the screen's
-         *  tap actions (which read [query]/[mode] for sentence context) never
-         *  pair a word from one query with another query's sentence. */
+        /** The query the current [rows] correspond to. Kept consistent with
+         *  [rows] so the screen's tap actions (which read [query]/[mode] for
+         *  sentence context) never pair a word from one query with another
+         *  query's sentence. While loading, [rows] is empty, so this just
+         *  carries the in-flight query. */
         val query: String = "",
         val rows: List<RowState> = emptyList(),
         val mode: Mode = Mode.IDLE,
@@ -66,10 +67,9 @@ class DictionaryLookupViewModel(app: Application) : AndroidViewModel(app) {
                     _state.value = UiState()
                     return@collectLatest
                 }
-                // Flag loading but DON'T touch query/rows/mode: the prior
-                // (settled) result stays on screen and self-consistent while
-                // the next query resolves.
-                _state.value = _state.value.copy(isLoading = true, hasError = false)
+                // Drop the prior results immediately and show the loading
+                // indicator — stale rows should never linger across keystrokes.
+                _state.value = UiState(query = q, isLoading = true)
                 try {
                     val (rows, mode) = runQuery(q)
                     _state.value = UiState(query = q, rows = rows, mode = mode, isLoading = false)

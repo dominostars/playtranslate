@@ -45,23 +45,22 @@ class DictionaryLookupActivity : SettingsSubPageActivity() {
 
     private lateinit var resultsContainer: LinearLayout
     private lateinit var resultsCard: MaterialCardView
-    private lateinit var statusView: TextView
     private lateinit var countView: TextView
+    private lateinit var loadingView: View
 
     /** Per-word cells for in-place Anki-badge updates, mirroring the
      *  translation-result fragment. */
     private var cellsByWord: Map<String, List<WordResultCell>> = emptyMap()
     private val ankiDecksByWord = HashMap<String, List<String>>()
 
-    /** Identity guard so the loading-state emission (which keeps the prior row
-     *  list) doesn't rebuild identical cells. */
+    /** Identity guard so a repeated row list doesn't rebuild identical cells. */
     private var lastRenderedRows: List<RowState>? = null
 
     override fun onContentCreated(savedInstanceState: Bundle?) {
         resultsContainer = findViewById(R.id.llResults)
         resultsCard = findViewById(R.id.cardResults)
-        statusView = findViewById(R.id.tvStatus)
         countView = findViewById(R.id.tvCount)
+        loadingView = findViewById(R.id.pbLoading)
 
         findViewById<TextView>(R.id.tvLangPair).text = languagePairLabel()
 
@@ -95,38 +94,21 @@ class DictionaryLookupActivity : SettingsSubPageActivity() {
     // ── Rendering ─────────────────────────────────────────────────────────
 
     private fun render(state: DictionaryLookupViewModel.UiState) {
-        countView.text = when (state.rows.size) {
-            0 -> ""
-            1 -> getString(R.string.dictionary_entries_count_one, 1)
-            else -> getString(R.string.dictionary_entries_count_other, state.rows.size)
+        // The count label is the single status surface: it shows the entry
+        // count, "No results", or an error — and is replaced in place by a
+        // small spinner while loading. The idle (blank-query) state shows
+        // nothing. The card is visible only when there are rows to show.
+        loadingView.isVisible = state.isLoading
+        countView.isVisible = !state.isLoading
+        countView.text = when {
+            state.isLoading -> ""
+            state.rows.size == 1 -> getString(R.string.dictionary_entries_count_one, 1)
+            state.rows.isNotEmpty() -> getString(R.string.dictionary_entries_count_other, state.rows.size)
+            state.hasError -> getString(R.string.dictionary_status_error)
+            state.query.isBlank() -> ""
+            else -> getString(R.string.dictionary_status_no_results)
         }
-
-        when {
-            state.rows.isNotEmpty() -> {
-                resultsCard.isVisible = true
-                statusView.isVisible = false
-            }
-            state.isLoading -> {
-                resultsCard.isVisible = false
-                statusView.isVisible = true
-                statusView.text = getString(R.string.dictionary_status_looking_up)
-            }
-            state.hasError -> {
-                resultsCard.isVisible = false
-                statusView.isVisible = true
-                statusView.text = getString(R.string.dictionary_status_error)
-            }
-            state.query.isBlank() -> {
-                resultsCard.isVisible = false
-                statusView.isVisible = true
-                statusView.text = getString(R.string.dictionary_status_idle)
-            }
-            else -> {
-                resultsCard.isVisible = false
-                statusView.isVisible = true
-                statusView.text = getString(R.string.dictionary_status_no_results)
-            }
-        }
+        resultsCard.isVisible = state.rows.isNotEmpty()
 
         renderRows(state.rows)
     }

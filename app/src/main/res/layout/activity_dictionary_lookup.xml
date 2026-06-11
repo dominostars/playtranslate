@@ -92,23 +92,40 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Status row (+2dp inside the scroll's 14dp pad = 16dp inset) -->
+            <!-- Status row (+2dp inside the scroll's 14dp pad = 16dp inset).
+                 Left slot carries the count / "No results" text OR a small
+                 loading spinner in its place; the language pair stays right. -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
+                android:gravity="center_vertical"
                 android:paddingHorizontal="2dp"
                 android:paddingTop="9dp"
                 android:paddingBottom="11dp">
 
-                <TextView
-                    android:id="@+id/tvCount"
+                <FrameLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:textColor="?attr/ptTextMuted"
-                    android:textSize="13sp"
-                    tools:text="4 entries" />
+                    android:layout_weight="1">
+
+                    <TextView
+                        android:id="@+id/tvCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center_vertical|start"
+                        android:textColor="?attr/ptTextMuted"
+                        android:textSize="13sp"
+                        tools:text="4 entries" />
+
+                    <ProgressBar
+                        android:id="@+id/pbLoading"
+                        android:layout_width="16dp"
+                        android:layout_height="16dp"
+                        android:layout_gravity="center_vertical|start"
+                        android:indeterminate="true"
+                        android:visibility="gone" />
+                </FrameLayout>
 
                 <TextView
                     android:id="@+id/tvLangPair"
@@ -120,45 +137,23 @@
             </LinearLayout>
 
             <!-- Results -->
-            <FrameLayout
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardResults"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content">
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
 
-                <com.google.android.material.card.MaterialCardView
-                    android:id="@+id/cardResults"
+                <LinearLayout
+                    android:id="@+id/llResults"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    app:cardBackgroundColor="?attr/ptCard"
-                    app:cardCornerRadius="@dimen/pt_radius"
-                    app:cardElevation="0dp"
-                    app:strokeColor="?attr/ptDivider"
-                    app:strokeWidth="1dp">
-
-                    <LinearLayout
-                        android:id="@+id/llResults"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical" />
-                </com.google.android.material.card.MaterialCardView>
-
-                <TextView
-                    android:id="@+id/tvStatus"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="40dp"
-                    android:gravity="center"
-                    android:textColor="?attr/ptTextHint"
-                    android:textSize="15sp"
-                    tools:text="Type a word to look it up" />
-            </FrameLayout>
+                    android:orientation="vertical" />
+            </com.google.android.material.card.MaterialCardView>
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
-
-    <ProgressBar
-        android:id="@+id/progressBar"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center_horizontal"
-        android:visibility="gone" />
 
 </LinearLayout>
