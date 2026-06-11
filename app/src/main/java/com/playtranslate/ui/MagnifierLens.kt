@@ -79,24 +79,18 @@ import androidx.core.graphics.withClip
  *  - The arrow strip and the (currently hidden) pill chrome region outside
  *    the card are non-interactive.
  */
+/** Text-size factor the lens passes to [WordDefinitionsView]. The shared
+ *  renderer's base sizes are tuned for the full-width result cell; the lens
+ *  is a small floating card, so it renders the same body scaled down to keep
+ *  its compact footprint (definitions land near the lens's former ~13sp). */
+private const val LENS_DEFINITIONS_SCALE = 0.8f
+
 class MagnifierLens(
     internal val rawCtx: Context,
     internal val wm: WindowManager,
     private val displayId: Int,
     private val overlayHost: OverlayHost? = null,
 ) {
-    /** Definitions payload for the lens body. Mirrors the popup's fields. */
-    data class LensDefinitionData(
-        val word: String,
-        val reading: String?,
-        val senses: List<WordLookupPopup.SenseDisplay>,
-        val freqScore: Int,
-        val isCommon: Boolean,
-        /** Names of Anki decks already containing this word; renders a passive
-         *  deck pill in the meta row when non-empty. */
-        val ankiDecks: List<String> = emptyList(),
-    )
-
     private val density = rawCtx.resources.displayMetrics.density
     private fun dp(v: Float) = (v * density).toInt()
 
@@ -183,7 +177,7 @@ class MagnifierLens(
         lensView?.setLabel(word, reading)
     }
 
-    fun setDefinitions(data: LensDefinitionData?, label: String?) {
+    fun setDefinitions(data: WordDefinitionData?, label: String?) {
         lensView?.setDefinitions(data, label)
     }
 
@@ -827,8 +821,7 @@ class MagnifierLens(
          *  the scrollbar / content edges, and scrolled glyphs clip
          *  short of the 1dp card border instead of overdrawing it. */
         private val bodyEdgeBufferPx = dp(2f)
-        private val definitionsContent = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
+        private val definitionsContent = WordDefinitionsView(ctx).apply {
             // Asymmetric horizontal padding: -6dp on the left, +2dp on
             // the right, so the text sits optically centered against the
             // right-side scrollbar gutter.
@@ -1175,7 +1168,7 @@ class MagnifierLens(
             pillReadingView.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
         }
 
-        fun setDefinitions(data: MagnifierLens.LensDefinitionData?, label: String?) {
+        fun setDefinitions(data: WordDefinitionData?, label: String?) {
             if (data == null) {
                 if (mode == Mode.ZOOM) return
                 mode = Mode.ZOOM
@@ -1187,7 +1180,7 @@ class MagnifierLens(
             }
             mode = Mode.DEFINITIONS
             setLabel(data.word, data.reading)
-            populateDefinitions(data, label)
+            definitionsContent.bind(data, label, LENS_DEFINITIONS_SCALE)
             definitionsScroll.scrollTo(0, 0)
             definitionsScroll.visibility = VISIBLE
             // Chip visibility is owned by [attachInteractiveListeners] —
@@ -1346,127 +1339,6 @@ class MagnifierLens(
             val interp = android.view.animation.DecelerateInterpolator()
             leftChip.animate().translationX(0f).setDuration(220L).setInterpolator(interp).start()
             rightChip.animate().translationX(0f).setDuration(220L).setInterpolator(interp).start()
-        }
-
-        private fun populateDefinitions(
-            data: MagnifierLens.LensDefinitionData,
-            label: String?,
-        ) {
-            val ctx = context
-            definitionsContent.removeAllViews()
-
-            // If every non-blank POS across the senses is the same, the
-            // body grouping collapses to a single section — and a single
-            // section header is just a louder version of the same info
-            // the meta row already carries. Promote it into the meta row
-            // alongside the stars and skip the in-body header.
-            val distinctPos = data.senses.map { it.pos.trim() }.filter { it.isNotEmpty() }.distinct()
-            val singlePos = distinctPos.singleOrNull()
-            val hasMetaContent = data.isCommon || data.freqScore > 0 ||
-                singlePos != null || data.ankiDecks.isNotEmpty()
-
-            if (hasMetaContent) {
-                // FlowLayout (not horizontal LinearLayout) so a long deck name
-                // wraps below the badges instead of clipping in the lens.
-                val metaRow = FlowLayout(ctx).apply {
-                    lineSpacingPx = dp(2f)
-                    setPadding(0, 0, 0, dp(4f))
-                }
-                if (data.isCommon) {
-                    metaRow.addView(TextView(ctx).apply {
-                        text = ctx.getString(R.string.word_detail_common)
-                        setTextColor(panelSecondaryText)
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
-                        typeface = Typeface.DEFAULT_BOLD
-                        setPadding(dp(5f), dp(1f), dp(5f), dp(1f))
-                        background = GradientDrawable().apply {
-                            setColor(panelBadgeBg)
-                            cornerRadius = density * 4f
-                        }
-                    })
-                }
-                if (data.freqScore > 0) {
-                    metaRow.addView(TextView(ctx).apply {
-                        text = "★".repeat(data.freqScore.coerceAtMost(5))
-                        setTextColor(panelSecondaryText)
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-                        if (data.isCommon) setPadding(dp(6f), 0, 0, 0)
-                    })
-                }
-                if (singlePos != null) {
-                    metaRow.addView(TextView(ctx).apply {
-                        text = singlePos
-                        setTextColor(panelSecondaryText)
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-                        typeface = Typeface.DEFAULT_BOLD
-                        // Leading gap only when something else precedes
-                        // (badge or stars). Otherwise the POS opens the row.
-                        if (data.isCommon || data.freqScore > 0) {
-                            setPadding(dp(8f), 0, 0, 0)
-                        }
-                    })
-                }
-                if (data.ankiDecks.isNotEmpty()) {
-                    AnkiDeckBadge.buildPill(
-                        ctx = ctx,
-                        deckNames = data.ankiDecks,
-                        textColor = panelSecondaryText,
-                        background = GradientDrawable().apply {
-                            setColor(panelBadgeBg)
-                            cornerRadius = density * 4f
-                        },
-                        textSizeSp = 9f,
-                        horizontalPadPx = dp(5f),
-                        verticalPadPx = dp(1f),
-                    )?.let { pill ->
-                        if (data.isCommon || data.freqScore > 0 || singlePos != null) {
-                            pill.layoutParams = LinearLayout.LayoutParams(
-                                LinearLayout.LayoutParams.WRAP_CONTENT,
-                                LinearLayout.LayoutParams.WRAP_CONTENT,
-                            ).also { it.marginStart = dp(6f) }
-                        }
-                        metaRow.addView(pill)
-                    }
-                }
-                definitionsContent.addView(metaRow)
-            }
-
-            if (label != null) {
-                definitionsContent.addView(TextView(ctx).apply {
-                    text = label
-                    setTextColor(panelWarnColor)
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-                    typeface = Typeface.DEFAULT_BOLD
-                    setPadding(0, 0, 0, dp(4f))
-                })
-            }
-
-            var previousPos: String? = null
-            data.senses.forEachIndexed { i, sense ->
-                // Group consecutive same-POS senses under a single header.
-                // A new POS header is emitted only when the POS actually
-                // changes (or is the first non-blank POS seen). Suppressed
-                // entirely when the meta row already carries the POS
-                // (singlePos != null).
-                if (singlePos == null &&
-                    sense.pos.isNotBlank() &&
-                    sense.pos != previousPos
-                ) {
-                    definitionsContent.addView(TextView(ctx).apply {
-                        text = sense.pos
-                        setTextColor(panelSecondaryText)
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-                        typeface = Typeface.DEFAULT_BOLD
-                        if (i > 0) setPadding(0, dp(6f), 0, 0)
-                    })
-                    previousPos = sense.pos
-                }
-                definitionsContent.addView(TextView(ctx).apply {
-                    text = ctx.getString(R.string.word_detail_numbered_definition, i + 1, sense.definition)
-                    setTextColor(panelPrimaryText)
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                })
-            }
         }
 
         private fun populateLoading() {

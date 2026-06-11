@@ -394,15 +394,23 @@ class TranslationResultViewModel : ViewModel() {
                                 }
                             }
                             if (meaning.isEmpty()) return@async null
+                            // Structured senses for the cell's numbered, POS-
+                            // grouped definitions, built once via the shared
+                            // tier logic the lens popup also uses.
+                            val senses = buildSenseDisplays(defResult, response.entries, prefs.targetLang)
+                            val ankiPos = entry.senses.firstOrNull()?.partsOfSpeech
+                                ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
                             val surface = surfaceByToken[word] ?: word
                             Row(
                                 rowState = RowState(
                                     displayWord = displayWord,
                                     reading = reading,
                                     meaning = meaning,
+                                    senses = senses,
                                     freqScore = freqScore,
                                     isCommon = entry.isCommon == true,
                                     surface = surface,
+                                    ankiPos = ankiPos,
                                 ),
                                 surfaceMapping = if (surface != displayWord) {
                                     displayWord to surface
@@ -487,10 +495,18 @@ sealed class WordLookupsState {
 data class RowState(
     val displayWord: String,
     val reading: String,
+    /** Flattened, newline-joined definition string. Kept for the Anki field
+     *  builders consumed via [toLegacyMap]. */
     val meaning: String,
+    /** Structured senses (pos + gloss) driving the word cell's numbered,
+     *  POS-grouped definitions. */
+    val senses: List<SenseDisplay>,
     val freqScore: Int,
     val isCommon: Boolean,
     val surface: String,
+    /** Promoted part-of-speech for the word's Anki card (first sense's POS),
+     *  so the cell can build the card without re-resolving the entry. */
+    val ankiPos: String = "",
 )
 
 /** Convert the row list into the legacy `Map<String, Triple<...>>`

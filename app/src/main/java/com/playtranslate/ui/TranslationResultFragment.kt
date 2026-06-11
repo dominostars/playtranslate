@@ -48,7 +48,6 @@ import kotlinx.coroutines.flow.drop
 import java.util.Locale
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.isVisible
-import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.view.isGone
 
 /**
@@ -120,10 +119,9 @@ class TranslationResultFragment : Fragment() {
     /** Session cache of headword → Anki deck names, shared by the words list
      *  and the in-app word lens so re-renders / re-taps don't re-query. */
     private val ankiDecksByWord = HashMap<String, List<String>>()
-    private val deckPillTag = "anki_deck_pill"
-    /** Badge flows from the last word-list render, so onResume / a successful
-     *  in-app send can refresh the deck badges in place (no row re-inflate). */
-    private var lastRenderedFlows: Map<String, List<FlowLayout>> = emptyMap()
+    /** Word cells from the last word-list render, so onResume / a successful
+     *  in-app send can refresh the deck badges in place (no row rebuild). */
+    private var lastRenderedCells: Map<String, List<WordResultCell>> = emptyMap()
     private lateinit var btnCopyOriginal: ImageButton
     private lateinit var btnCopyTranslation: ImageButton
     private lateinit var btnEditOriginal: ImageButton
@@ -827,12 +825,8 @@ class TranslationResultFragment : Fragment() {
                     resolver.lookup(lookupForm, reading.ifEmpty { null })
                 }
                 val response = defResult?.response
-                // See DragLookupController for the multi-entry rationale —
-                // Wiktionary packs split POS into separate entries, JMdict
-                // doesn't, [flatSenses] merges them safely for both.
                 val entries = response?.entries.orEmpty()
                 val entry = entries.firstOrNull()
-                val flatSenses = entries.flatMap { it.senses }
 
                 // Build popup data based on DefinitionResult tier.
                 val word: String
@@ -843,83 +837,14 @@ class TranslationResultFragment : Fragment() {
                 // beneath word=なぜ via Kuromoji's katakana convention.
                 val popupReading: String?
                 val popupLabel: String?
-                val senses: List<WordLookupPopup.SenseDisplay>
                 val freqScore: Int
                 val isCommon: Boolean
                 when {
-                    entry != null && defResult is DefinitionResult.Native -> {
-                        val display = entry.headwordDisplay(lookupForm)
-                        word = display.written
-                        popupReading = display.reading
-                        popupLabel = null
-                        val targetSensesSorted = defResult.targetSenses.sortedBy { it.senseOrd }
-                        val isTargetDriven = prefs.targetLang != "en" && targetSensesSorted.isNotEmpty()
-                        senses = if (isTargetDriven) {
-                            // Blank-pos target rows (PanLex) inherit the
-                            // source-entry POS only when entries agree;
-                            // multi-POS source yields an empty fallback so
-                            // we don't mislabel verb/intj cells as NOUN.
-                            val fallbackPos = com.playtranslate.model
-                                .unambiguousFallbackPos(entries)
-                                .joinToString(", ")
-                            targetSensesSorted.map { target ->
-                                val pos = target.pos.filter { it.isNotBlank() }
-                                    .takeIf { it.isNotEmpty() }
-                                    ?.joinToString(", ")
-                                    ?: fallbackPos
-                                WordLookupPopup.SenseDisplay(
-                                    pos = pos,
-                                    definition = target.glosses.joinToString("; "),
-                                )
-                            }
-                        } else {
-                            // Reached only when target == "en" (Native is not
-                            // returned for English targets) or for the empty-
-                            // target-senses defensive case. Both render straight
-                            // off the flat sense list across every entry.
-                            val targetByOrd = targetSensesSorted.associateBy { it.senseOrd }
-                            flatSenses.mapIndexed { i, sense ->
-                                val target = targetByOrd[i]
-                                if (target != null) {
-                                    WordLookupPopup.SenseDisplay(
-                                        pos = target.pos.joinToString(", "),
-                                        definition = target.glosses.joinToString("; "),
-                                    )
-                                } else {
-                                    WordLookupPopup.SenseDisplay(
-                                        pos = sense.partsOfSpeech.joinToString(", "),
-                                        definition = sense.targetDefinitions.joinToString("; "),
-                                    )
-                                }
-                            }
-                        }
-                        freqScore = entry.freqScore
-                        isCommon = entry.isCommon == true
-                    }
                     entry != null && defResult is DefinitionResult.MachineTranslated -> {
                         val display = entry.headwordDisplay(lookupForm)
                         word = display.written
                         popupReading = display.reading
                         popupLabel = "⚠ Machine translated"
-                        val defs = defResult.translatedDefinitions
-                        senses = if (defs != null) {
-                            flatSenses.mapIndexed { i, sense ->
-                                WordLookupPopup.SenseDisplay(
-                                    pos = sense.partsOfSpeech.joinToString(", "),
-                                    definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
-                                )
-                            }
-                        } else {
-                            buildList {
-                                add(WordLookupPopup.SenseDisplay(pos = "", definition = defResult.translatedHeadword))
-                                flatSenses.forEach { sense ->
-                                    add(WordLookupPopup.SenseDisplay(
-                                        pos = sense.partsOfSpeech.joinToString(", "),
-                                        definition = sense.targetDefinitions.joinToString("; ")
-                                    ))
-                                }
-                            }
-                        }
                         freqScore = entry.freqScore
                         isCommon = entry.isCommon == true
                     }
@@ -928,13 +853,6 @@ class TranslationResultFragment : Fragment() {
                         word = display.written
                         popupReading = display.reading
                         popupLabel = "⚠ Machine translated"
-                        val defs = defResult.translatedDefinitions
-                        senses = flatSenses.mapIndexed { i, sense ->
-                            WordLookupPopup.SenseDisplay(
-                                pos = sense.partsOfSpeech.joinToString(", "),
-                                definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
-                            )
-                        }
                         freqScore = entry.freqScore
                         isCommon = entry.isCommon == true
                     }
@@ -943,12 +861,6 @@ class TranslationResultFragment : Fragment() {
                         word = display.written
                         popupReading = display.reading
                         popupLabel = null
-                        senses = flatSenses.map { sense ->
-                            WordLookupPopup.SenseDisplay(
-                                pos = sense.partsOfSpeech.joinToString(", "),
-                                definition = sense.targetDefinitions.joinToString("; ")
-                            )
-                        }
                         freqScore = entry.freqScore
                         isCommon = entry.isCommon == true
                     }
@@ -956,16 +868,18 @@ class TranslationResultFragment : Fragment() {
                         word = lookupForm
                         popupReading = reading
                         popupLabel = null
-                        senses = listOf(
-                            WordLookupPopup.SenseDisplay(
-                                pos = "",
-                                definition = "Not in dictionary, may be a name"
-                            )
-                        )
                         freqScore = 0
                         isCommon = false
                     }
                     else -> return@launch
+                }
+                // Senses share the lens-popup tier logic with the result list
+                // (see [buildSenseDisplays]); the no-entry reading-only case is
+                // a name placeholder.
+                val senses: List<SenseDisplay> = if (entry != null) {
+                    buildSenseDisplays(defResult!!, entries, prefs.targetLang)
+                } else {
+                    listOf(SenseDisplay(pos = "", definition = "Not in dictionary, may be a name"))
                 }
 
                 // Calculate position: center on the tapped word, above it
@@ -992,7 +906,7 @@ class TranslationResultFragment : Fragment() {
                 dismissWordPopup()
                 val canOpen = entry != null
                 val displayEntry = entry
-                val lensData = MagnifierLens.LensDefinitionData(
+                val lensData = WordDefinitionData(
                     word = word,
                     reading = popupReading?.takeIf { it != word },
                     senses = senses,
@@ -1244,18 +1158,16 @@ class TranslationResultFragment : Fragment() {
     private fun renderWordRows(rows: List<RowState>) {
         mainWordsContainer.removeAllViews()
         if (rows.isEmpty()) return
-        val inflater = LayoutInflater.from(requireContext())
-        val flowsByWord = HashMap<String, MutableList<FlowLayout>>()
+        val cellsByWord = HashMap<String, MutableList<WordResultCell>>()
         rows.forEachIndexed { idx, rowState ->
             if (idx > 0) mainWordsContainer.addView(inflateWordDivider())
-            val row = inflater.inflate(R.layout.item_word_lookup, mainWordsContainer, false)
-            bindWordRow(row, rowState)
-            mainWordsContainer.addView(row)
-            flowsByWord.getOrPut(rowState.displayWord) { mutableListOf() }
-                .add(row.findViewById(R.id.itemBadgeFlow))
+            val cell = WordResultCell(requireContext())
+            bindWordCell(cell, rowState)
+            mainWordsContainer.addView(cell)
+            cellsByWord.getOrPut(rowState.displayWord) { mutableListOf() }.add(cell)
         }
-        lastRenderedFlows = flowsByWord
-        loadAnkiDeckBadges(rows.map { it.displayWord }, flowsByWord)
+        lastRenderedCells = cellsByWord
+        loadAnkiDeckBadges(rows.map { it.displayWord }, cellsByWord)
     }
 
     override fun onResume() {
@@ -1271,33 +1183,33 @@ class TranslationResultFragment : Fragment() {
      *  list is built. */
     private fun refreshWordBadges() {
         if (!this::mainWordsContainer.isInitialized || mainWordsContainer.childCount == 0) return
-        val flows = lastRenderedFlows
-        if (flows.isEmpty()) return
+        val cells = lastRenderedCells
+        if (cells.isEmpty()) return
         ankiDecksByWord.clear()
         val anki = AnkiManager(requireContext())
         if (!anki.isAnkiDroidInstalled() || !anki.hasPermission()) {
-            flows.values.flatten().forEach { addOrUpdateDeckPill(it, null) }
+            cells.values.flatten().forEach { it.updateAnkiDecks(emptyList()) }
             return
         }
-        val words = flows.keys.toList()
+        val words = cells.keys.toList()
         viewLifecycleOwner.lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) { anki.decksByWord(words) }
             if (!isAdded) return@launch
-            for ((word, fl) in flows) {
+            for ((word, list) in cells) {
                 val decks = result[word].orEmpty()
                 ankiDecksByWord[word] = decks
-                fl.forEach { addOrUpdateDeckPill(it, decks) }
+                list.forEach { it.updateAnkiDecks(decks) }
             }
         }
     }
 
     /** Batched "already in Anki" lookup for the words list. Caches results
-     *  (shared with the in-app lens) and adds a deck pill to each matching
-     *  row's badge flow. Gated + silent; words already in [ankiDecksByWord]
-     *  were applied during bind, so only the rest are queried. */
+     *  (shared with the in-app lens) and re-renders each matching cell's body
+     *  so its meta row carries the deck pill. Gated + silent; words already in
+     *  [ankiDecksByWord] were applied during bind, so only the rest queried. */
     private fun loadAnkiDeckBadges(
         words: List<String>,
-        flowsByWord: Map<String, List<FlowLayout>>,
+        cellsByWord: Map<String, List<WordResultCell>>,
     ) {
         val anki = AnkiManager(requireContext())
         if (!anki.isAnkiDroidInstalled() || !anki.hasPermission()) return
@@ -1310,37 +1222,9 @@ class TranslationResultFragment : Fragment() {
                 val decks = result[w].orEmpty()
                 ankiDecksByWord[w] = decks
                 if (decks.isEmpty()) continue
-                flowsByWord[w]?.forEach { addOrUpdateDeckPill(it, decks) }
+                cellsByWord[w]?.forEach { it.updateAnkiDecks(decks) }
             }
         }
-    }
-
-    /** Adds (or replaces) the passive "in Anki" deck pill inside [flow].
-     *  Idempotent via a view tag so re-binding a row never stacks pills. */
-    private fun addOrUpdateDeckPill(flow: FlowLayout, decks: List<String>?) {
-        for (i in flow.childCount - 1 downTo 0) {
-            if (flow.getChildAt(i).tag == deckPillTag) flow.removeViewAt(i)
-        }
-        if (decks.isNullOrEmpty()) return
-        val ctx = requireContext()
-        val d = resources.displayMetrics.density
-        // Subtle neutral chip matching the magnifying-lens meta row: ptSurface
-        // fill (one step off the ptCard list surface) with ptTextMuted text/icon.
-        val pill = AnkiDeckBadge.buildPill(
-            ctx = ctx,
-            deckNames = decks,
-            textColor = ctx.themeColor(R.attr.ptTextMuted),
-            background = AppCompatResources.getDrawable(ctx, R.drawable.bg_anki_meta_chip)
-                ?: return,
-            textSizeSp = 9f,
-            horizontalPadPx = (5 * d).toInt(),
-            verticalPadPx = (1 * d).toInt(),
-        ) ?: return
-        pill.tag = deckPillTag
-        pill.layoutParams = ViewGroup.MarginLayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-        ).also { it.marginStart = (6 * d).toInt() }
-        flow.addView(pill)
     }
 
     /** In-app word lens counterpart: once decks are known, re-render the lens
@@ -1348,7 +1232,7 @@ class TranslationResultFragment : Fragment() {
      *  cache and no-ops when the lens has since been dismissed/replaced. */
     private fun maybeUpdateLensDecks(
         lens: MagnifierLens,
-        base: MagnifierLens.LensDefinitionData,
+        base: WordDefinitionData,
         label: String?,
         word: String,
     ) {
@@ -1369,38 +1253,97 @@ class TranslationResultFragment : Fragment() {
         }
     }
 
-    private fun bindWordRow(row: View, rowState: RowState) {
-        row.findViewById<TextView>(R.id.tvItemWord).text = rowState.displayWord
-        row.findViewById<TextView>(R.id.tvItemReading).text = rowState.reading
-        row.findViewById<TextView>(R.id.tvItemMeaning).text = rowState.meaning
-        val tvFreq = row.findViewById<TextView>(R.id.tvItemFreq)
-        if (rowState.freqScore > 0) {
-            tvFreq.text = "★".repeat(rowState.freqScore)
-            tvFreq.isVisible = true
-        } else {
-            tvFreq.isGone = true
-        }
-        row.findViewById<TextView>(R.id.tvItemCommon).isVisible = rowState.isCommon
-        // Show any already-known Anki decks immediately (cache / re-render);
+    private fun bindWordCell(cell: WordResultCell, rowState: RowState) {
+        // Any already-known Anki decks (cache / re-render) render immediately;
         // uncached words are filled in by renderWordRows' batched query.
-        addOrUpdateDeckPill(
-            row.findViewById(R.id.itemBadgeFlow),
-            ankiDecksByWord[rowState.displayWord],
+        val data = WordDefinitionData(
+            word = rowState.displayWord,
+            reading = rowState.reading.ifEmpty { null },
+            senses = rowState.senses,
+            freqScore = rowState.freqScore,
+            isCommon = rowState.isCommon,
+            ankiDecks = ankiDecksByWord[rowState.displayWord].orEmpty(),
         )
-        row.setOnClickListener {
-            host?.onInteraction()
-            val ready = (vm.result.value as? ResultState.Ready)?.result
-            val wr = (vm.wordLookups.value as? WordLookupsState.Settled)
-                ?.rows?.toLegacyMap() ?: emptyMap()
-            host?.onWordTapped(
-                rowState.displayWord,
-                rowState.reading.ifEmpty { null },
-                ready?.screenshotPath,
-                ready?.originalText,
-                ready?.translatedText,
-                wr,
-            )
+        cell.bind(
+            data = data,
+            scale = WordResultCell.DEFAULT_SCALE,
+            onCellTap = {
+                host?.onInteraction()
+                val ready = (vm.result.value as? ResultState.Ready)?.result
+                val wr = (vm.wordLookups.value as? WordLookupsState.Settled)
+                    ?.rows?.toLegacyMap() ?: emptyMap()
+                host?.onWordTapped(
+                    rowState.displayWord,
+                    rowState.reading.ifEmpty { null },
+                    ready?.screenshotPath,
+                    ready?.originalText,
+                    ready?.translatedText,
+                    wr,
+                )
+            },
+            onSpeak = { speakWordFromCell(cell, rowState) },
+            onAnki = {
+                host?.onInteraction()
+                launchWordAnkiFromRow(rowState)
+            },
+        )
+    }
+
+    /** Speak a result cell's word, driving that cell's own spinner. Each cell
+     *  owns its in-flight [WordResultCell.speakJob] so concurrent taps on
+     *  different rows don't clobber one another. */
+    private fun speakWordFromCell(cell: WordResultCell, rowState: RowState) {
+        if (cell.speakJob?.isActive == true) return
+        val activity = activity ?: return
+        cell.speakJob = viewLifecycleOwner.lifecycleScope.launch {
+            cell.setSpeakLoading(true)
+            try {
+                speakWord(
+                    TtsAlertTarget.InActivity(activity),
+                    LensSpeakChip.Request(
+                        rowState.displayWord,
+                        prefs.sourceLangId,
+                        reading = rowState.reading.ifEmpty { null },
+                    ),
+                )
+            } finally {
+                cell.setSpeakLoading(false)
+            }
         }
+    }
+
+    /** Per-word Anki add from a result cell. Mirrors [launchWordAnki] but
+     *  sources POS / definition straight from the [RowState] so the cell
+     *  needn't re-resolve the dictionary entry. Tap opens the editable review
+     *  sheet (the cell exposes no long-press one-tap shortcut). */
+    private fun launchWordAnkiFromRow(rowState: RowState) {
+        val activity = activity ?: return
+        val ankiManager = AnkiManager(activity)
+        if (!ankiManager.isAnkiDroidInstalled()) {
+            showAnkiNotInstalledDialog(activity)
+            return
+        }
+        val ready = (vm.result.value as? ResultState.Ready)?.result
+        val readingForExtra = rowState.reading
+            .takeIf { it.isNotEmpty() && it != rowState.displayWord } ?: ""
+        val intent = Intent(activity, AnkiPermissionActivity::class.java).apply {
+            putExtra(WordAnkiReviewActivity.EXTRA_WORD, rowState.displayWord)
+            putExtra(WordAnkiReviewActivity.EXTRA_READING, readingForExtra)
+            putExtra(WordAnkiReviewActivity.EXTRA_POS, rowState.ankiPos)
+            putExtra(WordAnkiReviewActivity.EXTRA_DEFINITION, rowState.meaning)
+            putExtra(WordAnkiReviewActivity.EXTRA_FREQ_SCORE, rowState.freqScore)
+            ready?.screenshotPath?.let {
+                putExtra(WordAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, it)
+            }
+            ready?.originalText?.let {
+                putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_ORIGINAL, it)
+            }
+            ready?.translatedText?.let {
+                putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_TRANSLATION, it)
+            }
+            putExtra(WordAnkiReviewActivity.EXTRA_SOURCE_LANG, prefs.sourceLangId.code)
+        }
+        activity.startActivity(intent)
     }
 
     /** Derive view-side word spans from the VM's per-occurrence

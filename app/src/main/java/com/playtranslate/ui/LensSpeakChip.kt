@@ -47,26 +47,7 @@ class LensSpeakChip(
         job = scope.launch {
             lens.setSpeakChipLoading(true)
             try {
-                // Live-mode caller — resolve the global voice pref now
-                // that TtsEngine takes null to mean "engine default."
-                val voice = Prefs(alertTarget.context).ttsVoiceName(req.lang)
-                val result = TtsEngine.speak(
-                    alertTarget.context,
-                    ttsTextForWord(req.word, req.reading, req.lang),
-                    req.lang,
-                    voiceNameOverride = voice,
-                )
-                withContext(Dispatchers.Main) {
-                    when (result) {
-                        TtsEngine.SpeakResult.Spoken -> { /* audio playing */ }
-                        TtsEngine.SpeakResult.NoEngine ->
-                            showTtsNoEngineDialog(alertTarget) { lens.dismiss() }
-                        is TtsEngine.SpeakResult.LanguageUnsupported ->
-                            showTtsLanguageUnsupportedDialog(
-                                alertTarget, req.lang, result.engineLabel,
-                            )
-                    }
-                }
+                speakWord(alertTarget, req) { lens.dismiss() }
             } finally {
                 // Hide the spinner once a result is reached (or an alert shown).
                 lens.setSpeakChipLoading(false)
@@ -78,5 +59,35 @@ class LensSpeakChip(
     fun release() {
         job?.cancel()
         TtsEngine.stop()
+    }
+}
+
+/**
+ * Speak a single dictionary word and surface the standard TTS alerts on
+ * [target]. Shared by [LensSpeakChip] (the lens) and [WordResultCell]'s speak
+ * action so the two paths can't diverge. The caller owns the loading
+ * indicator and re-entrancy guard — this just performs the request and
+ * presents any alert. [onNoEngine] runs after the "no engine" alert is shown
+ * (the lens dismisses itself; the result cell passes a no-op).
+ */
+suspend fun speakWord(
+    target: TtsAlertTarget,
+    request: LensSpeakChip.Request,
+    onNoEngine: () -> Unit = {},
+) {
+    val voice = Prefs(target.context).ttsVoiceName(request.lang)
+    val result = TtsEngine.speak(
+        target.context,
+        ttsTextForWord(request.word, request.reading, request.lang),
+        request.lang,
+        voiceNameOverride = voice,
+    )
+    withContext(Dispatchers.Main) {
+        when (result) {
+            TtsEngine.SpeakResult.Spoken -> { /* audio playing */ }
+            TtsEngine.SpeakResult.NoEngine -> showTtsNoEngineDialog(target, onNoEngine)
+            is TtsEngine.SpeakResult.LanguageUnsupported ->
+                showTtsLanguageUnsupportedDialog(target, request.lang, result.engineLabel)
+        }
     }
 }

@@ -453,8 +453,4 @@ class WordLookupPopup(
         }
     }
 
-    data class SenseDisplay(
-        val pos: String,
-        val definition: String
-    )
 }

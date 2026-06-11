@@ -1136,7 +1136,7 @@ class DragLookupController(
                             .takeIf { it.isNotEmpty() }
                             ?.joinToString(", ")
                             ?: fallbackPos
-                        WordLookupPopup.SenseDisplay(
+                        SenseDisplay(
                             pos = pos,
                             definition = target.glosses.joinToString("; "),
                         )
@@ -1149,12 +1149,12 @@ class DragLookupController(
                     flatSenses.mapIndexed { i, sense ->
                         val target = targetByOrd[i]
                         if (target != null) {
-                            WordLookupPopup.SenseDisplay(
+                            SenseDisplay(
                                 pos = target.pos.joinToString(", "),
                                 definition = target.glosses.joinToString("; "),
                             )
                         } else {
-                            WordLookupPopup.SenseDisplay(
+                            SenseDisplay(
                                 pos = sense.partsOfSpeech.joinToString(", "),
                                 definition = sense.targetDefinitions.joinToString("; "),
                             )
@@ -1179,7 +1179,7 @@ class DragLookupController(
                     senses = if (defs != null) {
                         // Translated definitions available — show them directly
                         flatSenses.mapIndexed { i, sense ->
-                            WordLookupPopup.SenseDisplay(
+                            SenseDisplay(
                                 pos = sense.partsOfSpeech.joinToString(", "),
                                 definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
                             )
@@ -1187,9 +1187,9 @@ class DragLookupController(
                     } else {
                         // No translated definitions — headword + English context
                         buildList {
-                            add(WordLookupPopup.SenseDisplay(pos = "", definition = defResult.translatedHeadword))
+                            add(SenseDisplay(pos = "", definition = defResult.translatedHeadword))
                             flatSenses.forEach { sense ->
-                                add(WordLookupPopup.SenseDisplay(
+                                add(SenseDisplay(
                                     pos = sense.partsOfSpeech.joinToString(", "),
                                     definition = sense.targetDefinitions.joinToString("; ")
                                 ))
@@ -1210,7 +1210,7 @@ class DragLookupController(
                     word = display.written,
                     reading = display.reading,
                     senses = flatSenses.mapIndexed { i, sense ->
-                        WordLookupPopup.SenseDisplay(
+                        SenseDisplay(
                             pos = sense.partsOfSpeech.joinToString(", "),
                             definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
                         )
@@ -1228,7 +1228,7 @@ class DragLookupController(
                     word = display.written,
                     reading = display.reading,
                     senses = flatSenses.map { sense ->
-                        WordLookupPopup.SenseDisplay(
+                        SenseDisplay(
                             pos = sense.partsOfSpeech.joinToString(", "),
                             definition = sense.targetDefinitions.joinToString("; ")
                         )
@@ -1243,7 +1243,7 @@ class DragLookupController(
                     word = lookupForm,
                     reading = reading,
                     senses = listOf(
-                        WordLookupPopup.SenseDisplay(
+                        SenseDisplay(
                             pos = "",
                             definition = "Not in dictionary, may be a name"
                         )
@@ -1278,8 +1278,8 @@ class DragLookupController(
      *  through the same [readingAddsInfo] gate the cache uses so the
      *  lens shows or hides furigana consistently across drag (cache-fed)
      *  and dwell/release (lookup-fed) paths. */
-    private fun PopupData.toLensData(): MagnifierLens.LensDefinitionData =
-        MagnifierLens.LensDefinitionData(
+    private fun PopupData.toLensData(): WordDefinitionData =
+        WordDefinitionData(
             word = word,
             reading = reading?.takeIf { readingAddsInfo(word, it) },
             senses = senses,
@@ -1295,7 +1295,7 @@ class DragLookupController(
     private data class PopupData(
         val word: String,
         val reading: String?,
-        val senses: List<WordLookupPopup.SenseDisplay>,
+        val senses: List<SenseDisplay>,
         val freqScore: Int,
         val isCommon: Boolean,
         val entry: DictionaryEntry?,
