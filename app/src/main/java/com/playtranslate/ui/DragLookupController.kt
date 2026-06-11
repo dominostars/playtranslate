@@ -30,6 +30,7 @@ import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.model.DictionaryEntry
+import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.headwordDisplay
 import kotlinx.coroutines.*
 import java.io.File
@@ -1169,6 +1170,7 @@ class DragLookupController(
                     isCommon = entry.isCommon == true,
                     entry = entry,
                     pitch = display.pitch,
+                    frequencies = display.frequencies,
                 )
             }
             entry != null && defResult is DefinitionResult.MachineTranslated -> {
@@ -1202,6 +1204,7 @@ class DragLookupController(
                     entry = entry,
                     machineTranslated = true,
                     pitch = display.pitch,
+                    frequencies = display.frequencies,
                 )
             }
             entry != null && defResult is DefinitionResult.EnglishFallback && defResult.translatedDefinitions != null -> {
@@ -1222,6 +1225,7 @@ class DragLookupController(
                     entry = entry,
                     machineTranslated = true,
                     pitch = display.pitch,
+                    frequencies = display.frequencies,
                 )
             }
             entry != null -> {
@@ -1240,6 +1244,7 @@ class DragLookupController(
                     isCommon = entry.isCommon == true,
                     entry = entry,
                     pitch = display.pitch,
+                    frequencies = display.frequencies,
                 )
             }
             !reading.isNullOrEmpty() -> {
@@ -1290,6 +1295,7 @@ class DragLookupController(
             freqScore = freqScore,
             isCommon = isCommon,
             pitch = pitch,
+            frequencies = frequencies,
         )
 
     private fun PopupData.machineTranslatedLabel(): String? =
@@ -1307,6 +1313,8 @@ class DragLookupController(
         val machineTranslated: Boolean = false,
         /** Pitch-accent downsteps from the displayed headword, for the pill. */
         val pitch: List<Int> = emptyList(),
+        /** Per-dictionary frequency chips from the displayed headword. */
+        val frequencies: List<FrequencyTag> = emptyList(),
     )
 
     private fun findLineAt(x: Int, y: Int, lines: List<OcrManager.OcrLine>): OcrManager.OcrLine? {

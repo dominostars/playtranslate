@@ -48,6 +48,22 @@ data class Headword(
      *  installed or the pair has no data; populated post-lookup by the JA
      *  engine's enrichment pass. */
     val pitch: List<Int> = emptyList(),
+    /** Per-dictionary frequency data for this written↔reading pair, in the
+     *  user's frequency-section order. Empty when no frequency dictionary is
+     *  installed or the pair has no data; populated post-lookup by the JA
+     *  engine's enrichment pass alongside [pitch]. */
+    val frequencies: List<FrequencyTag> = emptyList(),
+)
+
+/**
+ * One frequency dictionary's datum for a headword. [source] is the chip
+ * label — the dictionary's user alias when set, else its title, never
+ * truncated. [display] is the dictionary's own display form (e.g. "1234",
+ * "Top 5k", "1234㋕"); multiple values from one dictionary arrive pre-joined.
+ */
+data class FrequencyTag(
+    val source: String,
+    val display: String,
 )
 
 data class Sense(
@@ -186,6 +202,9 @@ data class HeadwordDisplay(
      *  kana-only collapse (where the kana is promoted into [written] and
      *  [reading] is nulled) so pitch renderers still fire. */
     val pitch: List<Int> = emptyList(),
+    /** Frequency chips carried from the chosen [Headword]; survives the
+     *  kana-only collapse like [pitch]. */
+    val frequencies: List<FrequencyTag> = emptyList(),
 )
 
 /**
@@ -214,14 +233,24 @@ fun DictionaryEntry.headwordDisplay(
             ?: headwords.firstOrNull { it.reading?.isNotBlank() == true }
         val kana = kanaHw?.reading
         if (kana != null) {
-            return HeadwordDisplay(written = kana, reading = null, pitch = kanaHw.pitch)
+            return HeadwordDisplay(
+                written = kana,
+                reading = null,
+                pitch = kanaHw.pitch,
+                frequencies = kanaHw.frequencies,
+            )
         }
     }
     val written = form?.written?.takeIf { it.isNotBlank() }
         ?: form?.reading?.takeIf { it.isNotBlank() }
         ?: slug
     val reading = form?.reading?.takeIf { it.isNotBlank() && it != written }
-    return HeadwordDisplay(written = written, reading = reading, pitch = form?.pitch ?: emptyList())
+    return HeadwordDisplay(
+        written = written,
+        reading = reading,
+        pitch = form?.pitch ?: emptyList(),
+        frequencies = form?.frequencies ?: emptyList(),
+    )
 }
 
 fun DictionaryEntry.headwordDisplay(queriedWord: String? = null): HeadwordDisplay =

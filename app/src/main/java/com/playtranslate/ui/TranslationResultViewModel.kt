@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.playtranslate.Prefs
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TokenSpan
+import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TextSegments
 import com.playtranslate.model.TranslationResult
@@ -336,6 +337,9 @@ data class RowState(
     /** Pitch-accent downstep variants for the displayed headword (empty
      *  when unknown); rides from HeadwordDisplay into the word cell. */
     val pitch: List<Int> = emptyList(),
+    /** Per-dictionary frequency chips for the displayed headword; rides
+     *  from HeadwordDisplay into the word cell like [pitch]. */
+    val frequencies: List<FrequencyTag> = emptyList(),
 )
 
 /** Convert the row list into the legacy `Map<String, Triple<...>>`

@@ -51,6 +51,13 @@ data class YomitanDictionary(
      *  Null on older registry entries and dicts that omit them. */
     val sourceLanguage: String? = null,
     val targetLanguage: String? = null,
+    /** User-set display name override (Yomitan's per-dictionary "alias"
+     *  concept). Stand-in field — no UI sets it yet; consumers render
+     *  `alias ?: title`. */
+    val alias: String? = null,
+    /** index.json frequencyMode ("rank-based"/"occurrence-based"), when
+     *  declared. Persisted for future ranking use; display ignores it. */
+    val frequencyMode: String? = null,
 )
 
 /**
@@ -226,6 +233,7 @@ object YomitanDictionaryStore {
                     importedAtMs = System.currentTimeMillis(),
                     sourceLanguage = parsed.sourceLanguage,
                     targetLanguage = parsed.targetLanguage,
+                    frequencyMode = parsed.frequencyMode,
                 )
 
                 try {
@@ -331,6 +339,7 @@ object YomitanDictionaryStore {
         val categories: List<YomitanCategory>,
         val sourceLanguage: String?,
         val targetLanguage: String?,
+        val frequencyMode: String?,
     )
 
     /** index.json shape — extra fields ignored, [format]/[version] aliased. */
@@ -343,6 +352,7 @@ object YomitanDictionaryStore {
         val version: Int? = null,
         val sourceLanguage: String? = null,
         val targetLanguage: String? = null,
+        val frequencyMode: String? = null,
     )
 
     private val TERM_BANK = Regex("""term_bank_\d+\.json""")
@@ -407,6 +417,7 @@ object YomitanDictionaryStore {
             categories = YomitanCategory.entries.filter { it in categories },
             sourceLanguage = index.sourceLanguage?.trim()?.takeIf { it.isNotEmpty() },
             targetLanguage = index.targetLanguage?.trim()?.takeIf { it.isNotEmpty() },
+            frequencyMode = index.frequencyMode?.trim()?.takeIf { it.isNotEmpty() },
         )
     }
 

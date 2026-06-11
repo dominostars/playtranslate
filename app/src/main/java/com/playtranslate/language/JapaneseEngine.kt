@@ -77,13 +77,14 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
         }
 
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? =
-        dict.lookup(word, reading)?.let { enrichWithPitch(it) }
+        dict.lookup(word, reading)?.let { enrichWithYomitan(it) }
 
-    /** Attaches pitch-accent downsteps from imported Yomitan pitch
-     *  dictionaries to each headword — one batched query per lookup. The
-     *  facade gates on "any pitch dictionary installed", so this is a
-     *  no-op map lookup for everyone else. */
-    private suspend fun enrichWithPitch(response: DictionaryResponse): DictionaryResponse {
+    /** Attaches pitch-accent downsteps and per-dictionary frequency tags
+     *  from imported Yomitan dictionaries to each headword — one batched
+     *  query per data type per lookup, over the same (term, reading) pairs.
+     *  The facade gates each on "any such dictionary installed", so this is
+     *  a no-op map lookup for everyone else. */
+    private suspend fun enrichWithYomitan(response: DictionaryResponse): DictionaryResponse {
         val pairs = response.entries
             .flatMap { it.headwords }
             .mapNotNull { hw ->
@@ -92,14 +93,21 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
             }
             .distinct()
         val pitch = YomitanDataStore.pitchFor(appContext, pairs)
-        if (pitch.isEmpty()) return response
+        val frequencies = YomitanDataStore.frequencyFor(appContext, pairs)
+        if (pitch.isEmpty() && frequencies.isEmpty()) return response
         return response.copy(
             entries = response.entries.map { entry ->
                 entry.copy(
                     headwords = entry.headwords.map { hw ->
-                        val term = hw.written ?: hw.reading
-                        val downsteps = term?.let { pitch[it to (hw.reading ?: it)] }
-                        if (downsteps.isNullOrEmpty()) hw else hw.copy(pitch = downsteps)
+                        val term = hw.written ?: hw.reading ?: return@map hw
+                        val key = term to (hw.reading ?: term)
+                        val downsteps = pitch[key]
+                        val tags = frequencies[key]
+                        if (downsteps.isNullOrEmpty() && tags.isNullOrEmpty()) hw
+                        else hw.copy(
+                            pitch = downsteps ?: hw.pitch,
+                            frequencies = tags ?: hw.frequencies,
+                        )
                     },
                 )
             },

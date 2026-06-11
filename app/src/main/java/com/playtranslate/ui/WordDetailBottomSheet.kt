@@ -987,6 +987,29 @@ class WordDetailBottomSheet : DialogFragment() {
         }
         if (isCommon) badgeRow.addView(buildCommonPill())
         if (freqStars > 0) badgeRow.addView(buildStarRow(freqStars))
+        // Imported-dictionary frequency chips stay neutral/muted even though
+        // this header's other pills are accent-flavored — they're data, not
+        // a highlight, and one accent chip per dictionary would compete with
+        // the single Common signal.
+        for (tag in display.frequencies) {
+            badgeRow.addView(
+                BadgeChips.freqChip(
+                    ctx,
+                    tag,
+                    textColor = ctx.themeColor(R.attr.ptTextMuted),
+                    background = AppCompatResources.getDrawable(ctx, R.drawable.bg_anki_meta_chip)
+                        ?: GradientDrawable(),
+                    textSizeSp = 11f,
+                    horizontalPadPx = dp(10),
+                    verticalPadPx = dp(3),
+                ).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                    ).also { if (badgeRow.childCount > 0) it.marginStart = dp(6) }
+                }
+            )
+        }
         badgeRow.isVisible = badgeRow.childCount > 0
         block.addView(badgeRow)
         headerBadgeFlow = badgeRow
@@ -1127,49 +1150,26 @@ class WordDetailBottomSheet : DialogFragment() {
         }
     }
 
-    private fun buildCommonPill(): TextView {
-        val ctx = requireContext()
-        return TextView(ctx).apply {
-            text = getString(R.string.word_detail_common)
-            textSize = 11f
-            setTextColor(ctx.themeColor(R.attr.ptAccent))
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            setBackgroundResource(R.drawable.bg_word_common_pill)
-            setPadding(dp(10), dp(3), dp(10), dp(3))
+    private fun buildCommonPill(): TextView =
+        BadgeChips.commonPill(
+            requireContext(),
+            textSizeSp = 11f,
+            horizontalPadPx = dp(10),
+            verticalPadPx = dp(3),
+        ).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).also { it.marginEnd = dp(6) }
         }
-    }
 
     /**
      * Five-star row. Filled stars (U+2605) are tinted with [R.attr.ptAccent];
      * outline stars (U+2606) use [R.attr.ptOutline] so they sit just above
      * the hairline without pulling focus.
      */
-    private fun buildStarRow(filled: Int): LinearLayout {
-        val ctx = requireContext()
-        val row = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        val accent = ctx.themeColor(R.attr.ptAccent)
-        val outline = ctx.themeColor(R.attr.ptOutline)
-        for (i in 0 until 5) {
-            val isFilled = i < filled
-            row.addView(TextView(ctx).apply {
-                text = if (isFilled) "★" else "☆"
-                textSize = 13f
-                setTextColor(if (isFilled) accent else outline)
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).also { it.marginEnd = dp(1) }
-            })
-        }
-        return row
-    }
+    private fun buildStarRow(filled: Int): LinearLayout =
+        BadgeChips.starSlots(requireContext(), filled, textSizeSp = 13f)
 
     /**
      * Warning-tinted banner (10% alpha fill, 25% alpha stroke) with a

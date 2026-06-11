@@ -201,6 +201,7 @@ suspend fun resolveWordRows(
                                 surface = surface,
                                 ankiPos = ankiPos,
                                 pitch = display.pitch,
+                                frequencies = display.frequencies,
                             ),
                             surfaceMapping = if (surface != displayWord) {
                                 displayWord to surface

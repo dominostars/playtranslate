@@ -1,5 +1,7 @@
 package com.playtranslate.ui
 
+import com.playtranslate.model.FrequencyTag
+
 /**
  * The dictionary payload rendered by [WordDefinitionsView] — the meta row
  * (Common / frequency / part-of-speech / Anki deck), an optional warning
@@ -22,6 +24,9 @@ data class WordDefinitionData(
     /** Pitch-accent downstep variants for [reading], empty when unknown.
      *  [WordResultCell] draws the contour over its reading when non-empty. */
     val pitch: List<Int> = emptyList(),
+    /** Per-dictionary frequency chips from imported Yomitan frequency
+     *  dictionaries, in the user's section order. */
+    val frequencies: List<FrequencyTag> = emptyList(),
 )
 
 /** A single rendered sense: its part(s) of speech and the gloss text. */

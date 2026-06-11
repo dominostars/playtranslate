@@ -6,6 +6,7 @@ import android.util.Log
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import com.playtranslate.dictionary.Deinflector
+import com.playtranslate.model.FrequencyTag
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -22,9 +23,8 @@ import java.util.zip.ZipFile
  * `yomitan` package may import. The word "Yomitan" appears in this package,
  * the source-language engines' enrichment call sites, and the settings page —
  * nowhere else. UI consumes plain model fields (e.g. `Headword.pitch`).
- * Future data types (frequency, terms, kanji) add a table + an ingestor +
- * a typed query method HERE — never a new store class with its own
- * lifecycle.
+ * Future data types (terms, kanji) add a table + an ingestor + a typed
+ * query method HERE — never a new store class with its own lifecycle.
  *
  * Storage: one SQLite DB (`noBackupFilesDir/yomitan/yomitan.sqlite`) holding
  * every derived table, ingested from the zips [YomitanDictionaryStore] keeps
@@ -38,7 +38,7 @@ object YomitanDataStore {
     private const val TAG = "YomitanData"
 
     /** Bump to force a drop-and-reingest of all derived tables on next use. */
-    private const val SCHEMA_VERSION = 1
+    private const val SCHEMA_VERSION = 2
 
     private val TERM_META_BANK = Regex("""term_meta_bank_\d+\.json""")
 
@@ -57,6 +57,10 @@ object YomitanDataStore {
         /** PITCH_ACCENT section's dict ids, priority order. Empty → no pitch
          *  capability installed; pitch queries return immediately. */
         val pitchPriority: List<String>,
+        /** FREQUENCY section's (dict id, chip label) in display order, where
+         *  the label is the user alias when set, else the title. Empty → no
+         *  frequency capability installed; queries return immediately. */
+        val freqDicts: List<Pair<String, String>>,
     )
 
     // ── Public read API ─────────────────────────────────────────────────
@@ -105,6 +109,61 @@ object YomitanDataStore {
                 val winner = caps.pitchPriority.firstOrNull { byDict.containsKey(it) }
                     ?: continue
                 put(pair, byDict.getValue(winner).distinct())
+            }
+        }
+    }
+
+    /**
+     * Batched frequency lookup. [pairs] are (term, reading) as on dictionary
+     * headwords; readings are normalized internally and the result map is
+     * keyed by the pairs AS PASSED. Unlike pitch (first dictionary wins),
+     * frequency returns one [FrequencyTag] per FREQUENCY-section dictionary
+     * that has data — each is an independent data point — in the section's
+     * display order. A dictionary's multiple values for one pair are joined
+     * into a single tag. Returns empty immediately when no frequency
+     * dictionary is installed.
+     */
+    suspend fun frequencyFor(
+        ctx: Context,
+        pairs: Collection<Pair<String, String>>,
+    ): Map<Pair<String, String>, List<FrequencyTag>> = withContext(Dispatchers.IO) {
+        if (pairs.isEmpty()) return@withContext emptyMap()
+        val (database, caps) = ready(ctx)
+        if (caps.freqDicts.isEmpty()) return@withContext emptyMap()
+
+        // rows[term] = (readingOrNull, dictId, display) in rowid (bank) order;
+        // a NULL reading means the datum applies to every reading of the term.
+        val rows = HashMap<String, MutableList<Triple<String?, String, String>>>()
+        pairs.map { it.first }.distinct().chunked(500).forEach { chunk ->
+            val placeholders = chunk.joinToString(",") { "?" }
+            database.rawQuery(
+                "SELECT term, reading, dict_id, display FROM frequency " +
+                    "WHERE term IN ($placeholders) ORDER BY rowid",
+                chunk.toTypedArray(),
+            ).use { c ->
+                while (c.moveToNext()) {
+                    rows.getOrPut(c.getString(0)) { mutableListOf() }
+                        .add(Triple(c.getString(1), c.getString(2), c.getString(3)))
+                }
+            }
+        }
+        if (rows.isEmpty()) return@withContext emptyMap()
+
+        buildMap {
+            for (pair in pairs) {
+                val candidates = rows[pair.first] ?: continue
+                val normalized = Deinflector.katakanaToHiragana(pair.second)
+                // dictId -> first-seen-order distinct displays
+                val byDict = HashMap<String, LinkedHashSet<String>>()
+                for ((reading, dictId, display) in candidates) {
+                    if (reading == null || reading == normalized) {
+                        byDict.getOrPut(dictId) { LinkedHashSet() }.add(display)
+                    }
+                }
+                val tags = caps.freqDicts.mapNotNull { (dictId, label) ->
+                    byDict[dictId]?.let { FrequencyTag(label, it.joinToString(" · ")) }
+                }
+                if (tags.isNotEmpty()) put(pair, tags)
             }
         }
     }
@@ -163,6 +222,8 @@ object YomitanDataStore {
                 CapabilityCache(
                     pitchPriority = registry.orderedFor(YomitanCategory.PITCH_ACCENT)
                         .map { it.id },
+                    freqDicts = registry.orderedFor(YomitanCategory.FREQUENCY)
+                        .map { it.id to (it.alias ?: it.title) },
                 ).also { cache = it }
             }
             database to caps
@@ -181,6 +242,7 @@ object YomitanDataStore {
         }
         if (version != SCHEMA_VERSION) {
             database.execSQL("DROP TABLE IF EXISTS pitch")
+            database.execSQL("DROP TABLE IF EXISTS frequency")
             database.execSQL("DROP TABLE IF EXISTS ingested_dicts")
             database.execSQL("PRAGMA user_version = $SCHEMA_VERSION")
         }
@@ -191,6 +253,17 @@ object YomitanDataStore {
         )
         database.execSQL(
             "CREATE INDEX IF NOT EXISTS idx_pitch_term ON pitch(term, reading)"
+        )
+        // [reading] NULL = the datum applies to every reading of [term].
+        // [value] is the sortable number when the source shape carries one
+        // (NULL for pure-string data) — stored for future ranking use only.
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS frequency (" +
+                "dict_id TEXT NOT NULL, term TEXT NOT NULL, reading TEXT, " +
+                "display TEXT NOT NULL, value REAL)"
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS idx_freq_term ON frequency(term)"
         )
         database.execSQL(
             "CREATE TABLE IF NOT EXISTS ingested_dicts (dict_id TEXT PRIMARY KEY)"
@@ -227,6 +300,7 @@ object YomitanDataStore {
         database.beginTransaction()
         try {
             database.delete("pitch", "dict_id = ?", arrayOf(dictId))
+            database.delete("frequency", "dict_id = ?", arrayOf(dictId))
             database.delete("ingested_dicts", "dict_id = ?", arrayOf(dictId))
             database.setTransactionSuccessful()
         } finally {
@@ -234,7 +308,7 @@ object YomitanDataStore {
         }
     }
 
-    // ── Ingestors (one per data type; v1: pitch) ────────────────────────
+    // ── Ingestors (one per data type) ───────────────────────────────────
 
     /** Ingests everything this store derives from [dictionary], atomically:
      *  delete-then-insert inside one transaction, marking `ingested_dicts`
@@ -243,8 +317,12 @@ object YomitanDataStore {
         database.beginTransaction()
         try {
             database.delete("pitch", "dict_id = ?", arrayOf(dictionary.id))
+            database.delete("frequency", "dict_id = ?", arrayOf(dictionary.id))
             if (YomitanCategory.PITCH_ACCENT in dictionary.categories) {
                 ingestPitch(ctx, database, dictionary.id)
+            }
+            if (YomitanCategory.FREQUENCY in dictionary.categories) {
+                ingestFreq(ctx, database, dictionary.id)
             }
             database.execSQL(
                 "INSERT OR REPLACE INTO ingested_dicts (dict_id) VALUES (?)",
@@ -334,5 +412,60 @@ object YomitanDataStore {
             }
         }
         Log.i(TAG, "ingested $rows pitch rows for $dictId")
+    }
+
+    /** Streams `term_meta_bank_*.json` mode-`freq` entries from the stored
+     *  zip into the `frequency` table. The data element's four schema shapes
+     *  are handled by [FreqData]; unparseable entries are skipped (logged
+     *  once per file). */
+    private fun ingestFreq(ctx: Context, database: SQLiteDatabase, dictId: String) {
+        val zipFile = YomitanDictionaryStore.zipFile(ctx, dictId)
+        val insert = database.compileStatement(
+            "INSERT INTO frequency (dict_id, term, reading, display, value) VALUES (?, ?, ?, ?, ?)"
+        )
+        var rows = 0
+        ZipFile(zipFile).use { zip ->
+            for (entry in zip.entries()) {
+                if (entry.name.contains('/') || !TERM_META_BANK.matches(entry.name)) continue
+                var skippedEntries = 0
+                zip.getInputStream(entry).use { input ->
+                    JsonReader(InputStreamReader(input.buffered(), Charsets.UTF_8)).use { reader ->
+                        reader.beginArray()
+                        while (reader.hasNext()) {
+                            reader.beginArray()
+                            val term = reader.nextString()
+                            val mode = reader.nextString()
+                            if (mode != "freq") {
+                                while (reader.hasNext()) reader.skipValue()
+                                reader.endArray()
+                                continue
+                            }
+                            val row = FreqData.parse(reader)
+                            while (reader.hasNext()) reader.skipValue()
+                            reader.endArray()
+                            if (row == null) {
+                                skippedEntries++
+                                continue
+                            }
+
+                            insert.bindString(1, dictId)
+                            insert.bindString(2, term)
+                            row.reading
+                                ?.let { insert.bindString(3, Deinflector.katakanaToHiragana(it)) }
+                                ?: insert.bindNull(3)
+                            insert.bindString(4, row.display)
+                            row.value?.let { insert.bindDouble(5, it) } ?: insert.bindNull(5)
+                            insert.executeInsert()
+                            rows++
+                        }
+                        reader.endArray()
+                    }
+                }
+                if (skippedEntries > 0) {
+                    Log.i(TAG, "$dictId/${entry.name}: skipped $skippedEntries unparseable freq entries")
+                }
+            }
+        }
+        Log.i(TAG, "ingested $rows frequency rows for $dictId")
     }
 }

@@ -827,6 +827,9 @@ class MagnifierLens(
             // the right, so the text sits optically centered against the
             // right-side scrollbar gutter.
             setPadding(bodyHPaddingPx - dp(6f), 0, bodyHPaddingPx + dp(2f), 0)
+            // This panel is itself ptSurface — the view's default ptSurface
+            // chip fill would vanish into it.
+            metaChipFill = panelBadgeBg
         }
         private val definitionsScroll = ScrollView(ctx).apply {
             isVerticalScrollBarEnabled = true

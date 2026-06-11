@@ -11,7 +11,6 @@ import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.appcompat.content.res.AppCompatResources
 import com.playtranslate.R
 import com.playtranslate.themeColor
 
@@ -45,11 +44,18 @@ class WordDefinitionsView @JvmOverloads constructor(
     private val primaryText = context.themeColor(R.attr.ptText)
     private val secondaryText = context.themeColor(R.attr.ptTextMuted)
     private val hintText = context.themeColor(R.attr.ptTextHint)
-    private val accentColor = context.themeColor(R.attr.ptAccent)
-    private val accentTint = context.themeColor(R.attr.ptAccentTint)
     private val warnColor = context.themeColor(R.attr.ptWarning)
 
     private val medium = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+
+    /**
+     * Fill for the neutral data chips (the Anki deck pill and the frequency
+     * chips): ptSurface by default — one step off the ptCard list surface
+     * the result cell sits on. The lens panel is ITSELF ptSurface, so that
+     * host overrides this to ptCard (one step lighter) — with the default
+     * fill the chips vanish into the panel.
+     */
+    var metaChipFill: Int = context.themeColor(R.attr.ptSurface)
 
     init {
         orientation = VERTICAL
@@ -72,6 +78,7 @@ class WordDefinitionsView @JvmOverloads constructor(
         val distinctPos = data.senses.map { it.pos.trim() }.filter { it.isNotEmpty() }.distinct()
         val singlePos = distinctPos.singleOrNull()
         val hasMetaContent = data.isCommon || data.freqScore > 0 ||
+            data.frequencies.isNotEmpty() ||
             singlePos != null || data.ankiDecks.isNotEmpty()
 
         if (hasMetaContent) addView(buildMetaRow(data, singlePos, scale), fullWidth())
@@ -112,7 +119,8 @@ class WordDefinitionsView @JvmOverloads constructor(
         }
     }
 
-    /** Common pill · stars · promoted POS · Anki deck pill, wrapping. */
+    /** Common pill · stars · frequency chips · promoted POS · Anki deck
+     *  pill, wrapping. */
     private fun buildMetaRow(data: WordDefinitionData, singlePos: String?, scale: Float): FlowLayout {
         val row = FlowLayout(context).apply { lineSpacingPx = dp(7f * scale) }
         val gap = dp(8f * scale)
@@ -122,26 +130,32 @@ class WordDefinitionsView @JvmOverloads constructor(
             row.addView(view, lp)
         }
         if (data.isCommon) {
-            add(TextView(context).apply {
-                text = context.getString(R.string.word_detail_common)
-                setTextColor(accentColor)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f * scale)
-                typeface = medium
-                setPadding(dp(8f * scale), dp(3f * scale), dp(8f * scale), dp(3f * scale))
-                background = GradientDrawable().apply {
-                    setColor(accentTint)
-                    cornerRadius = dp(100f).toFloat()
-                }
-            })
+            add(
+                BadgeChips.commonPill(
+                    context,
+                    textSizeSp = 11.5f * scale,
+                    horizontalPadPx = dp(8f * scale),
+                    verticalPadPx = dp(3f * scale),
+                )
+            )
         }
         if (data.freqScore > 0) {
             // Kept as the app's filled-star system (0–5), not the handoff's
             // 0–3 filled/empty design.
-            add(TextView(context).apply {
-                text = "★".repeat(data.freqScore.coerceAtMost(5))
-                setTextColor(secondaryText)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f * scale)
-            })
+            add(BadgeChips.filledStars(context, data.freqScore, 13f * scale, secondaryText))
+        }
+        for (tag in data.frequencies) {
+            add(
+                BadgeChips.freqChip(
+                    context,
+                    tag,
+                    textColor = secondaryText,
+                    background = metaChipBackground(),
+                    textSizeSp = 11.5f * scale,
+                    horizontalPadPx = dp(8f * scale),
+                    verticalPadPx = dp(2f * scale),
+                )
+            )
         }
         if (singlePos != null) {
             add(TextView(context).apply {
@@ -157,14 +171,21 @@ class WordDefinitionsView @JvmOverloads constructor(
                 ctx = context,
                 deckNames = data.ankiDecks,
                 textColor = secondaryText,
-                background = AppCompatResources.getDrawable(context, R.drawable.bg_anki_meta_chip)
-                    ?: GradientDrawable(),
+                background = metaChipBackground(),
                 textSizeSp = 11.5f * scale,
                 horizontalPadPx = dp(8f * scale),
                 verticalPadPx = dp(2f * scale),
             )?.let { add(it) }
         }
         return row
+    }
+
+    /** [metaChipFill] as the lightly-rounded data-chip shape (the
+     *  programmatic equivalent of bg_anki_meta_chip). Fresh instance per
+     *  chip — drawables can't be shared across views. */
+    private fun metaChipBackground(): GradientDrawable = GradientDrawable().apply {
+        setColor(metaChipFill)
+        cornerRadius = dp(4f).toFloat()
     }
 
     /** A right-aligned number column + the gloss text. */

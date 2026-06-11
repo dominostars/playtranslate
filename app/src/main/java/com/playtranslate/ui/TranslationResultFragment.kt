@@ -38,6 +38,7 @@ import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.R
 import com.playtranslate.language.HintTextKind
+import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.themeColor
@@ -857,6 +858,7 @@ class TranslationResultFragment : Fragment() {
                 val freqScore: Int
                 val isCommon: Boolean
                 val popupPitch: List<Int>
+                val popupFrequencies: List<FrequencyTag>
                 when {
                     entry != null && defResult is DefinitionResult.MachineTranslated -> {
                         val display = entry.headwordDisplay(lookupForm)
@@ -866,6 +868,7 @@ class TranslationResultFragment : Fragment() {
                         freqScore = entry.freqScore
                         isCommon = entry.isCommon == true
                         popupPitch = display.pitch
+                        popupFrequencies = display.frequencies
                     }
                     entry != null && defResult is DefinitionResult.EnglishFallback && defResult.translatedDefinitions != null -> {
                         val display = entry.headwordDisplay(lookupForm)
@@ -875,6 +878,7 @@ class TranslationResultFragment : Fragment() {
                         freqScore = entry.freqScore
                         isCommon = entry.isCommon == true
                         popupPitch = display.pitch
+                        popupFrequencies = display.frequencies
                     }
                     entry != null -> {
                         val display = entry.headwordDisplay(lookupForm)
@@ -884,6 +888,7 @@ class TranslationResultFragment : Fragment() {
                         freqScore = entry.freqScore
                         isCommon = entry.isCommon == true
                         popupPitch = display.pitch
+                        popupFrequencies = display.frequencies
                     }
                     reading.isNotEmpty() -> {
                         word = lookupForm
@@ -892,6 +897,7 @@ class TranslationResultFragment : Fragment() {
                         freqScore = 0
                         isCommon = false
                         popupPitch = emptyList()
+                        popupFrequencies = emptyList()
                     }
                     else -> return@launch
                 }
@@ -935,6 +941,7 @@ class TranslationResultFragment : Fragment() {
                     freqScore = freqScore,
                     isCommon = isCommon,
                     pitch = popupPitch,
+                    frequencies = popupFrequencies,
                 )
                 wordLens = MagnifierLens(
                     activity,
@@ -1287,6 +1294,7 @@ class TranslationResultFragment : Fragment() {
             isCommon = rowState.isCommon,
             ankiDecks = ankiDecksByWord[rowState.displayWord].orEmpty(),
             pitch = rowState.pitch,
+            frequencies = rowState.frequencies,
         )
         cell.bind(
             data = data,

@@ -144,6 +144,7 @@ class DictionaryLookupActivity : SettingsSubPageActivity() {
             isCommon = rowState.isCommon,
             ankiDecks = ankiDecksByWord[rowState.displayWord].orEmpty(),
             pitch = rowState.pitch,
+            frequencies = rowState.frequencies,
         )
         cell.bind(
             data = data,
