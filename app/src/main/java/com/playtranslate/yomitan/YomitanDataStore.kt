@@ -7,6 +7,7 @@ import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.model.FrequencyTag
+import com.playtranslate.model.ImportedKanji
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -38,9 +39,11 @@ object YomitanDataStore {
     private const val TAG = "YomitanData"
 
     /** Bump to force a drop-and-reingest of all derived tables on next use. */
-    private const val SCHEMA_VERSION = 2
+    private const val SCHEMA_VERSION = 3
 
     private val TERM_META_BANK = Regex("""term_meta_bank_\d+\.json""")
+    private val KANJI_BANK = Regex("""kanji_bank_\d+\.json""")
+    private val KANJI_META_BANK = Regex("""kanji_meta_bank_\d+\.json""")
 
     /** Guards DB open/ingest/purge and [cache] (re)builds. Reads go through
      *  [ready] which only takes the lock until initialized. */
@@ -61,6 +64,23 @@ object YomitanDataStore {
          *  the label is the user alias when set, else the title. Empty → no
          *  frequency capability installed; queries return immediately. */
         val freqDicts: List<Pair<String, String>>,
+        /** KANJI section's dictionaries in priority order — first dict with
+         *  a character wins its whole entry. */
+        val kanjiDicts: List<KanjiDictMeta>,
+        /** KANJI_FREQUENCY section's (dict id, chip label) in display
+         *  order; same show-all semantics as [freqDicts]. */
+        val kanjiFreqDicts: List<Pair<String, String>>,
+    )
+
+    private class KanjiDictMeta(
+        val id: String,
+        /** index.json targetLanguage; null when undeclared (treated as "en"). */
+        val targetLanguage: String?,
+        /** Whether the dict ever populates the onyomi field. Dicts that
+         *  never do (JPDB Kanji's usage-ranked single list) don't follow
+         *  the on/kun convention — their readings render as one neutral
+         *  combined line. Derived from ingested rows at cache build. */
+        val splitsReadings: Boolean,
     )
 
     // ── Public read API ─────────────────────────────────────────────────
@@ -168,6 +188,106 @@ object YomitanDataStore {
         }
     }
 
+    /**
+     * Batched kanji-content lookup. Per character, the first KANJI-section
+     * dictionary with an entry wins the WHOLE entry (no per-field mixing
+     * across imports — the engine's merge against the built-in KANJIDIC2
+     * floor handles per-field fallback). Returns empty immediately when no
+     * kanji dictionary is installed.
+     */
+    suspend fun kanjiFor(
+        ctx: Context,
+        chars: Collection<Char>,
+    ): Map<Char, ImportedKanji> = withContext(Dispatchers.IO) {
+        if (chars.isEmpty()) return@withContext emptyMap()
+        val (database, caps) = ready(ctx)
+        if (caps.kanjiDicts.isEmpty()) return@withContext emptyMap()
+
+        // rows[character] = dictId -> (onyomi, kunyomi, encodedMeanings)
+        val rows = HashMap<String, HashMap<String, Triple<String, String, String>>>()
+        chars.map { it.toString() }.distinct().chunked(500).forEach { chunk ->
+            val placeholders = chunk.joinToString(",") { "?" }
+            database.rawQuery(
+                "SELECT character, dict_id, onyomi, kunyomi, meanings FROM kanji " +
+                    "WHERE character IN ($placeholders)",
+                chunk.toTypedArray(),
+            ).use { c ->
+                while (c.moveToNext()) {
+                    rows.getOrPut(c.getString(0)) { HashMap() }
+                        .putIfAbsent(c.getString(1), Triple(c.getString(2), c.getString(3), c.getString(4)))
+                }
+            }
+        }
+        if (rows.isEmpty()) return@withContext emptyMap()
+
+        buildMap {
+            for (char in chars) {
+                val byDict = rows[char.toString()] ?: continue
+                val winner = caps.kanjiDicts.firstOrNull { byDict.containsKey(it.id) } ?: continue
+                val (onyomi, kunyomi, meanings) = byDict.getValue(winner.id)
+                val on = KanjiData.splitReadings(onyomi)
+                val kun = KanjiData.splitReadings(kunyomi)
+                put(
+                    char,
+                    ImportedKanji(
+                        meanings = KanjiData.decodeMeanings(meanings),
+                        onReadings = if (winner.splitsReadings) on else emptyList(),
+                        kunReadings = if (winner.splitsReadings) kun else emptyList(),
+                        meaningsLang = winner.targetLanguage ?: "en",
+                        // Non-splitting dicts get their list back as-is —
+                        // labelling it KUN would be a lie.
+                        combinedReadings = if (winner.splitsReadings) emptyList() else on + kun,
+                    ),
+                )
+            }
+        }
+    }
+
+    /**
+     * Batched kanji-frequency lookup — [frequencyFor] semantics per
+     * character: one [FrequencyTag] per KANJI_FREQUENCY-section dictionary
+     * with data, all of them, in section order; per-dict values joined.
+     */
+    suspend fun kanjiFrequencyFor(
+        ctx: Context,
+        chars: Collection<Char>,
+    ): Map<Char, List<FrequencyTag>> = withContext(Dispatchers.IO) {
+        if (chars.isEmpty()) return@withContext emptyMap()
+        val (database, caps) = ready(ctx)
+        if (caps.kanjiFreqDicts.isEmpty()) return@withContext emptyMap()
+
+        // rows[character] = (dictId, display) in rowid (bank) order.
+        val rows = HashMap<String, MutableList<Pair<String, String>>>()
+        chars.map { it.toString() }.distinct().chunked(500).forEach { chunk ->
+            val placeholders = chunk.joinToString(",") { "?" }
+            database.rawQuery(
+                "SELECT character, dict_id, display FROM kanji_frequency " +
+                    "WHERE character IN ($placeholders) ORDER BY rowid",
+                chunk.toTypedArray(),
+            ).use { c ->
+                while (c.moveToNext()) {
+                    rows.getOrPut(c.getString(0)) { mutableListOf() }
+                        .add(c.getString(1) to c.getString(2))
+                }
+            }
+        }
+        if (rows.isEmpty()) return@withContext emptyMap()
+
+        buildMap {
+            for (char in chars) {
+                val candidates = rows[char.toString()] ?: continue
+                val byDict = HashMap<String, LinkedHashSet<String>>()
+                for ((dictId, display) in candidates) {
+                    byDict.getOrPut(dictId) { LinkedHashSet() }.add(display)
+                }
+                val tags = caps.kanjiFreqDicts.mapNotNull { (dictId, label) ->
+                    byDict[dictId]?.let { FrequencyTag(label, it.joinToString(" · ")) }
+                }
+                if (tags.isNotEmpty()) put(char, tags)
+            }
+        }
+    }
+
     // ── Lifecycle hooks (called by YomitanDictionaryStore) ──────────────
 
     /** Eagerly ingests a freshly imported dictionary so its data is queryable
@@ -219,10 +339,25 @@ object YomitanDataStore {
             val caps = cache ?: run {
                 val registry = YomitanDictionaryStore.load(ctx)
                 reconcileLocked(ctx, database, registry)
+                // Per-dict on/kun convention check (post-reconcile, so rows
+                // are settled): a dict that never fills onyomi ships a
+                // combined readings list, not the split.
+                val splitsByDict = HashMap<String, Boolean>()
+                database.rawQuery(
+                    "SELECT dict_id, MAX(CASE WHEN onyomi != '' THEN 1 ELSE 0 END) " +
+                        "FROM kanji GROUP BY dict_id",
+                    null,
+                ).use { c ->
+                    while (c.moveToNext()) splitsByDict[c.getString(0)] = c.getInt(1) == 1
+                }
                 CapabilityCache(
                     pitchPriority = registry.orderedFor(YomitanCategory.PITCH_ACCENT)
                         .map { it.id },
                     freqDicts = registry.orderedFor(YomitanCategory.FREQUENCY)
+                        .map { it.id to (it.alias ?: it.title) },
+                    kanjiDicts = registry.orderedFor(YomitanCategory.KANJI)
+                        .map { KanjiDictMeta(it.id, it.targetLanguage, splitsByDict[it.id] ?: true) },
+                    kanjiFreqDicts = registry.orderedFor(YomitanCategory.KANJI_FREQUENCY)
                         .map { it.id to (it.alias ?: it.title) },
                 ).also { cache = it }
             }
@@ -243,6 +378,8 @@ object YomitanDataStore {
         if (version != SCHEMA_VERSION) {
             database.execSQL("DROP TABLE IF EXISTS pitch")
             database.execSQL("DROP TABLE IF EXISTS frequency")
+            database.execSQL("DROP TABLE IF EXISTS kanji")
+            database.execSQL("DROP TABLE IF EXISTS kanji_frequency")
             database.execSQL("DROP TABLE IF EXISTS ingested_dicts")
             database.execSQL("PRAGMA user_version = $SCHEMA_VERSION")
         }
@@ -264,6 +401,25 @@ object YomitanDataStore {
         )
         database.execSQL(
             "CREATE INDEX IF NOT EXISTS idx_freq_term ON frequency(term)"
+        )
+        // on/kun keep the bank's raw space-separated form (split at query
+        // time); meanings are a JSON array — arbitrary strings would collide
+        // with any join separator.
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS kanji (" +
+                "dict_id TEXT NOT NULL, character TEXT NOT NULL, " +
+                "onyomi TEXT NOT NULL, kunyomi TEXT NOT NULL, meanings TEXT NOT NULL)"
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS idx_kanji_char ON kanji(character)"
+        )
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS kanji_frequency (" +
+                "dict_id TEXT NOT NULL, character TEXT NOT NULL, " +
+                "display TEXT NOT NULL, value REAL)"
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS idx_kanji_freq_char ON kanji_frequency(character)"
         )
         database.execSQL(
             "CREATE TABLE IF NOT EXISTS ingested_dicts (dict_id TEXT PRIMARY KEY)"
@@ -301,6 +457,8 @@ object YomitanDataStore {
         try {
             database.delete("pitch", "dict_id = ?", arrayOf(dictId))
             database.delete("frequency", "dict_id = ?", arrayOf(dictId))
+            database.delete("kanji", "dict_id = ?", arrayOf(dictId))
+            database.delete("kanji_frequency", "dict_id = ?", arrayOf(dictId))
             database.delete("ingested_dicts", "dict_id = ?", arrayOf(dictId))
             database.setTransactionSuccessful()
         } finally {
@@ -318,11 +476,19 @@ object YomitanDataStore {
         try {
             database.delete("pitch", "dict_id = ?", arrayOf(dictionary.id))
             database.delete("frequency", "dict_id = ?", arrayOf(dictionary.id))
+            database.delete("kanji", "dict_id = ?", arrayOf(dictionary.id))
+            database.delete("kanji_frequency", "dict_id = ?", arrayOf(dictionary.id))
             if (YomitanCategory.PITCH_ACCENT in dictionary.categories) {
                 ingestPitch(ctx, database, dictionary.id)
             }
             if (YomitanCategory.FREQUENCY in dictionary.categories) {
                 ingestFreq(ctx, database, dictionary.id)
+            }
+            if (YomitanCategory.KANJI in dictionary.categories) {
+                ingestKanji(ctx, database, dictionary.id)
+            }
+            if (YomitanCategory.KANJI_FREQUENCY in dictionary.categories) {
+                ingestKanjiFreq(ctx, database, dictionary.id)
             }
             database.execSQL(
                 "INSERT OR REPLACE INTO ingested_dicts (dict_id) VALUES (?)",
@@ -467,5 +633,126 @@ object YomitanDataStore {
             }
         }
         Log.i(TAG, "ingested $rows frequency rows for $dictId")
+    }
+
+    /** Streams `kanji_bank_*.json` entries from the stored zip into the
+     *  `kanji` table. Entries are fixed-position 6-element arrays
+     *  [char, onyomi, kunyomi, tags, meanings[], stats{}] — tags and stats
+     *  are discarded (stats keys are dictionary-specific; the built-in
+     *  KANJIDIC2 stays the source for numeric stats). */
+    private fun ingestKanji(ctx: Context, database: SQLiteDatabase, dictId: String) {
+        val zipFile = YomitanDictionaryStore.zipFile(ctx, dictId)
+        val insert = database.compileStatement(
+            "INSERT INTO kanji (dict_id, character, onyomi, kunyomi, meanings) VALUES (?, ?, ?, ?, ?)"
+        )
+        var rows = 0
+        ZipFile(zipFile).use { zip ->
+            for (entry in zip.entries()) {
+                if (entry.name.contains('/') || !KANJI_BANK.matches(entry.name)) continue
+                var skippedEntries = 0
+                zip.getInputStream(entry).use { input ->
+                    JsonReader(InputStreamReader(input.buffered(), Charsets.UTF_8)).use { reader ->
+                        reader.beginArray()
+                        while (reader.hasNext()) {
+                            reader.beginArray()
+                            val character = reader.nextString()
+                            // Defensive peeks: a short or oddly-typed entry is
+                            // skipped, never allowed to derail the stream.
+                            var onyomi = ""
+                            var kunyomi = ""
+                            var meanings: List<String>? = null
+                            var valid = true
+                            if (reader.peek() == JsonToken.STRING) onyomi = reader.nextString() else valid = false
+                            if (valid && reader.peek() == JsonToken.STRING) kunyomi = reader.nextString() else valid = false
+                            if (valid && reader.peek() == JsonToken.STRING) reader.skipValue() else valid = false // tags
+                            if (valid && reader.peek() == JsonToken.BEGIN_ARRAY) {
+                                val list = mutableListOf<String>()
+                                reader.beginArray()
+                                while (reader.hasNext()) {
+                                    if (reader.peek() == JsonToken.STRING) list.add(reader.nextString())
+                                    else reader.skipValue()
+                                }
+                                reader.endArray()
+                                meanings = list
+                            } else {
+                                valid = false
+                            }
+                            while (reader.hasNext()) reader.skipValue() // stats + extras
+                            reader.endArray()
+                            if (!valid || character.isEmpty()) {
+                                skippedEntries++
+                                continue
+                            }
+
+                            insert.bindString(1, dictId)
+                            insert.bindString(2, character)
+                            insert.bindString(3, onyomi)
+                            insert.bindString(4, kunyomi)
+                            insert.bindString(5, KanjiData.encodeMeanings(meanings.orEmpty()))
+                            insert.executeInsert()
+                            rows++
+                        }
+                        reader.endArray()
+                    }
+                }
+                if (skippedEntries > 0) {
+                    Log.i(TAG, "$dictId/${entry.name}: skipped $skippedEntries malformed kanji entries")
+                }
+            }
+        }
+        Log.i(TAG, "ingested $rows kanji rows for $dictId")
+    }
+
+    /** Streams `kanji_meta_bank_*.json` mode-`freq` entries into the
+     *  `kanji_frequency` table. The data element shares the term-frequency
+     *  shapes minus the reading wrapper, so [FreqData] handles it (any
+     *  stray reading qualifier is ignored — kanji have no reading
+     *  dimension). */
+    private fun ingestKanjiFreq(ctx: Context, database: SQLiteDatabase, dictId: String) {
+        val zipFile = YomitanDictionaryStore.zipFile(ctx, dictId)
+        val insert = database.compileStatement(
+            "INSERT INTO kanji_frequency (dict_id, character, display, value) VALUES (?, ?, ?, ?)"
+        )
+        var rows = 0
+        ZipFile(zipFile).use { zip ->
+            for (entry in zip.entries()) {
+                if (entry.name.contains('/') || !KANJI_META_BANK.matches(entry.name)) continue
+                var skippedEntries = 0
+                zip.getInputStream(entry).use { input ->
+                    JsonReader(InputStreamReader(input.buffered(), Charsets.UTF_8)).use { reader ->
+                        reader.beginArray()
+                        while (reader.hasNext()) {
+                            reader.beginArray()
+                            val character = reader.nextString()
+                            val mode = reader.nextString()
+                            if (mode != "freq") {
+                                while (reader.hasNext()) reader.skipValue()
+                                reader.endArray()
+                                continue
+                            }
+                            val row = FreqData.parse(reader)
+                            while (reader.hasNext()) reader.skipValue()
+                            reader.endArray()
+                            if (row == null || character.isEmpty()) {
+                                skippedEntries++
+                                continue
+                            }
+
+                            insert.bindString(1, dictId)
+                            insert.bindString(2, character)
+                            insert.bindString(3, row.display)
+                            row.value?.let { insert.bindDouble(4, it) } ?: insert.bindNull(4)
+                            insert.executeInsert()
+                            rows++
+                        }
+                        reader.endArray()
+                    }
+                }
+                if (skippedEntries > 0) {
+                    Log.i(TAG, "$dictId/${entry.name}: skipped $skippedEntries unparseable kanji freq entries")
+                }
+            }
+        }
+        Log.i(TAG, "ingested $rows kanji frequency rows for $dictId")
     }
 }

@@ -401,8 +401,12 @@ class DictionaryManager private constructor(private val context: Context) {
                 val grade        = c.getInt(3)
                 val strokeCount  = c.getInt(4)
 
+                // Meanings may be empty (rare kanji with readings/stats but
+                // no gloss in any pack language). Returned anyway: the JA
+                // engine gates gloss-less rows itself, AFTER it has had the
+                // chance to merge meanings from an imported dictionary —
+                // nulling here would throw away the readings/stats floor.
                 val (meanings, resolvedLang) = resolveKanjiMeanings(database, literal, targetLang)
-                if (meanings.isEmpty()) return@withRefcount null
                 KanjiDetail(
                     literal      = literal,
                     meanings     = meanings,

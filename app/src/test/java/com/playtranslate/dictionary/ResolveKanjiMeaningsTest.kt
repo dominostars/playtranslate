@@ -105,7 +105,8 @@ class ResolveKanjiMeaningsTest {
     @Test fun `non-en row exists but no en row falls through to empty en`() {
         // 龦 has fr but no en. Ask for fr — we get fr. Ask for de — we
         // get an empty list tagged "en" because the en fallback row is
-        // missing too. lookupKanji's caller drops these via meanings.isEmpty().
+        // missing too. The JA engine drops gloss-less rows (unless an
+        // imported Yomitan kanji dictionary supplies the meanings).
         val (frMeanings, frLang) = DictionaryManager.resolveKanjiMeanings(db, '龦', "fr")
         assertEquals(listOf("chevauchement"), frMeanings)
         assertEquals("fr", frLang)

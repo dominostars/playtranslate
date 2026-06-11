@@ -66,6 +66,27 @@ data class FrequencyTag(
     val display: String,
 )
 
+/**
+ * One imported kanji dictionary's content for a character — the winning
+ * dictionary's whole entry (no per-field mixing across imports). Readings
+ * may be empty (some dictionaries ship meanings only); [meaningsLang] is
+ * the dictionary's declared target language, defaulted to "en" upstream so
+ * the character-breakdown MT fallback behaves like the built-in data.
+ *
+ * Dictionaries that never populate the onyomi field across their whole
+ * bank (JPDB Kanji ships one usage-ranked list instead of the on/kun
+ * split) deliver their readings in [combinedReadings] with the split
+ * fields empty — the labels would be lies otherwise. The two shapes are
+ * mutually exclusive.
+ */
+data class ImportedKanji(
+    val meanings: List<String>,
+    val onReadings: List<String>,
+    val kunReadings: List<String>,
+    val meaningsLang: String,
+    val combinedReadings: List<String> = emptyList(),
+)
+
 data class Sense(
     val targetDefinitions: List<String>,
     val partsOfSpeech: List<String>,
@@ -118,7 +139,15 @@ data class KanjiDetail(
     val kunReadings: List<String>,
     val jlpt: Int,
     val grade: Int,
-    val strokeCount: Int
+    val strokeCount: Int,
+    /** Per-dictionary frequency chips from imported Yomitan kanji-frequency
+     *  dictionaries, in the user's section order. */
+    val frequencies: List<FrequencyTag> = emptyList(),
+    /** Readings from an imported dictionary that doesn't split on/kun
+     *  (see [ImportedKanji.combinedReadings]). When non-empty, [onReadings]
+     *  and [kunReadings] are empty and the UI renders one neutrally
+     *  labelled line instead of the ON/KUN pair. */
+    val combinedReadings: List<String> = emptyList(),
 ) : CharacterDetail
 
 /**

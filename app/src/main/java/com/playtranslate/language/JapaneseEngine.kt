@@ -6,6 +6,7 @@ import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.dictionary.SudachiJapaneseTokenizer
 import com.playtranslate.model.CharacterDetail
 import com.playtranslate.model.DictionaryResponse
+import com.playtranslate.model.KanjiDetail
 import com.playtranslate.yomitan.YomitanDataStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -114,8 +115,48 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
         )
     }
 
-    override suspend fun lookupCharacter(literal: Char, targetLang: String): CharacterDetail? =
-        dict.lookupKanji(literal, targetLang)
+    /**
+     * Per-character detail merged from two sources: the first imported
+     * Yomitan kanji dictionary containing the character wins the lexical
+     * content (meanings; readings when non-empty), while the built-in
+     * KANJIDIC2 pack stays the floor — filling whatever the import lacks
+     * and always supplying the numeric stats (imports carry theirs under
+     * dictionary-specific keys we don't interpret). Gloss-less characters
+     * return null exactly as before imports existed: a row with readings
+     * but no meaning isn't worth a breakdown slot.
+     */
+    override suspend fun lookupCharacter(literal: Char, targetLang: String): CharacterDetail? {
+        val base = dict.lookupKanji(literal, targetLang)
+        val imported = YomitanDataStore.kanjiFor(appContext, listOf(literal))[literal]
+        val meanings: List<String>
+        val meaningsLang: String
+        if (imported != null && imported.meanings.isNotEmpty()) {
+            meanings = imported.meanings
+            meaningsLang = imported.meaningsLang
+        } else {
+            meanings = base?.meanings.orEmpty()
+            meaningsLang = base?.meaningsLang ?: "en"
+        }
+        if (meanings.isEmpty()) return null
+        // A combined (unsplit) readings list replaces BOTH labelled lines —
+        // mixing KANJIDIC2's on readings back in would duplicate readings
+        // the combined list already carries.
+        val combined = imported?.combinedReadings.orEmpty()
+        return KanjiDetail(
+            literal = literal,
+            meanings = meanings,
+            meaningsLang = meaningsLang,
+            onReadings = if (combined.isNotEmpty()) emptyList()
+                else imported?.onReadings?.ifEmpty { null } ?: base?.onReadings.orEmpty(),
+            kunReadings = if (combined.isNotEmpty()) emptyList()
+                else imported?.kunReadings?.ifEmpty { null } ?: base?.kunReadings.orEmpty(),
+            jlpt = base?.jlpt ?: 0,
+            grade = base?.grade ?: 0,
+            strokeCount = base?.strokeCount ?: 0,
+            frequencies = YomitanDataStore.kanjiFrequencyFor(appContext, listOf(literal))[literal].orEmpty(),
+            combinedReadings = combined,
+        )
+    }
 
     override suspend fun annotateForHintText(text: String): List<HintTextAnnotation> =
         withContext(Dispatchers.Default) {

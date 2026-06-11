@@ -862,10 +862,10 @@ class WordDetailBottomSheet : DialogFragment() {
                         if (detail.meaningsLang == targetLangCode) return@forEachIndexed
                         if (detail.meanings.isEmpty()) return@forEachIndexed
                         viewLifecycleOwner.lifecycleScope.launch {
-                            // Mirror addCharacterRow's display — first 4 meanings
-                            // joined by ", " — so the translator sees the same
-                            // surface the user would otherwise read.
-                            val source = detail.meanings.take(4).joinToString(", ")
+                            // Mirror addCharacterRow's display — the full
+                            // meanings list joined by ", " — so the translator
+                            // sees the same surface the user would otherwise read.
+                            val source = detail.meanings.joinToString(", ")
                             val translated = runCatching {
                                 withContext(Dispatchers.IO) { enToTargetTranslator.translate(source) }
                             }.getOrNull()
@@ -1703,7 +1703,7 @@ class WordDetailBottomSheet : DialogFragment() {
 
         if (detail.meanings.isNotEmpty()) {
             val meaningsTv = TextView(ctx).apply {
-                text = detail.meanings.take(4).joinToString(", ")
+                text = detail.meanings.joinToString(", ")
                 textSize = 14f
                 setTextColor(ctx.themeColor(R.attr.ptText))
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
@@ -1716,42 +1716,46 @@ class WordDetailBottomSheet : DialogFragment() {
 
         // Labelled readings — the "on:" / "kun:" / "pinyin:" labels use a
         // small-caps Inter-ish label and the value itself sits in the
-        // default sans for CJK compatibility.
-        val readingLines = buildReadingLines(detail)
-        if (readingLines.isNotEmpty()) {
-            val readingsView = LinearLayout(ctx).apply {
+        // default sans for CJK compatibility. One row per label: reading
+        // lists are rendered in full (no truncation), so each value needs
+        // the column's whole width to wrap into — sharing one horizontal
+        // line would squeeze the later pair into a sliver.
+        for ((label, value) in buildReadingLines(detail)) {
+            val line = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
                 layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).also { it.topMargin = dp(3) }
             }
-            readingLines.forEachIndexed { idx, (label, value) ->
-                if (idx > 0) {
-                    readingsView.addView(View(ctx).apply {
-                        layoutParams = LinearLayout.LayoutParams(dp(10), 1)
-                    })
+            line.addView(TextView(ctx).apply {
+                text = ctx.getString(R.string.word_detail_label_format, label.uppercase(Locale.ROOT))
+                textSize = 10f
+                isAllCaps = true
+                letterSpacing = 0.08f
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                setTextColor(ctx.themeColor(R.attr.ptTextHint))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).also {
+                    it.marginEnd = dp(4)
+                    // Optically align the small-caps label with the taller
+                    // value text's first line when the value wraps.
+                    it.topMargin = dp(1)
                 }
-                readingsView.addView(TextView(ctx).apply {
-                    text = ctx.getString(R.string.word_detail_label_format, label.uppercase(Locale.ROOT))
-                    textSize = 10f
-                    isAllCaps = true
-                    letterSpacing = 0.08f
-                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                    setTextColor(ctx.themeColor(R.attr.ptTextHint))
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).also { it.marginEnd = dp(4) }
-                })
-                readingsView.addView(TextView(ctx).apply {
-                    text = value
-                    textSize = 12f
-                    setTextColor(ctx.themeColor(R.attr.ptTextMuted))
-                })
-            }
-            col.addView(readingsView)
+            })
+            line.addView(TextView(ctx).apply {
+                text = value
+                textSize = 12f
+                setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+                layoutParams = LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f,
+                )
+            })
+            col.addView(line)
         }
 
         val meta = buildMetaLine(detail)
@@ -1768,6 +1772,39 @@ class WordDetailBottomSheet : DialogFragment() {
             })
         }
 
+        // Imported kanji-frequency chips — one per dictionary, in the
+        // Kanji Frequency section's order, matching the header's frequency
+        // chips (muted data chips, never accent).
+        if (detail is KanjiDetail && detail.frequencies.isNotEmpty()) {
+            val chipRow = FlowLayout(ctx).apply {
+                lineSpacingPx = dp(4)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).also { it.topMargin = dp(4) }
+            }
+            detail.frequencies.forEach { tag ->
+                chipRow.addView(
+                    BadgeChips.freqChip(
+                        ctx,
+                        tag,
+                        textColor = ctx.themeColor(R.attr.ptTextMuted),
+                        background = AppCompatResources.getDrawable(ctx, R.drawable.bg_anki_meta_chip)
+                            ?: GradientDrawable(),
+                        textSizeSp = 11f,
+                        horizontalPadPx = dp(10),
+                        verticalPadPx = dp(3),
+                    ).apply {
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                        ).also { if (chipRow.childCount > 0) it.marginStart = dp(6) }
+                    }
+                )
+            }
+            col.addView(chipRow)
+        }
+
         row.addView(col)
 
         // Stroke pill — JA only. We don't carry stroke counts for ZH so
@@ -1781,8 +1818,15 @@ class WordDetailBottomSheet : DialogFragment() {
 
     private fun buildReadingLines(detail: CharacterDetail): List<Pair<String, String>> = when (detail) {
         is KanjiDetail -> buildList {
-            if (detail.onReadings.isNotEmpty())  add("on" to detail.onReadings.joinToString(", "))
-            if (detail.kunReadings.isNotEmpty()) add("kun" to detail.kunReadings.take(3).joinToString(", "))
+            // An imported dict that doesn't follow the on/kun convention
+            // (JPDB's usage-ranked list) gets one neutral line — its
+            // readings mix both kinds, so ON/KUN labels would mislabel.
+            if (detail.combinedReadings.isNotEmpty()) {
+                add("readings" to detail.combinedReadings.joinToString(", "))
+            } else {
+                if (detail.onReadings.isNotEmpty())  add("on" to detail.onReadings.joinToString(", "))
+                if (detail.kunReadings.isNotEmpty()) add("kun" to detail.kunReadings.joinToString(", "))
+            }
         }
         is HanziDetail -> if (!detail.pinyin.isNullOrBlank())
             listOf("pinyin" to detail.pinyin) else emptyList()
