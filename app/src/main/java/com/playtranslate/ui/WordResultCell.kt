@@ -19,6 +19,7 @@ import androidx.core.view.isGone
 import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
 import com.playtranslate.R
+import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.themeColor
 import kotlinx.coroutines.Job
 
@@ -148,19 +149,27 @@ class WordResultCell @JvmOverloads constructor(
         boundScale = scale
         wordView.text = data.word
         wordView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 27f * scale)
-        if (!data.reading.isNullOrEmpty() && data.pitch.isNotEmpty()) {
+        val reading = data.reading?.takeIf { it.isNotEmpty() }
+        // Kana-only entries carry no separate reading — the kana IS the
+        // title — but still have pitch. Mirror the detail page: repeat the
+        // kana in the reading slot so the contour has somewhere to live.
+        // The all-kana guard is load-bearing: the contour maps morae onto
+        // whatever string it draws over, so it must never cover kanji.
+        val pitchKana = reading
+            ?: data.word.takeIf { data.pitch.isNotEmpty() && it.all(Deinflector::isKana) }
+        if (pitchKana != null && data.pitch.isNotEmpty()) {
             // Pitch contour over the reading. Layout-stability contract: the
             // span leaves FontMetrics alone and the overline band lives in
             // this top padding, which baseline alignment extends UPWARD into
             // the dead space under wordView's taller line — row height,
             // baseline, and visibility logic all stay untouched.
-            readingView.text = buildPitchAnnotatedReading(data.reading, data.pitch)
+            readingView.text = buildPitchAnnotatedReading(pitchKana, data.pitch)
             readingView.setPadding(0, dp(8f * scale), 0, 0)
         } else {
-            readingView.text = data.reading ?: ""
+            readingView.text = reading ?: ""
             readingView.setPadding(0, 0, 0, 0)
         }
-        readingView.isGone = data.reading.isNullOrEmpty()
+        readingView.isGone = pitchKana == null
         readingView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f * scale)
         definitionsView.bind(data, label = null, scale = scale)
         (definitionsView.layoutParams as LayoutParams).topMargin = dp(10f * scale)
