@@ -330,6 +330,41 @@ class DictionaryManager private constructor(private val context: Context) {
     }
 
     /**
+     * Ranked prefix-completion candidates for a partial [query], for the
+     * dictionary-search screen. Returns up to [limit] entries whose kanji
+     * headword OR kana reading begins with [query], ordered exact-match-first
+     * then by per-row [rank_score] (the same signal [queryEntryIds] ranks by),
+     * each as a [TokenWithReading] whose [lookupForm] re-resolves to the full
+     * entry via [lookup].
+     *
+     * Kana fold: the reading side scans both the hiragana and katakana
+     * renderings of [query], because JMdict stores loanword readings in
+     * katakana (テレビ) while users type hiragana (てれび).
+     *
+     * Falls back to a `entry.freq_score`-ordered scan on v1 packs without
+     * `rank_score` (see [hasRankScore]). Empty when the DB isn't ready.
+     */
+    suspend fun searchPrefix(query: String, limit: Int = 20): List<TokenWithReading> = withContext(Dispatchers.IO) {
+        val q = query.trim()
+        if (q.isEmpty()) return@withContext emptyList()
+        val database = ensureOpen() ?: return@withContext emptyList()
+        database.withRefcount {
+            val entryIds = prefixEntryIds(database, q, limit, hasRankScore(database))
+            val seen = HashSet<String>()
+            entryIds.mapNotNull { id ->
+                val (written, reading) = primaryFormsForEntry(database, id)
+                val display = written ?: reading ?: return@mapNotNull null
+                if (!seen.add(display)) return@mapNotNull null
+                TokenWithReading(
+                    surface = display,
+                    lookupForm = display,
+                    reading = if (written != null) reading else null,
+                )
+            }
+        } ?: emptyList()
+    }
+
+    /**
      * Look up a single kanji character in KANJIDIC2. Returns null if not found
      * or the database isn't ready. Call from a background coroutine.
      *
@@ -773,6 +808,89 @@ class DictionaryManager private constructor(private val context: Context) {
             WHERE h.text = ? AND r.text = ?
             ORDER BY e.freq_score DESC LIMIT 8
         """
+
+        /**
+         * Ranked prefix-scan entry IDs for [query], the core of [searchPrefix].
+         * Stateless on [db] (like [resolveKanjiMeanings]) so the ranking is
+         * unit-testable against a fixture DB without the singleton/filesystem.
+         *
+         * UNION of a kanji `headword` arm and one kana `reading` arm per query
+         * fold (hiragana + katakana), each adding [PREFIX_EXACT_BONUS] on an
+         * exact match; the reading arm keeps the position-0 `uk_applicable`
+         * bonus from [RANKED_QUERY_KANA]. `MAX(score)` dedupes per entry,
+         * ordered desc, capped at [limit].
+         *
+         * [ranked] selects the v2+ per-row `rank_score` columns; false uses the
+         * legacy `entry.freq_score` JOIN for v1 packs (mirrors LEGACY_QUERY_*).
+         * Returns empty when [query] has no clean prefix upper bound (it ends
+         * at the maximum code point — pathological, never real input).
+         */
+        internal fun prefixEntryIds(
+            db: SQLiteDatabase,
+            query: String,
+            limit: Int,
+            ranked: Boolean,
+        ): List<Long> {
+            val headUpper = prefixUpperBound(query) ?: return emptyList()
+            val sql = StringBuilder()
+            val args = mutableListOf<String>()
+            if (ranked) {
+                sql.append(
+                    "SELECT entry_id, rank_score + (CASE WHEN text = ? THEN $PREFIX_EXACT_BONUS ELSE 0 END) AS score " +
+                        "FROM headword WHERE text >= ? AND text < ?"
+                )
+                args.add(query); args.add(query); args.add(headUpper)
+                for (variant in readingFolds(query)) {
+                    val upper = prefixUpperBound(variant) ?: continue
+                    sql.append(
+                        " UNION ALL SELECT entry_id, rank_score " +
+                            "+ (CASE WHEN position = 0 AND uk_applicable = 1 THEN 1500000 ELSE 0 END) " +
+                            "+ (CASE WHEN text = ? THEN $PREFIX_EXACT_BONUS ELSE 0 END) AS score " +
+                            "FROM reading WHERE text >= ? AND text < ?"
+                    )
+                    args.add(variant); args.add(variant); args.add(upper)
+                }
+            } else {
+                sql.append(
+                    "SELECT h.entry_id AS entry_id, e.freq_score + (CASE WHEN h.text = ? THEN $PREFIX_EXACT_BONUS ELSE 0 END) AS score " +
+                        "FROM headword h JOIN entry e ON e.id = h.entry_id WHERE h.text >= ? AND h.text < ?"
+                )
+                args.add(query); args.add(query); args.add(headUpper)
+                for (variant in readingFolds(query)) {
+                    val upper = prefixUpperBound(variant) ?: continue
+                    sql.append(
+                        " UNION ALL SELECT r.entry_id AS entry_id, e.freq_score + (CASE WHEN r.text = ? THEN $PREFIX_EXACT_BONUS ELSE 0 END) AS score " +
+                            "FROM reading r JOIN entry e ON e.id = r.entry_id WHERE r.text >= ? AND r.text < ?"
+                    )
+                    args.add(variant); args.add(variant); args.add(upper)
+                }
+            }
+            val wrapped = "SELECT entry_id, MAX(score) AS s FROM ($sql) GROUP BY entry_id ORDER BY s DESC LIMIT ?"
+            args.add(limit.toString())
+            val ids = mutableListOf<Long>()
+            db.rawQuery(wrapped, args.toTypedArray())
+                .use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
+            return ids
+        }
+
+        /** Both kana renderings of [query] to scan the reading table with —
+         *  native readings are stored hiragana, loanwords katakana. */
+        private fun readingFolds(query: String): Set<String> =
+            setOf(Deinflector.katakanaToHiragana(query), Deinflector.hiraganaToKatakana(query))
+
+        /** Primary (lowest-position) kanji headword and kana reading for [id].
+         *  Written is null for pure-kana entries. Stateless on [db] for the
+         *  same testability reason as [prefixEntryIds]. */
+        internal fun primaryFormsForEntry(db: SQLiteDatabase, id: Long): Pair<String?, String?> {
+            val idStr = id.toString()
+            val written = db.rawQuery(
+                "SELECT text FROM headword WHERE entry_id=? ORDER BY position LIMIT 1", arrayOf(idStr)
+            ).use { c -> if (c.moveToFirst()) c.getString(0) else null }
+            val reading = db.rawQuery(
+                "SELECT text FROM reading WHERE entry_id=? ORDER BY position LIMIT 1", arrayOf(idStr)
+            ).use { c -> if (c.moveToFirst()) c.getString(0) else null }
+            return written to reading
+        }
 
         /**
          * Resolve meanings for [literal] in [targetLang] with English fallback.

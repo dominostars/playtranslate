@@ -144,6 +144,10 @@ class ChineseEngine(
             .map { TokenSpan(surface = it.word, lookupForm = it.word, reading = corrections[it.word]) }
     }
 
+    override suspend fun searchPrefix(query: String, limit: Int): List<TokenSpan> =
+        dict.searchPrefix(query, limit, profile.preferTraditional)
+            .map { TokenSpan(surface = it, lookupForm = it, reading = null) }
+
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? =
         dict.lookup(word, profile.preferTraditional)?.preferReading(reading)
 

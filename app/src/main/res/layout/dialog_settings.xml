@@ -582,6 +582,11 @@
                         <include layout="@layout/settings_row_divider" />
 
                         <include layout="@layout/settings_row_action"
+                            android:id="@+id/rowDictionaryLookup" />
+
+                        <include layout="@layout/settings_row_divider" />
+
+                        <include layout="@layout/settings_row_action"
                             android:id="@+id/rowForceCrash" />
 
                     </LinearLayout>

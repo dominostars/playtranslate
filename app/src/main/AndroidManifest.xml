@@ -119,6 +119,14 @@
             android:parentActivityName=".MainActivity"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- Dictionary lookup screen, launched from Settings → Debug (debug builds). -->
+        <activity
+            android:name=".ui.DictionaryLookupActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.PlayTranslate"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- Hotkeys sub-page (QS tile + hotkeys), launched from Settings → Configure. -->
         <activity
             android:name=".ui.HotkeysSettingsActivity"

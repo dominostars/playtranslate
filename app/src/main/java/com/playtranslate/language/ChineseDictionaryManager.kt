@@ -5,6 +5,8 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.util.Log
 import com.hankcs.hanlp.dictionary.CustomDictionary
+import com.playtranslate.dictionary.PREFIX_EXACT_BONUS
+import com.playtranslate.dictionary.prefixUpperBound
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.DictionaryResponse
 import com.playtranslate.model.Headword
@@ -107,6 +109,51 @@ class ChineseDictionaryManager private constructor(private val context: Context)
         val database = ensureOpen() ?: return@withContext null
         val ids = queryEntryIds(database, surface)
         if (ids.isNotEmpty()) buildResponse(database, ids, preferTraditional) else null
+    }
+
+    /**
+     * Ranked prefix-completion candidate words for a partial [query] — the
+     * dictionary-search path. Returns up to [limit] display headwords whose
+     * Simplified OR Traditional form begins with [query] (both scripts live in
+     * the `headword` table), ordered exact-match-first then by `freq_score`.
+     * Each result is a headword string that re-resolves via [lookup].
+     *
+     * Deduped to one entry per row, with the display form picked in the
+     * caller's preferred script ([preferTraditional]) exactly as [buildEntry]
+     * does — so a word never appears twice (once per script).
+     */
+    suspend fun searchPrefix(
+        query: String,
+        limit: Int = 20,
+        preferTraditional: Boolean = false,
+    ): List<String> = withContext(Dispatchers.IO) {
+        val q = query.trim()
+        if (q.isEmpty()) return@withContext emptyList()
+        val database = ensureOpen() ?: return@withContext emptyList()
+        val upper = prefixUpperBound(q) ?: return@withContext emptyList()
+        val ids = mutableListOf<Long>()
+        database.rawQuery(
+            "SELECT h.entry_id AS eid, " +
+                "MAX(e.freq_score + (CASE WHEN h.text = ? THEN $PREFIX_EXACT_BONUS ELSE 0 END)) AS s " +
+                "FROM headword h JOIN entry e ON e.id = h.entry_id " +
+                "WHERE h.text >= ? AND h.text < ? " +
+                "GROUP BY h.entry_id ORDER BY s DESC LIMIT ?",
+            arrayOf(q, q, upper, limit.toString()),
+        ).use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
+        ids.mapNotNull { id -> primaryHeadword(database, id, preferTraditional) }.distinct()
+    }
+
+    /** Display headword for [id] in the caller's preferred script. Mirrors
+     *  [buildEntry]'s script-order pick (position 0 = simplified,
+     *  position 1 = traditional; reversed when [preferTraditional]). */
+    private fun primaryHeadword(db: SQLiteDatabase, id: Long, preferTraditional: Boolean): String? {
+        val forms = mutableListOf<String>()
+        db.rawQuery(
+            "SELECT text FROM headword WHERE entry_id=? ORDER BY position",
+            arrayOf(id.toString()),
+        ).use { c -> while (c.moveToNext()) forms.add(c.getString(0)) }
+        if (forms.isEmpty()) return null
+        return if (preferTraditional && forms.size > 1) forms[1] else forms[0]
     }
 
     /**

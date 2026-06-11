@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.util.Log
+import com.playtranslate.dictionary.PREFIX_EXACT_BONUS
+import com.playtranslate.dictionary.prefixUpperBound
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.DictionaryResponse
 import com.playtranslate.model.Example
@@ -96,6 +98,35 @@ class WiktionaryDictionaryManager private constructor(
         }
 
         null
+    }
+
+    /**
+     * Ranked prefix-completion candidate lemmas for a partial [query] — the
+     * dictionary-search path. Returns up to [limit] distinct lemma surfaces
+     * whose `position = 0` headword begins with [query], ordered
+     * exact-match-first then by `freq_score`. Only position-0 rows participate:
+     * position-1 stems and position-2 `form_of` aliases are internal index
+     * entries that must not surface as user-visible words. Each result
+     * re-resolves via [lookup].
+     *
+     * [query] is lowered with the pack's [locale] to match the lowercased
+     * headwords (so Turkish `İ`/`I` fold the same way the pack built them).
+     */
+    suspend fun searchPrefix(query: String, limit: Int = 20): List<String> = withContext(Dispatchers.IO) {
+        val database = ensureOpen() ?: return@withContext emptyList()
+        val q = query.trim().lowercase(locale)
+        if (q.isEmpty()) return@withContext emptyList()
+        val upper = prefixUpperBound(q) ?: return@withContext emptyList()
+        val words = mutableListOf<String>()
+        database.rawQuery(
+            "SELECT h.text AS t, " +
+                "MAX(e.freq_score + (CASE WHEN h.text = ? THEN $PREFIX_EXACT_BONUS ELSE 0 END)) AS s " +
+                "FROM headword h JOIN entry e ON e.id = h.entry_id " +
+                "WHERE h.position = 0 AND h.text >= ? AND h.text < ? " +
+                "GROUP BY h.text ORDER BY s DESC LIMIT ?",
+            arrayOf(q, q, upper, limit.toString()),
+        ).use { c -> while (c.moveToNext()) words.add(c.getString(0)) }
+        words
     }
 
     fun close() {

@@ -89,6 +89,9 @@ class LatinEngine(
         result
     }
 
+    override suspend fun searchPrefix(query: String, limit: Int): List<TokenSpan> =
+        dict.searchPrefix(query, limit).map { TokenSpan(surface = it, lookupForm = it, reading = null) }
+
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? {
         val stem = stemOf(word)
         return dict.lookup(surface = word, stemmed = stem)

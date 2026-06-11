@@ -74,6 +74,24 @@ interface SourceLanguageEngine {
     /** Split text into dictionary-worthy tokens. */
     suspend fun tokenize(text: String): List<TokenSpan>
 
+    /**
+     * Ranked prefix-completion candidates for a partial [query] — the
+     * dictionary-search path used by the standalone lookup screen when the
+     * user has typed a single (possibly unfinished) word. Each result is a
+     * candidate [TokenSpan] whose [TokenSpan.lookupForm] (+ optional
+     * [TokenSpan.reading]) feeds straight back into [lookup] to materialize
+     * the full entry, so the search layer never duplicates entry-building.
+     *
+     * Ranking contract: an exact match on [query] sorts above pure-prefix
+     * matches; within each bucket, more frequent entries come first. Results
+     * are capped at [limit].
+     *
+     * Defaulted to empty so engines opt in; an engine without a prefix-search
+     * implementation simply returns no completions (the screen still works in
+     * its segmentation mode).
+     */
+    suspend fun searchPrefix(query: String, limit: Int = 20): List<TokenSpan> = emptyList()
+
     /** Full dictionary lookup. [reading] is a narrowing hint (JA hiragana). */
     suspend fun lookup(word: String, reading: String? = null): DictionaryResponse?
 

@@ -20,6 +20,16 @@ object Deinflector {
         }
     }
 
+    /** Convert hiragana to katakana \u2014 the inverse of [katakanaToHiragana].
+     *  Prefix search folds a query both ways before scanning the reading
+     *  table, because JMdict stores loanword readings in katakana (\u30C6\u30EC\u30D3)
+     *  while a user typically types hiragana (\u3066\u308C\u3073). */
+    fun hiraganaToKatakana(text: String): String = buildString {
+        for (c in text) {
+            if (c in '\u3041'..'\u3096') append(c + 0x60) else append(c)
+        }
+    }
+
     // ── Kana/kanji helpers ────────────────────────────────────────────────
 
     internal fun isKanji(c: Char) = c in '\u4E00'..'\u9FFF' || c in '\u3400'..'\u4DBF'

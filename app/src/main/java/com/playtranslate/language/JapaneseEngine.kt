@@ -70,6 +70,11 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
             TokenSpan(surface = it.surface, lookupForm = it.lookupForm, reading = it.reading)
         }
 
+    override suspend fun searchPrefix(query: String, limit: Int): List<TokenSpan> =
+        dict.searchPrefix(query, limit).map {
+            TokenSpan(surface = it.surface, lookupForm = it.lookupForm, reading = it.reading)
+        }
+
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? =
         dict.lookup(word, reading)
 

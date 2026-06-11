@@ -4,26 +4,14 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.playtranslate.Prefs
-import com.playtranslate.translation.ChineseScriptConverter
-import com.playtranslate.language.DefinitionGlossTranslators
-import com.playtranslate.language.DefinitionResolver
-import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.SourceLanguageEngines
-import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TokenSpan
-import com.playtranslate.language.TranslationManagerProvider
-import com.playtranslate.language.WordTranslator
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TextSegments
 import com.playtranslate.model.TranslationResult
-import com.playtranslate.model.headwordDisplay
-import com.playtranslate.model.headwordFor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -281,181 +269,19 @@ class TranslationResultViewModel : ViewModel() {
     }
 
     private suspend fun performLookups(appCtx: Context, text: String): LookupData {
+        // Snapshot source/target prefs ONCE, before tokenizing, so the whole
+        // lookup (tokenize + resolve) runs against one consistent language pair
+        // even if the user changes settings mid-flight (see [WordLookupContext]).
         val prefs = Prefs(appCtx)
         val engine = SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
-        val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, prefs.targetLang)
-        val mlKit = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
-        val resolver = DefinitionResolver(
-            engine, targetGlossDb,
-            mlKit?.let { WordTranslator(it::translate) }, prefs.targetLang,
-            DefinitionGlossTranslators.forTarget(prefs.targetLang),
-            ChineseScriptConverter.forTarget(prefs.targetLang, prefs.targetChineseVariant),
-        )
-
+        val context = WordLookupContext(engine, prefs.targetLang, prefs.targetChineseVariant)
         val allTokens = withContext(Dispatchers.IO) { engine.tokenize(text) }
-        // [allTokens] is already `List<TokenSpan>` — pass straight through
-        // for the fragment's wordSpan derivation against displayed text.
-
-        val seen = mutableSetOf<String>()
-        val uniqueTokens = allTokens.filter { seen.add(it.lookupForm) }
-        val tokens = uniqueTokens.map { it.lookupForm }
-
-        if (tokens.isEmpty()) {
-            return LookupData(
-                rows = emptyList(),
-                tokenSpans = allTokens,
-                lookupToReading = emptyMap(),
-                surfaces = emptyMap(),
-            )
-        }
-
-        val surfaceByToken = uniqueTokens.associate { it.lookupForm to it.surface }
-        val readingByToken = uniqueTokens.associate { it.lookupForm to it.reading }
-
-        // Fan out per-token lookups in parallel on IO. Per-row failures
-        // produce nulls that we filter out below — same shape as the
-        // pre-hoist code, just driven from VM scope so rotation
-        // doesn't kill the in-flight job.
-        data class Row(
-            val rowState: RowState,
-            val surfaceMapping: Pair<String, String>?,  // displayWord → surface, when they differ
-        )
-
-        val results: List<Row?> = withContext(Dispatchers.IO) {
-            coroutineScope {
-                tokens.map { word ->
-                    async {
-                        try {
-                            val defResult = resolver.lookup(word, readingByToken[word])
-                            val response = defResult?.response
-                            if (response == null || response.entries.isEmpty()) return@async null
-                            val entry = response.entries.first()
-                            val flatSenses = response.entries.flatMap { it.senses }
-                            val primary = entry.headwordFor(surfaceByToken[word])
-                                ?: entry.headwordFor(word)
-                                ?: entry.headwords.firstOrNull()
-                            // headwordDisplay swaps the kanji for the kana
-                            // on JMdict uk-tagged entries (e.g. なぜ over
-                            // 何故), suppressing the reading column since
-                            // it would just duplicate the headword — UNLESS
-                            // the source text actually showed the kanji
-                            // (surfaceByToken[word] matches a written form),
-                            // in which case we honor what the user saw.
-                            val display = entry.headwordDisplay(
-                                primary,
-                                surfaceByToken[word],
-                            )
-                            val displayWord = display.written
-                            val reading = display.reading ?: ""
-                            val freqScore = entry.freqScore
-
-                            val meaning = when (defResult) {
-                                is DefinitionResult.Native -> {
-                                    val targetSensesSorted = defResult.targetSenses.sortedBy { it.senseOrd }
-                                    val isTargetDriven = prefs.targetLang != "en" && targetSensesSorted.isNotEmpty()
-                                    if (isTargetDriven) {
-                                        targetSensesSorted.mapIndexed { i, target ->
-                                            val glosses = target.glosses.joinToString("; ")
-                                            if (targetSensesSorted.size > 1) "${i + 1}. $glosses" else glosses
-                                        }.joinToString("\n")
-                                    } else {
-                                        val targetByOrd = targetSensesSorted.associateBy { it.senseOrd }
-                                        flatSenses.mapIndexed { i, sense ->
-                                            val target = targetByOrd[i]
-                                            val glosses = target?.glosses?.joinToString("; ")
-                                                ?: sense.targetDefinitions.joinToString("; ")
-                                            if (flatSenses.size > 1) "${i + 1}. $glosses" else glosses
-                                        }.joinToString("\n")
-                                    }
-                                }
-                                is DefinitionResult.MachineTranslated -> {
-                                    val defs = defResult.translatedDefinitions
-                                    if (defs != null) {
-                                        flatSenses.mapIndexed { i, sense ->
-                                            val glosses = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
-                                            if (flatSenses.size > 1) "${i + 1}. $glosses" else glosses
-                                        }.joinToString("\n")
-                                    } else {
-                                        val translatedLine = defResult.translatedHeadword
-                                        val englishLines = flatSenses.mapIndexed { i, sense ->
-                                            val glosses = sense.targetDefinitions.joinToString("; ")
-                                            if (flatSenses.size > 1) "${i + 1}. $glosses" else glosses
-                                        }.joinToString("\n")
-                                        "$translatedLine\n$englishLines"
-                                    }
-                                }
-                                is DefinitionResult.EnglishFallback -> {
-                                    val defs = defResult.translatedDefinitions
-                                    flatSenses.mapIndexed { i, sense ->
-                                        val glosses = defs?.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
-                                            ?: sense.targetDefinitions.joinToString("; ")
-                                        if (flatSenses.size > 1) "${i + 1}. $glosses" else glosses
-                                    }.joinToString("\n")
-                                }
-                            }
-                            if (meaning.isEmpty()) return@async null
-                            // Structured senses for the cell's numbered, POS-
-                            // grouped definitions, built once via the shared
-                            // tier logic the lens popup also uses.
-                            val senses = buildSenseDisplays(defResult, response.entries, prefs.targetLang)
-                            val ankiPos = entry.senses.firstOrNull()?.partsOfSpeech
-                                ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
-                            val surface = surfaceByToken[word] ?: word
-                            Row(
-                                rowState = RowState(
-                                    displayWord = displayWord,
-                                    reading = reading,
-                                    meaning = meaning,
-                                    senses = senses,
-                                    freqScore = freqScore,
-                                    isCommon = entry.isCommon == true,
-                                    surface = surface,
-                                    ankiPos = ankiPos,
-                                ),
-                                surfaceMapping = if (surface != displayWord) {
-                                    displayWord to surface
-                                } else null,
-                            )
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (_: Exception) {
-                            null
-                        }
-                    }
-                }.awaitAll()
-            }
-        }
-
-        val resolvedRows = results.filterNotNull().map { it.rowState }
-        val surfaces = results.filterNotNull()
-            .mapNotNull { it.surfaceMapping }
-            .toMap()
-
-        val lookupToReading = mutableMapOf<String, String>()
-        results.forEachIndexed { idx, row ->
-            if (row != null && row.rowState.reading.isNotEmpty()) {
-                lookupToReading[tokens[idx]] = row.rowState.reading
-                val surface = surfaceByToken[tokens[idx]]
-                if (surface != null && surface != tokens[idx]) {
-                    lookupToReading[surface] = row.rowState.reading
-                }
-            }
-        }
-
-        return LookupData(
-            rows = resolvedRows,
-            tokenSpans = allTokens,
-            lookupToReading = lookupToReading,
-            surfaces = surfaces,
-        )
+        // Hand the per-occurrence tokens to the shared resolver; it owns the
+        // dedup → parallel-lookup → RowState pipeline (see [resolveWordRows]).
+        // tokenSpans round-trips back so the fragment can derive word spans
+        // against the displayed text.
+        return resolveWordRows(appCtx, context, allTokens)
     }
-
-    private data class LookupData(
-        val rows: List<RowState>,
-        val tokenSpans: List<TokenSpan>,
-        val lookupToReading: Map<String, String>,
-        val surfaces: Map<String, String>,
-    )
 }
 
 sealed class ResultState {

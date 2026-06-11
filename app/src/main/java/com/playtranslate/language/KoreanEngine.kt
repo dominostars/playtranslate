@@ -179,6 +179,14 @@ class KoreanEngine(private val appContext: Context) : SourceLanguageEngine {
         result
     }
 
+    override suspend fun searchPrefix(query: String, limit: Int): List<TokenSpan> {
+        // NFC-normalize so a query of decomposed jamo matches the pack's
+        // composed-syllable lemmas — same normalization [lookup] applies.
+        val normalized = Normalizer.normalize(query, Normalizer.Form.NFC)
+        return dict.searchPrefix(normalized, limit)
+            .map { TokenSpan(surface = it, lookupForm = it, reading = null) }
+    }
+
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? {
         // KOMORAN already produced the citation form upstream, so no stem
         // fallback is meaningful. WiktionaryDictionaryManager's stemmed=null

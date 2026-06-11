@@ -1082,6 +1082,18 @@ class SettingsRenderer(
         root.findViewById<View>(R.id.rowPaddleServerRec).isVisible = false
         root.findViewById<View>(R.id.rowPaddleDumpCrops).isVisible = false
 
+        // Dictionary lookup — standalone search screen (debug entry point)
+        val rowDictionary = root.findViewById<View>(R.id.rowDictionaryLookup)
+        rowDictionary.findViewById<TextView>(R.id.tvRowTitle).text =
+            ctx.getString(R.string.settings_debug_dictionary_title)
+        val btnDictionary = rowDictionary.findViewById<MaterialButton>(R.id.btnRowAction)
+        btnDictionary.text = ctx.getString(R.string.settings_debug_dictionary_button)
+        val openDictionary = View.OnClickListener {
+            ctx.startActivity(Intent(ctx, DictionaryLookupActivity::class.java))
+        }
+        btnDictionary.setOnClickListener(openDictionary)
+        rowDictionary.setOnClickListener(openDictionary)
+
         // Force crash
         val rowForceCrash = root.findViewById<View>(R.id.rowForceCrash)
         rowForceCrash.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.settings_debug_force_crash_title)

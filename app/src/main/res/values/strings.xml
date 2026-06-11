@@ -2265,6 +2265,36 @@
     <!-- Button on the force-crash row.  Dev-only. -->
     <string name="settings_debug_force_crash_button" translatable="false">Crash</string>
 
+    <!-- Row title in Settings → Debug; opens the standalone dictionary-lookup screen. -->
+    <string name="settings_debug_dictionary_title">Dictionary lookup</string>
+    <!-- Pill button on the dictionary-lookup debug row; opens the screen. -->
+    <string name="settings_debug_dictionary_button">Open</string>
+
+    <!-- Toolbar title of the dictionary-lookup screen. -->
+    <string name="dictionary_screen_title">Dictionary</string>
+    <!-- Placeholder text inside the dictionary-lookup search field when empty. -->
+    <string name="dictionary_search_hint">Search words</string>
+    <!-- Content description of the clear (X) icon button in the search field. -->
+    <string name="dictionary_clear_query">Clear</string>
+    <!-- Left of the dictionary-lookup status row, singular form (exactly one
+         result). %d = the number of results, always 1 here. -->
+    <string name="dictionary_entries_count_one"><xliff:g id="count" example="1">%d</xliff:g> entry</string>
+    <!-- Left of the dictionary-lookup status row, plural form (0 or 2+ results).
+         %d = the number of results (e.g. 4). -->
+    <string name="dictionary_entries_count_other"><xliff:g id="count" example="4">%d</xliff:g> entries</string>
+    <!-- Right of the dictionary-lookup status row: the source-to-target language
+         pair, rendered like «Japanese → English». %1$s = source language name,
+         %2$s = target language name. -->
+    <string name="dictionary_lang_pair"><xliff:g id="source" example="Japanese">%1$s</xliff:g> → <xliff:g id="target" example="English">%2$s</xliff:g></string>
+    <!-- Centered message in the dictionary-lookup results area while a lookup runs. -->
+    <string name="dictionary_status_looking_up">Looking up words…</string>
+    <!-- Centered message in the dictionary-lookup results area when a non-empty query has no matches. -->
+    <string name="dictionary_status_no_results">No results</string>
+    <!-- Centered message in the dictionary-lookup results area when the lookup itself failed (dictionary unavailable, pack error). -->
+    <string name="dictionary_status_error">Couldn\'t look that up</string>
+    <!-- Centered prompt in the dictionary-lookup results area when the search field is empty. -->
+    <string name="dictionary_status_idle">Type a word to look it up</string>
+
     <!-- Row title in Debug — share recent logs for a bug report. -->
     <string name="settings_debug_export_logs_title">Export logs</string>
 
