@@ -131,7 +131,6 @@
     <string name="word_anki_in_decks">Anki 덱 <xliff:g id="count" example="3">%1$d</xliff:g>개</string>
     <string name="word_anki_deck_badge_cd">이미 Anki에 있음: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
 
-    <string name="word_detail_stroke_abbr">획</string>
 
     <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
 

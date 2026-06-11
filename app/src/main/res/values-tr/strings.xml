@@ -131,7 +131,6 @@
 
     <string name="word_anki_deck_badge_cd">Anki\'de zaten var: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
 
-    <string name="word_detail_stroke_abbr">ÇİZ</string>
 
     <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
 

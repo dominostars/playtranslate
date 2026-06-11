@@ -130,7 +130,6 @@
     <string name="word_anki_in_decks"><xliff:g id="count" example="3">%1$d</xliff:g> mazos de Anki</string>
     <string name="word_anki_deck_badge_cd">Ya está en Anki: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
 
-    <string name="word_detail_stroke_abbr">TRZ</string>
 
     <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
 

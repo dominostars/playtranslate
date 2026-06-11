@@ -246,7 +246,6 @@
     <!-- Stroke-count abbreviation shown inside a small badge next to a
          kanji's numeric stroke count (e.g. "12 STR"). Short enough to fit
          a three-glyph pill. Japanese builds may prefer "画" (kaku). -->
-    <string name="word_detail_stroke_abbr">STR</string>
 
     <!-- Numbered definition row used in the word-lookup popup and in the
          drag-magnifier's definitions list. %1$d = the 1-based row number,

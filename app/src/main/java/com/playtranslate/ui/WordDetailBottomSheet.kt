@@ -1640,10 +1640,9 @@ class WordDetailBottomSheet : DialogFragment() {
     }
 
     /**
-     * Kanji / Hanzi row: 56dp surface tile holding the character, a
-     * flex meaning column with labelled readings and mono meta, and
-     * (JA only, when stroke count is known) a 36dp accent-tinted
-     * stroke pill on the right.
+     * Kanji / Hanzi row: 56dp surface tile holding the character and a
+     * flex meaning column with labelled readings and a mono meta line
+     * (JLPT / grade / strokes / imported frequency data).
      *
      * [meaningsRegistry] (when non-null) records the meanings [TextView]
      * by [index] so a background MT coroutine can swap its text once the
@@ -1772,46 +1771,7 @@ class WordDetailBottomSheet : DialogFragment() {
             })
         }
 
-        // Imported kanji-frequency chips — one per dictionary, in the
-        // Kanji Frequency section's order, matching the header's frequency
-        // chips (muted data chips, never accent).
-        if (detail is KanjiDetail && detail.frequencies.isNotEmpty()) {
-            val chipRow = FlowLayout(ctx).apply {
-                lineSpacingPx = dp(4)
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).also { it.topMargin = dp(4) }
-            }
-            detail.frequencies.forEach { tag ->
-                chipRow.addView(
-                    BadgeChips.freqChip(
-                        ctx,
-                        tag,
-                        textColor = ctx.themeColor(R.attr.ptTextMuted),
-                        background = AppCompatResources.getDrawable(ctx, R.drawable.bg_anki_meta_chip)
-                            ?: GradientDrawable(),
-                        textSizeSp = 11f,
-                        horizontalPadPx = dp(10),
-                        verticalPadPx = dp(3),
-                    ).apply {
-                        layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                        ).also { if (chipRow.childCount > 0) it.marginStart = dp(6) }
-                    }
-                )
-            }
-            col.addView(chipRow)
-        }
-
         row.addView(col)
-
-        // Stroke pill — JA only. We don't carry stroke counts for ZH so
-        // the pill is skipped for HanziDetail rows entirely.
-        if (detail is KanjiDetail && detail.strokeCount > 0) {
-            row.addView(buildStrokePill(detail.strokeCount))
-        }
 
         parent.addView(row)
     }
@@ -1834,6 +1794,10 @@ class WordDetailBottomSheet : DialogFragment() {
 
     private fun buildMetaLine(detail: CharacterDetail): String = when (detail) {
         is KanjiDetail -> buildList {
+            // Imported kanji-frequency data rides the same mono meta list,
+            // one segment per dictionary in the section's display order,
+            // ahead of the built-in JLPT/grade/strokes facts.
+            detail.frequencies.forEach { add("${it.source}: ${it.display}") }
             if (detail.jlpt > 0)       add("JLPT N${detail.jlpt}")
             if (detail.grade in 1..6)  add("Grade ${detail.grade}")
             else if (detail.grade == 8) add("Secondary")
@@ -1843,34 +1807,6 @@ class WordDetailBottomSheet : DialogFragment() {
             if (detail.isCommon) add("Common")
             if (detail.freqScore > 0) add("★".repeat(detail.freqScore))
         }.joinToString("  ·  ")
-    }
-
-    private fun buildStrokePill(strokeCount: Int): LinearLayout {
-        val ctx = requireContext()
-        val pill = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setBackgroundResource(R.drawable.bg_word_stroke_pill)
-            layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).also {
-                it.marginStart = dp(10)
-            }
-        }
-        pill.addView(TextView(ctx).apply {
-            text = String.format(Locale.getDefault(), "%d", strokeCount)
-            textSize = 13f
-            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-            setTextColor(ctx.themeColor(R.attr.ptAccent))
-            gravity = Gravity.CENTER
-        })
-        pill.addView(TextView(ctx).apply {
-            text = ctx.getString(R.string.word_detail_stroke_abbr)
-            textSize = 7f
-            letterSpacing = 0.12f
-            setTextColor(ctx.themeColor(R.attr.ptAccent))
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            gravity = Gravity.CENTER
-        })
-        return pill
     }
 
     private fun addNotFoundNotice(parent: LinearLayout, text: String) {
