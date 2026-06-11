@@ -47,6 +47,10 @@ data class YomitanDictionary(
     val categories: List<YomitanCategory>,
     val sizeBytes: Long,
     val importedAtMs: Long,
+    /** index.json sourceLanguage/targetLanguage (RFC 5646), when declared.
+     *  Null on older registry entries and dicts that omit them. */
+    val sourceLanguage: String? = null,
+    val targetLanguage: String? = null,
 )
 
 /**
@@ -203,7 +207,7 @@ object YomitanDictionaryStore {
                 return@withContext YomitanImportResult.InvalidFormat("Not a readable zip file")
             }
 
-            mutex.withLock {
+            val success = mutex.withLock {
                 val registry = readRegistry(ctx)
                     ?: return@withContext YomitanImportResult.IoError
                 registry.dictionaries.firstOrNull { it.title == parsed.title }?.let {
@@ -220,6 +224,8 @@ object YomitanDictionaryStore {
                     categories = parsed.categories,
                     sizeBytes = temp.length(),
                     importedAtMs = System.currentTimeMillis(),
+                    sourceLanguage = parsed.sourceLanguage,
+                    targetLanguage = parsed.targetLanguage,
                 )
 
                 try {
@@ -249,6 +255,11 @@ object YomitanDictionaryStore {
                 }
                 YomitanImportResult.Success(dictionary)
             }
+            // Outside the registry mutex: derive runtime data (e.g. pitch
+            // rows) so it's queryable before the first lookup. Failures are
+            // logged inside and retried by the data store's reconcile.
+            YomitanDataStore.onDictImported(ctx, success.dictionary)
+            success
         } finally {
             temp.delete()
         }
@@ -270,6 +281,7 @@ object YomitanDictionaryStore {
             )
             dictionaryDir(ctx, id).deleteRecursively()
         }
+        YomitanDataStore.onDictDeleted(ctx, id)
     }
 
     /** Replaces [category]'s priority order; other sections are untouched.
@@ -296,6 +308,8 @@ object YomitanDictionaryStore {
                     ),
                 )
             }
+            // Priority order feeds conflict resolution in the data store.
+            YomitanDataStore.invalidate()
         }
 
     // ── Validation ──────────────────────────────────────────────────────
@@ -315,6 +329,8 @@ object YomitanDictionaryStore {
         val author: String?,
         val format: Int,
         val categories: List<YomitanCategory>,
+        val sourceLanguage: String?,
+        val targetLanguage: String?,
     )
 
     /** index.json shape — extra fields ignored, [format]/[version] aliased. */
@@ -325,6 +341,8 @@ object YomitanDictionaryStore {
         val author: String? = null,
         val format: Int? = null,
         val version: Int? = null,
+        val sourceLanguage: String? = null,
+        val targetLanguage: String? = null,
     )
 
     private val TERM_BANK = Regex("""term_bank_\d+\.json""")
@@ -387,6 +405,8 @@ object YomitanDictionaryStore {
             author = index.author?.trim()?.takeIf { it.isNotEmpty() },
             format = format,
             categories = YomitanCategory.entries.filter { it in categories },
+            sourceLanguage = index.sourceLanguage?.trim()?.takeIf { it.isNotEmpty() },
+            targetLanguage = index.targetLanguage?.trim()?.takeIf { it.isNotEmpty() },
         )
     }
 

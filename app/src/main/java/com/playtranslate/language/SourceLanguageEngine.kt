@@ -28,6 +28,11 @@ data class HintTextAnnotation(
     val baseStart: Int,
     val baseEnd: Int,
     val hintText: String,
+    /** Pitch-accent downstep for the WORD this annotation covers — set only
+     *  when the annotation spans the whole, uninflected word (partial ruby
+     *  can't carry a word-level contour; lemma pitch on inflected forms
+     *  would be wrong). Renderers without pitch support ignore it. */
+    val pitchDownstep: Int? = null,
 )
 
 /**

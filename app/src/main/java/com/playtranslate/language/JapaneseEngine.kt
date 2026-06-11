@@ -6,6 +6,7 @@ import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.dictionary.SudachiJapaneseTokenizer
 import com.playtranslate.model.CharacterDetail
 import com.playtranslate.model.DictionaryResponse
+import com.playtranslate.yomitan.YomitanDataStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -76,18 +77,62 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
         }
 
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? =
-        dict.lookup(word, reading)
+        dict.lookup(word, reading)?.let { enrichWithPitch(it) }
+
+    /** Attaches pitch-accent downsteps from imported Yomitan pitch
+     *  dictionaries to each headword — one batched query per lookup. The
+     *  facade gates on "any pitch dictionary installed", so this is a
+     *  no-op map lookup for everyone else. */
+    private suspend fun enrichWithPitch(response: DictionaryResponse): DictionaryResponse {
+        val pairs = response.entries
+            .flatMap { it.headwords }
+            .mapNotNull { hw ->
+                val term = hw.written ?: hw.reading ?: return@mapNotNull null
+                term to (hw.reading ?: term)
+            }
+            .distinct()
+        val pitch = YomitanDataStore.pitchFor(appContext, pairs)
+        if (pitch.isEmpty()) return response
+        return response.copy(
+            entries = response.entries.map { entry ->
+                entry.copy(
+                    headwords = entry.headwords.map { hw ->
+                        val term = hw.written ?: hw.reading
+                        val downsteps = term?.let { pitch[it to (hw.reading ?: it)] }
+                        if (downsteps.isNullOrEmpty()) hw else hw.copy(pitch = downsteps)
+                    },
+                )
+            },
+        )
+    }
 
     override suspend fun lookupCharacter(literal: Char, targetLang: String): CharacterDetail? =
         dict.lookupKanji(literal, targetLang)
 
     override suspend fun annotateForHintText(text: String): List<HintTextAnnotation> =
         withContext(Dispatchers.Default) {
-            dict.tokenizeForFurigana(text).map {
+            val tokens = dict.tokenizeForFurigana(text)
+            // Pitch only on whole-word, uninflected ruby: partial ruby can't
+            // carry a word contour, and lemma pitch on inflected forms is
+            // linguistically wrong (verb/adjective accent shifts).
+            val eligible = tokens
+                .filter { it.coversWholeSurface && it.surface == it.dictionaryForm }
+                .map { it.surface to it.reading }
+                .distinct()
+            val pitch =
+                if (eligible.isEmpty()) emptyMap()
+                else YomitanDataStore.pitchFor(appContext, eligible)
+            tokens.map {
                 HintTextAnnotation(
                     baseStart = it.startOffset,
                     baseEnd = it.endOffset,
                     hintText = it.reading,
+                    pitchDownstep =
+                        if (it.coversWholeSurface && it.surface == it.dictionaryForm) {
+                            pitch[it.surface to it.reading]?.firstOrNull()
+                        } else {
+                            null
+                        },
                 )
             }
         }

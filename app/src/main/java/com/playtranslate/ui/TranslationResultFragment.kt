@@ -401,7 +401,7 @@ class TranslationResultFragment : Fragment() {
                 for (ann in annotations) {
                     if (ann.baseEnd > plainText.length) continue
                     spannable.setSpan(
-                        FuriganaSpan(ann.hintText),
+                        FuriganaSpan(ann.hintText, ann.pitchDownstep),
                         ann.baseStart, ann.baseEnd,
                         android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
                     )
@@ -1280,6 +1280,7 @@ class TranslationResultFragment : Fragment() {
             freqScore = rowState.freqScore,
             isCommon = rowState.isCommon,
             ankiDecks = ankiDecksByWord[rowState.displayWord].orEmpty(),
+            pitch = rowState.pitch,
         )
         cell.bind(
             data = data,

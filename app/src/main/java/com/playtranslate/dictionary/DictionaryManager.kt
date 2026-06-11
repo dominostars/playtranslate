@@ -51,7 +51,15 @@ data class FuriganaToken(
     /** Character offset of [kanjiSurface] within the original input text. */
     val startOffset: Int,
     /** Character end offset (exclusive) of [kanjiSurface] within the original input text. */
-    val endOffset: Int
+    val endOffset: Int,
+    /** The FULL token surface this part came from (e.g. "聞いた" for "聞"). */
+    val surface: String = "",
+    /** Sudachi's dictionary form for the token ("聞く" for "聞いた"). */
+    val dictionaryForm: String = "",
+    /** True when this annotation IS the whole token — single furigana part
+     *  spanning the entire surface. Word-level decorations (pitch accent)
+     *  only make sense then: partial ruby can't carry a word contour. */
+    val coversWholeSurface: Boolean = false,
 )
 
 /**
@@ -275,6 +283,9 @@ class DictionaryManager private constructor(private val context: Context) {
                         reading = part.reading,
                         startOffset = tok.begin + partOffset,
                         endOffset = tok.begin + partOffset + part.text.length,
+                        surface = tok.surface,
+                        dictionaryForm = tok.dictionaryForm,
+                        coversWholeSurface = parts.size == 1 && part.text == tok.surface,
                     )
                 }
                 partOffset += part.text.length

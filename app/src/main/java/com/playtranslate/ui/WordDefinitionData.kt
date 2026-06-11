@@ -19,6 +19,9 @@ data class WordDefinitionData(
     /** Names of Anki decks already containing this word; renders a passive
      *  deck pill in the meta row when non-empty. */
     val ankiDecks: List<String> = emptyList(),
+    /** Pitch-accent downstep variants for [reading], empty when unknown.
+     *  [WordResultCell] draws the contour over its reading when non-empty. */
+    val pitch: List<Int> = emptyList(),
 )
 
 /** A single rendered sense: its part(s) of speech and the gloss text. */

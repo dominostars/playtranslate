@@ -28,6 +28,7 @@ import androidx.appcompat.content.res.AppCompatResources
 import kotlinx.coroutines.flow.drop
 import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
+import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
@@ -937,9 +938,22 @@ class WordDetailBottomSheet : DialogFragment() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
-        if (reading != null) {
+        // Pitch renders on the reading when there is one; kana-only collapsed
+        // entries (なぜ — reading suppressed because the kana IS the headword)
+        // still get their contour by re-using the written kana here.
+        val pitch = display.pitch
+        val pitchKana = reading
+            ?: written.takeIf { pitch.isNotEmpty() && written.all(Deinflector::isKana) }
+        if (pitchKana != null) {
             readingRow.addView(TextView(ctx).apply {
-                text = reading
+                if (pitch.isNotEmpty()) {
+                    text = buildPitchAnnotatedReading(pitchKana, pitch)
+                    // Headroom for the overline band — PitchAccentSpan leaves
+                    // FontMetrics alone by contract.
+                    setPadding(0, dp(8), 0, 0)
+                } else {
+                    text = pitchKana
+                }
                 textSize = 18f
                 setTextColor(ctx.themeColor(R.attr.ptTextMuted))
                 layoutParams = LinearLayout.LayoutParams(
@@ -955,7 +969,7 @@ class WordDetailBottomSheet : DialogFragment() {
             buildSpeakChip(
                 ttsTextForWord(written, reading, sourceLangId),
                 sourceLangId,
-                leading = reading == null,
+                leading = pitchKana == null,
             )
         )
         block.addView(readingRow)

@@ -8,12 +8,21 @@ import android.text.style.ReplacementSpan
  * Inline furigana (ruby text) span. Draws the original kanji at the baseline
  * and the reading above it in a smaller font. Adjusts line metrics so the
  * line is tall enough to fit the furigana without clipping.
+ *
+ * When [pitchDownstep] is set (whole-word, uninflected tokens only — see
+ * [com.playtranslate.language.HintTextAnnotation.pitchDownstep]), the word's
+ * pitch contour is drawn above the ruby and the line reserves a little more
+ * headroom for it.
  */
-class FuriganaSpan(private val reading: String) : ReplacementSpan() {
+class FuriganaSpan(
+    private val reading: String,
+    private val pitchDownstep: Int? = null,
+) : ReplacementSpan() {
 
     private companion object {
         const val FURIGANA_SCALE = 0.5f
         const val FURIGANA_GAP = 0.15f // fraction of furigana size, gap between reading and kanji
+        const val PITCH_BAND = 0.35f // extra fraction reserved above the ruby for the contour
     }
 
     override fun getSize(
@@ -26,7 +35,8 @@ class FuriganaSpan(private val reading: String) : ReplacementSpan() {
 
         if (fm != null) {
             paint.getFontMetricsInt(fm)
-            val furiganaHeight = (furiganaSize * (1f + FURIGANA_GAP)).toInt()
+            val band = 1f + FURIGANA_GAP + if (pitchDownstep != null) PITCH_BAND else 0f
+            val furiganaHeight = (furiganaSize * band).toInt()
             fm.ascent -= furiganaHeight
             fm.top -= furiganaHeight
         }
@@ -54,5 +64,9 @@ class FuriganaSpan(private val reading: String) : ReplacementSpan() {
         val gap = furiganaSize * FURIGANA_GAP
         val furiganaY = y.toFloat() + paint.fontMetrics.ascent - gap - furiganaPaint.fontMetrics.descent
         canvas.drawText(reading, readingX, furiganaY, furiganaPaint)
+
+        if (pitchDownstep != null) {
+            drawPitchContour(canvas, reading, readingX, furiganaY, furiganaPaint, pitchDownstep)
+        }
     }
 }

@@ -148,7 +148,18 @@ class WordResultCell @JvmOverloads constructor(
         boundScale = scale
         wordView.text = data.word
         wordView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 27f * scale)
-        readingView.text = data.reading ?: ""
+        if (!data.reading.isNullOrEmpty() && data.pitch.isNotEmpty()) {
+            // Pitch contour over the reading. Layout-stability contract: the
+            // span leaves FontMetrics alone and the overline band lives in
+            // this top padding, which baseline alignment extends UPWARD into
+            // the dead space under wordView's taller line — row height,
+            // baseline, and visibility logic all stay untouched.
+            readingView.text = buildPitchAnnotatedReading(data.reading, data.pitch)
+            readingView.setPadding(0, dp(8f * scale), 0, 0)
+        } else {
+            readingView.text = data.reading ?: ""
+            readingView.setPadding(0, 0, 0, 0)
+        }
         readingView.isGone = data.reading.isNullOrEmpty()
         readingView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f * scale)
         definitionsView.bind(data, label = null, scale = scale)

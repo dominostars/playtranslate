@@ -200,6 +200,7 @@ suspend fun resolveWordRows(
                                 isCommon = entry.isCommon == true,
                                 surface = surface,
                                 ankiPos = ankiPos,
+                                pitch = display.pitch,
                             ),
                             surfaceMapping = if (surface != displayWord) {
                                 displayWord to surface

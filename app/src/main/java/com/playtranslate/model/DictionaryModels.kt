@@ -43,6 +43,11 @@ data class Headword(
     val written: String?,
     val reading: String?,
     val hasPriority: Boolean = false,
+    /** Pitch-accent downstep variants for this written↔reading pair, in
+     *  source order (first = primary). Empty when no pitch dictionary is
+     *  installed or the pair has no data; populated post-lookup by the JA
+     *  engine's enrichment pass. */
+    val pitch: List<Int> = emptyList(),
 )
 
 data class Sense(
@@ -174,7 +179,14 @@ val DictionaryEntry.isKanaOnly: Boolean
  * [reading] is null (since duplicating it on the muted reading line would
  * just repeat the headword).
  */
-data class HeadwordDisplay(val written: String, val reading: String?)
+data class HeadwordDisplay(
+    val written: String,
+    val reading: String?,
+    /** Pitch downsteps carried from the chosen [Headword] — survives the
+     *  kana-only collapse (where the kana is promoted into [written] and
+     *  [reading] is nulled) so pitch renderers still fire. */
+    val pitch: List<Int> = emptyList(),
+)
 
 /**
  * [surface] is the text the user actually saw — the OCR'd / clicked
@@ -197,17 +209,19 @@ fun DictionaryEntry.headwordDisplay(
         } == true
     }
     if (isKanaOnly && !surfaceIsKanji) {
-        val kana = form?.reading?.takeIf { it.isNotBlank() }
-            ?: headwords.firstNotNullOfOrNull { hw ->
-                hw.reading?.takeIf { it.isNotBlank() }
-            }
-        if (kana != null) return HeadwordDisplay(written = kana, reading = null)
+        // Track which headword supplied the kana so its pitch rides along.
+        val kanaHw = form?.takeIf { it.reading?.isNotBlank() == true }
+            ?: headwords.firstOrNull { it.reading?.isNotBlank() == true }
+        val kana = kanaHw?.reading
+        if (kana != null) {
+            return HeadwordDisplay(written = kana, reading = null, pitch = kanaHw.pitch)
+        }
     }
     val written = form?.written?.takeIf { it.isNotBlank() }
         ?: form?.reading?.takeIf { it.isNotBlank() }
         ?: slug
     val reading = form?.reading?.takeIf { it.isNotBlank() && it != written }
-    return HeadwordDisplay(written = written, reading = reading)
+    return HeadwordDisplay(written = written, reading = reading, pitch = form?.pitch ?: emptyList())
 }
 
 fun DictionaryEntry.headwordDisplay(queriedWord: String? = null): HeadwordDisplay =

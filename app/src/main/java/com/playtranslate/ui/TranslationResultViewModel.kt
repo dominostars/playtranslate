@@ -333,6 +333,9 @@ data class RowState(
     /** Promoted part-of-speech for the word's Anki card (first sense's POS),
      *  so the cell can build the card without re-resolving the entry. */
     val ankiPos: String = "",
+    /** Pitch-accent downstep variants for the displayed headword (empty
+     *  when unknown); rides from HeadwordDisplay into the word cell. */
+    val pitch: List<Int> = emptyList(),
 )
 
 /** Convert the row list into the legacy `Map<String, Triple<...>>`
