@@ -62,7 +62,10 @@ class WordResultCell @JvmOverloads constructor(
 
     init {
         orientation = VERTICAL
-        setPadding(dp(16f), dp(14f), dp(16f), dp(14f))
+        // Right padding is only 4dp so the action row's rightmost slot lands on
+        // the same column as each section header's rightmost button (which sits
+        // 4dp in from the card edge). The body restores its 16dp inset below.
+        setPadding(dp(16f), dp(14f), dp(4f), dp(14f))
         background = themedDrawable(android.R.attr.selectableItemBackground)
         isClickable = true
         isFocusable = true
@@ -86,36 +89,48 @@ class WordResultCell @JvmOverloads constructor(
         )
         headRow.addView(titleGroup, LayoutParams(0, WRAP_CONTENT, 1f))
 
-        // Read-aloud button: icon swapped for a spinner while speaking.
+        // Action cluster: fixed 36dp-wide slots with 16dp gaps, right-aligned
+        // and ending at the cell's 4dp right padding — matching the
+        // Translation / Source section header buttons (36dp, 16dp gaps, 4dp in)
+        // so the three rows share the same horizontal columns.
         speakIcon = iconView(R.drawable.ic_lens_speak, mutedColor)
         speakSpinner = ProgressBar(context).apply {
             isIndeterminate = true
             indeterminateTintList = ColorStateList.valueOf(accentColor)
             isVisible = false
         }
-        speakButton = actionFrame().apply {
+        speakButton = actionSlot(clickable = true, marginStartDp = 0f).apply {
             addView(speakIcon, centerParams(22f))
             addView(speakSpinner, centerParams(20f))
         }
         headRow.addView(speakButton)
 
         // Add-to-Anki button — always plain.
-        ankiButton = actionFrame().apply {
+        ankiButton = actionSlot(clickable = true, marginStartDp = 16f).apply {
             addView(iconView(R.drawable.ic_card_stack, mutedColor), centerParams(22f))
         }
         headRow.addView(ankiButton)
 
-        // Chevron: a non-interactive "opens detail" affordance.
-        val chevron = iconView(R.drawable.ic_chevron_right, hintColor).apply {
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        // Chevron: a non-interactive "opens detail" affordance, in its own slot
+        // so it aligns with each section's rightmost header button.
+        val chevron = actionSlot(clickable = false, marginStartDp = 16f).apply {
+            addView(
+                iconView(R.drawable.ic_chevron_right, hintColor).apply {
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                },
+                centerParams(22f),
+            )
         }
-        headRow.addView(
-            chevron,
-            LayoutParams(dp(22f), dp(22f)).apply { marginStart = dp(2f) },
-        )
+        headRow.addView(chevron)
 
         addView(headRow, LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-        addView(definitionsView, LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        // Body keeps a 16dp right inset (4dp cell padding + 12dp) so its text
+        // wraps in line with the Translation / Source cards, while the action
+        // row above reaches the 4dp button column.
+        addView(
+            definitionsView,
+            LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { marginEnd = dp(12f) },
+        )
     }
 
     /**
@@ -166,12 +181,14 @@ class WordResultCell @JvmOverloads constructor(
             setColorFilter(tint)
         }
 
-    private fun actionFrame(): FrameLayout =
+    private fun actionSlot(clickable: Boolean, marginStartDp: Float): FrameLayout =
         FrameLayout(context).apply {
-            layoutParams = LayoutParams(dp(40f), dp(40f))
-            isClickable = true
-            isFocusable = true
-            background = themedDrawable(android.R.attr.selectableItemBackgroundBorderless)
+            layoutParams = LayoutParams(dp(36f), dp(40f)).apply { marginStart = dp(marginStartDp) }
+            if (clickable) {
+                isClickable = true
+                isFocusable = true
+                background = themedDrawable(android.R.attr.selectableItemBackgroundBorderless)
+            }
         }
 
     private fun centerParams(sizeDp: Float): FrameLayout.LayoutParams =
