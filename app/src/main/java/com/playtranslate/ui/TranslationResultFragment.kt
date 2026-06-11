@@ -494,6 +494,10 @@ class TranslationResultFragment : Fragment() {
         const val TEXT_SIZE_MAX_SP = 24f
         const val TEXT_SIZE_MIN_SP = 16f
         const val WORD_DIVIDER_TAG = "pt_word_divider"
+        /** Word-cell text-size factor for the results list — a notch below
+         *  [WordResultCell.DEFAULT_SCALE] (the "large" factor reserved for the
+         *  full-screen dictionary results page) so the rows read denser here. */
+        const val WORD_CELL_SCALE = 1.0f
     }
 
     /** 1dp ptDivider line inset from the start by pt_row_h_padding, matching
@@ -1266,7 +1270,7 @@ class TranslationResultFragment : Fragment() {
         )
         cell.bind(
             data = data,
-            scale = WordResultCell.DEFAULT_SCALE,
+            scale = WORD_CELL_SCALE,
             onCellTap = {
                 host?.onInteraction()
                 val ready = (vm.result.value as? ResultState.Ready)?.result
