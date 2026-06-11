@@ -268,6 +268,7 @@ class SettingsRenderer(
         setupLanguageSection()
         setupOnScreenControls()
         setupConfigureSection()
+        setupToolsSection()
         setupSupportSection()
         setupDebugSection()
         setupFooter()
@@ -861,6 +862,24 @@ class SettingsRenderer(
         sb.setSpan(OffsetImageSpan(drawable, dy), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
 
+    // ── Tools ────────────────────────────────────────────────────────────
+
+    /** TOOLS: a single static hub cell opening the dictionary lookup screen.
+     *  Bound once at setup — there's no VM-driven digest like CONFIGURE has. */
+    private fun setupToolsSection() {
+        setGroupHeader(R.id.headerTools, ctx.getString(R.string.settings_header_tools))
+        bindHubCell(
+            root.findViewById(R.id.rowToolDictionary),
+            HubCell(
+                iconRes = R.drawable.ic_dictionary,
+                title = ctx.getString(R.string.settings_cell_dictionary),
+                summary = ctx.getString(R.string.settings_cell_dictionary_summary),
+                isLast = true,
+                onClick = { ctx.startActivity(Intent(ctx, DictionaryLookupActivity::class.java)) },
+            ),
+        )
+    }
+
     // ── Support ──────────────────────────────────────────────────────────
 
     private fun setupSupportSection() {
@@ -1081,18 +1100,6 @@ class SettingsRenderer(
         root.findViewById<View>(R.id.rowUsePaddleOcr).isVisible = false
         root.findViewById<View>(R.id.rowPaddleServerRec).isVisible = false
         root.findViewById<View>(R.id.rowPaddleDumpCrops).isVisible = false
-
-        // Dictionary lookup — standalone search screen (debug entry point)
-        val rowDictionary = root.findViewById<View>(R.id.rowDictionaryLookup)
-        rowDictionary.findViewById<TextView>(R.id.tvRowTitle).text =
-            ctx.getString(R.string.settings_debug_dictionary_title)
-        val btnDictionary = rowDictionary.findViewById<MaterialButton>(R.id.btnRowAction)
-        btnDictionary.text = ctx.getString(R.string.settings_debug_dictionary_button)
-        val openDictionary = View.OnClickListener {
-            ctx.startActivity(Intent(ctx, DictionaryLookupActivity::class.java))
-        }
-        btnDictionary.setOnClickListener(openDictionary)
-        rowDictionary.setOnClickListener(openDictionary)
 
         // Force crash
         val rowForceCrash = root.findViewById<View>(R.id.rowForceCrash)

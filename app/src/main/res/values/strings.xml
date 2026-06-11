@@ -1998,6 +1998,13 @@
     <string name="settings_cell_translation_services">Translation services</string>
     <string name="settings_cell_tts">Text-to-speech</string>
 
+    <!-- TOOLS — standalone utilities reachable from settings. -->
+    <string name="settings_header_tools">Tools</string>
+    <!-- Title of the Tools hub cell that opens the dictionary lookup screen. -->
+    <string name="settings_cell_dictionary">Dictionary</string>
+    <!-- Summary line under the Dictionary hub cell title in settings. -->
+    <string name="settings_cell_dictionary_summary">Look up word definitions</string>
+
     <!-- Hub-cell status digests (the summary line under each cell title). -->
     <string name="settings_digest_none">None</string>
     <!-- Capture cell digest: shown when 2+ displays are selected
@@ -2264,11 +2271,6 @@
 
     <!-- Button on the force-crash row.  Dev-only. -->
     <string name="settings_debug_force_crash_button" translatable="false">Crash</string>
-
-    <!-- Row title in Settings → Debug; opens the standalone dictionary-lookup screen. -->
-    <string name="settings_debug_dictionary_title">Dictionary lookup</string>
-    <!-- Pill button on the dictionary-lookup debug row; opens the screen. -->
-    <string name="settings_debug_dictionary_button">Open</string>
 
     <!-- Toolbar title of the dictionary-lookup screen. -->
     <string name="dictionary_screen_title">Dictionary</string>
