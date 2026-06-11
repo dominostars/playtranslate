@@ -17,16 +17,24 @@ import kotlin.math.max
  * on the particle) while heiban end with a bare overline — that final hook
  * is what visually separates them; the `[n]` suffix carries it in text form.
  *
- * Deliberately leaves FontMetrics untouched (unlike [FuriganaSpan]) so host
- * rows don't reflow: hosts grant the overline headroom via `topPadding`
- * instead. See WordResultCell for the layout-stability contract.
+ * Reports the paint's own FontMetrics unchanged (unlike [FuriganaSpan],
+ * which reserves extra ascent) so host rows don't reflow: hosts grant the
+ * overline headroom via padding instead. See WordResultCell for the
+ * layout-stability contract.
  */
 class PitchAccentSpan(private val downstep: Int) : ReplacementSpan() {
 
     override fun getSize(
         paint: Paint, text: CharSequence, start: Int, end: Int, fm: Paint.FontMetricsInt?
     ): Int {
-        // fm untouched on purpose — see class doc.
+        // ReplacementSpan contract: the layout uses whatever this leaves in
+        // [fm] as the run's line metrics — leaving it UNTOUCHED means stale
+        // garbage from the previous measurement, not "inherit". Fill it with
+        // the paint's own metrics, adding nothing: line metrics match plain
+        // text by construction (the layout-stability contract), and the
+        // baseline stays put so the contour lands in the host's padding
+        // band instead of being clipped above a mis-raised line.
+        fm?.let { paint.getFontMetricsInt(it) }
         return ceil(paint.measureText(text, start, end)).toInt()
     }
 

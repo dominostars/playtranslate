@@ -32,6 +32,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.graphics.drawable.DrawableCompat
+import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.Prefs
 import com.playtranslate.R
@@ -1027,6 +1028,7 @@ class MagnifierLens(
          *  drives the width animation. */
         private var pillWord: String = ""
         private var pillReading: String = ""
+        private var pillPitch: List<Int> = emptyList()
         private var pillAnimator: ValueAnimator? = null
         /** Decorates the Placeholder pill: when true, the magnifying-glass
          *  icon + "Find a word" prompt are hidden and
@@ -1035,15 +1037,32 @@ class MagnifierLens(
          *  of the drag-start OCR job. Word state ignores the flag. */
         private var pillLoading: Boolean = false
 
-        fun setLabel(word: String?, reading: String?) {
+        fun setLabel(word: String?, reading: String?, pitch: List<Int>? = null) {
             val w = word?.takeIf { it.isNotEmpty() }
             val r = reading?.takeIf { it.isNotEmpty() }
+            // pitch == null → the caller doesn't KNOW (drag tracking, the
+            // loading skin, deck refreshes): preserve the accent the last
+            // definitions lookup established while the word is unchanged,
+            // reset on word change. A non-null list (definitions paths) is
+            // authoritative — including empty, which clears. Without this,
+            // interleaved tracking/loading calls strip the accent whenever
+            // they happen to land after setDefinitions.
+            val knownPitch = pitch ?: if (w.orEmpty() == pillWord) pillPitch else emptyList()
+            // Kana-only words have no separate reading (the kana IS the
+            // word); reuse it in the reading slot so the accent contour has
+            // a home — mirrors WordResultCell. The all-kana guard is
+            // load-bearing: the contour maps morae onto whatever string it
+            // draws over, so it must never cover kanji.
+            val pitchKana = r ?: w?.takeIf { knownPitch.isNotEmpty() && it.all(Deinflector::isKana) }
+            val newPitch = if (pitchKana != null) knownPitch else emptyList()
             val newState = if (w == null) PillState.Placeholder else PillState.Word
             val newWord = w.orEmpty()
-            val newReading = r.orEmpty()
-            val showReading = r != null && newState == PillState.Word
+            val newReading = pitchKana.orEmpty()
+            val showReading = pitchKana != null && newState == PillState.Word
 
-            if (newState == pillState && newWord == pillWord && newReading == pillReading) {
+            if (newState == pillState && newWord == pillWord && newReading == pillReading &&
+                newPitch == pillPitch
+            ) {
                 return
             }
 
@@ -1051,13 +1070,30 @@ class MagnifierLens(
             pillState = newState
             pillWord = newWord
             pillReading = newReading
+            pillPitch = newPitch
 
             // Push the new content into the views before measuring the
             // pill's natural width — the new word's text width is what
             // we're animating toward.
             pillWordView.text = newWord
-            pillReadingView.text = newReading
-            fitPillReadingSize(newWord, newReading)
+            if (newPitch.isEmpty()) {
+                pillReadingView.text = newReading
+                fitPillReadingSize(newWord, newReading)
+                pillReadingView.setPadding(0, 0, 0, 0)
+            } else {
+                pillReadingView.text = buildPitchAnnotatedReading(newReading, newPitch)
+                // Fit against reading + suffix; the suffix is measured at
+                // full size though it renders at 0.75× — erring roomy.
+                fitPillReadingSize(
+                    newWord,
+                    newReading + " " + newPitch.joinToString("·") { "[$it]" },
+                )
+                // Symmetric padding: headroom for the overline above,
+                // mirrored below so the glyphs stay centered in the fixed-
+                // height pill. Scales with the post-fit text size.
+                val pad = (pillReadingView.textSize * 0.30f).toInt()
+                pillReadingView.setPadding(0, pad, 0, pad)
+            }
 
             if (prevState == PillState.None) {
                 // First state assignment after show()/teardown rebuild —
@@ -1179,7 +1215,7 @@ class MagnifierLens(
                 return
             }
             mode = Mode.DEFINITIONS
-            setLabel(data.word, data.reading)
+            setLabel(data.word, data.reading, data.pitch)
             definitionsContent.bind(data, label, LENS_DEFINITIONS_SCALE)
             definitionsScroll.scrollTo(0, 0)
             definitionsScroll.visibility = VISIBLE

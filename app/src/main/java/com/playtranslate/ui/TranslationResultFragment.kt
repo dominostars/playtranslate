@@ -856,6 +856,7 @@ class TranslationResultFragment : Fragment() {
                 val popupLabel: String?
                 val freqScore: Int
                 val isCommon: Boolean
+                val popupPitch: List<Int>
                 when {
                     entry != null && defResult is DefinitionResult.MachineTranslated -> {
                         val display = entry.headwordDisplay(lookupForm)
@@ -864,6 +865,7 @@ class TranslationResultFragment : Fragment() {
                         popupLabel = "⚠ Machine translated"
                         freqScore = entry.freqScore
                         isCommon = entry.isCommon == true
+                        popupPitch = display.pitch
                     }
                     entry != null && defResult is DefinitionResult.EnglishFallback && defResult.translatedDefinitions != null -> {
                         val display = entry.headwordDisplay(lookupForm)
@@ -872,6 +874,7 @@ class TranslationResultFragment : Fragment() {
                         popupLabel = "⚠ Machine translated"
                         freqScore = entry.freqScore
                         isCommon = entry.isCommon == true
+                        popupPitch = display.pitch
                     }
                     entry != null -> {
                         val display = entry.headwordDisplay(lookupForm)
@@ -880,6 +883,7 @@ class TranslationResultFragment : Fragment() {
                         popupLabel = null
                         freqScore = entry.freqScore
                         isCommon = entry.isCommon == true
+                        popupPitch = display.pitch
                     }
                     reading.isNotEmpty() -> {
                         word = lookupForm
@@ -887,6 +891,7 @@ class TranslationResultFragment : Fragment() {
                         popupLabel = null
                         freqScore = 0
                         isCommon = false
+                        popupPitch = emptyList()
                     }
                     else -> return@launch
                 }
@@ -929,6 +934,7 @@ class TranslationResultFragment : Fragment() {
                     senses = senses,
                     freqScore = freqScore,
                     isCommon = isCommon,
+                    pitch = popupPitch,
                 )
                 wordLens = MagnifierLens(
                     activity,

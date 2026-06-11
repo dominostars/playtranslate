@@ -1167,7 +1167,8 @@ class DragLookupController(
                     senses = senses,
                     freqScore = entry.freqScore,
                     isCommon = entry.isCommon == true,
-                    entry = entry
+                    entry = entry,
+                    pitch = display.pitch,
                 )
             }
             entry != null && defResult is DefinitionResult.MachineTranslated -> {
@@ -1199,7 +1200,8 @@ class DragLookupController(
                     freqScore = entry.freqScore,
                     isCommon = entry.isCommon == true,
                     entry = entry,
-                    machineTranslated = true
+                    machineTranslated = true,
+                    pitch = display.pitch,
                 )
             }
             entry != null && defResult is DefinitionResult.EnglishFallback && defResult.translatedDefinitions != null -> {
@@ -1218,7 +1220,8 @@ class DragLookupController(
                     freqScore = entry.freqScore,
                     isCommon = entry.isCommon == true,
                     entry = entry,
-                    machineTranslated = true
+                    machineTranslated = true,
+                    pitch = display.pitch,
                 )
             }
             entry != null -> {
@@ -1235,7 +1238,8 @@ class DragLookupController(
                     },
                     freqScore = entry.freqScore,
                     isCommon = entry.isCommon == true,
-                    entry = entry
+                    entry = entry,
+                    pitch = display.pitch,
                 )
             }
             !reading.isNullOrEmpty() -> {
@@ -1285,6 +1289,7 @@ class DragLookupController(
             senses = senses,
             freqScore = freqScore,
             isCommon = isCommon,
+            pitch = pitch,
         )
 
     private fun PopupData.machineTranslatedLabel(): String? =
@@ -1300,6 +1305,8 @@ class DragLookupController(
         val isCommon: Boolean,
         val entry: DictionaryEntry?,
         val machineTranslated: Boolean = false,
+        /** Pitch-accent downsteps from the displayed headword, for the pill. */
+        val pitch: List<Int> = emptyList(),
     )
 
     private fun findLineAt(x: Int, y: Int, lines: List<OcrManager.OcrLine>): OcrManager.OcrLine? {
