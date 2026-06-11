@@ -351,6 +351,10 @@ class MainActivity :
 
     override fun getAnkiPermissionLauncher() = requestAnkiPermission
 
+    // The in-app host: the result screen is the persistent app session, so
+    // the Clear action (reset to idle) applies here.
+    override fun showsClearAction(): Boolean = true
+
     /** Theme + accent this instance was created with; compared in [onResume]
      *  to recreate after a change made on [com.playtranslate.ui.AppearanceSettingsActivity]. */
     private var createdThemeKey: String = ""

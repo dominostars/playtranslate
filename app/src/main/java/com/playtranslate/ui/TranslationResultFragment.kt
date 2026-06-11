@@ -102,6 +102,13 @@ class TranslationResultFragment : Fragment() {
          *  pause live-mode capture, etc. No-op for hosts without
          *  live-mode behavior. */
         fun onUserScrolled()
+
+        /** Whether the result screen should offer the "Clear" action. The
+         *  in-app host shows it (resets the screen to idle); standalone hosts
+         *  launched outside the app (single-screen, or backgrounded
+         *  dual-screen) hide it — there's no persistent session to clear, the
+         *  user just closes the screen. */
+        fun showsClearAction(): Boolean
     }
 
     // ── Views ─────────────────────────────────────────────────────────────
@@ -189,6 +196,12 @@ class TranslationResultFragment : Fragment() {
 
     private val host: TranslationResultHost?
         get() = activity as? TranslationResultHost
+
+    /** Standalone hosts (single-screen, backgrounded dual-screen) suppress the
+     *  Clear action — see [TranslationResultHost.showsClearAction]. Defaults to
+     *  shown if the host isn't attached yet. */
+    private val showsClearAction: Boolean
+        get() = host?.showsClearAction() ?: true
 
     private val prefs: Prefs by lazy { Prefs(requireContext()) }
 
@@ -421,7 +434,7 @@ class TranslationResultFragment : Fragment() {
                 labelTranslation.text = targetLangDisplayName()
                 statusContainer.isGone = true
                 resultsContent.isVisible = true
-                resultActionButtons.isVisible = true
+                resultActionButtons.isVisible = showsClearAction
                 resultsContent.scrollToTopSilently(scrollListener)
                 tvTranslation.text = getString(R.string.status_translating)
                 tvTranslationNote.text = ""
@@ -462,7 +475,7 @@ class TranslationResultFragment : Fragment() {
                 labelTranslation.text = targetLangDisplayName()
                 statusContainer.isGone = true
                 resultsContent.visibility = View.INVISIBLE
-                resultActionButtons.isVisible = true
+                resultActionButtons.isVisible = showsClearAction
                 btnResultAnki.isVisible = true
                 resultsContent.scrollToTopSilently(scrollListener)
                 resultsContent.post {

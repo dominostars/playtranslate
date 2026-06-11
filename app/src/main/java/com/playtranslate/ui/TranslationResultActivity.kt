@@ -168,6 +168,10 @@ class TranslationResultActivity :
         // No-op — no live mode in this activity.
     }
 
+    // Launched outside the app (single-screen, or backgrounded dual-screen):
+    // there's no persistent in-app session to clear, so hide the Clear action.
+    override fun showsClearAction(): Boolean = false
+
     // ── SentenceContextProvider ───────────────────────────────────────────
 
     /** Embedded [WordDetailBottomSheet] reads this at Anki-button tap
