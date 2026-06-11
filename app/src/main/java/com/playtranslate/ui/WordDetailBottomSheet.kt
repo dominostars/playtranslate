@@ -259,6 +259,19 @@ class WordDetailBottomSheet : DialogFragment() {
             )
         }
 
+        // Spinner shown in the body while the dictionary lookup resolves;
+        // removed once the entry is back (whether found or not).
+        val loadingView = ProgressBar(requireContext()).apply {
+            isIndeterminate = true
+            indeterminateTintList =
+                ColorStateList.valueOf(requireContext().themeColor(R.attr.ptAccent))
+            layoutParams = LinearLayout.LayoutParams(dp(32), dp(32)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                topMargin = dp(24)
+            }
+        }
+        content.addView(loadingView)
+
         viewLifecycleOwner.lifecycleScope.launch {
             val appCtx = requireContext().applicationContext
             val engine = com.playtranslate.language.SourceLanguageEngines.get(appCtx, sourceLangId)
@@ -285,6 +298,7 @@ class WordDetailBottomSheet : DialogFragment() {
             val entries = response?.entries.orEmpty()
             val primary = entries.firstOrNull()
             if (!isAdded) return@launch
+            content.removeView(loadingView)
             if (primary == null) {
                 addNotFoundNotice(content, getString(R.string.word_detail_not_found, word))
                 return@launch
