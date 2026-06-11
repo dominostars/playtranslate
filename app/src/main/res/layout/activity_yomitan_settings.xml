@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/ptSurface"
+        app:navigationIcon="@drawable/ic_arrow_back"
+        app:navigationIconTint="?attr/ptText"
+        app:title="@string/settings_cell_yomitan"
+        app:titleTextColor="?attr/ptText">
+
+        <!-- Import "+": full-toolbar-height tap target; scaleType=center keeps
+             the glyph at its intrinsic 24dp. -->
+        <ImageButton
+            android:id="@+id/btnYomitanImport"
+            android:layout_width="56dp"
+            android:layout_height="match_parent"
+            android:layout_gravity="end"
+            android:layout_marginEnd="8dp"
+            android:src="@drawable/ic_add"
+            app:tint="?attr/ptAccent"
+            android:scaleType="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/yomitan_import_action" />
+
+    </com.google.android.material.appbar.MaterialToolbar>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="?attr/ptDivider" />
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="@dimen/pt_section_h_padding"
+            android:paddingTop="4dp"
+            android:paddingBottom="20dp">
+
+            <!-- What Yomitan is + stage-1 disclaimer. Always visible — it
+                 doubles as the empty state before any import. -->
+            <TextView
+                android:id="@+id/tvYomitanDescription"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="4dp"
+                android:paddingTop="12dp"
+                android:text="@string/yomitan_page_description"
+                android:textColor="?attr/ptTextMuted"
+                android:textSize="13sp"
+                android:lineSpacingExtra="2dp" />
+
+            <!-- One group (header + card) per non-empty category, built in
+                 YomitanSettingsActivity.renderSections from yomitan_section_card. -->
+            <LinearLayout
+                android:id="@+id/yomitanSections"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+</LinearLayout>

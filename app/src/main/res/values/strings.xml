@@ -1997,6 +1997,54 @@
     <string name="settings_cell_anki">Anki Flashcards</string>
     <string name="settings_cell_translation_services">Translation services</string>
     <string name="settings_cell_tts">Text-to-speech</string>
+    <!-- Debug-only CONFIGURE cell (BuildConfig.DEBUG); brand name. -->
+    <string name="settings_cell_yomitan" translatable="false">Yomitan</string>
+
+    <!-- YOMITAN — debug-only dictionary import page (Settings → Configure →
+         Yomitan). English-only like the other debug strings: the page never
+         ships in release builds. -->
+    <!-- Explainer paragraph at the top of the Yomitan page; also the empty state. -->
+    <string name="yomitan_page_description">Yomitan dictionaries are community-created dictionary files used by the Yomitan browser extension — terms, kanji, frequency data, and pitch accent. Import a dictionary (.zip) with the + button. Imported dictionaries aren\'t used for lookups yet.</string>
+    <!-- Toolbar "+" button on the Yomitan page (icon-only; this is its a11y label). -->
+    <string name="yomitan_import_action">Import dictionary</string>
+    <!-- Group header above imported term dictionaries on the Yomitan page. -->
+    <string name="yomitan_category_terms">Terms</string>
+    <!-- Group header above imported kanji dictionaries on the Yomitan page. -->
+    <string name="yomitan_category_kanji">Kanji</string>
+    <!-- Group header above imported word-frequency dictionaries on the Yomitan page. -->
+    <string name="yomitan_category_frequency">Frequency</string>
+    <!-- Group header above imported kanji-frequency dictionaries on the Yomitan page. -->
+    <string name="yomitan_category_kanji_frequency">Kanji Frequency</string>
+    <!-- Group header above imported pitch-accent dictionaries on the Yomitan page. -->
+    <string name="yomitan_category_pitch_accent">Pitch Accent</string>
+    <!-- Group header above imported IPA-pronunciation dictionaries on the Yomitan page. -->
+    <string name="yomitan_category_pronunciation">Pronunciation</string>
+    <!-- Title of the progress popup shown while an import is validated. -->
+    <string name="yomitan_importing_title">Importing Dictionary</string>
+    <!-- Status line of the import progress popup. -->
+    <string name="yomitan_importing_message">Validating dictionary files…</string>
+    <!-- Title of the alert shown when the picked file fails validation. -->
+    <string name="yomitan_invalid_title">Invalid File</string>
+    <!-- Body of the invalid-file alert; a developer-facing diagnostic line is appended below it. -->
+    <string name="yomitan_invalid_message">This file couldn\'t be read as a Yomitan dictionary.</string>
+    <!-- Title of the alert shown when the import fails for storage/IO reasons (file may be fine). -->
+    <string name="yomitan_io_error_title">Import Failed</string>
+    <!-- Body of the storage/IO import-failure alert. -->
+    <string name="yomitan_io_error_message">The file couldn\'t be imported. Check storage space and try again.</string>
+    <!-- Title of the alert shown when the dictionary is already imported. -->
+    <string name="yomitan_duplicate_title">Already Imported</string>
+    <!-- Body of the already-imported alert. %1$s = the dictionary's title from its index.json. -->
+    <string name="yomitan_duplicate_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> is already imported. Delete it to import it again.</string>
+    <!-- Title of the delete-confirmation alert. %1$s = the dictionary's title from its index.json. -->
+    <string name="yomitan_delete_title">Delete <xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>?</string>
+    <!-- Body of the delete-confirmation alert (dictionary in one section). -->
+    <string name="yomitan_delete_message">This removes the imported dictionary from the app.</string>
+    <!-- Body of the delete-confirmation alert when the dictionary shows in several sections. -->
+    <string name="yomitan_delete_message_multi">This dictionary appears in multiple sections — it will be removed from all of them.</string>
+    <!-- Destructive button of the delete-confirmation alert. -->
+    <string name="yomitan_delete_confirm">Delete</string>
+    <!-- Content description of the per-row delete (X) button on the Yomitan page. -->
+    <string name="cd_yomitan_delete">Delete dictionary</string>
 
     <!-- TOOLS — standalone utilities reachable from settings. -->
     <string name="settings_header_tools">Tools</string>

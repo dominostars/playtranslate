@@ -151,6 +151,8 @@ class SettingsRenderer(
         fun openHotkeysSettings()
         /** Tap on the Capture & overlay CONFIGURE cell — open [CaptureOverlaySettingsActivity]. */
         fun openCaptureOverlaySettings()
+        /** Tap on the debug-only Yomitan CONFIGURE cell — open [YomitanSettingsActivity]. */
+        fun openYomitanSettings()
         /** Tap on the Translation services CONFIGURE cell — open [TranslationServicesActivity]. */
         fun openTranslationServicesSettings()
         fun onSourceLangChanged()
@@ -735,9 +737,10 @@ class SettingsRenderer(
         // render(); this only sets the static group header.
     }
 
-    /** Bind the six CONFIGURE hub cells (icon chip + title + status digest +
+    /** Bind the CONFIGURE hub cells (icon chip + title + status digest +
      *  trailing) from the VM state. Re-run on each emission — the digests are
-     *  the dynamic part; icons / titles / clicks are constant. */
+     *  the dynamic part; icons / titles / clicks are constant. Debug builds
+     *  append a seventh Yomitan cell at the bottom. */
     private fun bindConfigureCells(state: RootSettingsViewModel.UiState) {
         bindHubCell(
             root.findViewById(R.id.rowConfigCaptureOverlay),
@@ -774,10 +777,26 @@ class SettingsRenderer(
                 iconRes = R.drawable.ic_palette,
                 title = ctx.getString(R.string.settings_cell_appearance),
                 summary = state.appearanceSummary,
-                isLast = true,
+                // Debug builds append the Yomitan cell below, which takes
+                // over the last-row divider suppression.
+                isLast = !BuildConfig.DEBUG,
                 onClick = { callbacks.openAppearanceSettings() },
             ),
         )
+        val yomitanRow = root.findViewById<View>(R.id.rowConfigYomitan)
+        yomitanRow.isVisible = BuildConfig.DEBUG
+        if (BuildConfig.DEBUG) {
+            bindHubCell(
+                yomitanRow,
+                HubCell(
+                    iconRes = R.drawable.ic_book,
+                    title = ctx.getString(R.string.settings_cell_yomitan),
+                    summary = null,
+                    isLast = true,
+                    onClick = { callbacks.openYomitanSettings() },
+                ),
+            )
+        }
     }
 
     /** Anki cell: get-app (external) / grant (lock) / deck·card-type (chevron). */

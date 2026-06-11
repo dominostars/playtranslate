@@ -155,6 +155,13 @@
             android:parentActivityName=".MainActivity"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- Yomitan dictionary import sub-page (debug builds only), launched from Settings → Configure. -->
+        <activity
+            android:name=".ui.YomitanSettingsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.PlayTranslate" />
+
         <!-- Transparent host for the MediaProjection consent dialog. -->
         <activity
             android:name=".capture.MediaProjectionConsentActivity"

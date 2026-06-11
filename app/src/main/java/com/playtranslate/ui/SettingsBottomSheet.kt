@@ -260,6 +260,11 @@ class SettingsBottomSheet : DialogFragment() {
                         android.content.Intent(requireContext(), CaptureOverlaySettingsActivity::class.java)
                     )
                 }
+                override fun openYomitanSettings() {
+                    startActivity(
+                        android.content.Intent(requireContext(), YomitanSettingsActivity::class.java)
+                    )
+                }
                 override fun openTranslationServicesSettings() {
                     startActivity(
                         android.content.Intent(requireContext(), TranslationServicesActivity::class.java)
