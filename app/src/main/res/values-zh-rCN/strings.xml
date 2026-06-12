@@ -97,7 +97,6 @@
 
     <string name="onboarding_a11y_title">显示在其他应用的上层</string>
 
-    <string name="onboarding_a11y_body"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> 需要显示在其他应用的上层，以便：\n• 在游戏上层显示翻译文字\n• 显示游戏画面控件\n• 通过在游戏文字上拖动来查词</string>
 
     <string name="btn_grant_permission">授予权限</string>
 

@@ -2036,9 +2036,42 @@ class MainActivity :
             startActivity(overlayPermissionSettingsIntent())
         }
         pageA11y.findViewById<View>(R.id.btnOpenA11y).setOnClickListener(openOverlaySettings)
+
+        // Title composes the localized OS setting name into the "Enable
+        // …" pattern so the quoted phrase matches what the user will see
+        // in system Settings.
+        pageA11y.findViewById<TextView>(R.id.tvA11yTitle).text = getString(
+            R.string.onboarding_a11y_enable_title,
+            getString(R.string.onboarding_a11y_title),
+        )
+
+        // Benefit rows on the overlay-permission page.
+        bindFeatureRow(
+            R.id.rowA11yFeatureTranslate, R.drawable.ic_translate,
+            R.string.onboarding_a11y_row_translate_title,
+            R.string.onboarding_a11y_row_translate_sub,
+        )
+        bindFeatureRow(
+            R.id.rowA11yFeatureMenu, R.drawable.ic_float_landscape_2,
+            R.string.onboarding_a11y_row_menu_title,
+            R.string.onboarding_a11y_row_menu_sub,
+        )
+        bindFeatureRow(
+            R.id.rowA11yFeatureLookup, R.drawable.ic_dictionary,
+            R.string.onboarding_a11y_row_lookup_title,
+            R.string.onboarding_a11y_row_lookup_sub,
+        )
+
         // Highlight "PlayTranslate" in the hint text with the theme accent color
         val accentColor = themeColor(R.attr.ptTextTranslation)
         colorizeAppName(pageA11y.findViewById(R.id.tvA11yHintDual), accentColor)
+    }
+
+    private fun bindFeatureRow(rowId: Int, iconRes: Int, titleRes: Int, subtitleRes: Int) {
+        val row = pageA11y.findViewById<View>(rowId)
+        row.findViewById<ImageView>(R.id.featureIcon).setImageResource(iconRes)
+        row.findViewById<TextView>(R.id.featureTitle).setText(titleRes)
+        row.findViewById<TextView>(R.id.featureSubtitle).setText(subtitleRes)
     }
 
     private fun colorizeAppName(tv: TextView, color: Int) {

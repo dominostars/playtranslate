@@ -97,7 +97,6 @@
 
     <string name="onboarding_a11y_title">Mostrar sobre otras apps</string>
 
-    <string name="onboarding_a11y_body"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> necesita mostrarse sobre otras apps para:\n• Mostrar el texto traducido sobre tu juego\n• Mostrar los controles de la pantalla del juego\n• Consultar palabras arrastrando sobre el texto del juego</string>
 
     <string name="btn_grant_permission">Conceder permiso</string>
 

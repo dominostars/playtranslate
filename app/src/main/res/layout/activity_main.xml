@@ -262,7 +262,7 @@
             android:orientation="vertical"
             android:paddingHorizontal="28dp"
             android:paddingTop="22dp"
-            android:paddingBottom="0dp"
+            android:paddingBottom="16dp"
             android:visibility="gone">
 
             <ScrollView
@@ -332,15 +332,11 @@
 
             <Button
                 android:id="@+id/btnWelcomeContinue"
+                style="@style/Widget.PlayTranslate.PrimaryButton"
                 android:layout_width="match_parent"
-                android:layout_height="60dp"
-                android:layout_marginTop="8dp"
-                android:layout_marginBottom="8dp"
-                android:text="@string/onboarding_welcome_continue"
-                android:textSize="16sp"
-                android:backgroundTint="?attr/ptAccent"
-                android:textColor="?attr/ptAccentOn"
-                app:cornerRadius="@dimen/pt_radius" />
+                android:layout_height="56dp"
+                android:layout_marginTop="16dp"
+                android:text="@string/onboarding_welcome_continue" />
 
         </LinearLayout>
 
@@ -350,7 +346,9 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:orientation="vertical"
-            android:padding="28dp"
+            android:paddingHorizontal="28dp"
+            android:paddingTop="28dp"
+            android:paddingBottom="16dp"
             android:visibility="visible">
 
             <ScrollView
@@ -370,7 +368,7 @@
                         android:textColor="?attr/ptText"
                         android:textSize="26sp"
                         android:textStyle="bold"
-                        android:layout_marginBottom="24dp" />
+                        android:layout_marginBottom="6dp" />
 
                     <TextView
                         android:layout_width="match_parent"
@@ -385,14 +383,11 @@
 
             <Button
                 android:id="@+id/btnGrantNotif"
+                style="@style/Widget.PlayTranslate.PrimaryButton"
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
-                android:layout_marginTop="20dp"
-                android:text="@string/btn_grant_permission"
-                android:textSize="16sp"
-                android:backgroundTint="?attr/ptAccent"
-                android:textColor="?attr/ptAccentOn"
-                app:cornerRadius="8dp" />
+                android:layout_marginTop="16dp"
+                android:text="@string/btn_grant_permission" />
 
         </LinearLayout>
 
@@ -402,7 +397,9 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:orientation="vertical"
-            android:padding="28dp"
+            android:paddingHorizontal="28dp"
+            android:paddingTop="28dp"
+            android:paddingBottom="16dp"
             android:visibility="gone">
 
             <ScrollView
@@ -416,21 +413,43 @@
                     android:orientation="vertical">
 
                     <TextView
+                        android:id="@+id/tvA11yTitle"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="@string/onboarding_a11y_title"
                         android:textColor="?attr/ptText"
                         android:textSize="26sp"
                         android:textStyle="bold"
-                        android:layout_marginBottom="24dp" />
+                        android:layout_marginBottom="6dp"
+                        tools:text="Enable &quot;Display over other apps&quot;" />
 
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="@string/onboarding_a11y_body"
+                        android:text="@string/onboarding_a11y_intro"
                         android:textColor="?attr/ptTextMuted"
                         android:textSize="14sp"
-                        android:lineSpacingMultiplier="1.4" />
+                        android:lineSpacingMultiplier="1.4"
+                        android:layout_marginBottom="20dp" />
+
+                    <include
+                        android:id="@+id/rowA11yFeatureTranslate"
+                        layout="@layout/onboarding_feature_row"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <include
+                        android:id="@+id/rowA11yFeatureMenu"
+                        layout="@layout/onboarding_feature_row"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp" />
+
+                    <include
+                        android:id="@+id/rowA11yFeatureLookup"
+                        layout="@layout/onboarding_feature_row"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp" />
 
                 </LinearLayout>
             </ScrollView>
@@ -439,22 +458,21 @@
                 android:id="@+id/tvA11yHintDual"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
+                android:layout_marginTop="16dp"
                 android:text="@string/onboarding_a11y_hint"
                 android:textColor="?attr/ptText"
                 android:textSize="13sp"
                 android:gravity="center"
-                android:layout_marginBottom="12dp" />
+                android:layout_marginBottom="16dp" />
 
             <Button
                 android:id="@+id/btnOpenA11y"
+                style="@style/Widget.PlayTranslate.PrimaryButton"
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
                 android:text="@string/btn_open_overlay_settings"
-                android:textSize="16sp"
-                android:backgroundTint="?attr/ptAccent"
-                android:textColor="?attr/ptAccentOn"
-                app:cornerRadius="8dp" />
+                app:icon="@drawable/ic_arrow_forward"
+                app:iconGravity="textEnd" />
 
         </LinearLayout>
 

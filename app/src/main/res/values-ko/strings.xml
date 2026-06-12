@@ -98,7 +98,6 @@
 
     <string name="onboarding_a11y_title">다른 앱 위에 표시</string>
 
-    <string name="onboarding_a11y_body"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b>는 다음을 위해 다른 앱 위에 표시되어야 합니다:\n• 게임 위에 번역된 텍스트 표시\n• 게임 화면 컨트롤 표시\n• 게임 텍스트를 드래그하여 단어 검색</string>
 
     <string name="btn_grant_permission">권한 허용</string>
 

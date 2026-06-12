@@ -97,7 +97,6 @@
 
     <string name="onboarding_a11y_title">Поверх других приложений</string>
 
-    <string name="onboarding_a11y_body"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> необходимо отображаться поверх других приложений, чтобы:\n• Показывать переведённый текст поверх игры\n• Показывать элементы управления экраном игры\n• Искать слова, проводя по тексту игры</string>
 
     <string name="btn_grant_permission">Предоставить разрешение</string>
 

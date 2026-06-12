@@ -97,7 +97,6 @@
 
     <string name="onboarding_a11y_title">Sobrepor a outros apps</string>
 
-    <string name="onboarding_a11y_body">O <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> precisa se sobrepor a outros apps para:\n• Mostrar o texto traduzido sobre o jogo\n• Mostrar os controles da tela do jogo\n• Consultar palavras arrastando sobre o texto do jogo</string>
 
     <string name="btn_grant_permission">Conceder permissão</string>
 

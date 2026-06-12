@@ -97,7 +97,6 @@
 
     <string name="onboarding_a11y_title">Diğer uygulamaların üzerinde göster</string>
 
-    <string name="onboarding_a11y_body"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> şunlar için diğer uygulamaların üzerinde görünmelidir:\n• Çevrilen metni oyununuzun üzerinde göstermek\n• Oyun ekranı kontrollerini göstermek\n• Oyun metninin üzerine sürükleyerek sözcük aramak</string>
 
     <string name="btn_grant_permission">İzin Ver</string>
 

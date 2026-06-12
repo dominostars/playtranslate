@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 36dp icon-chip background for the onboarding feature row: ptAccentTint
+     fill, 10dp radius, no stroke — unlike bg_hub_chip, the tinted fill
+     alone defines the shape. The glyph inside is tinted ptAccent. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/ptAccentTint" />
+    <corners android:radius="10dp" />
+</shape>

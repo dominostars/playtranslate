@@ -87,7 +87,6 @@
 
     <string name="onboarding_a11y_title">แสดงทับแอปอื่น</string>
 
-    <string name="onboarding_a11y_body"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> ต้องแสดงทับแอปอื่นเพื่อ:\n• แสดงข้อความที่แปลแล้วทับบนเกมของคุณ\n• แสดงปุ่มควบคุมหน้าจอเกม\n• ค้นหาคำโดยลากบนข้อความในเกม</string>
 
     <string name="btn_grant_permission">ให้สิทธิ์</string>
 

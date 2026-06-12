@@ -97,7 +97,6 @@
 
     <string name="onboarding_a11y_title">他のアプリの上に重ねて表示</string>
 
-    <string name="onboarding_a11y_body"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b>は、次のために他のアプリの上に重ねて表示する必要があります：\n• 翻訳したテキストをゲームに重ねて表示\n• ゲーム画面のコントロールを表示\n• ゲームのテキストをドラッグして単語を調べる</string>
 
     <string name="btn_grant_permission">権限を許可</string>
 

@@ -87,7 +87,6 @@
 
     <string name="onboarding_a11y_title">العرض فوق التطبيقات الأخرى</string>
 
-    <string name="onboarding_a11y_body">يحتاج <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> إلى العرض فوق التطبيقات الأخرى من أجل:\n• عرض النص المترجَم فوق لعبتك\n• عرض عناصر تحكم شاشة اللعبة\n• البحث عن الكلمات بالسحب فوق نص اللعبة</string>
 
     <string name="btn_grant_permission">منح الإذن</string>
 

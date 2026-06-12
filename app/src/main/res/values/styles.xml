@@ -203,6 +203,26 @@
         <item name="trackDecorationTint">@color/switch_track_decoration</item>
     </style>
 
+    <!-- Unified onboarding primary CTA: full-width, 56dp tall (insets
+         zeroed so layout_height is the visual height), pt_radius corners,
+         flat accent fill with accentOn ink. Trailing 18dp arrow is opt-in
+         per button via app:icon + app:iconGravity="textEnd" (used on
+         "Open Settings"-style actions, omitted on terminal ones like
+         "Grant Permission"). -->
+    <style name="Widget.PlayTranslate.PrimaryButton" parent="Widget.Material3.Button.UnelevatedButton">
+        <item name="backgroundTint">?attr/ptAccent</item>
+        <item name="android:textColor">?attr/ptAccentOn</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:letterSpacing">0.01</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="cornerRadius">@dimen/pt_radius</item>
+        <item name="iconTint">?attr/ptAccentOn</item>
+        <item name="iconSize">18dp</item>
+        <item name="iconPadding">8dp</item>
+    </style>
+
     <!-- ── Settings row typography ──────────────────────────────────────── -->
 
     <style name="Text.PT.RowTitle" parent="">
@@ -229,6 +249,21 @@
     <style name="Text.PT.RowValue" parent="">
         <item name="android:textSize">13sp</item>
         <item name="android:textColor">?attr/ptTextMuted</item>
+    </style>
+
+    <!-- ── Onboarding feature-row typography ────────────────────────────── -->
+
+    <style name="Text.PT.FeatureTitle" parent="">
+        <item name="android:textSize">15sp</item>
+        <item name="android:textColor">?attr/ptText</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:lineSpacingMultiplier">1.3</item>
+    </style>
+
+    <style name="Text.PT.FeatureSubtitle" parent="">
+        <item name="android:textSize">12.5sp</item>
+        <item name="android:textColor">?attr/ptTextMuted</item>
+        <item name="android:lineSpacingMultiplier">1.4</item>
     </style>
 
     <!-- Enter from bottom, exit to bottom (word/sentence detail) -->

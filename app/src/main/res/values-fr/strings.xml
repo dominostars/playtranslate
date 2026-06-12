@@ -98,7 +98,6 @@
 
     <string name="onboarding_a11y_title">Superposition aux autres applis</string>
 
-    <string name="onboarding_a11y_body"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> doit s\'afficher par-dessus les autres applis pour :\n• Afficher le texte traduit par-dessus votre jeu\n• Afficher les commandes de l\'écran de jeu\n• Rechercher des mots en faisant glisser sur le texte du jeu</string>
 
     <string name="btn_grant_permission">Accorder l\'autorisation</string>
 

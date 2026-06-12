@@ -175,13 +175,46 @@
          rendered as bold. -->
     <string name="onboarding_a11y_hint">Look for <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 
-    <!-- Title of the "Display over other apps" overlay-permission card. -->
+    <!-- The Android system-settings toggle name for the overlay
+         permission — match the OS translation of that setting. Embedded
+         into onboarding_a11y_enable_title as %1$s to form the
+         overlay-permission card's title. -->
     <string name="onboarding_a11y_title">Display over other apps</string>
 
-    <!-- Body of the "Display over other apps" overlay-permission card.
-         The bullets use • (U+2022) as the list glyph. <b> renders as
-         bold; preserve the markup exactly. -->
-    <string name="onboarding_a11y_body"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> needs to display over other apps to:\n• Show translated text over your game\n• Show the game screen controls\n• Look up words by dragging over game text</string>
+    <!-- Title pattern of the overlay-permission card; %1$s is the
+         localized OS setting name (onboarding_a11y_title). Reposition the
+         placeholder and swap the quote glyphs as the language requires
+         (e.g. 「%1$s」 in Japanese). -->
+    <string name="onboarding_a11y_enable_title">Enable \"<xliff:g id="setting_name" example="Display over other apps">%1$s</xliff:g>\"</string>
+
+    <!-- Lead-in line above the benefit rows on the "Display over other
+         apps" overlay-permission card. <b> renders as bold; preserve the
+         markup exactly. -->
+    <string name="onboarding_a11y_intro"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> needs to display over other apps to:</string>
+
+    <!-- Title of benefit row 1 (translate) on the overlay-permission
+         onboarding card, rendered as an onboarding_feature_row cell. -->
+    <string name="onboarding_a11y_row_translate_title">Show translated text</string>
+
+    <!-- Subtitle of benefit row 1 (translate) on the overlay-permission
+         onboarding card; may wrap to two lines. -->
+    <string name="onboarding_a11y_row_translate_sub">Translations appear right over the original text</string>
+
+    <!-- Title of benefit row 2 (quick access menu overlay) on the
+         overlay-permission onboarding card. -->
+    <string name="onboarding_a11y_row_menu_title">Show quick access menu</string>
+
+    <!-- Subtitle of benefit row 2 (quick access menu overlay) on the
+         overlay-permission onboarding card; may wrap to two lines. -->
+    <string name="onboarding_a11y_row_menu_sub">Access <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> features without switching apps</string>
+
+    <!-- Title of benefit row 3 (word lookup) on the overlay-permission
+         onboarding card. -->
+    <string name="onboarding_a11y_row_lookup_title">Look up words</string>
+
+    <!-- Subtitle of benefit row 3 (word lookup) on the overlay-permission
+         onboarding card; may wrap to two lines. -->
+    <string name="onboarding_a11y_row_lookup_sub">Get instant definitions for words on screen</string>
 
     <!-- Generic "Grant Permission" button (onboarding + later prompts). -->
     <string name="btn_grant_permission">Grant Permission</string>

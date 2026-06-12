@@ -97,7 +97,6 @@
 
     <string name="onboarding_a11y_title">Hiển thị trên các ứng dụng khác</string>
 
-    <string name="onboarding_a11y_body"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> cần hiển thị trên các ứng dụng khác để:\n• Hiển thị văn bản đã dịch lên trên trò chơi của bạn\n• Hiển thị các nút điều khiển màn hình trò chơi\n• Tra từ bằng cách kéo trên văn bản trò chơi</string>
 
     <string name="btn_grant_permission">Cấp quyền</string>
 
