@@ -1998,6 +1998,13 @@
     <string name="settings_cell_tts">Text-to-speech</string>
     <!-- Debug-only CONFIGURE cell (BuildConfig.DEBUG); brand name. -->
     <string name="settings_cell_yomitan" translatable="false">Yomitan</string>
+    <!-- Subtitle of the Yomitan hub cell when no dictionaries are imported yet. -->
+    <string name="settings_yomitan_empty_summary" translatable="false">Import dictionaries to enhance word lookups</string>
+    <!-- Subtitle of the Yomitan hub cell once dictionaries exist; %d = how many. -->
+    <plurals name="settings_yomitan_count_summary" translatable="false">
+        <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> dictionary imported</item>
+        <item quantity="other"><xliff:g id="count" example="3">%d</xliff:g> dictionaries imported</item>
+    </plurals>
 
     <!-- YOMITAN — debug-only dictionary import page (Settings → Configure →
          Yomitan). English-only like the other debug strings: the page never

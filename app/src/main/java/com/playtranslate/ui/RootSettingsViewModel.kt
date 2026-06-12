@@ -8,6 +8,7 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.playtranslate.AnkiManager
+import com.playtranslate.BuildConfig
 import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
 import com.playtranslate.R
@@ -23,9 +24,11 @@ import com.playtranslate.translation.TranslationBackend
 import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.tts.TtsEngine
 import com.playtranslate.tts.TtsVoiceLabels
+import com.playtranslate.yomitan.YomitanDictionaryStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -131,6 +134,10 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
         val captureSummary: String,
         val anki: AnkiCell,
         val tts: TtsCell,
+        /** Yomitan CONFIGURE cell digest (debug-only cell): import prompt
+         *  when empty, dictionary count otherwise. Null until the first
+         *  [refresh] resolves it (subtitle hidden). */
+        val yomitanSummary: String? = null,
     )
 
     private val prefs = Prefs(app)
@@ -171,8 +178,22 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
             translationOffline = offline,
             captureSummary = captureDigest(),
         )
+        // The async writers below MUST resolve their value BEFORE touching
+        // _state and write via update{}: `_state.value = _state.value.copy(
+        // tts = resolveTtsCell())` reads the receiver, THEN suspends — any
+        // state written during the suspension (e.g. the Yomitan digest
+        // racing a slow cold-start TTS engine check) gets clobbered by the
+        // stale snapshot on resume.
         viewModelScope.launch {
-            _state.value = _state.value.copy(tts = resolveTtsCell())
+            val tts = resolveTtsCell()
+            _state.update { it.copy(tts = tts) }
+        }
+        if (BuildConfig.DEBUG) {
+            viewModelScope.launch {
+                val count = YomitanDictionaryStore.load(getApplication()).dictionaries.size
+                val summary = yomitanDigest(count)
+                _state.update { it.copy(yomitanSummary = summary) }
+            }
         }
     }
 
@@ -314,6 +335,13 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
             prefs.targetChineseVariant,
             Locale.forLanguageTag(prefs.targetLang),
         )
+
+    // ── Yomitan digest (debug-only cell) ─────────────────────────────────
+
+    private fun yomitanDigest(count: Int): String =
+        if (count == 0) str(R.string.settings_yomitan_empty_summary)
+        else getApplication<Application>().resources
+            .getQuantityString(R.plurals.settings_yomitan_count_summary, count, count)
 
     private fun str(@StringRes id: Int, vararg args: Any): String =
         getApplication<Application>().getString(id, *args)

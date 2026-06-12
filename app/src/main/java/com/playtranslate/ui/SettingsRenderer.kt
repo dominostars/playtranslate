@@ -791,7 +791,7 @@ class SettingsRenderer(
                 HubCell(
                     iconRes = R.drawable.ic_book,
                     title = ctx.getString(R.string.settings_cell_yomitan),
-                    summary = null,
+                    summary = state.yomitanSummary,
                     isLast = true,
                     onClick = { callbacks.openYomitanSettings() },
                 ),
