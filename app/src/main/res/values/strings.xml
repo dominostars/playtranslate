@@ -165,7 +165,7 @@
     <!-- Language-learner lane body. "Anki" is a brand name (the
          spaced-repetition flashcard app); furigana and pinyin are
          domain terms learners know. -->
-    <string name="onboarding_welcome_learn_body">Keep the original text and get help only when you want it: word lookups, furigana and pinyin, one-tap <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> cards.</string>
+    <string name="onboarding_welcome_learn_body">Get help only when you want it with word lookups, furigana and pinyin, one-tap <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> cards, and more.</string>
 
     <!-- Placeholder text inside the language-selection row before the
          user has picked anything. -->

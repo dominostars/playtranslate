@@ -2029,6 +2029,19 @@ class MainActivity :
             }
         }
 
+        // Welcome lanes: the bold lead-in question runs inline into the
+        // muted answer, saving a line per lane on short screens.
+        bindWelcomeLane(
+            R.id.tvWelcomePlayLane,
+            R.string.onboarding_welcome_play_title,
+            R.string.onboarding_welcome_play_body,
+        )
+        bindWelcomeLane(
+            R.id.tvWelcomeLearnLane,
+            R.string.onboarding_welcome_learn_title,
+            R.string.onboarding_welcome_learn_body,
+        )
+
         pageNotif.findViewById<View>(R.id.btnGrantNotif).setOnClickListener {
             notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -2106,6 +2119,29 @@ class MainActivity :
         }
         row.findViewById<TextView>(R.id.featureTitle).setText(titleRes)
         row.findViewById<TextView>(R.id.featureSubtitle).setText(subtitleRes)
+    }
+
+    /** Renders a welcome lane as a single paragraph: the lead-in question
+     *  in medium full-color type, then the muted answer flowing inline.
+     *  Strings stay split as title/body resources so translators see the
+     *  same units as the stacked permission-page rows. */
+    private fun bindWelcomeLane(textViewId: Int, titleRes: Int, bodyRes: Int) {
+        val title = getString(titleRes)
+        val text = android.text.SpannableStringBuilder(title).apply {
+            setSpan(
+                android.text.style.TypefaceSpan("sans-serif-medium"),
+                0, title.length,
+                android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+            setSpan(
+                android.text.style.ForegroundColorSpan(themeColor(R.attr.ptText)),
+                0, title.length,
+                android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+            append(" ")
+            append(getString(bodyRes))
+        }
+        findViewById<TextView>(textViewId).text = text
     }
 
     private fun colorizeAppName(tv: TextView, color: Int) {
