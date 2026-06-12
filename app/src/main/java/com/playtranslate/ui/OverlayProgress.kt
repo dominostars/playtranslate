@@ -326,6 +326,10 @@ class OverlayProgress private constructor(
             max = 100
             progress = initialProgress
             progressTintList = ColorStateList.valueOf(context.themeColor(R.attr.ptAccent))
+            // Indeterminate mode draws through indeterminateDrawable, which
+            // progressTintList does NOT touch — untinted it renders in the
+            // track's own gray and the sliding animation is invisible.
+            indeterminateTintList = ColorStateList.valueOf(context.themeColor(R.attr.ptAccent))
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
