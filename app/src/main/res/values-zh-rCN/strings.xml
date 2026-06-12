@@ -81,7 +81,7 @@
 
     <string name="onboarding_welcome_tagline">助你畅玩外语游戏的伴侣应用。</string>
 
-    <string name="onboarding_welcome_body">在玩看不懂的游戏？立即翻译屏幕上的文字。\n\n正在学习一门语言？提供逐词释义、读音指南（振假名、拼音），以及一键创建 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 抽认卡。</string>
+    <string name="onboarding_welcome_body">在玩看不懂的游戏？立即翻译屏幕上的文字。\n\n正在学习一门语言？提供逐词释义、读音指南（假名注音、拼音），以及一键创建 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 抽认卡。</string>
 
     <string name="onboarding_welcome_row_placeholder">点按选择</string>
 
@@ -491,8 +491,8 @@
     <string name="anki_content_expression">单词／词头</string>
     <string name="anki_content_expression_desc">高亮单词的词典形式，不带括号。示例：聞く</string>
 
-    <string name="anki_content_expression_furigana">单词／词头（带振假名）</string>
-    <string name="anki_content_expression_furigana_desc">带逐字振假名括注的词典形式，适用于通过 \{\{furigana:\}\} 渲染的字段。示例：聞[き]く</string>
+    <string name="anki_content_expression_furigana">单词／词头（带假名注音）</string>
+    <string name="anki_content_expression_furigana_desc">带逐字假名注音括注的词典形式，适用于通过 \{\{furigana:\}\} 渲染的字段。示例：聞[き]く</string>
 
     <string name="anki_content_reading">单词读音（假名）</string>
     <string name="anki_content_reading_desc">高亮单词的纯假名读音。示例：きく</string>
@@ -500,8 +500,8 @@
     <string name="anki_content_sentence">原文句子</string>
     <string name="anki_content_sentence_desc">原文句子，高亮单词以粗体显示。示例：友達に<b>聞いた</b></string>
 
-    <string name="anki_content_sentence_furigana">原文句子（带振假名）</string>
-    <string name="anki_content_sentence_furigana_desc">带逐字振假名括注的原文句子，适用于通过 \{\{furigana:\}\} 渲染的字段。示例：友達[ともだち]に<b>聞[き]いた</b></string>
+    <string name="anki_content_sentence_furigana">原文句子（带假名注音）</string>
+    <string name="anki_content_sentence_furigana_desc">带逐字假名注音括注的原文句子，适用于通过 \{\{furigana:\}\} 渲染的字段。示例：友達[ともだち]に<b>聞[き]いた</b></string>
 
     <string name="anki_content_sentence_translation">翻译后的句子</string>
     <string name="anki_content_sentence_translation_desc">原文句子在你所选目标语言中的翻译。</string>
@@ -661,7 +661,7 @@
 
     <string name="bergamot_disable_title">关闭 Firefox Translations？</string>
 
-    <string name="bergamot_disable_message">将停止离线翻译此语言对。你可以保留已下载的模型，或删除它以释放空间。</string>
+    <string name="bergamot_disable_message">将停止当前语言组合的离线翻译。你可以保留已下载的模型，或删除它以释放空间。</string>
 
     <string name="bergamot_disable_keep">仅关闭</string>
 
@@ -670,7 +670,7 @@
     <string name="bergamot_warmup_downloading">正在下载离线模型… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%2$s</xliff:g></string>
 
     <string name="bergamot_warmup_downloading_multi">正在下载离线模型（<xliff:g id="file_index" example="1">%1$d</xliff:g>/<xliff:g id="file_count" example="2">%2$d</xliff:g>）… <xliff:g id="bytes_so_far" example="12 MB">%3$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%4$s</xliff:g></string>
-    <string name="bergamot_pair_unsupported">当前语言对不受支持</string>
+    <string name="bergamot_pair_unsupported">暂不支持当前语言组合</string>
 
     <string name="offline_backend_downloaded_cd">已下载</string>
     <string name="offline_backend_not_downloaded_cd">未下载</string>
@@ -925,7 +925,7 @@
     <string name="translate_button_subtitle_hold_to_show_translations">长按以在游戏画面上显示翻译</string>
 
     <string name="hint_label_pinyin_lower">拼音</string>
-    <string name="hint_label_furigana_lower">振假名</string>
+    <string name="hint_label_furigana_lower">假名注音</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          FLOATING ICON LONG-PRESS MENU
@@ -961,7 +961,7 @@
 
     <string name="overlay_mode_option_translation">翻译</string>
 
-    <string name="overlay_mode_option_furigana">振假名</string>
+    <string name="overlay_mode_option_furigana">假名注音</string>
 
     <string name="overlay_mode_option_pinyin">拼音</string>
 
@@ -991,7 +991,7 @@
 
     <string name="cd_toggle_translation_visibility">切换译文可见性</string>
 
-    <string name="cd_toggle_inline_furigana">切换内嵌振假名</string>
+    <string name="cd_toggle_inline_furigana">切换内嵌假名注音</string>
 
     <string name="cd_read_original_aloud">朗读原文</string>
 
@@ -1130,7 +1130,7 @@
     <string name="settings_hotkeys_tile_add">添加图块</string>
     <string name="settings_hotkeys_none">未设置快捷键</string>
     <string name="settings_hotkeys_translation">翻译</string>
-    <string name="settings_hotkeys_furigana">振假名</string>
+    <string name="settings_hotkeys_furigana">假名注音</string>
     <string name="settings_hotkeys_pinyin">拼音</string>
 
     <string name="settings_anki_digest">牌组 <xliff:g id="deck_name" example="Vocabulary">%1$s</xliff:g> · 卡片类型 <xliff:g id="card_type_name" example="Lapis sentence">%2$s</xliff:g></string>
