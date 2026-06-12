@@ -739,8 +739,7 @@ class SettingsRenderer(
 
     /** Bind the CONFIGURE hub cells (icon chip + title + status digest +
      *  trailing) from the VM state. Re-run on each emission — the digests are
-     *  the dynamic part; icons / titles / clicks are constant. Debug builds
-     *  append a seventh Yomitan cell at the bottom. */
+     *  the dynamic part; icons / titles / clicks are constant. */
     private fun bindConfigureCells(state: RootSettingsViewModel.UiState) {
         bindHubCell(
             root.findViewById(R.id.rowConfigCaptureOverlay),
@@ -770,6 +769,15 @@ class SettingsRenderer(
             ),
         )
         bindAnkiCell(state.anki)
+        bindHubCell(
+            root.findViewById(R.id.rowConfigYomitan),
+            HubCell(
+                iconRes = R.drawable.ic_yomitan,
+                title = ctx.getString(R.string.settings_cell_yomitan),
+                summary = state.yomitanSummary,
+                onClick = { callbacks.openYomitanSettings() },
+            ),
+        )
         bindTtsCell(state.tts)
         bindHubCell(
             root.findViewById(R.id.rowConfigAppearance),
@@ -777,26 +785,10 @@ class SettingsRenderer(
                 iconRes = R.drawable.ic_palette,
                 title = ctx.getString(R.string.settings_cell_appearance),
                 summary = state.appearanceSummary,
-                // Debug builds append the Yomitan cell below, which takes
-                // over the last-row divider suppression.
-                isLast = !BuildConfig.DEBUG,
+                isLast = true,
                 onClick = { callbacks.openAppearanceSettings() },
             ),
         )
-        val yomitanRow = root.findViewById<View>(R.id.rowConfigYomitan)
-        yomitanRow.isVisible = BuildConfig.DEBUG
-        if (BuildConfig.DEBUG) {
-            bindHubCell(
-                yomitanRow,
-                HubCell(
-                    iconRes = R.drawable.ic_book,
-                    title = ctx.getString(R.string.settings_cell_yomitan),
-                    summary = state.yomitanSummary,
-                    isLast = true,
-                    onClick = { callbacks.openYomitanSettings() },
-                ),
-            )
-        }
     }
 
     /** Anki cell: get-app (external) / grant (lock) / deck·card-type (chevron). */

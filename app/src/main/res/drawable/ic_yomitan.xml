@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Yomitan logo glyph (stylized ヨミ), reconstructed as flat rects from
+     the project's black-and-white source so it tints like every other hub
+     icon. Coordinates measured off the 128px original: 18px bar weight,
+     22px gaps, ヨ spine right-aligned to its bars. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="128"
+    android:viewportHeight="128">
+    <path
+        android:pathData="M15,15h42v18h-42z M39,33h18v22h-18z M15,55h42v18h-42z M39,73h18v22h-18z M15,95h42v18h-42z M71,15h42v18h-42z M71,55h42v18h-42z M71,95h42v18h-42z"
+        android:fillColor="#FFFFFF" />
+</vector>

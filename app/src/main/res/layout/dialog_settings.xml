@@ -465,18 +465,13 @@
                             android:id="@+id/rowConfigAnki" />
 
                         <include layout="@layout/settings_row_hub"
+                            android:id="@+id/rowConfigYomitan" />
+
+                        <include layout="@layout/settings_row_hub"
                             android:id="@+id/rowConfigTts" />
 
                         <include layout="@layout/settings_row_hub"
                             android:id="@+id/rowConfigAppearance" />
-
-                        <!-- Debug builds only — made visible by
-                             SettingsRenderer.bindConfigureCells. -->
-                        <include layout="@layout/settings_row_hub"
-                            android:id="@+id/rowConfigYomitan"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:visibility="gone" />
 
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>

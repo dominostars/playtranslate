@@ -2006,11 +2006,11 @@
         <item quantity="other"><xliff:g id="count" example="3">%d</xliff:g> dictionaries imported</item>
     </plurals>
 
-    <!-- YOMITAN — debug-only dictionary import page (Settings → Configure →
-         Yomitan). English-only like the other debug strings: the page never
-         ships in release builds. -->
+    <!-- YOMITAN — dictionary import page (Settings → Configure → Yomitan).
+         Currently English-only: the page shipped from a debug-only stage and
+         the values-<locale> translations haven't been backfilled yet. -->
     <!-- Explainer paragraph at the top of the Yomitan page; also the empty state. -->
-    <string name="yomitan_page_description">Yomitan dictionaries are community-created dictionary files used by the Yomitan browser extension — terms, kanji, frequency data, and pitch accent. Import a dictionary (.zip) with the + button; its data joins word lookups throughout the app.</string>
+    <string name="yomitan_page_description">Yomitan dictionaries are community-created dictionary files used by the Yomitan browser extension. Features include additional dictionaries, frequency data, and pitch accent. Import a dictionary (.zip) with the + button, and PlayTranslate will integrate it seamlessly throughout the app.</string>
     <!-- Toolbar "+" button on the Yomitan page (icon-only; this is its a11y label). -->
     <string name="yomitan_import_action">Import dictionary</string>
     <!-- Group header above imported term dictionaries on the Yomitan page. -->

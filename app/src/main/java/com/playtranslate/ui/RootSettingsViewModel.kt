@@ -8,7 +8,6 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.playtranslate.AnkiManager
-import com.playtranslate.BuildConfig
 import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
 import com.playtranslate.R
@@ -134,9 +133,9 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
         val captureSummary: String,
         val anki: AnkiCell,
         val tts: TtsCell,
-        /** Yomitan CONFIGURE cell digest (debug-only cell): import prompt
-         *  when empty, dictionary count otherwise. Null until the first
-         *  [refresh] resolves it (subtitle hidden). */
+        /** Yomitan CONFIGURE cell digest: import prompt when empty,
+         *  dictionary count otherwise. Null until the first [refresh]
+         *  resolves it (subtitle hidden). */
         val yomitanSummary: String? = null,
     )
 
@@ -188,12 +187,10 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
             val tts = resolveTtsCell()
             _state.update { it.copy(tts = tts) }
         }
-        if (BuildConfig.DEBUG) {
-            viewModelScope.launch {
-                val count = YomitanDictionaryStore.load(getApplication()).dictionaries.size
-                val summary = yomitanDigest(count)
-                _state.update { it.copy(yomitanSummary = summary) }
-            }
+        viewModelScope.launch {
+            val count = YomitanDictionaryStore.load(getApplication()).dictionaries.size
+            val summary = yomitanDigest(count)
+            _state.update { it.copy(yomitanSummary = summary) }
         }
     }
 
@@ -336,7 +333,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
             Locale.forLanguageTag(prefs.targetLang),
         )
 
-    // ── Yomitan digest (debug-only cell) ─────────────────────────────────
+    // ── Yomitan digest ────────────────────────────────────────────────────
 
     private fun yomitanDigest(count: Int): String =
         if (count == 0) str(R.string.settings_yomitan_empty_summary)

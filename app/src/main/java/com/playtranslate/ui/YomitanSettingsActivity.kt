@@ -26,14 +26,13 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
- * Debug-only Yomitan dictionary manager (Settings → Configure → Yomitan).
+ * Yomitan dictionary manager (Settings → Configure → Yomitan).
  *
  * Imports Yomitan dictionary zips via SAF, validates them through
  * [YomitanDictionaryStore], and lists them grouped by data category — one
  * section per [YomitanCategory] that has at least one dictionary, each with
  * its own drag-reorder priority (a multi-category dictionary appears in every
- * matching section and is ordered independently in each). Stage 1: imported
- * dictionaries are stored and managed but not yet used for lookups.
+ * matching section and is ordered independently in each).
  */
 class YomitanSettingsActivity : SettingsSubPageActivity() {
 
