@@ -32,12 +32,21 @@ internal object TermMerge {
      * format's blank-reading sentinel, common in sloppier conversions) and
      * match any supplied reading. With no reading supplied, every row for
      * the term applies.
+     *
+     * [singleDictionary] (the user's TERMS-section toggle) keeps only the
+     * first dictionary's group — groups exist only for dicts whose rows
+     * survived narrowing, so "first" already IS the highest-priority dict
+     * with results, and falling through to lower-priority dicts on a miss
+     * needs no extra logic. The built-in pack is the implicit LAST source
+     * in that priority order: when a group wins, the returned lookup also
+     * flags the pack's senses for exclusion.
      */
     fun merge(
         rows: List<Row>,
         dictOrder: List<Pair<String, String>>,
         normalizedReading: String?,
         normalizedTerm: String,
+        singleDictionary: Boolean = false,
     ): YomitanDataStore.TermLookup {
         val narrowed =
             if (normalizedReading == null) rows
@@ -61,11 +70,15 @@ internal object TermMerge {
                 }
                 .takeIf { it.isNotEmpty() }
                 ?.let { ImportedSenseGroup(label, it) }
-        }
+        }.let { if (singleDictionary) it.take(1) else it }
         val resolvedReading = normalizedReading
             ?: dictOrder.firstNotNullOfOrNull { (dictId, _) ->
                 narrowed.firstOrNull { it.dictId == dictId }?.reading
             }
-        return YomitanDataStore.TermLookup(groups, resolvedReading)
+        return YomitanDataStore.TermLookup(
+            groups,
+            resolvedReading,
+            suppressesPackSenses = singleDictionary && groups.isNotEmpty(),
+        )
     }
 }

@@ -70,6 +70,10 @@ data class YomitanDictionary(
 data class YomitanRegistry(
     val dictionaries: List<YomitanDictionary> = emptyList(),
     val sectionOrder: Map<String, List<String>> = emptyMap(),
+    /** TERMS-section toggle: definitions come from only the highest-priority
+     *  dictionary that has results, instead of every dictionary. Absent in
+     *  older registries → Gson leaves the primitive false, the default. */
+    val termsSingleDictionary: Boolean = false,
 ) {
     /** Dictionaries belonging to [category], in that section's stored order. */
     fun orderedFor(category: YomitanCategory): List<YomitanDictionary> {
@@ -260,9 +264,12 @@ object YomitanDictionaryStore {
                 try {
                     dictionaryDir(ctx, id).mkdirs()
                     PackIntegrity.atomicReplace(temp, zipFile(ctx, id))
+                    // copy(), never a fresh YomitanRegistry(...): rebuilding
+                    // from scratch silently resets every field this mutation
+                    // doesn't touch (e.g. termsSingleDictionary).
                     writeRegistry(
                         ctx,
-                        YomitanRegistry(
+                        registry.copy(
                             dictionaries = registry.dictionaries + dictionary,
                             sectionOrder = registry.sectionOrder.toMutableMap().apply {
                                 for (cat in dictionary.categories) {
@@ -299,9 +306,11 @@ object YomitanDictionaryStore {
     suspend fun delete(ctx: Context, id: String) = withContext(Dispatchers.IO) {
         mutex.withLock {
             val registry = readRegistry(ctx) ?: return@withLock
+            // copy() for the same reason as import: untouched fields
+            // (termsSingleDictionary) must survive the rewrite.
             writeRegistry(
                 ctx,
-                YomitanRegistry(
+                registry.copy(
                     dictionaries = registry.dictionaries.filterNot { it.id == id },
                     sectionOrder = registry.sectionOrder.mapValues { (_, ids) ->
                         ids.filterNot { it == id }
@@ -338,6 +347,19 @@ object YomitanDictionaryStore {
                 )
             }
             // Priority order feeds conflict resolution in the data store.
+            YomitanDataStore.invalidate()
+        }
+
+    /** Sets the TERMS-section single-dictionary toggle. No-op when the
+     *  registry is unreadable. */
+    suspend fun setTermsSingleDictionary(ctx: Context, enabled: Boolean) =
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                val registry = readRegistry(ctx) ?: return@withLock
+                if (registry.termsSingleDictionary == enabled) return@withLock
+                writeRegistry(ctx, registry.copy(termsSingleDictionary = enabled))
+            }
+            // The flag is part of the data store's registry-derived cache.
             YomitanDataStore.invalidate()
         }
 

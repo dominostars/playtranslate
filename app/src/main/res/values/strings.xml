@@ -2030,6 +2030,10 @@
     <string name="yomitan_no_space_title">Not Enough Space</string>
     <!-- Body of the insufficient-space alert; %1$s = space needed, %2$s = space available (both pre-formatted sizes). -->
     <string name="yomitan_no_space_message">Importing this dictionary needs about <xliff:g id="needed" example="180 MB">%1$s</xliff:g> of free space, but only <xliff:g id="available" example="42 MB">%2$s</xliff:g> is available. Free up space and try again.</string>
+    <!-- Title of the single-dictionary toggle at the bottom of the Terms section. -->
+    <string name="yomitan_single_dict_title">Only show definitions from one dictionary</string>
+    <!-- Subtitle of the single-dictionary toggle, explaining which dictionary wins. -->
+    <string name="yomitan_single_dict_subtitle">Definitions come from the highest-priority dictionary with results; the built-in dictionary is the final fallback</string>
     <!-- Title of the alert shown when the import fails for storage/IO reasons (file may be fine). -->
     <string name="yomitan_io_error_title">Import Failed</string>
     <!-- Body of the storage/IO import-failure alert. -->

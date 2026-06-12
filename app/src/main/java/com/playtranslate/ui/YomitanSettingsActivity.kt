@@ -15,6 +15,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.R
 import com.playtranslate.themeColor
 import com.playtranslate.yomitan.YomitanCategory
@@ -40,6 +41,7 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
 
     private lateinit var sectionsContainer: LinearLayout
     private var importJob: Job? = null
+    private var toggleWriteJob: Job? = null
 
     /** Zips come from downloads/file managers with inconsistent MIME types —
      *  octet-stream is common for GitHub release assets. The importer's own
@@ -154,7 +156,46 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
             recycler.adapter = adapter
             adapter.touchHelper = attachDragHelper(recycler, category, adapter)
 
+            if (category == YomitanCategory.TERMS) {
+                bindSingleDictionaryToggle(section, registry.termsSingleDictionary)
+            }
+
             sectionsContainer.addView(section)
+        }
+    }
+
+    /** Shows the TERMS section's fixed footer row — the single-dictionary
+     *  toggle. Lives below the RecyclerView (not in the adapter), so it
+     *  stays put through drag-reorders. */
+    private fun bindSingleDictionaryToggle(section: View, checked: Boolean) {
+        section.findViewById<View>(R.id.yomitanSectionFooterDivider).isVisible = true
+        val row = section.findViewById<View>(R.id.yomitanSectionFooterToggle)
+        row.isVisible = true
+        row.findViewById<TextView>(R.id.tvRowTitle)
+            .setText(R.string.yomitan_single_dict_title)
+        row.findViewById<TextView>(R.id.tvRowSubtitle).apply {
+            setText(R.string.yomitan_single_dict_subtitle)
+            isVisible = true
+        }
+        val toggle = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        toggle.isChecked = checked
+        // The row is the tap target (the switch itself is non-clickable by
+        // layout contract); capture the new value at tap time so rapid taps
+        // can't persist a stale read.
+        row.setOnClickListener {
+            val enabled = !toggle.isChecked
+            toggle.isChecked = enabled
+            // Chain on the previous write: independent launches can acquire
+            // the store's IO mutex out of tap order, persisting a stale value
+            // last. Launch order on Main == tap order, so joining the prior
+            // job keeps writes sequential.
+            val previous = toggleWriteJob
+            toggleWriteJob = lifecycleScope.launch {
+                previous?.join()
+                YomitanDictionaryStore.setTermsSingleDictionary(
+                    this@YomitanSettingsActivity, enabled,
+                )
+            }
         }
     }
 

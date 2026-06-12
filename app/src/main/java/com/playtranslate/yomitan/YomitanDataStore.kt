@@ -78,6 +78,9 @@ object YomitanDataStore {
         /** TERMS section's (dict id, group label) in display order — every
          *  dict with definitions for a word contributes a group. */
         val termDicts: List<Pair<String, String>>,
+        /** User toggle: only the highest-priority TERMS dict with results
+         *  contributes its group (see [TermMerge.merge]). */
+        val termsSingleDictionary: Boolean,
     )
 
     /** Result of [termSensesFor]: the per-dictionary definition groups in
@@ -88,6 +91,11 @@ object YomitanDataStore {
     data class TermLookup(
         val groups: List<ImportedSenseGroup>,
         val resolvedReading: String?,
+        /** Single-dictionary mode with an imported group winning: the
+         *  built-in pack counts as the lowest-priority source, so its
+         *  senses must be excluded by the caller. False whenever [groups]
+         *  is empty — the pack is then the dictionary that "has results". */
+        val suppressesPackSenses: Boolean = false,
     )
 
     private class KanjiDictMeta(
@@ -355,6 +363,7 @@ object YomitanDataStore {
             dictOrder = caps.termDicts,
             normalizedReading = reading?.let(Deinflector::katakanaToHiragana),
             normalizedTerm = Deinflector.katakanaToHiragana(term),
+            singleDictionary = caps.termsSingleDictionary,
         )
     }
 
@@ -431,6 +440,7 @@ object YomitanDataStore {
                         .map { it.id to (it.alias ?: it.title) },
                     termDicts = registry.orderedFor(YomitanCategory.TERMS)
                         .map { it.id to (it.alias ?: it.title) },
+                    termsSingleDictionary = registry.termsSingleDictionary,
                 ).also { cache = it }
             }
             database to caps

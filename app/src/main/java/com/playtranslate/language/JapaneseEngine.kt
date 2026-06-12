@@ -88,11 +88,24 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
             // entry — the one every surface renders.
             packResponse != null -> {
                 if (imported.groups.isEmpty()) packResponse
-                else packResponse.copy(
-                    entries = listOf(
-                        packResponse.entries.first().copy(importedSenses = imported.groups)
-                    ) + packResponse.entries.drop(1),
-                )
+                else {
+                    // Single-dictionary mode: the pack is the lowest-priority
+                    // source, so a winning imported group excludes its senses
+                    // too. Stripped across ALL entries (surfaces flatMap
+                    // senses over them); the entry keeps anchoring identity —
+                    // the already-supported synthesized-entry shape.
+                    val entries =
+                        if (imported.lookup.suppressesPackSenses) {
+                            packResponse.entries.map { it.copy(senses = emptyList()) }
+                        } else {
+                            packResponse.entries
+                        }
+                    packResponse.copy(
+                        entries = listOf(
+                            entries.first().copy(importedSenses = imported.groups)
+                        ) + entries.drop(1),
+                    )
+                }
             }
             // Pack miss but an imported dict has the word: synthesize an
             // entry so it resolves everywhere. No senses/POS/badges — the

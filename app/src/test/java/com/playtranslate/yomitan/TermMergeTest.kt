@@ -20,7 +20,8 @@ class TermMergeTest {
         rows: List<TermMerge.Row>,
         normalizedReading: String?,
         normalizedTerm: String = "端",
-    ) = TermMerge.merge(rows, order, normalizedReading, normalizedTerm)
+        singleDictionary: Boolean = false,
+    ) = TermMerge.merge(rows, order, normalizedReading, normalizedTerm, singleDictionary)
 
     @Test
     fun `groups follow section order regardless of row order`() {
@@ -107,6 +108,65 @@ class TermMergeTest {
             normalizedReading = null,
         )
         assertEquals("よみえー", result.resolvedReading)
+    }
+
+    @Test
+    fun `single-dictionary mode keeps only the highest-priority group`() {
+        val result = merge(
+            rows = listOf(row("dictB", "ねこ", 0.0, "b-def"), row("dictA", "ねこ", 0.0, "a-def")),
+            normalizedReading = null,
+            singleDictionary = true,
+        )
+        assertEquals(
+            listOf(ImportedSenseGroup("Dict A", listOf(ImportedSense("a-def")))),
+            result.groups,
+        )
+    }
+
+    @Test
+    fun `single-dictionary mode falls through dicts without results`() {
+        // dictA has rows, but reading narrowing removes them all — dictB is
+        // the first dict WITH results and must win, not an empty lookup.
+        val result = merge(
+            rows = listOf(row("dictA", "はじ", 0.0, "shame"), row("dictB", "はし", 0.0, "edge")),
+            normalizedReading = "はし",
+            singleDictionary = true,
+        )
+        assertEquals(
+            listOf(ImportedSenseGroup("Dict B", listOf(ImportedSense("edge")))),
+            result.groups,
+        )
+    }
+
+    @Test
+    fun `single-dictionary mode suppresses pack senses when a group wins`() {
+        val result = merge(
+            rows = listOf(row("dictA", "ねこ", 0.0, "a-def")),
+            normalizedReading = null,
+            singleDictionary = true,
+        )
+        assertEquals(true, result.suppressesPackSenses)
+    }
+
+    @Test
+    fun `single-dictionary mode with no surviving group leaves the pack alone`() {
+        // The pack is the implicit last dictionary in the priority order —
+        // with every imported row narrowed away it IS the one with results.
+        val result = merge(
+            rows = listOf(row("dictA", "はじ", 0.0, "shame")),
+            normalizedReading = "はし",
+            singleDictionary = true,
+        )
+        assertEquals(false, result.suppressesPackSenses)
+    }
+
+    @Test
+    fun `multi-dictionary mode never suppresses pack senses`() {
+        val result = merge(
+            rows = listOf(row("dictA", "ねこ", 0.0, "a-def")),
+            normalizedReading = null,
+        )
+        assertEquals(false, result.suppressesPackSenses)
     }
 
     @Test
