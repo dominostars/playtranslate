@@ -18,9 +18,8 @@ import com.playtranslate.themeColor
 /**
  * Renders the dictionary body shared by the magnifying lens
  * ([MagnifierLens]) and the translation-result word cell ([WordResultCell]):
- * a meta row (Common pill · frequency stars · promoted part-of-speech · Anki
- * deck pill), an optional warning label, and the numbered senses with
- * per-sense POS headers.
+ * a meta row (Common pill · frequency stars · Anki deck pill), an optional
+ * warning label, and the numbered senses with per-sense POS headers.
  *
  * The whole body multiplies by a [bind] `scale` factor (text sizes and the
  * structural gaps), so the same renderer serves the small floating lens and
@@ -72,17 +71,10 @@ class WordDefinitionsView @JvmOverloads constructor(
     fun bind(data: WordDefinitionData, label: String?, scale: Float) {
         removeAllViews()
 
-        // If every non-blank POS across the senses is the same, the body
-        // grouping collapses to one section — and a lone section header is
-        // just a louder copy of what the meta row already carries, so promote
-        // it into the meta row and skip the in-body headers.
-        val distinctPos = data.senses.map { it.pos.trim() }.filter { it.isNotEmpty() }.distinct()
-        val singlePos = distinctPos.singleOrNull()
         val hasMetaContent = data.isCommon || data.freqScore > 0 ||
-            data.frequencies.isNotEmpty() ||
-            singlePos != null || data.ankiDecks.isNotEmpty()
+            data.frequencies.isNotEmpty() || data.ankiDecks.isNotEmpty()
 
-        if (hasMetaContent) addView(buildMetaRow(data, singlePos, scale), fullWidth())
+        if (hasMetaContent) addView(buildMetaRow(data, scale), fullWidth())
 
         label?.takeIf { it.isNotBlank() }?.let { warning ->
             val view = TextView(context).apply {
@@ -99,9 +91,8 @@ class WordDefinitionsView @JvmOverloads constructor(
         var firstSenseBlock = true
         data.senses.forEachIndexed { i, sense ->
             // A new POS header is emitted only when the POS actually changes
-            // (or is the first non-blank POS seen). Suppressed entirely when
-            // the meta row already carries the single promoted POS.
-            if (singlePos == null && sense.pos.isNotBlank() && sense.pos != previousPos) {
+            // (or is the first non-blank POS seen).
+            if (sense.pos.isNotBlank() && sense.pos != previousPos) {
                 val header = TextView(context).apply {
                     text = sense.pos.uppercase()
                     setTextColor(secondaryText)
@@ -123,9 +114,8 @@ class WordDefinitionsView @JvmOverloads constructor(
         }
     }
 
-    /** Common pill · stars · frequency chips · promoted POS · Anki deck
-     *  pill, wrapping. */
-    private fun buildMetaRow(data: WordDefinitionData, singlePos: String?, scale: Float): FlowLayout {
+    /** Common pill · stars · frequency chips · Anki deck pill, wrapping. */
+    private fun buildMetaRow(data: WordDefinitionData, scale: Float): FlowLayout {
         val row = FlowLayout(context).apply { lineSpacingPx = dp(7f * scale) }
         val gap = dp(8f * scale)
         fun add(view: View) {
@@ -160,15 +150,6 @@ class WordDefinitionsView @JvmOverloads constructor(
                     verticalPadPx = dp(2f * scale),
                 )
             )
-        }
-        if (singlePos != null) {
-            add(TextView(context).apply {
-                text = singlePos.uppercase()
-                setTextColor(secondaryText)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f * scale)
-                typeface = medium
-                letterSpacing = 0.07f
-            })
         }
         if (data.ankiDecks.isNotEmpty()) {
             AnkiDeckBadge.buildPill(
