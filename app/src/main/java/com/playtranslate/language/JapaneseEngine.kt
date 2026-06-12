@@ -69,10 +69,19 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
         return PreloadResult.Success
     }
 
-    override suspend fun tokenize(text: String): List<TokenSpan> =
-        dict.tokenizeWithSurfaces(text).map {
+    override suspend fun tokenize(text: String): List<TokenSpan> {
+        // Imported Yomitan term dicts list expressions JMdict lacks — offer
+        // them as a second phrase gate for the n-gram re-glob. Null (not a
+        // no-op lambda) when no term dict is installed, so the tokenizer
+        // skips the whole oracle pass.
+        val phraseOracle: (suspend (Set<String>) -> Set<String>)? =
+            if (YomitanDataStore.hasTermDictionaries(appContext)) {
+                { candidates -> YomitanDataStore.batchTermsExist(appContext, candidates) }
+            } else null
+        return dict.tokenizeWithSurfaces(text, phraseOracle).map {
             TokenSpan(surface = it.surface, lookupForm = it.lookupForm, reading = it.reading)
         }
+    }
 
     override suspend fun searchPrefix(query: String, limit: Int): List<TokenSpan> =
         dict.searchPrefix(query, limit).map {

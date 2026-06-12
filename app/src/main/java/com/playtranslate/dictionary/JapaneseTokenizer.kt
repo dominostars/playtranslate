@@ -31,6 +31,11 @@ data class JaToken(
     val normalizedForm: String,
     val reading: String?,
     val isOov: Boolean,
+    /** UniDic inflection form (活用形, e.g. 連用形-一般, 語幹-一般), or null
+     *  for non-conjugating morphemes / analyzers that don't report it.
+     *  語幹 marks an incomplete stem awaiting a derivational continuation
+     *  (良さ before そう) — see the re-glob's lemma-variant guard. */
+    val inflectionForm: String? = null,
 )
 
 /**

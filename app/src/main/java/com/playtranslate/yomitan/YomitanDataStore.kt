@@ -372,6 +372,51 @@ object YomitanDataStore {
         )
     }
 
+    /**
+     * Batch existence gate for the tokenizer's n-gram phrase re-glob:
+     * returns the subset of [candidates] present in an ENABLED terms
+     * dictionary. The dict allow-list matters — it must be the same set
+     * [termSensesFor] surfaces, or a disabled/orphan dict could glob a
+     * phrase whose subsequent lookup returns nothing and the underlying
+     * tokens would vanish from the Words panel.
+     */
+    suspend fun batchTermsExist(
+        ctx: Context,
+        candidates: Set<String>,
+    ): Set<String> = withContext(Dispatchers.IO) {
+        if (candidates.isEmpty()) return@withContext emptySet()
+        val (database, caps) = ready(ctx)
+        if (caps.termDicts.isEmpty()) return@withContext emptySet()
+        batchTermsExistQuery(database, candidates, caps.termDicts.map { it.first })
+    }
+
+    /** SQL core of [batchTermsExist], separated so tests can drive it
+     *  against a fixture database without the singleton's reconcile path. */
+    internal fun batchTermsExistQuery(
+        database: SQLiteDatabase,
+        candidates: Set<String>,
+        enabledDictIds: List<String>,
+    ): Set<String> {
+        if (enabledDictIds.isEmpty()) return emptySet()
+        // The allow-list filters in memory, not in SQL: binds stay at the
+        // candidate chunk size (≤500, under SQLite's 999-parameter cap)
+        // no matter how many dictionaries are enabled.
+        val enabled = enabledDictIds.toHashSet()
+        val found = mutableSetOf<String>()
+        for (chunk in candidates.chunked(500)) {
+            val termPlaceholders = chunk.joinToString(",") { "?" }
+            database.rawQuery(
+                "SELECT term, dict_id FROM term WHERE term IN ($termPlaceholders)",
+                chunk.toTypedArray(),
+            ).use { c ->
+                while (c.moveToNext()) {
+                    if (c.getString(1) in enabled) found.add(c.getString(0))
+                }
+            }
+        }
+        return found
+    }
+
     // ── Lifecycle hooks (called by YomitanDictionaryStore) ──────────────
 
     /** Eagerly ingests a freshly imported dictionary so its data is queryable

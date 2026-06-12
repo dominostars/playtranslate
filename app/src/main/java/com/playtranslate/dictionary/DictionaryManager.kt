@@ -163,8 +163,18 @@ class DictionaryManager private constructor(private val context: Context) {
      * tokens that are part of the conjugation (e.g. ない after 使わ).
      *
      * Falls back to [Deinflector.tokenize] if the database is not ready.
+     *
+     * [phraseOracle], when non-null, is a second membership gate for n-gram
+     * phrase candidates that miss JMdict (e.g. imported Yomitan term
+     * dictionaries — expressions JMdict doesn't list). Only candidates
+     * containing at least one kanji are offered to it: the oracle has no
+     * analog of the JMdict `rank_score >= 0` guard, so kana-only joins
+     * (に+は …) could otherwise fuse on a coincidental entry.
      */
-    suspend fun tokenizeWithSurfaces(text: String): List<TokenWithReading> = withContext(Dispatchers.IO) {
+    suspend fun tokenizeWithSurfaces(
+        text: String,
+        phraseOracle: (suspend (Set<String>) -> Set<String>)? = null,
+    ): List<TokenWithReading> = withContext(Dispatchers.IO) {
         val tokens = SudachiJapaneseTokenizer.Provider.analyze(text)
         // Fallback when the JMdict DB isn't ready: emit content words on their own
         // (no n-gram phrase detection, no normalizedForm probing).
@@ -174,86 +184,41 @@ class DictionaryManager private constructor(private val context: Context) {
                 .filter { isLookupWorthy(it.lookupForm) }
         }
         val database = ensureOpen() ?: return@withContext contentOnly()
-        database.withRefcount {
-            val surfaces = tokens.map { it.surface }
-            val result   = mutableListOf<TokenWithReading>()
 
-            // Batch existence query: candidate N-gram phrases PLUS each content
-            // token's dictionaryForm/normalizedForm (layer 1 — lets us pick the
-            // form that actually resolves, e.g. キミ→君).
-            // Multi-token N-gram phrase candidates (REGLOB_WINDOW down to 2).
-            val phraseCandidates = mutableSetOf<String>()
-            for (i in tokens.indices) {
-                val maxN = minOf(REGLOB_WINDOW, tokens.size - i)
-                for (n in maxN downTo 2) {
-                    val phrase = surfaces.subList(i, i + n).joinToString("")
-                    if (isLookupWorthy(phrase)) phraseCandidates.add(phrase)
-                }
+        // Batch existence query: candidate N-gram phrases PLUS each content
+        // token's dictionaryForm/normalizedForm (layer 1 — lets us pick the
+        // form that actually resolves, e.g. キミ→君).
+        val candidates = phraseCandidatesFor(tokens)
+        // Single content-token forms (layer 1: dictionaryForm / normalizedForm).
+        val formCandidates = mutableSetOf<String>()
+        for (t in tokens) {
+            if (!t.category.isContent) continue
+            if (isLookupWorthy(t.dictionaryForm)) formCandidates.add(t.dictionaryForm)
+            if (t.normalizedForm != t.dictionaryForm && isLookupWorthy(t.normalizedForm)) {
+                formCandidates.add(t.normalizedForm)
             }
-            // Single content-token forms (layer 1: dictionaryForm / normalizedForm).
-            val formCandidates = mutableSetOf<String>()
-            for (t in tokens) {
-                if (!t.category.isContent) continue
-                if (isLookupWorthy(t.dictionaryForm)) formCandidates.add(t.dictionaryForm)
-                if (t.normalizedForm != t.dictionaryForm && isLookupWorthy(t.normalizedForm)) {
-                    formCandidates.add(t.normalizedForm)
-                }
-            }
-            // Phrases must match a headword or a PRIMARY reading (rank_score >= 0)
-            // so a particle isn't fused into a coincidental marginal reading
-            // (ここ+の → 九's position-2 stem ここの). Single forms match any
-            // headword/reading — lookup ranking disambiguates those later.
-            val knownPhrases = batchCheckPhrases(database, phraseCandidates)
-            val knownForms = batchCheckEntries(database, formCandidates)
+        }
+        // Phrases must match a headword or a PRIMARY reading (rank_score >= 0)
+        // so a particle isn't fused into a coincidental marginal reading
+        // (ここ+の → 九's position-2 stem ここの). Single forms match any
+        // headword/reading — lookup ranking disambiguates those later.
+        val known = database.withRefcount {
+            val phraseStrings = candidates.mapTo(mutableSetOf()) { it.lookupForm }
+            batchCheckPhrases(database, phraseStrings) to batchCheckEntries(database, formCandidates)
+        } ?: return@withContext contentOnly()
+        var (knownPhrases, knownForms) = known
 
-            var i = 0
-            while (i < tokens.size) {
-                // Multi-token N-gram phrases (4 down to 2): JMdict idioms Sudachi
-                // splits grammatically (かもしれない etc.).
-                var advanced = false
-                val maxN = minOf(REGLOB_WINDOW, tokens.size - i)
-                for (n in maxN downTo 2) {
-                    val phrase = surfaces.subList(i, i + n).joinToString("")
-                    if (phrase in knownPhrases) {
-                        result.add(TokenWithReading(phrase, phrase, reading = null))
-                        i += n
-                        advanced = true
-                        break
-                    }
-                }
+        // Imported-dictionary gate for JMdict misses. Runs OUTSIDE withRefcount
+        // (the oracle suspends; the refcount lambda must not). Kanji-only: see doc.
+        if (phraseOracle != null) {
+            val forOracle = candidates.mapTo(mutableSetOf()) { it.lookupForm }
+                .filterTo(mutableSetOf()) { oracleEligible(it, knownPhrases) }
+            if (forOracle.isNotEmpty()) knownPhrases = knownPhrases + phraseOracle(forOracle)
+        }
 
-                if (!advanced) {
-                    val t = tokens[i]
-                    if (t.category.isContent) {
-                        // Layer 1: prefer dictionaryForm (lemma); fall back to
-                        // normalizedForm when only the normalized variant resolves.
-                        val lookupForm = when {
-                            t.dictionaryForm in knownForms -> t.dictionaryForm
-                            t.normalizedForm in knownForms -> t.normalizedForm
-                            else -> t.dictionaryForm
-                        }
-                        if (isLookupWorthy(lookupForm)) {
-                            // Surface span: for verbs/i-adjectives, fold in trailing
-                            // auxiliary/particle morphemes (e.g. ない after 使わ).
-                            var surfaceSpan = t.surface
-                            if (t.category.startsConjugation) {
-                                var j = i + 1
-                                while (j < tokens.size && tokens[j].category.isConjugationGlue) {
-                                    surfaceSpan += tokens[j].surface
-                                    j++
-                                }
-                            }
-                            val reading = t.reading?.let { Deinflector.katakanaToHiragana(it) }
-                            result.add(TokenWithReading(surfaceSpan, lookupForm, reading))
-                        }
-                    }
-                    i++
-                }
-            }
-
-            Log.d(TAG, "tokenizeWithSurfaces: ${result.map { "(${it.surface} → ${it.lookupForm} [${it.reading}])" }}")
-            result
-        } ?: contentOnly()
+        val result = reglobTokens(tokens, candidates, knownPhrases, knownForms)
+        Log.d(TAG, "tokenizeWithSurfaces: ${result.map { "(${it.surface} → ${it.lookupForm} [${it.reading}])" }}")
+        result
     }
 
     /**
@@ -294,12 +259,6 @@ class DictionaryManager private constructor(private val context: Context) {
         return result
     }
 
-    private fun isLookupWorthy(token: String): Boolean {
-        if (token.isBlank()) return false
-        if (token.all { it.code <= 0x007F }) return false
-        if (token.length == 1 && token[0] in '\u3041'..'\u3096') return false
-        return true
-    }
 
     /**
      * Look up [word] in the local JMdict database.
@@ -761,6 +720,159 @@ class DictionaryManager private constructor(private val context: Context) {
          * the lexicon — a build-time max-span computation could replace it.
          */
         private const val REGLOB_WINDOW = 8
+
+        private fun isLookupWorthy(token: String): Boolean {
+            if (token.isBlank()) return false
+            if (token.all { it.code <= 0x007F }) return false
+            if (token.length == 1 && token[0] in 'ぁ'..'ゖ') return false
+            return true
+        }
+
+        /**
+         * Whether a phrase candidate that missed JMdict may be offered to the
+         * imported-dictionary phrase oracle. Kanji required: the oracle has
+         * no analog of JMdict's `rank_score >= 0` guard, so a kana-only join
+         * (に+は …) could fuse on a coincidental imported entry.
+         */
+        internal fun oracleEligible(lookupForm: String, knownPhrases: Set<String>): Boolean =
+            lookupForm !in knownPhrases && lookupForm.any(Deinflector::isKanji)
+
+        /**
+         * One phrase candidate from the n-gram re-glob: the string to check
+         * against a membership set (JMdict / imported dicts), plus how the
+         * match materializes — surface span and tokens to advance past. Span
+         * bookkeeping is computed once here so the matcher does no arithmetic.
+         */
+        internal data class PhraseCandidate(
+            /** Window start in the token list. */
+            val startIndex: Int,
+            /** Tokens inside the window (excluding any trailing folded glue). */
+            val windowLen: Int,
+            /** String checked against the membership set; becomes the result's lookupForm. */
+            val lookupForm: String,
+            /** Actual input surfaces for the consumed span. */
+            val surface: String,
+            /** Total tokens to advance past on a match (windowLen + folded glue). */
+            val tokensConsumed: Int,
+            /** False = exact surface join; true = last-token lemma variant. */
+            val isVariant: Boolean,
+        )
+
+        /**
+         * Generate every n-gram phrase candidate (REGLOB_WINDOW down to 2)
+         * for the token stream. Pure — no database access; the caller checks
+         * the candidates' lookupForms for membership.
+         *
+         * Two candidate shapes per window:
+         *  - exact: the surfaces joined as-is (かもしれない);
+         *  - lemma variant: for windows ENDING at an inflected conjugating
+         *    content token, the last surface is swapped for its
+         *    dictionaryForm (気+に+なっ → 気になる), and the trailing
+         *    auxiliary/particle glue (た) is folded into the surface span /
+         *    advance count — mirroring the single-token folding in
+         *    [reglobTokens]. This lets dictionary headwords match inflected
+         *    expressions (気になった) the exact join can't.
+         */
+        internal fun phraseCandidatesFor(tokens: List<JaToken>): List<PhraseCandidate> {
+            val surfaces = tokens.map { it.surface }
+            val out = mutableListOf<PhraseCandidate>()
+            for (i in tokens.indices) {
+                val maxN = minOf(REGLOB_WINDOW, tokens.size - i)
+                for (n in maxN downTo 2) {
+                    val phrase = surfaces.subList(i, i + n).joinToString("")
+                    if (isLookupWorthy(phrase)) {
+                        out.add(PhraseCandidate(
+                            startIndex = i, windowLen = n, lookupForm = phrase,
+                            surface = phrase, tokensConsumed = n, isVariant = false,
+                        ))
+                    }
+                    // Lemma variant: window ends at an inflected verb/i-adjective.
+                    // Must also START at a content token — expressions don't begin
+                    // mid-grammar, and particle-led variants produce misglobs that
+                    // swallow the particle (遠慮[はいらない] → はいる i.e. 入る;
+                    // 掲示[がされて] → がする). Exact joins keep matching from any
+                    // token (かもしれない starts at a particle by design).
+                    if (!tokens[i].category.isContent) continue
+                    val last = tokens[i + n - 1]
+                    if (!last.category.isContent || !last.category.startsConjugation) continue
+                    if (last.surface == last.dictionaryForm) continue
+                    // 語幹 (bare stem) is an incomplete inflection awaiting a
+                    // derivational continuation (良さ before そう) — lemma-swapping
+                    // it would cut a span boundary through the derived word
+                    // (方が良さ[そうだ] → 方が良い). Complete forms (命令形 こい,
+                    // 連用形 深く) stay eligible.
+                    if (last.inflectionForm?.startsWith("語幹") == true) continue
+                    val lemmaPhrase =
+                        surfaces.subList(i, i + n - 1).joinToString("") + last.dictionaryForm
+                    if (lemmaPhrase == phrase || !isLookupWorthy(lemmaPhrase)) continue
+                    var j = i + n
+                    while (j < tokens.size && tokens[j].category.isConjugationGlue) j++
+                    out.add(PhraseCandidate(
+                        startIndex = i, windowLen = n, lookupForm = lemmaPhrase,
+                        surface = surfaces.subList(i, j).joinToString(""),
+                        tokensConsumed = j - i, isVariant = true,
+                    ))
+                }
+            }
+            return out
+        }
+
+        /**
+         * Greedy left-to-right re-glob matcher plus single-token fallback.
+         * Pure: all dictionary knowledge arrives pre-resolved in [knownPhrases]
+         * (phrase candidates that passed their membership gate) and
+         * [knownForms] (single content-token dictionaryForm/normalizedForm).
+         *
+         * At each position the longest matching window wins (exact surface
+         * join before lemma variant at equal length); otherwise the token's
+         * base form is emitted if it's a content word, with trailing
+         * auxiliary/particle morphemes folded into a conjugating word's
+         * surface span (e.g. ない after 使わ).
+         */
+        internal fun reglobTokens(
+            tokens: List<JaToken>,
+            candidates: List<PhraseCandidate>,
+            knownPhrases: Set<String>,
+            knownForms: Set<String>,
+        ): List<TokenWithReading> {
+            val byStart = candidates.groupBy { it.startIndex }.mapValues { (_, group) ->
+                group.sortedWith(compareByDescending<PhraseCandidate> { it.windowLen }.thenBy { it.isVariant })
+            }
+            val result = mutableListOf<TokenWithReading>()
+            var i = 0
+            while (i < tokens.size) {
+                val match = byStart[i]?.firstOrNull { it.lookupForm in knownPhrases }
+                if (match != null) {
+                    result.add(TokenWithReading(match.surface, match.lookupForm, reading = null))
+                    i += match.tokensConsumed
+                    continue
+                }
+                val t = tokens[i]
+                if (t.category.isContent) {
+                    // Layer 1: prefer dictionaryForm (lemma); fall back to
+                    // normalizedForm when only the normalized variant resolves.
+                    val lookupForm = when {
+                        t.dictionaryForm in knownForms -> t.dictionaryForm
+                        t.normalizedForm in knownForms -> t.normalizedForm
+                        else -> t.dictionaryForm
+                    }
+                    if (isLookupWorthy(lookupForm)) {
+                        var surfaceSpan = t.surface
+                        if (t.category.startsConjugation) {
+                            var j = i + 1
+                            while (j < tokens.size && tokens[j].category.isConjugationGlue) {
+                                surfaceSpan += tokens[j].surface
+                                j++
+                            }
+                        }
+                        val reading = t.reading?.let { Deinflector.katakanaToHiragana(it) }
+                        result.add(TokenWithReading(surfaceSpan, lookupForm, reading))
+                    }
+                }
+                i++
+            }
+            return result
+        }
 
         // ── Ranking SQL constants ─────────────────────────────────────────
         // Two parallel sets selected by [hasRankScore] per handle:

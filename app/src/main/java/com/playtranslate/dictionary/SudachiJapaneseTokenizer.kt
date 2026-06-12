@@ -43,6 +43,8 @@ class SudachiJapaneseTokenizer private constructor(
                 normalizedForm = m.normalizedForm().ifEmpty { surface },
                 reading = m.readingForm().takeIf { it.isNotEmpty() },
                 isOov = m.isOOV(),
+                inflectionForm = m.partOfSpeech().getOrElse(5) { "" }
+                    .takeIf { it.isNotEmpty() && it != "*" },
             )
         }
 
