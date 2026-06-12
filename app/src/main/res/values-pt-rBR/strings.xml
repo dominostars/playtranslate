@@ -91,7 +91,6 @@
 
     <string name="onboarding_notif_title">Permitir notificações</string>
 
-    <string name="onboarding_notif_body">O Android exige que apps em execução em segundo plano exibam uma notificação na barra de status enquanto estiverem ativos.\n\nIsso nunca enviará alertas, sons ou banners — apenas um indicador discreto e permanente de que o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> está em execução.</string>
 
     <string name="onboarding_a11y_hint">Procure por <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 

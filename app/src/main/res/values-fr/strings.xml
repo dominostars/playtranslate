@@ -92,7 +92,6 @@
 
     <string name="onboarding_notif_title">Autoriser les notifications</string>
 
-    <string name="onboarding_notif_body">Android exige que les applications fonctionnant en arrière-plan affichent une notification dans la barre d\'état pendant qu\'elles sont actives.\n\nCela n\'enverra jamais d\'alertes, de sons ni de bannières — seulement un indicateur discret et permanent indiquant que <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> est en cours d\'exécution.</string>
 
     <string name="onboarding_a11y_hint">Recherchez <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 

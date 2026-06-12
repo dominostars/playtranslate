@@ -81,7 +81,6 @@
 
     <string name="onboarding_notif_title">อนุญาตการแจ้งเตือน</string>
 
-    <string name="onboarding_notif_body">Android กำหนดให้แอปที่ทำงานในเบื้องหลังต้องแสดงการแจ้งเตือนในแถบสถานะขณะที่ทำงานอยู่\n\nระบบจะไม่ส่งการแจ้งเตือน เสียง หรือแบนเนอร์ใดๆ มีเพียงตัวบ่งชี้แบบถาวรที่ไม่รบกวนเพื่อแสดงว่า <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> กำลังทำงานอยู่เท่านั้น</string>
 
     <string name="onboarding_a11y_hint">มองหา <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 

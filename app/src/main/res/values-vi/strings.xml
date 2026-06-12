@@ -91,7 +91,6 @@
 
     <string name="onboarding_notif_title">Cho phép thông báo</string>
 
-    <string name="onboarding_notif_body">Android yêu cầu các ứng dụng chạy nền phải hiển thị một thông báo trên thanh trạng thái khi đang hoạt động.\n\nThông báo này sẽ không bao giờ gửi cảnh báo, âm thanh hay biểu ngữ — chỉ là một chỉ báo cố định, lặng lẽ cho biết <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> đang chạy.</string>
 
     <string name="onboarding_a11y_hint">Tìm <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 

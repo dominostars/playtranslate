@@ -91,7 +91,6 @@
 
     <string name="onboarding_notif_title">允许通知</string>
 
-    <string name="onboarding_notif_body">Android 要求在后台运行的应用在运行期间显示状态栏通知。\n\n这绝不会发送提醒、声音或横幅——只会有一个安静的常驻提示，表明 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 正在运行。</string>
 
     <string name="onboarding_a11y_hint">请查找 <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 

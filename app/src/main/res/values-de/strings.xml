@@ -91,7 +91,6 @@
 
     <string name="onboarding_notif_title">Benachrichtigungen zulassen</string>
 
-    <string name="onboarding_notif_body">Android verlangt, dass Apps, die im Hintergrund laufen, eine Benachrichtigung in der Statusleiste anzeigen, solange sie aktiv sind.\n\nEs werden niemals Hinweise, Töne oder Banner gesendet – nur eine dezente, dauerhafte Anzeige, dass <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> läuft.</string>
 
     <string name="onboarding_a11y_hint">Suche nach <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Muted variant of bg_feature_chip for "what this WON'T do" rows:
+     ptCard fill (the same neutral fill as the floating-menu Turn Off
+     button), 10dp radius, no stroke. The glyph inside is tinted
+     ptTextMuted. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/ptCard" />
+    <corners android:radius="10dp" />
+</shape>

@@ -166,9 +166,34 @@
     <!-- Title of the notification-permission card. -->
     <string name="onboarding_notif_title">Allow Notifications</string>
 
-    <!-- Body of the notification-permission card explaining why Android
-         requires the permission for foreground services. -->
-    <string name="onboarding_notif_body">Android requires apps that run in the background to display a status bar notification while active.\n\nThis will never send alerts, sounds, or banners — only a quiet persistent indicator that <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> is running.</string>
+    <!-- Lead-in line above the reassurance rows on the
+         notification-permission card, explaining why Android requires
+         the permission for foreground services. -->
+    <string name="onboarding_notif_intro">Android requires apps that run in the background to display a status bar notification while active.</string>
+
+    <!-- Title of reassurance row 1 (no alerts) on the
+         notification-permission onboarding card. -->
+    <string name="onboarding_notif_row_alerts_title">No alerts or banners</string>
+
+    <!-- Subtitle of reassurance row 1 (no alerts) on the
+         notification-permission onboarding card; may wrap to two lines. -->
+    <string name="onboarding_notif_row_alerts_sub">Nothing will pop up or interrupt you</string>
+
+    <!-- Title of reassurance row 2 (silent) on the
+         notification-permission onboarding card. -->
+    <string name="onboarding_notif_row_silent_title">No sounds or vibration</string>
+
+    <!-- Subtitle of reassurance row 2 (silent) on the
+         notification-permission onboarding card; may wrap to two lines. -->
+    <string name="onboarding_notif_row_silent_sub">It stays completely silent in the background</string>
+
+    <!-- Title of reassurance row 3 (status bar icon) on the
+         notification-permission onboarding card. -->
+    <string name="onboarding_notif_row_status_title">Just a status bar icon</string>
+
+    <!-- Subtitle of reassurance row 3 (status bar icon) on the
+         notification-permission onboarding card; may wrap to two lines. -->
+    <string name="onboarding_notif_row_status_sub">A quiet indicator that <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> is running</string>
 
     <!-- Hint shown on the accessibility-permission card directing the
          user where to look in the system Accessibility list. <b> is

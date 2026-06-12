@@ -91,7 +91,6 @@
 
     <string name="onboarding_notif_title">通知を許可</string>
 
-    <string name="onboarding_notif_body">Androidでは、バックグラウンドで動作するアプリは実行中にステータスバー通知を表示することが求められます。\n\nアラートや音、バナーが送られることはありません。<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>が実行中であることを示す、静かな常駐インジケーターのみです。</string>
 
     <string name="onboarding_a11y_hint"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b>を探してください</string>
 

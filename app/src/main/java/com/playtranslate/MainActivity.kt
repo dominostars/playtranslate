@@ -2032,6 +2032,26 @@ class MainActivity :
         pageNotif.findViewById<View>(R.id.btnGrantNotif).setOnClickListener {
             notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+
+        // Reassurance rows on the notification-permission page: two muted
+        // "won't do" rows, then the accent row for what the user gets.
+        bindFeatureRow(
+            pageNotif, R.id.rowNotifAlerts, R.drawable.ic_close,
+            R.string.onboarding_notif_row_alerts_title,
+            R.string.onboarding_notif_row_alerts_sub,
+            muted = true,
+        )
+        bindFeatureRow(
+            pageNotif, R.id.rowNotifSilent, R.drawable.ic_close,
+            R.string.onboarding_notif_row_silent_title,
+            R.string.onboarding_notif_row_silent_sub,
+            muted = true,
+        )
+        bindFeatureRow(
+            pageNotif, R.id.rowNotifStatus, R.drawable.ic_check,
+            R.string.onboarding_notif_row_status_title,
+            R.string.onboarding_notif_row_status_sub,
+        )
         val openOverlaySettings = View.OnClickListener {
             startActivity(overlayPermissionSettingsIntent())
         }
@@ -2047,17 +2067,17 @@ class MainActivity :
 
         // Benefit rows on the overlay-permission page.
         bindFeatureRow(
-            R.id.rowA11yFeatureTranslate, R.drawable.ic_translate,
+            pageA11y, R.id.rowA11yFeatureTranslate, R.drawable.ic_translate,
             R.string.onboarding_a11y_row_translate_title,
             R.string.onboarding_a11y_row_translate_sub,
         )
         bindFeatureRow(
-            R.id.rowA11yFeatureMenu, R.drawable.ic_float_landscape_2,
+            pageA11y, R.id.rowA11yFeatureMenu, R.drawable.ic_float_landscape_2,
             R.string.onboarding_a11y_row_menu_title,
             R.string.onboarding_a11y_row_menu_sub,
         )
         bindFeatureRow(
-            R.id.rowA11yFeatureLookup, R.drawable.ic_dictionary,
+            pageA11y, R.id.rowA11yFeatureLookup, R.drawable.ic_dictionary,
             R.string.onboarding_a11y_row_lookup_title,
             R.string.onboarding_a11y_row_lookup_sub,
         )
@@ -2067,9 +2087,23 @@ class MainActivity :
         colorizeAppName(pageA11y.findViewById(R.id.tvA11yHintDual), accentColor)
     }
 
-    private fun bindFeatureRow(rowId: Int, iconRes: Int, titleRes: Int, subtitleRes: Int) {
-        val row = pageA11y.findViewById<View>(rowId)
-        row.findViewById<ImageView>(R.id.featureIcon).setImageResource(iconRes)
+    private fun bindFeatureRow(
+        page: View,
+        rowId: Int,
+        iconRes: Int,
+        titleRes: Int,
+        subtitleRes: Int,
+        muted: Boolean = false,
+    ) {
+        val row = page.findViewById<View>(rowId)
+        val icon = row.findViewById<ImageView>(R.id.featureIcon)
+        icon.setImageResource(iconRes)
+        if (muted) {
+            row.findViewById<View>(R.id.featureChip)
+                .setBackgroundResource(R.drawable.bg_feature_chip_muted)
+            icon.imageTintList =
+                android.content.res.ColorStateList.valueOf(themeColor(R.attr.ptTextMuted))
+        }
         row.findViewById<TextView>(R.id.featureTitle).setText(titleRes)
         row.findViewById<TextView>(R.id.featureSubtitle).setText(subtitleRes)
     }

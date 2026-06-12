@@ -91,7 +91,6 @@
 
     <string name="onboarding_notif_title">Bildirimlere İzin Ver</string>
 
-    <string name="onboarding_notif_body">Android, arka planda çalışan uygulamaların etkinken bir durum çubuğu bildirimi göstermesini gerektirir.\n\nBu, asla uyarı, ses veya banner bildirimi göndermez — yalnızca <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasının çalıştığını gösteren sessiz ve kalıcı bir göstergedir.</string>
 
     <string name="onboarding_a11y_hint"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> öğesini arayın</string>
 

@@ -81,7 +81,6 @@
 
     <string name="onboarding_notif_title">السماح بالإشعارات</string>
 
-    <string name="onboarding_notif_body">يتطلب Android من التطبيقات التي تعمل في الخلفية عرض إشعار في شريط الحالة أثناء نشاطها.\n\nلن يرسل هذا أبدًا تنبيهات أو أصواتًا أو لافتات — بل مجرد مؤشر هادئ ودائم يشير إلى أن <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> قيد التشغيل.</string>
 
     <string name="onboarding_a11y_hint">ابحث عن <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 

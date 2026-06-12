@@ -91,7 +91,6 @@
 
     <string name="onboarding_notif_title">Разрешить уведомления</string>
 
-    <string name="onboarding_notif_body">Android требует, чтобы приложения, работающие в фоне, показывали уведомление в строке состояния, пока они активны.\n\nЭто никогда не будет отправлять оповещения, звуки или баннеры — только тихий постоянный индикатор того, что <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> запущен.</string>
 
     <string name="onboarding_a11y_hint">Найдите <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 

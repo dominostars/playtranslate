@@ -92,7 +92,6 @@
 
     <string name="onboarding_notif_title">알림 허용</string>
 
-    <string name="onboarding_notif_body">Android에서는 백그라운드에서 실행되는 앱이 활성 상태인 동안 상태 표시줄 알림을 표시하도록 요구합니다.\n\n알림, 소리, 배너를 보내지 않으며 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>가 실행 중임을 알리는 조용한 고정 표시기만 표시합니다.</string>
 
     <string name="onboarding_a11y_hint"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b>를 찾으세요</string>
 
