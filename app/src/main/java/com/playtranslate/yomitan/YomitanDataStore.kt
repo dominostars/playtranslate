@@ -44,6 +44,11 @@ object YomitanDataStore {
      *  into the term rows at ingest. */
     private const val SCHEMA_VERSION = 6
 
+    /** The source language imported data currently serves: all consumers
+     *  are the Japanese engine, so the capability cache filters
+     *  dictionaries to JA-source packs at build. */
+    private const val CONSUMING_SOURCE_LANG = "ja"
+
     private val TERM_BANK = Regex("""term_bank_\d+\.json""")
     private val TAG_BANK = Regex("""tag_bank_\d+\.json""")
     private val TERM_META_BANK = Regex("""term_meta_bank_\d+\.json""")
@@ -429,16 +434,24 @@ object YomitanDataStore {
                 ).use { c ->
                     while (c.moveToNext()) splitsByDict[c.getString(0)] = c.getInt(1) == 1
                 }
+                // Queries gate on source-language match here, NOT in the
+                // registry: the settings page manages all imports regardless
+                // of language; only lookups filter. Every consumer today is
+                // the Japanese engine, so the match target is the constant —
+                // if another engine ever consumes imported data, this
+                // becomes a query parameter / per-language cache instead.
+                fun ordered(category: YomitanCategory) = registry.orderedFor(category)
+                    .filter { it.matchesSourceLanguage(CONSUMING_SOURCE_LANG) }
                 CapabilityCache(
-                    pitchPriority = registry.orderedFor(YomitanCategory.PITCH_ACCENT)
+                    pitchPriority = ordered(YomitanCategory.PITCH_ACCENT)
                         .map { it.id },
-                    freqDicts = registry.orderedFor(YomitanCategory.FREQUENCY)
+                    freqDicts = ordered(YomitanCategory.FREQUENCY)
                         .map { it.id to (it.alias ?: it.title) },
-                    kanjiDicts = registry.orderedFor(YomitanCategory.KANJI)
+                    kanjiDicts = ordered(YomitanCategory.KANJI)
                         .map { KanjiDictMeta(it.id, it.targetLanguage, splitsByDict[it.id] ?: true) },
-                    kanjiFreqDicts = registry.orderedFor(YomitanCategory.KANJI_FREQUENCY)
+                    kanjiFreqDicts = ordered(YomitanCategory.KANJI_FREQUENCY)
                         .map { it.id to (it.alias ?: it.title) },
-                    termDicts = registry.orderedFor(YomitanCategory.TERMS)
+                    termDicts = ordered(YomitanCategory.TERMS)
                         .map { it.id to (it.alias ?: it.title) },
                     termsSingleDictionary = registry.termsSingleDictionary,
                 ).also { cache = it }

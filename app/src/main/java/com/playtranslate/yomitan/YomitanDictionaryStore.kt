@@ -61,6 +61,17 @@ data class YomitanDictionary(
 )
 
 /**
+ * Whether this dictionary's data applies to source language [lang] (a bare
+ * primary subtag like "ja"): matches the index.json sourceLanguage's primary
+ * subtag, case-insensitively, so "ja-JP" applies to "ja". An undeclared
+ * sourceLanguage defaults to Japanese — the field is a recent schema addition
+ * most community dictionaries predate, and the ecosystem is overwhelmingly
+ * JA, so the default keeps every dictionary that works today working.
+ */
+fun YomitanDictionary.matchesSourceLanguage(lang: String): Boolean =
+    (sourceLanguage ?: "ja").split('-', '_').first().equals(lang, ignoreCase = true)
+
+/**
  * On-disk registry of imported dictionaries. [sectionOrder] holds an
  * independent priority order per category ([YomitanCategory.name] → ordered
  * ids) — reordering a dictionary in one section must not move it in the
