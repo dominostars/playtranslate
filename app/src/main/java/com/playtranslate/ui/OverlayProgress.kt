@@ -160,11 +160,25 @@ class OverlayProgress private constructor(
     private var backPressedCallback: OnBackPressedCallback? = null
     private var dismissed = false
 
+    // Mutable display state, buffered so it survives a DEFERRED attach:
+    // show() runs through runWithForegroundActivity, which postpones view
+    // creation to the next onResume when no activity is resumed — exactly
+    // the window an ActivityResult callback (SAF picker) runs in, since
+    // results are dispatched BEFORE onResume. Mutators called there must
+    // land in these fields, not vanish into null views.
+    private var message: String = initialMessage
+    private var progressPercent: Int = initialProgress
+    private var indeterminate = false
+    private var cancelHidden = false
+
     fun setMessage(message: String) {
+        this.message = message
         statusView?.text = message
     }
 
     fun setProgress(percent: Int) {
+        indeterminate = false
+        progressPercent = percent
         progressView?.let {
             it.isIndeterminate = false
             it.progress = percent
@@ -172,6 +186,7 @@ class OverlayProgress private constructor(
     }
 
     fun setIndeterminate(indeterminate: Boolean) {
+        this.indeterminate = indeterminate
         progressView?.isIndeterminate = indeterminate
     }
 
@@ -179,6 +194,7 @@ class OverlayProgress private constructor(
      *  that no longer supports cancellation (e.g. final on-device load
      *  after a successful download). */
     fun hideCancel() {
+        cancelHidden = true
         cancelButton?.visibility = View.GONE
     }
 
@@ -309,7 +325,7 @@ class OverlayProgress private constructor(
         }
 
         statusView = TextView(context).apply {
-            text = initialMessage
+            text = message
             setTextColor(context.themeColor(R.attr.ptTextMuted))
             textSize = 13f
             gravity = Gravity.CENTER
@@ -324,7 +340,8 @@ class OverlayProgress private constructor(
 
         progressView = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
-            progress = initialProgress
+            progress = progressPercent
+            isIndeterminate = indeterminate
             progressTintList = ColorStateList.valueOf(context.themeColor(R.attr.ptAccent))
             // Indeterminate mode draws through indeterminateDrawable, which
             // progressTintList does NOT touch — untinted it renders in the
@@ -344,6 +361,7 @@ class OverlayProgress private constructor(
         val vPad = (10 * dp).toInt()
         cancelButton = Button(context).apply {
             text = cancelLabel
+            if (cancelHidden) visibility = View.GONE
             setTextColor(context.themeColor(R.attr.ptText))
             textSize = 14f
             isAllCaps = false
