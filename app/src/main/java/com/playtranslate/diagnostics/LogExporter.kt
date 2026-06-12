@@ -16,7 +16,7 @@ import java.util.Locale
 
 object LogExporter {
 
-    const val CRASH_REPORT_EMAIL = "playtranslateapp@gmail.com"
+    const val CRASH_REPORT_EMAIL = "support@playtranslate.com"
     private const val FILE_PROVIDER_AUTHORITY = "com.playtranslate.fileprovider"
     private const val LOGS_DIR = "logs"
     private const val LOGCAT_LINES = "5000"
