@@ -81,8 +81,6 @@
 
     <string name="onboarding_welcome_tagline">Ваше приложение-помощник для игр на других языках.</string>
 
-    <string name="onboarding_welcome_body">Играете во что-то непонятное? Мгновенно превращайте текст на экране в перевод.\n\nУчите язык? Пословные определения, подсказки для чтения (фуригана, пиньинь) и карточки <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> в одно касание.</string>
-
     <string name="onboarding_welcome_row_placeholder">Нажмите, чтобы выбрать</string>
 
     <string name="onboarding_welcome_continue">Продолжить</string>

@@ -71,8 +71,6 @@
 
     <string name="onboarding_welcome_tagline">แอปคู่ใจสำหรับเล่นเกมในภาษาอื่น</string>
 
-    <string name="onboarding_welcome_body">กำลังเล่นอะไรที่ไม่เข้าใจอยู่ใช่ไหม เปลี่ยนข้อความบนหน้าจอเป็นคำแปลได้ทันที\n\nกำลังเรียนภาษาอยู่ใช่ไหม มีคำจำกัดความทีละคำ คำแนะนำการอ่าน (ฟุริงานะ พินอิน) และการ์ด <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> ด้วยการแตะเพียงครั้งเดียว</string>
-
     <string name="onboarding_welcome_row_placeholder">แตะเพื่อเลือก</string>
 
     <string name="onboarding_welcome_continue">ดำเนินการต่อ</string>

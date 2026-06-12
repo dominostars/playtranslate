@@ -71,8 +71,6 @@
 
     <string name="onboarding_welcome_tagline">تطبيقك المرافق للعب الألعاب بلغات أخرى.</string>
 
-    <string name="onboarding_welcome_body">هل تلعب شيئًا لا تفهمه؟ حوّل النص الموجود على الشاشة إلى ترجمات فورًا.\n\nهل تتعلم لغة؟ تعريفات كلمة بكلمة، وأدلة قراءة (فوريغانا، بينيين)، وبطاقات <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> بضغطة واحدة.</string>
-
     <string name="onboarding_welcome_row_placeholder">اضغط للاختيار</string>
 
     <string name="onboarding_welcome_continue">متابعة</string>

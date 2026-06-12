@@ -144,13 +144,28 @@
     <!-- Welcome card title on the first-run onboarding screen. -->
     <string name="onboarding_welcome_title">Welcome to <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>!</string>
 
-    <!-- Tagline shown under the welcome title. -->
-    <string name="onboarding_welcome_tagline">Your companion app for playing games in other languages.</string>
+    <!-- Tagline shown under the welcome title. "play or read" covers
+         games, comics, visual novels, web pages — keep activity verbs,
+         not a content list. -->
+    <string name="onboarding_welcome_tagline">Understand whatever you play or read, in any language.</string>
 
-    <!-- Body copy under the tagline — describes core features. \n\n is
-         a blank line between paragraphs. "Anki" is a brand name (the
-         spaced-repetition flashcard app). -->
-    <string name="onboarding_welcome_body">Playing something you don\'t understand? Turn on-screen text into translations instantly.\n\nLearning a language? Word-by-word definitions, reading guides (furigana, pinyin), and one-tap <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> flashcards.</string>
+    <!-- Lead-in question for the casual value lane on the welcome step;
+         rendered bold above onboarding_welcome_play_body. Deliberately
+         parallel with onboarding_welcome_learn_title — both ask about
+         the relationship to the source language. -->
+    <string name="onboarding_welcome_play_title">Don\'t speak the language?</string>
+
+    <!-- Casual-player lane body — auto-translate / overlay / offline. -->
+    <string name="onboarding_welcome_play_body">Auto-translation puts your language right on the screen, updating as the dialogue changes. Even offline!</string>
+
+    <!-- Lead-in question for the language-learner value lane; rendered
+         bold above onboarding_welcome_learn_body. -->
+    <string name="onboarding_welcome_learn_title">Learning the language?</string>
+
+    <!-- Language-learner lane body. "Anki" is a brand name (the
+         spaced-repetition flashcard app); furigana and pinyin are
+         domain terms learners know. -->
+    <string name="onboarding_welcome_learn_body">Keep the original text and get help only when you want it: word lookups, furigana and pinyin, one-tap <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> cards.</string>
 
     <!-- Placeholder text inside the language-selection row before the
          user has picked anything. -->

@@ -81,8 +81,6 @@
 
     <string name="onboarding_welcome_tagline">Oyunları başka dillerde oynamanız için yardımcı uygulamanız.</string>
 
-    <string name="onboarding_welcome_body">Anlamadığınız bir şey mi oynuyorsunuz? Ekrandaki metni anında çeviriye dönüştürün.\n\nDil mi öğreniyorsunuz? Sözcük sözcük tanımlar, okuma kılavuzları (furigana, pinyin) ve tek dokunuşla <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> bilgi kartları.</string>
-
     <string name="onboarding_welcome_row_placeholder">Seçmek için dokunun</string>
 
     <string name="onboarding_welcome_continue">Devam Et</string>

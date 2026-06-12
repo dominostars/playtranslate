@@ -81,8 +81,6 @@
 
     <string name="onboarding_welcome_tagline">Deine Begleit-App, um Spiele in anderen Sprachen zu spielen.</string>
 
-    <string name="onboarding_welcome_body">Spielst du etwas, das du nicht verstehst? Verwandle Text auf dem Bildschirm sofort in Übersetzungen.\n\nLernst du eine Sprache? Wort-für-Wort-Definitionen, Lesehilfen (Furigana, Pinyin) und <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>-Karteikarten mit einem Tippen.</string>
-
     <string name="onboarding_welcome_row_placeholder">Zum Auswählen tippen</string>
 
     <string name="onboarding_welcome_continue">Weiter</string>

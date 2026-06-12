@@ -81,8 +81,6 @@
 
     <string name="onboarding_welcome_tagline">Ứng dụng đồng hành giúp bạn chơi trò chơi bằng các ngôn ngữ khác.</string>
 
-    <string name="onboarding_welcome_body">Đang chơi thứ gì đó bạn không hiểu? Biến văn bản trên màn hình thành bản dịch ngay lập tức.\n\nĐang học một ngôn ngữ? Định nghĩa theo từng từ, hướng dẫn cách đọc (furigana, pinyin) và thẻ ghi nhớ <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> chỉ với một lần nhấn.</string>
-
     <string name="onboarding_welcome_row_placeholder">Nhấn để chọn</string>
 
     <string name="onboarding_welcome_continue">Tiếp tục</string>

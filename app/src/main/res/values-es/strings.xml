@@ -81,8 +81,6 @@
 
     <string name="onboarding_welcome_tagline">Tu app complementaria para jugar en otros idiomas.</string>
 
-    <string name="onboarding_welcome_body">¿Juegas algo que no entiendes? Convierte el texto en pantalla en traducciones al instante.\n\n¿Estás aprendiendo un idioma? Definiciones palabra por palabra, guías de lectura (furigana, pinyin) y tarjetas de <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> con un toque.</string>
-
     <string name="onboarding_welcome_row_placeholder">Toca para elegir</string>
 
     <string name="onboarding_welcome_continue">Continuar</string>

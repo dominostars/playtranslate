@@ -81,8 +81,6 @@
 
     <string name="onboarding_welcome_tagline">助你畅玩外语游戏的伴侣应用。</string>
 
-    <string name="onboarding_welcome_body">在玩看不懂的游戏？立即翻译屏幕上的文字。\n\n正在学习一门语言？提供逐词释义、读音指南（假名注音、拼音），以及一键创建 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 抽认卡。</string>
-
     <string name="onboarding_welcome_row_placeholder">点按选择</string>
 
     <string name="onboarding_welcome_continue">继续</string>

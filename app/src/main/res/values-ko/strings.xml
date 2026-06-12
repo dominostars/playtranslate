@@ -82,8 +82,6 @@
 
     <string name="onboarding_welcome_tagline">다른 언어로 게임을 즐기기 위한 컴패니언 앱입니다.</string>
 
-    <string name="onboarding_welcome_body">이해되지 않는 게임을 플레이 중이신가요? 화면의 텍스트를 즉시 번역으로 바꿔 보세요.\n\n언어를 배우고 계신가요? 단어별 정의, 읽기 가이드(후리가나, 병음), 한 번의 탭으로 만드는 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 플래시카드.</string>
-
     <string name="onboarding_welcome_row_placeholder">탭하여 선택</string>
 
     <string name="onboarding_welcome_continue">계속</string>

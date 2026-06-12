@@ -81,8 +81,6 @@
 
     <string name="onboarding_welcome_tagline">他の言語のゲームを楽しむためのコンパニオンアプリです。</string>
 
-    <string name="onboarding_welcome_body">意味の分からないゲームをプレイ中ですか？画面のテキストを瞬時に翻訳します。\n\n語学を学習中ですか？単語ごとの定義、読みガイド（ふりがな・ピンイン）、ワンタップでの<xliff:g id="brand_anki" example="Anki">Anki</xliff:g>フラッシュカード作成。</string>
-
     <string name="onboarding_welcome_row_placeholder">タップして選択</string>
 
     <string name="onboarding_welcome_continue">続ける</string>
