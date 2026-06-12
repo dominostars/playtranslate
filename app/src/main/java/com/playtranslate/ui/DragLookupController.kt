@@ -1112,6 +1112,9 @@ class DragLookupController(
         val entries = response?.entries.orEmpty()
         val entry = entries.firstOrNull()
         val flatSenses = entries.flatMap { it.senses }
+        // Imported term-dictionary rows lead every entry-backed branch —
+        // final text, outside the MT tiers.
+        val importedRows = importedSenseDisplays(entry?.importedSenses.orEmpty())
 
         // Build popup data based on DefinitionResult tier.
         val reading = matchedToken?.reading
@@ -1165,7 +1168,7 @@ class DragLookupController(
                 PopupData(
                     word = display.written,
                     reading = display.reading,
-                    senses = senses,
+                    senses = importedRows + senses,
                     freqScore = entry.freqScore,
                     isCommon = entry.isCommon == true,
                     entry = entry,
@@ -1179,7 +1182,7 @@ class DragLookupController(
                 PopupData(
                     word = display.written,
                     reading = display.reading,
-                    senses = if (defs != null) {
+                    senses = importedRows + if (defs != null) {
                         // Translated definitions available — show them directly
                         flatSenses.mapIndexed { i, sense ->
                             SenseDisplay(
@@ -1214,7 +1217,7 @@ class DragLookupController(
                 PopupData(
                     word = display.written,
                     reading = display.reading,
-                    senses = flatSenses.mapIndexed { i, sense ->
+                    senses = importedRows + flatSenses.mapIndexed { i, sense ->
                         SenseDisplay(
                             pos = sense.partsOfSpeech.joinToString(", "),
                             definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
@@ -1234,7 +1237,7 @@ class DragLookupController(
                 PopupData(
                     word = display.written,
                     reading = display.reading,
-                    senses = flatSenses.map { sense ->
+                    senses = importedRows + flatSenses.map { sense ->
                         SenseDisplay(
                             pos = sense.partsOfSpeech.joinToString(", "),
                             definition = sense.targetDefinitions.joinToString("; ")
@@ -1641,11 +1644,7 @@ class DragLookupController(
             ?.takeIf { it != primaryHeadword.written } ?: ""
         val pos = entry.senses.firstOrNull()?.partsOfSpeech
             ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
-        val nonEmptySenses = entry.senses.filter { it.targetDefinitions.isNotEmpty() }
-        val definition = nonEmptySenses.mapIndexed { i, sense ->
-            val prefix = if (nonEmptySenses.size > 1) "${i + 1}. " else ""
-            prefix + sense.targetDefinitions.joinToString("; ")
-        }.joinToString("\n")
+        val definition = flatCardDefinition(entry)
         val sentence = currentSentence
         val sentenceTranslation = LastSentenceCache
             .takeIf { it.original == sentence }?.translation

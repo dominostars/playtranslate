@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.content.Context
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -114,7 +115,10 @@ class WordDefinitionsView @JvmOverloads constructor(
                 firstSenseBlock = false
             }
             val top = if (firstSenseBlock) sensesTop else 0
-            addView(buildDefinitionRow(i + 1, sense.definition, scale), fullWidth(topMargin = top))
+            addView(
+                buildDefinitionRow(i + 1, sense.definition, scale, clamp = sense.imported),
+                fullWidth(topMargin = top),
+            )
             firstSenseBlock = false
         }
     }
@@ -188,8 +192,16 @@ class WordDefinitionsView @JvmOverloads constructor(
         cornerRadius = dp(4f).toFloat()
     }
 
-    /** A right-aligned number column + the gloss text. */
-    private fun buildDefinitionRow(number: Int, definition: String, scale: Float): LinearLayout =
+    /** A right-aligned number column + the gloss text. [clamp] caps the
+     *  gloss at a few lines — imported (often monolingual, paragraph-length)
+     *  definitions get the cap on this compact surface; the word detail
+     *  page shows them in full. */
+    private fun buildDefinitionRow(
+        number: Int,
+        definition: String,
+        scale: Float,
+        clamp: Boolean,
+    ): LinearLayout =
         LinearLayout(context).apply {
             orientation = HORIZONTAL
             setPadding(0, dp(3f * scale), 0, dp(3f * scale))
@@ -204,6 +216,10 @@ class WordDefinitionsView @JvmOverloads constructor(
                 text = definition
                 setTextColor(primaryText)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 16.5f * scale)
+                if (clamp) {
+                    maxLines = 4
+                    ellipsize = TextUtils.TruncateAt.END
+                }
             }, LayoutParams(0, WRAP_CONTENT, 1f).apply { marginStart = dp(9f * scale) })
         }
 

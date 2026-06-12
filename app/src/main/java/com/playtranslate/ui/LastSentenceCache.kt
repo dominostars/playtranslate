@@ -378,11 +378,12 @@ object LastSentenceCache {
                         ?.targetSenses?.sortedBy { it.senseOrd }
                         ?.takeIf { it.isNotEmpty() }
                     val isTargetDriven = prefs.targetLang != "en" && nativeTargetSenses != null
-                    val meaning = if (isTargetDriven) {
-                        nativeTargetSenses.mapIndexed { i, target ->
-                            val glosses = target.glosses.joinToString("; ")
-                            if (nativeTargetSenses.size > 1) "${i + 1}. $glosses" else glosses
-                        }.joinToString("\n")
+                    // Imported term-dictionary lines lead, in the shared
+                    // flat-card format (one per line, source in parens,
+                    // continuous numbering with the pack lines below).
+                    val importedLines = importedFlatLines(entry.importedSenses)
+                    val packLines = if (isTargetDriven) {
+                        nativeTargetSenses.map { it.glosses.joinToString("; ") }
                     } else {
                         val targetByOrd = (defResult as? DefinitionResult.Native)
                             ?.targetSenses?.associateBy { it.senseOrd }
@@ -397,12 +398,16 @@ object LastSentenceCache {
                             else -> null
                         }
                         flatSenses.mapIndexed { i, sense ->
-                            val glosses = targetByOrd?.get(i)?.glosses?.joinToString("; ")
+                            targetByOrd?.get(i)?.glosses?.joinToString("; ")
                                 ?: mtDefs?.getOrNull(i)?.takeIf { it.isNotBlank() }
                                 ?: sense.targetDefinitions.joinToString("; ")
-                            if (flatSenses.size > 1) "${i + 1}. $glosses" else glosses
-                        }.joinToString("\n")
+                        }
                     }
+                    val rawLines = importedLines + packLines.filter { it.isNotEmpty() }
+                    val meaning = (
+                        if (rawLines.size > 1) rawLines.mapIndexed { i, l -> "${i + 1}. $l" }
+                        else rawLines
+                        ).joinToString("\n")
                     if (meaning.isNotEmpty()) {
                         results[displayWord] = Triple(reading, meaning, entry.freqScore)
                         if (tok.surface != displayWord) {

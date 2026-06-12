@@ -29,8 +29,12 @@ data class WordDefinitionData(
     val frequencies: List<FrequencyTag> = emptyList(),
 )
 
-/** A single rendered sense: its part(s) of speech and the gloss text. */
+/** A single rendered sense: its part(s) of speech and the gloss text.
+ *  [imported] marks rows from imported Yomitan term dictionaries (whose
+ *  [pos] carries the dictionary name) — the compact surfaces clamp these,
+ *  since monolingual definitions run paragraph-length. */
 data class SenseDisplay(
     val pos: String,
     val definition: String,
+    val imported: Boolean = false,
 )

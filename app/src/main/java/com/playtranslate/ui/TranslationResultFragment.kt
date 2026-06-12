@@ -576,13 +576,7 @@ class TranslationResultFragment : Fragment() {
         }
         val pos = entry?.senses?.firstOrNull()?.partsOfSpeech
             ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
-        val nonEmptySenses = entry?.senses
-            ?.filter { it.targetDefinitions.isNotEmpty() }
-            ?: emptyList()
-        val definition = nonEmptySenses.mapIndexed { i, sense ->
-            val prefix = if (nonEmptySenses.size > 1) "${i + 1}. " else ""
-            prefix + sense.targetDefinitions.joinToString("; ")
-        }.joinToString("\n")
+        val definition = entry?.let { flatCardDefinition(it) } ?: ""
         val ready = (vm.result.value as? ResultState.Ready)?.result
         val readingForExtra = reading?.takeIf { it != word } ?: ""
         dismissWordPopup()
@@ -721,11 +715,7 @@ class TranslationResultFragment : Fragment() {
         }
         val pos = entry.senses.firstOrNull()?.partsOfSpeech
             ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
-        val nonEmptySenses = entry.senses.filter { it.targetDefinitions.isNotEmpty() }
-        val definition = nonEmptySenses.mapIndexed { i, sense ->
-            val prefix = if (nonEmptySenses.size > 1) "${i + 1}. " else ""
-            prefix + sense.targetDefinitions.joinToString("; ")
-        }.joinToString("\n")
+        val definition = flatCardDefinition(entry)
         val ready = (vm.result.value as? ResultState.Ready)?.result
         val screenshotPath = ready?.screenshotPath
         val readingClean = reading?.takeIf { it != word } ?: ""

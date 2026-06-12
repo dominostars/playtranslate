@@ -2003,7 +2003,7 @@
          Yomitan). English-only like the other debug strings: the page never
          ships in release builds. -->
     <!-- Explainer paragraph at the top of the Yomitan page; also the empty state. -->
-    <string name="yomitan_page_description">Yomitan dictionaries are community-created dictionary files used by the Yomitan browser extension — terms, kanji, frequency data, and pitch accent. Import a dictionary (.zip) with the + button. Imported dictionaries aren\'t used for lookups yet.</string>
+    <string name="yomitan_page_description">Yomitan dictionaries are community-created dictionary files used by the Yomitan browser extension — terms, kanji, frequency data, and pitch accent. Import a dictionary (.zip) with the + button; its data joins word lookups throughout the app.</string>
     <!-- Toolbar "+" button on the Yomitan page (icon-only; this is its a11y label). -->
     <string name="yomitan_import_action">Import dictionary</string>
     <!-- Group header above imported term dictionaries on the Yomitan page. -->
@@ -2026,6 +2026,10 @@
     <string name="yomitan_invalid_title">Invalid File</string>
     <!-- Body of the invalid-file alert; a developer-facing diagnostic line is appended below it. -->
     <string name="yomitan_invalid_message">This file couldn\'t be read as a Yomitan dictionary.</string>
+    <!-- Title of the alert shown when the device lacks free space for the import. -->
+    <string name="yomitan_no_space_title">Not Enough Space</string>
+    <!-- Body of the insufficient-space alert; %1$s = space needed, %2$s = space available (both pre-formatted sizes). -->
+    <string name="yomitan_no_space_message">Importing this dictionary needs about <xliff:g id="needed" example="180 MB">%1$s</xliff:g> of free space, but only <xliff:g id="available" example="42 MB">%2$s</xliff:g> is available. Free up space and try again.</string>
     <!-- Title of the alert shown when the import fails for storage/IO reasons (file may be fine). -->
     <string name="yomitan_io_error_title">Import Failed</string>
     <!-- Body of the storage/IO import-failure alert. -->

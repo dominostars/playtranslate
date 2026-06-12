@@ -436,11 +436,12 @@ class WordDetailBottomSheet : DialogFragment() {
             ?.takeIf { it.isNotEmpty() }
         val isTargetDriven = targetLangCode != "en" && nativeTargetSenses != null
 
-        val definition = if (isTargetDriven) {
-            nativeTargetSenses.mapIndexed { i, target ->
-                val prefix = if (nativeTargetSenses.size > 1) "${i + 1}. " else ""
-                prefix + target.glosses.joinToString("; ")
-            }.joinToString("\n")
+        // Imported term-dictionary lines lead (one per line, source in
+        // parens), numbered continuously with the pack's lines — the same
+        // flat shape every Anki definition builder emits.
+        val importedLines = importedFlatLines(entry.importedSenses)
+        val packLines: List<String> = if (isTargetDriven) {
+            nativeTargetSenses.map { it.glosses.joinToString("; ") }
         } else {
             val targetByOrd = if (defResult is DefinitionResult.Native)
                 defResult.targetSenses.associateBy { it.senseOrd } else null
@@ -449,20 +450,17 @@ class WordDetailBottomSheet : DialogFragment() {
                 is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
                 else -> null
             }
-            val nonEmptySenseCount = entry.senses.count { it.targetDefinitions.isNotEmpty() }
-            var displayNum = 0
-            entry.senses
-                .mapIndexedNotNull { i, sense ->
-                    if (sense.targetDefinitions.isEmpty()) return@mapIndexedNotNull null
-                    displayNum++
-                    val glosses = targetByOrd?.get(i)?.glosses?.joinToString("; ")
-                        ?: translatedDefs?.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
-                        ?: sense.targetDefinitions.joinToString("; ")
-                    val prefix = if (nonEmptySenseCount > 1) "$displayNum. " else ""
-                    prefix + glosses
-                }
-                .joinToString("\n")
+            entry.senses.mapIndexedNotNull { i, sense ->
+                if (sense.targetDefinitions.isEmpty()) return@mapIndexedNotNull null
+                targetByOrd?.get(i)?.glosses?.joinToString("; ")
+                    ?: translatedDefs?.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
+                    ?: sense.targetDefinitions.joinToString("; ")
+            }
         }
+        val rawLines = importedLines + packLines
+        val definition =
+            (if (rawLines.size > 1) rawLines.mapIndexed { i, l -> "${i + 1}. $l" } else rawLines)
+                .joinToString("\n")
         return Triple(reading, pos, definition)
     }
 
@@ -739,6 +737,33 @@ class WordDetailBottomSheet : DialogFragment() {
         addGroupHeader(content, getString(R.string.word_detail_group_definitions), definitionsSuffix)
         val definitionsCard = addGroupCard(content)
 
+        // Imported term-dictionary definitions lead, unnumbered and
+        // unclamped, one labelled block per dictionary in the user's
+        // section order. Final text — never machine-translated.
+        val importedGroups = primary.importedSenses
+        importedGroups.forEachIndexed { groupIdx, group ->
+            group.senses.forEachIndexed { defIdx, sense ->
+                if (groupIdx > 0 || defIdx > 0) {
+                    addInsetDivider(definitionsCard, indentPx = dpRes(R.dimen.pt_row_h_padding))
+                }
+                addSenseRow(
+                    parent = definitionsCard,
+                    posLabels = buildList {
+                        if (defIdx == 0) add(group.source)
+                        if (sense.pos.isNotBlank()) add(sense.pos)
+                    },
+                    glossList = listOf(sense.definition),
+                    senseNumber = null,
+                    miscText = null,
+                    examples = emptyList(),
+                    exampleTranslations = null,
+                    senseIndex = -1,
+                    translationRegistry = null,
+                )
+            }
+        }
+        val hasImportedRows = importedGroups.any { it.senses.isNotEmpty() }
+
         if (isTargetDriven) {
             // Each target sense carries its own POS (kaikki tags it per
             // sense and the FST format preserves it). When a target row's
@@ -752,7 +777,7 @@ class WordDetailBottomSheet : DialogFragment() {
             val fallbackPos = unambiguousFallbackPos(entries)
             nativeTargetSenses.forEachIndexed { idx, target ->
                 val senseNumber = if (nativeTargetSenses.size > 1) idx + 1 else null
-                if (idx > 0) {
+                if (idx > 0 || hasImportedRows) {
                     addInsetDivider(
                         definitionsCard,
                         indentPx = if (senseNumber != null) dp(42)
@@ -784,7 +809,7 @@ class WordDetailBottomSheet : DialogFragment() {
                     ?: sense.targetDefinitions
                 val senseNumber = if (numSenses > 1) displayCount + 1 else null
 
-                if (displayCount > 0) {
+                if (displayCount > 0 || hasImportedRows) {
                     // Numbered rows indent divider to 42dp (16dp row padding +
                     // 16dp number column + 10dp gap) to align with the gloss
                     // column; single-sense rows use the standard 16dp inset.

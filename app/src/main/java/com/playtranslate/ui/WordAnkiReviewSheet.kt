@@ -770,6 +770,31 @@ class WordAnkiReviewSheet : DialogFragment() {
         val card = definitionsCard ?: return
         card.removeAllViews()
 
+        // Imported term-dictionary definitions lead, mirroring the detail
+        // sheet and what buildWordDefinitionHtml puts on the card. Not
+        // curatable in v1 (visibleSiblingCount = 1 suppresses the ×).
+        var importedRowCount = 0
+        entry.importedSenses.forEach { group ->
+            group.senses.forEachIndexed { defIdx, sense ->
+                if (importedRowCount > 0) ankiInsetDivider(card, indentDp = 16)
+                addAnkiSenseRow(
+                    parent = card,
+                    posLabels = buildList {
+                        if (defIdx == 0) add(group.source)
+                        if (sense.pos.isNotBlank()) add(sense.pos)
+                    },
+                    glossList = listOf(sense.definition),
+                    senseNumber = null,
+                    miscText = null,
+                    examples = emptyList(),
+                    senseIndex = -1,
+                    visibleSiblingCount = 1,
+                )
+                importedRowCount++
+            }
+        }
+        val hasImportedRows = importedRowCount > 0
+
         val defResult = resolvedDefResult
         val translatedDefs = when (defResult) {
             // Native renders target-driven and doesn't surface per-sense MT
@@ -802,7 +827,7 @@ class WordAnkiReviewSheet : DialogFragment() {
             val numVisible = visibleTarget.size
             visibleTarget.forEachIndexed { displayIdx, (idx, target) ->
                 val senseNumber = if (numVisible > 1) displayIdx + 1 else null
-                if (displayIdx > 0) {
+                if (displayIdx > 0 || hasImportedRows) {
                     ankiInsetDivider(card, indentDp = if (senseNumber != null) 42 else 16)
                 }
                 val posLabels = target.pos.filter { it.isNotBlank() }
@@ -826,7 +851,7 @@ class WordAnkiReviewSheet : DialogFragment() {
                     visibleSiblingCount = numVisible,
                 )
             }
-            if (visibleTarget.isEmpty()) {
+            if (visibleTarget.isEmpty() && !hasImportedRows) {
                 card.addView(buildLoadingDefinitionsRow(""))
             }
             return
@@ -848,7 +873,7 @@ class WordAnkiReviewSheet : DialogFragment() {
                 ?: translatedDefs?.getOrNull(flatIdx)?.let { listOf(it) }
                 ?: sense.targetDefinitions
             val senseNumber = if (numVisibleSenses > 1) displayCount + 1 else null
-            if (displayCount > 0) {
+            if (displayCount > 0 || hasImportedRows) {
                 ankiInsetDivider(card, indentDp = if (senseNumber != null) 42 else 16)
             }
             val visibleExamples = sense.examples.withIndex()
@@ -1472,6 +1497,29 @@ class WordAnkiReviewSheet : DialogFragment() {
     private fun StringBuilder.appendSensesHtml(
         entry: DictionaryEntry, fallback: String, styler: HtmlStyler,
     ) {
+        // Imported term-dictionary definitions lead the card, one labelled
+        // block per dictionary — final text, source (and the entry's POS
+        // tags when present) as the pos-style label.
+        val hasImportedRows = entry.importedSenses.any { it.senses.isNotEmpty() }
+        entry.importedSenses.forEach { group ->
+            group.senses.forEachIndexed { defIdx, sense ->
+                append("<div ${styler("gl-sense", "")}>")
+                val label = buildList {
+                    if (defIdx == 0) add(group.source)
+                    if (sense.pos.isNotBlank()) add(sense.pos)
+                }.joinToString(" · ")
+                if (label.isNotEmpty()) {
+                    append("<div ${styler("gl-pos", "")}>")
+                    append(htmlEscape(label))
+                    append("</div>")
+                }
+                append("<div ${styler("gl-gloss", "")}>")
+                append(htmlEscape(sense.definition).replace("\n", "<br>"))
+                append("</div>")
+                append("</div>")
+            }
+        }
+
         val flatSenses = resolvedFlatSenses
         val defResult = resolvedDefResult
         val translatedDefs = when (defResult) {
@@ -1493,9 +1541,13 @@ class WordAnkiReviewSheet : DialogFragment() {
             val visibleTarget = nativeTargetSenses.withIndex()
                 .filter { (idx, _) -> idx !in removedSenses }
             if (visibleTarget.isEmpty()) {
-                val defHtml = fallback.lines().filter { it.isNotBlank() }
-                    .joinToString("<br>") { htmlEscape(it.trimStart()) }
-                append("<div style=\"font-size:1.1em;margin:12px 4px;\">$defHtml</div>")
+                // The flat fallback already contains the imported lines —
+                // emitting it after the imported blocks would duplicate them.
+                if (!hasImportedRows) {
+                    val defHtml = fallback.lines().filter { it.isNotBlank() }
+                        .joinToString("<br>") { htmlEscape(it.trimStart()) }
+                    append("<div style=\"font-size:1.1em;margin:12px 4px;\">$defHtml</div>")
+                }
                 return
             }
             val numVisible = visibleTarget.size
@@ -1544,10 +1596,13 @@ class WordAnkiReviewSheet : DialogFragment() {
         if (visibleSenses.isEmpty()) {
             // User stripped every sense — the renderer hides the × on
             // the last visible sense, but defensive: emit the fallback
-            // so the card never goes empty.
-            val defHtml = fallback.lines().filter { it.isNotBlank() }
-                .joinToString("<br>") { htmlEscape(it.trimStart()) }
-            append("<div style=\"font-size:1.1em;margin:12px 4px;\">$defHtml</div>")
+            // so the card never goes empty. Skipped when imported blocks
+            // already rendered (the fallback would duplicate them).
+            if (!hasImportedRows) {
+                val defHtml = fallback.lines().filter { it.isNotBlank() }
+                    .joinToString("<br>") { htmlEscape(it.trimStart()) }
+                append("<div style=\"font-size:1.1em;margin:12px 4px;\">$defHtml</div>")
+            }
             return
         }
         val numVisible = visibleSenses.size

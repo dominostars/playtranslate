@@ -95,6 +95,18 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
                     listOfNotNull(getString(R.string.yomitan_invalid_message), result.reason)
                         .joinToString("\n\n"),
                 )
+                is YomitanImportResult.InsufficientSpace -> showImportAlert(
+                    getString(R.string.yomitan_no_space_title),
+                    getString(
+                        R.string.yomitan_no_space_message,
+                        android.text.format.Formatter.formatShortFileSize(
+                            this@YomitanSettingsActivity, result.requiredBytes,
+                        ),
+                        android.text.format.Formatter.formatShortFileSize(
+                            this@YomitanSettingsActivity, result.availableBytes,
+                        ),
+                    ),
+                )
                 YomitanImportResult.IoError -> showImportAlert(
                     getString(R.string.yomitan_io_error_title),
                     getString(R.string.yomitan_io_error_message),

@@ -8,6 +8,7 @@ import com.google.gson.stream.JsonToken
 import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.ImportedKanji
+import com.playtranslate.model.ImportedSenseGroup
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -38,9 +39,13 @@ object YomitanDataStore {
 
     private const val TAG = "YomitanData"
 
-    /** Bump to force a drop-and-reingest of all derived tables on next use. */
-    private const val SCHEMA_VERSION = 3
+    /** Bump to force a drop-and-reingest of all derived tables on next use.
+     *  Flattening-rule changes need a bump too — flattened text is baked
+     *  into the term rows at ingest. */
+    private const val SCHEMA_VERSION = 6
 
+    private val TERM_BANK = Regex("""term_bank_\d+\.json""")
+    private val TAG_BANK = Regex("""tag_bank_\d+\.json""")
     private val TERM_META_BANK = Regex("""term_meta_bank_\d+\.json""")
     private val KANJI_BANK = Regex("""kanji_bank_\d+\.json""")
     private val KANJI_META_BANK = Regex("""kanji_meta_bank_\d+\.json""")
@@ -70,6 +75,19 @@ object YomitanDataStore {
         /** KANJI_FREQUENCY section's (dict id, chip label) in display
          *  order; same show-all semantics as [freqDicts]. */
         val kanjiFreqDicts: List<Pair<String, String>>,
+        /** TERMS section's (dict id, group label) in display order — every
+         *  dict with definitions for a word contributes a group. */
+        val termDicts: List<Pair<String, String>>,
+    )
+
+    /** Result of [termSensesFor]: the per-dictionary definition groups in
+     *  display order, plus the reading the lookup resolved to —
+     *  the caller's reading when it supplied one, else the first matching
+     *  row's stored reading (what entry synthesis needs for a word the
+     *  built-in pack lacks). */
+    data class TermLookup(
+        val groups: List<ImportedSenseGroup>,
+        val resolvedReading: String?,
     )
 
     private class KanjiDictMeta(
@@ -288,6 +306,58 @@ object YomitanDataStore {
         }
     }
 
+    /** True when at least one TERMS dictionary is installed — lets the JA
+     *  engine skip its whole candidate loop (one probe instead of a no-op
+     *  query per deinflection candidate). */
+    suspend fun hasTermDictionaries(ctx: Context): Boolean = withContext(Dispatchers.IO) {
+        ready(ctx).second.termDicts.isNotEmpty()
+    }
+
+    /**
+     * Imported-term definition lookup for one candidate form. Every
+     * TERMS-section dictionary with definitions contributes a group, in
+     * section order; within a dict, entries sort by their bank score
+     * (descending). A supplied [reading] is a hard disambiguator (see
+     * [TermMerge.merge] — homograph content must not attach to the wrong
+     * word). Returns a [TermLookup] with empty groups when nothing matches
+     * (or no term dictionary is installed).
+     */
+    suspend fun termSensesFor(
+        ctx: Context,
+        term: String,
+        reading: String?,
+    ): TermLookup = withContext(Dispatchers.IO) {
+        val empty = TermLookup(emptyList(), reading)
+        if (term.isEmpty()) return@withContext empty
+        val (database, caps) = ready(ctx)
+        if (caps.termDicts.isEmpty()) return@withContext empty
+
+        val rows = mutableListOf<TermMerge.Row>()
+        database.rawQuery(
+            "SELECT dict_id, reading, score, defs, pos FROM term WHERE term = ? ORDER BY rowid",
+            arrayOf(term),
+        ).use { c ->
+            while (c.moveToNext()) {
+                rows.add(
+                    TermMerge.Row(
+                        dictId = c.getString(0),
+                        reading = c.getString(1),
+                        score = c.getDouble(2),
+                        defs = KanjiData.decodeMeanings(c.getString(3)),
+                        pos = c.getString(4),
+                    )
+                )
+            }
+        }
+        if (rows.isEmpty()) return@withContext empty
+        TermMerge.merge(
+            rows = rows,
+            dictOrder = caps.termDicts,
+            normalizedReading = reading?.let(Deinflector::katakanaToHiragana),
+            normalizedTerm = Deinflector.katakanaToHiragana(term),
+        )
+    }
+
     // ── Lifecycle hooks (called by YomitanDictionaryStore) ──────────────
 
     /** Eagerly ingests a freshly imported dictionary so its data is queryable
@@ -359,6 +429,8 @@ object YomitanDataStore {
                         .map { KanjiDictMeta(it.id, it.targetLanguage, splitsByDict[it.id] ?: true) },
                     kanjiFreqDicts = registry.orderedFor(YomitanCategory.KANJI_FREQUENCY)
                         .map { it.id to (it.alias ?: it.title) },
+                    termDicts = registry.orderedFor(YomitanCategory.TERMS)
+                        .map { it.id to (it.alias ?: it.title) },
                 ).also { cache = it }
             }
             database to caps
@@ -380,6 +452,7 @@ object YomitanDataStore {
             database.execSQL("DROP TABLE IF EXISTS frequency")
             database.execSQL("DROP TABLE IF EXISTS kanji")
             database.execSQL("DROP TABLE IF EXISTS kanji_frequency")
+            database.execSQL("DROP TABLE IF EXISTS term")
             database.execSQL("DROP TABLE IF EXISTS ingested_dicts")
             database.execSQL("PRAGMA user_version = $SCHEMA_VERSION")
         }
@@ -421,6 +494,20 @@ object YomitanDataStore {
         database.execSQL(
             "CREATE INDEX IF NOT EXISTS idx_kanji_freq_char ON kanji_frequency(character)"
         )
+        // One row per term_bank ENTRY (a term can carry several entries
+        // with their own scores). [reading] is normalized hiragana; a blank
+        // bank reading means "same as term" and is stored as such. [defs]
+        // is a JSON array of flattened definition strings; [pos] is the
+        // entry's tag_bank-resolved part-of-speech names (space-joined,
+        // '' when untagged).
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS term (" +
+                "dict_id TEXT NOT NULL, term TEXT NOT NULL, reading TEXT NOT NULL, " +
+                "score REAL NOT NULL, defs TEXT NOT NULL, pos TEXT NOT NULL)"
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS idx_term_term ON term(term)"
+        )
         database.execSQL(
             "CREATE TABLE IF NOT EXISTS ingested_dicts (dict_id TEXT PRIMARY KEY)"
         )
@@ -459,6 +546,7 @@ object YomitanDataStore {
             database.delete("frequency", "dict_id = ?", arrayOf(dictId))
             database.delete("kanji", "dict_id = ?", arrayOf(dictId))
             database.delete("kanji_frequency", "dict_id = ?", arrayOf(dictId))
+            database.delete("term", "dict_id = ?", arrayOf(dictId))
             database.delete("ingested_dicts", "dict_id = ?", arrayOf(dictId))
             database.setTransactionSuccessful()
         } finally {
@@ -478,6 +566,7 @@ object YomitanDataStore {
             database.delete("frequency", "dict_id = ?", arrayOf(dictionary.id))
             database.delete("kanji", "dict_id = ?", arrayOf(dictionary.id))
             database.delete("kanji_frequency", "dict_id = ?", arrayOf(dictionary.id))
+            database.delete("term", "dict_id = ?", arrayOf(dictionary.id))
             if (YomitanCategory.PITCH_ACCENT in dictionary.categories) {
                 ingestPitch(ctx, database, dictionary.id)
             }
@@ -489,6 +578,9 @@ object YomitanDataStore {
             }
             if (YomitanCategory.KANJI_FREQUENCY in dictionary.categories) {
                 ingestKanjiFreq(ctx, database, dictionary.id)
+            }
+            if (YomitanCategory.TERMS in dictionary.categories) {
+                ingestTerms(ctx, database, dictionary.id)
             }
             database.execSQL(
                 "INSERT OR REPLACE INTO ingested_dicts (dict_id) VALUES (?)",
@@ -754,5 +846,102 @@ object YomitanDataStore {
             }
         }
         Log.i(TAG, "ingested $rows kanji frequency rows for $dictId")
+    }
+
+    /** Streams `term_bank_*.json` entries into the `term` table. Entries
+     *  are 8-element arrays [term, reading, defTags, rules, score,
+     *  glossary[], sequence, termTags]; glossaries flatten through
+     *  [TermGlossary] (headword echoes stripped) and entries with no
+     *  surviving text (image-only, redirect-only, echo-only) are skipped.
+     *  Per-entry parsing is defensive — a malformed entry skips, never
+     *  aborts the dictionary (which would loop reconcile retries forever
+     *  on a dict that can't ever succeed). */
+    private fun ingestTerms(ctx: Context, database: SQLiteDatabase, dictId: String) {
+        val zipFile = YomitanDictionaryStore.zipFile(ctx, dictId)
+        val insert = database.compileStatement(
+            "INSERT INTO term (dict_id, term, reading, score, defs, pos) VALUES (?, ?, ?, ?, ?, ?)"
+        )
+        var rows = 0
+        ZipFile(zipFile).use { zip ->
+            // tag_bank pass first: which tag names mean part-of-speech.
+            // (Zip entry order is arbitrary, so this can't ride the term
+            // pass.)
+            val posTags = collectPosTags(zip)
+            for (entry in zip.entries()) {
+                if (entry.name.contains('/') || !TERM_BANK.matches(entry.name)) continue
+                var skippedEntries = 0
+                zip.getInputStream(entry).use { input ->
+                    JsonReader(InputStreamReader(input.buffered(), Charsets.UTF_8)).use { reader ->
+                        reader.beginArray()
+                        while (reader.hasNext()) {
+                            val parsed = TermEntry.parse(reader)
+                            if (parsed == null) {
+                                skippedEntries++
+                                continue
+                            }
+                            val defs = parsed.defs.mapNotNull {
+                                TermGlossary.stripHeadwordEcho(
+                                    it, parsed.term, parsed.reading.ifBlank { parsed.term },
+                                )
+                            }
+                            if (parsed.term.isEmpty() || defs.isEmpty()) {
+                                skippedEntries++
+                                continue
+                            }
+
+                            val reading =
+                                Deinflector.katakanaToHiragana(parsed.reading.ifBlank { parsed.term })
+                            val pos = parsed.defTags.split(' ')
+                                .filter { it.isNotEmpty() && it in posTags }
+                                .joinToString(" ")
+                            insert.bindString(1, dictId)
+                            insert.bindString(2, parsed.term)
+                            insert.bindString(3, reading)
+                            insert.bindDouble(4, parsed.score)
+                            insert.bindString(5, KanjiData.encodeMeanings(defs))
+                            insert.bindString(6, pos)
+                            insert.executeInsert()
+                            rows++
+                        }
+                        reader.endArray()
+                    }
+                }
+                if (skippedEntries > 0) {
+                    Log.i(TAG, "$dictId/${entry.name}: skipped $skippedEntries text-less/malformed term entries")
+                }
+            }
+        }
+        Log.i(TAG, "ingested $rows term rows for $dictId")
+    }
+
+    /** Tag names the dictionary's tag banks declare with category
+     *  "partOfSpeech" — the ecosystem convention (JMdict, Jitendex).
+     *  tag_bank entries are [name, category, order, notes, score]. */
+    private fun collectPosTags(zip: ZipFile): Set<String> {
+        val posTags = mutableSetOf<String>()
+        for (entry in zip.entries()) {
+            if (entry.name.contains('/') || !TAG_BANK.matches(entry.name)) continue
+            zip.getInputStream(entry).use { input ->
+                JsonReader(InputStreamReader(input.buffered(), Charsets.UTF_8)).use { reader ->
+                    reader.beginArray()
+                    while (reader.hasNext()) {
+                        if (reader.peek() != JsonToken.BEGIN_ARRAY) {
+                            reader.skipValue()
+                            continue
+                        }
+                        reader.beginArray()
+                        val name =
+                            if (reader.peek() == JsonToken.STRING) reader.nextString() else ""
+                        val category =
+                            if (reader.peek() == JsonToken.STRING) reader.nextString() else ""
+                        while (reader.hasNext()) reader.skipValue()
+                        reader.endArray()
+                        if (name.isNotEmpty() && category == "partOfSpeech") posTags += name
+                    }
+                    reader.endArray()
+                }
+            }
+        }
+        return posTags
     }
 }

@@ -5,7 +5,9 @@ import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.dictionary.SudachiJapaneseTokenizer
 import com.playtranslate.model.CharacterDetail
+import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.DictionaryResponse
+import com.playtranslate.model.Headword
 import com.playtranslate.model.KanjiDetail
 import com.playtranslate.yomitan.YomitanDataStore
 import kotlinx.coroutines.Dispatchers
@@ -77,8 +79,74 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
             TokenSpan(surface = it.surface, lookupForm = it.lookupForm, reading = it.reading)
         }
 
-    override suspend fun lookup(word: String, reading: String?): DictionaryResponse? =
-        dict.lookup(word, reading)?.let { enrichWithYomitan(it) }
+    override suspend fun lookup(word: String, reading: String?): DictionaryResponse? {
+        val packResponse = dict.lookup(word, reading)
+        val imported = lookupImportedTerms(word, reading)
+        val merged = when {
+            // The pack entry anchors the word's identity (headword display,
+            // TTS reading, badges, POS); imported groups attach to the first
+            // entry — the one every surface renders.
+            packResponse != null -> {
+                if (imported.groups.isEmpty()) packResponse
+                else packResponse.copy(
+                    entries = listOf(
+                        packResponse.entries.first().copy(importedSenses = imported.groups)
+                    ) + packResponse.entries.drop(1),
+                )
+            }
+            // Pack miss but an imported dict has the word: synthesize an
+            // entry so it resolves everywhere. No senses/POS/badges — the
+            // imported groups are the content.
+            imported.groups.isNotEmpty() -> {
+                val resolvedTerm = imported.resolvedTerm ?: word
+                DictionaryResponse(
+                    entries = listOf(
+                        DictionaryEntry(
+                            slug = resolvedTerm,
+                            isCommon = null,
+                            tags = emptyList(),
+                            jlpt = emptyList(),
+                            headwords = listOf(
+                                Headword(
+                                    written = resolvedTerm,
+                                    reading = imported.lookup.resolvedReading
+                                        ?.takeIf { it != resolvedTerm },
+                                )
+                            ),
+                            senses = emptyList(),
+                            importedSenses = imported.groups,
+                        )
+                    ),
+                )
+            }
+            else -> return null
+        }
+        return enrichWithYomitan(merged)
+    }
+
+    private class ImportedTerms(
+        val lookup: YomitanDataStore.TermLookup,
+        /** The candidate form that hit, when any did. */
+        val resolvedTerm: String?,
+    ) {
+        val groups get() = lookup.groups
+    }
+
+    /** Imported-term resolution mirrors the pack's candidate tiers
+     *  independently (Yomitan semantics — sources don't need to agree on a
+     *  lemma): the word as passed first, then deinflection candidates. */
+    private suspend fun lookupImportedTerms(word: String, reading: String?): ImportedTerms {
+        if (!YomitanDataStore.hasTermDictionaries(appContext)) {
+            return ImportedTerms(YomitanDataStore.TermLookup(emptyList(), reading), null)
+        }
+        val direct = YomitanDataStore.termSensesFor(appContext, word, reading)
+        if (direct.groups.isNotEmpty()) return ImportedTerms(direct, word)
+        for (candidate in Deinflector.candidates(word)) {
+            val hit = YomitanDataStore.termSensesFor(appContext, candidate.text, null)
+            if (hit.groups.isNotEmpty()) return ImportedTerms(hit, candidate.text)
+        }
+        return ImportedTerms(direct, null)
+    }
 
     /** Attaches pitch-accent downsteps and per-dictionary frequency tags
      *  from imported Yomitan dictionaries to each headword — one batched

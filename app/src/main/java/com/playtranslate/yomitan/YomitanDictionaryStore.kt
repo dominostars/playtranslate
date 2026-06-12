@@ -96,6 +96,14 @@ sealed class YomitanImportResult {
      *  dictionary authors aren't left with a dead-end "invalid file". */
     data class InvalidFormat(val reason: String?) : YomitanImportResult()
 
+    /** The file is fine but the device lacks room for it — distinct from
+     *  [InvalidFormat] so the alert can say "free up space" instead of
+     *  "bad file". */
+    data class InsufficientSpace(
+        val requiredBytes: Long,
+        val availableBytes: Long,
+    ) : YomitanImportResult()
+
     /** Copy or disk failure unrelated to the file's contents. */
     object IoError : YomitanImportResult()
 }
@@ -197,6 +205,19 @@ object YomitanDictionaryStore {
             } catch (e: Exception) {
                 Log.w(TAG, "copy from SAF failed", e)
                 return@withContext YomitanImportResult.IoError
+            }
+
+            // Disk guard: the zip is kept whole (1×) and the derived term
+            // rows from a flattened glossary can exceed the compressed
+            // source — 3× the zip leaves headroom for both. The temp copy
+            // already landed, so this checks what's left AFTER it.
+            val required = temp.length() * 3
+            val available = rootDir(ctx).apply { mkdirs() }.usableSpace
+            if (available < required) {
+                return@withContext YomitanImportResult.InsufficientSpace(
+                    requiredBytes = required,
+                    availableBytes = available,
+                )
             }
 
             val sha256 = PackIntegrity.sha256Hex(temp)

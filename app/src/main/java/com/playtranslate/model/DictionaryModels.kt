@@ -23,7 +23,30 @@ data class DictionaryEntry(
     val jlpt: List<String>,
     val headwords: List<Headword>,
     val senses: List<Sense>,
-    val freqScore: Int = 0
+    val freqScore: Int = 0,
+    /** Definition groups from imported Yomitan term dictionaries, in the
+     *  user's section order. Deliberately SEPARATE from [senses]: these are
+     *  final display text (often monolingual) that must never enter the
+     *  machine-translation tiers, the per-entry sense cap, or POS
+     *  inference. Rendered ahead of [senses] on every surface. */
+    val importedSenses: List<ImportedSenseGroup> = emptyList(),
+)
+
+/** One imported term dictionary's definitions for a looked-up word.
+ *  [source] is the group label (the dictionary's alias when set, else its
+ *  title); [senses] are flattened plain-text definitions in the
+ *  dictionary's own score order. */
+data class ImportedSenseGroup(
+    val source: String,
+    val senses: List<ImportedSense>,
+)
+
+/** One imported definition. [pos] is the entry's part-of-speech tags
+ *  (resolved against the dictionary's tag bank, joined ", "), empty for
+ *  dictionaries that don't tag — most monolingual conversions. */
+data class ImportedSense(
+    val definition: String,
+    val pos: String = "",
 )
 
 /**

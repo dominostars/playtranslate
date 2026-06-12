@@ -138,50 +138,49 @@ suspend fun resolveWordRows(
                         val reading = display.reading ?: ""
                         val freqScore = entry.freqScore
 
-                        val meaning = when (defResult) {
+                        // Imported term-dictionary lines lead the flat
+                        // definition string (one per line, source in parens),
+                        // numbered continuously with the pack's lines below.
+                        // Built BEFORE the empty-check so an imported-only
+                        // word (pack-miss synthesis) still gets a row.
+                        val importedLines = importedFlatLines(entry.importedSenses)
+                        var headerLine: String? = null
+                        val packLines: List<String> = when (defResult) {
                             is DefinitionResult.Native -> {
                                 val targetSensesSorted = defResult.targetSenses.sortedBy { it.senseOrd }
                                 val isTargetDriven = targetLang != "en" && targetSensesSorted.isNotEmpty()
                                 if (isTargetDriven) {
-                                    targetSensesSorted.mapIndexed { i, target ->
-                                        val glosses = target.glosses.joinToString("; ")
-                                        if (targetSensesSorted.size > 1) "${i + 1}. $glosses" else glosses
-                                    }.joinToString("\n")
+                                    targetSensesSorted.map { it.glosses.joinToString("; ") }
                                 } else {
                                     val targetByOrd = targetSensesSorted.associateBy { it.senseOrd }
                                     flatSenses.mapIndexed { i, sense ->
-                                        val target = targetByOrd[i]
-                                        val glosses = target?.glosses?.joinToString("; ")
+                                        targetByOrd[i]?.glosses?.joinToString("; ")
                                             ?: sense.targetDefinitions.joinToString("; ")
-                                        if (flatSenses.size > 1) "${i + 1}. $glosses" else glosses
-                                    }.joinToString("\n")
+                                    }
                                 }
                             }
                             is DefinitionResult.MachineTranslated -> {
                                 val defs = defResult.translatedDefinitions
-                                if (defs != null) {
-                                    flatSenses.mapIndexed { i, sense ->
-                                        val glosses = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
-                                        if (flatSenses.size > 1) "${i + 1}. $glosses" else glosses
-                                    }.joinToString("\n")
-                                } else {
-                                    val translatedLine = defResult.translatedHeadword
-                                    val englishLines = flatSenses.mapIndexed { i, sense ->
-                                        val glosses = sense.targetDefinitions.joinToString("; ")
-                                        if (flatSenses.size > 1) "${i + 1}. $glosses" else glosses
-                                    }.joinToString("\n")
-                                    "$translatedLine\n$englishLines"
+                                if (defs == null) headerLine = defResult.translatedHeadword
+                                flatSenses.mapIndexed { i, sense ->
+                                    defs?.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
+                                        ?: sense.targetDefinitions.joinToString("; ")
                                 }
                             }
                             is DefinitionResult.EnglishFallback -> {
                                 val defs = defResult.translatedDefinitions
                                 flatSenses.mapIndexed { i, sense ->
-                                    val glosses = defs?.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
+                                    defs?.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
                                         ?: sense.targetDefinitions.joinToString("; ")
-                                    if (flatSenses.size > 1) "${i + 1}. $glosses" else glosses
-                                }.joinToString("\n")
+                                }
                             }
                         }
+                        val rawLines = importedLines + packLines.filter { it.isNotEmpty() }
+                        val numbered =
+                            if (rawLines.size > 1) rawLines.mapIndexed { i, l -> "${i + 1}. $l" }
+                            else rawLines
+                        val meaning =
+                            (listOfNotNull(headerLine) + numbered).joinToString("\n")
                         if (meaning.isEmpty()) return@async null
                         // Structured senses for the cell's numbered, POS-grouped
                         // definitions, built once via the shared tier logic the
