@@ -1312,4 +1312,14 @@
     <string name="pos_abbreviation">Kısaltma</string>
     <string name="pos_contraction">Kısaltılmış biçim</string>
     <string name="pos_auxiliary">Yardımcı fiil</string>
+    <string name="inflection_causative">Ettirgen</string>
+    <string name="inflection_passive">Edilgen/Yeterlilik</string>
+    <string name="inflection_negative">Olumsuz</string>
+    <string name="inflection_past">Geçmiş</string>
+    <string name="inflection_polite">Kibar</string>
+    <string name="inflection_te_form">Te biçimi</string>
+    <string name="inflection_desiderative">İstek</string>
+    <string name="inflection_conditional">Şart</string>
+    <string name="inflection_volitional">Niyet</string>
+    <string name="inflection_imperative">Emir</string>
 </resources>

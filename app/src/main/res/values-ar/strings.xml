@@ -1192,4 +1192,14 @@
     <string name="pos_abbreviation">اختصار</string>
     <string name="pos_contraction">اختزال</string>
     <string name="pos_auxiliary">فعل مساعد</string>
+    <string name="inflection_causative">السببية</string>
+    <string name="inflection_passive">المبني للمجهول/الإمكان</string>
+    <string name="inflection_negative">النفي</string>
+    <string name="inflection_past">الماضي</string>
+    <string name="inflection_polite">مهذب</string>
+    <string name="inflection_te_form">صيغة て</string>
+    <string name="inflection_desiderative">الرغبة</string>
+    <string name="inflection_conditional">الشرط</string>
+    <string name="inflection_volitional">العزم</string>
+    <string name="inflection_imperative">الأمر</string>
 </resources>

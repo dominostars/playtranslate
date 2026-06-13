@@ -57,6 +57,9 @@ app/src/androidTest/assets/ocr_golden/**/*.notes.md
 /ocr-seeds/
 /ocr-golden-reports/
 
+# Segmentation-run diagnostic dumps (local analysis output, not source).
+/seg-runs/
+
 # OS
 Thumbs.db
 **/.cxx/

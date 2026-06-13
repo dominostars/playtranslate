@@ -1177,4 +1177,14 @@
     <string name="pos_abbreviation">คำย่อ</string>
     <string name="pos_contraction">รูปย่อ</string>
     <string name="pos_auxiliary">กริยาช่วย</string>
+    <string name="inflection_causative">รูปให้กระทำ</string>
+    <string name="inflection_passive">ถูกกระทำ/ทำได้</string>
+    <string name="inflection_negative">ปฏิเสธ</string>
+    <string name="inflection_past">อดีต</string>
+    <string name="inflection_polite">สุภาพ</string>
+    <string name="inflection_te_form">รูป て</string>
+    <string name="inflection_desiderative">อยากทำ</string>
+    <string name="inflection_conditional">เงื่อนไข</string>
+    <string name="inflection_volitional">ความตั้งใจ</string>
+    <string name="inflection_imperative">คำสั่ง</string>
 </resources>

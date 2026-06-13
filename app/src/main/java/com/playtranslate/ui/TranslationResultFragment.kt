@@ -1289,6 +1289,7 @@ class TranslationResultFragment : Fragment() {
         cell.bind(
             data = data,
             scale = WORD_CELL_SCALE,
+            inflectedForms = rowState.inflectedForms,
             onCellTap = {
                 host?.onInteraction()
                 val ready = (vm.result.value as? ResultState.Ready)?.result

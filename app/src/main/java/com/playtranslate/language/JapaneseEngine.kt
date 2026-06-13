@@ -79,7 +79,10 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
                 { candidates -> YomitanDataStore.batchTermsExist(appContext, candidates) }
             } else null
         return dict.tokenizeWithSurfaces(text, phraseOracle).map {
-            TokenSpan(surface = it.surface, lookupForm = it.lookupForm, reading = it.reading)
+            TokenSpan(
+                surface = it.surface, lookupForm = it.lookupForm,
+                reading = it.reading, inflections = it.inflections,
+            )
         }
     }
 

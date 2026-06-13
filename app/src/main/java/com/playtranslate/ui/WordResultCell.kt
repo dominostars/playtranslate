@@ -20,6 +20,7 @@ import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
 import com.playtranslate.R
 import com.playtranslate.dictionary.Deinflector
+import com.playtranslate.language.InflectedForm
 import com.playtranslate.themeColor
 import kotlinx.coroutines.Job
 
@@ -48,6 +49,7 @@ class WordResultCell @JvmOverloads constructor(
 
     private val wordView: TextView
     private val readingView: TextView
+    private val inflectionView: TextView
     private val speakIcon: ImageView
     private val speakSpinner: ProgressBar
     private val speakButton: FrameLayout
@@ -125,6 +127,22 @@ class WordResultCell @JvmOverloads constructor(
         headRow.addView(chevron)
 
         addView(headRow, LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+
+        // Conjugation line: the as-found surface + the grammar it expresses
+        // (e.g. 言わせて · Causative, Te-form), under the dictionary headword.
+        // GONE for uninflected words / non-JA sources; populated in bind().
+        inflectionView = TextView(context).apply {
+            setTextColor(mutedColor)
+            isGone = true
+        }
+        addView(
+            inflectionView,
+            LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
+                topMargin = dp(2f)
+                marginEnd = dp(12f)
+            },
+        )
+
         // Body keeps a 16dp right inset (4dp cell padding + 12dp) so its text
         // wraps in line with the Translation / Source cards, while the action
         // row above reaches the 4dp button column.
@@ -141,6 +159,7 @@ class WordResultCell @JvmOverloads constructor(
     fun bind(
         data: WordDefinitionData,
         scale: Float,
+        inflectedForms: List<InflectedForm>,
         onCellTap: () -> Unit,
         onSpeak: () -> Unit,
         onAnki: () -> Unit,
@@ -171,6 +190,17 @@ class WordResultCell @JvmOverloads constructor(
         }
         readingView.isGone = pitchKana == null
         readingView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f * scale)
+        // Conjugation lines: one per distinct form this lemma appeared as,
+        // "surface · Tag, Tag", localized. Hidden when there's nothing to report.
+        if (inflectedForms.isEmpty()) {
+            inflectionView.isGone = true
+        } else {
+            inflectionView.isGone = false
+            inflectionView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f * scale)
+            inflectionView.text = inflectedForms.joinToString("\n") { form ->
+                form.surface + " · " + form.tags.joinToString(", ") { context.getString(it.labelRes) }
+            }
+        }
         definitionsView.bind(data, label = null, scale = scale)
         (definitionsView.layoutParams as LayoutParams).topMargin = dp(10f * scale)
         definitionsView.requestLayout()

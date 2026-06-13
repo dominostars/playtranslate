@@ -422,6 +422,32 @@
     <string name="word_detail_char_meanings_mt">Machine translated · <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         GRAMMAR INFLECTIONS — short tags for the conjugation a Japanese
+         surface form expresses, shown comma-joined under the dictionary
+         form in the word-result cell (e.g. 言わせて · Causative, Te-form).
+         Grammar terms; keep them concise. -->
+    <!-- Conjugation tag in the word-result cell: causative (〜せる/させる, "make/let do"). -->
+    <string name="inflection_causative">Causative</string>
+    <!-- Conjugation tag in the word-result cell: passive or potential (〜れる/られる); the two senses share a form. -->
+    <string name="inflection_passive">Passive/Potential</string>
+    <!-- Conjugation tag in the word-result cell: negative (〜ない). -->
+    <string name="inflection_negative">Negative</string>
+    <!-- Conjugation tag in the word-result cell: past tense (〜た). -->
+    <string name="inflection_past">Past</string>
+    <!-- Conjugation tag in the word-result cell: polite form (〜ます/です). -->
+    <string name="inflection_polite">Polite</string>
+    <!-- Conjugation tag in the word-result cell: te-form (〜て), the conjunctive/continuative form. -->
+    <string name="inflection_te_form">Te-form</string>
+    <!-- Conjugation tag in the word-result cell: desiderative (〜たい, "want to"). -->
+    <string name="inflection_desiderative">Desiderative</string>
+    <!-- Conjugation tag in the word-result cell: conditional (〜ば). -->
+    <string name="inflection_conditional">Conditional</string>
+    <!-- Conjugation tag in the word-result cell: volitional (〜う/よう, "let's / I shall"). -->
+    <string name="inflection_volitional">Volitional</string>
+    <!-- Conjugation tag in the word-result cell: imperative (command form). -->
+    <string name="inflection_imperative">Imperative</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — general
          ═══════════════════════════════════════════════════════════════ -->
 

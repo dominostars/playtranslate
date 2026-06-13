@@ -1309,4 +1309,14 @@
     <string name="pos_abbreviation">약어</string>
     <string name="pos_contraction">축약형</string>
     <string name="pos_auxiliary">조동사</string>
+    <string name="inflection_causative">사역</string>
+    <string name="inflection_passive">수동/가능</string>
+    <string name="inflection_negative">부정</string>
+    <string name="inflection_past">과거</string>
+    <string name="inflection_polite">정중</string>
+    <string name="inflection_te_form">て형</string>
+    <string name="inflection_desiderative">희망</string>
+    <string name="inflection_conditional">조건</string>
+    <string name="inflection_volitional">의지</string>
+    <string name="inflection_imperative">명령</string>
 </resources>

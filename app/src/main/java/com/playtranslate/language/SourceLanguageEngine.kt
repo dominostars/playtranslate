@@ -13,11 +13,15 @@ import java.util.concurrent.ConcurrentHashMap
  *   trivial.
  * - [reading]: a pronunciation hint (hiragana for Japanese). Null for most
  *   languages.
+ * - [inflections]: the conjugation the [surface] expresses (Japanese only;
+ *   e.g. 言わせて → [Causative, Te-form]). Empty for uninflected words and for
+ *   engines that don't analyze inflection.
  */
 data class TokenSpan(
     val surface: String,
     val lookupForm: String,
     val reading: String? = null,
+    val inflections: List<InflectionTag> = emptyList(),
 )
 
 /**

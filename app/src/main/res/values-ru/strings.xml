@@ -1317,4 +1317,14 @@
     <string name="pos_abbreviation">Сокращение</string>
     <string name="pos_contraction">Сокращённая форма</string>
     <string name="pos_auxiliary">Вспомогательный глагол</string>
+    <string name="inflection_causative">Каузатив</string>
+    <string name="inflection_passive">Пассив/потенциалис</string>
+    <string name="inflection_negative">Отрицание</string>
+    <string name="inflection_past">Прошедшее</string>
+    <string name="inflection_polite">Вежливая форма</string>
+    <string name="inflection_te_form">Форма て</string>
+    <string name="inflection_desiderative">Дезидератив</string>
+    <string name="inflection_conditional">Условное</string>
+    <string name="inflection_volitional">Волитив</string>
+    <string name="inflection_imperative">Повелительное</string>
 </resources>

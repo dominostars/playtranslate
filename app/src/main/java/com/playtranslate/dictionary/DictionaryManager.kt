@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.util.Log
+import com.playtranslate.language.InflectionTag
 import com.playtranslate.language.LanguagePackCatalogLoader
 import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.SourceLangId
@@ -40,7 +41,10 @@ data class TokenWithReading(
     /** Dictionary form for lookup (e.g. "使う"). */
     val lookupForm: String,
     /** Hiragana reading from Kuromoji, or null for multi-token phrases. */
-    val reading: String?
+    val reading: String?,
+    /** Conjugation tags the [surface] expresses (e.g. 言わせて → [Causative,
+     *  Te-form]); empty for uninflected words and phrase-matched spans. */
+    val inflections: List<InflectionTag> = emptyList(),
 )
 
 /** A furigana annotation: reading text positioned over a kanji span within the original text. */
@@ -844,7 +848,22 @@ class DictionaryManager private constructor(private val context: Context) {
             while (i < tokens.size) {
                 val match = byStart[i]?.firstOrNull { it.lookupForm in knownPhrases }
                 if (match != null) {
-                    result.add(TokenWithReading(match.surface, match.lookupForm, reading = null))
+                    // Lemma-variant phrases (気になった → 気になる) carry a productive
+                    // inflection on their final verb/adjective — tag it from that
+                    // stem (window end) plus the glue folded after it. EXACT matches
+                    // are frozen idioms (かもしれない); their ない/etc. aren't productive,
+                    // so they stay untagged.
+                    val inflections = if (match.isVariant) {
+                        JapaneseInflectionAnalyzer.analyze(
+                            tokens[i + match.windowLen - 1],
+                            tokens.subList(i + match.windowLen, i + match.tokensConsumed),
+                        )
+                    } else {
+                        emptyList()
+                    }
+                    result.add(TokenWithReading(
+                        match.surface, match.lookupForm, reading = null, inflections = inflections,
+                    ))
                     i += match.tokensConsumed
                     continue
                 }
@@ -859,15 +878,20 @@ class DictionaryManager private constructor(private val context: Context) {
                     }
                     if (isLookupWorthy(lookupForm)) {
                         var surfaceSpan = t.surface
+                        val glue = mutableListOf<JaToken>()
                         if (t.category.startsConjugation) {
                             var j = i + 1
                             while (j < tokens.size && tokens[j].category.isConjugationGlue) {
                                 surfaceSpan += tokens[j].surface
+                                glue.add(tokens[j])
                                 j++
                             }
                         }
                         val reading = t.reading?.let { Deinflector.katakanaToHiragana(it) }
-                        result.add(TokenWithReading(surfaceSpan, lookupForm, reading))
+                        result.add(TokenWithReading(
+                            surfaceSpan, lookupForm, reading,
+                            inflections = JapaneseInflectionAnalyzer.analyze(t, glue),
+                        ))
                     }
                 }
                 i++

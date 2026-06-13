@@ -1308,4 +1308,14 @@
     <string name="pos_abbreviation">Chữ viết tắt</string>
     <string name="pos_contraction">Dạng rút gọn</string>
     <string name="pos_auxiliary">Trợ động từ</string>
+    <string name="inflection_causative">Sai khiến</string>
+    <string name="inflection_passive">Bị động/Khả năng</string>
+    <string name="inflection_negative">Phủ định</string>
+    <string name="inflection_past">Quá khứ</string>
+    <string name="inflection_polite">Lịch sự</string>
+    <string name="inflection_te_form">Thể て</string>
+    <string name="inflection_desiderative">Mong muốn</string>
+    <string name="inflection_conditional">Điều kiện</string>
+    <string name="inflection_volitional">Ý chí</string>
+    <string name="inflection_imperative">Mệnh lệnh</string>
 </resources>

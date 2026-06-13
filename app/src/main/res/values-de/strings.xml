@@ -1311,4 +1311,14 @@
     <string name="pos_abbreviation">Abkürzung</string>
     <string name="pos_contraction">Kurzform</string>
     <string name="pos_auxiliary">Hilfsverb</string>
+    <string name="inflection_causative">Kausativ</string>
+    <string name="inflection_passive">Passiv/Potenzial</string>
+    <string name="inflection_negative">Verneinung</string>
+    <string name="inflection_past">Vergangenheit</string>
+    <string name="inflection_polite">Höflich</string>
+    <string name="inflection_te_form">Te-Form</string>
+    <string name="inflection_desiderative">Wunschform</string>
+    <string name="inflection_conditional">Konditional</string>
+    <string name="inflection_volitional">Volitiv</string>
+    <string name="inflection_imperative">Imperativ</string>
 </resources>

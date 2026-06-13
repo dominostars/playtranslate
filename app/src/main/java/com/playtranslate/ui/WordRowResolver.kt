@@ -5,6 +5,7 @@ import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.DefinitionGlossTranslators
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
+import com.playtranslate.language.InflectedForm
 import com.playtranslate.language.SourceLanguageEngine
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TokenSpan
@@ -103,6 +104,9 @@ suspend fun resolveWordRows(
 
     val surfaceByToken = uniqueTokens.associate { it.lookupForm to it.surface }
     val readingByToken = uniqueTokens.associate { it.lookupForm to it.reading }
+    // All distinct inflected forms per lemma — keyed off ALL occurrences, not
+    // the deduped first one, so a lemma seen in several forms keeps them all.
+    val inflectionForms = inflectedFormsByLemma(allTokens)
 
     // Fan out per-token lookups in parallel on IO. Per-row failures produce
     // nulls that we filter out below.
@@ -201,6 +205,7 @@ suspend fun resolveWordRows(
                                 ankiPos = ankiPos,
                                 pitch = display.pitch,
                                 frequencies = display.frequencies,
+                                inflectedForms = inflectionForms[word].orEmpty(),
                             ),
                             surfaceMapping = if (surface != displayWord) {
                                 displayWord to surface
@@ -239,3 +244,18 @@ suspend fun resolveWordRows(
         surfaces = surfaces,
     )
 }
+
+/**
+ * Group every source occurrence by lemma and collect the DISTINCT inflected
+ * forms each appeared as (surface + tags), in first-seen order, dropping
+ * uninflected occurrences. Keyed off ALL tokens — not the lemma-deduped row set
+ * — so a verb that shows up as 食べたい and 食べられない keeps both forms instead of
+ * collapsing to whichever came first. Pure; unit-tested in WordRowResolverTest.
+ */
+internal fun inflectedFormsByLemma(tokens: List<TokenSpan>): Map<String, List<InflectedForm>> =
+    tokens.groupBy { it.lookupForm }
+        .mapValues { (_, occ) ->
+            occ.filter { it.inflections.isNotEmpty() }
+                .map { InflectedForm(it.surface, it.inflections) }
+                .distinct()
+        }

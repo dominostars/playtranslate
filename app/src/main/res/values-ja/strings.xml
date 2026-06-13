@@ -1308,4 +1308,14 @@
     <string name="pos_abbreviation">略語</string>
     <string name="pos_contraction">短縮形</string>
     <string name="pos_auxiliary">助動詞</string>
+    <string name="inflection_causative">使役</string>
+    <string name="inflection_passive">受身・可能</string>
+    <string name="inflection_negative">否定</string>
+    <string name="inflection_past">過去</string>
+    <string name="inflection_polite">丁寧</string>
+    <string name="inflection_te_form">て形</string>
+    <string name="inflection_desiderative">願望</string>
+    <string name="inflection_conditional">仮定</string>
+    <string name="inflection_volitional">意志</string>
+    <string name="inflection_imperative">命令</string>
 </resources>

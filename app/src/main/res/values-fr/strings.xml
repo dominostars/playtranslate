@@ -1312,4 +1312,14 @@
     <string name="pos_abbreviation">Abréviation</string>
     <string name="pos_contraction">Contraction</string>
     <string name="pos_auxiliary">Auxiliaire</string>
+    <string name="inflection_causative">Causatif</string>
+    <string name="inflection_passive">Passif/Potentiel</string>
+    <string name="inflection_negative">Négatif</string>
+    <string name="inflection_past">Passé</string>
+    <string name="inflection_polite">Poli</string>
+    <string name="inflection_te_form">Forme en -te</string>
+    <string name="inflection_desiderative">Désidératif</string>
+    <string name="inflection_conditional">Conditionnel</string>
+    <string name="inflection_volitional">Volitif</string>
+    <string name="inflection_imperative">Impératif</string>
 </resources>

@@ -3,6 +3,7 @@ package com.playtranslate.dictionary
 import com.playtranslate.dictionary.DictionaryManager.Companion.PhraseCandidate
 import com.playtranslate.dictionary.DictionaryManager.Companion.phraseCandidatesFor
 import com.playtranslate.dictionary.DictionaryManager.Companion.reglobTokens
+import com.playtranslate.language.InflectionTag
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -22,9 +23,11 @@ class ReglobTokensTest {
         dict: String = surface,
         norm: String = dict,
         reading: String? = null,
+        infl: String? = null,
     ) = JaToken(
         surface = surface, begin = 0, end = surface.length, category = cat,
         dictionaryForm = dict, normalizedForm = norm, reading = reading, isOov = false,
+        inflectionForm = infl,
     )
 
     private fun glob(
@@ -320,5 +323,174 @@ class ReglobTokensTest {
         val result = glob(tokens, knownPhrases = setOf("気になる"), knownForms = setOf("理由"))
         assertEquals(listOf("気になる", "理由"), result.map { it.lookupForm })
         assertEquals(listOf("気になった", "理由"), result.map { it.surface })
+    }
+
+    // ── Inflection labeling (feature B) ──────────────────────────────────
+    // Tags ride on TokenWithReading.inflections, derived by
+    // JapaneseInflectionAnalyzer from the folded glue chain + the final
+    // morpheme's 活用形. These assert the analyzer's mapping/ordering/dedup
+    // LOGIC over morpheme shapes taken from UniDic convention and the corpus
+    // above; JapaneseInflectionSurveyTest confirms the shapes on-device.
+
+    @Test
+    fun `causative te-form yields ordered tags`() {
+        // 言わせて = 言わ(言う) + せ(せる) + て
+        val tokens = listOf(
+            jaToken("言わ", JaCategory.VERB, dict = "言う"),
+            jaToken("せ", JaCategory.AUX, dict = "せる"),
+            jaToken("て", JaCategory.PARTICLE),
+        )
+        val r = glob(tokens, knownForms = setOf("言う"))
+        assertEquals("言わせて", r[0].surface)
+        assertEquals("言う", r[0].lookupForm)
+        assertEquals(listOf(InflectionTag.CAUSATIVE, InflectionTag.TE_FORM), r[0].inflections)
+    }
+
+    @Test
+    fun `negative and past from a single aux`() {
+        assertEquals(
+            listOf(InflectionTag.NEGATIVE),
+            glob(
+                listOf(jaToken("使わ", JaCategory.VERB, dict = "使う"), jaToken("ない", JaCategory.AUX)),
+                knownForms = setOf("使う"),
+            )[0].inflections,
+        )
+        assertEquals(
+            listOf(InflectionTag.PAST),
+            glob(
+                listOf(jaToken("食べ", JaCategory.VERB, dict = "食べる"), jaToken("た", JaCategory.AUX)),
+                knownForms = setOf("食べる"),
+            )[0].inflections,
+        )
+    }
+
+    @Test
+    fun `polite negative past collapses the doubled politeness`() {
+        // 食べませんでした = 食べ + ませ(ます) + ん(ぬ) + でし(です) + た:
+        // ます and でし→です both map to Polite; distinct() keeps one.
+        val tokens = listOf(
+            jaToken("食べ", JaCategory.VERB, dict = "食べる"),
+            jaToken("ませ", JaCategory.AUX, dict = "ます"),
+            jaToken("ん", JaCategory.AUX, dict = "ぬ"),
+            jaToken("でし", JaCategory.AUX, dict = "です"),
+            jaToken("た", JaCategory.AUX),
+        )
+        assertEquals(
+            listOf(InflectionTag.POLITE, InflectionTag.NEGATIVE, InflectionTag.PAST),
+            glob(tokens, knownForms = setOf("食べる"))[0].inflections,
+        )
+    }
+
+    @Test
+    fun `causative passive past stack stays in morpheme order`() {
+        // 食べさせられた = 食べ + させ(させる) + られ(られる) + た
+        val tokens = listOf(
+            jaToken("食べ", JaCategory.VERB, dict = "食べる"),
+            jaToken("させ", JaCategory.AUX, dict = "させる"),
+            jaToken("られ", JaCategory.AUX, dict = "られる"),
+            jaToken("た", JaCategory.AUX),
+        )
+        assertEquals(
+            listOf(InflectionTag.CAUSATIVE, InflectionTag.PASSIVE, InflectionTag.PAST),
+            glob(tokens, knownForms = setOf("食べる"))[0].inflections,
+        )
+    }
+
+    @Test
+    fun `bare imperative comes from the stem inflection form`() {
+        // 食べろ = 命令形 with no auxiliary.
+        val tokens = listOf(jaToken("食べろ", JaCategory.VERB, dict = "食べる", infl = "命令形-一般"))
+        assertEquals(
+            listOf(InflectionTag.IMPERATIVE),
+            glob(tokens, knownForms = setOf("食べる"))[0].inflections,
+        )
+    }
+
+    @Test
+    fun `imperative survives a trailing sentence-final particle`() {
+        // 食べろよ = 食べろ(命令形) + よ(sentence-final): the imperative is on the
+        // stem, but the fold pulls よ into the glue chain. The analyzer must
+        // scan past the untagged particle to the 命令形 rather than stop at よ.
+        val tokens = listOf(
+            jaToken("食べろ", JaCategory.VERB, dict = "食べる", infl = "命令形-一般"),
+            jaToken("よ", JaCategory.PARTICLE),
+        )
+        val r = glob(tokens, knownForms = setOf("食べる"))
+        assertEquals("食べろよ", r[0].surface)
+        assertEquals(listOf(InflectionTag.IMPERATIVE), r[0].inflections)
+    }
+
+    @Test
+    fun `conditional comes from the ba particle`() {
+        val tokens = listOf(
+            jaToken("言え", JaCategory.VERB, dict = "言う", infl = "仮定形-一般"),
+            jaToken("ば", JaCategory.PARTICLE),
+        )
+        assertEquals(
+            listOf(InflectionTag.CONDITIONAL),
+            glob(tokens, knownForms = setOf("言う"))[0].inflections,
+        )
+    }
+
+    @Test
+    fun `non-conjugational particle in the span is not a tag`() {
+        // 言わせては: the trailing は folds into the surface span but the
+        // analyzer's allow-list ignores it — labels stay correct.
+        val tokens = listOf(
+            jaToken("言わ", JaCategory.VERB, dict = "言う"),
+            jaToken("せ", JaCategory.AUX, dict = "せる"),
+            jaToken("て", JaCategory.PARTICLE),
+            jaToken("は", JaCategory.PARTICLE),
+        )
+        val r = glob(tokens, knownForms = setOf("言う"))
+        assertEquals("言わせては", r[0].surface)
+        assertEquals(listOf(InflectionTag.CAUSATIVE, InflectionTag.TE_FORM), r[0].inflections)
+    }
+
+    @Test
+    fun `uninflected content word has no tags`() {
+        assertEquals(
+            emptyList<InflectionTag>(),
+            glob(listOf(jaToken("本", JaCategory.NOUN)), knownForms = setOf("本"))[0].inflections,
+        )
+    }
+
+    @Test
+    fun `variant phrase carries the trailing inflection`() {
+        // 気になった → headword 気になる: the productive 〜た on the final verb is
+        // tagged from the variant's stem + glue (previously emitted nothing).
+        val r = glob(kiNiNatta, knownPhrases = setOf("気になる"))
+        assertEquals("気になる", r[0].lookupForm)
+        assertEquals("気になった", r[0].surface)
+        assertEquals(listOf(InflectionTag.PAST), r[0].inflections)
+    }
+
+    @Test
+    fun `exact frozen phrase stays untagged`() {
+        // かもしれない matches whole (exact, not a variant); its ない belongs to the
+        // frozen idiom, not a productive negation — so no tag.
+        val tokens = listOf(
+            jaToken("か", JaCategory.PARTICLE),
+            jaToken("も", JaCategory.PARTICLE),
+            jaToken("しれ", JaCategory.VERB, dict = "しれる"),
+            jaToken("ない", JaCategory.AUX),
+        )
+        val r = glob(tokens, knownPhrases = setOf("かもしれない"))
+        assertEquals("かもしれない", r[0].lookupForm)
+        assertEquals(emptyList<InflectionTag>(), r[0].inflections)
+    }
+
+    @Test
+    fun `volitional is deferred - bare yo-u lemma is not tagged`() {
+        // 〜う/よう is shared by volitional (食べよう), conjecture (だろう) and likeness
+        // (ようだ), so it stays unlabeled until the Phase 0 survey disambiguates it.
+        val tokens = listOf(
+            jaToken("食べ", JaCategory.VERB, dict = "食べる"),
+            jaToken("よう", JaCategory.AUX),
+        )
+        assertEquals(
+            emptyList<InflectionTag>(),
+            glob(tokens, knownForms = setOf("食べる"))[0].inflections,
+        )
     }
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.playtranslate.Prefs
+import com.playtranslate.language.InflectedForm
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TokenSpan
 import com.playtranslate.model.FrequencyTag
@@ -340,6 +341,10 @@ data class RowState(
     /** Per-dictionary frequency chips for the displayed headword; rides
      *  from HeadwordDisplay into the word cell like [pitch]. */
     val frequencies: List<FrequencyTag> = emptyList(),
+    /** Distinct inflected forms this lemma appeared as in the source, each with
+     *  its conjugation tags (e.g. 食べたい·Desiderative, 食べられない·Passive/Neg).
+     *  Empty for uninflected words / non-Japanese sources. */
+    val inflectedForms: List<InflectedForm> = emptyList(),
 )
 
 /** Convert the row list into the legacy `Map<String, Triple<...>>`

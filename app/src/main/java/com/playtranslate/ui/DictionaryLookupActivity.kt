@@ -149,6 +149,7 @@ class DictionaryLookupActivity : SettingsSubPageActivity() {
         cell.bind(
             data = data,
             scale = WordResultCell.DEFAULT_SCALE,
+            inflectedForms = rowState.inflectedForms,
             onCellTap = { openWordDetail(rowState) },
             onSpeak = { speakFromCell(cell, rowState) },
             onAnki = { launchAnki(rowState) },
