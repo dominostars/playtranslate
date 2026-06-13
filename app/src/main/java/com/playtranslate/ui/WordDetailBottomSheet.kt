@@ -752,6 +752,7 @@ class WordDetailBottomSheet : DialogFragment() {
                         if (defIdx == 0) add(group.source)
                         if (sense.pos.isNotBlank()) add(sense.pos)
                     },
+                    imported = true,
                     glossList = listOf(sense.definition),
                     senseNumber = null,
                     miscText = null,
@@ -1491,6 +1492,9 @@ class WordDetailBottomSheet : DialogFragment() {
     private fun addSenseRow(
         parent: LinearLayout,
         posLabels: List<String>,
+        /** Imported Yomitan rows pass a verbatim dictionary-name header in
+         *  [posLabels] — never localized. Pack rows localize their POS. */
+        imported: Boolean = false,
         glossList: List<String>,
         senseNumber: Int?,
         miscText: String?,
@@ -1544,7 +1548,8 @@ class WordDetailBottomSheet : DialogFragment() {
 
         if (posLabels.isNotEmpty()) {
             col.addView(TextView(ctx).apply {
-                text = posLabels.joinToString(" · ").uppercase(Locale.ROOT)
+                text = (if (imported) posLabels.joinToString(" · ") else ctx.localizePos(posLabels))
+                    .uppercase(Locale.ROOT)
                 textSize = 10f
                 letterSpacing = 0.12f
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)

@@ -1,5 +1,6 @@
 package com.playtranslate.language
 
+import com.playtranslate.model.PosVocabulary
 import org.apache.lucene.store.InputStreamDataInput
 import org.apache.lucene.util.BytesRef
 import org.apache.lucene.util.IntsRefBuilder
@@ -77,7 +78,7 @@ class FstTargetGlossDatabase private constructor(
 
     private fun DecodedRow.toSense(): TargetSense = TargetSense(
         senseOrd = senseOrd,
-        pos = strings.get(posId).split(',').filter { it.isNotBlank() },
+        pos = PosVocabulary.parse(strings.get(posId)),
         glosses = glossIds.map { strings.get(it) }.filter { it.isNotEmpty() },
         source = strings.get(sourceId),
         examples = buildList(exampleIds.size / 2) {

@@ -29,12 +29,15 @@ data class WordDefinitionData(
     val frequencies: List<FrequencyTag> = emptyList(),
 )
 
-/** A single rendered sense: its part(s) of speech and the gloss text.
- *  [imported] marks rows from imported Yomitan term dictionaries (whose
- *  [pos] carries the dictionary name) — the compact surfaces clamp these,
- *  since monolingual definitions run paragraph-length. */
+/** A single rendered sense: its part(s) of speech (whole English tokens) and
+ *  the gloss text. Renderers localize [pos] via `Context.localizePos`, except
+ *  when [imported] is set.
+ *  [imported] marks rows from imported Yomitan term dictionaries (whose [pos]
+ *  is a single display header carrying the dictionary name, not POS tags — so
+ *  it is rendered verbatim, never localized) — the compact surfaces clamp
+ *  these, since monolingual definitions run paragraph-length. */
 data class SenseDisplay(
-    val pos: String,
+    val pos: List<String>,
     val definition: String,
     val imported: Boolean = false,
 )

@@ -1288,4 +1288,24 @@
 
     <string name="share_chooser_share_logs">分享日志</string>
 
+    <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
+    <string name="pos_noun">名词</string>
+    <string name="pos_pronoun">代词</string>
+    <string name="pos_verb">动词</string>
+    <string name="pos_adjective">形容词</string>
+    <string name="pos_adverb">副词</string>
+    <string name="pos_particle">助词</string>
+    <string name="pos_conjunction">连词</string>
+    <string name="pos_interjection">叹词</string>
+    <string name="pos_preposition">介词</string>
+    <string name="pos_prefix">前缀</string>
+    <string name="pos_suffix">后缀</string>
+    <string name="pos_counter">量词</string>
+    <string name="pos_numeral">数词</string>
+    <string name="pos_expression">词组</string>
+    <string name="pos_phrase">短语</string>
+    <string name="pos_proverb">谚语</string>
+    <string name="pos_abbreviation">缩写</string>
+    <string name="pos_contraction">缩略形</string>
+    <string name="pos_auxiliary">助动词</string>
 </resources>

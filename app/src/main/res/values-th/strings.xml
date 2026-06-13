@@ -1157,4 +1157,24 @@
 
     <string name="share_chooser_share_logs">แชร์บันทึก</string>
 
+    <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
+    <string name="pos_noun">คำนาม</string>
+    <string name="pos_pronoun">สรรพนาม</string>
+    <string name="pos_verb">คำกริยา</string>
+    <string name="pos_adjective">คำคุณศัพท์</string>
+    <string name="pos_adverb">คำวิเศษณ์</string>
+    <string name="pos_particle">คำอนุภาค</string>
+    <string name="pos_conjunction">คำสันธาน</string>
+    <string name="pos_interjection">คำอุทาน</string>
+    <string name="pos_preposition">คำบุพบท</string>
+    <string name="pos_prefix">อุปสรรค</string>
+    <string name="pos_suffix">ปัจจัย</string>
+    <string name="pos_counter">ลักษณนาม</string>
+    <string name="pos_numeral">คำบอกจำนวน</string>
+    <string name="pos_expression">สำนวน</string>
+    <string name="pos_phrase">วลี</string>
+    <string name="pos_proverb">สุภาษิต</string>
+    <string name="pos_abbreviation">คำย่อ</string>
+    <string name="pos_contraction">รูปย่อ</string>
+    <string name="pos_auxiliary">กริยาช่วย</string>
 </resources>

@@ -37,12 +37,9 @@ fun buildSenseDisplays(
                 // Blank-pos target rows (PanLex) inherit the source-entry POS
                 // only when entries agree; multi-POS source yields an empty
                 // fallback so we don't mislabel verb/intj cells as NOUN.
-                val fallbackPos = unambiguousFallbackPos(entries).joinToString(", ")
+                val fallbackPos = unambiguousFallbackPos(entries)
                 targetSensesSorted.map { target ->
-                    val pos = target.pos.filter { it.isNotBlank() }
-                        .takeIf { it.isNotEmpty() }
-                        ?.joinToString(", ")
-                        ?: fallbackPos
+                    val pos = target.pos.filter { it.isNotBlank() }.ifEmpty { fallbackPos }
                     SenseDisplay(pos = pos, definition = target.glosses.joinToString("; "))
                 }
             } else {
@@ -53,12 +50,12 @@ fun buildSenseDisplays(
                     val target = targetByOrd[i]
                     if (target != null) {
                         SenseDisplay(
-                            pos = target.pos.joinToString(", "),
+                            pos = target.pos,
                             definition = target.glosses.joinToString("; "),
                         )
                     } else {
                         SenseDisplay(
-                            pos = sense.partsOfSpeech.joinToString(", "),
+                            pos = sense.partsOfSpeech,
                             definition = sense.targetDefinitions.joinToString("; "),
                         )
                     }
@@ -70,17 +67,17 @@ fun buildSenseDisplays(
             if (defs != null) {
                 flatSenses.mapIndexed { i, sense ->
                     SenseDisplay(
-                        pos = sense.partsOfSpeech.joinToString(", "),
+                        pos = sense.partsOfSpeech,
                         definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") },
                     )
                 }
             } else {
                 buildList {
-                    add(SenseDisplay(pos = "", definition = defResult.translatedHeadword))
+                    add(SenseDisplay(pos = emptyList(), definition = defResult.translatedHeadword))
                     flatSenses.forEach { sense ->
                         add(
                             SenseDisplay(
-                                pos = sense.partsOfSpeech.joinToString(", "),
+                                pos = sense.partsOfSpeech,
                                 definition = sense.targetDefinitions.joinToString("; "),
                             )
                         )
@@ -92,7 +89,7 @@ fun buildSenseDisplays(
             val defs = defResult.translatedDefinitions
             flatSenses.mapIndexed { i, sense ->
                 SenseDisplay(
-                    pos = sense.partsOfSpeech.joinToString(", "),
+                    pos = sense.partsOfSpeech,
                     definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") },
                 )
             }
@@ -100,7 +97,7 @@ fun buildSenseDisplays(
         else -> {
             flatSenses.map { sense ->
                 SenseDisplay(
-                    pos = sense.partsOfSpeech.joinToString(", "),
+                    pos = sense.partsOfSpeech,
                     definition = sense.targetDefinitions.joinToString("; "),
                 )
             }
@@ -116,7 +113,9 @@ fun importedSenseDisplays(groups: List<ImportedSenseGroup>): List<SenseDisplay> 
     groups.flatMap { group ->
         group.senses.map { sense ->
             SenseDisplay(
-                pos = importedHeader(group.source, sense.pos),
+                // One display header (source · tags), rendered verbatim — never
+                // localized — so it rides a single-element pos list.
+                pos = listOf(importedHeader(group.source, sense.pos)),
                 definition = sense.definition,
                 imported = true,
             )

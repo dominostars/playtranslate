@@ -897,7 +897,7 @@ class TranslationResultFragment : Fragment() {
                 val senses: List<SenseDisplay> = if (entry != null) {
                     buildSenseDisplays(defResult!!, entries, prefs.targetLang)
                 } else {
-                    listOf(SenseDisplay(pos = "", definition = "Not in dictionary, may be a name"))
+                    listOf(SenseDisplay(pos = emptyList(), definition = "Not in dictionary, may be a name"))
                 }
 
                 // Calculate position: center on the tapped word, above it

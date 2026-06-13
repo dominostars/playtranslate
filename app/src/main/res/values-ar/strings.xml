@@ -1172,4 +1172,24 @@
 
     <string name="share_chooser_share_logs">مشاركة السجلات</string>
 
+    <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
+    <string name="pos_noun">اسم</string>
+    <string name="pos_pronoun">ضمير</string>
+    <string name="pos_verb">فعل</string>
+    <string name="pos_adjective">صفة</string>
+    <string name="pos_adverb">ظرف</string>
+    <string name="pos_particle">أداة</string>
+    <string name="pos_conjunction">حرف عطف</string>
+    <string name="pos_interjection">تعجب</string>
+    <string name="pos_preposition">حرف جر</string>
+    <string name="pos_prefix">بادئة</string>
+    <string name="pos_suffix">لاحقة</string>
+    <string name="pos_counter">أداة عد</string>
+    <string name="pos_numeral">عدد</string>
+    <string name="pos_expression">تعبير</string>
+    <string name="pos_phrase">عبارة</string>
+    <string name="pos_proverb">مثل</string>
+    <string name="pos_abbreviation">اختصار</string>
+    <string name="pos_contraction">اختزال</string>
+    <string name="pos_auxiliary">فعل مساعد</string>
 </resources>

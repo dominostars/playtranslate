@@ -1289,4 +1289,24 @@
 
     <string name="share_chooser_share_logs">로그 공유</string>
 
+    <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
+    <string name="pos_noun">명사</string>
+    <string name="pos_pronoun">대명사</string>
+    <string name="pos_verb">동사</string>
+    <string name="pos_adjective">형용사</string>
+    <string name="pos_adverb">부사</string>
+    <string name="pos_particle">조사</string>
+    <string name="pos_conjunction">접속사</string>
+    <string name="pos_interjection">감탄사</string>
+    <string name="pos_preposition">전치사</string>
+    <string name="pos_prefix">접두사</string>
+    <string name="pos_suffix">접미사</string>
+    <string name="pos_counter">분류사</string>
+    <string name="pos_numeral">수사</string>
+    <string name="pos_expression">표현</string>
+    <string name="pos_phrase">구</string>
+    <string name="pos_proverb">속담</string>
+    <string name="pos_abbreviation">약어</string>
+    <string name="pos_contraction">축약형</string>
+    <string name="pos_auxiliary">조동사</string>
 </resources>

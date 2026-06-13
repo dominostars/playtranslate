@@ -1288,4 +1288,24 @@
 
     <string name="share_chooser_share_logs">Chia sẻ nhật ký</string>
 
+    <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
+    <string name="pos_noun">Danh từ</string>
+    <string name="pos_pronoun">Đại từ</string>
+    <string name="pos_verb">Động từ</string>
+    <string name="pos_adjective">Tính từ</string>
+    <string name="pos_adverb">Trạng từ</string>
+    <string name="pos_particle">Trợ từ</string>
+    <string name="pos_conjunction">Liên từ</string>
+    <string name="pos_interjection">Thán từ</string>
+    <string name="pos_preposition">Giới từ</string>
+    <string name="pos_prefix">Tiền tố</string>
+    <string name="pos_suffix">Hậu tố</string>
+    <string name="pos_counter">Loại từ</string>
+    <string name="pos_numeral">Số từ</string>
+    <string name="pos_expression">Cụm từ cố định</string>
+    <string name="pos_phrase">Cụm từ</string>
+    <string name="pos_proverb">Tục ngữ</string>
+    <string name="pos_abbreviation">Chữ viết tắt</string>
+    <string name="pos_contraction">Dạng rút gọn</string>
+    <string name="pos_auxiliary">Trợ động từ</string>
 </resources>

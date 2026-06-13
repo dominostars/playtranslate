@@ -1,6 +1,7 @@
 package com.playtranslate.language
 
 import android.database.sqlite.SQLiteDatabase
+import com.playtranslate.model.PosVocabulary
 import java.io.File
 
 /**
@@ -71,7 +72,7 @@ class TargetGlossDatabase private constructor(private val db: SQLiteDatabase) : 
             while (c.moveToNext()) {
                 out += (c.getString(4) ?: "") to TargetSense(
                     senseOrd = c.getInt(0),
-                    pos = c.getString(1).split(',').filter { it.isNotBlank() },
+                    pos = PosVocabulary.parse(c.getString(1)),
                     glosses = c.getString(2).split('\t').filter { it.isNotBlank() },
                     source = c.getString(3),
                 )

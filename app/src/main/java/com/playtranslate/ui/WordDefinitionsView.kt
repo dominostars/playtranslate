@@ -87,14 +87,18 @@ class WordDefinitionsView @JvmOverloads constructor(
 
         // Gap between the meta/warning sections and the first sense.
         val sensesTop = if (childCount > 0) dp(9f * scale) else 0
-        var previousPos: String? = null
+        var previousPos: List<String>? = null
         var firstSenseBlock = true
         data.senses.forEachIndexed { i, sense ->
             // A new POS header is emitted only when the POS actually changes
-            // (or is the first non-blank POS seen).
-            if (sense.pos.isNotBlank() && sense.pos != previousPos) {
+            // (or is the first non-empty POS seen). Imported rows carry a
+            // verbatim dictionary-name header; everything else localizes.
+            if (sense.pos.isNotEmpty() && sense.pos != previousPos) {
+                val label =
+                    if (sense.imported) sense.pos.joinToString(" · ")
+                    else context.localizePos(sense.pos)
                 val header = TextView(context).apply {
-                    text = sense.pos.uppercase()
+                    text = label.uppercase()
                     setTextColor(secondaryText)
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f * scale)
                     typeface = medium

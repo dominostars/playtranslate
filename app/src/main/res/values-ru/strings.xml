@@ -1297,4 +1297,24 @@
 
     <string name="share_chooser_share_logs">Поделиться журналами</string>
 
+    <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
+    <string name="pos_noun">Существительное</string>
+    <string name="pos_pronoun">Местоимение</string>
+    <string name="pos_verb">Глагол</string>
+    <string name="pos_adjective">Прилагательное</string>
+    <string name="pos_adverb">Наречие</string>
+    <string name="pos_particle">Частица</string>
+    <string name="pos_conjunction">Союз</string>
+    <string name="pos_interjection">Междометие</string>
+    <string name="pos_preposition">Предлог</string>
+    <string name="pos_prefix">Приставка</string>
+    <string name="pos_suffix">Суффикс</string>
+    <string name="pos_counter">Счётное слово</string>
+    <string name="pos_numeral">Числительное</string>
+    <string name="pos_expression">Выражение</string>
+    <string name="pos_phrase">Фраза</string>
+    <string name="pos_proverb">Пословица</string>
+    <string name="pos_abbreviation">Сокращение</string>
+    <string name="pos_contraction">Сокращённая форма</string>
+    <string name="pos_auxiliary">Вспомогательный глагол</string>
 </resources>

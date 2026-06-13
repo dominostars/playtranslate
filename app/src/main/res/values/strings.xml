@@ -309,6 +309,52 @@
     <!-- Badge label shown beside common dictionary entries. -->
     <string name="word_detail_common">Common</string>
 
+    <!-- Part-of-speech labels shown with a word's definitions (the magnifier
+         lens, the translation-result word cell, the word-detail sheet, and the
+         lookup popup). Universal grammatical categories only; mapped from
+         dictionary POS tags by PosVocabulary. Each is a short grammatical
+         category name, rendered uppercased on some surfaces. Japanese
+         conjugation classes (Godan/Ichidan/Suru/…) and archaic forms are
+         intentionally absent and stay in English/romaji (textbook-recognizable). -->
+    <!-- POS tag shown with a word's definitions: the "noun" category. -->
+    <string name="pos_noun">Noun</string>
+    <!-- POS tag shown with a word's definitions: the "pronoun" category. -->
+    <string name="pos_pronoun">Pronoun</string>
+    <!-- POS tag shown with a word's definitions: the "verb" category. -->
+    <string name="pos_verb">Verb</string>
+    <!-- POS tag shown with a word's definitions: the "adjective" category. -->
+    <string name="pos_adjective">Adjective</string>
+    <!-- POS tag shown with a word's definitions: the "adverb" category. -->
+    <string name="pos_adverb">Adverb</string>
+    <!-- POS tag shown with a word's definitions: the "particle" category. -->
+    <string name="pos_particle">Particle</string>
+    <!-- POS tag shown with a word's definitions: the "conjunction" category. -->
+    <string name="pos_conjunction">Conjunction</string>
+    <!-- POS tag shown with a word's definitions: the "interjection" category. -->
+    <string name="pos_interjection">Interjection</string>
+    <!-- POS tag shown with a word's definitions: the "preposition" category. -->
+    <string name="pos_preposition">Preposition</string>
+    <!-- POS tag shown with a word's definitions: the "prefix" category. -->
+    <string name="pos_prefix">Prefix</string>
+    <!-- POS tag shown with a word's definitions: the "suffix" category. -->
+    <string name="pos_suffix">Suffix</string>
+    <!-- POS tag shown with a word's definitions: the "counter" category (e.g. 個, 本). -->
+    <string name="pos_counter">Counter</string>
+    <!-- POS tag shown with a word's definitions: the "numeral" category. -->
+    <string name="pos_numeral">Numeral</string>
+    <!-- POS tag shown with a word's definitions: the "expression/phrase" category. -->
+    <string name="pos_expression">Expression</string>
+    <!-- POS tag shown with a word's definitions: the "phrase" category. -->
+    <string name="pos_phrase">Phrase</string>
+    <!-- POS tag shown with a word's definitions: the "proverb" category. -->
+    <string name="pos_proverb">Proverb</string>
+    <!-- POS tag shown with a word's definitions: the "abbreviation" category. -->
+    <string name="pos_abbreviation">Abbreviation</string>
+    <!-- POS tag shown with a word's definitions: the "contraction" category. -->
+    <string name="pos_contraction">Contraction</string>
+    <!-- POS tag shown with a word's definitions: the "auxiliary" (verb/adjective) category. -->
+    <string name="pos_auxiliary">Auxiliary</string>
+
     <!-- Badge text when a looked-up word already has an Anki card in more
          than one deck (single-deck case shows the deck's name instead). -->
     <string name="word_anki_in_decks"><xliff:g id="count" example="3">%1$d</xliff:g> Anki decks</string>

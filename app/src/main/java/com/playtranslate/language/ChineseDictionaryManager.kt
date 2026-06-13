@@ -10,6 +10,7 @@ import com.playtranslate.dictionary.prefixUpperBound
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.DictionaryResponse
 import com.playtranslate.model.Headword
+import com.playtranslate.model.PosVocabulary
 import com.playtranslate.model.Sense
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -273,7 +274,7 @@ class ChineseDictionaryManager private constructor(private val context: Context)
             arrayOf(idStr)
         ).use { c ->
             while (c.moveToNext()) {
-                val posList   = c.getString(0).split(',').filter { it.isNotBlank() }
+                val posList   = PosVocabulary.parse(c.getString(0))
                 val glossList = c.getString(1).split('\t').filter { it.isNotBlank() }
                     .map { PinyinFormatter.convertPinyinInBrackets(it) }
                 val miscList  = c.getString(2).split('\t').filter { it.isNotBlank() }

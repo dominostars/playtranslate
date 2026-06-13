@@ -1292,4 +1292,24 @@
 
     <string name="share_chooser_share_logs">Günlükleri paylaş</string>
 
+    <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
+    <string name="pos_noun">İsim</string>
+    <string name="pos_pronoun">Zamir</string>
+    <string name="pos_verb">Fiil</string>
+    <string name="pos_adjective">Sıfat</string>
+    <string name="pos_adverb">Zarf</string>
+    <string name="pos_particle">Edat</string>
+    <string name="pos_conjunction">Bağlaç</string>
+    <string name="pos_interjection">Ünlem</string>
+    <string name="pos_preposition">İlgeç</string>
+    <string name="pos_prefix">Ön ek</string>
+    <string name="pos_suffix">Son ek</string>
+    <string name="pos_counter">Sayma sözcüğü</string>
+    <string name="pos_numeral">Sayı</string>
+    <string name="pos_expression">İfade</string>
+    <string name="pos_phrase">Öbek</string>
+    <string name="pos_proverb">Atasözü</string>
+    <string name="pos_abbreviation">Kısaltma</string>
+    <string name="pos_contraction">Kısaltılmış biçim</string>
+    <string name="pos_auxiliary">Yardımcı fiil</string>
 </resources>

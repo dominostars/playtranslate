@@ -1291,4 +1291,24 @@
 
     <string name="share_chooser_share_logs">Compartilhar registros</string>
 
+    <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
+    <string name="pos_noun">Substantivo</string>
+    <string name="pos_pronoun">Pronome</string>
+    <string name="pos_verb">Verbo</string>
+    <string name="pos_adjective">Adjetivo</string>
+    <string name="pos_adverb">Advérbio</string>
+    <string name="pos_particle">Partícula</string>
+    <string name="pos_conjunction">Conjunção</string>
+    <string name="pos_interjection">Interjeição</string>
+    <string name="pos_preposition">Preposição</string>
+    <string name="pos_prefix">Prefixo</string>
+    <string name="pos_suffix">Sufixo</string>
+    <string name="pos_counter">Classificador</string>
+    <string name="pos_numeral">Numeral</string>
+    <string name="pos_expression">Expressão</string>
+    <string name="pos_phrase">Locução</string>
+    <string name="pos_proverb">Provérbio</string>
+    <string name="pos_abbreviation">Abreviação</string>
+    <string name="pos_contraction">Contração</string>
+    <string name="pos_auxiliary">Verbo auxiliar</string>
 </resources>

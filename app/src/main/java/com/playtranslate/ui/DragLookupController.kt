@@ -1134,12 +1134,8 @@ class DragLookupController(
                     // (e.g. "surprise" → noun + verb + intj) yields an
                     // empty fallback so we don't mislabel cells.
                     val fallbackPos = com.playtranslate.model.unambiguousFallbackPos(entries)
-                        .joinToString(", ")
                     targetSenses.map { target ->
-                        val pos = target.pos.filter { it.isNotBlank() }
-                            .takeIf { it.isNotEmpty() }
-                            ?.joinToString(", ")
-                            ?: fallbackPos
+                        val pos = target.pos.filter { it.isNotBlank() }.ifEmpty { fallbackPos }
                         SenseDisplay(
                             pos = pos,
                             definition = target.glosses.joinToString("; "),
@@ -1154,12 +1150,12 @@ class DragLookupController(
                         val target = targetByOrd[i]
                         if (target != null) {
                             SenseDisplay(
-                                pos = target.pos.joinToString(", "),
+                                pos = target.pos,
                                 definition = target.glosses.joinToString("; "),
                             )
                         } else {
                             SenseDisplay(
-                                pos = sense.partsOfSpeech.joinToString(", "),
+                                pos = sense.partsOfSpeech,
                                 definition = sense.targetDefinitions.joinToString("; "),
                             )
                         }
@@ -1186,17 +1182,17 @@ class DragLookupController(
                         // Translated definitions available — show them directly
                         flatSenses.mapIndexed { i, sense ->
                             SenseDisplay(
-                                pos = sense.partsOfSpeech.joinToString(", "),
+                                pos = sense.partsOfSpeech,
                                 definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
                             )
                         }
                     } else {
                         // No translated definitions — headword + English context
                         buildList {
-                            add(SenseDisplay(pos = "", definition = defResult.translatedHeadword))
+                            add(SenseDisplay(pos = emptyList(), definition = defResult.translatedHeadword))
                             flatSenses.forEach { sense ->
                                 add(SenseDisplay(
-                                    pos = sense.partsOfSpeech.joinToString(", "),
+                                    pos = sense.partsOfSpeech,
                                     definition = sense.targetDefinitions.joinToString("; ")
                                 ))
                             }
@@ -1219,7 +1215,7 @@ class DragLookupController(
                     reading = display.reading,
                     senses = importedRows + flatSenses.mapIndexed { i, sense ->
                         SenseDisplay(
-                            pos = sense.partsOfSpeech.joinToString(", "),
+                            pos = sense.partsOfSpeech,
                             definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
                         )
                     },
@@ -1239,7 +1235,7 @@ class DragLookupController(
                     reading = display.reading,
                     senses = importedRows + flatSenses.map { sense ->
                         SenseDisplay(
-                            pos = sense.partsOfSpeech.joinToString(", "),
+                            pos = sense.partsOfSpeech,
                             definition = sense.targetDefinitions.joinToString("; ")
                         )
                     },
@@ -1256,7 +1252,7 @@ class DragLookupController(
                     reading = reading,
                     senses = listOf(
                         SenseDisplay(
-                            pos = "",
+                            pos = emptyList(),
                             definition = "Not in dictionary, may be a name"
                         )
                     ),

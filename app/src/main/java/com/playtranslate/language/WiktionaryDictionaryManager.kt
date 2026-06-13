@@ -10,6 +10,7 @@ import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.DictionaryResponse
 import com.playtranslate.model.Example
 import com.playtranslate.model.Headword
+import com.playtranslate.model.PosVocabulary
 import com.playtranslate.model.Sense
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -298,7 +299,7 @@ class WiktionaryDictionaryManager private constructor(
         ).use { c ->
             while (c.moveToNext()) {
                 val sensePos  = c.getInt(0)
-                val posList   = c.getString(1).split(',').filter { it.isNotBlank() }
+                val posList   = PosVocabulary.parse(c.getString(1))
                 val glossList = c.getString(2).split('\t').filter { it.isNotBlank() }
                 val miscList  = c.getString(3).split('\t').filter { it.isNotBlank() }
                 val finalPos  = if (inflectionNote != null && senses.isEmpty())

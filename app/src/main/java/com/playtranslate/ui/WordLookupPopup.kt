@@ -370,9 +370,10 @@ class WordLookupPopup(
         }
 
         senses.forEachIndexed { i, sense ->
-            if (sense.pos.isNotBlank()) {
+            if (sense.pos.isNotEmpty()) {
                 rightCol.addView(TextView(ctx).apply {
-                    text = sense.pos
+                    text = if (sense.imported) sense.pos.joinToString(" · ")
+                    else ctx.localizePos(sense.pos)
                     setTextColor("#A0A0A0".toColorInt())
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
                     typeface = Typeface.DEFAULT_BOLD

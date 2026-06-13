@@ -1288,4 +1288,24 @@
 
     <string name="share_chooser_share_logs">ログを共有</string>
 
+    <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
+    <string name="pos_noun">名詞</string>
+    <string name="pos_pronoun">代名詞</string>
+    <string name="pos_verb">動詞</string>
+    <string name="pos_adjective">形容詞</string>
+    <string name="pos_adverb">副詞</string>
+    <string name="pos_particle">助詞</string>
+    <string name="pos_conjunction">接続詞</string>
+    <string name="pos_interjection">感動詞</string>
+    <string name="pos_preposition">前置詞</string>
+    <string name="pos_prefix">接頭辞</string>
+    <string name="pos_suffix">接尾辞</string>
+    <string name="pos_counter">助数詞</string>
+    <string name="pos_numeral">数詞</string>
+    <string name="pos_expression">表現</string>
+    <string name="pos_phrase">句</string>
+    <string name="pos_proverb">ことわざ</string>
+    <string name="pos_abbreviation">略語</string>
+    <string name="pos_contraction">短縮形</string>
+    <string name="pos_auxiliary">助動詞</string>
 </resources>
