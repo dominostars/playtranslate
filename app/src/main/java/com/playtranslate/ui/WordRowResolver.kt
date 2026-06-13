@@ -259,3 +259,20 @@ internal fun inflectedFormsByLemma(tokens: List<TokenSpan>): Map<String, List<In
                 .map { InflectedForm(it.surface, it.inflections) }
                 .distinct()
         }
+
+/** Max distinct inflected-form lines a single word row shows before overflow. */
+const val MAX_INFLECTION_LINES = 3
+
+/**
+ * Display cap for a row's inflected forms: returns the forms to show (at most
+ * [max], first-seen order) and how many are hidden beyond that. Keeps a common
+ * lemma in long OCR/clipboard input from expanding one row without bound — the
+ * caller renders the remainder as a compact "+N more" line. Pure; tested.
+ */
+internal fun capInflectionForms(
+    forms: List<InflectedForm>,
+    max: Int = MAX_INFLECTION_LINES,
+): Pair<List<InflectedForm>, Int> {
+    val shown = forms.take(max)
+    return shown to (forms.size - shown.size)
+}

@@ -63,4 +63,20 @@ class WordRowResolverTest {
         val forms = inflectedFormsByLemma(listOf(span("本", "本")))
         assertEquals(emptyList<InflectedForm>(), forms["本"])
     }
+
+    @Test
+    fun `capInflectionForms limits lines and reports the overflow count`() {
+        val forms = (1..5).map { InflectedForm("形$it", listOf(InflectionTag.PAST)) }
+        val (shown, overflow) = capInflectionForms(forms, max = 3)
+        assertEquals(listOf("形1", "形2", "形3"), shown.map { it.surface })
+        assertEquals(2, overflow)
+    }
+
+    @Test
+    fun `capInflectionForms reports no overflow at or under the cap`() {
+        val forms = listOf(InflectedForm("食べた", listOf(InflectionTag.PAST)))
+        val (shown, overflow) = capInflectionForms(forms, max = 3)
+        assertEquals(1, shown.size)
+        assertEquals(0, overflow)
+    }
 }

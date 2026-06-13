@@ -197,9 +197,16 @@ class WordResultCell @JvmOverloads constructor(
         } else {
             inflectionView.isGone = false
             inflectionView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f * scale)
-            inflectionView.text = inflectedForms.joinToString("\n") { form ->
+            // Cap the lines so a lemma seen in many forms (long OCR input) can't
+            // expand the row off-screen; the rest collapse into a "+N more" line.
+            val (shown, overflow) = capInflectionForms(inflectedForms)
+            val lines = shown.map { form ->
                 form.surface + " · " + form.tags.joinToString(", ") { context.getString(it.labelRes) }
             }
+            inflectionView.text = (
+                if (overflow > 0) lines + context.getString(R.string.inflection_more, overflow)
+                else lines
+            ).joinToString("\n")
         }
         definitionsView.bind(data, label = null, scale = scale)
         (definitionsView.layoutParams as LayoutParams).topMargin = dp(10f * scale)

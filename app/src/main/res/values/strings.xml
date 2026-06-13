@@ -446,6 +446,9 @@
     <string name="inflection_volitional">Volitional</string>
     <!-- Conjugation tag in the word-result cell: imperative (command form). -->
     <string name="inflection_imperative">Imperative</string>
+    <!-- Overflow line after the capped conjugation forms in the word-result cell,
+         e.g. "+2 more". %1$d = number of additional forms not shown. -->
+    <string name="inflection_more">+<xliff:g id="count" example="2">%1$d</xliff:g> more</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — general

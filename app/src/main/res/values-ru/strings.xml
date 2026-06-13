@@ -1327,4 +1327,5 @@
     <string name="inflection_conditional">Условное</string>
     <string name="inflection_volitional">Волитив</string>
     <string name="inflection_imperative">Повелительное</string>
+    <string name="inflection_more">+<xliff:g id="count" example="2">%1$d</xliff:g> ещё</string>
 </resources>

@@ -1318,4 +1318,5 @@
     <string name="inflection_conditional">Điều kiện</string>
     <string name="inflection_volitional">Ý chí</string>
     <string name="inflection_imperative">Mệnh lệnh</string>
+    <string name="inflection_more">+<xliff:g id="count" example="2">%1$d</xliff:g> nữa</string>
 </resources>

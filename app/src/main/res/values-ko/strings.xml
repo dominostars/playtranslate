@@ -1319,4 +1319,5 @@
     <string name="inflection_conditional">조건</string>
     <string name="inflection_volitional">의지</string>
     <string name="inflection_imperative">명령</string>
+    <string name="inflection_more"><xliff:g id="count" example="2">%1$d</xliff:g>개 더</string>
 </resources>

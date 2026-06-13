@@ -1318,4 +1318,5 @@
     <string name="inflection_conditional">条件</string>
     <string name="inflection_volitional">意志</string>
     <string name="inflection_imperative">命令</string>
+    <string name="inflection_more">还有<xliff:g id="count" example="2">%1$d</xliff:g>个</string>
 </resources>

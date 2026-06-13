@@ -1322,4 +1322,5 @@
     <string name="inflection_conditional">Conditionnel</string>
     <string name="inflection_volitional">Volitif</string>
     <string name="inflection_imperative">Impératif</string>
+    <string name="inflection_more">+<xliff:g id="count" example="2">%1$d</xliff:g> de plus</string>
 </resources>
