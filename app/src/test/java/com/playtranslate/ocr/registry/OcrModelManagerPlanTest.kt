@@ -18,6 +18,7 @@ class OcrModelManagerPlanTest {
     private val mlkit = OcrBackend.MLKitJapanese
     private val cyr = OcrBackend.Paddle("paddle-rec-cyrillic")   // Russian: no ML Kit floor
     private val latin = OcrBackend.Paddle("paddle-rec-latin")
+    private val unified = OcrBackend.Paddle("paddle-rec-unified") // v6 shared recognizer
 
     private fun plan(langs: Map<SourceLangId, OcrBackend>, installed: Set<String>) =
         OcrModelManager.plan(langs.keys, { langs.getValue(it) }, installed)
@@ -157,5 +158,27 @@ class OcrModelManagerPlanTest {
 
     @Test fun migrationOfferDownloadWhenDefaultPackMissing() {
         assertEquals(OcrModelManager.OcrMigration.OFFER_DOWNLOAD, migrate(choice = false, floor = mlkit, best = meiki, installed = false))
+    }
+
+    // ── selectedOcrNeedsDownload: a stored choice whose pack is missing must still
+    // re-fetch, not silently drop to ML Kit. Guards the v6 pack-key migration — the
+    // coarse "paddle" token resolves to paddle-rec-unified, but an upgraded user may
+    // only have the retired cjk/latin on disk (decideOcrMigration returns NONE for a
+    // stored choice, so this is the path that catches it).
+
+    @Test fun selectedPaddleWithMissingPackNeedsDownload() {
+        assertTrue(OcrModelManager.selectedOcrNeedsDownload(unified) { false })
+    }
+
+    @Test fun selectedPaddleWithInstalledPackNeedsNoDownload() {
+        assertFalse(OcrModelManager.selectedOcrNeedsDownload(unified) { true })
+    }
+
+    @Test fun packlessFloorNeverNeedsDownload() {
+        assertFalse(OcrModelManager.selectedOcrNeedsDownload(mlkit) { false })
+    }
+
+    @Test fun nullSelectedBackendNeedsNoDownload() {
+        assertFalse(OcrModelManager.selectedOcrNeedsDownload(null) { false })
     }
 }

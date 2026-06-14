@@ -1612,11 +1612,21 @@ class MainActivity :
             //     (idempotency guard in LanguagePackStore.install). Skipped when the
             //     pair already has a real stale entry — that upgrade's own
             //     active-pair priming already covers the recognizer.
+            //     Two triggers: the grandfathered floor→better-default upgrade
+            //     ([isDefaultOcrUpgradeAvailable]), AND a stored choice whose pack key
+            //     migrated out from under it (cjk/latin → unified) so the coarse
+            //     "paddle" token now resolves to an absent pack ([isSelectedOcrPackMissing]).
+            //     Without the latter, an upgraded Paddle user silently falls to the ML
+            //     Kit floor until they manually re-select the source — launch priming
+            //     does not run here (only on source-selection / pack-upgrade).
             val pairAlreadyStale = stale.any {
                 (it.kind == PackKind.SOURCE && it.sourceLangId == activeSource.packId) ||
                     (it.kind == PackKind.TARGET && it.targetLangCode == prefs.targetLang)
             }
-            if (!pairAlreadyStale && ocr.isDefaultOcrUpgradeAvailable(this, activeSource)) {
+            if (!pairAlreadyStale &&
+                (ocr.isDefaultOcrUpgradeAvailable(this, activeSource) ||
+                    ocr.isSelectedOcrPackMissing(this, activeSource))
+            ) {
                 LanguagePackStore.ocrUpgradeStalePack(this, activeSource)?.let { stale += it }
             }
         }

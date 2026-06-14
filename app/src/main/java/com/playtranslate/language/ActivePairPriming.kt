@@ -68,8 +68,11 @@ suspend fun primeActivePair(
     // resolves to the ML Kit floor until the source is next selected — which
     // re-runs this and re-fetches. The launch reclaim sweeps OCR orphans but
     // does NOT re-download (only OcrModelManager.sweepOrphans is wired at
-    // launch, not applyDownloads), so recovery is on re-selection, not at
-    // launch. The persisted backend token is not the lever here: selectedBackend
+    // launch, not applyDownloads), so cancelled-download recovery is on
+    // re-selection. (A pack-KEY migration that leaves the active source's chosen
+    // recognizer absent is offered at launch instead — see
+    // OcrModelManager.isSelectedOcrPackMissing + MainActivity.maybePromptForPackUpgrade.)
+    // The persisted backend token is not the lever for cancellation: selectedBackend
     // resolves to the same default with or without it, and the fallback is
     // driven solely by the missing pack. Graceful + recoverable, narrow trigger
     // (the active source's pack must already be missing/stale when cancelled),

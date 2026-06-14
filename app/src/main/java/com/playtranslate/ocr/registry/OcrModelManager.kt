@@ -257,6 +257,30 @@ object OcrModelManager {
     fun isDefaultOcrUpgradeAvailable(ctx: Context, id: SourceLangId): Boolean =
         migrationFor(ctx, id).first == OcrMigration.OFFER_DOWNLOAD
 
+    /** PURE: should the launch flow offer to download the user's CHOSEN OCR
+     *  recognizer? True iff [selected] is a real pack-backed backend (not the
+     *  pack-less ML Kit floor) with a pack not on disk. Complements
+     *  [decideOcrMigration], which by design returns NONE for any stored choice:
+     *  when a stored "paddle"/"meiki" token resolves to a pack the user lacks — e.g.
+     *  after the cjk/latin → unified pack-key migration, where the coarse token still
+     *  resolves but to a new, ABSENT pack — this catches it so the recognizer is
+     *  re-fetched instead of silently dropping to the ML Kit floor. */
+    fun selectedOcrNeedsDownload(
+        selected: OcrBackend?,
+        isInstalled: (String) -> Boolean,
+    ): Boolean {
+        val backend = selected ?: return false
+        return backend.packKeys.isNotEmpty() && !backend.packKeys.all(isInstalled)
+    }
+
+    /** [selectedOcrNeedsDownload] bound to live state for [id], scoped to users with
+     *  an EXPLICIT stored OCR choice (a no-choice source's recognizer is handled by
+     *  the grandfathered [isDefaultOcrUpgradeAvailable] path). Drives the launch OCR
+     *  download offer in `MainActivity.maybePromptForPackUpgrade`. */
+    fun isSelectedOcrPackMissing(ctx: Context, id: SourceLangId): Boolean =
+        Prefs(ctx).ocrBackendToken(id) != null &&
+            selectedOcrNeedsDownload(selectedBackend(ctx, id)) { OcrPackModelHelper(it).isInstalled(ctx) }
+
     private fun installedPacks(ctx: Context): Set<String> =
         ALL_PACK_KEYS.filterTo(HashSet()) { helper(it).isInstalled(ctx) }
 
