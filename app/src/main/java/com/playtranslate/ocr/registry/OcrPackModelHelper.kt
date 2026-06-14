@@ -31,6 +31,10 @@ class OcrPackModelHelper(override val catalogKey: String) : ModelHelper {
     override fun isDirectoryMode(): Boolean = true
 
     override fun isInstalled(ctx: Context): Boolean {
+        // A bundled pack ships in the APK — always available; its files are
+        // materialized to the models dir on first engine use ([ensureBundledMaterialized]),
+        // so report installed even before that copy lands.
+        if (catalogKey in BUNDLED_OCR_PACKS) return true
         val entry = catalogEntry(ctx) ?: return false
         val expected = entry.files?.let { MultiFileSha.aggregate(it) } ?: entry.sha256 ?: return false
         val dir = file(ctx)
@@ -44,12 +48,53 @@ class OcrPackModelHelper(override val catalogKey: String) : ModelHelper {
         }
     }
 
+    /** If this is a bundled OCR pack, copy its files from the APK assets into the
+     *  models dir when absent or stale — version-checked against the catalog's
+     *  aggregate SHA, exactly like [isInstalled]'s sentinel. No-op for downloaded
+     *  packs and for an up-to-date bundled copy. Called lazily on first engine use
+     *  ([com.playtranslate.ocr.paddle.PaddleOcrBridge]); the copy lands once per
+     *  (re)bundle, off the main thread, and only for users who actually use the
+     *  bundled recognizer (the APK carries it either way). */
+    fun ensureBundledMaterialized(ctx: Context) {
+        val assetDir = BUNDLED_OCR_PACKS[catalogKey] ?: return
+        val files = catalogEntry(ctx)?.files ?: return
+        val expected = MultiFileSha.aggregate(files)
+        val dir = file(ctx)
+        val sentinel = File(dir, ".sentinel")
+        if (files.all { File(dir, it.path).exists() } &&
+            runCatching { sentinel.readText().trim() }.getOrNull().equals(expected, ignoreCase = true)) {
+            return // already materialized + current
+        }
+        // Stage the whole pack into a sibling dir, then swap it in as ONE unit, so a
+        // partial/failed copy can never leave a mixed-version pack the loader treats
+        // as valid: the live dir is only ever a COMPLETE promoted pack, the prior
+        // complete pack (staging failed before the swap), or absent (→ ML Kit floor,
+        // re-materialized next launch). Mirrors the downloader's stage-then-promote.
+        val staging = File(dir.parentFile, "$catalogKey.tmp").apply { deleteRecursively() }
+        runCatching {
+            staging.mkdirs()
+            for (f in files) {
+                ctx.assets.open("$assetDir/${f.path}").use { input ->
+                    File(staging, f.path).outputStream().use { input.copyTo(it) }
+                }
+            }
+            File(staging, ".sentinel").writeText(expected)
+            if (dir.exists() && !dir.deleteRecursively()) error("could not clear old pack dir for $catalogKey")
+            if (!staging.renameTo(dir)) error("could not promote staged pack for $catalogKey")
+            Log.i(TAG, "materialized bundled OCR pack '$catalogKey'")
+        }.onFailure {
+            staging.deleteRecursively()
+            Log.w(TAG, "bundled OCR pack '$catalogKey' materialize failed — using ML Kit", it)
+        }
+    }
+
     /** True iff the catalog has a *deliverable* entry for this pack: present AND
      *  with real (non-placeholder) per-file sizes + 64-hex SHA-256. Gates whether
      *  the engine needing this pack is offered to the user — so a pack with a
      *  missing or placeholder catalog entry never surfaces a broken
      *  "not installed / can't download" option. */
     fun isShippable(ctx: Context): Boolean {
+        if (catalogKey in BUNDLED_OCR_PACKS) return true // shipped in the APK
         val entry = catalogEntry(ctx) ?: return false
         val files = entry.files
         return if (files != null) {
@@ -74,5 +119,16 @@ class OcrPackModelHelper(override val catalogKey: String) : ModelHelper {
         return dirGone && partialGone && tmpGone
     }
 
-    private companion object { const val TAG = "OcrPackModelHelper" }
+    private companion object {
+        const val TAG = "OcrPackModelHelper"
+
+        /** OCR packs shipped inside the APK (catalogKey -> asset subdir under
+         *  `assets/`). A bundled pack is always installed/shippable; its files are
+         *  copied into the models dir on first engine use ([ensureBundledMaterialized]).
+         *  The catalog entry is retained as the version source (aggregate SHA) and a
+         *  download fallback. */
+        val BUNDLED_OCR_PACKS: Map<String, String> = mapOf(
+            "paddle-rec-unified" to "ocr/paddle-rec-unified",
+        )
+    }
 }

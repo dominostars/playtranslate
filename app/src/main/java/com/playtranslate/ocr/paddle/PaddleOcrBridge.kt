@@ -53,7 +53,11 @@ object PaddleOcrBridge {
     private fun sessionFor(ctx: Context, recPackKey: String): PaddleOcrSession? {
         sessions[recPackKey]?.let { return it }
         val det = bundledDetector(ctx) ?: return null
-        val dir = OcrPackModelHelper(recPackKey).file(ctx)
+        val helper = OcrPackModelHelper(recPackKey)
+        // Materialize a bundled recognizer (e.g. paddle-rec-unified) from APK assets
+        // into the models dir on first use; no-op for downloaded packs.
+        helper.ensureBundledMaterialized(ctx)
+        val dir = helper.file(ctx)
         val rec = File(dir, "rec.mnn")
         val keys = File(dir, "keys.txt")
         if (!rec.exists() || !keys.exists()) {
