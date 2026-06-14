@@ -347,17 +347,19 @@ class OcrGroupingTest {
     }
 
     @Test
-    fun shortAboveLong_vertical_rightColumnNarrower_splits() {
-        // Vertical text reads right-to-left. Earlier (rightward) column
-        // is much shorter than the next (leftward) column → split. Height
-        // is the comparison axis.
-        val rightColumn = box(200, 0, 250, 50)    // h=50 (the "earlier" column)
-        val leftColumn = box(50, 0, 100, 500)     // h=500 → 50*3 < 500 fires
+    fun shortAboveLong_vertical_adjacentShortColumn_merges() {
+        // Vertical text reads right-to-left. A short rightward column that
+        // continues into a much longer leftward column (e.g. 今夜は →
+        // あちらの高原にて…) now MERGES: vertical text is exempt from the
+        // short-above-long size guard, so the geometric block check (adjacent
+        // columns, top-aligned) clusters them into one paragraph.
+        val rightColumn = box(190, 0, 233, 132)   // h=132, the sentence head
+        val leftColumn = box(137, 4, 178, 428)    // h=424, gap 12px, topΔ 4
         val groups = group(
             listOf(rightColumn, leftColumn),
             orientation = TextOrientation.VERTICAL,
         )
-        assertEquals(listOf(listOf(0), listOf(1)), groups)
+        assertEquals(listOf(listOf(0, 1)), groups)
     }
 
     @Test
@@ -386,6 +388,17 @@ class OcrGroupingTest {
         val below = Rect(100, 80, 1000, 130)      // w=900
         assertTrue(LayoutAnalyzer.shortAboveLongBlock(above, below, TextOrientation.HORIZONTAL) != null)
         assertTrue(LayoutAnalyzer.shortAboveLongBlock(below, above, TextOrientation.HORIZONTAL) != null)
+    }
+
+    @Test
+    fun shortAboveLongBlock_vertical_returnsNull() {
+        // Vertical text is exempt from the size guard: a short rightward column
+        // never blocks grouping with a long leftward one on size alone (the
+        // height ratio would have fired before this change).
+        val rightColumn = Rect(200, 0, 250, 50)   // h=50
+        val leftColumn = Rect(140, 0, 190, 500)   // h=500 → 50*3 < 500
+        assertNull(LayoutAnalyzer.shortAboveLongBlock(rightColumn, leftColumn, TextOrientation.VERTICAL))
+        assertNull(LayoutAnalyzer.shortAboveLongBlock(leftColumn, rightColumn, TextOrientation.VERTICAL))
     }
 
     @Test

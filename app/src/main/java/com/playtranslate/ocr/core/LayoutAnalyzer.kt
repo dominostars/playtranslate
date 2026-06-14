@@ -135,28 +135,26 @@ object LayoutAnalyzer {
         if (mode == GroupingMode.CROSS_FRAME_SAME_REGION) 0.50 else 0.30
 
     /**
-     * Block-grouping size guard. When the earlier line (in reading order)
-     * is strictly less than one-third the later line's extent, refuse to
-     * group. Catches speaker-name + dialogue, poem-stanza first lines,
-     * and short headings above body text without affecting same-paragraph
-     * wraps. The threshold was loosened from one-half to one-third so
-     * subtle short-above-long pairings (e.g. a ~40% intro line above a
-     * long body) cluster instead of splitting — only clearly-short
-     * labels still trip the guard.
+     * Block-grouping size guard for **horizontal** text. When the earlier line
+     * (strictly above) is less than one-third the later line's width, refuse to
+     * group — catches speaker-name + dialogue, poem-stanza first lines, and short
+     * headings above body text without affecting same-paragraph wraps. The
+     * one-third threshold (loosened from one-half) means only clearly-short labels
+     * trip it.
      *
-     * Asymmetric: long-above-short (a paragraph closing with a short tail)
-     * is unaffected. Only fires when the rects are cleanly separated on
-     * the reading axis; any overlap defers to the existing geometric
-     * checks (inline/block paths in [wouldGroup]).
+     * **Vertical text is exempt** (returns null): a short column ahead of a long
+     * one is almost always a sentence head flowing into the next column
+     * (e.g. 今夜は → あちらの高原にて…), not a speaker label, and the guard split such
+     * continuations apart. Vertical pairs defer entirely to the geometric
+     * inline/block checks in [wouldGroup].
      *
-     * Reading order per orientation:
-     * - [TextOrientation.HORIZONTAL] — earlier = strictly above, axis = width.
-     * - [TextOrientation.VERTICAL]   — earlier = strictly to the right of,
-     *   axis = height (vertical text reads right-to-left, top-to-bottom).
+     * Asymmetric (horizontal): long-above-short (a paragraph closing with a short
+     * tail) is unaffected. Only fires when the rects are cleanly separated on the
+     * reading axis; any overlap defers to the existing geometric checks.
      *
      * Returns the reason string when blocked, null otherwise. [wouldGroup]
-     * discards the string; [groupDecision] surfaces it in the log so the
-     * two predicates stay in numerical sync.
+     * discards the string; [groupDecision] surfaces it in the log so the two
+     * predicates stay in numerical sync.
      */
     internal fun shortAboveLongBlock(
         a: Rect,
@@ -164,18 +162,12 @@ object LayoutAnalyzer {
         orientation: TextOrientation,
     ): String? {
         return when (orientation) {
-            TextOrientation.VERTICAL -> {
-                val (earlier, later) = when {
-                    a.left >= b.right -> a to b
-                    b.left >= a.right -> b to a
-                    else -> return null
-                }
-                val eh = earlier.height()
-                val lh = later.height()
-                if (eh > 0 && eh * 3 < lh)
-                    "size-block (vertical: earlier h=$eh < ⅓× later h=$lh)"
-                else null
-            }
+            // Vertical text is exempt: a short column ahead of a long one is
+            // almost always a sentence head flowing into the next column
+            // (e.g. 今夜は → あちらの高原にて…), not a speaker label, so the guard
+            // mis-split continuations apart. Vertical pairs defer entirely to the
+            // geometric inline/block checks.
+            TextOrientation.VERTICAL -> null
             else -> {
                 val (earlier, later) = when {
                     a.bottom <= b.top -> a to b
