@@ -51,9 +51,8 @@ object LayoutAnalyzer {
      * (ascender/descender slivers, glyph-box padding) and is NOT evidence
      * of grouping. Decisions rest on inline (same-line gap) and block
      * (next-line + alignment + height-match) checks alone, with the
-     * strict block-axis thresholds (`blockGapMultiplier`=0.8,
-     * `sizeRatioCap`=0.30) that keep typographically distinct elements
-     * (headings vs body, captions vs body) from collapsing into one
+     * strict `sizeRatioCap`=0.30 height cap that keeps typographically distinct
+     * elements (headings vs body, captions vs body) from collapsing into one
      * paragraph.
      *
      * [CROSS_FRAME_SAME_REGION] — matching a fresh OCR rect against a rect
@@ -62,8 +61,7 @@ object LayoutAnalyzer {
      * be partially occluded between frames, so substantial rect overlap
      * is evidence of same-region identity even when heights diverge —
      * see [hasSubstantialOverlap]. Sliver-only overlaps fall through to
-     * the layout checks, which run with looser thresholds
-     * (`blockGapMultiplier`=0.9, `sizeRatioCap`=0.50) — body paragraphs
+     * the layout checks, which run with a looser `sizeRatioCap`=0.50 — body paragraphs
      * whose wraps differ in glyph-tight bbox height across cycles
      * (hiragana-dominant trailing line vs kanji-dominant body line,
      * digit-only short last line, etc.) shouldn't get split back apart
@@ -106,15 +104,17 @@ object LayoutAnalyzer {
     }
 
     /**
-     * Block-axis gap multiplier used by the block check in [wouldGroup] /
-     * [groupDecision]. Cross-frame is looser (0.9× vs 0.8×) because it's
-     * asking "is this fresh OCR in the same on-screen region as a prior-
-     * frame overlay?" — body paragraphs with generous leading and short
-     * trailing lines sit right at the 0.8× cliff and shouldn't get split
-     * back apart across cycles when they grouped fine within a frame.
+     * Block-axis gap multiplier for the block (next-line / next-column) check in
+     * [wouldGroup] / [groupDecision]: two lines join a paragraph when the gap is under
+     * [BLOCK_GAP_MULTIPLIER] × the reference line height (width for vertical text).
+     *
+     * Raised from a former same-pass 0.8 to 0.9 (the value cross-frame already used, so
+     * both modes now share it). At 0.8 the threshold sat right at the leading of
+     * generous-spaced body paragraphs — a gap of ≈0.84× the line height fragmented them
+     * mid-paragraph — while a real paragraph break (≈1.9× the line height) stays well
+     * clear, so distinct paragraphs still separate.
      */
-    private fun blockGapMultiplier(mode: GroupingMode): Float =
-        if (mode == GroupingMode.CROSS_FRAME_SAME_REGION) 0.9f else 0.8f
+    private const val BLOCK_GAP_MULTIPLIER = 0.9f
 
     /**
      * Cap on `(hi - lo) / lo` for the inline-axis size ratio (height for
@@ -279,7 +279,7 @@ object LayoutAnalyzer {
         val dy = if (a.bottom <= b.top) b.top - a.bottom
                  else if (b.bottom <= a.top) a.top - b.bottom
                  else 0
-        if (dy < (refH * blockGapMultiplier(mode)).toInt()) {
+        if (dy < (refH * BLOCK_GAP_MULTIPLIER).toInt()) {
             val alignTolerance = (refH * 0.5f).toInt()
             val aLeft = aAlignLeft ?: a.left
             val bLeft = bAlignLeft ?: b.left
@@ -334,7 +334,7 @@ object LayoutAnalyzer {
                  else if (b.left <= a.right && a.right <= b.right) 0
                  else if (a.right <= b.left) b.left - a.right
                  else a.left - b.right
-        if (dx < (refW * blockGapMultiplier(mode)).toInt()) {
+        if (dx < (refW * BLOCK_GAP_MULTIPLIER).toInt()) {
             val alignTolerance = (refW * 0.5f).toInt()
             val topAligned = kotlin.math.abs(a.top - b.top) <= alignTolerance
             val centerAligned = kotlin.math.abs(a.centerY() - b.centerY()) <= alignTolerance
@@ -421,7 +421,7 @@ object LayoutAnalyzer {
         val dy = if (a.bottom <= b.top) b.top - a.bottom
                  else if (b.bottom <= a.top) a.top - b.bottom
                  else 0
-        val vgapThreshold = (refH * blockGapMultiplier(mode)).toInt()
+        val vgapThreshold = (refH * BLOCK_GAP_MULTIPLIER).toInt()
         val heightCap = sizeRatioCap(mode)
         val alignTolerance = (refH * 0.5f).toInt()
         val aLeft = aAlignLeft ?: a.left
@@ -514,7 +514,7 @@ object LayoutAnalyzer {
                  else if (b.left <= a.right && a.right <= b.right) 0
                  else if (a.right <= b.left) b.left - a.right
                  else a.left - b.right
-        val hgapThreshold = (refW * blockGapMultiplier(mode)).toInt()
+        val hgapThreshold = (refW * BLOCK_GAP_MULTIPLIER).toInt()
         val widthCap = sizeRatioCap(mode)
         val alignTolerance = (refW * 0.5f).toInt()
         val topDiff = kotlin.math.abs(a.top - b.top)

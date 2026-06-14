@@ -440,6 +440,24 @@ class OcrGroupingTest {
         assertEquals(listOf(listOf(0), listOf(1)), groups)
     }
 
+    // ── blockGap: generous-leading paragraphs ───────────────────────────
+
+    @Test
+    fun blockGap_generousLeadingParagraph_staysOneGroup() {
+        // Uniform body paragraph: line pitch ~58px, line heights 31-37px, so inter-line
+        // gaps run 24-27px (≈0.84× height) — right at the old 0.8× cliff that fragmented
+        // it mid-paragraph. At the 0.9× multiplier they merge; the next paragraph (60px
+        // gap, ~1.9× height) still splits.
+        val groups = group(listOf(
+            box(165, 164, 1293, 200),   // line 1, h=36
+            box(166, 224, 1369, 255),   // line 2, gap 24
+            box(165, 282, 1365, 314),   // line 3, gap 27 (0.84×32)
+            box(166, 340, 1266, 371),   // line 4, gap 26
+            box(167, 431, 1676, 463),   // next paragraph, gap 60 (1.9×)
+        ))
+        assertEquals(listOf(listOf(0, 1, 2, 3), listOf(4)), groups)
+    }
+
     // ── splitMenuGroups: row-based counting (vs raw regions) ─────────────
 
     @Test
