@@ -439,4 +439,97 @@ class OcrGroupingTest {
         ))
         assertEquals(listOf(listOf(0), listOf(1)), groups)
     }
+
+    // ── splitMenuGroups: row-based counting (vs raw regions) ─────────────
+
+    @Test
+    fun rowBands_inlinePairCollapsesToOneRow() {
+        // Arctic Gale card body: title / body line / (label + inline value).
+        // 4 OCR boxes but 3 visual rows — the inline "4 (every…)" joins the
+        // "Gust Area Damage:" row instead of counting as a 4th menu item.
+        val boxes = listOf(
+            Rect(557, 505, 752, 532),    // ARCTIC GALE         (row 0)
+            Rect(557, 540, 1090, 563),   // Your Casts also…    (row 1)
+            Rect(558, 573, 761, 599),    // Gust Area Damage:   (row 2)
+            Rect(956, 574, 1142, 596),   // 4 (every 0.25 Sec.) inline on row 2
+        )
+        val rows = LayoutAnalyzer.rowBands(boxes, TextOrientation.HORIZONTAL)
+        assertEquals(3, rows.size)
+        assertEquals(listOf(2, 3), rows[2])   // inline pair shares row 2
+    }
+
+    @Test
+    fun rowBands_distinctLines_eachOwnRow() {
+        val boxes = listOf(
+            Rect(0, 0, 100, 20),
+            Rect(0, 30, 100, 50),
+            Rect(0, 60, 100, 80),
+        )
+        assertEquals(3, LayoutAnalyzer.rowBands(boxes, TextOrientation.HORIZONTAL).size)
+    }
+
+    @Test
+    fun rowBands_vertical_bandsByColumn() {
+        // Vertical text bands on the X axis (columns). Boxes 0 and 2 x-overlap →
+        // same column; box 1 is a separate column.
+        val boxes = listOf(
+            Rect(200, 0, 250, 400),   // right column
+            Rect(100, 0, 150, 400),   // left column
+            Rect(210, 0, 240, 200),   // x-overlaps box 0 → joins its column
+        )
+        assertEquals(2, LayoutAnalyzer.rowBands(boxes, TextOrientation.VERTICAL).size)
+    }
+
+    @Test
+    fun isMenuLike_justifiedParagraph_false() {
+        // Both edges clustered → wrapped/justified block, not a menu.
+        val rows = listOf(
+            Rect(100, 0, 400, 20), Rect(100, 30, 400, 50),
+            Rect(100, 60, 400, 80), Rect(100, 90, 400, 110),
+        )
+        assertFalse(LayoutAnalyzer.isMenuLike(rows, screenWidth = 1500f))
+    }
+
+    @Test
+    fun isMenuLike_narrowLeftClusteredRightRagged_true() {
+        val rows = listOf(
+            Rect(100, 0, 250, 20), Rect(100, 30, 400, 50),
+            Rect(100, 60, 300, 80), Rect(100, 90, 200, 110),
+        )
+        assertTrue(LayoutAnalyzer.isMenuLike(rows, screenWidth = 1500f))
+    }
+
+    @Test
+    fun isMenuLike_wideGroup_false() {
+        // A group spanning ≥ ⅓ of the screen is never treated as a menu.
+        val rows = listOf(
+            Rect(100, 0, 700, 20), Rect(100, 30, 700, 50),
+            Rect(100, 60, 700, 80), Rect(100, 90, 700, 110),
+        )
+        assertFalse(LayoutAnalyzer.isMenuLike(rows, screenWidth = 1500f))
+    }
+
+    // ── readingOrderIndices: inline order robust to top jitter ───────────
+
+    @Test
+    fun readingOrderIndices_inlinePair_leftOrderDespiteTopJitter() {
+        // Same-line label + inline value, but OCR gave the right-hand value a
+        // slightly SMALLER top than the label. A pure top-sort would emit the
+        // value first; reading order must keep the label first (left within row).
+        val boxes = listOf(
+            Rect(558, 574, 761, 599),    // "Gust Area Damage:"   label (top 574)
+            Rect(956, 573, 1142, 596),   // "4 (every 0.25 Sec.)" value (top 573, jittered up)
+        )
+        assertEquals(listOf(0, 1), LayoutAnalyzer.readingOrderIndices(boxes, TextOrientation.HORIZONTAL))
+    }
+
+    @Test
+    fun readingOrderIndices_multiRow_rowsTopToBottom_leftWithinRow() {
+        val boxes = listOf(
+            Rect(100, 0, 400, 20),       // row 0
+            Rect(300, 30, 450, 52),      // row 1, value (right), top 30
+            Rect(100, 31, 280, 50),      // row 1, label (left), top 31 (jittered down)
+        )
+        assertEquals(listOf(0, 2, 1), LayoutAnalyzer.readingOrderIndices(boxes, TextOrientation.HORIZONTAL))
+    }
 }

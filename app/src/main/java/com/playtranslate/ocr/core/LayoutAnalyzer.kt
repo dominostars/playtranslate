@@ -735,7 +735,7 @@ object LayoutAnalyzer {
         }
         if (rawGroups.isEmpty()) return emptyList()
         val split = if (screenshotWidthInRegionSpace > 0f) {
-            splitMenuGroups(rawGroups, screenshotWidthInRegionSpace)
+            splitMenuGroups(rawGroups, screenshotWidthInRegionSpace, logDecisions)
         } else {
             rawGroups.map { SplitGroup(it) }
         }
@@ -780,41 +780,121 @@ object LayoutAnalyzer {
      * inheriting the parent's left/right so overlays align. Menu-like = 4+ rows,
      * narrow (< 1/3 screen), and edges don't cluster on BOTH sides the way
      * wrapped paragraph text does.
+     *
+     * Counting is by visual ROW, not raw region: regions that share a line — an
+     * inline `label: value` pair like "Gust Area Damage:" + "4 (every 0.25 Sec.)"
+     * — collapse into one row ([rowBands]). Otherwise a 3-row card body whose stat
+     * line OCR'd as two boxes reads as a 4-item menu and gets shredded.
      */
     private fun splitMenuGroups(
         groups: List<List<RecognizedRegion>>,
         screenWidth: Float,
+        logDecisions: Boolean = false,
     ): List<SplitGroup> = groups.flatMap { group ->
-        if (group.size >= 4 && isMenuLike(group, screenWidth)) {
-            val boxes = group.map { it.box.bounds }
-            val groupLeft = boxes.minOf { it.left }
-            val groupRight = boxes.maxOf { it.right }
-            group.map { SplitGroup(listOf(it), parentLeft = groupLeft, parentRight = groupRight) }
+        val orientation = group.firstOrNull()?.orientation ?: TextOrientation.HORIZONTAL
+        val rows = rowBands(group.map { it.box.bounds }, orientation)
+        val rowRects = rows.map { idxs -> unionRect(idxs.map { group[it].box.bounds }) }
+        if (rows.size >= 4 && isMenuLike(rowRects, screenWidth)) {
+            val groupLeft = rowRects.minOf { it.left }
+            val groupRight = rowRects.maxOf { it.right }
+            if (logDecisions) {
+                android.util.Log.d(
+                    "DetectionLog",
+                    "[menu-split] ${rows.size} rows w=${groupRight - groupLeft} " +
+                        "\"${(group.firstOrNull()?.text ?: "").take(24).replace('\n', ' ')}\"",
+                )
+            }
+            rows.map { idxs ->
+                SplitGroup(idxs.map { group[it] }, parentLeft = groupLeft, parentRight = groupRight)
+            }
         } else {
             listOf(SplitGroup(group))
         }
     }
 
-    private fun isMenuLike(group: List<RecognizedRegion>, screenWidth: Float): Boolean {
-        val boxes = group.map { it.box.bounds }
-        if (boxes.isEmpty()) return false
-        val groupWidth = boxes.maxOf { it.right } - boxes.minOf { it.left }
+    /** Union of [rects]. */
+    private fun unionRect(rects: List<Rect>): Rect = Rect(
+        rects.minOf { it.left }, rects.minOf { it.top },
+        rects.maxOf { it.right }, rects.maxOf { it.bottom },
+    )
+
+    /**
+     * Group box indices into visual rows along the reading-flow axis: horizontal
+     * text stacks top-to-bottom (band on the Y axis), vertical text stacks
+     * right-to-left into columns (band on the X axis). Boxes whose cross-axis spans
+     * overlap by ≥ half the smaller extent share a row, so an inline pair on one
+     * line collapses into a single row. Index lists, rows in reading order.
+     */
+    internal fun rowBands(boxes: List<Rect>, orientation: TextOrientation): List<List<Int>> {
+        if (boxes.isEmpty()) return emptyList()
+        val vertical = orientation == TextOrientation.VERTICAL
+        val order = if (vertical) boxes.indices.sortedByDescending { boxes[it].right }
+        else boxes.indices.sortedBy { boxes[it].top }
+        val rows = mutableListOf<MutableList<Int>>()
+        var bandLo = 0
+        var bandHi = 0
+        for (i in order) {
+            val b = boxes[i]
+            val lo = if (vertical) b.left else b.top
+            val hi = if (vertical) b.right else b.bottom
+            val join = if (rows.isEmpty()) false else {
+                val overlap = minOf(bandHi, hi) - maxOf(bandLo, lo)
+                val minExtent = minOf(bandHi - bandLo, hi - lo)
+                minExtent > 0 && overlap >= 0.5f * minExtent
+            }
+            if (join) {
+                rows.last() += i
+                bandLo = minOf(bandLo, lo); bandHi = maxOf(bandHi, hi)
+            } else {
+                rows += mutableListOf(i)
+                bandLo = lo; bandHi = hi
+            }
+        }
+        return rows
+    }
+
+    /** Whether [rowRects] (one per visual row) look like a menu/list: narrower than
+     *  ⅓ screen and left/right edges don't both cluster (a justified paragraph does). */
+    internal fun isMenuLike(rowRects: List<Rect>, screenWidth: Float): Boolean {
+        if (rowRects.isEmpty()) return false
+        val groupWidth = rowRects.maxOf { it.right } - rowRects.minOf { it.left }
         if (groupWidth >= screenWidth / 3f) return false
-        val avgLineHeight = boxes.map { it.height() }.average().toFloat()
-        val minLeft = boxes.minOf { it.left }
-        val maxRight = boxes.maxOf { it.right }
-        val clusterThreshold = boxes.size - 1
-        val nearMinLeft = boxes.count { it.left - minLeft <= avgLineHeight }
-        val nearMaxRight = boxes.count { maxRight - it.right <= avgLineHeight }
+        val avgRowHeight = rowRects.map { it.height() }.average().toFloat()
+        val minLeft = rowRects.minOf { it.left }
+        val maxRight = rowRects.maxOf { it.right }
+        val clusterThreshold = rowRects.size - 1
+        val nearMinLeft = rowRects.count { it.left - minLeft <= avgRowHeight }
+        val nearMaxRight = rowRects.count { maxRight - it.right <= avgRowHeight }
         val leftClustered = nearMinLeft >= clusterThreshold
         val rightClustered = nearMaxRight >= clusterThreshold
         if (leftClustered && rightClustered) return false
         return true
     }
 
+    /**
+     * Indices of [boxes] in reading order: rows top-to-bottom, and within a row
+     * left-to-right for horizontal text (top-to-bottom within a column for vertical).
+     * Built on [rowBands], so a same-line inline pair is ordered by position, not by
+     * OCR top-edge jitter that could otherwise flip a value ahead of its label.
+     */
+    internal fun readingOrderIndices(boxes: List<Rect>, orientation: TextOrientation): List<Int> {
+        val vertical = orientation == TextOrientation.VERTICAL
+        return rowBands(boxes, orientation).flatMap { idxs ->
+            if (vertical) idxs.sortedBy { boxes[it].top } else idxs.sortedBy { boxes[it].left }
+        }
+    }
+
     private fun buildLayoutGroup(sg: SplitGroup, lineJoin: String): LayoutGroup? {
-        val regions = sg.regions
-        if (regions.isEmpty()) return null
+        val raw = sg.regions
+        if (raw.isEmpty()) return null
+        val verticalCount = raw.count { it.orientation == TextOrientation.VERTICAL }
+        val orientation =
+            if (verticalCount > raw.size / 2) TextOrientation.VERTICAL else TextOrientation.HORIZONTAL
+        // Order regions in reading order before joining (rows top-to-bottom, within a
+        // row left-to-right for horizontal), so a same-line inline pair like
+        // "Gust Area Damage:" + "4 (every…)" joins by position — robust to OCR
+        // top-edge jitter that could otherwise put the value ahead of its label.
+        val regions = readingOrderIndices(raw.map { it.box.bounds }, orientation).map { raw[it] }
         val text = regions.joinToString(lineJoin) { it.text }.trim()
         if (text.isBlank()) return null
         val lines = regions.flatMap { it.lines }
@@ -822,9 +902,6 @@ object LayoutAnalyzer {
         val left = sg.parentLeft ?: rects.minOf { it.left }
         val right = sg.parentRight ?: rects.maxOf { it.right }
         val bounds = Rect(left, rects.minOf { it.top }, right, rects.maxOf { it.bottom })
-        val verticalCount = regions.count { it.orientation == TextOrientation.VERTICAL }
-        val orientation =
-            if (verticalCount > regions.size / 2) TextOrientation.VERTICAL else TextOrientation.HORIZONTAL
         val alignment =
             if (orientation == TextOrientation.VERTICAL) TextAlignment.LEFT else classifyGroupAlignment(lines)
         return LayoutGroup(text, lines, bounds, orientation, alignment)
