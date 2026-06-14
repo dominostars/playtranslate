@@ -24,6 +24,7 @@ object PaddleOcrBridge {
 
     private const val TAG = "PaddleOcrBridge"
     private const val BUNDLED_DET_ASSET = "ocr/paddle_det.mnn"
+    private const val BUNDLED_DET_SHA = "paddle_det.sha"
 
     private val sessions = HashMap<String, PaddleOcrSession>()
     private val engines = HashMap<String, OcrEngine>()
@@ -68,15 +69,36 @@ object PaddleOcrBridge {
         }
     }
 
-    /** The bundled detector, copied from assets to a real file path once (MNN
-     *  loads from a path, not an asset stream). Null if the asset is missing or the
-     *  copy fails. Runs under the object monitor (callers are @Synchronized), so the
-     *  copy is single-flight. Existence is trustworthy because [copyBundledDetector]
-     *  commits atomically — the final path only ever appears as a COMPLETE copy. */
+    /** The bundled detector, copied from assets to a real file path (MNN loads from
+     *  a path, not an asset stream). Null if the asset is missing or the copy fails.
+     *  Runs under the object monitor (callers are @Synchronized), so the copy is
+     *  single-flight. Existence is trustworthy because [copyBundledDetector] commits
+     *  atomically — the final path only ever appears as a COMPLETE copy.
+     *
+     *  VERSION-AWARE: the copy lives in `noBackupFilesDir`, which survives app
+     *  updates, so a plain copy-if-absent would keep a STALE detector forever after
+     *  we ship a new one. Instead we re-copy whenever the bundled asset's SHA-256
+     *  differs from the `.sha` sidecar we wrote alongside the last copy. Identity is
+     *  derived from the asset itself (no manual version constant to forget to bump),
+     *  and the compare is a plain mismatch (not version-greater) so a rolled-back
+     *  app re-copies its older detector over a newer on-disk one. The ~5 MB asset is
+     *  hashed once per process here (the [detFile] cache short-circuits thereafter),
+     *  on the lazy first-OCR path — negligible. */
     private fun bundledDetector(ctx: Context): File? {
         detFile?.let { if (it.exists()) return it }
         val out = File(ctx.noBackupFilesDir, "ocr/paddle_det.mnn").apply { parentFile?.mkdirs() }
-        if (!out.exists() && !copyBundledDetector(ctx, out)) return null
+        val sidecar = File(out.parentFile, BUNDLED_DET_SHA)
+        val assetSha = runCatching { PackIntegrity.sha256Hex(ctx.assets.open(BUNDLED_DET_ASSET)) }.getOrNull()
+        val onDiskSha = if (out.exists()) runCatching { sidecar.readText().trim() }.getOrNull() else null
+        // assetSha == null (asset unreadable) → fall back to copy-if-absent, never churn.
+        val needCopy = if (assetSha != null) onDiskSha != assetSha else !out.exists()
+        if (needCopy) {
+            if (!copyBundledDetector(ctx, out)) return null
+            // Sidecar written ONLY after the atomic replace: a crash in between leaves
+            // a stale-or-missing sidecar (→ harmless re-copy next launch), never a
+            // fresh sidecar over a stale detector.
+            assetSha?.let { runCatching { sidecar.writeText(it) } }
+        }
         detFile = out
         return out
     }

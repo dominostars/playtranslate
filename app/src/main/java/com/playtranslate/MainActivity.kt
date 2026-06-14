@@ -492,6 +492,11 @@ class MainActivity :
                 lifecycleScope.launch(Dispatchers.IO) {
                     OfflineModelReclaimer.sweepOrphans(applicationContext)
                     com.playtranslate.ocr.registry.OcrModelManager.sweepOrphans(applicationContext)
+                    // One-shot: reclaim the cjk/latin recognizers retired by the
+                    // PP-OCRv6 unified-recognizer migration. sweepOrphans can't see
+                    // them (their profile refs + catalog entries are gone); see
+                    // OcrModelManager.reclaimRetiredPacks.
+                    com.playtranslate.ocr.registry.OcrModelManager.reclaimRetiredPacks(applicationContext)
                 }
             }
         }

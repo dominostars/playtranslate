@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
@@ -38,6 +39,22 @@ object PackIntegrity {
         }
         md.digest().joinToString("") { "%02x".format(it) }
     }
+
+    /** Synchronous lowercase hex SHA-256 of [input] (which it closes). For small,
+     *  hot-path inputs — e.g. the APK-bundled OCR detector asset on the lazy
+     *  first-OCR path — where the suspend/cancellable [sha256Hex] (File) is
+     *  overkill. Same digest + hex convention as the File overload. */
+    fun sha256Hex(input: InputStream): String =
+        input.buffered().use { stream ->
+            val md = MessageDigest.getInstance("SHA-256")
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val n = stream.read(buf)
+                if (n <= 0) break
+                md.update(buf, 0, n)
+            }
+            md.digest().joinToString("") { "%02x".format(it) }
+        }
 
     /**
      * Atomically replace [to] with [from] on the same filesystem: `rename(2)`

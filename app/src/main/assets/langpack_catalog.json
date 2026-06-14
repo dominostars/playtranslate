@@ -41,64 +41,30 @@
         }
       ]
     },
-    "paddle-rec-cjk": {
-      "display": "PaddleOCR recognizer — CJK + English",
+    "paddle-rec-unified": {
+      "display": "PaddleOCR recognizer — Unified (Chinese + English + Japanese + Latin)",
       "type": "ocr",
       "script": "",
       "bundled": false,
       "packVersion": 1,
-      "size": 16587707,
+      "size": 10721626,
       "files": [
         {
           "path": "rec.mnn",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-cjk/rec.mnn",
-          "size": 16513696,
-          "sha256": "b9126da615889cd3703998f114d00cb7793c33fa85882188521dd4cb063e6360"
+          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-unified/rec.mnn",
+          "size": 10646680,
+          "sha256": "b5a910c032b12116e31167e451da757306d837b6fbce5a2878cae2a4262e8e3d"
         },
         {
           "path": "keys.txt",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-cjk/keys.txt",
-          "size": 74011,
-          "sha256": "17665d27ed39f0deb82007859992d626d3105d0ee4578c120b7c72138dc04d05"
+          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-unified/keys.txt",
+          "size": 74946,
+          "sha256": "f7aa897ca828a4c7c9e2739c30f9161a33306d532f020bcdb91dcfb664a5507e"
         }
       ],
       "licenses": [
         {
-          "component": "PaddleOCR PP-OCRv5 mobile recognizer (MNN format)",
-          "license": "Apache-2.0",
-          "attribution": "© PaddlePaddle Authors. Apache 2.0 — https://github.com/PaddlePaddle/PaddleOCR. Converted to MNN for on-device use."
-        },
-        {
-          "component": "MNN runtime",
-          "license": "Apache-2.0",
-          "attribution": "© Alibaba. Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0."
-        }
-      ]
-    },
-    "paddle-rec-latin": {
-      "display": "PaddleOCR recognizer — Latin",
-      "type": "ocr",
-      "script": "",
-      "bundled": false,
-      "packVersion": 1,
-      "size": 8023563,
-      "files": [
-        {
-          "path": "rec.mnn",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-latin/rec.mnn",
-          "size": 8020948,
-          "sha256": "59579073b0fd5c58c7f814c08efb1c02390ac2fa3b030210d6b4b346772b1df8"
-        },
-        {
-          "path": "keys.txt",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-latin/keys.txt",
-          "size": 2615,
-          "sha256": "c3ab00106e4a4d151a8575b1129b91901a68a35b79a81fd63faab00418b87d75"
-        }
-      ],
-      "licenses": [
-        {
-          "component": "PaddleOCR PP-OCRv5 Latin mobile recognizer (MNN format)",
+          "component": "PaddleOCR PP-OCRv6 unified recognizer (MNN format)",
           "license": "Apache-2.0",
           "attribution": "© PaddlePaddle Authors. Apache 2.0 — https://github.com/PaddlePaddle/PaddleOCR. Converted to MNN for on-device use."
         },

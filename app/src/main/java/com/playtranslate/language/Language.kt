@@ -204,9 +204,9 @@ data class SourceLanguageProfile(
      * read (e.g. Cyrillic) — those languages have only their downloadable MNN
      * recognizer, so a missing/incompatible pack means no OCR at all (gated by
      * `OcrModelManager`). Availability = which backends appear. PaddleOCR
-     * recognizer packs are SHARED by key — ja/zh/en all name "paddle-rec-cjk",
-     * so `OcrModelManager` dedups/reclaims via the shared key with no
-     * special-casing (the detector is bundled in the APK).
+     * recognizer packs are SHARED by key — ja/zh/en/latin all name
+     * "paddle-rec-unified", so `OcrModelManager` dedups/reclaims via the shared
+     * key with no special-casing (the detector is bundled in the APK).
      */
     val ocrBackends: List<OcrBackend>
         get() = buildList {
@@ -219,13 +219,13 @@ data class SourceLanguageProfile(
             val mlKitDefault = (id == SourceLangId.VI || id == SourceLangId.TR) && mlKitFloor != null
             if (mlKitDefault) add(mlKitFloor)  // smart-cast non-null via mlKitDefault
             when (scriptFamily) {
+                // PP-OCRv6 unified recognizer: one pack for Simp/Trad Chinese +
+                // English + Japanese + 46 Latin scripts (replaces paddle-rec-cjk +
+                // paddle-rec-latin). Shared by key, so ja/zh/en/latin all dedup.
                 ScriptFamily.CJK_JAPANESE, ScriptFamily.CJK_CHINESE ->
-                    add(OcrBackend.Paddle("paddle-rec-cjk"))
+                    add(OcrBackend.Paddle("paddle-rec-unified"))
                 ScriptFamily.CJK_KOREAN -> add(OcrBackend.Paddle("paddle-rec-korean"))
-                // English shares the unified CJK recognizer (it includes English),
-                // so it dedups with ja/zh; other Latin scripts use the latin rec.
-                ScriptFamily.LATIN ->
-                    add(OcrBackend.Paddle(if (id == SourceLangId.EN) "paddle-rec-cjk" else "paddle-rec-latin"))
+                ScriptFamily.LATIN -> add(OcrBackend.Paddle("paddle-rec-unified"))
                 ScriptFamily.CYRILLIC -> add(OcrBackend.Paddle("paddle-rec-cyrillic"))
                 ScriptFamily.ARABIC, ScriptFamily.DEVANAGARI -> {} // packs exist; profiles not wired yet
             }

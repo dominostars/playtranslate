@@ -8,24 +8,31 @@ Output layout matches the app's pack dirs: mnn/<pack-key>/{rec.mnn, keys.txt}
 (the detector is the APK-bundled PP-OCRv5 mobile det, shared by all langs).
 Idempotent; per-model try/except so one failure doesn't sink the others.
 """
-import os, subprocess, traceback
+import os, shutil, subprocess, traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 VENV_BIN = os.path.join(HERE, "venv", "bin")
 PADDLE2ONNX = os.path.join(VENV_BIN, "paddle2onnx")
 MNNCONVERT = os.path.join(VENV_BIN, "mnnconvert")
 
-# pack-key -> HF repo (PP-OCRv5 mobile rec, one per script group)
+# pack-key -> {repo, fp16, onnx}. onnx=True for repos that publish inference.onnx
+# directly (PP-OCRv6 *_onnx, like Meiki) → skip paddle2onnx. fp16 appends --fp16 to
+# mnnconvert (half-size weights, ARM fp16 inference).
 MODELS = {
-    "paddle-rec-latin":      "PaddlePaddle/latin_PP-OCRv5_mobile_rec",
-    "paddle-rec-korean":     "PaddlePaddle/korean_PP-OCRv5_mobile_rec",
+    # PP-OCRv5 mobile recs: Paddle inference bundle -> paddle2onnx -> mnnconvert, fp32.
+    "paddle-rec-latin":      dict(repo="PaddlePaddle/latin_PP-OCRv5_mobile_rec",      fp16=False, onnx=False),
+    "paddle-rec-korean":     dict(repo="PaddlePaddle/korean_PP-OCRv5_mobile_rec",     fp16=False, onnx=False),
     # Hosted ahead of language wiring (support coming soon). NOTE: Arabic / Cyrillic
     # / Thai have NO ML Kit OCR fallback, so Paddle is their SOLE recognizer once
     # wired (the no-floor case). Arabic is also RTL.
-    "paddle-rec-arabic":     "PaddlePaddle/arabic_PP-OCRv5_mobile_rec",
-    "paddle-rec-cyrillic":   "PaddlePaddle/cyrillic_PP-OCRv5_mobile_rec",
-    "paddle-rec-devanagari": "PaddlePaddle/devanagari_PP-OCRv5_mobile_rec",
-    "paddle-rec-thai":       "PaddlePaddle/th_PP-OCRv5_mobile_rec",
+    "paddle-rec-arabic":     dict(repo="PaddlePaddle/arabic_PP-OCRv5_mobile_rec",     fp16=False, onnx=False),
+    "paddle-rec-cyrillic":   dict(repo="PaddlePaddle/cyrillic_PP-OCRv5_mobile_rec",   fp16=False, onnx=False),
+    "paddle-rec-devanagari": dict(repo="PaddlePaddle/devanagari_PP-OCRv5_mobile_rec", fp16=False, onnx=False),
+    "paddle-rec-thai":       dict(repo="PaddlePaddle/th_PP-OCRv5_mobile_rec",         fp16=False, onnx=False),
+    # PP-OCRv6 unified rec: ships ONNX directly (skip paddle2onnx); fp16. One model for
+    # Simp/Trad Chinese + English + Japanese + 46 Latin scripts — replaces the retired
+    # paddle-rec-cjk + paddle-rec-latin (CJK/kana coverage == v5 cjk; +accented Latin).
+    "paddle-rec-unified":    dict(repo="PaddlePaddle/PP-OCRv6_small_rec_onnx",        fp16=True,  onnx=True),
 }
 
 def run(cmd):
@@ -67,9 +74,10 @@ def verify(mnn_path):
     import MNN.expr as F
     F.load_as_dict(mnn_path)
 
-def convert(key, repo):
+def convert(key, spec):
     from huggingface_hub import snapshot_download
-    print(f"\n=== {key}  ({repo}) ===")
+    repo, fp16, onnx_direct = spec["repo"], spec.get("fp16", False), spec.get("onnx", False)
+    print(f"\n=== {key}  ({repo}){'  [onnx-direct]' if onnx_direct else ''}{'  fp16' if fp16 else ''} ===")
     src = os.path.join(HERE, "paddle", key)
     onnx_path = os.path.join(HERE, "onnx", f"{key}.onnx")
     outdir = os.path.join(HERE, "mnn", key)
@@ -78,21 +86,34 @@ def convert(key, repo):
     mnn_path = os.path.join(outdir, "rec.mnn")
     keys_path = os.path.join(outdir, "keys.txt")
 
-    snapshot_download(repo_id=repo, local_dir=src,
-                      allow_patterns=["inference.*", "*.yml", "config.json"])
-    prog, params = find_model_files(src)
-    print("  program:", prog, "| params:", params)
-    if not (prog and params):
-        print("  !! missing program/params"); return None
-
-    if not os.path.exists(onnx_path):
-        run([PADDLE2ONNX, "--model_dir", src, "--model_filename", prog,
-             "--params_filename", params, "--save_file", onnx_path, "--opset_version", "17"])
+    if onnx_direct:
+        # PP-OCRv6 publishes inference.onnx directly (like Meiki) — no paddle2onnx step.
+        snapshot_download(repo_id=repo, local_dir=src,
+                          allow_patterns=["inference.onnx", "*.yml", "config.json"])
+        src_onnx = os.path.join(src, "inference.onnx")
+        if not os.path.exists(src_onnx):
+            print("  !! no inference.onnx in repo"); return None
         if not os.path.exists(onnx_path):
-            print("  !! paddle2onnx produced no file"); return None
+            shutil.copyfile(src_onnx, onnx_path)
+    else:
+        snapshot_download(repo_id=repo, local_dir=src,
+                          allow_patterns=["inference.*", "*.yml", "config.json"])
+        prog, params = find_model_files(src)
+        print("  program:", prog, "| params:", params)
+        if not (prog and params):
+            print("  !! missing program/params"); return None
+        if not os.path.exists(onnx_path):
+            run([PADDLE2ONNX, "--model_dir", src, "--model_filename", prog,
+                 "--params_filename", params, "--save_file", onnx_path, "--opset_version", "17"])
+            if not os.path.exists(onnx_path):
+                print("  !! paddle2onnx produced no file"); return None
+
     if not os.path.exists(mnn_path):
-        run([MNNCONVERT, "-f", "ONNX", "--modelFile", onnx_path,
-             "--MNNModel", mnn_path, "--bizCode", "ocr"])
+        cmd = [MNNCONVERT, "-f", "ONNX", "--modelFile", onnx_path,
+               "--MNNModel", mnn_path, "--bizCode", "ocr"]
+        if fp16:
+            cmd.append("--fp16")
+        run(cmd)
         if not os.path.exists(mnn_path):
             print("  !! MNNConvert produced no file"); return None
     n = extract_charset(src, keys_path)
@@ -101,9 +122,13 @@ def convert(key, repo):
     return mnn_path
 
 if __name__ == "__main__":
-    for key, repo in MODELS.items():
+    import sys
+    only = set(sys.argv[1:])  # optional: convert only the named pack keys
+    for key, spec in MODELS.items():
+        if only and key not in only:
+            continue
         try:
-            convert(key, repo)
+            convert(key, spec)
         except Exception:
             print(f"  !! exception for {key}:\n{traceback.format_exc()}")
     print("\nDONE")

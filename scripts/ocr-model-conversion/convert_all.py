@@ -6,7 +6,7 @@ Then: extract charset from inference.yml -> keys.txt, and verify each .mnn loads
 Records REAL output sizes to convert_out.txt. No estimates.
 Idempotent: skips a stage whose output already exists.
 """
-import os, sys, subprocess, traceback, glob
+import os, sys, shutil, subprocess, traceback, glob
 from huggingface_hub import snapshot_download
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -15,11 +15,17 @@ PADDLE2ONNX = os.path.join(VENV_BIN, "paddle2onnx")
 MNNCONVERT = os.path.join(VENV_BIN, "mnnconvert")
 OUT = open(os.path.join(HERE, "convert_out.txt"), "w")
 
+# (name, {repo, fp16, onnx}). onnx=True → repo ships inference.onnx (PP-OCRv6 *_onnx),
+# so skip paddle2onnx. fp16 → append --fp16 to mnnconvert. `det_mobile` is the
+# APK-bundled shared detector (staged as assets/ocr/paddle_det.mnn).
 MODELS = [
-    ("det_mobile", "PaddlePaddle/PP-OCRv5_mobile_det"),
-    ("rec_mobile", "PaddlePaddle/PP-OCRv5_mobile_rec"),
-    ("det_server", "PaddlePaddle/PP-OCRv5_server_det"),
-    ("rec_server", "PaddlePaddle/PP-OCRv5_server_rec"),
+    # PP-OCRv6 small detector, fp16 — the bundled shared detector (was PP-OCRv5_mobile_det).
+    ("det_mobile", dict(repo="PaddlePaddle/PP-OCRv6_small_det_onnx", fp16=True, onnx=True)),
+    # PP-OCRv5 general models kept for provenance. NOTE: the CJK rec is retired in
+    # favor of the v6 unified rec (convert_langs.py); see the PaddleOCR v6 plan.
+    ("rec_mobile", dict(repo="PaddlePaddle/PP-OCRv5_mobile_rec", fp16=False, onnx=False)),
+    ("det_server", dict(repo="PaddlePaddle/PP-OCRv5_server_det", fp16=False, onnx=False)),
+    ("rec_server", dict(repo="PaddlePaddle/PP-OCRv5_server_rec", fp16=False, onnx=False)),
 ]
 
 def log(*a):
@@ -46,41 +52,51 @@ def find_model_files(d):
     params = "inference.pdiparams" if os.path.exists(os.path.join(d, "inference.pdiparams")) else None
     return prog, params
 
-def convert(name, repo):
-    log(f"\n=== {name}  ({repo}) ===")
+def convert(name, spec):
+    repo, fp16, onnx_direct = spec["repo"], spec.get("fp16", False), spec.get("onnx", False)
+    log(f"\n=== {name}  ({repo}){'  [onnx-direct]' if onnx_direct else ''}{'  fp16' if fp16 else ''} ===")
     src = os.path.join(HERE, "paddle", name)
     onnx_path = os.path.join(HERE, "onnx", f"{name}.onnx")
     mnn_path = os.path.join(HERE, "mnn", f"{name}.mnn")
     os.makedirs(os.path.dirname(onnx_path), exist_ok=True)
     os.makedirs(os.path.dirname(mnn_path), exist_ok=True)
 
-    # 1) download Paddle inference bundle
-    snapshot_download(repo_id=repo, local_dir=src,
-                      allow_patterns=["inference.*", "*.yml", "config.json"])
-    prog, params = find_model_files(src)
-    log("  paddle files:", sorted(os.listdir(src)))
-    log("  program:", prog, "| params:", params)
-    if not prog or not params:
-        log("  !! missing program/params, abort this model"); return None
-
-    # 2) paddle2onnx (dynamic shapes preserved from the inference model; opset 17)
-    if not os.path.exists(onnx_path):
-        r = run([PADDLE2ONNX,
+    if onnx_direct:
+        # PP-OCRv6 ships inference.onnx directly (like Meiki) — no paddle2onnx step.
+        snapshot_download(repo_id=repo, local_dir=src,
+                          allow_patterns=["inference.onnx", "*.yml", "config.json"])
+        src_onnx = os.path.join(src, "inference.onnx")
+        if not os.path.exists(src_onnx):
+            log("  !! no inference.onnx in repo, abort"); return None
+        if not os.path.exists(onnx_path):
+            shutil.copyfile(src_onnx, onnx_path)
+    else:
+        # Paddle inference bundle -> paddle2onnx (dynamic shapes; opset 17)
+        snapshot_download(repo_id=repo, local_dir=src,
+                          allow_patterns=["inference.*", "*.yml", "config.json"])
+        prog, params = find_model_files(src)
+        log("  paddle files:", sorted(os.listdir(src)))
+        log("  program:", prog, "| params:", params)
+        if not prog or not params:
+            log("  !! missing program/params, abort this model"); return None
+        if not os.path.exists(onnx_path):
+            run([PADDLE2ONNX,
                  "--model_dir", src,
                  "--model_filename", prog,
                  "--params_filename", params,
                  "--save_file", onnx_path,
                  "--opset_version", "17"])
-        if not os.path.exists(onnx_path):
-            log("  !! paddle2onnx produced no file"); return None
+            if not os.path.exists(onnx_path):
+                log("  !! paddle2onnx produced no file"); return None
     log("  onnx:", mb(onnx_path))
 
-    # 3) MNNConvert ONNX -> MNN
+    # MNNConvert ONNX -> MNN (+ optional fp16 weights)
     if not os.path.exists(mnn_path):
-        r = run([MNNCONVERT, "-f", "ONNX",
-                 "--modelFile", onnx_path,
-                 "--MNNModel", mnn_path,
-                 "--bizCode", "ocr"])
+        cmd = [MNNCONVERT, "-f", "ONNX", "--modelFile", onnx_path,
+               "--MNNModel", mnn_path, "--bizCode", "ocr"]
+        if fp16:
+            cmd.append("--fp16")
+        run(cmd)
         if not os.path.exists(mnn_path):
             log("  !! MNNConvert produced no file"); return None
     log("  MNN:", mb(mnn_path))
@@ -130,9 +146,9 @@ def verify(mnn_path):
 def main():
     log("PaddleOCR -> MNN conversion  (paddle2onnx + MNNConvert)")
     results = {}
-    for name, repo in MODELS:
+    for name, spec in MODELS:
         try:
-            results[name] = convert(name, repo)
+            results[name] = convert(name, spec)
         except Exception:
             log(f"  !! exception converting {name}:\n{traceback.format_exc()}")
             results[name] = None

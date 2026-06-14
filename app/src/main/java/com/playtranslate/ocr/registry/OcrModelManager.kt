@@ -17,7 +17,7 @@ import kotlinx.coroutines.withContext
 /**
  * The OCR model-pack reconciler. The desired on-disk pack set is a PURE function
  * of (installed source languages × chosen backend); pack SHARING is expressed
- * solely by a shared catalog key (ja/zh/en all → "paddle-rec-cjk"), so deletion
+ * solely by a shared catalog key (ja/zh/en/latin all → "paddle-rec-unified"), so deletion
  * safety is automatic set-math — no refcounts.
  *
  * Split per the lifecycle contract: [plan] is pure (JVM-testable); [applyDownloads]
@@ -97,7 +97,7 @@ object OcrModelManager {
 
     /** A backend is offerable iff its native runtime is compatible AND every pack it
      *  needs has a shippable catalog entry. ML Kit (no packs) is always available; a
-     *  recognizer pack not yet authored/hosted (e.g. `paddle-rec-latin`) makes its
+     *  recognizer pack with a missing or placeholder catalog entry makes its
      *  backend unavailable until it ships; an MNN engine on a 32-bit device is
      *  unavailable (see [isRuntimeCompatible]). Gating here is the single chokepoint:
      *  [availableBackends] (the picker), [downloadDefaultForSource], and
@@ -233,7 +233,7 @@ object OcrModelManager {
     }
 
     /** Launch-time bookkeeping for an installed, floored source [id]: if its better
-     *  default recognizer's packs are ALREADY on disk (e.g. a shared `paddle-rec-cjk`
+     *  default recognizer's packs are ALREADY on disk (e.g. a shared `paddle-rec-unified`
      *  downloaded for another CJK language), adopt it — persist the token so
      *  [selectedBackend] resolves to the present recognizer instead of the ML Kit
      *  floor, and so [currentPlan]/[sweepOrphans] count the pack as required for
@@ -391,6 +391,31 @@ object OcrModelManager {
         isLoaded: (packKey: String) -> Boolean = { MeikiBridge.isLoaded(it) || PaddleOcrBridge.isLoaded(it) },
     ) {
         for (key in currentPlan(ctx).toDelete) {
+            if (!isLoaded(key)) helper(key).delete(ctx)
+        }
+    }
+
+    /** OCR packs RETIRED by a wiring change: their keys no longer appear in any
+     *  profile, so they've left [ALL_PACK_KEYS] and [sweepOrphans] (which only sees
+     *  current keys via [installedPacks]) can't reach them; their catalog entries are
+     *  also deleted, so [OcrPackModelHelper.isInstalled] can't detect them either.
+     *  [OcrPackModelHelper.delete] works purely by path, so reclaim names them. */
+    private val RETIRED_OCR_PACKS = setOf("paddle-rec-cjk", "paddle-rec-latin")
+
+    /** One-shot reclaim of [RETIRED_OCR_PACKS] left on disk by a prior version — here,
+     *  the PP-OCRv6 unified-recognizer migration that retired the per-script cjk/latin
+     *  recognizers. Same launch-quiescence + not-loaded contract as [sweepOrphans];
+     *  gated on [replacementKey] being installed so a migrating language is never
+     *  stranded on the ML Kit floor between the delete and the unified pack's on-demand
+     *  refetch ([downloadDefaultForSource]). No-op once the old packs are gone — safe
+     *  every launch; remove a few releases out, once the installed base has migrated. */
+    fun reclaimRetiredPacks(
+        ctx: Context,
+        replacementKey: String = "paddle-rec-unified",
+        isLoaded: (packKey: String) -> Boolean = { MeikiBridge.isLoaded(it) || PaddleOcrBridge.isLoaded(it) },
+    ) {
+        if (!OcrPackModelHelper(replacementKey).isInstalled(ctx)) return
+        for (key in RETIRED_OCR_PACKS) {
             if (!isLoaded(key)) helper(key).delete(ctx)
         }
     }

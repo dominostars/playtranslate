@@ -12,7 +12,7 @@ import java.io.File
 
 /**
  * [ModelHelper] for one downloadable OCR model pack — Meiki, or a PaddleOCR
- * per-script recognizer (`meiki-ja`, `paddle-rec-cjk`, …). One instance per pack
+ * per-script recognizer (`meiki-ja`, `paddle-rec-unified`, …). One instance per pack
  * key; the catalog entry (`type:"ocr"`, MultiFile) is the source of truth for
  * files/sizes/sha. A **data-driven, parameterized** copy of
  * [com.playtranslate.translation.hymt.HyMtModel] (directory-mode MultiFile +
@@ -46,8 +46,8 @@ class OcrPackModelHelper(override val catalogKey: String) : ModelHelper {
 
     /** True iff the catalog has a *deliverable* entry for this pack: present AND
      *  with real (non-placeholder) per-file sizes + 64-hex SHA-256. Gates whether
-     *  the engine needing this pack is offered to the user — so a pack that isn't
-     *  authored/hosted yet (e.g. `paddle-rec-latin`) never surfaces a broken
+     *  the engine needing this pack is offered to the user — so a pack with a
+     *  missing or placeholder catalog entry never surfaces a broken
      *  "not installed / can't download" option. */
     fun isShippable(ctx: Context): Boolean {
         val entry = catalogEntry(ctx) ?: return false

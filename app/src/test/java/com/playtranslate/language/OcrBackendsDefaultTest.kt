@@ -20,8 +20,8 @@ class OcrBackendsDefaultTest {
         val vi = backends(SourceLangId.VI)
         assertEquals("ML Kit is Vietnamese's default", OcrBackend.MLKitLatin, vi.first())
         assertTrue(
-            "Paddle latin stays available as a secondary option for Vietnamese",
-            vi.any { it is OcrBackend.Paddle && it.recPackKey == "paddle-rec-latin" },
+            "PaddleOCR stays available as a secondary option for Vietnamese",
+            vi.any { it is OcrBackend.Paddle && it.recPackKey == "paddle-rec-unified" },
         )
     }
 
@@ -29,8 +29,8 @@ class OcrBackendsDefaultTest {
         val tr = backends(SourceLangId.TR)
         assertEquals("ML Kit is Turkish's default", OcrBackend.MLKitLatin, tr.first())
         assertTrue(
-            "Paddle latin stays available as a secondary option for Turkish",
-            tr.any { it is OcrBackend.Paddle && it.recPackKey == "paddle-rec-latin" },
+            "PaddleOCR stays available as a secondary option for Turkish",
+            tr.any { it is OcrBackend.Paddle && it.recPackKey == "paddle-rec-unified" },
         )
     }
 
@@ -67,7 +67,7 @@ class OcrBackendsDefaultTest {
 
     @Test fun mnnBackedEnginesDeclareTheNativeRequirement() {
         assertTrue(OcrBackend.Meiki("meiki-ja").requiresMnn)
-        assertTrue(OcrBackend.Paddle("paddle-rec-cjk").requiresMnn)
+        assertTrue(OcrBackend.Paddle("paddle-rec-unified").requiresMnn)
         // ML Kit + Tesseract don't touch the MNN runtime.
         assertFalse(OcrBackend.MLKitJapanese.requiresMnn)
         assertFalse(OcrBackend.MLKitLatin.requiresMnn)
@@ -76,13 +76,13 @@ class OcrBackendsDefaultTest {
 
     @Test fun on32BitOnlyMlKitEnginesAreRuntimeCompatible() {
         assertFalse(OcrModelManager.isRuntimeCompatible(OcrBackend.Meiki("meiki-ja"), mnnAvailable = false))
-        assertFalse(OcrModelManager.isRuntimeCompatible(OcrBackend.Paddle("paddle-rec-cjk"), mnnAvailable = false))
+        assertFalse(OcrModelManager.isRuntimeCompatible(OcrBackend.Paddle("paddle-rec-unified"), mnnAvailable = false))
         assertTrue(OcrModelManager.isRuntimeCompatible(OcrBackend.MLKitJapanese, mnnAvailable = false))
         assertTrue(OcrModelManager.isRuntimeCompatible(OcrBackend.MLKitLatin, mnnAvailable = false))
     }
 
     @Test fun on64BitMnnBackedEnginesAreRuntimeCompatible() {
         assertTrue(OcrModelManager.isRuntimeCompatible(OcrBackend.Meiki("meiki-ja"), mnnAvailable = true))
-        assertTrue(OcrModelManager.isRuntimeCompatible(OcrBackend.Paddle("paddle-rec-cjk"), mnnAvailable = true))
+        assertTrue(OcrModelManager.isRuntimeCompatible(OcrBackend.Paddle("paddle-rec-unified"), mnnAvailable = true))
     }
 }
