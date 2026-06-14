@@ -321,6 +321,28 @@ class OverlayLayoutTest {
         assertTrue(b.left <= 310f && b.right >= 360f)   // grown column still covers its source
     }
 
+    @Test
+    fun resolve_columnShrunkBelowMinWidth_reclassifiedToGrow() {
+        // Box A is wide enough pre-shrink (width 100 ≥ minWidth 98 → would be
+        // HORIZONTAL_IN_PLACE), but the overlapping neighbour carves it to 95 < 98. Modes are
+        // decided AFTER the shrink, so A reclassifies to GROW instead of rendering too-narrow
+        // horizontal text. (Codex P2.)
+        val rects = OverlayLayout.resolveScreenRects(
+            listOf(
+                box(Rect(100, 100, 200, 500), text = "ab cd", orientation = TextOrientation.VERTICAL, minWidthPx = 98),
+                box(Rect(190, 100, 290, 500), text = "ef gh", orientation = TextOrientation.VERTICAL, minWidthPx = 98),
+            ),
+            cropLeft = 0, cropTop = 0,
+            screenshotW = 1000, screenshotH = 1000,
+            displayW = 1000, displayH = 1000,
+            density = 0f,
+            targetIsVerticalScript = false,
+            targetStackable = true,
+            growEnabled = true,
+        )
+        assertEquals(RenderMode.GROW_HORIZONTAL, rects[0].mode)
+    }
+
     // ── stackViable ──────────────────────────────────────────────────────
 
     @Test

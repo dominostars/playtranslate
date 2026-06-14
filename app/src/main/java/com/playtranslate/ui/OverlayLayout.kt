@@ -61,12 +61,15 @@ internal object OverlayLayout {
 
     /**
      * Resolve every box's final on-screen rect + [RenderMode]: map OCR bounds → screen, pad
-     * non-furigana boxes, pick a render mode, then resolve overlaps in three passes keyed by
-     * the box's source **orientation** (not its render footprint): horizontal-source boxes are
-     * stacked rows → vertical-overlap shrink; vertical-source boxes are side-by-side columns →
-     * horizontal-overlap shrink; then GROW boxes grow into the remaining free width. Resolving
-     * by orientation is essential — a wide vertical column rendered HORIZONTAL_IN_PLACE is still
-     * a column and must de-overlap with its sibling columns, not get siloed away from them.
+     * non-furigana boxes, resolve overlaps in two passes keyed by the box's source
+     * **orientation** (not its render footprint) — horizontal-source boxes are stacked rows →
+     * vertical-overlap shrink; vertical-source boxes are side-by-side columns → horizontal-
+     * overlap shrink — then pick each box's render mode from its **post-shrink** rect and grow
+     * GROW boxes into the freed width. Resolving by orientation is essential: a wide vertical
+     * column rendered HORIZONTAL_IN_PLACE is still a column and must de-overlap with its sibling
+     * columns, not get siloed away from them. Choosing the mode *after* the shrink matters too:
+     * a column carved below its min width must reclassify (e.g. to GROW), not render too-narrow
+     * horizontal text.
      *
      * @param targetIsVerticalScript the target is written vertically (CJK) — its vertical
      *   boxes always stack (tategaki) and keep the shrink geometry. Required (one production
@@ -110,11 +113,6 @@ internal object OverlayLayout {
             }
         }
 
-        // Pick a render mode per box from its padded rect.
-        val modes = boxes.indices.map { i ->
-            renderModeFor(boxes[i], finalRects[i], density, targetIsVerticalScript, targetStackable, growEnabled)
-        }
-
         // Pass 1 — horizontal-source boxes (stacked rows): resolve vertical overlaps by
         // splitting at the midline.
         val hBoxIndices = boxes.indices.filter {
@@ -149,6 +147,14 @@ internal object OverlayLayout {
                     rj.right = mid
                 }
             }
+        }
+
+        // Pick each box's render mode from its FINAL (post-shrink) rect: pass 2 may have carved
+        // a vertical column below its measured min width, which must reclassify it (e.g. a
+        // now-too-narrow HORIZONTAL_IN_PLACE column falls to GROW) rather than render it too
+        // small. Safe here because passes 1–2 partition by orientation, not by mode.
+        val modes = boxes.indices.map { i ->
+            renderModeFor(boxes[i], finalRects[i], density, targetIsVerticalScript, targetStackable, growEnabled)
         }
 
         // Pass 3 — GROW_HORIZONTAL: grow each box's width toward min-width into the free space
