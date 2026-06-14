@@ -30,6 +30,12 @@ class OcrPackModelHelper(override val catalogKey: String) : ModelHelper {
 
     override fun isDirectoryMode(): Boolean = true
 
+    /** True iff this pack ships inside the APK (materialized on first use, see
+     *  [ensureBundledMaterialized]) — it never downloads and has no reclaimable
+     *  on-disk footprint, so the UI presents it as built-in (no size, no delete),
+     *  like the ML Kit floor. */
+    val isBundled: Boolean get() = catalogKey in BUNDLED_OCR_PACKS
+
     override fun isInstalled(ctx: Context): Boolean {
         // A bundled pack ships in the APK — always available; its files are
         // materialized to the models dir on first engine use ([ensureBundledMaterialized]),

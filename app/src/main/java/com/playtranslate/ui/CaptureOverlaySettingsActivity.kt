@@ -579,6 +579,9 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         val downloaded = backend.packKeys.isNotEmpty() &&
             backend.packKeys.all { OcrPackModelHelper(it).isInstalled(this) }
         val available = downloaded || backend.packKeys.isEmpty()
+        // Built-in packs (ML Kit, or a recognizer bundled in the APK) have no
+        // reclaimable on-disk footprint → no trash, like ML Kit.
+        val deletable = downloaded && !backend.isBuiltIn()
 
         // Subtitle: the model's package size (or "Built-in"), led by the same
         // download-state icon the offline translation cells use — an accent
@@ -621,7 +624,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
                 trailing.foreground = null
                 trailing.contentDescription = null
             }
-            downloaded -> {
+            deletable -> {
                 trailing.visibility = View.VISIBLE
                 trailingIcon.setImageResource(R.drawable.ic_delete)
                 trailingIcon.imageTintList = ColorStateList.valueOf(themeColor(R.attr.ptTextMuted))
@@ -686,8 +689,14 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
      *  shared with another language still shows its true download size instead
      *  of reading as free. */
     private fun ocrSizeSubtitle(backend: OcrBackend): String =
-        if (backend.packKeys.isEmpty()) getString(R.string.settings_ocr_note_builtin)
+        if (backend.isBuiltIn()) getString(R.string.settings_ocr_note_builtin)
         else humanSize(backend.packKeys.sumOf { OcrPackModelHelper(it).expectedSize(this) })
+
+    /** A backend is "built-in" — shown as such, with no size and no delete — when it
+     *  needs no downloadable pack: ML Kit (no packs) or a recognizer bundled in the
+     *  APK (every pack ships inside it, e.g. paddle-rec-unified). */
+    private fun OcrBackend.isBuiltIn(): Boolean =
+        packKeys.all { OcrPackModelHelper(it).isBundled }
 
     /** Select [backend] for [id]: persist immediately if its pack is already
      *  present, else download with a progress overlay and persist only on
