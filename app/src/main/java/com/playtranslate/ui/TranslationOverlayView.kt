@@ -364,10 +364,10 @@ class TranslationOverlayView(
 
                 val child: View = when {
                     box.translatedText.isEmpty() -> {
-                        // Vertical skeleton bars only for CJK tategaki; a non-CJK vertical box
-                        // renders horizontally once translated, so show horizontal bars to
-                        // avoid a bar-orientation flip when the text arrives.
-                        val verticalSkeleton = box.orientation == TextOrientation.VERTICAL && verticalTextTarget
+                        // Skeleton bars follow the SOURCE orientation: a vertical OCR box shows
+                        // vertical column-stripes (matching the text being covered) even when its
+                        // translation will land horizontally once it arrives.
+                        val verticalSkeleton = box.orientation == TextOrientation.VERTICAL
                         buildSkeletonView(rectW, rectH, box.lineCount, box.bgColor, box.textColor, box.alignment, verticalSkeleton)
                     }
                     mode == RenderMode.STACK_UPRIGHT -> VerticalTextView(context).apply {
