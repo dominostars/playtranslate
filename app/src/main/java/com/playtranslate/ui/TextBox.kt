@@ -32,5 +32,15 @@ data class TextBox(
     val orientation: TextOrientation = TextOrientation.HORIZONTAL,
     /** Block alignment for horizontal boxes — drives skeleton bar placement
      *  and translated-text gravity. Ignored for vertical boxes. */
-    val alignment: TextAlignment = TextAlignment.LEFT
+    val alignment: TextAlignment = TextAlignment.LEFT,
+    /** Minimum on-screen width (px) for a legible horizontal line of
+     *  [translatedText] — the longest whitespace token measured at the
+     *  legibility floor. Drives the vertical-box render routing in
+     *  [OverlayLayout.resolveScreenRects] (HORIZONTAL_IN_PLACE when the box is
+     *  already this wide; the grow target otherwise). Computed at layout time
+     *  from the display density (see [TranslationOverlayView.rebuildChildren]);
+     *  the value carried on stored/placeholder boxes is 0 — it is populated only
+     *  on the transient copies handed to the resolver, and injected directly in
+     *  unit tests. */
+    val minWidthPx: Int = 0
 )

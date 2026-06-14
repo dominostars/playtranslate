@@ -26,6 +26,16 @@ internal object VerticalTextLayout {
     /** Default horizontal gap factor between column centres (× cell size). */
     const val COL_SPACING = 1.15f
 
+    /** Font size (sp) at which a vertical box's min-width is measured — the
+     *  legibility floor for a horizontal line of the translation. Drives the
+     *  HORIZONTAL_IN_PLACE gate and the GROW target width. */
+    const val MIN_WIDTH_SP = 14f
+    /** Minimum upright cell size (sp) for [stackViable][com.playtranslate.ui.OverlayLayout]
+     *  to accept STACK_UPRIGHT — below this a vertical stack reads too small, so
+     *  we prefer growing (or rotating) instead. Sits above the 6sp render floor
+     *  so "fits" means "fits legibly". */
+    const val STACK_MIN_CELL_SP = 11f
+
     /**
      * Result of packing N cells into a W×H area. [cols] is the number of
      * columns actually drawn — equal to the columns needed whenever the text

@@ -85,6 +85,17 @@ class TranslationOverlayView(
      *  a user-mutable pref, so a target switch must force a fresh view (a ctor
      *  val can't be refreshed by [setBoxes]). */
     val verticalTextTarget: Boolean = false,
+    /** True when the session's TARGET script can render as upright stacked cells
+     *  (Latin/Cyrillic/Greek + CJK — see
+     *  [com.playtranslate.language.stackableTargetScript]). Gates STACK_UPRIGHT for
+     *  non-CJK targets. Public so [OverlayUiController]'s reuse guard can compare it;
+     *  derives from the target-language pref, so a switch must force a fresh view. */
+    val verticalTextStackable: Boolean = false,
+    /** The grow-narrow-vertical-boxes pref ([com.playtranslate.Prefs.verticalTextGrow]).
+     *  When off, a narrow non-stackable box rotates in place instead of growing. Public
+     *  for the reuse guard; the settings toggle restarts live mode so a flip re-creates
+     *  the view. */
+    val verticalGrowEnabled: Boolean = false,
     /** When non-null, this overlay handles its own dismissal. ACTION_DOWN
      *  touches dismiss immediately (race-safe against the hold-release
      *  callback and second-finger taps during a hold), and TalkBack's
@@ -125,8 +136,19 @@ class TranslationOverlayView(
 
     private val minTextSizeSp = 6
     private val maxTextSizeSp = 200
+    /** Capped autosize ceiling (sp) for GROW boxes — keeps the translation a small, centred
+     *  block in the tall on-source background instead of ballooning to fill the column height. */
+    private val growMaxTextSizeSp = 18
     /** Small inset so text doesn't touch the edges of the background. */
     private val textMargin = (3f * dp).toInt()
+    /** Bold paint at the legibility floor, used to measure each vertical box's minimum legible
+     *  horizontal width (reused across boxes; see [computeMinWidthPx]). */
+    private val minWidthPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = Typeface.DEFAULT_BOLD
+        textSize = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_SP, VerticalTextLayout.MIN_WIDTH_SP, context.resources.displayMetrics
+        )
+    }
     private val skeletonBarHeight = (8f * dp).toInt()
     private val skeletonCornerRadius = 3f * dp
 
@@ -242,13 +264,27 @@ class TranslationOverlayView(
         removeAllViews()
         if (boxes.isEmpty()) return
 
-        val finalRects = OverlayLayout.resolveScreenRects(
-            boxes, cropOffsetX, cropOffsetY, screenshotW, screenshotH, width, height, dp
+        // Measure each vertical box's min legible horizontal width at the display density.
+        // Gated by rebuildChildren's content/size-change cadence (never per-frame) and cheaper
+        // than the autosize pass each child already runs; horizontal boxes skip it.
+        val measured = boxes.map { box ->
+            if (box.orientation == TextOrientation.VERTICAL && box.translatedText.isNotEmpty())
+                box.copy(minWidthPx = computeMinWidthPx(box.translatedText))
+            else box
+        }
+
+        val resolved = OverlayLayout.resolveScreenRects(
+            measured, cropOffsetX, cropOffsetY, screenshotW, screenshotH, width, height, dp,
+            targetIsVerticalScript = verticalTextTarget,
+            targetStackable = verticalTextStackable,
+            growEnabled = verticalGrowEnabled,
         )
 
         val hasPlaceholders = boxes.any { it.translatedText.isEmpty() }
 
-        boxes.zip(finalRects).forEach { (box, rect) ->
+        measured.zip(resolved).forEach { (box, resolvedBox) ->
+            val rect = resolvedBox.rect
+            val mode = resolvedBox.mode
             if (box.isFurigana) {
                 val isVerticalFurigana = box.orientation == TextOrientation.VERTICAL
                 // Vertical furigana: size from box width; horizontal: from box height
@@ -300,12 +336,6 @@ class TranslationOverlayView(
             } else {
                 val rectW = rect.width().toInt().coerceAtLeast(1)
                 val rectH = rect.height().toInt().coerceAtLeast(1)
-                val isVertical = box.orientation == TextOrientation.VERTICAL
-                // Upright tategaki only when the box is vertical AND the target
-                // language is written vertically; other vertical boxes (e.g. a
-                // Latin translation) keep the 90° rotation path below.
-                val stackVertically =
-                    isVertical && verticalTextTarget && box.translatedText.isNotEmpty()
 
                 // Shared background fill for every non-skeleton child. Pinholes
                 // need opaque bg (pinholes handle transparency); without
@@ -325,10 +355,19 @@ class TranslationOverlayView(
                     else -> box.bgColor
                 }
 
+                // GROW boxes cap their font so the translation stays a small, centred block
+                // in the tall on-source background rather than ballooning to fill the height.
+                val autoMax = if (mode == RenderMode.GROW_HORIZONTAL) growMaxTextSizeSp else maxTextSizeSp
+
                 val child: View = when {
-                    box.translatedText.isEmpty() ->
-                        buildSkeletonView(rectW, rectH, box.lineCount, box.bgColor, box.textColor, box.alignment, isVertical)
-                    stackVertically -> VerticalTextView(context).apply {
+                    box.translatedText.isEmpty() -> {
+                        // Vertical skeleton bars only for CJK tategaki; a non-CJK vertical box
+                        // renders horizontally once translated, so show horizontal bars to
+                        // avoid a bar-orientation flip when the text arrives.
+                        val verticalSkeleton = box.orientation == TextOrientation.VERTICAL && verticalTextTarget
+                        buildSkeletonView(rectW, rectH, box.lineCount, box.bgColor, box.textColor, box.alignment, verticalSkeleton)
+                    }
+                    mode == RenderMode.STACK_UPRIGHT -> VerticalTextView(context).apply {
                         text = box.translatedText
                         textColor = box.textColor
                         outlineColor = box.textColor xor 0x00FFFFFF  // invert RGB, keep alpha
@@ -341,62 +380,58 @@ class TranslationOverlayView(
                         outlineColor = box.textColor xor 0x00FFFFFF  // invert RGB, keep alpha
                         outlineWidth = 1f * dp
                         typeface = Typeface.DEFAULT_BOLD
-                        // Vertical text is rotated at the FrameLayout level —
-                        // horizontal alignment of the inner TextView still maps
-                        // to horizontal screen alignment after rotation, so we
-                        // only apply CENTER when the source group classified as
-                        // such. Vertical boxes always classify LEFT in OcrManager,
-                        // so no extra orientation gate is needed here.
-                        gravity = if (box.alignment == TextAlignment.CENTER)
+                        // GROW centres the block in its tall background; otherwise keep the
+                        // source group's alignment (vertical boxes classify LEFT in OcrManager,
+                        // and on the ROTATE path the inner alignment maps to screen-horizontal
+                        // after the 90° rotation).
+                        gravity = if (mode == RenderMode.GROW_HORIZONTAL || box.alignment == TextAlignment.CENTER)
                             Gravity.CENTER
                         else
                             Gravity.CENTER_VERTICAL
                         setPadding(textMargin, textMargin, textMargin, textMargin)
                         setBackgroundColor(fillColor)
                         TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-                            this, minTextSizeSp, maxTextSizeSp, 1, TypedValue.COMPLEX_UNIT_SP
+                            this, minTextSizeSp, autoMax, 1, TypedValue.COMPLEX_UNIT_SP
                         )
                     }
                 }
 
                 child.setTag(R.id.tag_bg_color, box.bgColor)
 
-                when {
-                    stackVertically -> {
-                        // Upright column(s): non-rotated, fills the box footprint
-                        // (anchored top-left; VerticalTextView lays out RTL within).
-                        val lp = LayoutParams(rectW, rectH).apply {
-                            leftMargin = rect.left.toInt()
-                            topMargin = rect.top.toInt()
-                        }
-                        addView(child, lp)
+                if (mode == RenderMode.ROTATE) {
+                    // Narrow vertical box with grow off / non-stackable script: lay out with
+                    // swapped dimensions (width=rectH, height=rectW) so auto-sizing picks a
+                    // readable font, then rotate 90° CW so text reads top-to-bottom in the
+                    // original narrow footprint. The visual center aligns with the box center
+                    // (after rotation the rectH×rectW layout visually becomes rectW×rectH).
+                    val lp = LayoutParams(rectH, rectW)
+                    addView(child, lp)
+                    child.rotation = 90f
+                    child.translationX = rect.centerX() - rectH / 2f
+                    child.translationY = rect.centerY() - rectW / 2f
+                } else {
+                    // STACK_UPRIGHT / HORIZONTAL_IN_PLACE / GROW_HORIZONTAL / LEGACY_HORIZONTAL
+                    // and skeletons: fill the (possibly grown) box footprint at its rect.
+                    val lp = LayoutParams(rectW, rectH).apply {
+                        leftMargin = rect.left.toInt()
+                        topMargin = rect.top.toInt()
                     }
-                    isVertical && box.translatedText.isNotEmpty() -> {
-                        // Latin/other target in a vertical box: create view with
-                        // swapped dimensions (width=rectH, height=rectW) so
-                        // auto-sizing picks a readable font, then rotate 90° CW so
-                        // text reads top-to-bottom in the original narrow box.
-                        val lp = LayoutParams(rectH, rectW)
-                        addView(child, lp)
-                        child.rotation = 90f
-                        // Position so the visual center aligns with the original box
-                        // center. After rotation the (rectH × rectW) layout visually
-                        // becomes (rectW × rectH).
-                        child.translationX = rect.centerX() - rectH / 2f
-                        child.translationY = rect.centerY() - rectW / 2f
-                    }
-                    else -> {
-                        val lp = LayoutParams(rectW, rectH).apply {
-                            leftMargin = rect.left.toInt()
-                            topMargin = rect.top.toInt()
-                        }
-                        addView(child, lp)
-                    }
+                    addView(child, lp)
                 }
             }
         }
 
         if (hasPlaceholders) startShimmer()
+    }
+
+    /** Minimum on-screen width (px) for a legible horizontal line of [text]: the longest
+     *  whitespace-delimited token measured at the legibility floor, plus the inner text
+     *  margins. Scripts without spaces (Thai, etc.) measure the whole string; the resolver's
+     *  ½-screen clamp bounds the result. */
+    private fun computeMinWidthPx(text: String): Int {
+        val longest = text.split(Regex("\\s+")).filter { it.isNotEmpty() }
+            .maxByOrNull { minWidthPaint.measureText(it) } ?: text
+        return kotlin.math.ceil(minWidthPaint.measureText(longest).toDouble()).toInt() + 2 * textMargin
     }
 
     /** Builds a skeleton placeholder with [lineCount] bars evenly spaced within the box.

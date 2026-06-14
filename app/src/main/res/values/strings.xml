@@ -1875,6 +1875,11 @@
     <!-- Row title for the "touching screen refreshes translation" toggle. -->
     <string name="settings_touches_refresh_title">Touching screen refreshes translation</string>
 
+    <!-- Title of the "widen vertical text" switch row in Capture/Overlay settings. -->
+    <string name="settings_vertical_grow_title">Widen vertical text</string>
+    <!-- Subtitle under the "widen vertical text" switch row in Capture/Overlay settings. -->
+    <string name="settings_vertical_grow_subtitle">Grow narrow vertical-text boxes so the translation reads horizontally. May cover nearby content.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
          ═══════════════════════════════════════════════════════════════ -->

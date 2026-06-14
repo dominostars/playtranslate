@@ -87,6 +87,8 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     private lateinit var switchHideOverlays: MaterialSwitch
     private lateinit var rowTouchesRefresh: View
     private lateinit var switchTouchesRefresh: MaterialSwitch
+    private lateinit var rowVerticalGrow: View
+    private lateinit var switchVerticalGrow: MaterialSwitch
 
     // ── Capture-display refs + state ──────────────────────────────────────
     private lateinit var captureDisplaySection: View
@@ -111,6 +113,8 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         switchHideOverlays = rowHideOverlays.findViewById(R.id.switchRowToggle)
         rowTouchesRefresh = findViewById(R.id.rowTouchesRefresh)
         switchTouchesRefresh = rowTouchesRefresh.findViewById(R.id.switchRowToggle)
+        rowVerticalGrow = findViewById(R.id.rowVerticalGrow)
+        switchVerticalGrow = rowVerticalGrow.findViewById(R.id.switchRowToggle)
         captureDisplaySection = findViewById(R.id.captureDisplaySection)
         llDisplayOptions = findViewById(R.id.llDisplayOptions)
 
@@ -249,6 +253,25 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
             prefs.touchesRefreshTranslation = checked
         }
         rowTouchesRefresh.setOnClickListener { switchTouchesRefresh.toggle() }
+
+        // -- Widen vertical text toggle (always shown) --
+        // Read when the overlay view is built (selects the per-box render path), so a flip
+        // restarts live mode to take effect — like hide-overlays, unlike touches-refresh
+        // which is read at touch-time.
+        rowVerticalGrow.findViewById<TextView>(R.id.tvRowTitle).text =
+            getString(R.string.settings_vertical_grow_title)
+        rowVerticalGrow.findViewById<TextView>(R.id.tvRowSubtitle).apply {
+            text = getString(R.string.settings_vertical_grow_subtitle)
+            isVisible = true
+        }
+        switchVerticalGrow.isChecked = prefs.verticalTextGrow
+        switchVerticalGrow.setOnCheckedChangeListener { _, checked ->
+            prefs.verticalTextGrow = checked
+            if (CaptureService.instance?.isLive == true) {
+                CaptureService.instance?.stopLive()
+            }
+        }
+        rowVerticalGrow.setOnClickListener { switchVerticalGrow.toggle() }
 
         setupCaptureInterval()
     }

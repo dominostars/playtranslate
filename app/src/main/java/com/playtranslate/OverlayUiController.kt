@@ -478,6 +478,8 @@ class OverlayUiController(
         pinholeMode: Boolean = false,
         oneShot: Boolean = false,
         verticalTextTarget: Boolean = false,
+        verticalTextStackable: Boolean = false,
+        verticalGrowEnabled: Boolean = false,
     ) {
         // Overlay is appearing — dismiss loading spinner across all icons.
         setIconsLoading(false)
@@ -491,13 +493,17 @@ class OverlayUiController(
         // a constructor val (it selects the per-box render path) and derives
         // from the user-mutable target-language pref, so a mid-session target
         // switch must force a fresh view rather than silently reuse the stale
-        // render mode. In the current call flow none of these transitions hit
-        // this reuse path (beginHoldPreview/endHoldPreview teardown ensures a
-        // fresh create), but the guard prevents a future caller from silently
-        // inheriting a stale view.
+        // render mode. The same applies to verticalTextStackable (target script)
+        // and verticalGrowEnabled (grow pref) — both are ctor vals that select the
+        // render path. In the current call flow none of these transitions hit this
+        // reuse path (beginHoldPreview/endHoldPreview teardown ensures a fresh
+        // create, and the grow toggle restarts live mode), but the guard prevents a
+        // future caller from silently inheriting a stale view.
         val existing = translationOverlayHandles[displayId]
         if (existing != null && existing.pinholeMode == pinholeMode && existing.oneShot == oneShot &&
-            existing.verticalTextTarget == verticalTextTarget
+            existing.verticalTextTarget == verticalTextTarget &&
+            existing.verticalTextStackable == verticalTextStackable &&
+            existing.verticalGrowEnabled == verticalGrowEnabled
         ) {
             existing.setBoxes(boxes, cropLeft, cropTop, screenshotW, screenshotH)
             return
@@ -568,6 +574,8 @@ class OverlayUiController(
             oneShot = oneShot,
             boostContrast = mainBoostContrast,
             verticalTextTarget = verticalTextTarget,
+            verticalTextStackable = verticalTextStackable,
+            verticalGrowEnabled = verticalGrowEnabled,
             onDismiss = if (mainTouchable) {
                 { CaptureService.instance?.dismissLiveOverlay(displayId) }
             } else null,

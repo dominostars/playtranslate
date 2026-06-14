@@ -117,6 +117,26 @@ fun targetSupportsVerticalText(targetCode: String): Boolean {
 }
 
 /**
+ * True when [targetCode]'s script can render as upright, vertically-stacked cells — the gate
+ * for STACK_UPRIGHT ([com.playtranslate.ui.RenderMode]) on a non-vertical target. Alphabetic,
+ * non-connected scripts qualify (Latin, Cyrillic, Greek), as do the CJK scripts. Connected /
+ * complex scripts are excluded: Arabic and Hebrew shape contextually and break when split into
+ * isolated cells; Thai/Lao/Khmer/Burmese and the Indic scripts use combining clusters that
+ * stacking would scramble. Defaults to stackable for unlisted codes (overwhelmingly
+ * Latin-based), so the exclusion list is the small, explicit set of complex scripts.
+ */
+fun stackableTargetScript(targetCode: String): Boolean {
+    val c = targetCode.lowercase(java.util.Locale.ROOT).substringBefore('-').substringBefore('_')
+    val nonStackable = setOf(
+        "ar", "fa", "ur", "ps", "sd",                                           // Arabic script
+        "he", "yi",                                                             // Hebrew script
+        "th", "lo", "km", "my",                                                 // Thai / Lao / Khmer / Burmese
+        "hi", "bn", "pa", "gu", "or", "ta", "te", "kn", "ml", "si", "mr", "ne", // Indic
+    )
+    return c !in nonStackable
+}
+
+/**
  * Block-level horizontal alignment of an OCR'd paragraph. Detected post-grouping
  * from the geometry of the constituent line rects (see
  * [com.playtranslate.OcrManager.Companion.classifyGroupAlignment]). LEFT is the

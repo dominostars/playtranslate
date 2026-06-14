@@ -15,8 +15,13 @@ import org.robolectric.RuntimeEnvironment
 /**
  * Verifies the [TranslationOverlayView] render-path selection for vertical
  * boxes: CJK targets stack upright (a non-rotated [VerticalTextView] with a
- * background fill — the fill is load-bearing for pinhole detection), while
- * other targets keep the 90°-rotated [OutlinedTextView].
+ * background fill — the fill is load-bearing for pinhole detection), while a
+ * non-CJK (Latin) target renders horizontally in place when the box is wide
+ * enough rather than rotating.
+ *
+ * The narrow-Latin routing (stack vs grow vs rotate) depends on a measured
+ * min-width and is covered deterministically in [OverlayLayoutTest], which
+ * injects `minWidthPx` instead of relying on Robolectric font metrics.
  *
  * Drives measure/layout before [TranslationOverlayView.setBoxes] so the rebuild
  * runs synchronously (no looper idling needed).
@@ -24,9 +29,17 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class TranslationOverlayVerticalTest {
 
-    private val verticalBox = TextBox(
+    private val narrowCjkBox = TextBox(
         translatedText = "日本語ですよ",
         bounds = Rect(100, 100, 170, 600),
+        orientation = TextOrientation.VERTICAL,
+    )
+
+    // A merged multi-column vertical block: wide enough that any reasonable
+    // min-width is already satisfied → HORIZONTAL_IN_PLACE for a Latin target.
+    private val wideVerticalBox = TextBox(
+        translatedText = "HELLO",
+        bounds = Rect(100, 100, 600, 220),
         orientation = TextOrientation.VERTICAL,
     )
 
@@ -45,7 +58,7 @@ class TranslationOverlayVerticalTest {
     @Test
     fun cjkTarget_verticalBox_stacksUprightWithFill() {
         val v = laidOutOverlay(verticalTextTarget = true)
-        v.setBoxes(listOf(verticalBox), 0, 0, 1080, 1920)
+        v.setBoxes(listOf(narrowCjkBox), 0, 0, 1080, 1920)
 
         assertEquals(1, v.childCount)
         val child = v.getChildAt(0)
@@ -57,13 +70,13 @@ class TranslationOverlayVerticalTest {
     }
 
     @Test
-    fun latinTarget_verticalBox_keepsRotation() {
+    fun latinTarget_wideVerticalBox_horizontalInPlace() {
         val v = laidOutOverlay(verticalTextTarget = false)
-        v.setBoxes(listOf(verticalBox), 0, 0, 1080, 1920)
+        v.setBoxes(listOf(wideVerticalBox), 0, 0, 1080, 1920)
 
         assertEquals(1, v.childCount)
         val child = v.getChildAt(0)
         assertTrue("expected OutlinedTextView, got ${child.javaClass.simpleName}", child is OutlinedTextView)
-        assertEquals("Latin vertical box keeps the 90° rotation", 90f, child.rotation)
+        assertEquals("wide Latin vertical box renders horizontally in place, not rotated", 0f, child.rotation)
     }
 }

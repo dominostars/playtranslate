@@ -669,6 +669,15 @@ class Prefs internal constructor(
         get() = sp.getBoolean("touches_refresh_translation", true)
         set(v) = sp.edit { putBoolean("touches_refresh_translation", v) }
 
+    /** When on (the default), a vertical-source box whose translation is too narrow to
+     *  stack and too long to fit in place is grown in width over its source and rendered
+     *  horizontally (it may widen over nearby non-text pixels). Off keeps such boxes in
+     *  their original footprint (90° rotation). Read when the overlay view is created, so
+     *  the settings toggle restarts live mode to apply it. */
+    var verticalTextGrow: Boolean
+        get() = sp.getBoolean("vertical_text_grow", true)
+        set(v) = sp.edit { putBoolean("vertical_text_grow", v) }
+
     /**
      * One-shot migration of the legacy `auto_translation_mode` ordinal pref
      * (used on the shipped `main` branch, where 0 = OVERLAYS and
