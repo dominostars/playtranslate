@@ -21,6 +21,7 @@ import androidx.core.view.doOnLayout
 import androidx.core.view.isEmpty
 import androidx.core.view.isVisible
 import androidx.core.widget.TextViewCompat
+import com.playtranslate.OcrManager
 import com.playtranslate.PinholeCalibration
 import com.playtranslate.R
 import com.playtranslate.language.TextAlignment
@@ -282,6 +283,8 @@ class TranslationOverlayView(
 
         val hasPlaceholders = boxes.any { it.translatedText.isEmpty() }
 
+        if (OcrManager.instance.debugLogGroupingEnabled) logLayoutDecisions(measured, resolved)
+
         measured.zip(resolved).forEach { (box, resolvedBox) ->
             val rect = resolvedBox.rect
             val mode = resolvedBox.mode
@@ -432,6 +435,38 @@ class TranslationOverlayView(
         val longest = text.split(Regex("\\s+")).filter { it.isNotEmpty() }
             .maxByOrNull { minWidthPaint.measureText(it) } ?: text
         return kotlin.math.ceil(minWidthPaint.measureText(longest).toDouble()).toInt() + 2 * textMargin
+    }
+
+    /** Debug dump of the resolved layout — each box's [RenderMode] + final rect, plus an
+     *  explicit line for every pair of rendered boxes that still intersect. Gated on the
+     *  "Log grouping decisions" toggle and emitted on the same `DetectionLog` tag as the OCR
+     *  grouping log, so one capture shows which two overlays collide and in which silo (e.g.
+     *  a HORIZONTAL_IN_PLACE box overlapping a STACK_UPRIGHT one — a cross-footprint pair the
+     *  per-class overlap passes don't resolve). */
+    private fun logLayoutDecisions(boxes: List<TextBox>, resolved: List<ResolvedBox>) {
+        fun rs(r: android.graphics.RectF) =
+            "(${r.left.toInt()},${r.top.toInt()},${r.right.toInt()},${r.bottom.toInt()})"
+        boxes.forEachIndexed { i, box ->
+            if (box.isFurigana) return@forEachIndexed
+            val src = box.sourceText.take(16).replace('\n', ' ')
+            val tr = box.translatedText.take(16).replace('\n', ' ')
+            android.util.Log.d(
+                "DetectionLog",
+                "[layout] box[$i] ${resolved[i].mode} ${box.orientation.name[0]} " +
+                    "minW=${box.minWidthPx} \"$src\"->\"$tr\" rect=${rs(resolved[i].rect)}",
+            )
+        }
+        val idx = boxes.indices.filter { !boxes[it].isFurigana }
+        for (a in idx.indices) for (b in a + 1 until idx.size) {
+            val i = idx[a]; val j = idx[b]
+            if (android.graphics.RectF.intersects(resolved[i].rect, resolved[j].rect)) {
+                android.util.Log.d(
+                    "DetectionLog",
+                    "[layout] OVERLAP box[$i](${resolved[i].mode},\"${boxes[i].sourceText.take(8)}\") " +
+                        "∩ box[$j](${resolved[j].mode},\"${boxes[j].sourceText.take(8)}\")",
+                )
+            }
+        }
     }
 
     /** Builds a skeleton placeholder with [lineCount] bars evenly spaced within the box.

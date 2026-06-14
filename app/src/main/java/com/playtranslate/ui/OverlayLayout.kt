@@ -59,20 +59,14 @@ internal object OverlayLayout {
         (r.bottom + cropOffsetY) * scaleY,
     )
 
-    /** True when [mode] occupies a horizontal footprint (resolves vertical overlaps with
-     *  the other horizontal boxes). */
-    private fun isHorizontalFootprint(mode: RenderMode) =
-        mode == RenderMode.LEGACY_HORIZONTAL || mode == RenderMode.HORIZONTAL_IN_PLACE
-
-    /** True when [mode] occupies the original (tall, narrow) vertical footprint (resolves
-     *  horizontal overlaps in right-to-left reading order). */
-    private fun isVerticalFootprint(mode: RenderMode) =
-        mode == RenderMode.STACK_UPRIGHT || mode == RenderMode.ROTATE
-
     /**
      * Resolve every box's final on-screen rect + [RenderMode]: map OCR bounds → screen, pad
-     * non-furigana boxes, pick a render mode, then resolve overlaps in three footprint-keyed
-     * passes (horizontal shrink, vertical-footprint shrink, grow-into-gaps).
+     * non-furigana boxes, pick a render mode, then resolve overlaps in three passes keyed by
+     * the box's source **orientation** (not its render footprint): horizontal-source boxes are
+     * stacked rows → vertical-overlap shrink; vertical-source boxes are side-by-side columns →
+     * horizontal-overlap shrink; then GROW boxes grow into the remaining free width. Resolving
+     * by orientation is essential — a wide vertical column rendered HORIZONTAL_IN_PLACE is still
+     * a column and must de-overlap with its sibling columns, not get siloed away from them.
      *
      * @param targetIsVerticalScript the target is written vertically (CJK) — its vertical
      *   boxes always stack (tategaki) and keep the shrink geometry. Required (one production
@@ -121,10 +115,10 @@ internal object OverlayLayout {
             renderModeFor(boxes[i], finalRects[i], density, targetIsVerticalScript, targetStackable, growEnabled)
         }
 
-        // Pass 1 — horizontal-footprint boxes (LEGACY_HORIZONTAL + HORIZONTAL_IN_PLACE):
-        // resolve vertical overlaps by splitting at the midline.
+        // Pass 1 — horizontal-source boxes (stacked rows): resolve vertical overlaps by
+        // splitting at the midline.
         val hBoxIndices = boxes.indices.filter {
-            !boxes[it].isFurigana && isHorizontalFootprint(modes[it])
+            !boxes[it].isFurigana && boxes[it].orientation != TextOrientation.VERTICAL
         }.sortedBy { finalRects[it].top }
         for (a in hBoxIndices.indices) {
             for (b in a + 1 until hBoxIndices.size) {
@@ -138,10 +132,12 @@ internal object OverlayLayout {
             }
         }
 
-        // Pass 2 — vertical-footprint boxes (STACK_UPRIGHT + ROTATE): resolve horizontal
-        // overlaps (adjacent columns) in right-to-left reading order.
+        // Pass 2 — vertical-source boxes (side-by-side columns, ALL render modes:
+        // HORIZONTAL_IN_PLACE / STACK / ROTATE / GROW): resolve horizontal overlaps between
+        // adjacent columns in right-to-left reading order, so a narrow column and a wide one
+        // still separate even though they render differently.
         val vBoxIndices = boxes.indices.filter {
-            !boxes[it].isFurigana && isVerticalFootprint(modes[it])
+            !boxes[it].isFurigana && boxes[it].orientation == TextOrientation.VERTICAL
         }.sortedByDescending { finalRects[it].right }
         for (a in vBoxIndices.indices) {
             for (b in a + 1 until vBoxIndices.size) {
@@ -155,8 +151,9 @@ internal object OverlayLayout {
             }
         }
 
-        // Pass 3 — GROW_HORIZONTAL: grow each box's width over its source toward min-width,
-        // clamped so the background never overlaps a neighbour's reserved bounds.
+        // Pass 3 — GROW_HORIZONTAL: grow each box's width toward min-width into the free space
+        // beside it. Pass 2 already separated the columns, so the growth clamps keep them
+        // disjoint; growth only ever expands, so each box keeps covering its source.
         growIntoGaps(boxes, finalRects, modes, dW)
 
         return boxes.indices.map { ResolvedBox(finalRects[it], modes[it]) }
@@ -212,11 +209,12 @@ internal object OverlayLayout {
 
     /**
      * Grow each [RenderMode.GROW_HORIZONTAL] box's width toward `min(minWidthPx, ½·displayW)`,
-     * extending outward from its source-covering rect into the free space on each side and
-     * clamping at the nearest neighbour (any non-furigana box, including horizontal ones) that
-     * vertically overlaps it — so grown backgrounds stay **disjoint** and every box keeps
-     * covering its source. Mutates [rects] in place; processed right-to-left so contention is
-     * deterministic (an earlier box's grown rect is a fixed obstacle for later ones).
+     * extending outward into the free space on either side and clamping at the nearest
+     * non-furigana neighbour that vertically overlaps it. Pass 2 has already de-overlapped the
+     * sibling columns, so the clamps keep backgrounds **disjoint**; growth only expands, so each
+     * box keeps covering its source. Mutates [rects] in place; processed right-to-left so
+     * contention is deterministic (an earlier box's grown rect is a fixed obstacle for later
+     * ones).
      */
     private fun growIntoGaps(
         boxes: List<TextBox>,

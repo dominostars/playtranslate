@@ -264,6 +264,63 @@ class OverlayLayoutTest {
         assertTrue(b.left <= 160f && b.right >= 210f)
     }
 
+    @Test
+    fun resolve_growEnabled_preOverlappingNeighbors_pushedApart() {
+        // Two close vertical regions whose PADDED bounds overlap (density 1 → 6px padding;
+        // sources only 8px apart). They must be pushed apart to disjoint, each still covering
+        // its unpadded source — the on-device overlap bug (growth alone wouldn't separate
+        // already-overlapping boxes).
+        val rects = OverlayLayout.resolveScreenRects(
+            listOf(
+                box(Rect(100, 100, 150, 500), text = "AA BB", orientation = TextOrientation.VERTICAL, minWidthPx = 300),
+                box(Rect(158, 100, 210, 500), text = "CC DD", orientation = TextOrientation.VERTICAL, minWidthPx = 300),
+            ),
+            cropLeft = 0, cropTop = 0,
+            screenshotW = 1000, screenshotH = 1000,
+            displayW = 1000, displayH = 1000,
+            density = 1f,
+            targetIsVerticalScript = false,
+            targetStackable = true,
+            growEnabled = true,
+        )
+        assertEquals(RenderMode.GROW_HORIZONTAL, rects[0].mode)
+        assertEquals(RenderMode.GROW_HORIZONTAL, rects[1].mode)
+        val a = rects[0].rect
+        val b = rects[1].rect
+        assertTrue("expected disjoint after push-apart, got $a / $b", a.right <= b.left || b.right <= a.left)
+        // Each still covers its unpadded OCR bounds.
+        assertTrue(a.left <= 100f && a.right >= 150f)
+        assertTrue(b.left <= 158f && b.right >= 210f)
+    }
+
+    @Test
+    fun resolve_adjacentColumns_growAndInPlace_pushedApart() {
+        // The on-device bug ("今夜は"/"tonight"): a wide vertical column (HORIZONTAL_IN_PLACE)
+        // and a narrow vertical column (GROW) sit side by side with overlapping padded bounds.
+        // They render differently but are still sibling columns — overlap must resolve by
+        // orientation, not render footprint (the two used to land in different passes).
+        val rects = OverlayLayout.resolveScreenRects(
+            listOf(
+                box(Rect(100, 100, 300, 600), text = "After spending the", orientation = TextOrientation.VERTICAL, minWidthPx = 100),
+                box(Rect(310, 100, 360, 400), text = "to night", orientation = TextOrientation.VERTICAL, minWidthPx = 250),
+            ),
+            cropLeft = 0, cropTop = 0,
+            screenshotW = 1000, screenshotH = 1000,
+            displayW = 1000, displayH = 1000,
+            density = 1f,
+            targetIsVerticalScript = false,
+            targetStackable = true,
+            growEnabled = true,
+        )
+        assertEquals(RenderMode.HORIZONTAL_IN_PLACE, rects[0].mode)
+        assertEquals(RenderMode.GROW_HORIZONTAL, rects[1].mode)
+        val a = rects[0].rect
+        val b = rects[1].rect
+        assertTrue("expected disjoint, got $a / $b", a.right <= b.left || b.right <= a.left)
+        assertTrue(a.left <= 100f && a.right >= 300f)   // wide column still covers its source
+        assertTrue(b.left <= 310f && b.right >= 360f)   // grown column still covers its source
+    }
+
     // ── stackViable ──────────────────────────────────────────────────────
 
     @Test
