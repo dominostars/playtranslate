@@ -71,16 +71,28 @@ class LanguagePackDownloader(
      * server returns 206 Partial Content. Throws on HTTP error or transport
      * failure; the caller is responsible for translating exceptions into
      * [InstallResult.Failed].
+     *
+     * [requestIdentityEncoding] sends `Accept-Encoding: identity` to keep
+     * Content-Length intact for endpoints that gzip an already-compressed
+     * payload (e.g. Jiten gzips its zip, which hides the download size). It
+     * disables OkHttp's transparent gzip, so use it ONLY for servers verified
+     * to honor identity — a server that gzips anyway would have its raw gzip
+     * bytes written to disk. Default off preserves the safe transparent
+     * behavior for the (non-gzipping) GitHub/HuggingFace pack and model URLs.
      */
     suspend fun download(
         url: String,
         destination: File,
+        requestIdentityEncoding: Boolean = false,
         onProgress: (DownloadProgress.Downloading) -> Unit,
     ) = withContext(Dispatchers.IO) {
         destination.parentFile?.mkdirs()
 
         val resumeFrom = if (destination.exists()) destination.length() else 0L
         val builder = Request.Builder().url(url)
+        if (requestIdentityEncoding) {
+            builder.header("Accept-Encoding", "identity")
+        }
         if (resumeFrom > 0) {
             builder.header("Range", "bytes=$resumeFrom-")
         }

@@ -125,7 +125,10 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
             var downloadComplete = false
             val result: YomitanImportResult? = try {
                 tmp.delete() // mutable URL: start fresh, never resume a stale partial
-                LanguagePackDownloader().download(rec.url, tmp) { p ->
+                // identity encoding: Jiten gzips its zip (verified to honor
+                // identity), which otherwise strips Content-Length and hides
+                // the size. Safe here; the shared default stays transparent-gzip.
+                LanguagePackDownloader().download(rec.url, tmp, requestIdentityEncoding = true) { p ->
                     runOnUiThread {
                         if (!downloadComplete) {
                             progress.showYomitanDownloadProgress(
