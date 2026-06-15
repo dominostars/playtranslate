@@ -1,6 +1,8 @@
 package com.playtranslate.ui
 
+import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
@@ -17,13 +19,19 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.R
+import com.playtranslate.language.LanguagePackDownloader
 import com.playtranslate.themeColor
+import com.playtranslate.yomitan.RecommendedYomitanDictionaries
+import com.playtranslate.yomitan.RecommendedYomitanDictionary
 import com.playtranslate.yomitan.YomitanCategory
 import com.playtranslate.yomitan.YomitanDictionary
 import com.playtranslate.yomitan.YomitanDictionaryStore
 import com.playtranslate.yomitan.YomitanImportResult
+import com.playtranslate.yomitan.YomitanRegistry
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * Yomitan dictionary manager (Settings → Configure → Yomitan).
@@ -83,36 +91,102 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
             } finally {
                 progress.dismiss()
             }
-            when (result) {
-                is YomitanImportResult.Success -> refresh()
-                is YomitanImportResult.Duplicate -> showImportAlert(
-                    getString(R.string.yomitan_duplicate_title),
-                    getString(R.string.yomitan_duplicate_message, result.title),
-                )
-                is YomitanImportResult.InvalidFormat -> showImportAlert(
-                    getString(R.string.yomitan_invalid_title),
-                    // Diagnostic detail line under the generic message —
-                    // dictionary authors need to know WHICH bank/entry broke.
-                    listOfNotNull(getString(R.string.yomitan_invalid_message), result.reason)
-                        .joinToString("\n\n"),
-                )
-                is YomitanImportResult.InsufficientSpace -> showImportAlert(
-                    getString(R.string.yomitan_no_space_title),
-                    getString(
-                        R.string.yomitan_no_space_message,
-                        android.text.format.Formatter.formatShortFileSize(
-                            this@YomitanSettingsActivity, result.requiredBytes,
-                        ),
-                        android.text.format.Formatter.formatShortFileSize(
-                            this@YomitanSettingsActivity, result.availableBytes,
-                        ),
-                    ),
-                )
-                YomitanImportResult.IoError -> showImportAlert(
-                    getString(R.string.yomitan_io_error_title),
-                    getString(R.string.yomitan_io_error_message),
-                )
+            handleImportResult(result)
+        }
+    }
+
+    /** Downloads a recommended dictionary, then funnels the zip through the
+     *  same import as a hand-picked file. The upstream URL is mutable (content
+     *  is regenerated upstream), so we never resume a stale partial and lean on
+     *  [YomitanDictionaryStore.import]'s validation rather than a SHA-256 pin. */
+    private fun startRecommendedDownload(rec: RecommendedYomitanDictionary) {
+        val progress = OverlayProgress.Builder(this)
+            .setTitle(getString(R.string.yomitan_downloading_title))
+            .setMessage(rec.displayTitle)
+            .setOnDismiss { importJob?.cancel() } // USER cancel and activity pause alike
+            .show()
+
+        val tmp = File(
+            File(cacheDir, "yomitan-recommended").apply { mkdirs() },
+            "${rec.displayTitle.hashCode()}.zip",
+        )
+
+        importJob = lifecycleScope.launch {
+            var downloadFailed = false
+            // Flips (on the main thread) once bytes finish arriving. The
+            // download's progress callback posts via runOnUiThread (sync
+            // messages) while the coroutine resumes via Main-dispatch (async
+            // messages that can leapfrog a sync one past a frame sync-barrier),
+            // so a final determinate update can otherwise land AFTER the switch
+            // to indeterminate and clobber it back. The guard drops late updates.
+            var downloadComplete = false
+            val result: YomitanImportResult? = try {
+                tmp.delete() // mutable URL: start fresh, never resume a stale partial
+                LanguagePackDownloader().download(rec.url, tmp) { p ->
+                    runOnUiThread {
+                        if (!downloadComplete) {
+                            progress.showYomitanDownloadProgress(
+                                this@YomitanSettingsActivity, p.bytesReceived, p.totalBytes,
+                            )
+                        }
+                    }
+                }
+                downloadComplete = true
+                progress.setIndeterminate(true)
+                progress.setMessage(getString(R.string.yomitan_importing_message))
+                YomitanDictionaryStore.import(this@YomitanSettingsActivity, Uri.fromFile(tmp))
+            } catch (c: CancellationException) {
+                throw c
+            } catch (e: Exception) {
+                Log.w(TAG, "recommended download failed: ${rec.displayTitle}", e)
+                downloadFailed = true
+                null
+            } finally {
+                tmp.delete()
+                progress.dismiss()
             }
+            when {
+                downloadFailed -> showImportAlert(
+                    getString(R.string.yomitan_download_error_title),
+                    getString(R.string.yomitan_download_error_message),
+                )
+                result != null -> handleImportResult(result)
+            }
+        }
+    }
+
+    /** Routes an import outcome to a refresh (success) or the matching alert.
+     *  Shared by the file-picker import and the recommended-download import. */
+    private fun handleImportResult(result: YomitanImportResult) {
+        when (result) {
+            is YomitanImportResult.Success -> refresh()
+            is YomitanImportResult.Duplicate -> showImportAlert(
+                getString(R.string.yomitan_duplicate_title),
+                getString(R.string.yomitan_duplicate_message, result.title),
+            )
+            is YomitanImportResult.InvalidFormat -> showImportAlert(
+                getString(R.string.yomitan_invalid_title),
+                // Diagnostic detail line under the generic message —
+                // dictionary authors need to know WHICH bank/entry broke.
+                listOfNotNull(getString(R.string.yomitan_invalid_message), result.reason)
+                    .joinToString("\n\n"),
+            )
+            is YomitanImportResult.InsufficientSpace -> showImportAlert(
+                getString(R.string.yomitan_no_space_title),
+                getString(
+                    R.string.yomitan_no_space_message,
+                    android.text.format.Formatter.formatShortFileSize(
+                        this@YomitanSettingsActivity, result.requiredBytes,
+                    ),
+                    android.text.format.Formatter.formatShortFileSize(
+                        this@YomitanSettingsActivity, result.availableBytes,
+                    ),
+                ),
+            )
+            YomitanImportResult.IoError -> showImportAlert(
+                getString(R.string.yomitan_io_error_title),
+                getString(R.string.yomitan_io_error_message),
+            )
         }
     }
 
@@ -138,9 +212,10 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
         }
     }
 
-    private fun renderSections(registry: com.playtranslate.yomitan.YomitanRegistry) {
+    private fun renderSections(registry: YomitanRegistry) {
         sectionsContainer.removeAllViews()
         val inflater = LayoutInflater.from(this)
+
         for (category in YomitanCategory.entries) {
             val dictionaries = registry.orderedFor(category)
             if (dictionaries.isEmpty()) continue
@@ -159,6 +234,21 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
                 bindSingleDictionaryToggle(section, registry.termsSingleDictionary)
             }
 
+            sectionsContainer.addView(section)
+        }
+
+        // Curated downloads last — below the user's installed dictionaries.
+        // Each entry drops out once it's installed (and then appears in its own
+        // category section above).
+        val recommended = RecommendedYomitanDictionaries.notInstalled(registry)
+        if (recommended.isNotEmpty()) {
+            val section = inflater.inflate(R.layout.yomitan_section_card, sectionsContainer, false)
+            section.findViewById<View>(R.id.yomitanSectionHeader)
+                .findViewById<TextView>(R.id.tvGroupTitle).text =
+                getString(R.string.yomitan_category_recommended)
+            val recycler = section.findViewById<RecyclerView>(R.id.rvYomitanSection)
+            recycler.layoutManager = LinearLayoutManager(this)
+            recycler.adapter = RecommendedAdapter(recommended)
             sectionsContainer.addView(section)
         }
     }
@@ -321,5 +411,40 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
                 if (pos != RecyclerView.NO_POSITION) confirmDelete(working[pos])
             }
         }
+    }
+
+    // ── Recommended (downloadable) adapter ──────────────────────────────
+
+    /** Static, non-orderable rows for not-yet-installed recommended
+     *  dictionaries. The whole row downloads + imports; there's no drag or
+     *  delete (nothing is stored until it's imported). */
+    private inner class RecommendedAdapter(
+        private val items: List<RecommendedYomitanDictionary>,
+    ) : RecyclerView.Adapter<RecommendedAdapter.VH>() {
+
+        inner class VH(view: View) : RecyclerView.ViewHolder(view) {
+            val title: TextView = view.findViewById(R.id.tvYomitanTitle)
+            val subtitle: TextView = view.findViewById(R.id.tvYomitanSubtitle)
+            val divider: View = view.findViewById(R.id.yomitanRowDivider)
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH = VH(
+            LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_yomitan_recommended_row, parent, false)
+        )
+
+        override fun getItemCount(): Int = items.size
+
+        override fun onBindViewHolder(holder: VH, position: Int) {
+            val item = items[position]
+            holder.title.text = item.displayTitle
+            holder.subtitle.text = item.description
+            holder.divider.isVisible = position < items.size - 1
+            holder.itemView.setOnClickListener { startRecommendedDownload(item) }
+        }
+    }
+
+    private companion object {
+        const val TAG = "YomitanSettings"
     }
 }

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Recommended (not-yet-installed) Yomitan dictionary row: title/description ·
+     download icon. The whole row is the tap target (download + import); the
+     icon is a non-interactive affordance. Mirrors item_yomitan_dictionary_row
+     minus the drag handle, with the delete (X) replaced by a download icon. -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="?attr/selectableItemBackground"
+    tools:ignore="Overdraw">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:minHeight="@dimen/pt_row_min_height"
+        android:paddingHorizontal="@dimen/pt_row_h_padding"
+        android:paddingVertical="@dimen/pt_row_v_padding">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvYomitanTitle"
+                style="@style/Text.PT.RowTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:singleLine="true"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/tvYomitanSubtitle"
+                style="@style/Text.PT.RowSubtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:maxLines="2"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <ImageView
+            android:id="@+id/btnYomitanDownload"
+            android:layout_width="44dp"
+            android:layout_height="28dp"
+            android:layout_marginStart="4dp"
+            android:paddingHorizontal="10dp"
+            android:src="@drawable/ic_status_cloud_down"
+            app:tint="?attr/ptAccent"
+            android:scaleType="centerInside"
+            android:contentDescription="@string/cd_yomitan_download" />
+
+    </LinearLayout>
+
+    <!-- In-card divider; GONE on the last row (set by the adapter). -->
+    <View
+        android:id="@+id/yomitanRowDivider"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginStart="@dimen/pt_row_h_padding"
+        android:background="?attr/ptDivider" />
+
+</LinearLayout>

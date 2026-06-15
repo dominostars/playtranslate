@@ -2212,6 +2212,18 @@
     <string name="yomitan_delete_confirm">Delete</string>
     <!-- Content description of the per-row delete (X) button on the Yomitan page. -->
     <string name="cd_yomitan_delete">Delete dictionary</string>
+    <!-- Group header above the curated, one-tap-download dictionaries on the Yomitan page. -->
+    <string name="yomitan_category_recommended">Recommended</string>
+    <!-- Title of the progress popup shown while a recommended dictionary downloads. -->
+    <string name="yomitan_downloading_title">Downloading Dictionary</string>
+    <!-- Status line of the download progress popup; %1$s = downloaded so far, %2$s = total (both pre-formatted sizes). -->
+    <string name="yomitan_downloading_message"><xliff:g id="received" example="3.2 MB">%1$s</xliff:g> / <xliff:g id="total" example="11 MB">%2$s</xliff:g></string>
+    <!-- Content description of the per-row download (cloud) icon in the Recommended section. -->
+    <string name="cd_yomitan_download">Download dictionary</string>
+    <!-- Title of the alert shown when a recommended dictionary fails to download. -->
+    <string name="yomitan_download_error_title">Download Failed</string>
+    <!-- Body of the download-failure alert. -->
+    <string name="yomitan_download_error_message">The dictionary couldn\'t be downloaded. Check your connection and try again.</string>
 
     <!-- TOOLS — standalone utilities reachable from settings. -->
     <string name="settings_header_tools">Tools</string>

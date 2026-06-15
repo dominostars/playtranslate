@@ -72,6 +72,21 @@ fun OverlayProgress.showOcrDownloadProgress(context: Context, received: Long, to
     )
 }
 
+/**
+ * Switch this progress dialog to a determinate Yomitan-dictionary download
+ * state, mirroring [showOcrDownloadProgress]. Call on the UI thread.
+ */
+fun OverlayProgress.showYomitanDownloadProgress(context: Context, received: Long, total: Long) {
+    setIndeterminate(false)
+    setProgress(if (total > 0) ((received * 100L) / total).toInt() else 0)
+    setMessage(
+        context.getString(
+            R.string.yomitan_downloading_message,
+            humanSize(received), humanSize(total),
+        ),
+    )
+}
+
 /** Why this dialog went away. Callers branch on this in [OverlayProgress.Builder.setOnDismiss]
  *  to decide whether to nuke resume state (USER) or just stop using
  *  bandwidth/CPU (LIFECYCLE_PAUSE). */
