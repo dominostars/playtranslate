@@ -101,10 +101,13 @@ class WiktionaryDictionaryManager private constructor(
 
         // Folded-variant fallback (Arabic casual/variant spellings — [ArabicFold]).
         // Runs on a surface miss EVEN when the folded key equals the surface,
-        // because this query widens the position ceiling to reach the position-3
-        // fold rows the canonical surface query above excluded.
+        // because it queries a DIFFERENT tier: the deliberately-generated
+        // position-3 fold rows only (not positions 0-2). Restricting to that
+        // tier keeps a folded key that coincidentally equals an unrelated
+        // canonical or alias headword from being surfaced and mislabeled
+        // [variant].
         if (folded != null) {
-            val foldedIds = queryEntryIds(database, folded.lowercase(locale), includeFolded = true)
+            val foldedIds = queryEntryIds(database, folded.lowercase(locale), foldedTier = true)
             if (foldedIds.isNotEmpty()) {
                 return@withContext buildResponse(database, foldedIds, forceNote = "variant")
             }
@@ -230,15 +233,20 @@ class WiktionaryDictionaryManager private constructor(
     private fun queryEntryIds(
         db: SQLiteDatabase,
         word: String,
-        includeFolded: Boolean = false,
+        foldedTier: Boolean = false,
     ): List<Pair<Long, Int>> {
-        // Canonical queries (surface, stem) stay at position <= 2; only the
-        // folded-variant fallback in [lookup] opts in to position-3 rows. This
-        // keeps lossy fold collisions off the canonical path — a user who typed
-        // a canonical word never sees pos-3 noise, because pos-3 is reached only
-        // after the canonical surface query already missed. No-op for non-Arabic
-        // packs, which have no position-3 rows.
-        val positionClause = if (includeFolded) "" else " AND h.position <= 2"
+        // Two DISJOINT query modes:
+        //  - canonical (surface, stem): positions 0-2.
+        //  - folded fallback in [lookup]: position 3 EXACTLY — the
+        //    deliberately-generated fold-key tier. Querying ONLY that tier
+        //    (rather than all positions) is what keeps lossy fold collisions
+        //    isolated: a folded key that happens to coincide with an unrelated
+        //    canonical lemma or alias (positions 0-2) must NOT be surfaced and
+        //    mislabeled [variant]. The fold fallback resolves via the fold rows
+        //    it was built around, nothing else.
+        // No-op distinction for non-Arabic packs — they have no position-3 rows,
+        // so canonical lookups never call this with foldedTier=true.
+        val positionClause = if (foldedTier) " AND h.position = 3" else " AND h.position <= 2"
         val results = mutableListOf<Pair<Long, Int>>()
         db.rawQuery(
             "SELECT h.entry_id, MIN(h.position) AS pos FROM headword h " +

@@ -5,6 +5,7 @@ import android.database.sqlite.SQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -61,6 +62,20 @@ class ArabicFoldLookupTest {
             db.execSQL("INSERT INTO headword VALUES (1, 0, ?)", arrayOf<Any>("أنا"))
             db.execSQL("INSERT INTO headword VALUES (1, 3, ?)", arrayOf<Any>("انا"))
             db.execSQL("INSERT INTO sense VALUES (1, 0, 'pron', ?, '')", arrayOf<Any>("I\tme"))
+            // Collision fixture for the fold-tier isolation check:
+            //  - entry 2 أنى "whence" → its folded key اني lives at position 3
+            //    (the INTENDED fold target).
+            //  - entry 3 اني — an UNRELATED lemma whose canonical (position-0)
+            //    spelling coincidentally equals that same folded key اني, with NO
+            //    position-3 row, and a HIGHER freq_score so it would sort first.
+            // A fold lookup of اني must return only entry 2, never entry 3.
+            db.execSQL("INSERT INTO entry VALUES (2, 0, 40)")
+            db.execSQL("INSERT INTO headword VALUES (2, 0, ?)", arrayOf<Any>("أنى"))
+            db.execSQL("INSERT INTO headword VALUES (2, 3, ?)", arrayOf<Any>("اني"))
+            db.execSQL("INSERT INTO sense VALUES (2, 0, 'adv', ?, '')", arrayOf<Any>("whence"))
+            db.execSQL("INSERT INTO entry VALUES (3, 0, 90)")
+            db.execSQL("INSERT INTO headword VALUES (3, 0, ?)", arrayOf<Any>("اني"))
+            db.execSQL("INSERT INTO sense VALUES (3, 0, 'noun', ?, '')", arrayOf<Any>("DECOY"))
         }
         val manager = WiktionaryDictionaryManager.get(ctx, SourceLangId.AR)
 
@@ -84,6 +99,21 @@ class ArabicFoldLookupTest {
         assertTrue(
             "canonical hit must not be tagged [variant]",
             ce.senses.first().partsOfSpeech.firstOrNull() != "[variant]",
+        )
+
+        // 4. Fold-tier isolation: a fold key (اني) that coincides with an
+        //    unrelated canonical lemma (entry 3, higher freq) must resolve ONLY
+        //    via the position-3 row (entry 2 أنى) — never surface the position-0
+        //    decoy. "أني" misses canonically; fold("أني") = اني.
+        val foldKey = ArabicFold.fold("أني")
+        assertEquals("اني", foldKey)
+        val isolated = manager.lookup(surface = "أني", stemmed = null, folded = foldKey)
+        assertNotNull(isolated)
+        val written = isolated!!.entries.map { it.headwords.first().written }
+        assertTrue("intended position-3 target أنى must be returned", written.contains("أنى"))
+        assertFalse(
+            "the position-0 decoy اني must NOT be surfaced by the fold fallback",
+            written.contains("اني"),
         )
     }
 
