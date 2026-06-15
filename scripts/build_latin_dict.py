@@ -967,7 +967,9 @@ def run_smoke_test(db_path: Path, lang: str) -> None:
             surface_l = lower_for_lang(surface, lang)
             # Mirror WiktionaryDictionaryManager.lookup's cascade exactly:
             #   surface (canonical tiers, position<=2)
-            #   → folded (Arabic only; reaches the position-3 fold key)
+            #   → folded (Arabic only; position=3 EXACTLY, matching queryEntryIds'
+            #     foldedTier — so a broken/missing fold row can't be masked by a
+            #     same-text canonical or alias row at position 0-2)
             #   → stem   (canonical tiers, position<=2).
             # The position<=2 ceiling on surface/stem is what forces a genuine
             # casual-spelling fixture through the fold step instead of letting a
@@ -981,7 +983,7 @@ def run_smoke_test(db_path: Path, lang: str) -> None:
                 folded = arabic_fold(surface)
                 rows = conn.execute(
                     "SELECT s.glosses FROM headword h JOIN sense s ON s.entry_id=h.entry_id "
-                    "WHERE h.text = ? ORDER BY h.entry_id",
+                    "WHERE h.text = ? AND h.position = 3 ORDER BY h.entry_id",
                     (folded,),
                 ).fetchall()
             if not rows and stemmer is not None:
