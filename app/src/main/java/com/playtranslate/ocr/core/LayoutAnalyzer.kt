@@ -702,10 +702,13 @@ object LayoutAnalyzer {
             c in '一'..'鿿' || c in '㐀'..'䶿' || c in '･'..'ﾟ'
         "zh", "zh-TW" -> c in '一'..'鿿' || c in '㐀'..'䶿'
         "ko" -> c in '가'..'힯' || c in 'ᄀ'..'ᇿ' || c in '㄰'..'㆏'
-        "ar" -> c in '؀'..'ۿ'
         "ru", "bg", "uk" -> c in 'Ѐ'..'ӿ'
         "th" -> c in '฀'..'๿'
         "hi", "mr", "ne" -> c in 'ऀ'..'ॿ'
+        // Arabic (and any profiled language with no hardcoded case above) routes
+        // through the profile's isScriptChar — for Arabic that covers Supplement,
+        // Extended-A, and Presentation Forms (e.g. the ﷲ ligature) the recognizer
+        // emits, which a base-block-only range would drop from the pipeline.
         else -> {
             val profile = SourceLanguageProfiles.forCode(sourceLang)
             if (profile != null) profile.isScriptChar(c) else c.code > 0x007F
