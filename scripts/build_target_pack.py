@@ -586,6 +586,37 @@ def build_target_pack(args: argparse.Namespace) -> None:
     # ── Manifest ─────────────────────────────────────────────────────
     db_size = db_path.stat().st_size
     db_sha = hashlib.sha256(db_path.read_bytes()).hexdigest()
+
+    # Attribution for the sources that actually contributed rows. source_counts
+    # is only populated when a tier inserted data, so a FR pack credits CFDICT
+    # while a DE pack credits HanDeDict, and neither carries a license it didn't
+    # use. CFDICT/HanDeDict and Wiktionary are CC-BY-SA — attribution required.
+    licenses: List[dict] = []
+    if "jmdict_ja" in source_counts:
+        licenses.append({
+            "component": "JMdict",
+            "license": "CC-BY-SA-4.0",
+            "attribution": "© EDRDG, https://www.edrdg.org/jmdict/edict_doc.html",
+        })
+    if "cfdict_zh" in source_counts:
+        licenses.append({
+            "component": "CFDICT",
+            "license": "CC-BY-SA-3.0",
+            "attribution": "© CFDICT / Chine Informations, https://chinese.gratis/cfdict.php",
+        })
+    if "handedict_zh" in source_counts:
+        licenses.append({
+            "component": "HanDeDict",
+            "license": "CC-BY-SA-2.0-DE",
+            "attribution": "© HanDeDict contributors, https://handedict.zydeo.net/",
+        })
+    if "wiktionary" in source_counts:
+        licenses.append({
+            "component": "Wiktionary",
+            "license": "CC-BY-SA-3.0",
+            "attribution": "© Wiktionary contributors, https://en.wiktionary.org/",
+        })
+
     manifest = {
         "langId": f"target-{target}",
         "schemaVersion": 1,
@@ -593,7 +624,7 @@ def build_target_pack(args: argparse.Namespace) -> None:
         "appMinVersion": 0,
         "files": [{"path": "glosses.sqlite", "size": db_size, "sha256": db_sha}],
         "totalSize": db_size,
-        "licenses": [],
+        "licenses": licenses,
         "target": target,
         "covers": all_sources,
         "sourceCounts": source_counts,

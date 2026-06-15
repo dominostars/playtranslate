@@ -60,7 +60,7 @@ You can support PlayTranslate on Ko-fi at https://ko-fi.com/playtranslate
 
 ## Supported Languages
 
-PlayTranslate translates from **21 game languages** (the text it can read off the screen) into **59 translation languages** (the language shown to you). Both tables are sorted by total worldwide speakers.
+PlayTranslate translates from **22 game languages** (the text it can read off the screen) into **59 translation languages** (the language shown to you). Both tables are sorted by total worldwide speakers.
 
 ### Game languages (read from the screen)
 
@@ -76,8 +76,8 @@ PlayTranslate translates from **21 game languages** (the text it can read off th
 | Portuguese            | Português        | pt       |
 | German                | Deutsch          | de       |
 | Russian               | Русский          | ru       |
+| Arabic                | العربية          | ar       |
 | Vietnamese            | Tiếng Việt       | vi       |
-| Turkish               | Türkçe           | tr       |
 | Turkish               | Türkçe           | tr       |
 | Italian               | Italiano         | it       |
 | Romanian              | Română           | ro       |
@@ -179,11 +179,13 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 - [Lingva](https://github.com/thedaviddelta/lingva-translate): online translation
 - [AnkiDroid](https://github.com/ankidroid/Anki-Android): flashcard integration
 - [MNN](https://github.com/alibaba/MNN): on-device LLM and OCR inference engine (Apache 2.0)
-- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR): on-device OCR — the bundled PP-OCRv5 text detector plus per-script recognizers (Apache 2.0)
+- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR): on-device OCR — the bundled PP-OCRv6 text detector and unified recognizer, plus optional per-script recognizers (Apache 2.0)
 - [docTR](https://github.com/mindee/doctr) and [EasyOCR](https://github.com/JaidedAI/EasyOCR): line-grouping logic adapted for OCR word-box assembly (Apache 2.0)
 - [OpenCV](https://opencv.org/): image preprocessing for OCR — DBNet contour postprocessing and crop rectification (Apache 2.0)
 - [OpenCC4j](https://github.com/houbb/opencc4j): Simplified/Traditional Chinese conversion (Apache 2.0)
-- [slimt](https://github.com/jerinphilip/slimt): tiny [Marian](https://marian-nmt.github.io/)-based NMT engine that runs the Bergamot offline models
+- [slimt](https://github.com/jerinphilip/slimt): tiny [Marian](https://marian-nmt.github.io/)-based NMT engine that runs the Bergamot offline models (GPL-2.0-or-later, with MPL-2.0 Marian components)
+- [OkHttp](https://square.github.io/okhttp/): HTTP client for online translation and downloads (Apache 2.0)
+- [Gson](https://github.com/google/gson): JSON serialization (Apache 2.0)
 
 ### (Optional) Downloadable Offline Models
 
@@ -191,18 +193,24 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 - Qwen 2.5 1.5B Instruct (Alibaba): downloadable as an optional offline pack (Apache 2.0)
 - Gemma 4 E2B (Google): downloadable as an optional offline pack (Gemma terms of use)
 - Hunyuan-MT 1.5 1.8B (Tencent): translation-specialised model, downloadable as an optional offline pack (Tencent HY Community License — not available in the EU, UK, or South Korea)
-- [PaddleOCR PP-OCRv5 recognizers](https://github.com/PaddlePaddle/PaddleOCR): per-script OCR recognizer packs (Chinese/Japanese/English, Latin, Korean), downloadable per source language (Apache 2.0)
+- [PaddleOCR PP-OCRv5 recognizers](https://github.com/PaddlePaddle/PaddleOCR): optional per-script OCR recognizer packs for additional scripts (e.g. Korean, Arabic, Cyrillic, Thai), downloadable per source language (Apache 2.0)
 - [Meiki](https://github.com/rtr46/meikiocr): high-accuracy Japanese OCR model (D-FINE), downloadable as an optional offline pack (LGPL 3.0)
 - [Firefox Translations (Bergamot)](https://github.com/mozilla/firefox-translations-models): Mozilla's offline NMT model pairs, downloadable for offline translation
 
 ### Linguistic data
 
-- [JMdict](https://www.edrdg.org/jmdict/j_jmdict.html) and [KANJIDIC2](https://www.edrdg.org/kanjidic/kanjidic2.html): Japanese dictionary and kanji data (EDRDG licence)
+- [JMdict](https://www.edrdg.org/jmdict/j_jmdict.html), [KANJIDIC2](https://www.edrdg.org/kanjidic/kanjidic2.html), and [JMnedict](https://www.edrdg.org/enamdict/enamdict_doc.html): Japanese dictionary, kanji, and proper-name data (EDRDG licence; JMnedict offered as an optional in-app [Yomitan](https://github.com/yomidevs/jmdict-yomitan) download)
 - [CC-CEDICT](https://cc-cedict.org/wiki/): Chinese-English dictionary (CC BY-SA 4.0)
+- [CFDICT](https://chinese.gratis/cfdict.php): Chinese-French dictionary, used for French-target glosses (CC BY-SA 3.0)
+- [HanDeDict](https://handedict.zydeo.net/): Chinese-German dictionary, used for German-target glosses (CC BY-SA 2.0 DE)
 - [Wiktionary](https://en.wiktionary.org/) via [kaikki.org](https://kaikki.org/): multilingual dictionary entries (CC BY-SA)
 - [Tatoeba](https://tatoeba.org/): example sentences (CC BY 2.0)
 - [PanLex](https://panlex.org/): multilingual translation pairs (CC0)
 - [wordfreq](https://github.com/rspeer/wordfreq): word frequency data
+- [Camel Morph MSA](https://github.com/CAMeL-Lab/camel_morph): Arabic morphology, used to map inflected and broken-plural surface forms to dictionary lemmas (© CAMeL Lab, NYU Abu Dhabi; CC BY 4.0, modified)
+- [Arramooz](https://github.com/linuxscout/arramooz): Arabic morphological dictionary (© Taha Zerrouki; GPL 3.0)
+- [SudachiDict](https://github.com/WorksApplications/SudachiDict): Japanese tokenizer dictionary bundled for Sudachi, including [UniDic](https://clrd.ninjal.ac.jp/unidic/) (© NINJAL) and part of [mecab-ipadic-NEologd](https://github.com/neologd/mecab-ipadic-neologd) (Apache 2.0)
+- [Jiten](https://jiten.moe/): Japanese frequency data, offered as an optional in-app Yomitan dictionary download (CC BY-SA 4.0)
 
 ## License
 
