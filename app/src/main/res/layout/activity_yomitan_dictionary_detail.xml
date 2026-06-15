@@ -53,31 +53,60 @@
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:paddingHorizontal="@dimen/pt_row_h_padding"
-                    android:paddingVertical="@dimen/pt_row_v_padding">
+                    android:orientation="vertical">
 
-                    <TextView
-                        style="@style/Text.PT.RowTitle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/yomitan_alias_label" />
-
-                    <EditText
-                        android:id="@+id/etYomitanAlias"
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:background="?attr/ptSurface"
-                        android:hint="@string/yomitan_alias_hint"
-                        android:importantForAutofill="no"
-                        android:imeOptions="actionDone|flagNoFullscreen|flagNoExtractUi"
-                        android:inputType="text"
-                        android:padding="10dp"
-                        android:singleLine="true"
-                        android:textColor="?attr/ptText"
-                        android:textColorHint="?attr/ptTextHint"
-                        android:textSize="15sp" />
+                        android:orientation="vertical"
+                        android:paddingHorizontal="@dimen/pt_row_h_padding"
+                        android:paddingVertical="@dimen/pt_row_v_padding">
+
+                        <TextView
+                            style="@style/Text.PT.RowTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/yomitan_alias_label" />
+
+                        <EditText
+                            android:id="@+id/etYomitanAlias"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:background="?attr/ptSurface"
+                            android:hint="@string/yomitan_alias_hint"
+                            android:importantForAutofill="no"
+                            android:imeOptions="actionDone|flagNoFullscreen|flagNoExtractUi"
+                            android:inputType="text"
+                            android:padding="10dp"
+                            android:singleLine="true"
+                            android:textColor="?attr/ptText"
+                            android:textColorHint="?attr/ptTextHint"
+                            android:textSize="15sp" />
+                    </LinearLayout>
+
+                    <include layout="@layout/settings_row_divider" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingHorizontal="@dimen/pt_row_h_padding"
+                        android:paddingVertical="@dimen/pt_row_v_padding">
+
+                        <TextView
+                            style="@style/Text.PT.RowTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/pt_accent_label" />
+
+                        <com.playtranslate.ui.WrappingLinearLayout
+                            android:id="@+id/yomitanAccentPicker"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp" />
+                    </LinearLayout>
+
                 </LinearLayout>
 
             </com.google.android.material.card.MaterialCardView>

@@ -59,6 +59,10 @@ data class YomitanDictionary(
     /** index.json frequencyMode ("rank-based"/"occurrence-based"), when
      *  declared. Persisted for future ranking use; display ignores it. */
     val frequencyMode: String? = null,
+    /** Per-dictionary accent override (ARGB) for the rounded background of this
+     *  dictionary's text chips; null = the default (subtitle text color).
+     *  User-set on the dictionary detail page. */
+    val accentColor: Int? = null,
 )
 
 /**
@@ -427,6 +431,31 @@ object YomitanDictionaryStore {
                 true
             }
             // Alias feeds the data store's registry-derived display cache.
+            if (changed) YomitanDataStore.invalidate()
+        }
+
+    /** Sets the per-dictionary accent color override (ARGB) for dictionary
+     *  [id]; null clears it (chips fall back to the default neutral
+     *  background). No-op when the registry is unreadable, the dictionary is
+     *  gone, or the value is unchanged. */
+    suspend fun setAccentColor(ctx: Context, id: String, color: Int?) =
+        withContext(Dispatchers.IO) {
+            val changed = mutex.withLock {
+                val registry = readRegistry(ctx) ?: return@withLock false
+                val current = registry.dictionaries.firstOrNull { it.id == id }
+                    ?: return@withLock false
+                if (current.accentColor == color) return@withLock false
+                writeRegistry(
+                    ctx,
+                    registry.copy(
+                        dictionaries = registry.dictionaries.map {
+                            if (it.id == id) it.copy(accentColor = color) else it
+                        },
+                    ),
+                )
+                true
+            }
+            // Accent color feeds the data store's registry-derived chip cache.
             if (changed) YomitanDataStore.invalidate()
         }
 

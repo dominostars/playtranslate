@@ -118,6 +118,7 @@ fun importedSenseDisplays(groups: List<ImportedSenseGroup>): List<SenseDisplay> 
                 pos = listOf(importedHeader(group.source, sense.pos)),
                 definition = sense.definition,
                 imported = true,
+                accentColor = group.accentColor,
             )
         }
     }

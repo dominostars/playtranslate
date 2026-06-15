@@ -39,6 +39,9 @@ data class DictionaryEntry(
 data class ImportedSenseGroup(
     val source: String,
     val senses: List<ImportedSense>,
+    /** Per-dictionary accent override (ARGB) for this group's title; null =
+     *  the default muted header. */
+    val accentColor: Int? = null,
 )
 
 /** One imported definition. [pos] is the entry's part-of-speech tags
@@ -87,6 +90,9 @@ data class Headword(
 data class FrequencyTag(
     val source: String,
     val display: String,
+    /** Per-dictionary accent override (ARGB) for the chip's rounded
+     *  background; null = the default neutral chip. */
+    val accentColor: Int? = null,
 )
 
 /**

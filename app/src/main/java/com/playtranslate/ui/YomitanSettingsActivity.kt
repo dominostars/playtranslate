@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -405,6 +406,7 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
             val delete: ImageView = view.findViewById(R.id.btnYomitanDelete)
             val divider: View = view.findViewById(R.id.yomitanRowDivider)
             val content: View = view.findViewById(R.id.yomitanRowContent)
+            val colorDot: View = view.findViewById(R.id.yomitanColorDot)
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH = VH(
@@ -419,6 +421,11 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
             // Show the user's alias (nickname) when set; the detail page keeps
             // the original title.
             holder.title.text = entry.alias ?: entry.title
+            // Accent dot: the per-dict override, or the subtitle text color.
+            holder.colorDot.background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(entry.accentColor ?: this@YomitanSettingsActivity.themeColor(R.attr.ptTextMuted))
+            }
             val description = entry.description.orEmpty()
             holder.subtitle.isGone = description.isEmpty()
             holder.subtitle.text = description

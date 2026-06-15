@@ -30,6 +30,15 @@
             android:scaleType="center"
             android:contentDescription="@string/cd_drag_to_reorder" />
 
+        <!-- Per-dictionary accent dot; color set by the adapter (the override,
+             or the subtitle text color by default). -->
+        <View
+            android:id="@+id/yomitanColorDot"
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:layout_marginEnd="12dp"
+            android:importantForAccessibility="no" />
+
         <!-- The tap target for opening the metadata detail page. Scoped to the
              center content (not the whole row) so it never overlaps the drag
              handle or the delete button. Height is wrap_content (NOT

@@ -99,7 +99,9 @@ class WordDefinitionsView @JvmOverloads constructor(
                     else context.localizePos(sense.pos)
                 val header = TextView(context).apply {
                     text = label.uppercase()
-                    setTextColor(secondaryText)
+                    // Imported rows with a per-dict accent override tint the
+                    // title; everything else uses the muted secondary color.
+                    setTextColor(sense.accentColor ?: secondaryText)
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f * scale)
                     typeface = medium
                     letterSpacing = 0.07f
@@ -147,8 +149,11 @@ class WordDefinitionsView @JvmOverloads constructor(
                 BadgeChips.freqChip(
                     context,
                     tag,
-                    textColor = secondaryText,
-                    background = metaChipBackground(),
+                    // With an accent override the chip is a filled pill: text
+                    // takes the default chip background color so it reads as
+                    // knocked out of the accent fill.
+                    textColor = if (tag.accentColor != null) metaChipFill else secondaryText,
+                    background = freqChipBackground(tag.accentColor),
                     textSizeSp = 11.5f * scale,
                     horizontalPadPx = dp(8f * scale),
                     verticalPadPx = dp(2f * scale),
@@ -174,6 +179,13 @@ class WordDefinitionsView @JvmOverloads constructor(
      *  chip — drawables can't be shared across views. */
     private fun metaChipBackground(): GradientDrawable = GradientDrawable().apply {
         setColor(metaChipFill)
+        cornerRadius = dp(4f).toFloat()
+    }
+
+    /** Frequency-chip background: the dictionary's per-dict accent override
+     *  ([accentColor], ARGB) when set, else the neutral [metaChipFill]. */
+    private fun freqChipBackground(accentColor: Int?): GradientDrawable = GradientDrawable().apply {
+        setColor(accentColor ?: metaChipFill)
         cornerRadius = dp(4f).toFloat()
     }
 

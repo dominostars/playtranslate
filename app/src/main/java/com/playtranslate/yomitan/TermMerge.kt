@@ -47,6 +47,9 @@ internal object TermMerge {
         normalizedReading: String?,
         normalizedTerm: String,
         singleDictionary: Boolean = false,
+        /** Per-dictionary accent override (ARGB) keyed by dict id; tints each
+         *  imported group's title. Defaulted so existing callers are unaffected. */
+        dictColors: Map<String, Int?> = emptyMap(),
     ): YomitanDataStore.TermLookup {
         val narrowed =
             if (normalizedReading == null) rows
@@ -69,7 +72,7 @@ internal object TermMerge {
                     )
                 }
                 .takeIf { it.isNotEmpty() }
-                ?.let { ImportedSenseGroup(label, it) }
+                ?.let { ImportedSenseGroup(label, it, dictColors[dictId]) }
         }.let { if (singleDictionary) it.take(1) else it }
         val resolvedReading = normalizedReading
             ?: dictOrder.firstNotNullOfOrNull { (dictId, _) ->

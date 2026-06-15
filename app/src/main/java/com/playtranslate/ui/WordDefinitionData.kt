@@ -40,4 +40,7 @@ data class SenseDisplay(
     val pos: List<String>,
     val definition: String,
     val imported: Boolean = false,
+    /** Per-dictionary accent override (ARGB) for an imported row's title;
+     *  null = the default muted header. */
+    val accentColor: Int? = null,
 )

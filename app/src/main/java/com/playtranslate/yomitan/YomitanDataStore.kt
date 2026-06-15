@@ -74,6 +74,10 @@ object YomitanDataStore {
          *  the label is the user alias when set, else the title. Empty → no
          *  frequency capability installed; queries return immediately. */
         val freqDicts: List<Pair<String, String>>,
+        /** Per-dictionary accent override (ARGB) keyed by dict id, across all
+         *  categories; null entry → no override (default neutral rendering).
+         *  Feeds freq chips, kanji-frequency text, and term-group titles. */
+        val dictColors: Map<String, Int?>,
         /** KANJI section's dictionaries in priority order — first dict with
          *  a character wins its whole entry. */
         val kanjiDicts: List<KanjiDictMeta>,
@@ -212,7 +216,9 @@ object YomitanDataStore {
                     }
                 }
                 val tags = caps.freqDicts.mapNotNull { (dictId, label) ->
-                    byDict[dictId]?.let { FrequencyTag(label, it.joinToString(" · ")) }
+                    byDict[dictId]?.let {
+                        FrequencyTag(label, it.joinToString(" · "), caps.dictColors[dictId])
+                    }
                 }
                 if (tags.isNotEmpty()) put(pair, tags)
             }
@@ -312,7 +318,9 @@ object YomitanDataStore {
                     byDict.getOrPut(dictId) { LinkedHashSet() }.add(display)
                 }
                 val tags = caps.kanjiFreqDicts.mapNotNull { (dictId, label) ->
-                    byDict[dictId]?.let { FrequencyTag(label, it.joinToString(" · ")) }
+                    byDict[dictId]?.let {
+                        FrequencyTag(label, it.joinToString(" · "), caps.dictColors[dictId])
+                    }
                 }
                 if (tags.isNotEmpty()) put(char, tags)
             }
@@ -369,6 +377,7 @@ object YomitanDataStore {
             normalizedReading = reading?.let(Deinflector::katakanaToHiragana),
             normalizedTerm = Deinflector.katakanaToHiragana(term),
             singleDictionary = caps.termsSingleDictionary,
+            dictColors = caps.dictColors,
         )
     }
 
@@ -492,6 +501,9 @@ object YomitanDataStore {
                         .map { it.id },
                     freqDicts = ordered(YomitanCategory.FREQUENCY)
                         .map { it.id to (it.alias ?: it.title) },
+                    dictColors = registry.dictionaries
+                        .filter { it.matchesSourceLanguage(CONSUMING_SOURCE_LANG) }
+                        .associate { it.id to it.accentColor },
                     kanjiDicts = ordered(YomitanCategory.KANJI)
                         .map { KanjiDictMeta(it.id, it.targetLanguage, splitsByDict[it.id] ?: true) },
                     kanjiFreqDicts = ordered(YomitanCategory.KANJI_FREQUENCY)

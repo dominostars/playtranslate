@@ -2234,6 +2234,8 @@
     <string name="yomitan_alias_label">Alias</string>
     <!-- Placeholder hint for the alias (nickname) field. -->
     <string name="yomitan_alias_hint">Add a nickname</string>
+    <!-- Content description for the leading swatch in the per-dictionary accent picker (the subtitle text color = default). -->
+    <string name="yomitan_accent_default_cd">Default (subtitle text color)</string>
 
     <!-- TOOLS — standalone utilities reachable from settings. -->
     <string name="settings_header_tools">Tools</string>

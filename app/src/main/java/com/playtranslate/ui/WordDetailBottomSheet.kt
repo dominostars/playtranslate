@@ -753,6 +753,7 @@ class WordDetailBottomSheet : DialogFragment() {
                         if (sense.pos.isNotBlank()) add(sense.pos)
                     },
                     imported = true,
+                    accentColor = group.accentColor,
                     glossList = listOf(sense.definition),
                     senseNumber = null,
                     miscText = null,
@@ -1013,18 +1014,23 @@ class WordDetailBottomSheet : DialogFragment() {
         }
         if (isCommon) badgeRow.addView(buildCommonPill())
         if (freqStars > 0) badgeRow.addView(buildStarRow(freqStars))
-        // Imported-dictionary frequency chips stay neutral/muted even though
-        // this header's other pills are accent-flavored — they're data, not
-        // a highlight, and one accent chip per dictionary would compete with
-        // the single Common signal.
+        // Imported-dictionary frequency chips are neutral by default (data, not
+        // a highlight), unless the user set a per-dictionary accent override
+        // (tag.accentColor), which tints the chip's rounded background.
         for (tag in display.frequencies) {
             badgeRow.addView(
                 BadgeChips.freqChip(
                     ctx,
                     tag,
-                    textColor = ctx.themeColor(R.attr.ptTextMuted),
-                    background = AppCompatResources.getDrawable(ctx, R.drawable.bg_anki_meta_chip)
-                        ?: GradientDrawable(),
+                    // With an accent override the chip is a filled pill: text
+                    // takes the default chip background (ptSurface) so it reads
+                    // as knocked out of the accent fill.
+                    textColor = if (tag.accentColor != null) ctx.themeColor(R.attr.ptSurface)
+                        else ctx.themeColor(R.attr.ptTextMuted),
+                    background = tag.accentColor?.let {
+                        GradientDrawable().apply { setColor(it); cornerRadius = dp(4).toFloat() }
+                    } ?: (AppCompatResources.getDrawable(ctx, R.drawable.bg_anki_meta_chip)
+                        ?: GradientDrawable()),
                     textSizeSp = 11f,
                     horizontalPadPx = dp(10),
                     verticalPadPx = dp(3),
@@ -1495,6 +1501,9 @@ class WordDetailBottomSheet : DialogFragment() {
         /** Imported Yomitan rows pass a verbatim dictionary-name header in
          *  [posLabels] — never localized. Pack rows localize their POS. */
         imported: Boolean = false,
+        /** Imported rows: per-dictionary accent override (ARGB) for the title
+         *  header; null = the default muted color. */
+        accentColor: Int? = null,
         glossList: List<String>,
         senseNumber: Int?,
         miscText: String?,
@@ -1553,7 +1562,7 @@ class WordDetailBottomSheet : DialogFragment() {
                 textSize = 10f
                 letterSpacing = 0.12f
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+                setTextColor(accentColor ?: ctx.themeColor(R.attr.ptTextMuted))
                 isAllCaps = true
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1822,17 +1831,31 @@ class WordDetailBottomSheet : DialogFragment() {
             listOf("pinyin" to detail.pinyin) else emptyList()
     }
 
-    private fun buildMetaLine(detail: CharacterDetail): String = when (detail) {
-        is KanjiDetail -> buildList {
-            // Imported kanji-frequency data rides the same mono meta list,
-            // one segment per dictionary in the section's display order,
-            // ahead of the built-in JLPT/grade/strokes facts.
-            detail.frequencies.forEach { add("${it.source}: ${it.display}") }
-            if (detail.jlpt > 0)       add("JLPT N${detail.jlpt}")
-            if (detail.grade in 1..6)  add("Grade ${detail.grade}")
-            else if (detail.grade == 8) add("Secondary")
-            if (detail.strokeCount > 0) add("${detail.strokeCount} strokes")
-        }.joinToString("  ·  ")
+    private fun buildMetaLine(detail: CharacterDetail): CharSequence = when (detail) {
+        is KanjiDetail -> {
+            // Imported kanji-frequency data rides the same mono meta list, one
+            // segment per dictionary in the section's display order, ahead of
+            // the built-in JLPT/grade/strokes facts. A dictionary with a
+            // per-dict accent override tints its own frequency segment.
+            val sb = android.text.SpannableStringBuilder()
+            fun seg(text: String, color: Int?) {
+                if (sb.isNotEmpty()) sb.append("  ·  ")
+                val start = sb.length
+                sb.append(text)
+                if (color != null) {
+                    sb.setSpan(
+                        android.text.style.ForegroundColorSpan(color),
+                        start, sb.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                    )
+                }
+            }
+            detail.frequencies.forEach { seg("${it.source}: ${it.display}", it.accentColor) }
+            if (detail.jlpt > 0)       seg("JLPT N${detail.jlpt}", null)
+            if (detail.grade in 1..6)  seg("Grade ${detail.grade}", null)
+            else if (detail.grade == 8) seg("Secondary", null)
+            if (detail.strokeCount > 0) seg("${detail.strokeCount} strokes", null)
+            sb
+        }
         is HanziDetail -> buildList {
             if (detail.isCommon) add("Common")
             if (detail.freqScore > 0) add("★".repeat(detail.freqScore))
