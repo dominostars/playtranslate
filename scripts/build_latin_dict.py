@@ -79,7 +79,6 @@ import json
 import math
 import sqlite3
 import sys
-import unicodedata
 import zipfile
 from pathlib import Path
 from typing import Iterable, Optional
@@ -111,6 +110,17 @@ from wiktionary_filters import (
     WIKT_REDIRECT_KEYS,
     is_redirect_entry,
     is_redirect_sense,
+)
+
+# Arabic normalization + fold specs — kept in scripts/arabic_text.py (dep-free)
+# so this script and the heavy arabic_morphology.py share one definition. MUST
+# match ArabicNormalize.kt / ArabicFold.kt character-for-character (pinned by
+# the _assert_* golden fixtures, run from the smoke test).
+from arabic_text import (
+    _assert_arabic_fold,
+    _assert_arabic_normalize,
+    arabic_fold,
+    arabic_normalize,
 )
 
 # Turkish case mapping: default Python `str.lower()` uses Unicode folding
@@ -177,51 +187,12 @@ def extract_examples(sense: dict) -> list[tuple[str, str]]:
     return candidates[:MAX_EXAMPLES_PER_SENSE]
 
 
-# Arabic orthographic normalization for headword keys — MUST match
-# ArabicNormalize.kt (app/.../language/ArabicNormalize.kt) character-for-character
-# so the runtime's normalized lookup queries hit these keys. Pinned by
-# _assert_arabic_normalize() (run from the smoke test) + ArabicNormalizeTest on
-# the JVM side.
-def arabic_normalize(word: str) -> str:
-    s = unicodedata.normalize("NFKC", word)
-    out = []
-    for ch in s:
-        o = ord(ch)
-        if 0x064B <= o <= 0x065F or o == 0x0670 or o == 0x0640:
-            continue  # strip tashkeel / combining marks, superscript alef, tatweel
-        else:
-            out.append(ch)  # letter identities preserved (no ة→ه / ى→ي / أ→ا fold)
-    return "".join(out)
-
-
-def _assert_arabic_normalize() -> None:
-    """Golden fixture — MUST match ArabicNormalizeTest.kt so build-time and
-    runtime Arabic normalization agree (drift = silently-missed lookups)."""
-    cases = {
-        "كَت": "كت",   # كَت → كت (strip fatha)
-        "كـت": "كت",   # كـت → كت (strip tatweel)
-        "هٰ": "ه",               # هٰ → ه (strip superscript alef)
-        "آ": "آ", "أ": "أ", "إ": "إ", "ٱ": "ٱ",  # alef variants PRESERVED (no fold)
-        "ى": "ى",                      # alef maqsura PRESERVED
-        "ة": "ة",                      # taa marbuta PRESERVED
-        "ﷲ": "الله",    # ﷲ → الله (NFKC ligature)
-        "كتاب": "كتاب",  # كتاب unchanged
-        "100": "100",
-        "abc": "abc",
-    }
-    for inp, exp in cases.items():
-        got = arabic_normalize(inp)
-        if got != exp:
-            raise SystemExit(
-                f"arabic_normalize golden fixture FAILED: {inp!r} -> {got!r}, expected {exp!r}"
-            )
-
-
 def lower_for_lang(word: str, lang: str) -> str:
     """Locale-aware lowercase for pack headword keys. Turkish needs the I/İ
     remap before default folding; Arabic is run through [arabic_normalize]
-    (no case, but diacritics/tatweel stripped and alef/ya/taa folded); other
-    languages fall back to plain `str.lower()`."""
+    (no case; diacritics/tatweel STRIPPED, but letter identities PRESERVED —
+    NO alef/ya/taa folding, so the position-0 key doubles as the displayed
+    lemma); other languages fall back to plain `str.lower()`."""
     if lang == "tr":
         word = word.translate(_TR_UPPER_MAP)
     elif lang == "ar":
@@ -862,10 +833,90 @@ SMOKE_FIXTURES: dict[str, dict[str, str]] = {
         # مدرسة "school" — a taa-marbuta lemma. Its resolving proves the position-0
         # headword kept ة (not folded to ه), i.e. the displayed spelling is intact.
         "مدرسة": "school",
+        # مدرسه — the casual heh-spelling of مدرسة (taa-marbuta written as plain
+        # heh). NOT a canonical headword, so it must resolve via the position-3
+        # fold key — this fixture exercises the fold FALLBACK, not the surface
+        # query (which is ceiling-limited to position<=2 in the runner above).
+        "مدرسه": "school",
     },
     # Other languages: fill in per-rebuild. Empty is OK — no fixtures
     # means "build still succeeds, just no regression guard for this lang."
 }
+
+
+# ── Arabic post-build augmentation ────────────────────────────────────────
+#
+# Runs ONLY for `--lang ar`, between build_sqlite and the smoke test. The
+# ordering is correctness-critical and kept visible in one place:
+#
+#   1. unique index — makes the no-duplicate-row invariant structural, so every
+#                     augmentation insert below can be INSERT OR IGNORE.
+#   2. morphology   — Arramooz + camel_morph surface→lemma position-2 alias rows
+#                     (heavy; scripts/arabic_morphology.py). Added in a later
+#                     commit; the call site is marked below.
+#   3. fold pass    — LAST, so the new position-2 aliases ALSO get position-3
+#                     folded variants.
+#
+# `headword.position` tiers: 0 lemma (display), 1 Snowball stem, 2 alias,
+# 3 folded variant (casual/variant spelling — lookup-only, never displayed).
+
+
+def _create_headword_unique_index(conn: sqlite3.Connection) -> None:
+    """Make (entry_id, position, text) unique so the morphology + fold inserts
+    can't create duplicate rows. Creating it also self-checks that the base
+    pass-1/2 rows carry no exact dupes (it raises otherwise). Invisible to the
+    runtime schema probe, which checks columns, not indexes."""
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_headword_unique "
+        "ON headword(entry_id, position, text)"
+    )
+
+
+def _emit_fold_rows(conn: sqlite3.Connection) -> None:
+    """For every canonical headword (position 0 lemma, position 2 alias), insert
+    a position-3 'folded variant' row when arabic_fold(text) differs from the
+    stored text — the separate internal lookup key
+    WiktionaryDictionaryManager.lookup tries as a fallback for casual/variant
+    spellings. Position-0 display rows stay un-folded. Prints the fold-key
+    collision rate so the lossy-fold tradeoff is decided with a number."""
+    rows = conn.execute(
+        "SELECT entry_id, text FROM headword WHERE position IN (0, 2)"
+    ).fetchall()
+    fold_rows: list[tuple[int, str]] = []
+    key_to_entries: dict[str, set[int]] = {}
+    for entry_id, text in rows:
+        folded = arabic_fold(text)
+        if folded != text:
+            fold_rows.append((entry_id, folded))
+            key_to_entries.setdefault(folded, set()).add(entry_id)
+    conn.executemany(
+        "INSERT OR IGNORE INTO headword (entry_id, position, text) VALUES (?, 3, ?)",
+        fold_rows,
+    )
+    if key_to_entries:
+        collisions = sum(1 for ents in key_to_entries.values() if len(ents) > 1)
+        total = len(key_to_entries)
+        print(
+            f"Fold pass: {len(fold_rows)} position-3 candidate rows over {total} "
+            f"distinct fold keys; {collisions} keys "
+            f"({100.0 * collisions / total:.2f}%) collide across >1 entry."
+        )
+    else:
+        print("Fold pass: no folded variants needed.")
+
+
+def postprocess_arabic(db_path: Path) -> None:
+    """Arabic-only post-build pass (unique index → morphology → fold). See the
+    block comment above for the ordering rationale."""
+    conn = sqlite3.connect(db_path)
+    try:
+        _create_headword_unique_index(conn)
+        # Morphology augmentation (Arramooz + camel_morph) is inserted here in a
+        # follow-up commit; the fold pass must remain LAST.
+        _emit_fold_rows(conn)
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def run_smoke_test(db_path: Path, lang: str) -> None:
@@ -875,6 +926,7 @@ def run_smoke_test(db_path: Path, lang: str) -> None:
     language has no fixtures."""
     if lang == "ar":
         _assert_arabic_normalize()
+        _assert_arabic_fold()
     fixtures = SMOKE_FIXTURES.get(lang, {})
     if not fixtures:
         return
@@ -885,22 +937,35 @@ def run_smoke_test(db_path: Path, lang: str) -> None:
     try:
         for surface, expected_substr in fixtures.items():
             surface_l = lower_for_lang(surface, lang)
-            # Try surface, then stem — matches WiktionaryDictionaryManager.lookup.
+            # Mirror WiktionaryDictionaryManager.lookup's cascade exactly:
+            #   surface (canonical tiers, position<=2)
+            #   → folded (Arabic only; reaches the position-3 fold key)
+            #   → stem   (canonical tiers, position<=2).
+            # The position<=2 ceiling on surface/stem is what forces a genuine
+            # casual-spelling fixture through the fold step instead of letting a
+            # position-3 row satisfy the plain surface query.
             rows = conn.execute(
                 "SELECT s.glosses FROM headword h JOIN sense s ON s.entry_id=h.entry_id "
-                "WHERE h.text = ? ORDER BY h.entry_id",
+                "WHERE h.text = ? AND h.position <= 2 ORDER BY h.entry_id",
                 (surface_l,),
             ).fetchall()
+            if not rows and lang == "ar":
+                folded = arabic_fold(surface)
+                rows = conn.execute(
+                    "SELECT s.glosses FROM headword h JOIN sense s ON s.entry_id=h.entry_id "
+                    "WHERE h.text = ? ORDER BY h.entry_id",
+                    (folded,),
+                ).fetchall()
             if not rows and stemmer is not None:
                 stem = stemmer.stemWord(surface_l)
                 if stem and stem != surface_l:
                     rows = conn.execute(
                         "SELECT s.glosses FROM headword h JOIN sense s ON s.entry_id=h.entry_id "
-                        "WHERE h.text = ? ORDER BY h.entry_id",
+                        "WHERE h.text = ? AND h.position <= 2 ORDER BY h.entry_id",
                         (stem,),
                     ).fetchall()
             if not rows:
-                failures.append(f"  {surface!r}: no rows via surface or stem lookup")
+                failures.append(f"  {surface!r}: no rows via surface/fold/stem lookup")
                 continue
             joined = "\t".join(r[0] for r in rows).lower()
             if expected_substr.lower() not in joined:
@@ -960,6 +1025,8 @@ def main() -> int:
         return 1
 
     build_sqlite(args.input, db_path, args.lang)
+    if args.lang == "ar":
+        postprocess_arabic(db_path)
     run_smoke_test(db_path, args.lang)
 
     tokenizer_entries = None

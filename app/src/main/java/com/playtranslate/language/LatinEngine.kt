@@ -97,7 +97,10 @@ class LatinEngine(
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? {
         val w = normalizeForLookup(word)
         val stem = stemOf(w)
-        return dict.lookup(surface = w, stemmed = stem)
+        // Arabic gets a folded lookup key (casual/variant spellings) as a
+        // fallback the dictionary tries after surface and before stem.
+        val folded = if (langId == SourceLangId.AR) ArabicFold.fold(w) else null
+        return dict.lookup(surface = w, stemmed = stem, folded = folded)
     }
 
     override fun close() {
@@ -119,9 +122,12 @@ class LatinEngine(
         }
     }
 
-    /** Arabic source text is matched against normalized headwords (undiacritized,
-     *  alef/ya/taa folded, NFKC) — see [ArabicNormalize]. The dictionary pack is
-     *  built with the identical normalization. No-op for other languages. */
+    /** Arabic source text is matched against undiacritized headwords — NFKC +
+     *  tashkeel/tatweel stripped, but letter identities PRESERVED (NO alef/ya/taa
+     *  fold; see [ArabicNormalize] — the normalized form doubles as the displayed
+     *  lemma). The pack is built with the identical normalization. Casual
+     *  letter-variant spellings are handled separately by the folded fallback in
+     *  [lookup] ([ArabicFold]). No-op for other languages. */
     private fun normalizeForLookup(word: String): String =
         if (langId == SourceLangId.AR) ArabicNormalize.normalize(word) else word
 

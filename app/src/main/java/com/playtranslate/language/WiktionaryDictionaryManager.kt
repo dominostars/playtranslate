@@ -25,13 +25,16 @@ import java.io.File
  * drop-in-compatible packs, with a simpler lookup pipeline than JA:
  *
  *  1. Exact-surface query against the `headword` table. The `headword`
- *     rows come in three flavors, distinguished by `position`:
- *     `0` = lemma surface, `1` = Snowball stem, `2` = redirect alias
- *     (Wiktionary `form_of`/`alt_of` mapped to the lemma's entry_id).
- *     A single `WHERE text = ?` query matches all three; the caller uses
- *     the matched position to pick an inflection marker.
- *  2. Stem-form fallback supplied by [LatinEngine] (Snowball Porter).
- *  3. Silent pass-through on miss (per decision 7 in the architecture doc).
+ *     rows come in four flavors, distinguished by `position`:
+ *     `0` = lemma surface, `1` = Snowball stem, `2` = redirect/morphology
+ *     alias (mapped to the lemma's entry_id), `3` = folded variant (a
+ *     casual/variant-spelling key, Arabic — see [ArabicFold]). The canonical
+ *     surface/stem queries match positions 0–2; position 3 is reached ONLY by
+ *     [lookup]'s folded fallback. The caller uses the matched position to pick
+ *     an inflection marker ([markerForPosition]).
+ *  2. Folded-variant fallback supplied by [LatinEngine] (Arabic [ArabicFold]).
+ *  3. Stem-form fallback supplied by [LatinEngine] (Snowball Porter).
+ *  4. Silent pass-through on miss (per decision 7 in the architecture doc).
  *
  * No de-inflection table. No N-gram phrase batching. No `kanjidic` table —
  * the Wiktionary pack's `kanjidic` is empty by design, and this manager
@@ -61,31 +64,50 @@ class WiktionaryDictionaryManager private constructor(
     suspend fun preload() = ensureOpen()
 
     /**
-     * Look up [surface] first, then [stemmed] (if different) as a fallback.
+     * Cascade: [surface] first, then [folded] (Arabic casual/variant-spelling
+     * key, if supplied), then [stemmed] (if different) as a last fallback.
      * Returns null on miss — caller is expected to silent-pass-through.
      *
      * Match-type marker semantics (the `[…]` prefix on the first sense's POS
-     * list, applied by [buildEntry]):
+     * list, applied by [buildEntry] via [markerForPosition]):
      *  - Surface hit on a `headword.position=0` row  → no marker (direct lemma hit).
      *  - Surface hit on a `position=1` row           → `[stem]`
      *    (a surface OCR captured happened to equal a lemma's Snowball stem —
      *    rare but possible, e.g. English `run` is both surface and stem).
      *  - Surface hit on a `position=2` row           → `[inflected]`
-     *    (Wiktionary `form_of`/`alt_of` alias — the user's surface is an
-     *    inflected/alternate form of a lemma we're routing them to).
+     *    (Wiktionary `form_of`/`alt_of` or morphology alias — the user's surface
+     *    is an inflected/alternate form of a lemma we're routing them to).
+     *  - Folded-fallback branch (surface missed, we retried with the [ArabicFold]
+     *    key against `position=3` rows) → always `[variant]` via [buildResponse]'s
+     *    `forceNote`. Only this branch reaches position 3.
      *  - Stem-fallback branch (surface missed, we retried with the stemmer's
      *    output) → always `[stem]` via [buildResponse]'s `forceNote` param.
-     *    We force `[stem]` even if the stem query matched a `position=0`
+     *    We force the marker even if the fallback query matched a `position=0`
      *    row, because what we want to communicate is "we stemmed your query,"
      *    not "we stored this form."
      */
-    suspend fun lookup(surface: String, stemmed: String?): DictionaryResponse? = withContext(Dispatchers.IO) {
+    suspend fun lookup(
+        surface: String,
+        stemmed: String?,
+        folded: String? = null,
+    ): DictionaryResponse? = withContext(Dispatchers.IO) {
         val database = ensureOpen() ?: return@withContext null
 
         val surfaceLower = surface.lowercase(locale)
         val surfaceIds = queryEntryIds(database, surfaceLower)
         if (surfaceIds.isNotEmpty()) {
             return@withContext buildResponse(database, surfaceIds)
+        }
+
+        // Folded-variant fallback (Arabic casual/variant spellings — [ArabicFold]).
+        // Runs on a surface miss EVEN when the folded key equals the surface,
+        // because this query widens the position ceiling to reach the position-3
+        // fold rows the canonical surface query above excluded.
+        if (folded != null) {
+            val foldedIds = queryEntryIds(database, folded.lowercase(locale), includeFolded = true)
+            if (foldedIds.isNotEmpty()) {
+                return@withContext buildResponse(database, foldedIds, forceNote = "variant")
+            }
         }
 
         if (stemmed != null) {
@@ -205,12 +227,23 @@ class WiktionaryDictionaryManager private constructor(
      *    frequency stats) sort arbitrarily — e.g. `surprise` would put
      *    intj before noun.
      */
-    private fun queryEntryIds(db: SQLiteDatabase, word: String): List<Pair<Long, Int>> {
+    private fun queryEntryIds(
+        db: SQLiteDatabase,
+        word: String,
+        includeFolded: Boolean = false,
+    ): List<Pair<Long, Int>> {
+        // Canonical queries (surface, stem) stay at position <= 2; only the
+        // folded-variant fallback in [lookup] opts in to position-3 rows. This
+        // keeps lossy fold collisions off the canonical path — a user who typed
+        // a canonical word never sees pos-3 noise, because pos-3 is reached only
+        // after the canonical surface query already missed. No-op for non-Arabic
+        // packs, which have no position-3 rows.
+        val positionClause = if (includeFolded) "" else " AND h.position <= 2"
         val results = mutableListOf<Pair<Long, Int>>()
         db.rawQuery(
             "SELECT h.entry_id, MIN(h.position) AS pos FROM headword h " +
                 "JOIN entry e ON e.id = h.entry_id " +
-                "WHERE h.text = ? " +
+                "WHERE h.text = ?$positionClause " +
                 "GROUP BY h.entry_id " +
                 "ORDER BY e.freq_score DESC, pos ASC, h.entry_id ASC LIMIT 8",
             arrayOf(word)
@@ -234,14 +267,28 @@ class WiktionaryDictionaryManager private constructor(
         forceNote: String? = null,
     ): DictionaryResponse {
         val entries = idsWithPos.mapNotNull { (id, pos) ->
-            val note = forceNote ?: when (pos) {
-                0 -> null
-                1 -> "stem"
-                else -> "inflected"
-            }
-            buildEntry(db, id, note)
+            buildEntry(db, id, forceNote ?: markerForPosition(pos))
         }
         return DictionaryResponse(entries = entries)
+    }
+
+    /**
+     * Single source of truth mapping a matched `headword.position` to the
+     * inflection marker shown on the first sense's POS list:
+     *  - `0` direct lemma → no marker
+     *  - `1` Snowball stem → `[stem]`
+     *  - `2` `form_of` / morphology alias → `[inflected]`
+     *  - `3` folded variant (casual/variant spelling, Arabic) → `[variant]`
+     *
+     * [lookup]'s fallback branches additionally force `[stem]`/`[variant]` (they
+     * communicate "we stemmed/folded your query," even when that query happened
+     * to match a lower-position row).
+     */
+    private fun markerForPosition(position: Int): String? = when (position) {
+        0 -> null
+        1 -> "stem"
+        3 -> "variant"
+        else -> "inflected"  // 2 = alias; any future tier defaults here
     }
 
     private fun buildEntry(db: SQLiteDatabase, id: Long, inflectionNote: String?): DictionaryEntry? {
