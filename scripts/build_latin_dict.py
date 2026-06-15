@@ -188,15 +188,9 @@ def arabic_normalize(word: str) -> str:
     for ch in s:
         o = ord(ch)
         if 0x064B <= o <= 0x065F or o == 0x0670 or o == 0x0640:
-            continue  # tashkeel / combining marks, superscript alef, tatweel
-        elif o in (0x0622, 0x0623, 0x0625, 0x0671):
-            out.append("ا")  # alef variants → ا
-        elif o == 0x0649:
-            out.append("ي")  # alef maqsura ى → ي
-        elif o == 0x0629:
-            out.append("ه")  # taa marbuta ة → ه
+            continue  # strip tashkeel / combining marks, superscript alef, tatweel
         else:
-            out.append(ch)
+            out.append(ch)  # letter identities preserved (no ة→ه / ى→ي / أ→ا fold)
     return "".join(out)
 
 
@@ -207,9 +201,9 @@ def _assert_arabic_normalize() -> None:
         "كَت": "كت",   # كَت → كت (strip fatha)
         "كـت": "كت",   # كـت → كت (strip tatweel)
         "هٰ": "ه",               # هٰ → ه (strip superscript alef)
-        "آ": "ا", "أ": "ا", "إ": "ا", "ٱ": "ا",
-        "ى": "ي",                      # ى → ي
-        "ة": "ه",                      # ة → ه
+        "آ": "آ", "أ": "أ", "إ": "إ", "ٱ": "ٱ",  # alef variants PRESERVED (no fold)
+        "ى": "ى",                      # alef maqsura PRESERVED
+        "ة": "ة",                      # taa marbuta PRESERVED
         "ﷲ": "الله",    # ﷲ → الله (NFKC ligature)
         "كتاب": "كتاب",  # كتاب unchanged
         "100": "100",
@@ -865,6 +859,9 @@ SMOKE_FIXTURES: dict[str, dict[str, str]] = {
         # that diacritics are stripped at lookup time so vocalized text still hits.
         "كتاب": "book",
         "كِتَاب": "book",
+        # مدرسة "school" — a taa-marbuta lemma. Its resolving proves the position-0
+        # headword kept ة (not folded to ه), i.e. the displayed spelling is intact.
+        "مدرسة": "school",
     },
     # Other languages: fill in per-rebuild. Empty is OK — no fixtures
     # means "build still succeeds, just no regression guard for this lang."

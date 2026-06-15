@@ -23,12 +23,13 @@ class ArabicNormalizeTest {
     }
 
     @Test
-    fun foldsAlefYaTaaVariants() {
-        for (alef in listOf("آ", "أ", "إ", "ٱ")) {
-            assertEquals("alef variant $alef", "ا", ArabicNormalize.normalize(alef))
+    fun preservesLetterIdentity_doesNotFold() {
+        // The normalized form is ALSO the displayed lemma, so real letters must be
+        // kept — folding ة→ه, ى→ي, أ→ا etc. corrupted dictionary headwords
+        // (مدرسة→مدرسه, فتوى→فتوي).
+        for (s in listOf("آ", "أ", "إ", "ٱ", "ى", "ة")) {
+            assertEquals("must not fold $s", s, ArabicNormalize.normalize(s))
         }
-        assertEquals("ي", ArabicNormalize.normalize("ى")) // alef maqsura ى → ي
-        assertEquals("ه", ArabicNormalize.normalize("ة")) // taa marbuta ة → ه
     }
 
     @Test

@@ -465,9 +465,9 @@
       "bundled": false,
       "packVersion": 1,
       "additiveFromVersion": 1,
-      "size": 1143690,
+      "size": 1151375,
       "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/ar-v1/ar.zip",
-      "sha256": "9727af4c5420984970e20bad1ea232145afd7ebab8a00d35bd221cfea0c36c91",
+      "sha256": "c4cb68c3d9b020ae00008b7c64164b58ff6f3b2d8c33b57c09b5514e68ca79c8",
       "licenses": [
         {
           "component": "Wiktionary",
