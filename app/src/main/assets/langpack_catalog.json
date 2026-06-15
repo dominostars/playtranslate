@@ -465,14 +465,24 @@
       "bundled": false,
       "packVersion": 1,
       "additiveFromVersion": 1,
-      "size": 1151375,
+      "size": 4793058,
       "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/ar-v1/ar.zip",
-      "sha256": "c4cb68c3d9b020ae00008b7c64164b58ff6f3b2d8c33b57c09b5514e68ca79c8",
+      "sha256": "aeb18e65086ff569164d9324eeb5122ea0d033d65578e45bc1a5301466b330ab",
       "licenses": [
         {
           "component": "Wiktionary",
           "license": "CC-BY-SA-3.0",
           "attribution": "© Wiktionary contributors, https://en.wiktionary.org/"
+        },
+        {
+          "component": "Camel Morph (MSA database)",
+          "license": "CC-BY-4.0",
+          "attribution": "© CAMeL Lab, NYU Abu Dhabi, https://github.com/CAMeL-Lab/camel_morph"
+        },
+        {
+          "component": "Arramooz",
+          "license": "GPL-3.0",
+          "attribution": "© Taha Zerrouki, https://github.com/linuxscout/arramooz"
         }
       ]
     },

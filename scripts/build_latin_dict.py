@@ -77,6 +77,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import sqlite3
 import sys
 import zipfile
@@ -726,6 +727,19 @@ def build_manifest(
             "attribution": "© Wiktionary contributors, https://en.wiktionary.org/",
         }
     ]
+    if lang == "ar":
+        # Morphology augmentation sources (position-2 alias rows). See
+        # scripts/arabic_morphology.py.
+        licenses.append({
+            "component": "Camel Morph (MSA database)",
+            "license": "CC-BY-4.0",
+            "attribution": "© CAMeL Lab, NYU Abu Dhabi, https://github.com/CAMeL-Lab/camel_morph",
+        })
+        licenses.append({
+            "component": "Arramooz",
+            "license": "GPL-3.0",
+            "attribution": "© Taha Zerrouki, https://github.com/linuxscout/arramooz",
+        })
     if tokenizer_entries:
         files.extend(tokenizer_entries)
         total += sum(int(e["size"]) for e in tokenizer_entries)
@@ -852,8 +866,7 @@ SMOKE_FIXTURES: dict[str, dict[str, str]] = {
 #   1. unique index — makes the no-duplicate-row invariant structural, so every
 #                     augmentation insert below can be INSERT OR IGNORE.
 #   2. morphology   — Arramooz + camel_morph surface→lemma position-2 alias rows
-#                     (heavy; scripts/arabic_morphology.py). Added in a later
-#                     commit; the call site is marked below.
+#                     (heavy; scripts/arabic_morphology.py, imported lazily).
 #   3. fold pass    — LAST, so the new position-2 aliases ALSO get position-3
 #                     folded variants.
 #
@@ -873,14 +886,19 @@ def _create_headword_unique_index(conn: sqlite3.Connection) -> None:
 
 
 def _emit_fold_rows(conn: sqlite3.Connection) -> None:
-    """For every canonical headword (position 0 lemma, position 2 alias), insert
-    a position-3 'folded variant' row when arabic_fold(text) differs from the
-    stored text — the separate internal lookup key
-    WiktionaryDictionaryManager.lookup tries as a fallback for casual/variant
-    spellings. Position-0 display rows stay un-folded. Prints the fold-key
-    collision rate so the lossy-fold tradeoff is decided with a number."""
+    """For every position-0 LEMMA, insert a position-3 'folded variant' row when
+    arabic_fold(text) differs from the stored text — the separate internal lookup
+    key WiktionaryDictionaryManager.lookup tries as a fallback for casual/variant
+    spellings of the looked-up word. Position-0 display rows stay un-folded.
+
+    Only lemmas are folded, NOT the position-2 morphology aliases: measured on
+    the real pack, folding the (large) alias set drove the fold-key collision
+    rate to ~61% (vs ~9% for lemmas alone) and ~13x the fold rows, for the narrow
+    benefit of casual-spelling a non-lemma inflected form — which the canonical
+    (position<=2) query already resolves directly. Prints the collision rate so
+    the lossy-fold tradeoff stays visible."""
     rows = conn.execute(
-        "SELECT entry_id, text FROM headword WHERE position IN (0, 2)"
+        "SELECT entry_id, text FROM headword WHERE position = 0"
     ).fetchall()
     fold_rows: list[tuple[int, str]] = []
     key_to_entries: dict[str, set[int]] = {}
@@ -908,11 +926,14 @@ def _emit_fold_rows(conn: sqlite3.Connection) -> None:
 def postprocess_arabic(db_path: Path) -> None:
     """Arabic-only post-build pass (unique index → morphology → fold). See the
     block comment above for the ordering rationale."""
+    import arabic_morphology  # heavy (camel-tools); imported only for --lang ar
+
+    camel_db = os.environ.get("CAMEL_MORPH_DB")
     conn = sqlite3.connect(db_path)
     try:
         _create_headword_unique_index(conn)
-        # Morphology augmentation (Arramooz + camel_morph) is inserted here in a
-        # follow-up commit; the fold pass must remain LAST.
+        stats = arabic_morphology.augment_arabic(conn, camel_db_path=camel_db)
+        print(f"Morphology augmentation gated to {stats['lemmas']} pack lemmas.")
         _emit_fold_rows(conn)
         conn.commit()
     finally:

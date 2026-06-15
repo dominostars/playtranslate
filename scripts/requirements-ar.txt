@@ -1,0 +1,41 @@
+# Arabic-only build dependencies for `build_latin_dict.py --lang ar`
+# (the morphology augmentation in scripts/arabic_morphology.py).
+#
+# Kept SEPARATE from scripts/requirements.txt so non-Arabic pack builds stay
+# light. camel-tools declares torch + transformers as HARD deps, but the
+# morphology augmentation uses ONLY its morphology subpackage (MorphologyDB +
+# Analyzer), which needs neither. So install camel-tools WITHOUT its deps and
+# pin the light packages its morphology path actually imports:
+#
+#   pip install -r scripts/requirements.txt          # base: wordfreq, snowballstemmer
+#   pip install --no-deps camel-tools==1.5.7
+#   pip install -r scripts/requirements-ar.txt
+#
+# Then fetch the camel_morph CC-BY-4.0 MSA database (~85 MB) and point the build
+# at it. The official PyPI camel-tools (>=1.5.7) loads this database directly —
+# the camel_tools fork the camel_morph README mentions is NOT required:
+#
+#   curl -L -o camel_morph_msa_v1.0.db \
+#     https://raw.githubusercontent.com/CAMeL-Lab/camel_morph/main/official_releases/lrec-coling2024_release/databases/camel-morph-msa/camel_morph_msa_v1.0.db
+#   export CAMEL_MORPH_DB="$PWD/camel_morph_msa_v1.0.db"
+#
+# Licenses (attributed in the pack manifest + the in-app licenses screen):
+#   camel_morph database = CC-BY-4.0 (code MIT); arramooz = GPLv3.
+
+# ── light deps the camel-tools morphology subpackage actually imports ──
+numpy<2
+six
+tqdm
+pyrsistent
+cachetools<=6.0.0
+requests
+editdistance
+muddler
+dill
+emoji
+
+# ── morphology data source: Arramooz noun broken-plural table (GPLv3) ──
+arramooz-pysqlite==0.4.2
+
+# wordfreq (frequency-ranked Arabic surfaces for the camel analysis pass) and
+# snowballstemmer are already pinned in scripts/requirements.txt.
