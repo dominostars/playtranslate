@@ -78,6 +78,14 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
         refresh()
     }
 
+    /** Re-render on return from a sub-page (e.g. the detail page edited an
+     *  alias). onRestart fires only when coming back from stopped, so it won't
+     *  double-render on first launch (onContentCreated already renders). */
+    override fun onRestart() {
+        super.onRestart()
+        refresh()
+    }
+
     // ── Import ──────────────────────────────────────────────────────────
 
     private fun startImport(uri: android.net.Uri) {
@@ -408,7 +416,9 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
 
         override fun onBindViewHolder(holder: VH, position: Int) {
             val entry = working[position]
-            holder.title.text = entry.title
+            // Show the user's alias (nickname) when set; the detail page keeps
+            // the original title.
+            holder.title.text = entry.alias ?: entry.title
             val description = entry.description.orEmpty()
             holder.subtitle.isGone = description.isEmpty()
             holder.subtitle.text = description

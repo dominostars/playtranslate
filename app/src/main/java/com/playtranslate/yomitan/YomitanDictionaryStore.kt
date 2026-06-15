@@ -405,6 +405,31 @@ object YomitanDictionaryStore {
             YomitanDataStore.invalidate()
         }
 
+    /** Sets the user-facing alias override for dictionary [id]; blank clears it
+     *  (consumers render `alias ?: title`). No-op when the registry is
+     *  unreadable, the dictionary is gone, or the value is unchanged. */
+    suspend fun setAlias(ctx: Context, id: String, alias: String?) =
+        withContext(Dispatchers.IO) {
+            val normalized = alias?.trim()?.takeUnless { it.isEmpty() }
+            val changed = mutex.withLock {
+                val registry = readRegistry(ctx) ?: return@withLock false
+                val current = registry.dictionaries.firstOrNull { it.id == id }
+                    ?: return@withLock false
+                if (current.alias == normalized) return@withLock false
+                writeRegistry(
+                    ctx,
+                    registry.copy(
+                        dictionaries = registry.dictionaries.map {
+                            if (it.id == id) it.copy(alias = normalized) else it
+                        },
+                    ),
+                )
+                true
+            }
+            // Alias feeds the data store's registry-derived display cache.
+            if (changed) YomitanDataStore.invalidate()
+        }
+
     // ── Validation ──────────────────────────────────────────────────────
 
     /** Structural-validation failure. [message] is the user-visible (debug

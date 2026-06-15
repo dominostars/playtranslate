@@ -2230,6 +2230,10 @@
     <string name="yomitan_metadata_header">Metadata</string>
     <!-- Shown on the metadata detail page when the dictionary's index.json can't be read. -->
     <string name="yomitan_metadata_unavailable">This dictionary\'s metadata couldn\'t be read.</string>
+    <!-- Label of the alias (nickname) field in the Configure section of the dictionary detail page. -->
+    <string name="yomitan_alias_label">Alias</string>
+    <!-- Placeholder hint for the alias (nickname) field. -->
+    <string name="yomitan_alias_hint">Add a nickname</string>
 
     <!-- TOOLS — standalone utilities reachable from settings. -->
     <string name="settings_header_tools">Tools</string>

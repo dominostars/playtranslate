@@ -5,11 +5,13 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
+import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.R
 import com.playtranslate.yomitan.YomitanDictionaryStore
 import kotlinx.coroutines.launch
@@ -24,23 +26,56 @@ class YomitanDictionaryDetailActivity : SettingsSubPageActivity() {
 
     override val layoutResId: Int = R.layout.activity_yomitan_dictionary_detail
 
+    private var dictId: String? = null
+
+    /** Guards onPause from persisting an empty alias before the current value
+     *  has loaded into the field (which would clobber an existing alias). */
+    private var aliasLoaded = false
+
     override fun onContentCreated(savedInstanceState: Bundle?) {
         val id = intent.getStringExtra(EXTRA_ID)
         if (id == null) {
             finish()
             return
         }
+        dictId = id
 
         // Back arrow lives in the toolbar's navigation slot; the base
         // SettingsSubPageActivity already wires it to finish().
         findViewById<MaterialToolbar>(R.id.toolbar).title =
             intent.getStringExtra(EXTRA_TITLE) ?: getString(R.string.yomitan_metadata_title)
 
+        findViewById<View>(R.id.configureHeader)
+            .findViewById<TextView>(R.id.tvGroupTitle)
+            .setText(R.string.settings_header_configure)
         findViewById<View>(R.id.metadataHeader)
             .findViewById<TextView>(R.id.tvGroupTitle)
             .setText(R.string.yomitan_metadata_header)
 
+        loadAlias(id)
         render(id)
+    }
+
+    /** Persist the alias on the way out, via the application scope so the write
+     *  survives this activity finishing. [YomitanDictionaryStore.setAlias]
+     *  trims, blank-clears, and no-ops when unchanged. */
+    override fun onPause() {
+        super.onPause()
+        val id = dictId ?: return
+        if (!aliasLoaded) return
+        val alias = findViewById<EditText>(R.id.etYomitanAlias).text?.toString()
+        (application as PlayTranslateApplication).appScope.launch {
+            YomitanDictionaryStore.setAlias(applicationContext, id, alias)
+        }
+    }
+
+    private fun loadAlias(id: String) {
+        val field = findViewById<EditText>(R.id.etYomitanAlias)
+        lifecycleScope.launch {
+            val registry = YomitanDictionaryStore.load(this@YomitanDictionaryDetailActivity)
+            field.setText(registry.dictionaries.firstOrNull { it.id == id }?.alias.orEmpty())
+            aliasLoaded = true
+        }
     }
 
     private fun render(id: String) {

@@ -38,6 +38,51 @@
             android:paddingBottom="20dp">
 
             <include
+                android:id="@+id/configureHeader"
+                layout="@layout/settings_group_header" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="@dimen/pt_row_h_padding"
+                    android:paddingVertical="@dimen/pt_row_v_padding">
+
+                    <TextView
+                        style="@style/Text.PT.RowTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/yomitan_alias_label" />
+
+                    <EditText
+                        android:id="@+id/etYomitanAlias"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:background="?attr/ptSurface"
+                        android:hint="@string/yomitan_alias_hint"
+                        android:importantForAutofill="no"
+                        android:imeOptions="actionDone|flagNoFullscreen|flagNoExtractUi"
+                        android:inputType="text"
+                        android:padding="10dp"
+                        android:singleLine="true"
+                        android:textColor="?attr/ptText"
+                        android:textColorHint="?attr/ptTextHint"
+                        android:textSize="15sp" />
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <include
                 android:id="@+id/metadataHeader"
                 layout="@layout/settings_group_header" />
 

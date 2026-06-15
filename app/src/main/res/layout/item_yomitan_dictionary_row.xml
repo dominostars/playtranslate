@@ -31,14 +31,15 @@
             android:contentDescription="@string/cd_drag_to_reorder" />
 
         <!-- The tap target for opening the metadata detail page. Scoped to the
-             center content (full row height) so it never overlaps the drag
-             handle or the delete button. -->
+             center content (not the whole row) so it never overlaps the drag
+             handle or the delete button. Height is wrap_content (NOT
+             match_parent) so a two-line subtitle isn't clipped to the row's
+             min height. -->
         <LinearLayout
             android:id="@+id/yomitanRowContent"
             android:layout_width="0dp"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:gravity="center_vertical"
             android:orientation="vertical"
             android:background="?attr/selectableItemBackground">
 
