@@ -107,6 +107,7 @@ fun classifyOcrResults(
     boxes: List<TextBox>,
     ocrBitmapRects: List<Rect>,
     coords: FrameCoordinates,
+    rtl: Boolean = false,
 ): ClassificationResult {
     val staleOverlayIndices = mutableSetOf<Int>()
     val contentMatchRemovals = mutableSetOf<Int>()
@@ -203,6 +204,7 @@ fun classifyOcrResults(
                 mode = LayoutAnalyzer.GroupingMode.CROSS_FRAME_SAME_REGION,
                 aLineCount = aLn,
                 bLineCount = bLn,
+                rtl = rtl,
             )
             if (OcrManager.instance.debugLogGroupingEnabled) {
                 val decision = LayoutAnalyzer.groupDecision(
@@ -210,6 +212,7 @@ fun classifyOcrResults(
                     mode = LayoutAnalyzer.GroupingMode.CROSS_FRAME_SAME_REGION,
                     aLineCount = aLn,
                     bLineCount = bLn,
+                    rtl = rtl,
                 )
                 val verdict = if (matched) "MATCH" else "MISS"
                 val boxSnippet = boxes[boxIdx].sourceText.take(24).replace('\n', ' ')
@@ -298,6 +301,7 @@ fun classifyOcrResults(
                     existingBitmapRect, ocrFullRect, existing.orientation,
                     aLineCount = existing.lineCount,
                     bLineCount = lc,
+                    rtl = rtl,
                 )
             } ?: -1
             if (coalesceIdx >= 0) {
@@ -376,6 +380,7 @@ fun cascadeStaleRemovals(
     initialStale: Set<Int>,
     boxes: List<TextBox>,
     ocrBitmapRects: List<Rect>,
+    rtl: Boolean = false,
 ): Set<Int> {
     val cascadedRemovals = initialStale.toMutableSet()
     if (cascadedRemovals.isEmpty()) return cascadedRemovals
@@ -395,7 +400,7 @@ fun cascadeStaleRemovals(
                 // an unrelated single-line neighbor of the same font with
                 // a small gap — a false positive with no replacement
                 // evidence, since neither rect comes from fresh OCR.
-                if (LayoutAnalyzer.wouldGroup(ocrBitmapRects[removeIdx], ocrBitmapRects[i], orient)) {
+                if (LayoutAnalyzer.wouldGroup(ocrBitmapRects[removeIdx], ocrBitmapRects[i], orient, rtl = rtl)) {
                     cascadedRemovals.add(i)
                     expanded = true
                     break

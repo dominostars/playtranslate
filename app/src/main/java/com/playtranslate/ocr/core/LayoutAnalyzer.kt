@@ -3,6 +3,7 @@ package com.playtranslate.ocr.core
 import android.graphics.Rect
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextAlignment
+import com.playtranslate.language.TextDirection
 import com.playtranslate.language.TextOrientation
 
 /**
@@ -235,6 +236,7 @@ object LayoutAnalyzer {
         mode: GroupingMode = GroupingMode.SAME_PASS_LAYOUT,
         aLineCount: Int = 1,
         bLineCount: Int = 1,
+        rtl: Boolean = false,
     ): Boolean {
         if (shortAboveLongBlock(a, b, orientation) != null) return false
         if (orientation == TextOrientation.VERTICAL) {
@@ -281,11 +283,16 @@ object LayoutAnalyzer {
                  else 0
         if (dy < (refH * BLOCK_GAP_MULTIPLIER).toInt()) {
             val alignTolerance = (refH * 0.5f).toInt()
-            val aLeft = aAlignLeft ?: a.left
-            val bLeft = bAlignLeft ?: b.left
-            val leftAligned = kotlin.math.abs(aLeft - bLeft) <= alignTolerance
+            // Start edge: left for LTR, right for RTL. Arabic lines are right-
+            // aligned, so a short line's ragged LEFT edge must not break the
+            // paragraph — compare the (consistent) right edge instead. The
+            // aAlignLeft hanging-punctuation override is LTR-only; RTL uses the
+            // raw right edge (a right-edge analog isn't injected yet).
+            val aStart = if (rtl) a.right else (aAlignLeft ?: a.left)
+            val bStart = if (rtl) b.right else (bAlignLeft ?: b.left)
+            val startAligned = kotlin.math.abs(aStart - bStart) <= alignTolerance
             val centerAligned = kotlin.math.abs(a.centerX() - b.centerX()) <= alignTolerance
-            if (leftAligned || centerAligned) {
+            if (startAligned || centerAligned) {
                 val lo = minOf(aH, bH)
                 val hi = maxOf(aH, bH)
                 if (lo <= 0 || (hi - lo).toDouble() / lo <= sizeRatioCap(mode)) return true
@@ -366,13 +373,14 @@ object LayoutAnalyzer {
         mode: GroupingMode = GroupingMode.SAME_PASS_LAYOUT,
         aLineCount: Int = 1,
         bLineCount: Int = 1,
+        rtl: Boolean = false,
     ): GroupDecision {
         val sizeBlock = shortAboveLongBlock(a, b, orientation)
         if (sizeBlock != null) return GroupDecision.NotGrouped(sizeBlock)
         return if (orientation == TextOrientation.VERTICAL)
             groupDecisionVertical(a, b, mode, aLineCount, bLineCount)
         else
-            groupDecisionHorizontal(a, b, aAlignLeft, bAlignLeft, mode, aLineCount, bLineCount)
+            groupDecisionHorizontal(a, b, aAlignLeft, bAlignLeft, mode, aLineCount, bLineCount, rtl)
     }
 
     private fun groupDecisionHorizontal(
@@ -383,6 +391,7 @@ object LayoutAnalyzer {
         mode: GroupingMode,
         aLineCount: Int = 1,
         bLineCount: Int = 1,
+        rtl: Boolean = false,
     ): GroupDecision {
         val aLn = aLineCount.coerceAtLeast(1)
         val bLn = bLineCount.coerceAtLeast(1)
@@ -424,12 +433,14 @@ object LayoutAnalyzer {
         val vgapThreshold = (refH * BLOCK_GAP_MULTIPLIER).toInt()
         val heightCap = sizeRatioCap(mode)
         val alignTolerance = (refH * 0.5f).toInt()
-        val aLeft = aAlignLeft ?: a.left
-        val bLeft = bAlignLeft ?: b.left
-        val rawLeftDiff = kotlin.math.abs(a.left - b.left)
-        val leftDiff = kotlin.math.abs(aLeft - bLeft)
-        val shifted = aLeft != a.left || bLeft != b.left
-        val leftStr = if (shifted) "leftΔ=$leftDiff(adj,raw=$rawLeftDiff)" else "leftΔ=$leftDiff"
+        // Start edge: left for LTR, right for RTL (mirror wouldGroup, keep in sync).
+        val aStart = if (rtl) a.right else (aAlignLeft ?: a.left)
+        val bStart = if (rtl) b.right else (bAlignLeft ?: b.left)
+        val rawStartDiff = kotlin.math.abs((if (rtl) a.right else a.left) - (if (rtl) b.right else b.left))
+        val startDiff = kotlin.math.abs(aStart - bStart)
+        val shifted = !rtl && (aStart != a.left || bStart != b.left)
+        val edgeLabel = if (rtl) "rightΔ" else "leftΔ"
+        val startStr = if (shifted) "$edgeLabel=$startDiff(adj,raw=$rawStartDiff)" else "$edgeLabel=$startDiff"
         val centerDiff = kotlin.math.abs(a.centerX() - b.centerX())
         val lo = minOf(aH, bH)
         val hi = maxOf(aH, bH)
@@ -440,26 +451,27 @@ object LayoutAnalyzer {
         val heightRatio = if (lo > 0) (hi - lo).toDouble() / lo else 0.0
 
         val vgapOk = dy < vgapThreshold
-        val leftAligned = leftDiff <= alignTolerance
+        val startAligned = startDiff <= alignTolerance
         val centerAligned = centerDiff <= alignTolerance
-        val alignOk = leftAligned || centerAligned
+        val alignOk = startAligned || centerAligned
         val heightOk = lo <= 0 || heightRatio <= heightCap
 
         if (vgapOk && alignOk && heightOk) {
+            val edgeName = if (rtl) "right" else "left"
             val which = when {
-                leftAligned && centerAligned -> "left+center"
-                leftAligned -> "left"
+                startAligned && centerAligned -> "$edgeName+center"
+                startAligned -> edgeName
                 else -> "center"
             }
             val hRatioStr = if (lo > 0) "%.2f".format(heightRatio) else "n/a"
             return GroupDecision.Grouped(
-                "block (dy=$dy<${vgapThreshold}px, align=$which $leftStr centerΔ=$centerDiff tol=${alignTolerance}px, hRatio=$hRatioStr, refH=$refH$lnStr)"
+                "block (dy=$dy<${vgapThreshold}px, align=$which $startStr centerΔ=$centerDiff tol=${alignTolerance}px, hRatio=$hRatioStr, refH=$refH$lnStr)"
             )
         }
 
         val fails = buildList {
             if (!vgapOk) add("vgap dy=$dy ≥ ${vgapThreshold}px")
-            if (!alignOk) add("align: $leftStr centerΔ=$centerDiff > tol=${alignTolerance}px")
+            if (!alignOk) add("align: $startStr centerΔ=$centerDiff > tol=${alignTolerance}px")
             if (!heightOk) add("height: lo=$lo hi=$hi ratio=${"%.2f".format(heightRatio)} > ${"%.2f".format(heightCap)}")
             if (sameLine && dx >= inlineGapThreshold) add("inline gap dx=$dx ≥ ${inlineGapThreshold}px")
         }
@@ -587,6 +599,7 @@ object LayoutAnalyzer {
         orientation: TextOrientation,
         logDecisions: Boolean = false,
         texts: List<String>? = null,
+        rtl: Boolean = false,
     ): List<List<Int>> {
         require(boxes.size == alignLefts.size) {
             "boxes and alignLefts must match length"
@@ -648,11 +661,11 @@ object LayoutAnalyzer {
                 // diverges from wouldGroup the log wording becomes
                 // misleading but grouping behavior stays consistent.
                 val groupMerged = wouldGroup(
-                    groupRect, lineBox, orientation, groupAlignLeft, candidateAlignLeft
+                    groupRect, lineBox, orientation, groupAlignLeft, candidateAlignLeft, rtl = rtl
                 )
                 if (logDecisions) {
                     val decision = groupDecision(
-                        groupRect, lineBox, orientation, groupAlignLeft, candidateAlignLeft
+                        groupRect, lineBox, orientation, groupAlignLeft, candidateAlignLeft, rtl = rtl
                     )
                     val prevSnippet =
                         (texts?.get(candidateGroup.last()) ?: "").take(24).replace('\n', ' ')
@@ -723,12 +736,13 @@ object LayoutAnalyzer {
         logDecisions: Boolean = false,
     ): List<LayoutGroup> {
         if (regions.isEmpty()) return emptyList()
+        val rtl = SourceLanguageProfiles.forCode(sourceLang)?.textDirection == TextDirection.RTL
         val (vertical, horizontal) = regions.partition { it.orientation == TextOrientation.VERTICAL }
         val hGroups = groupRegions(
-            horizontal.sortedBy { it.box.bounds.top }, TextOrientation.HORIZONTAL, logDecisions
+            horizontal.sortedBy { it.box.bounds.top }, TextOrientation.HORIZONTAL, logDecisions, rtl
         )
         val vGroups = groupRegions(
-            vertical.sortedByDescending { it.box.bounds.right }, TextOrientation.VERTICAL, logDecisions
+            vertical.sortedByDescending { it.box.bounds.right }, TextOrientation.VERTICAL, logDecisions, rtl
         )
         val rawGroups = (hGroups + vGroups).filter { group ->
             group.any { r -> r.text.any { isSourceLangChar(it, sourceLang) } }
@@ -756,6 +770,7 @@ object LayoutAnalyzer {
         sorted: List<RecognizedRegion>,
         orientation: TextOrientation,
         logDecisions: Boolean,
+        rtl: Boolean,
     ): List<List<RecognizedRegion>> {
         if (sorted.isEmpty()) return emptyList()
         val boxes = sorted.map { it.box.bounds }
@@ -765,7 +780,7 @@ object LayoutAnalyzer {
             List(sorted.size) { null }
         }
         val texts = if (logDecisions) sorted.map { it.text } else null
-        val idxGroups = groupBoxesOnePass(boxes, alignLefts, orientation, logDecisions, texts)
+        val idxGroups = groupBoxesOnePass(boxes, alignLefts, orientation, logDecisions, texts, rtl)
         return idxGroups.map { idxs -> idxs.map { sorted[it] } }
     }
 

@@ -705,6 +705,28 @@ class ClassificationTest {
     }
 
     @Test
+    fun cascade_rtlArabic_raggedLeftSharedRight_pullsNeighborOnlyWhenRtl() {
+        // Two stacked lines of an Arabic paragraph: shared RIGHT edge, ragged LEFT
+        // edge (the short line starts far right). Cross-frame cascade must use the
+        // same right-edge convention as within-frame grouping for RTL sources, or a
+        // stale Arabic line won't drag its real neighbor and the overlay goes stale.
+        val full = Rect(160, 0, 1760, 36)      // full-width line
+        val short = Rect(1000, 40, 1762, 76)   // short line right below — right-aligned
+        val boxes = listOf(box(full), box(short))
+        val rects = listOf(full, short)
+        assertEquals(
+            "RTL: right-edge alignment pulls in the neighbor",
+            setOf(0, 1),
+            cascadeStaleRemovals(initialStale = setOf(0), boxes = boxes, ocrBitmapRects = rects, rtl = true),
+        )
+        assertEquals(
+            "LTR: left-edge alignment leaves the ragged-left neighbor untouched",
+            setOf(0),
+            cascadeStaleRemovals(initialStale = setOf(0), boxes = boxes, ocrBitmapRects = rects, rtl = false),
+        )
+    }
+
+    @Test
     fun cascade_chainOfThree_allPulledIn() {
         // 0 ↔ 1 (dx=100, refH*1.5=150, groups)
         // 1 ↔ 2 (dx=100, groups)

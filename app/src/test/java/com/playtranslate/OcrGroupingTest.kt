@@ -101,6 +101,30 @@ class OcrGroupingTest {
     }
 
     @Test
+    fun rtlArabic_raggedLeftSharedRight_mergesWhenRtl() {
+        // Arabic over-fragmentation case (from a real capture): paragraph lines
+        // share a RIGHT edge but have ragged LEFT edges (a short line starts far to
+        // the right). With rtl=true the grouper aligns on the right edge so the
+        // short line stays in the paragraph; with rtl=false (LTR, left-aligned) it
+        // splits off — the bug this fixes. vgap is constant, isolating alignment.
+        val boxes = listOf(
+            box(160, 0, 1760, 36),     // full-width line
+            box(1000, 40, 1762, 76),   // short line right below — right-aligned, ragged left
+        )
+        val lefts = boxes.map { it.left }
+        assertEquals(
+            "RTL aligns on the right edge → one paragraph",
+            listOf(listOf(0, 1)),
+            groupBoxesOnePass(boxes, lefts, TextOrientation.HORIZONTAL, rtl = true),
+        )
+        assertEquals(
+            "LTR aligns on the left edge → short line fragments off",
+            listOf(listOf(0), listOf(1)),
+            groupBoxesOnePass(boxes, lefts, TextOrientation.HORIZONTAL, rtl = false),
+        )
+    }
+
+    @Test
     fun farApartLines_eachOwnGroup() {
         // Three lines, each separated by huge vertical gaps. The multi-group
         // walk must not chain anything just because earlier groups exist.

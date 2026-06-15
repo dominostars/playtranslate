@@ -36,10 +36,12 @@ class LanguageTest {
     }
 
     @Test fun `fromCode rejects unknown code`() {
-        // AR is deferred pending Tesseract OCR (Phase 5).
-        assertNull(SourceLangId.fromCode("ar"))
         // "xx" is ISO 639-2 private-use; guaranteed never valid.
         assertNull(SourceLangId.fromCode("xx"))
+    }
+
+    @Test fun `fromCode resolves Arabic`() {
+        assertEquals(SourceLangId.AR, SourceLangId.fromCode("ar"))
     }
 
     @Test fun `fromCode handles null and blank`() {

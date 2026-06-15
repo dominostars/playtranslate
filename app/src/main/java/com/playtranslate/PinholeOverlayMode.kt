@@ -8,6 +8,8 @@ import android.graphics.Color
 import android.graphics.Rect
 import android.util.Log
 import android.view.Choreographer
+import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.language.TextDirection
 import com.playtranslate.model.TextSegments
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.ui.TextBox
@@ -334,6 +336,11 @@ class PinholeOverlayMode(
             //    Pinhole keeps using bitmapRects below: it samples actual
             //    on-screen pixels, so the rendered (padded) rect is correct
             //    there.
+            // RTL sources (Arabic) align paragraphs on the right edge — cross-frame
+            // overlay matching must use the same convention as within-frame grouping
+            // (LayoutAnalyzer.analyze) or live overlays go stale/duplicate.
+            val sourceIsRtl =
+                SourceLanguageProfiles[prefs.sourceLangId].textDirection == TextDirection.RTL
             val ocrBitmapRects: List<Rect>
             val classification: ClassificationResult
             val classifyCoords: FrameCoordinates?
@@ -348,7 +355,7 @@ class PinholeOverlayMode(
                     cropTop = pipeCropTop,
                 )
                 ocrBitmapRects = boxes.map { classifyCoords.ocrToBitmap(it.bounds) }
-                classification = classifyOcrResults(ocrResult, boxes, ocrBitmapRects, classifyCoords)
+                classification = classifyOcrResults(ocrResult, boxes, ocrBitmapRects, classifyCoords, sourceIsRtl)
             } else {
                 classifyCoords = null
                 ocrBitmapRects = emptyList()
@@ -395,7 +402,7 @@ class PinholeOverlayMode(
             //     Same coordinate-space reasoning as the proximity check
             //     above: cascade uses unpadded ocrBitmapRects so it agrees
             //     with classification's notion of "neighbor".
-            val cascadedRemovals = cascadeStaleRemovals(staleOverlayIndices, boxes, ocrBitmapRects)
+            val cascadedRemovals = cascadeStaleRemovals(staleOverlayIndices, boxes, ocrBitmapRects, sourceIsRtl)
 
             // 9. Resolve: compute final state from immutable snapshot in one pass
             val allRemovals = cascadedRemovals + pinholeRemovals + contentMatchRemovals
