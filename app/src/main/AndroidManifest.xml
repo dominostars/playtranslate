@@ -162,6 +162,14 @@
             android:parentActivityName=".MainActivity"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- Read-only metadata detail for an installed Yomitan dictionary, opened
+             by tapping a dictionary row on the Yomitan page. -->
+        <activity
+            android:name=".ui.YomitanDictionaryDetailActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.YomitanSettingsActivity"
+            android:theme="@style/Theme.PlayTranslate" />
+
         <!-- Transparent host for the MediaProjection consent dialog. -->
         <activity
             android:name=".capture.MediaProjectionConsentActivity"

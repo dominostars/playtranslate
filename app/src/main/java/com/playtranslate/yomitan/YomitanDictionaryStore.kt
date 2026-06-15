@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonParser
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import com.playtranslate.language.PackIntegrity
@@ -157,6 +158,36 @@ object YomitanDictionaryStore {
 
     /** The stored zip for [id] — later ingest stages read from this. */
     fun zipFile(ctx: Context, id: String): File = File(dictionaryDir(ctx, id), ZIP_NAME)
+
+    /**
+     * Every top-level field of the stored dictionary's index.json, in file
+     * order, as (key, displayValue) pairs — for the read-only metadata detail
+     * view. Reads the raw index.json (not the parsed registry entry) so it
+     * surfaces fields we don't model (attribution, url, …). Returns null when
+     * the zip or its index.json can't be read; non-scalar values render as
+     * compact JSON, JSON nulls as an em dash.
+     */
+    suspend fun readIndexJson(ctx: Context, id: String): List<Pair<String, String>>? =
+        withContext(Dispatchers.IO) {
+            val zip = zipFile(ctx, id)
+            if (!zip.exists()) return@withContext null
+            try {
+                ZipFile(zip).use { z ->
+                    val entry = z.getEntry("index.json") ?: return@withContext null
+                    val text = z.getInputStream(entry).bufferedReader().use { it.readText() }
+                    JsonParser.parseString(text).asJsonObject.entrySet().map { (key, value) ->
+                        key to when {
+                            value.isJsonNull -> "—"
+                            value.isJsonPrimitive -> value.asString
+                            else -> value.toString()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "readIndexJson failed for $id", e)
+                null
+            }
+        }
 
     // ── Registry IO ─────────────────────────────────────────────────────
 

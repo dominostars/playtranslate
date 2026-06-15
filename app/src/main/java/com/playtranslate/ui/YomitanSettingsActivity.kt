@@ -396,6 +396,7 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
             val subtitle: TextView = view.findViewById(R.id.tvYomitanSubtitle)
             val delete: ImageView = view.findViewById(R.id.btnYomitanDelete)
             val divider: View = view.findViewById(R.id.yomitanRowDivider)
+            val content: View = view.findViewById(R.id.yomitanRowContent)
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH = VH(
@@ -422,6 +423,19 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
             holder.delete.setOnClickListener {
                 val pos = holder.bindingAdapterPosition
                 if (pos != RecyclerView.NO_POSITION) confirmDelete(working[pos])
+            }
+            // Scoped to the content block (not itemView) so tapping the drag
+            // handle never also opens details.
+            holder.content.setOnClickListener {
+                val pos = holder.bindingAdapterPosition
+                if (pos != RecyclerView.NO_POSITION) {
+                    val dict = working[pos]
+                    startActivity(
+                        YomitanDictionaryDetailActivity.intent(
+                            this@YomitanSettingsActivity, dict.id, dict.title,
+                        ),
+                    )
+                }
             }
         }
     }

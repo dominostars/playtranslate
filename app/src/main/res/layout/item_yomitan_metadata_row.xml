@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One index.json field on the dictionary metadata detail page: muted key
+     label, value below (selectable so URLs/attribution can be copied). The
+     trailing divider is GONE on the last row (set by the activity). -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="@dimen/pt_row_h_padding"
+        android:paddingVertical="@dimen/pt_row_v_padding">
+
+        <TextView
+            android:id="@+id/tvMetaLabel"
+            style="@style/Text.PT.RowSubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" />
+
+        <TextView
+            android:id="@+id/tvMetaValue"
+            style="@style/Text.PT.RowTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textIsSelectable="true" />
+    </LinearLayout>
+
+    <View
+        android:id="@+id/metaRowDivider"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginStart="@dimen/pt_row_h_padding"
+        android:background="?attr/ptDivider" />
+
+</LinearLayout>

@@ -9,7 +9,6 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:background="?attr/selectableItemBackground"
     tools:ignore="Overdraw">
 
     <LinearLayout
@@ -31,11 +30,17 @@
             android:scaleType="center"
             android:contentDescription="@string/cd_drag_to_reorder" />
 
+        <!-- The tap target for opening the metadata detail page. Scoped to the
+             center content (full row height) so it never overlaps the drag
+             handle or the delete button. -->
         <LinearLayout
+            android:id="@+id/yomitanRowContent"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:layout_weight="1"
-            android:orientation="vertical">
+            android:gravity="center_vertical"
+            android:orientation="vertical"
+            android:background="?attr/selectableItemBackground">
 
             <TextView
                 android:id="@+id/tvYomitanTitle"

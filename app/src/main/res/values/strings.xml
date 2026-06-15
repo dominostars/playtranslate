@@ -2224,6 +2224,12 @@
     <string name="yomitan_download_error_title">Download Failed</string>
     <!-- Body of the download-failure alert. -->
     <string name="yomitan_download_error_message">The dictionary couldn\'t be downloaded. Check your connection and try again.</string>
+    <!-- Toolbar title of the dictionary metadata detail page (fallback when the dictionary's title is unknown). -->
+    <string name="yomitan_metadata_title">Dictionary</string>
+    <!-- Group header above the dictionary's index.json fields on the metadata detail page. -->
+    <string name="yomitan_metadata_header">Metadata</string>
+    <!-- Shown on the metadata detail page when the dictionary's index.json can't be read. -->
+    <string name="yomitan_metadata_unavailable">This dictionary\'s metadata couldn\'t be read.</string>
 
     <!-- TOOLS — standalone utilities reachable from settings. -->
     <string name="settings_header_tools">Tools</string>
