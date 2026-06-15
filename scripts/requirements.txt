@@ -7,4 +7,6 @@
 # snowballstemmer (stem-indexed headword rows, which must match Lucene's
 # org.tartarus.snowball.ext.*Stemmer used by LatinEngine at runtime).
 wordfreq
-snowballstemmer
+# >=2.0.0 for the Arabic stemmer (org.tartarus.snowball.ext.ArabicStemmer); must
+# match the Lucene Snowball version LatinEngine uses at runtime.
+snowballstemmer>=2.0.0

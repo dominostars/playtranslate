@@ -79,6 +79,7 @@ import json
 import math
 import sqlite3
 import sys
+import unicodedata
 import zipfile
 from pathlib import Path
 from typing import Iterable, Optional
@@ -176,13 +177,61 @@ def extract_examples(sense: dict) -> list[tuple[str, str]]:
     return candidates[:MAX_EXAMPLES_PER_SENSE]
 
 
+# Arabic orthographic normalization for headword keys — MUST match
+# ArabicNormalize.kt (app/.../language/ArabicNormalize.kt) character-for-character
+# so the runtime's normalized lookup queries hit these keys. Pinned by
+# _assert_arabic_normalize() (run from the smoke test) + ArabicNormalizeTest on
+# the JVM side.
+def arabic_normalize(word: str) -> str:
+    s = unicodedata.normalize("NFKC", word)
+    out = []
+    for ch in s:
+        o = ord(ch)
+        if 0x064B <= o <= 0x065F or o == 0x0670 or o == 0x0640:
+            continue  # tashkeel / combining marks, superscript alef, tatweel
+        elif o in (0x0622, 0x0623, 0x0625, 0x0671):
+            out.append("ا")  # alef variants → ا
+        elif o == 0x0649:
+            out.append("ي")  # alef maqsura ى → ي
+        elif o == 0x0629:
+            out.append("ه")  # taa marbuta ة → ه
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _assert_arabic_normalize() -> None:
+    """Golden fixture — MUST match ArabicNormalizeTest.kt so build-time and
+    runtime Arabic normalization agree (drift = silently-missed lookups)."""
+    cases = {
+        "كَت": "كت",   # كَت → كت (strip fatha)
+        "كـت": "كت",   # كـت → كت (strip tatweel)
+        "هٰ": "ه",               # هٰ → ه (strip superscript alef)
+        "آ": "ا", "أ": "ا", "إ": "ا", "ٱ": "ا",
+        "ى": "ي",                      # ى → ي
+        "ة": "ه",                      # ة → ه
+        "ﷲ": "الله",    # ﷲ → الله (NFKC ligature)
+        "كتاب": "كتاب",  # كتاب unchanged
+        "100": "100",
+        "abc": "abc",
+    }
+    for inp, exp in cases.items():
+        got = arabic_normalize(inp)
+        if got != exp:
+            raise SystemExit(
+                f"arabic_normalize golden fixture FAILED: {inp!r} -> {got!r}, expected {exp!r}"
+            )
+
+
 def lower_for_lang(word: str, lang: str) -> str:
-    """Locale-aware lowercase for pack headword keys. Turkish needs the
-    I/İ remap before default folding; other supported languages fall back
-    to plain `str.lower()` because their case rules match Unicode default
-    for the ASCII letters we care about."""
+    """Locale-aware lowercase for pack headword keys. Turkish needs the I/İ
+    remap before default folding; Arabic is run through [arabic_normalize]
+    (no case, but diacritics/tatweel stripped and alef/ya/taa folded); other
+    languages fall back to plain `str.lower()`."""
     if lang == "tr":
         word = word.translate(_TR_UPPER_MAP)
+    elif lang == "ar":
+        word = arabic_normalize(word)
     return word.lower()
 
 
@@ -221,6 +270,7 @@ SNOWBALL_ALGO_FOR_LANG: dict[str, Optional[str]] = {
     "ro": "romanian",
     "ca": "catalan",
     "ru": "russian",
+    "ar": "arabic",
     "vi": None,
     "id": None,
     "ko": None,
@@ -810,6 +860,12 @@ SMOKE_FIXTURES: dict[str, dict[str, str]] = {
         # fold (`ingilizce`, freq 1.45e-4).
         "İngilizce": "English",
     },
+    "ar": {
+        # كتاب "book" — a common lemma; the second form (with harakat) also checks
+        # that diacritics are stripped at lookup time so vocalized text still hits.
+        "كتاب": "book",
+        "كِتَاب": "book",
+    },
     # Other languages: fill in per-rebuild. Empty is OK — no fixtures
     # means "build still succeeds, just no regression guard for this lang."
 }
@@ -820,6 +876,8 @@ def run_smoke_test(db_path: Path, lang: str) -> None:
     set to catch regressions where plurals/conjugations no longer
     resolve to their lemma gloss. Raises on failure; no-op when the
     language has no fixtures."""
+    if lang == "ar":
+        _assert_arabic_normalize()
     fixtures = SMOKE_FIXTURES.get(lang, {})
     if not fixtures:
         return

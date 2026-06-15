@@ -179,6 +179,33 @@ class LineAssemblyTest {
     }
 
     @Test
+    fun assembleLines_rtlOrdersWordsRightToLeft() {
+        // RTL source (Arabic): words on a row join RIGHT-to-left — the rightmost
+        // region leads in logical order — and member char offsets rebase into that
+        // join. (Each word's own glyphs are already logical by RtlReorder.)
+        fun word(text: String, l: Int, r: Int): RecognizedRegion {
+            val b = OcrBox.upright(box(l, 0, r, 20))
+            val chars = text.mapIndexed { i, c ->
+                CharBox(c.toString(), OcrBox.upright(box(l + i, 0, l + i + 1, 20)), i)
+            }
+            return RecognizedRegion(
+                text = text, box = b, orientation = TextOrientation.HORIZONTAL, confidence = 0.9f,
+                lines = listOf(RecognizedLine(text, b, TextOrientation.HORIZONTAL, chars = chars)),
+                origin = RegionOrigin.LINE,
+            )
+        }
+        val out = LineAssembler.assembleLines(
+            listOf(word("AB", 0, 20), word("CD", 40, 60)),  // AB leftmost, CD rightmost, same row
+            rtl = true,
+        )
+        assertEquals(1, out.size)
+        assertEquals("CD AB", out[0].text)   // rightmost word leads in logical order
+        val line = out[0].lines.single()
+        assertEquals(listOf("C", "D", "A", "B"), line.chars.map { it.text })
+        assertEquals(listOf(0, 1, 3, 4), line.chars.map { it.charOffset })
+    }
+
+    @Test
     fun assembleLines_foldsVerticalArtifactAndRetags() {
         // A tall narrow "I" tagged VERTICAL by aspect, among horizontal words in a
         // horizontal-dominant capture → folded onto the row, re-tagged HORIZONTAL.

@@ -170,6 +170,6 @@ object SourceLanguageEngines {
         SourceLangId.IT, SourceLangId.PT, SourceLangId.NL, SourceLangId.TR,
         SourceLangId.VI, SourceLangId.ID, SourceLangId.SV, SourceLangId.DA,
         SourceLangId.NO, SourceLangId.FI, SourceLangId.HU, SourceLangId.RO,
-        SourceLangId.CA, SourceLangId.RU -> LatinEngine(app, id)
+        SourceLangId.CA, SourceLangId.RU, SourceLangId.AR -> LatinEngine(app, id)
     }
 }

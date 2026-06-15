@@ -33,7 +33,7 @@ enum class SourceLangId(val code: String) {
     CA("ca"),
     KO("ko"),
     RU("ru"),
-    // AR — deferred (requires Tesseract OCR backend; see project_phase5_arabic.md)
+    AR("ar"),
     ;
 
     /** The lang ID used for pack directory/catalog lookup. Variants that share
@@ -247,7 +247,8 @@ data class SourceLanguageProfile(
                 ScriptFamily.CJK_KOREAN -> add(OcrBackend.Paddle("paddle-rec-korean"))
                 ScriptFamily.LATIN -> add(OcrBackend.Paddle("paddle-rec-unified"))
                 ScriptFamily.CYRILLIC -> add(OcrBackend.Paddle("paddle-rec-cyrillic"))
-                ScriptFamily.ARABIC, ScriptFamily.DEVANAGARI -> {} // packs exist; profiles not wired yet
+                ScriptFamily.ARABIC -> add(OcrBackend.Paddle("paddle-rec-arabic"))
+                ScriptFamily.DEVANAGARI -> {} // pack exists; profile not wired yet
             }
             // ML Kit floor last (unless already first, or null for no-floor scripts).
             if (!mlKitDefault) mlKitFloor?.let { add(it) }
@@ -460,6 +461,36 @@ object SourceLanguageProfiles {
             // OcrManager.isSourceLangChar("ru") (U+0400..U+04FF).
             isScriptChar = { c -> c in 'Ѐ'..'ӿ' },
             translationCode = TranslateLanguage.RUSSIAN,
+        ),
+        SourceLangId.AR to SourceLanguageProfile(
+            id = SourceLangId.AR,
+            scriptFamily = ScriptFamily.ARABIC,
+            // First RTL source language. textDirection is consumed by the OCR
+            // visual→logical reorder and the overlay geometry. PaddleOCR emits
+            // Arabic in visual order; we convert to logical (storage) order
+            // downstream so the canonical group string is reading-order.
+            textDirection = TextDirection.RTL,
+            // No ML Kit Arabic recognizer — Arabic's only OCR is the arm64-only
+            // paddle-rec-arabic pack, so there is no always-present floor (like RU).
+            mlKitFloor = null,
+            // HARAKAT (vowel-diacritic hint) is deferred — needs a diacritizer.
+            hintTextKind = HintTextKind.NONE,
+            // Arabic separates words with whitespace (drives OCR line-grouping
+            // cosmetics + LineAssembler; LatinEngine tokenizes via ICU
+            // BreakIterator + Snowball ArabicStemmer).
+            wordsSeparatedByWhitespace = true,
+            // Arabic block + Supplement + Extended-A (Persian/Urdu/Pashto letters
+            // the shared recognizer emits) + Presentation Forms-A/B (ligatures
+            // like ﷲ ﷼ in the PP-OCRv5 Arabic charset). Arabic-Indic digits
+            // U+0660..U+0669 fall inside the base block.
+            isScriptChar = { c ->
+                c in '؀'..'ۿ'        // Arabic
+                    || c in 'ݐ'..'ݿ'  // Arabic Supplement
+                    || c in 'ࢠ'..'ࣿ'  // Arabic Extended-A
+                    || c in 'ﭐ'..'﷿'  // Presentation Forms-A (incl. ﷲ ﷼)
+                    || c in 'ﹰ'..'ﻼ'  // Presentation Forms-B (Arabic ligatures)
+            },
+            translationCode = TranslateLanguage.ARABIC,
         ),
     )
 

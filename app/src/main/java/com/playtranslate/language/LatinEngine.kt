@@ -6,6 +6,7 @@ import com.playtranslate.model.DictionaryResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.tartarus.snowball.SnowballProgram
+import org.tartarus.snowball.ext.ArabicStemmer
 import org.tartarus.snowball.ext.CatalanStemmer
 import org.tartarus.snowball.ext.DanishStemmer
 import org.tartarus.snowball.ext.DutchStemmer
@@ -90,11 +91,13 @@ class LatinEngine(
     }
 
     override suspend fun searchPrefix(query: String, limit: Int): List<TokenSpan> =
-        dict.searchPrefix(query, limit).map { TokenSpan(surface = it, lookupForm = it, reading = null) }
+        dict.searchPrefix(normalizeForLookup(query), limit)
+            .map { TokenSpan(surface = it, lookupForm = it, reading = null) }
 
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? {
-        val stem = stemOf(word)
-        return dict.lookup(surface = word, stemmed = stem)
+        val w = normalizeForLookup(word)
+        val stem = stemOf(w)
+        return dict.lookup(surface = w, stemmed = stem)
     }
 
     override fun close() {
@@ -115,6 +118,12 @@ class LatinEngine(
             s.current
         }
     }
+
+    /** Arabic source text is matched against normalized headwords (undiacritized,
+     *  alef/ya/taa folded, NFKC) — see [ArabicNormalize]. The dictionary pack is
+     *  built with the identical normalization. No-op for other languages. */
+    private fun normalizeForLookup(word: String): String =
+        if (langId == SourceLangId.AR) ArabicNormalize.normalize(word) else word
 
     private fun isLookupWorthy(token: String): Boolean {
         if (token.isBlank()) return false
@@ -145,6 +154,10 @@ class LatinEngine(
             SourceLangId.RO -> RomanianStemmer()
             SourceLangId.CA -> CatalanStemmer()
             SourceLangId.RU -> RussianStemmer()
+            // Arabic: Snowball light stemmer (clitic/affix stripping + internal
+            // normalization). Heavy morphology (broken plurals, weak verbs) ships
+            // as position-2 alias rows in the pack, not handled here.
+            SourceLangId.AR -> ArabicStemmer()
             // Vietnamese and Indonesian have no Snowball stemmer. Vietnamese
             // is fully isolating (no inflection to strip). Indonesian has
             // prefix morphology (ber-, me-, di-, ter-) that Snowball doesn't

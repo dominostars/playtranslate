@@ -52,7 +52,7 @@ object LineAssembler {
      * recognized (post-recognition); a multi-word line becomes one region whose
      * text is the member texts joined left-to-right by a single space.
      */
-    fun assembleLines(regions: List<RecognizedRegion>): List<RecognizedRegion> {
+    fun assembleLines(regions: List<RecognizedRegion>, rtl: Boolean = false): List<RecognizedRegion> {
         if (regions.size <= 1) return regions
         // Collective-orientation guard: a vertical-dominant capture is genuine
         // vertical text (no horizontal-line fragmentation to repair) — leave it
@@ -70,7 +70,7 @@ object LineAssembler {
             // actually merges into a multi-member horizontal line becomes HORIZONTAL
             // (in mergeLine).
             if (idxs.size == 1) regions[idxs[0]]
-            else mergeLine(idxs.map { regions[it] })
+            else mergeLine(idxs.map { regions[it] }, rtl)
         }
     }
 
@@ -133,8 +133,11 @@ object LineAssembler {
      *  on exactly that path. Each member carries its chars on its single recognized
      *  line (line.text == member text); the inserted join spaces get no symbol, matching
      *  the rest of the symbol pipeline (and what consumers expect — they index by offset). */
-    private fun mergeLine(members: List<RecognizedRegion>): RecognizedRegion {
-        val ordered = members.sortedBy { it.box.bounds.left }
+    private fun mergeLine(members: List<RecognizedRegion>, rtl: Boolean): RecognizedRegion {
+        // RTL sources (Arabic) read right-to-left: the rightmost word comes first in
+        // logical order. LTR sources join left-to-right as before.
+        val ordered = if (rtl) members.sortedByDescending { it.box.bounds.left }
+        else members.sortedBy { it.box.bounds.left }
         val text = ordered.joinToString(" ") { it.text }
         val rects = ordered.map { it.box.bounds }
         val union = Rect(

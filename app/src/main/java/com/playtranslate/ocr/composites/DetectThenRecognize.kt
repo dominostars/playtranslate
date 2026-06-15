@@ -1,12 +1,14 @@
 package com.playtranslate.ocr.composites
 
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.language.TextDirection
 import com.playtranslate.ocr.core.DetectedRegion
 import com.playtranslate.ocr.core.LineAssembler
 import com.playtranslate.ocr.core.OcrCapabilities
 import com.playtranslate.ocr.core.OcrEngine
 import com.playtranslate.ocr.core.OcrImage
 import com.playtranslate.ocr.core.RecognizedRegion
+import com.playtranslate.ocr.core.RtlReorder
 import com.playtranslate.ocr.core.TextDetector
 import com.playtranslate.ocr.core.TextRecognizer
 import kotlinx.coroutines.ensureActive
@@ -63,6 +65,13 @@ class DetectThenRecognize(
             coroutineContext.ensureActive()
             recognizer.recognize(image, region)?.let { recognized += it }
         }
+        // RTL source scripts (Arabic): the CTC recognizer emits glyphs in visual
+        // (strip left-to-right) order, which for RTL is reversed-logical. Convert
+        // each region to logical order — text + char-box offsets together — once
+        // here, so line assembly, lookup, translation and rendering all see storage
+        // order. No-op for LTR scripts. See RtlReorder + the atomic OCR contract.
+        val rtl = SourceLanguageProfiles.forCode(image.sourceLang)?.textDirection == TextDirection.RTL
+        val ordered = if (rtl) recognized.map { RtlReorder.toLogical(it) } else recognized
         // Post-recognition line assembly. A detector that emits sub-line (per-word)
         // boxes — PaddleOCR DBNet on word-spaced scripts — is recognized 1:1 above,
         // each box from its OWN true DBNet deskew quad; the recognized word-regions
@@ -74,9 +83,9 @@ class DetectThenRecognize(
         // (Distinct from the whole-region bubble-clustering a wholeRegionInput
         // recognizer would need.)
         return if (detector.capabilities.emitsSubLineBoxes && needsLineAssembly(image.sourceLang)) {
-            LineAssembler.assembleLines(recognized)
+            LineAssembler.assembleLines(ordered, rtl = rtl)
         } else {
-            recognized
+            ordered
         }
     }
 
