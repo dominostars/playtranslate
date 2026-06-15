@@ -18,8 +18,10 @@ import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.LanguagePackDownloader
+import com.playtranslate.language.SourceLangId
 import com.playtranslate.themeColor
 import com.playtranslate.yomitan.RecommendedYomitanDictionaries
 import com.playtranslate.yomitan.RecommendedYomitanDictionary
@@ -49,6 +51,7 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
     private lateinit var sectionsContainer: LinearLayout
     private var importJob: Job? = null
     private var toggleWriteJob: Job? = null
+    private val prefs by lazy { Prefs(this) }
 
     /** Zips come from downloads/file managers with inconsistent MIME types —
      *  octet-stream is common for GitHub release assets. The importer's own
@@ -237,10 +240,17 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
             sectionsContainer.addView(section)
         }
 
-        // Curated downloads last — below the user's installed dictionaries.
+        // Curated downloads last — below the user's installed dictionaries, and
+        // only for a Japanese source: the recommended dicts are all JA-source
+        // (matching the capability-cache gate), so they're irrelevant otherwise.
         // Each entry drops out once it's installed (and then appears in its own
         // category section above).
-        val recommended = RecommendedYomitanDictionaries.notInstalled(registry)
+        val recommended =
+            if (prefs.sourceLangId == SourceLangId.JA) {
+                RecommendedYomitanDictionaries.notInstalled(registry)
+            } else {
+                emptyList()
+            }
         if (recommended.isNotEmpty()) {
             val section = inflater.inflate(R.layout.yomitan_section_card, sectionsContainer, false)
             section.findViewById<View>(R.id.yomitanSectionHeader)
