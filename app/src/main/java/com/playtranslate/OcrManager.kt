@@ -3,7 +3,6 @@ package com.playtranslate
 import android.graphics.Bitmap
 import android.graphics.Rect
 import com.google.mlkit.vision.text.Text
-import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.model.TextSegment
@@ -351,33 +350,17 @@ class OcrManager private constructor() {
         }
 
         /**
-         * Returns true if [c] belongs to a script native to [sourceLang]. Reused
-         * by the ML Kit adapter's line filter. (The layout stage uses the
-         * vendor-neutral copy in
-         * [com.playtranslate.ocr.core.LayoutAnalyzer.isSourceLangChar].)
+         * Returns true if [c] belongs to a script native to [sourceLang]. Used by
+         * the ML Kit adapter's line filter and the overlay dedup / no-text key
+         * ([com.playtranslate.OverlayToolkit]). Delegates to the single
+         * vendor-neutral definition in
+         * [com.playtranslate.ocr.core.LayoutAnalyzer.isSourceLangChar] so every
+         * path shares ONE script-coverage source — a hardcoded duplicate here had
+         * drifted to a base-block-only Arabic range and silently dropped Arabic
+         * Supplement / Extended-A / Presentation-Form glyphs (e.g. ﷲ) from the
+         * dedup key, producing a false NoText.
          */
-        fun isSourceLangChar(c: Char, sourceLang: String): Boolean = when (sourceLang) {
-            "ja" -> c in '぀'..'ゟ'   // Hiragana
-                 || c in '゠'..'ヿ'   // Katakana
-                 || c in '一'..'鿿'   // CJK Unified Ideographs (kanji)
-                 || c in '㐀'..'䶿'   // CJK Extension A
-                 || c in '･'..'ﾟ'   // Half-width Katakana
-            "zh", "zh-TW" ->
-                   c in '一'..'鿿'
-                 || c in '㐀'..'䶿'
-            "ko" -> c in '가'..'힯'   // Hangul Syllables
-                 || c in 'ᄀ'..'ᇿ'   // Hangul Jamo
-                 || c in '㄰'..'㆏'   // Hangul Compatibility Jamo
-            "ar" -> c in '؀'..'ۿ'   // Arabic
-            "ru", "bg", "uk" ->
-                   c in 'Ѐ'..'ӿ'   // Cyrillic
-            "th" -> c in '฀'..'๿'   // Thai
-            "hi", "mr", "ne" ->
-                   c in 'ऀ'..'ॿ'   // Devanagari
-            else -> {
-                val profile = SourceLanguageProfiles.forCode(sourceLang)
-                if (profile != null) profile.isScriptChar(c) else c.code > 0x007F
-            }
-        }
+        fun isSourceLangChar(c: Char, sourceLang: String): Boolean =
+            com.playtranslate.ocr.core.LayoutAnalyzer.isSourceLangChar(c, sourceLang)
     }
 }
