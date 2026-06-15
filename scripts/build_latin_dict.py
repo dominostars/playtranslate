@@ -860,15 +860,17 @@ SMOKE_FIXTURES: dict[str, dict[str, str]] = {
 
 # ── Arabic post-build augmentation ────────────────────────────────────────
 #
-# Runs ONLY for `--lang ar`, between build_sqlite and the smoke test. The
-# ordering is correctness-critical and kept visible in one place:
+# Runs ONLY for `--lang ar`, between build_sqlite and the smoke test:
 #
-#   1. unique index — makes the no-duplicate-row invariant structural, so every
-#                     augmentation insert below can be INSERT OR IGNORE.
+#   1. unique index — FIRST: makes the no-duplicate-row invariant structural so
+#                     every augmentation insert below can be INSERT OR IGNORE.
 #   2. morphology   — Arramooz + camel_morph surface→lemma position-2 alias rows
 #                     (heavy; scripts/arabic_morphology.py, imported lazily).
-#   3. fold pass    — LAST, so the new position-2 aliases ALSO get position-3
-#                     folded variants.
+#   3. fold pass    — position-3 folded variants of the position-0 LEMMAS only
+#                     (NOT the aliases — see _emit_fold_rows for the measured
+#                     reason). It reads only position-0 rows, so it is
+#                     independent of step 2; only the unique index must precede
+#                     both. Order 2-before-3 is tidiness, not correctness.
 #
 # `headword.position` tiers: 0 lemma (display), 1 Snowball stem, 2 alias,
 # 3 folded variant (casual/variant spelling — lookup-only, never displayed).
@@ -895,8 +897,13 @@ def _emit_fold_rows(conn: sqlite3.Connection) -> None:
     the real pack, folding the (large) alias set drove the fold-key collision
     rate to ~61% (vs ~9% for lemmas alone) and ~13x the fold rows, for the narrow
     benefit of casual-spelling a non-lemma inflected form — which the canonical
-    (position<=2) query already resolves directly. Prints the collision rate so
-    the lossy-fold tradeoff stays visible."""
+    (position<=2) query already resolves directly.
+
+    Accepted limitation: the fold fallback therefore covers casual/variant
+    spellings of LEMMAS only. A casual misspelling of an inflected/plural alias
+    (e.g. a broken plural ending ى typed with ي) is intentionally NOT
+    fold-reachable; the correctly-spelled alias still resolves via the canonical
+    query. Prints the collision rate so the lossy-fold tradeoff stays visible."""
     rows = conn.execute(
         "SELECT entry_id, text FROM headword WHERE position = 0"
     ).fetchall()
