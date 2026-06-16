@@ -14,7 +14,7 @@ object DetectionLog {
 
     private const val MAX_ENTRIES = 25
     private val entries = ArrayDeque<String>(MAX_ENTRIES + 1)
-    private val timeFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
+    private val timeFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
     private val mainHandler = Handler(Looper.getMainLooper())
 
     var enabled = false

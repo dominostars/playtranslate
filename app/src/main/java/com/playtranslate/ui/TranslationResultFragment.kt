@@ -50,6 +50,7 @@ import java.util.Locale
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.isVisible
 import androidx.core.view.isGone
+import androidx.core.view.isEmpty
 
 /**
  * Reset [ScrollView] scroll to (0, 0) without firing the registered
@@ -1202,7 +1203,7 @@ class TranslationResultFragment : Fragment() {
      *  currently-rendered rows, updating each badge in place. No-op until the
      *  list is built. */
     private fun refreshWordBadges() {
-        if (!this::mainWordsContainer.isInitialized || mainWordsContainer.childCount == 0) return
+        if (!this::mainWordsContainer.isInitialized || mainWordsContainer.isEmpty()) return
         val cells = lastRenderedCells
         if (cells.isEmpty()) return
         ankiDecksByWord.clear()

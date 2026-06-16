@@ -202,8 +202,8 @@ class DefinitionResolverTest {
         val mt = result as DefinitionResult.MachineTranslated
         assertNotNull(mt.translatedDefinitions)
         assertEquals(2, mt.translatedDefinitions!!.size)
-        assertEquals("DEF:to eat", mt.translatedDefinitions!![0])
-        assertEquals("DEF:to consume", mt.translatedDefinitions!![1])
+        assertEquals("DEF:to eat", mt.translatedDefinitions[0])
+        assertEquals("DEF:to consume", mt.translatedDefinitions[1])
     }
 
     @Test fun `tier 2 - translatedDefinitions null when no enToTarget translator`() = runBlocking {
@@ -351,8 +351,8 @@ class DefinitionResolverTest {
         val mt = result as DefinitionResult.MachineTranslated
         assertEquals(2, mt.translatedDefinitions!!.size)
         // Definitions within a sense are joined with "; " before translation
-        assertEquals("FR:to test; to examine", mt.translatedDefinitions!![0])
-        assertEquals("FR:a test; an examination", mt.translatedDefinitions!![1])
+        assertEquals("FR:to test; to examine", mt.translatedDefinitions[0])
+        assertEquals("FR:a test; an examination", mt.translatedDefinitions[1])
     }
 
     @Test fun `tier priority - Native beats MachineTranslated`() = runBlocking {

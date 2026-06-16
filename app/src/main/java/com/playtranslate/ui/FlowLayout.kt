@@ -7,6 +7,7 @@ import android.view.View.MeasureSpec
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams
 import android.view.ViewGroup.MarginLayoutParams
+import androidx.core.view.isGone
 
 /**
  * Minimal flow container: lays children out left-to-right and wraps to a
@@ -43,7 +44,7 @@ class FlowLayout @JvmOverloads constructor(
 
         for (i in 0 until childCount) {
             val child = getChildAt(i)
-            if (child.visibility == View.GONE) continue
+            if (child.isGone) continue
             val lp = child.layoutParams as MarginLayoutParams
             // Resolve start/end margins into left/right for the current
             // direction — children set marginStart (XML + programmatic), which
@@ -111,7 +112,7 @@ class FlowLayout @JvmOverloads constructor(
 
         for (i in 0 until childCount) {
             val child = getChildAt(i)
-            if (child.visibility == View.GONE) continue
+            if (child.isGone) continue
             val lp = child.layoutParams as MarginLayoutParams
             lp.resolveLayoutDirection(layoutDirection)
             val outerW = child.measuredWidth + lp.leftMargin + lp.rightMargin

@@ -469,7 +469,7 @@ class PinholeOverlayMode(
                         val b = g.bounds
                         DetectionLog.log(
                             "D$displayId c$cycleNum   ocr[$i] text=\"$t\" " +
-                                "ocrRect=${b?.let { "(${it.left},${it.top},${it.right},${it.bottom})" } ?: "null"}"
+                                "ocrRect=(${b.left},${b.top},${b.right},${b.bottom})"
                         )
                     }
                 }

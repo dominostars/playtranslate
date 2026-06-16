@@ -369,9 +369,9 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
 
     private fun confirmDelete(dictionary: YomitanDictionary) {
         val message = if (dictionary.categories.size > 1) {
-            getString(R.string.yomitan_delete_message_multi, dictionary.title)
+            getString(R.string.yomitan_delete_message_multi)
         } else {
-            getString(R.string.yomitan_delete_message, dictionary.title)
+            getString(R.string.yomitan_delete_message)
         }
         OverlayAlert.Builder(this)
             .hideIcon()
@@ -431,9 +431,11 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
             holder.subtitle.text = description
             holder.divider.isVisible = position < working.size - 1
 
-            holder.dragHandle.setOnTouchListener { _, event ->
+            holder.dragHandle.setOnTouchListener { v, event ->
                 if (event.actionMasked == MotionEvent.ACTION_DOWN) {
                     touchHelper?.startDrag(holder)
+                } else if (event.actionMasked == MotionEvent.ACTION_UP) {
+                    v.performClick()
                 }
                 false
             }

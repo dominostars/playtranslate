@@ -38,10 +38,10 @@ object MlKitTextMapper {
         val out = mutableListOf<RecognizedRegion>()
         for (block in visionText.textBlocks) {
             // ML Kit's one cleaning input the shared normalizer can't re-derive: a block
-            // whose language ML Kit couldn't classify (null/"und") is where a lone
+            // whose language ML Kit couldn't classify ("und") is where a lone
             // non-kanji glyph is most likely a stray OCR fragment. Carried per region.
             val blockLang = block.recognizedLanguage
-            val languageUndetermined = blockLang == null || blockLang == "und"
+            val languageUndetermined = blockLang == "und"
             for (line in block.lines) {
                 val bb = line.boundingBox ?: continue
                 val walked = walkLine(line, addWordSpaces)

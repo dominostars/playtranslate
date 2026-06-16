@@ -1,6 +1,7 @@
 package com.playtranslate.ocr.meiki
 
 import android.graphics.Bitmap
+import androidx.core.graphics.scale
 import android.graphics.Rect
 import android.util.Log
 import com.playtranslate.mnn.MnnInterpreter
@@ -59,7 +60,7 @@ class MeikiSession private constructor(
      *  ORIGINAL-bitmap coords (boxes are produced in the stretched DET_W×DET_H
      *  space and mapped back by the independent x/y ratios, like the spike). */
     fun detect(bitmap: Bitmap): List<DetBox> {
-        val scaled = Bitmap.createScaledBitmap(bitmap, DET_W, DET_H, true)
+        val scaled = bitmap.scale(DET_W, DET_H)
         val px = IntArray(DET_W * DET_H)
         scaled.getPixels(px, 0, DET_W, 0, 0, DET_W, DET_H)
         if (scaled != bitmap) scaled.recycle()

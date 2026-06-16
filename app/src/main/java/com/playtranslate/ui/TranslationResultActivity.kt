@@ -23,6 +23,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -665,7 +666,7 @@ class TranslationResultActivity :
             window.decorView.getWindowVisibleDisplayFrame(rect)
             val screenHeight = window.decorView.height
             val keyboardVisible = (screenHeight - rect.bottom) > screenHeight * 0.15f
-            if (wasKeyboardVisible && !keyboardVisible && editOverlay.visibility == View.VISIBLE) {
+            if (wasKeyboardVisible && !keyboardVisible && editOverlay.isVisible) {
                 commitEdit()
             }
             wasKeyboardVisible = keyboardVisible

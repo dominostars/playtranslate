@@ -493,7 +493,6 @@ class OcrGoldenSetTest {
                         Op.SUB -> sb.append("[${op.expectedCh}→${op.actualCh}]")
                         Op.DEL -> sb.append("[${op.expectedCh}→_]")
                         Op.INS -> sb.append("[_→${op.actualCh}]")
-                        else -> {}
                     }
                 }
             }

@@ -2,6 +2,7 @@ package com.playtranslate.yomitan
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import androidx.core.database.sqlite.transaction
 import android.util.Log
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
@@ -620,17 +621,13 @@ object YomitanDataStore {
     }
 
     private fun purgeLocked(database: SQLiteDatabase, dictId: String) {
-        database.beginTransaction()
-        try {
+        database.transaction {
             database.delete("pitch", "dict_id = ?", arrayOf(dictId))
             database.delete("frequency", "dict_id = ?", arrayOf(dictId))
             database.delete("kanji", "dict_id = ?", arrayOf(dictId))
             database.delete("kanji_frequency", "dict_id = ?", arrayOf(dictId))
             database.delete("term", "dict_id = ?", arrayOf(dictId))
             database.delete("ingested_dicts", "dict_id = ?", arrayOf(dictId))
-            database.setTransactionSuccessful()
-        } finally {
-            database.endTransaction()
         }
     }
 
@@ -640,8 +637,7 @@ object YomitanDataStore {
      *  delete-then-insert inside one transaction, marking `ingested_dicts`
      *  last, so a mid-ingest crash can't half-apply or double-apply. */
     private fun ingestLocked(ctx: Context, database: SQLiteDatabase, dictionary: YomitanDictionary) {
-        database.beginTransaction()
-        try {
+        database.transaction {
             database.delete("pitch", "dict_id = ?", arrayOf(dictionary.id))
             database.delete("frequency", "dict_id = ?", arrayOf(dictionary.id))
             database.delete("kanji", "dict_id = ?", arrayOf(dictionary.id))
@@ -666,9 +662,6 @@ object YomitanDataStore {
                 "INSERT OR REPLACE INTO ingested_dicts (dict_id) VALUES (?)",
                 arrayOf(dictionary.id),
             )
-            database.setTransactionSuccessful()
-        } finally {
-            database.endTransaction()
         }
     }
 

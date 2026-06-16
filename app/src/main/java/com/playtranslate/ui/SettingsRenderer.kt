@@ -87,6 +87,7 @@ import java.util.Date
 import androidx.core.view.isVisible
 import androidx.core.net.toUri
 import androidx.core.view.isGone
+import androidx.core.graphics.withTranslation
 
 /** Which accessibility-gated Settings action raised the "accessibility
  *  required" alert — selects the alert's explanatory copy. */
@@ -121,10 +122,9 @@ private class OffsetImageSpan(drawable: Drawable, private val dyPx: Int) :
         bottom: Int,
         paint: Paint,
     ) {
-        canvas.save()
-        canvas.translate(0f, -dyPx.toFloat())
-        super.draw(canvas, text, start, end, x, top, y, bottom, paint)
-        canvas.restore()
+        canvas.withTranslation(y = -dyPx.toFloat()) {
+            super.draw(canvas, text, start, end, x, top, y, bottom, paint)
+        }
     }
 }
 

@@ -1,6 +1,7 @@
 package com.playtranslate.ocr.paddle
 
 import android.graphics.Bitmap
+import androidx.core.graphics.scale
 import android.graphics.Rect
 import android.util.Log
 import com.playtranslate.mnn.MnnInterpreter
@@ -241,7 +242,7 @@ class PaddleOcrSession private constructor(
         val rw = round32((ow * ratio).roundToInt())
         val rh = round32((oh * ratio).roundToInt())
 
-        val scaled = Bitmap.createScaledBitmap(bitmap, rw, rh, true)
+        val scaled = bitmap.scale(rw, rh)
         val px = IntArray(rw * rh)
         scaled.getPixels(px, 0, rw, 0, 0, rw, rh)
         if (scaled != bitmap) scaled.recycle()

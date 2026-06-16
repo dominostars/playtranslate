@@ -19,6 +19,7 @@ import com.playtranslate.displaySizePx
 import com.playtranslate.displayWindowMetrics
 import kotlin.math.abs
 import androidx.core.graphics.toColorInt
+import androidx.core.graphics.withTranslation
 
 /**
  * A circular floating icon that snaps to left/right screen edges, pushed off-
@@ -359,18 +360,17 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         // glyph rides the slow vertical micro-orbit via a canvas translate.
         val compactOffset = r * 0.5f
         val cx = if (currentEdge == Edge.LEFT) center - compactOffset else center + compactOffset
-        canvas.save()
-        canvas.translate(0f, orbitDy)
-        applyDim(circlePaint, circleBaseAlpha)
-        canvas.drawCircle(cx, center, r, circlePaint)
-        applyDim(borderPaint, borderBaseAlpha)
-        canvas.drawCircle(cx, center, r, borderPaint)
-        // Arrow in the visible slice, nudged toward the screen edge.
-        val arrowNudge = r * 0.65f
-        val arrowCx = if (currentEdge == Edge.LEFT) cx + arrowNudge else cx - arrowNudge
-        applyDim(arrowPaint, arrowBaseAlpha)
-        drawEdgeArrow(canvas, arrowCx, center, r * 0.22f)
-        canvas.restore()
+        canvas.withTranslation(y = orbitDy) {
+            applyDim(circlePaint, circleBaseAlpha)
+            canvas.drawCircle(cx, center, r, circlePaint)
+            applyDim(borderPaint, borderBaseAlpha)
+            canvas.drawCircle(cx, center, r, borderPaint)
+            // Arrow in the visible slice, nudged toward the screen edge.
+            val arrowNudge = r * 0.65f
+            val arrowCx = if (currentEdge == Edge.LEFT) cx + arrowNudge else cx - arrowNudge
+            applyDim(arrowPaint, arrowBaseAlpha)
+            drawEdgeArrow(canvas, arrowCx, center, r * 0.22f)
+        }
     }
 
     /** Draws a small chevron pointing toward the screen center (away from the

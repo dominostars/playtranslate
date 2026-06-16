@@ -12,6 +12,7 @@ import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.view.isNotEmpty
 import com.playtranslate.R
 import com.playtranslate.themeColor
 
@@ -82,11 +83,11 @@ class WordDefinitionsView @JvmOverloads constructor(
                 setTextColor(warnColor)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f * scale)
             }
-            addView(view, fullWidth(topMargin = if (childCount > 0) dp(8f * scale) else 0))
+            addView(view, fullWidth(topMargin = if (isNotEmpty()) dp(8f * scale) else 0))
         }
 
         // Gap between the meta/warning sections and the first sense.
-        val sensesTop = if (childCount > 0) dp(9f * scale) else 0
+        val sensesTop = if (isNotEmpty()) dp(9f * scale) else 0
         var previousPos: List<String>? = null
         var firstSenseBlock = true
         data.senses.forEachIndexed { i, sense ->
@@ -126,7 +127,7 @@ class WordDefinitionsView @JvmOverloads constructor(
         val gap = dp(8f * scale)
         fun add(view: View) {
             val lp = ViewGroup.MarginLayoutParams(WRAP_CONTENT, WRAP_CONTENT)
-            if (row.childCount > 0) lp.marginStart = gap
+            if (row.isNotEmpty()) lp.marginStart = gap
             row.addView(view, lp)
         }
         if (data.isCommon) {

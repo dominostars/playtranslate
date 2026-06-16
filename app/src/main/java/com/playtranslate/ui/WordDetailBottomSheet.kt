@@ -64,6 +64,7 @@ import java.util.Locale
 import androidx.core.view.isVisible
 import androidx.core.net.toUri
 import androidx.core.view.isGone
+import androidx.core.view.isNotEmpty
 
 class WordDetailBottomSheet : DialogFragment() {
 
@@ -1038,11 +1039,11 @@ class WordDetailBottomSheet : DialogFragment() {
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT,
-                    ).also { if (badgeRow.childCount > 0) it.marginStart = dp(6) }
+                    ).also { if (badgeRow.isNotEmpty()) it.marginStart = dp(6) }
                 }
             )
         }
-        badgeRow.isVisible = badgeRow.childCount > 0
+        badgeRow.isVisible = badgeRow.isNotEmpty()
         block.addView(badgeRow)
         headerBadgeFlow = badgeRow
         headerWord = written
@@ -1091,7 +1092,7 @@ class WordDetailBottomSheet : DialogFragment() {
                     badgeRow.addView(pill)
                 }
             }
-            badgeRow.isVisible = badgeRow.childCount > 0
+            badgeRow.isVisible = badgeRow.isNotEmpty()
         }
     }
 

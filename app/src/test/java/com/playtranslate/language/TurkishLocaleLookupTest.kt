@@ -86,7 +86,7 @@ class TurkishLocaleLookupTest {
     }
 
     @Test fun `fromCode resolves codes even on a Turkish-locale device`() {
-        Locale.setDefault(Locale("tr"))
+        Locale.setDefault(Locale.forLanguageTag("tr"))
         // "IT" would default-lowercase to "ıt" on a Turkish device, missing
         // the enum match. ROOT-lowercase keeps it as "it".
         assertEquals(SourceLangId.IT, SourceLangId.fromCode("IT"))
@@ -95,7 +95,7 @@ class TurkishLocaleLookupTest {
     }
 
     @Test fun `ROOT-locale casing keeps ASCII identifiers stable on Turkish devices`() {
-        Locale.setDefault(Locale("tr"))
+        Locale.setDefault(Locale.forLanguageTag("tr"))
         // This is the guarantee every ASCII-identifier call site relies on
         // (DeepL codes, enum names, pinyin syllables). Without ROOT, the
         // next line would fail on a Turkish-locale JVM.
