@@ -1,6 +1,8 @@
 # PlayTranslate
 
-A real-time game translation Android app, built for both language learners and people who just want to play. Supports 21 game languages and 59 user languages!
+A real-time game translation Android app, built for both language learners and people who just want to play. Supports 23 game languages and 59 user languages!
+
+[Download the latest release by clicking here](../../releases/latest)
 
 To report issues, receive support, or make requests, please join the [Discord server](https://discord.gg/DVCj6p7MUC)
 
@@ -17,12 +19,13 @@ To report issues, receive support, or make requests, please join the [Discord se
 - **Capture regions**: Crop to just the dialogue box, subtitles, or any custom area
 - **Text-to-speech**: Hear text spoken aloud. Change the default voice in settings
 - **Anki export**: Save sentences to AnkiDroid with the original text, translation, word list, target words, text-to-speech, and a screenshot. Card type selection with presets for popular decks.
+- **Yomitan integration**: Yomitan dictionaries seamlessly integrate, including pitch accent, frequency chips, kanji enrichment, and merged term definitions everywhere (incl. Anki).
 - **Offline**: OCR and translation work without an internet connection, with optional on-device translation models
 - **No accessibility required**: PlayTranslate runs on a screen-recording permission by default, so it works even on devices that block accessibility for sideloaded apps. 
 
 ## How to Use
 
-1. [Download the latest release by clicking here](../../releases/download/v2.3.0/PlayTranslate-2.3.0.apk)
+1. [Download the latest release by clicking here](../../releases/download/v2.4.0/PlayTranslate-2.4.0.apk)
 2. On your Android, enable **Settings → Security → Install unknown apps** for your file manager or browser
 3. Open the APK and tap Install
 4. On first launch, follow the onboarding steps to grant the necessary permissions
@@ -60,7 +63,7 @@ You can support PlayTranslate on Ko-fi at https://ko-fi.com/playtranslate
 
 ## Supported Languages
 
-PlayTranslate translates from **22 game languages** (the text it can read off the screen) into **59 translation languages** (the language shown to you). Both tables are sorted by total worldwide speakers.
+PlayTranslate translates from **23 game languages** (the text it can read off the screen) into **59 translation languages** (the language shown to you). Both tables are sorted by total worldwide speakers.
 
 ### Game languages (read from the screen)
 
@@ -193,7 +196,7 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 - Qwen 2.5 1.5B Instruct (Alibaba): downloadable as an optional offline pack (Apache 2.0)
 - Gemma 4 E2B (Google): downloadable as an optional offline pack (Gemma terms of use)
 - Hunyuan-MT 1.5 1.8B (Tencent): translation-specialised model, downloadable as an optional offline pack (Tencent HY Community License — not available in the EU, UK, or South Korea)
-- [PaddleOCR PP-OCRv5 recognizers](https://github.com/PaddlePaddle/PaddleOCR): optional per-script OCR recognizer packs for additional scripts (e.g. Korean, Arabic, Cyrillic, Thai), downloadable per source language (Apache 2.0)
+- [PaddleOCR PP-OCRv5+v6 recognizers](https://github.com/PaddlePaddle/PaddleOCR): optional per-script OCR recognizer packs for additional scripts (e.g. Korean, Arabic, Cyrillic, Thai), downloadable per source language (Apache 2.0)
 - [Meiki](https://github.com/rtr46/meikiocr): high-accuracy Japanese OCR model (D-FINE), downloadable as an optional offline pack (LGPL 3.0)
 - [Firefox Translations (Bergamot)](https://github.com/mozilla/firefox-translations-models): Mozilla's offline NMT model pairs, downloadable for offline translation
 
