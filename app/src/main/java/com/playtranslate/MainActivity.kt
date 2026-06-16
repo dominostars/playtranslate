@@ -2148,13 +2148,14 @@ class MainActivity :
                 0, title.length,
                 android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
             )
+            append(" ")
+            val bodyStart = length
+            append(getString(bodyRes))
             setSpan(
-                android.text.style.ForegroundColorSpan(themeColor(R.attr.ptText)),
-                0, title.length,
+                android.text.style.ForegroundColorSpan(themeColor(R.attr.ptTextHint)),
+                bodyStart, length,
                 android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
             )
-            append(" ")
-            append(getString(bodyRes))
         }
         findViewById<TextView>(textViewId).text = text
     }
