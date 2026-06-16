@@ -69,7 +69,15 @@
 
     <string name="onboarding_welcome_title">مرحبًا بك في <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>!</string>
 
-    <string name="onboarding_welcome_tagline">تطبيقك المرافق للعب الألعاب بلغات أخرى.</string>
+    <string name="onboarding_welcome_tagline">افهم كل ما تلعبه أو تقرأه، بأي لغة.</string>
+
+    <string name="onboarding_welcome_play_title">ألا تتحدث اللغة؟</string>
+
+    <string name="onboarding_welcome_play_body">تضع الترجمة التلقائية لغتك مباشرةً على الشاشة، وتتحدّث مع تغيّر الحوار. حتى دون اتصال بالإنترنت!</string>
+
+    <string name="onboarding_welcome_learn_title">هل تتعلّم اللغة؟</string>
+
+    <string name="onboarding_welcome_learn_body">احصل على المساعدة عندما تريدها فقط، مع البحث عن الكلمات، والفوريغانا والبينيين، وبطاقات <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> بضغطة واحدة، والمزيد.</string>
 
     <string name="onboarding_welcome_row_placeholder">اضغط للاختيار</string>
 
@@ -79,10 +87,40 @@
 
     <string name="onboarding_notif_title">السماح بالإشعارات</string>
 
+    <string name="onboarding_notif_intro">يتطلب نظام Android من التطبيقات التي تعمل في الخلفية عرض إشعار في شريط الحالة أثناء نشاطها.</string>
+
+    <string name="onboarding_notif_row_alerts_title">لا تنبيهات ولا لافتات</string>
+
+    <string name="onboarding_notif_row_alerts_sub">لن يظهر أي شيء منبثق ولن يقاطعك</string>
+
+    <string name="onboarding_notif_row_silent_title">لا أصوات ولا اهتزاز</string>
+
+    <string name="onboarding_notif_row_silent_sub">يبقى صامتًا تمامًا في الخلفية</string>
+
+    <string name="onboarding_notif_row_status_title">مجرد أيقونة في شريط الحالة</string>
+
+    <string name="onboarding_notif_row_status_sub">مؤشر هادئ يدل على أن <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> قيد التشغيل</string>
+
 
     <string name="onboarding_a11y_hint">ابحث عن <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 
     <string name="onboarding_a11y_title">العرض فوق التطبيقات الأخرى</string>
+
+    <string name="onboarding_a11y_enable_title">تفعيل «<xliff:g id="setting_name" example="Display over other apps">%1$s</xliff:g>»</string>
+
+    <string name="onboarding_a11y_intro">يحتاج <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> إلى العرض فوق التطبيقات الأخرى من أجل:</string>
+
+    <string name="onboarding_a11y_row_translate_title">عرض النص المترجَم</string>
+
+    <string name="onboarding_a11y_row_translate_sub">تظهر الترجمات فوق النص الأصلي مباشرةً</string>
+
+    <string name="onboarding_a11y_row_menu_title">عرض قائمة الوصول السريع</string>
+
+    <string name="onboarding_a11y_row_menu_sub">الوصول إلى ميزات <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> دون تبديل التطبيقات</string>
+
+    <string name="onboarding_a11y_row_lookup_title">البحث عن الكلمات</string>
+
+    <string name="onboarding_a11y_row_lookup_sub">احصل على تعريفات فورية للكلمات على الشاشة</string>
 
 
     <string name="btn_grant_permission">منح الإذن</string>
@@ -885,6 +923,10 @@
 
     <string name="settings_touches_refresh_title">لمس الشاشة يحدّث الترجمة</string>
 
+    <string name="settings_vertical_grow_title">توسيع النص العمودي</string>
+
+    <string name="settings_vertical_grow_subtitle">توسيع مربعات النص العمودي الضيقة لتُقرأ الترجمة أفقيًا. قد يغطي المحتوى المجاور.</string>
+
     <!-- ═══ HOTKEY SETUP DIALOG ═══ -->
 
     <string name="dialog_hotkey_setup_title">تعيين اختصار</string>
@@ -1024,6 +1066,86 @@
     <string name="settings_cell_translation_services">خدمات الترجمة</string>
     <string name="settings_cell_tts">تحويل النص إلى كلام</string>
 
+    <string name="yomitan_page_description">قواميس Yomitan هي ملفات قواميس أنشأها المجتمع وتُستخدم مع امتداد المتصفح Yomitan. تشمل ميزاتها قواميس إضافية وبيانات التكرار والنبرة الصوتية. استورد قاموسًا (.zip) باستخدام زر +، وسيدمجه PlayTranslate بسلاسة في جميع أنحاء التطبيق.</string>
+
+    <string name="yomitan_import_action">استيراد قاموس</string>
+
+    <string name="yomitan_category_terms">المفردات</string>
+
+    <string name="yomitan_category_kanji">كانجي</string>
+
+    <string name="yomitan_category_frequency">التكرار</string>
+
+    <string name="yomitan_category_kanji_frequency">تكرار الكانجي</string>
+
+    <string name="yomitan_category_pitch_accent">النبرة الصوتية</string>
+
+    <string name="yomitan_category_pronunciation">النطق</string>
+
+    <string name="yomitan_importing_title">جارٍ استيراد القاموس</string>
+
+    <string name="yomitan_importing_message">جارٍ التحقق من ملفات القاموس…</string>
+
+    <string name="yomitan_invalid_title">ملف غير صالح</string>
+
+    <string name="yomitan_invalid_message">تعذّرت قراءة هذا الملف كقاموس Yomitan.</string>
+
+    <string name="yomitan_no_space_title">مساحة غير كافية</string>
+
+    <string name="yomitan_no_space_message">يحتاج استيراد هذا القاموس إلى حوالي <xliff:g id="needed" example="180 MB">%1$s</xliff:g> من المساحة الحرة، لكن <xliff:g id="available" example="42 MB">%2$s</xliff:g> فقط متاحة. حرّر بعض المساحة وحاول مرة أخرى.</string>
+
+    <string name="yomitan_single_dict_title">عرض التعريفات من قاموس واحد فقط</string>
+
+    <string name="yomitan_single_dict_subtitle">تأتي التعريفات من القاموس ذي الأولوية الأعلى الذي يحتوي على نتائج؛ والقاموس المدمج هو الحل البديل الأخير</string>
+
+    <string name="yomitan_io_error_title">فشل الاستيراد</string>
+
+    <string name="yomitan_io_error_message">تعذّر استيراد الملف. تحقق من مساحة التخزين وحاول مرة أخرى.</string>
+
+    <string name="yomitan_duplicate_title">تم الاستيراد بالفعل</string>
+
+    <string name="yomitan_duplicate_message">تم استيراد «<xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>» بالفعل. احذفه لاستيراده مرة أخرى.</string>
+
+    <string name="yomitan_delete_title">حذف «<xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>»؟</string>
+
+    <string name="yomitan_delete_message">يؤدي هذا إلى إزالة القاموس المستورَد من التطبيق.</string>
+
+    <string name="yomitan_delete_message_multi">يظهر هذا القاموس في عدة أقسام — وستتم إزالته منها جميعًا.</string>
+
+    <string name="yomitan_delete_confirm">حذف</string>
+
+    <string name="cd_yomitan_delete">حذف القاموس</string>
+
+    <string name="yomitan_category_recommended">المقترحة</string>
+
+    <string name="yomitan_downloading_title">جارٍ تنزيل القاموس</string>
+
+    <string name="yomitan_downloading_message"><xliff:g id="received" example="3.2 MB">%1$s</xliff:g> / <xliff:g id="total" example="11 MB">%2$s</xliff:g></string>
+
+    <string name="cd_yomitan_download">تنزيل القاموس</string>
+
+    <string name="yomitan_download_error_title">فشل التنزيل</string>
+
+    <string name="yomitan_download_error_message">تعذّر تنزيل القاموس. تحقق من اتصالك وحاول مرة أخرى.</string>
+
+    <string name="yomitan_metadata_title">القاموس</string>
+
+    <string name="yomitan_metadata_header">البيانات الوصفية</string>
+
+    <string name="yomitan_metadata_unavailable">تعذّرت قراءة البيانات الوصفية لهذا القاموس.</string>
+
+    <string name="yomitan_alias_label">الاسم المستعار</string>
+
+    <string name="yomitan_alias_hint">أضف اسمًا مستعارًا</string>
+
+    <string name="yomitan_accent_default_cd">افتراضي (لون نص العنوان الفرعي)</string>
+
+    <string name="settings_header_tools">الأدوات</string>
+
+    <string name="settings_cell_dictionary">القاموس</string>
+
+    <string name="settings_cell_dictionary_summary">البحث عن تعريفات الكلمات</string>
+
     <string name="settings_digest_none">لا شيء</string>
     <string name="settings_capture_displays_count">عدد الشاشات: <xliff:g id="count" example="2">%1$d</xliff:g></string>
 
@@ -1149,6 +1271,27 @@
     <string name="settings_debug_save_ocr_seed">حفظ التقاطات OCR كبذور</string>
     <string name="settings_debug_log_grouping">تسجيل قرارات تجميع OCR</string>
     <string name="settings_debug_force_crash_title">فرض تعطّل</string>
+
+    <string name="dictionary_screen_title">القاموس</string>
+
+    <string name="dictionary_search_hint">البحث عن الكلمات</string>
+
+    <string name="dictionary_clear_query">مسح</string>
+
+    <plurals name="dictionary_entries_count">
+        <item quantity="zero"><xliff:g id="count" example="0">%d</xliff:g> مُدخَل</item>
+        <item quantity="one">مُدخَل واحد</item>
+        <item quantity="two">مُدخَلان</item>
+        <item quantity="few"><xliff:g id="count" example="3">%d</xliff:g> مُدخَلات</item>
+        <item quantity="many"><xliff:g id="count" example="11">%d</xliff:g> مُدخَلًا</item>
+        <item quantity="other"><xliff:g id="count" example="100">%d</xliff:g> مُدخَل</item>
+    </plurals>
+
+    <string name="dictionary_lang_pair"><xliff:g id="source" example="Japanese">%1$s</xliff:g> ← <xliff:g id="target" example="English">%2$s</xliff:g></string>
+
+    <string name="dictionary_status_no_results">لا توجد نتائج</string>
+
+    <string name="dictionary_status_error">تعذّر البحث عن ذلك</string>
 
     <string name="settings_debug_export_logs_title">تصدير السجلات</string>
 

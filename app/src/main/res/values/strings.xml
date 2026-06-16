@@ -2517,12 +2517,12 @@
     <string name="dictionary_search_hint">Search words</string>
     <!-- Content description of the clear (X) icon button in the search field. -->
     <string name="dictionary_clear_query">Clear</string>
-    <!-- Left of the dictionary-lookup status row, singular form (exactly one
-         result). %d = the number of results, always 1 here. -->
-    <string name="dictionary_entries_count_one"><xliff:g id="count" example="1">%d</xliff:g> entry</string>
-    <!-- Left of the dictionary-lookup status row, plural form (0 or 2+ results).
-         %d = the number of results (e.g. 4). -->
-    <string name="dictionary_entries_count_other"><xliff:g id="count" example="4">%d</xliff:g> entries</string>
+    <!-- Left of the dictionary-lookup status row: the result count. %d is the
+         number of results; uses each locale's CLDR plural categories. -->
+    <plurals name="dictionary_entries_count">
+        <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> entry</item>
+        <item quantity="other"><xliff:g id="count" example="4">%d</xliff:g> entries</item>
+    </plurals>
     <!-- Right of the dictionary-lookup status row: the source-to-target language
          pair, rendered like «Japanese → English». %1$s = source language name,
          %2$s = target language name. -->

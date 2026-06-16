@@ -79,7 +79,15 @@
 
     <string name="onboarding_welcome_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>へようこそ！</string>
 
-    <string name="onboarding_welcome_tagline">他の言語のゲームを楽しむためのコンパニオンアプリです。</string>
+    <string name="onboarding_welcome_tagline">どんな言語のものでも、遊ぶ・読むコンテンツを理解できます。</string>
+
+    <string name="onboarding_welcome_play_title">その言語が分かりませんか？</string>
+
+    <string name="onboarding_welcome_play_body">自動翻訳が使用する言語を画面にそのまま表示し、セリフが変わるたびに更新します。オフラインでも使えます。</string>
+
+    <string name="onboarding_welcome_learn_title">その言語を学んでいますか？</string>
+
+    <string name="onboarding_welcome_learn_body">単語の検索、ふりがなやピンイン、ワンタップの<xliff:g id="brand_anki" example="Anki">Anki</xliff:g>カードなど、必要なときだけサポートを受けられます。</string>
 
     <string name="onboarding_welcome_row_placeholder">タップして選択</string>
 
@@ -89,10 +97,40 @@
 
     <string name="onboarding_notif_title">通知を許可</string>
 
+    <string name="onboarding_notif_intro">Androidでは、バックグラウンドで動作するアプリは、実行中にステータスバーの通知を表示する必要があります。</string>
+
+    <string name="onboarding_notif_row_alerts_title">アラートやバナーなし</string>
+
+    <string name="onboarding_notif_row_alerts_sub">ポップアップや割り込みは一切ありません</string>
+
+    <string name="onboarding_notif_row_silent_title">音やバイブレーションなし</string>
+
+    <string name="onboarding_notif_row_silent_sub">バックグラウンドで完全に無音のままです</string>
+
+    <string name="onboarding_notif_row_status_title">ステータスバーのアイコンのみ</string>
+
+    <string name="onboarding_notif_row_status_sub"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>が実行中であることを示す控えめな表示です</string>
+
 
     <string name="onboarding_a11y_hint"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b>を探してください</string>
 
     <string name="onboarding_a11y_title">他のアプリの上に重ねて表示</string>
+
+    <string name="onboarding_a11y_enable_title">「<xliff:g id="setting_name" example="Display over other apps">%1$s</xliff:g>」を有効にする</string>
+
+    <string name="onboarding_a11y_intro"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b>には、以下のために他のアプリの上に重ねて表示する権限が必要です：</string>
+
+    <string name="onboarding_a11y_row_translate_title">翻訳されたテキストを表示</string>
+
+    <string name="onboarding_a11y_row_translate_sub">翻訳が原文の上にそのまま表示されます</string>
+
+    <string name="onboarding_a11y_row_menu_title">クイックアクセスメニューを表示</string>
+
+    <string name="onboarding_a11y_row_menu_sub">アプリを切り替えずに<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>の機能を使えます</string>
+
+    <string name="onboarding_a11y_row_lookup_title">単語を調べる</string>
+
+    <string name="onboarding_a11y_row_lookup_sub">画面上の単語の定義をすぐに表示します</string>
 
 
     <string name="btn_grant_permission">権限を許可</string>
@@ -967,6 +1005,10 @@
 
     <string name="settings_touches_refresh_title">画面タッチで翻訳を更新</string>
 
+    <string name="settings_vertical_grow_title">縦書きテキストを横に広げる</string>
+
+    <string name="settings_vertical_grow_subtitle">幅の狭い縦書きテキストのボックスを広げて、翻訳が横書きで読めるようにします。周囲の内容に重なる場合があります。</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
          ═══════════════════════════════════════════════════════════════ -->
@@ -1120,6 +1162,86 @@
     <string name="settings_cell_translation_services">翻訳サービス</string>
     <string name="settings_cell_tts">テキスト読み上げ</string>
 
+    <string name="yomitan_page_description">Yomitan辞書は、Yomitanブラウザ拡張機能で使われる、有志が作成した辞書ファイルです。追加の辞書、頻度データ、高低アクセントなどの機能があります。+ボタンで辞書（.zip）をインポートすると、<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>がアプリ全体にシームレスに組み込みます。</string>
+
+    <string name="yomitan_import_action">辞書をインポート</string>
+
+    <string name="yomitan_category_terms">単語</string>
+
+    <string name="yomitan_category_kanji">漢字</string>
+
+    <string name="yomitan_category_frequency">頻度</string>
+
+    <string name="yomitan_category_kanji_frequency">漢字の頻度</string>
+
+    <string name="yomitan_category_pitch_accent">高低アクセント</string>
+
+    <string name="yomitan_category_pronunciation">発音</string>
+
+    <string name="yomitan_importing_title">辞書をインポート中</string>
+
+    <string name="yomitan_importing_message">辞書ファイルを検証中…</string>
+
+    <string name="yomitan_invalid_title">無効なファイル</string>
+
+    <string name="yomitan_invalid_message">このファイルはYomitan辞書として読み込めませんでした。</string>
+
+    <string name="yomitan_no_space_title">空き容量が足りません</string>
+
+    <string name="yomitan_no_space_message">この辞書のインポートには約<xliff:g id="needed" example="180 MB">%1$s</xliff:g>の空き容量が必要ですが、<xliff:g id="available" example="42 MB">%2$s</xliff:g>しかありません。容量を空けてからもう一度お試しください。</string>
+
+    <string name="yomitan_single_dict_title">1つの辞書からのみ定義を表示</string>
+
+    <string name="yomitan_single_dict_subtitle">定義は、結果のある辞書のうち最も優先順位の高いものから表示されます。内蔵辞書が最後の代替となります</string>
+
+    <string name="yomitan_io_error_title">インポートに失敗しました</string>
+
+    <string name="yomitan_io_error_message">ファイルをインポートできませんでした。空き容量を確認して、もう一度お試しください。</string>
+
+    <string name="yomitan_duplicate_title">インポート済み</string>
+
+    <string name="yomitan_duplicate_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>はすでにインポートされています。もう一度インポートするには削除してください。</string>
+
+    <string name="yomitan_delete_title">「<xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>」を削除しますか？</string>
+
+    <string name="yomitan_delete_message">インポートした辞書をアプリから削除します。</string>
+
+    <string name="yomitan_delete_message_multi">この辞書は複数のセクションに表示されています。すべてのセクションから削除されます。</string>
+
+    <string name="yomitan_delete_confirm">削除</string>
+
+    <string name="cd_yomitan_delete">辞書を削除</string>
+
+    <string name="yomitan_category_recommended">おすすめ</string>
+
+    <string name="yomitan_downloading_title">辞書をダウンロード中</string>
+
+    <string name="yomitan_downloading_message"><xliff:g id="received" example="3.2 MB">%1$s</xliff:g> / <xliff:g id="total" example="11 MB">%2$s</xliff:g></string>
+
+    <string name="cd_yomitan_download">辞書をダウンロード</string>
+
+    <string name="yomitan_download_error_title">ダウンロードに失敗しました</string>
+
+    <string name="yomitan_download_error_message">辞書をダウンロードできませんでした。接続を確認して、もう一度お試しください。</string>
+
+    <string name="yomitan_metadata_title">辞書</string>
+
+    <string name="yomitan_metadata_header">メタデータ</string>
+
+    <string name="yomitan_metadata_unavailable">この辞書のメタデータを読み込めませんでした。</string>
+
+    <string name="yomitan_alias_label">別名</string>
+
+    <string name="yomitan_alias_hint">ニックネームを追加</string>
+
+    <string name="yomitan_accent_default_cd">デフォルト（サブタイトルのテキスト色）</string>
+
+    <string name="settings_header_tools">ツール</string>
+
+    <string name="settings_cell_dictionary">辞書</string>
+
+    <string name="settings_cell_dictionary_summary">単語の定義を調べる</string>
+
     <string name="settings_digest_none">なし</string>
     <string name="settings_capture_displays_count"><xliff:g id="count" example="2">%1$d</xliff:g>台のディスプレイ</string>
 
@@ -1263,6 +1385,22 @@
     <string name="settings_debug_save_ocr_seed">OCRキャプチャをシードとして保存</string>
     <string name="settings_debug_log_grouping">OCRのグループ化判定をログ</string>
     <string name="settings_debug_force_crash_title">クラッシュを強制</string>
+
+    <string name="dictionary_screen_title">辞書</string>
+
+    <string name="dictionary_search_hint">単語を検索</string>
+
+    <string name="dictionary_clear_query">クリア</string>
+
+    <plurals name="dictionary_entries_count">
+        <item quantity="other"><xliff:g id="count" example="5">%d</xliff:g>件</item>
+    </plurals>
+
+    <string name="dictionary_lang_pair"><xliff:g id="source" example="Japanese">%1$s</xliff:g> → <xliff:g id="target" example="English">%2$s</xliff:g></string>
+
+    <string name="dictionary_status_no_results">結果がありません</string>
+
+    <string name="dictionary_status_error">検索できませんでした</string>
 
     <string name="settings_debug_export_logs_title">ログをエクスポート</string>
 

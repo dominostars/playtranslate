@@ -79,7 +79,15 @@
 
     <string name="onboarding_welcome_title">欢迎使用 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>！</string>
 
-    <string name="onboarding_welcome_tagline">助你畅玩外语游戏的伴侣应用。</string>
+    <string name="onboarding_welcome_tagline">无论玩什么、读什么，都能用任何语言看懂。</string>
+
+    <string name="onboarding_welcome_play_title">不会这门语言？</string>
+
+    <string name="onboarding_welcome_play_body">自动翻译会把你的语言直接显示在屏幕上，并随对话的变化实时更新。离线也能用！</string>
+
+    <string name="onboarding_welcome_learn_title">正在学这门语言？</string>
+
+    <string name="onboarding_welcome_learn_body">只在你需要时才提供帮助：单词查询、假名注音和拼音、一键创建 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 卡片等等。</string>
 
     <string name="onboarding_welcome_row_placeholder">点按选择</string>
 
@@ -89,11 +97,39 @@
 
     <string name="onboarding_notif_title">允许通知</string>
 
+    <string name="onboarding_notif_intro">Android 要求在后台运行的应用在活动期间显示一条状态栏通知。</string>
+
+    <string name="onboarding_notif_row_alerts_title">没有提醒或横幅</string>
+
+    <string name="onboarding_notif_row_alerts_sub">不会弹出任何内容，也不会打扰你</string>
+
+    <string name="onboarding_notif_row_silent_title">没有声音或振动</string>
+
+    <string name="onboarding_notif_row_silent_sub">它会在后台完全静默运行</string>
+
+    <string name="onboarding_notif_row_status_title">只有一个状态栏图标</string>
+
+    <string name="onboarding_notif_row_status_sub">一个表示 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 正在运行的安静提示</string>
 
     <string name="onboarding_a11y_hint">请查找 <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 
     <string name="onboarding_a11y_title">显示在其他应用的上层</string>
 
+    <string name="onboarding_a11y_enable_title">启用“<xliff:g id="setting_name" example="Display over other apps">%1$s</xliff:g>”</string>
+
+    <string name="onboarding_a11y_intro"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> 需要显示在其他应用的上层，以便：</string>
+
+    <string name="onboarding_a11y_row_translate_title">显示翻译后的文字</string>
+
+    <string name="onboarding_a11y_row_translate_sub">翻译会直接显示在原文上方</string>
+
+    <string name="onboarding_a11y_row_menu_title">显示快捷菜单</string>
+
+    <string name="onboarding_a11y_row_menu_sub">无需切换应用即可使用 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 的功能</string>
+
+    <string name="onboarding_a11y_row_lookup_title">查询单词</string>
+
+    <string name="onboarding_a11y_row_lookup_sub">即时获取屏幕上单词的释义</string>
 
     <string name="btn_grant_permission">授予权限</string>
 
@@ -967,6 +1003,10 @@
 
     <string name="settings_touches_refresh_title">触摸屏幕刷新翻译</string>
 
+    <string name="settings_vertical_grow_title">加宽竖排文字</string>
+
+    <string name="settings_vertical_grow_subtitle">放大狭窄的竖排文字框，使翻译可以横向阅读。可能会遮挡附近的内容。</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
          ═══════════════════════════════════════════════════════════════ -->
@@ -1120,6 +1160,86 @@
     <string name="settings_cell_translation_services">翻译服务</string>
     <string name="settings_cell_tts">文字转语音</string>
 
+    <string name="yomitan_page_description">Yomitan 词典是供 Yomitan 浏览器扩展使用的、由社区创建的词典文件。其功能包括额外的词典、词频数据和音高重音。用 + 按钮导入词典（.zip），PlayTranslate 便会将其无缝整合到应用的各处。</string>
+
+    <string name="yomitan_import_action">导入词典</string>
+
+    <string name="yomitan_category_terms">词语</string>
+
+    <string name="yomitan_category_kanji">汉字</string>
+
+    <string name="yomitan_category_frequency">词频</string>
+
+    <string name="yomitan_category_kanji_frequency">汉字频率</string>
+
+    <string name="yomitan_category_pitch_accent">音高重音</string>
+
+    <string name="yomitan_category_pronunciation">发音</string>
+
+    <string name="yomitan_importing_title">正在导入词典</string>
+
+    <string name="yomitan_importing_message">正在验证词典文件…</string>
+
+    <string name="yomitan_invalid_title">无效文件</string>
+
+    <string name="yomitan_invalid_message">无法将此文件作为 Yomitan 词典读取。</string>
+
+    <string name="yomitan_no_space_title">空间不足</string>
+
+    <string name="yomitan_no_space_message">导入此词典约需 <xliff:g id="needed" example="180 MB">%1$s</xliff:g> 可用空间，但目前仅有 <xliff:g id="available" example="42 MB">%2$s</xliff:g>。请释放空间后重试。</string>
+
+    <string name="yomitan_single_dict_title">仅显示来自单个词典的释义</string>
+
+    <string name="yomitan_single_dict_subtitle">释义来自优先级最高且有结果的词典；内置词典作为最后的后备。</string>
+
+    <string name="yomitan_io_error_title">导入失败</string>
+
+    <string name="yomitan_io_error_message">无法导入该文件。请检查存储空间后重试。</string>
+
+    <string name="yomitan_duplicate_title">已导入</string>
+
+    <string name="yomitan_duplicate_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> 已导入。请先删除它，才能再次导入。</string>
+
+    <string name="yomitan_delete_title">删除 <xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>？</string>
+
+    <string name="yomitan_delete_message">这会将已导入的词典从应用中移除。</string>
+
+    <string name="yomitan_delete_message_multi">此词典出现在多个分组中——将从所有分组中移除。</string>
+
+    <string name="yomitan_delete_confirm">删除</string>
+
+    <string name="cd_yomitan_delete">删除词典</string>
+
+    <string name="yomitan_category_recommended">推荐</string>
+
+    <string name="yomitan_downloading_title">正在下载词典</string>
+
+    <string name="yomitan_downloading_message"><xliff:g id="received" example="3.2 MB">%1$s</xliff:g> / <xliff:g id="total" example="11 MB">%2$s</xliff:g></string>
+
+    <string name="cd_yomitan_download">下载词典</string>
+
+    <string name="yomitan_download_error_title">下载失败</string>
+
+    <string name="yomitan_download_error_message">无法下载该词典。请检查你的网络连接后重试。</string>
+
+    <string name="yomitan_metadata_title">词典</string>
+
+    <string name="yomitan_metadata_header">元数据</string>
+
+    <string name="yomitan_metadata_unavailable">无法读取此词典的元数据。</string>
+
+    <string name="yomitan_alias_label">别名</string>
+
+    <string name="yomitan_alias_hint">添加昵称</string>
+
+    <string name="yomitan_accent_default_cd">默认（副标题文字颜色）</string>
+
+    <string name="settings_header_tools">工具</string>
+
+    <string name="settings_cell_dictionary">词典</string>
+
+    <string name="settings_cell_dictionary_summary">查询单词释义</string>
+
     <string name="settings_digest_none">无</string>
     <string name="settings_capture_displays_count"><xliff:g id="count" example="2">%1$d</xliff:g> 台显示屏</string>
 
@@ -1263,6 +1383,22 @@
     <string name="settings_debug_save_ocr_seed">将 OCR 截取保存为种子</string>
     <string name="settings_debug_log_grouping">记录 OCR 分组决策</string>
     <string name="settings_debug_force_crash_title">强制崩溃</string>
+
+    <string name="dictionary_screen_title">词典</string>
+
+    <string name="dictionary_search_hint">搜索单词</string>
+
+    <string name="dictionary_clear_query">清除</string>
+
+    <plurals name="dictionary_entries_count">
+        <item quantity="other"><xliff:g id="count" example="5">%d</xliff:g> 个词条</item>
+    </plurals>
+
+    <string name="dictionary_lang_pair"><xliff:g id="source" example="Japanese">%1$s</xliff:g> → <xliff:g id="target" example="English">%2$s</xliff:g></string>
+
+    <string name="dictionary_status_no_results">无结果</string>
+
+    <string name="dictionary_status_error">无法查询该词</string>
 
     <string name="settings_debug_export_logs_title">导出日志</string>
 

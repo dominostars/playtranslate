@@ -79,7 +79,15 @@
 
     <string name="onboarding_welcome_title">Chào mừng bạn đến với <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>!</string>
 
-    <string name="onboarding_welcome_tagline">Ứng dụng đồng hành giúp bạn chơi trò chơi bằng các ngôn ngữ khác.</string>
+    <string name="onboarding_welcome_tagline">Hiểu mọi thứ bạn chơi hay đọc, bằng bất kỳ ngôn ngữ nào.</string>
+
+    <string name="onboarding_welcome_play_title">Không biết ngôn ngữ đó?</string>
+
+    <string name="onboarding_welcome_play_body">Tự động dịch đưa ngôn ngữ của bạn lên ngay trên màn hình, cập nhật theo từng câu thoại. Kể cả khi ngoại tuyến!</string>
+
+    <string name="onboarding_welcome_learn_title">Đang học ngôn ngữ đó?</string>
+
+    <string name="onboarding_welcome_learn_body">Chỉ nhận trợ giúp khi bạn muốn với tra cứu từ, furigana và pinyin, thẻ <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> chỉ với một lần nhấn, và nhiều hơn nữa.</string>
 
     <string name="onboarding_welcome_row_placeholder">Nhấn để chọn</string>
 
@@ -89,10 +97,40 @@
 
     <string name="onboarding_notif_title">Cho phép thông báo</string>
 
+    <string name="onboarding_notif_intro">Android yêu cầu các ứng dụng chạy nền phải hiển thị một thông báo trên thanh trạng thái khi đang hoạt động.</string>
+
+    <string name="onboarding_notif_row_alerts_title">Không có cảnh báo hay biểu ngữ</string>
+
+    <string name="onboarding_notif_row_alerts_sub">Không có gì hiện lên hay làm gián đoạn bạn</string>
+
+    <string name="onboarding_notif_row_silent_title">Không âm thanh hay rung</string>
+
+    <string name="onboarding_notif_row_silent_sub">Nó hoàn toàn im lặng khi chạy nền</string>
+
+    <string name="onboarding_notif_row_status_title">Chỉ một biểu tượng trên thanh trạng thái</string>
+
+    <string name="onboarding_notif_row_status_sub">Một chỉ báo lặng lẽ cho biết <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> đang chạy</string>
+
 
     <string name="onboarding_a11y_hint">Tìm <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 
     <string name="onboarding_a11y_title">Hiển thị trên các ứng dụng khác</string>
+
+    <string name="onboarding_a11y_enable_title">Bật “<xliff:g id="setting_name" example="Display over other apps">%1$s</xliff:g>”</string>
+
+    <string name="onboarding_a11y_intro"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> cần hiển thị trên các ứng dụng khác để:</string>
+
+    <string name="onboarding_a11y_row_translate_title">Hiện văn bản đã dịch</string>
+
+    <string name="onboarding_a11y_row_translate_sub">Bản dịch hiện ngay trên văn bản gốc</string>
+
+    <string name="onboarding_a11y_row_menu_title">Hiện menu chọn nhanh</string>
+
+    <string name="onboarding_a11y_row_menu_sub">Dùng các tính năng của <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> mà không cần chuyển ứng dụng</string>
+
+    <string name="onboarding_a11y_row_lookup_title">Tra cứu từ</string>
+
+    <string name="onboarding_a11y_row_lookup_sub">Nhận định nghĩa tức thì cho các từ trên màn hình</string>
 
 
     <string name="btn_grant_permission">Cấp quyền</string>
@@ -967,6 +1005,10 @@
 
     <string name="settings_touches_refresh_title">Chạm màn hình để làm mới bản dịch</string>
 
+    <string name="settings_vertical_grow_title">Mở rộng văn bản dọc</string>
+
+    <string name="settings_vertical_grow_subtitle">Mở rộng các khung văn bản dọc hẹp để bản dịch đọc theo chiều ngang. Có thể che nội dung lân cận.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
          ═══════════════════════════════════════════════════════════════ -->
@@ -1120,6 +1162,86 @@
     <string name="settings_cell_translation_services">Dịch vụ dịch thuật</string>
     <string name="settings_cell_tts">Chuyển văn bản thành giọng nói</string>
 
+    <string name="yomitan_page_description">Từ điển Yomitan là các tệp từ điển do cộng đồng tạo, được dùng bởi tiện ích mở rộng trình duyệt Yomitan. Tính năng bao gồm các từ điển bổ sung, dữ liệu tần suất và trọng âm cao độ. Hãy nhập một từ điển (.zip) bằng nút +, và PlayTranslate sẽ tích hợp nó liền mạch trong toàn bộ ứng dụng.</string>
+
+    <string name="yomitan_import_action">Nhập từ điển</string>
+
+    <string name="yomitan_category_terms">Từ vựng</string>
+
+    <string name="yomitan_category_kanji">Kanji</string>
+
+    <string name="yomitan_category_frequency">Tần suất</string>
+
+    <string name="yomitan_category_kanji_frequency">Tần suất Kanji</string>
+
+    <string name="yomitan_category_pitch_accent">Trọng âm cao độ</string>
+
+    <string name="yomitan_category_pronunciation">Phát âm</string>
+
+    <string name="yomitan_importing_title">Đang nhập từ điển</string>
+
+    <string name="yomitan_importing_message">Đang kiểm tra các tệp từ điển…</string>
+
+    <string name="yomitan_invalid_title">Tệp không hợp lệ</string>
+
+    <string name="yomitan_invalid_message">Không thể đọc tệp này như một từ điển Yomitan.</string>
+
+    <string name="yomitan_no_space_title">Không đủ dung lượng</string>
+
+    <string name="yomitan_no_space_message">Việc nhập từ điển này cần khoảng <xliff:g id="needed" example="180 MB">%1$s</xliff:g> dung lượng trống, nhưng chỉ còn <xliff:g id="available" example="42 MB">%2$s</xliff:g>. Hãy giải phóng dung lượng và thử lại.</string>
+
+    <string name="yomitan_single_dict_title">Chỉ hiện định nghĩa từ một từ điển</string>
+
+    <string name="yomitan_single_dict_subtitle">Định nghĩa lấy từ từ điển có độ ưu tiên cao nhất mà có kết quả; từ điển tích hợp sẵn là phương án dự phòng cuối cùng</string>
+
+    <string name="yomitan_io_error_title">Nhập thất bại</string>
+
+    <string name="yomitan_io_error_message">Không thể nhập tệp. Hãy kiểm tra dung lượng lưu trữ và thử lại.</string>
+
+    <string name="yomitan_duplicate_title">Đã nhập rồi</string>
+
+    <string name="yomitan_duplicate_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> đã được nhập rồi. Hãy xóa nó để nhập lại.</string>
+
+    <string name="yomitan_delete_title">Xóa <xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>?</string>
+
+    <string name="yomitan_delete_message">Việc này sẽ gỡ từ điển đã nhập khỏi ứng dụng.</string>
+
+    <string name="yomitan_delete_message_multi">Từ điển này xuất hiện trong nhiều mục — nó sẽ bị gỡ khỏi tất cả các mục đó.</string>
+
+    <string name="yomitan_delete_confirm">Xóa</string>
+
+    <string name="cd_yomitan_delete">Xóa từ điển</string>
+
+    <string name="yomitan_category_recommended">Đề xuất</string>
+
+    <string name="yomitan_downloading_title">Đang tải từ điển</string>
+
+    <string name="yomitan_downloading_message"><xliff:g id="received" example="3.2 MB">%1$s</xliff:g> / <xliff:g id="total" example="11 MB">%2$s</xliff:g></string>
+
+    <string name="cd_yomitan_download">Tải từ điển</string>
+
+    <string name="yomitan_download_error_title">Tải xuống thất bại</string>
+
+    <string name="yomitan_download_error_message">Không thể tải từ điển. Hãy kiểm tra kết nối và thử lại.</string>
+
+    <string name="yomitan_metadata_title">Từ điển</string>
+
+    <string name="yomitan_metadata_header">Siêu dữ liệu</string>
+
+    <string name="yomitan_metadata_unavailable">Không thể đọc siêu dữ liệu của từ điển này.</string>
+
+    <string name="yomitan_alias_label">Biệt danh</string>
+
+    <string name="yomitan_alias_hint">Thêm biệt danh</string>
+
+    <string name="yomitan_accent_default_cd">Mặc định (màu chữ phụ đề)</string>
+
+    <string name="settings_header_tools">Công cụ</string>
+
+    <string name="settings_cell_dictionary">Từ điển</string>
+
+    <string name="settings_cell_dictionary_summary">Tra cứu định nghĩa từ</string>
+
     <string name="settings_digest_none">Không có</string>
     <string name="settings_capture_displays_count"><xliff:g id="count" example="2">%1$d</xliff:g> màn hình</string>
 
@@ -1263,6 +1385,22 @@
     <string name="settings_debug_save_ocr_seed">Lưu các bản chụp OCR làm seed</string>
     <string name="settings_debug_log_grouping">Ghi nhật ký quyết định nhóm OCR</string>
     <string name="settings_debug_force_crash_title">Buộc gặp sự cố</string>
+
+    <string name="dictionary_screen_title">Từ điển</string>
+
+    <string name="dictionary_search_hint">Tìm từ</string>
+
+    <string name="dictionary_clear_query">Xóa</string>
+
+    <plurals name="dictionary_entries_count">
+        <item quantity="other"><xliff:g id="count" example="5">%d</xliff:g> mục</item>
+    </plurals>
+
+    <string name="dictionary_lang_pair"><xliff:g id="source" example="Japanese">%1$s</xliff:g> → <xliff:g id="target" example="English">%2$s</xliff:g></string>
+
+    <string name="dictionary_status_no_results">Không có kết quả</string>
+
+    <string name="dictionary_status_error">Không thể tra cứu từ đó</string>
 
     <string name="settings_debug_export_logs_title">Xuất nhật ký</string>
 

@@ -69,7 +69,15 @@
 
     <string name="onboarding_welcome_title">ยินดีต้อนรับสู่ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>!</string>
 
-    <string name="onboarding_welcome_tagline">แอปคู่ใจสำหรับเล่นเกมในภาษาอื่น</string>
+    <string name="onboarding_welcome_tagline">เข้าใจทุกสิ่งที่คุณเล่นหรืออ่านได้ในทุกภาษา</string>
+
+    <string name="onboarding_welcome_play_title">พูดภาษานั้นไม่ได้ใช่ไหม</string>
+
+    <string name="onboarding_welcome_play_body">การแปลอัตโนมัติจะแสดงภาษาของคุณบนหน้าจอโดยตรง และอัปเดตเมื่อบทสนทนาเปลี่ยนไป ใช้ได้แม้ออฟไลน์!</string>
+
+    <string name="onboarding_welcome_learn_title">กำลังเรียนภาษาอยู่ใช่ไหม</string>
+
+    <string name="onboarding_welcome_learn_body">รับความช่วยเหลือเมื่อคุณต้องการเท่านั้น ด้วยการค้นหาคำในพจนานุกรม ฟุริงานะและพินอิน การ์ด <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> แบบแตะเดียว และอื่นๆ</string>
 
     <string name="onboarding_welcome_row_placeholder">แตะเพื่อเลือก</string>
 
@@ -79,10 +87,40 @@
 
     <string name="onboarding_notif_title">อนุญาตการแจ้งเตือน</string>
 
+    <string name="onboarding_notif_intro">Android กำหนดให้แอปที่ทำงานเบื้องหลังต้องแสดงการแจ้งเตือนบนแถบสถานะขณะที่ทำงานอยู่</string>
+
+    <string name="onboarding_notif_row_alerts_title">ไม่มีการแจ้งเตือนหรือแบนเนอร์</string>
+
+    <string name="onboarding_notif_row_alerts_sub">จะไม่มีอะไรเด้งขึ้นมาหรือรบกวนคุณ</string>
+
+    <string name="onboarding_notif_row_silent_title">ไม่มีเสียงหรือการสั่น</string>
+
+    <string name="onboarding_notif_row_silent_sub">จะเงียบสนิทอยู่เบื้องหลัง</string>
+
+    <string name="onboarding_notif_row_status_title">มีเพียงไอคอนบนแถบสถานะ</string>
+
+    <string name="onboarding_notif_row_status_sub">ตัวบ่งชี้แบบเงียบๆ ว่า <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> กำลังทำงานอยู่</string>
+
 
     <string name="onboarding_a11y_hint">มองหา <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 
     <string name="onboarding_a11y_title">แสดงทับแอปอื่น</string>
+
+    <string name="onboarding_a11y_enable_title">เปิดใช้งาน “<xliff:g id="setting_name" example="Display over other apps">%1$s</xliff:g>”</string>
+
+    <string name="onboarding_a11y_intro"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> ต้องแสดงทับแอปอื่นเพื่อ:</string>
+
+    <string name="onboarding_a11y_row_translate_title">แสดงข้อความที่แปลแล้ว</string>
+
+    <string name="onboarding_a11y_row_translate_sub">คำแปลจะปรากฏทับบนข้อความต้นฉบับโดยตรง</string>
+
+    <string name="onboarding_a11y_row_menu_title">แสดงเมนูเข้าถึงด่วน</string>
+
+    <string name="onboarding_a11y_row_menu_sub">เข้าถึงฟีเจอร์ของ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ได้โดยไม่ต้องสลับแอป</string>
+
+    <string name="onboarding_a11y_row_lookup_title">ค้นหาคำ</string>
+
+    <string name="onboarding_a11y_row_lookup_sub">รับคำจำกัดความของคำบนหน้าจอได้ทันที</string>
 
 
     <string name="btn_grant_permission">ให้สิทธิ์</string>
@@ -870,6 +908,10 @@
 
     <string name="settings_touches_refresh_title">การแตะหน้าจอจะรีเฟรชคำแปล</string>
 
+    <string name="settings_vertical_grow_title">ขยายข้อความแนวตั้ง</string>
+
+    <string name="settings_vertical_grow_subtitle">ขยายกล่องข้อความแนวตั้งที่แคบ เพื่อให้อ่านคำแปลในแนวนอนได้ อาจบังเนื้อหาที่อยู่ใกล้เคียง</string>
+
     <!-- ═══ HOTKEY SETUP DIALOG ═══ -->
 
     <string name="dialog_hotkey_setup_title">ตั้งค่าปุ่มลัด</string>
@@ -1009,6 +1051,90 @@
     <string name="settings_cell_translation_services">บริการแปล</string>
     <string name="settings_cell_tts">การอ่านออกเสียงข้อความ</string>
 
+    <!-- ═══ YOMITAN — dictionary import page ═══ -->
+
+    <string name="yomitan_page_description">พจนานุกรม Yomitan คือไฟล์พจนานุกรมที่ชุมชนสร้างขึ้น ใช้โดยส่วนขยายเบราว์เซอร์ Yomitan ความสามารถต่างๆ ได้แก่ พจนานุกรมเพิ่มเติม ข้อมูลความถี่ และการเน้นระดับเสียง นำเข้าพจนานุกรม (.zip) ด้วยปุ่ม + แล้ว PlayTranslate จะผสานรวมเข้ากับทุกส่วนของแอปอย่างราบรื่น</string>
+
+    <string name="yomitan_import_action">นำเข้าพจนานุกรม</string>
+
+    <string name="yomitan_category_terms">คำศัพท์</string>
+
+    <string name="yomitan_category_kanji">คันจิ</string>
+
+    <string name="yomitan_category_frequency">ความถี่</string>
+
+    <string name="yomitan_category_kanji_frequency">ความถี่คันจิ</string>
+
+    <string name="yomitan_category_pitch_accent">การเน้นระดับเสียง</string>
+
+    <string name="yomitan_category_pronunciation">การออกเสียง</string>
+
+    <string name="yomitan_importing_title">กำลังนำเข้าพจนานุกรม</string>
+
+    <string name="yomitan_importing_message">กำลังตรวจสอบไฟล์พจนานุกรม…</string>
+
+    <string name="yomitan_invalid_title">ไฟล์ไม่ถูกต้อง</string>
+
+    <string name="yomitan_invalid_message">ไม่สามารถอ่านไฟล์นี้เป็นพจนานุกรม Yomitan ได้</string>
+
+    <string name="yomitan_no_space_title">พื้นที่ไม่เพียงพอ</string>
+
+    <string name="yomitan_no_space_message">การนำเข้าพจนานุกรมนี้ต้องใช้พื้นที่ว่างประมาณ <xliff:g id="needed" example="180 MB">%1$s</xliff:g> แต่มีว่างเพียง <xliff:g id="available" example="42 MB">%2$s</xliff:g> เท่านั้น เพิ่มพื้นที่ว่างแล้วลองอีกครั้ง</string>
+
+    <string name="yomitan_single_dict_title">แสดงคำจำกัดความจากพจนานุกรมเดียวเท่านั้น</string>
+
+    <string name="yomitan_single_dict_subtitle">คำจำกัดความจะมาจากพจนานุกรมที่มีลำดับความสำคัญสูงสุดที่มีผลลัพธ์ โดยพจนานุกรมในตัวเป็นตัวสำรองสุดท้าย</string>
+
+    <string name="yomitan_io_error_title">นำเข้าไม่สำเร็จ</string>
+
+    <string name="yomitan_io_error_message">ไม่สามารถนำเข้าไฟล์ได้ ตรวจสอบพื้นที่จัดเก็บแล้วลองอีกครั้ง</string>
+
+    <string name="yomitan_duplicate_title">นำเข้าแล้ว</string>
+
+    <string name="yomitan_duplicate_message">นำเข้า <xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> ไว้แล้ว ลบออกเพื่อนำเข้าอีกครั้ง</string>
+
+    <string name="yomitan_delete_title">ลบ <xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> หรือไม่</string>
+
+    <string name="yomitan_delete_message">การดำเนินการนี้จะลบพจนานุกรมที่นำเข้าออกจากแอป</string>
+
+    <string name="yomitan_delete_message_multi">พจนานุกรมนี้ปรากฏอยู่ในหลายหมวด — จะถูกลบออกจากทุกหมวด</string>
+
+    <string name="yomitan_delete_confirm">ลบ</string>
+
+    <string name="cd_yomitan_delete">ลบพจนานุกรม</string>
+
+    <string name="yomitan_category_recommended">แนะนำ</string>
+
+    <string name="yomitan_downloading_title">กำลังดาวน์โหลดพจนานุกรม</string>
+
+    <string name="yomitan_downloading_message"><xliff:g id="received" example="3.2 MB">%1$s</xliff:g> / <xliff:g id="total" example="11 MB">%2$s</xliff:g></string>
+
+    <string name="cd_yomitan_download">ดาวน์โหลดพจนานุกรม</string>
+
+    <string name="yomitan_download_error_title">ดาวน์โหลดไม่สำเร็จ</string>
+
+    <string name="yomitan_download_error_message">ไม่สามารถดาวน์โหลดพจนานุกรมได้ ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง</string>
+
+    <string name="yomitan_metadata_title">พจนานุกรม</string>
+
+    <string name="yomitan_metadata_header">ข้อมูลเมตา</string>
+
+    <string name="yomitan_metadata_unavailable">ไม่สามารถอ่านข้อมูลเมตาของพจนานุกรมนี้ได้</string>
+
+    <string name="yomitan_alias_label">ชื่อเล่น</string>
+
+    <string name="yomitan_alias_hint">เพิ่มชื่อเล่น</string>
+
+    <string name="yomitan_accent_default_cd">ค่าเริ่มต้น (สีข้อความคำบรรยาย)</string>
+
+    <!-- ═══ SETTINGS — Tools ═══ -->
+
+    <string name="settings_header_tools">เครื่องมือ</string>
+
+    <string name="settings_cell_dictionary">พจนานุกรม</string>
+
+    <string name="settings_cell_dictionary_summary">ค้นหาคำจำกัดความของคำ</string>
+
     <string name="settings_digest_none">ไม่มี</string>
     <string name="settings_capture_displays_count"><xliff:g id="count" example="2">%1$d</xliff:g> หน้าจอ</string>
 
@@ -1134,6 +1260,22 @@
     <string name="settings_debug_save_ocr_seed">บันทึกภาพ OCR เป็นซีด</string>
     <string name="settings_debug_log_grouping">บันทึกการตัดสินใจจัดกลุ่ม OCR</string>
     <string name="settings_debug_force_crash_title">บังคับให้ขัดข้อง</string>
+
+    <string name="dictionary_screen_title">พจนานุกรม</string>
+
+    <string name="dictionary_search_hint">ค้นหาคำ</string>
+
+    <string name="dictionary_clear_query">ล้าง</string>
+
+    <plurals name="dictionary_entries_count">
+        <item quantity="other"><xliff:g id="count" example="5">%d</xliff:g> รายการ</item>
+    </plurals>
+
+    <string name="dictionary_lang_pair"><xliff:g id="source" example="Japanese">%1$s</xliff:g> → <xliff:g id="target" example="English">%2$s</xliff:g></string>
+
+    <string name="dictionary_status_no_results">ไม่มีผลลัพธ์</string>
+
+    <string name="dictionary_status_error">ค้นหาไม่สำเร็จ</string>
 
     <string name="settings_debug_export_logs_title">ส่งออกบันทึก</string>
 

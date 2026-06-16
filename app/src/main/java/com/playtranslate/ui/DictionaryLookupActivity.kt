@@ -102,8 +102,7 @@ class DictionaryLookupActivity : SettingsSubPageActivity() {
         countView.isVisible = !state.isLoading
         countView.text = when {
             state.isLoading -> ""
-            state.rows.size == 1 -> getString(R.string.dictionary_entries_count_one, 1)
-            state.rows.isNotEmpty() -> getString(R.string.dictionary_entries_count_other, state.rows.size)
+            state.rows.isNotEmpty() -> resources.getQuantityString(R.plurals.dictionary_entries_count, state.rows.size, state.rows.size)
             state.hasError -> getString(R.string.dictionary_status_error)
             state.query.isBlank() -> ""
             else -> getString(R.string.dictionary_status_no_results)

@@ -79,7 +79,11 @@
 
     <string name="onboarding_welcome_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasına hoş geldiniz!</string>
 
-    <string name="onboarding_welcome_tagline">Oyunları başka dillerde oynamanız için yardımcı uygulamanız.</string>
+    <string name="onboarding_welcome_tagline">Oynadığınız veya okuduğunuz her şeyi, hangi dilde olursa olsun anlayın.</string>
+    <string name="onboarding_welcome_play_title">Dili konuşmuyor musunuz?</string>
+    <string name="onboarding_welcome_play_body">Otomatik çeviri, kendi dilinizi doğrudan ekrana getirir ve diyaloglar değiştikçe güncellenir. Hem de çevrimdışı!</string>
+    <string name="onboarding_welcome_learn_title">Dili mi öğreniyorsunuz?</string>
+    <string name="onboarding_welcome_learn_body">Yalnızca istediğinizde yardım alın: sözcük aramaları, furigana ve pinyin, tek dokunuşla <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> kartları ve daha fazlası.</string>
 
     <string name="onboarding_welcome_row_placeholder">Seçmek için dokunun</string>
 
@@ -88,11 +92,26 @@
     <string name="onboarding_welcome_select_source">Oyun dilini seçin</string>
 
     <string name="onboarding_notif_title">Bildirimlere İzin Ver</string>
+    <string name="onboarding_notif_intro">Android, arka planda çalışan uygulamaların etkin oldukları sürece durum çubuğunda bir bildirim göstermesini gerektirir.</string>
+    <string name="onboarding_notif_row_alerts_title">Uyarı veya başlık yok</string>
+    <string name="onboarding_notif_row_alerts_sub">Hiçbir şey açılmaz veya sizi rahatsız etmez</string>
+    <string name="onboarding_notif_row_silent_title">Ses veya titreşim yok</string>
+    <string name="onboarding_notif_row_silent_sub">Arka planda tamamen sessiz kalır</string>
+    <string name="onboarding_notif_row_status_title">Yalnızca bir durum çubuğu simgesi</string>
+    <string name="onboarding_notif_row_status_sub"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasının çalıştığını belirten sessiz bir gösterge</string>
 
 
     <string name="onboarding_a11y_hint"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> öğesini arayın</string>
 
     <string name="onboarding_a11y_title">Diğer uygulamaların üzerinde göster</string>
+    <string name="onboarding_a11y_enable_title">“<xliff:g id="setting_name" example="Display over other apps">%1$s</xliff:g>” özelliğini etkinleştirin</string>
+    <string name="onboarding_a11y_intro"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> uygulamasının diğer uygulamaların üzerinde görünmesi şunlar için gereklidir:</string>
+    <string name="onboarding_a11y_row_translate_title">Çevrilen metni göster</string>
+    <string name="onboarding_a11y_row_translate_sub">Çeviriler doğrudan orijinal metnin üzerinde görünür</string>
+    <string name="onboarding_a11y_row_menu_title">Hızlı erişim menüsünü göster</string>
+    <string name="onboarding_a11y_row_menu_sub">Uygulamalar arasında geçiş yapmadan <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> özelliklerine erişin</string>
+    <string name="onboarding_a11y_row_lookup_title">Sözcükleri ara</string>
+    <string name="onboarding_a11y_row_lookup_sub">Ekrandaki sözcükler için anında tanımlar alın</string>
 
 
     <string name="btn_grant_permission">İzin Ver</string>
@@ -969,6 +988,8 @@
     <string name="settings_hide_overlays_ignored_multi_display">Birden fazla ekran seçildiğinde yok sayılır — yer paylaşımları her birinde gösterilir.</string>
 
     <string name="settings_touches_refresh_title">Ekrana dokunmak çeviriyi yeniler</string>
+    <string name="settings_vertical_grow_title">Dikey metni genişlet</string>
+    <string name="settings_vertical_grow_subtitle">Dar dikey metin kutularını, çeviri yatay okunacak şekilde genişletir. Yakındaki içeriği kapatabilir.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
@@ -1123,6 +1144,46 @@
     <string name="settings_cell_anki">Anki Bilgi Kartları</string>
     <string name="settings_cell_translation_services">Çeviri hizmetleri</string>
     <string name="settings_cell_tts">Metin okuma</string>
+    <string name="yomitan_page_description">Yomitan sözlükleri, Yomitan tarayıcı uzantısı tarafından kullanılan, topluluk tarafından oluşturulmuş sözlük dosyalarıdır. Sundukları arasında ek sözlükler, sıklık verileri ve perde vurgusu bulunur. + düğmesiyle bir sözlük (.zip) içe aktarın; PlayTranslate bunu uygulama genelinde sorunsuzca bütünleştirir.</string>
+    <string name="yomitan_import_action">Sözlüğü içe aktar</string>
+    <string name="yomitan_category_terms">Maddeler</string>
+    <string name="yomitan_category_kanji">Kanji</string>
+    <string name="yomitan_category_frequency">Sıklık</string>
+    <string name="yomitan_category_kanji_frequency">Kanji Sıklığı</string>
+    <string name="yomitan_category_pitch_accent">Perde Vurgusu</string>
+    <string name="yomitan_category_pronunciation">Telaffuz</string>
+    <string name="yomitan_importing_title">Sözlük içe aktarılıyor</string>
+    <string name="yomitan_importing_message">Sözlük dosyaları doğrulanıyor…</string>
+    <string name="yomitan_invalid_title">Geçersiz dosya</string>
+    <string name="yomitan_invalid_message">Bu dosya bir Yomitan sözlüğü olarak okunamadı.</string>
+    <string name="yomitan_no_space_title">Yeterli alan yok</string>
+    <string name="yomitan_no_space_message">Bu sözlüğü içe aktarmak için yaklaşık <xliff:g id="needed" example="180 MB">%1$s</xliff:g> boş alan gerekir, ancak yalnızca <xliff:g id="available" example="42 MB">%2$s</xliff:g> kullanılabilir. Yer açıp tekrar deneyin.</string>
+    <string name="yomitan_single_dict_title">Tanımları yalnızca tek bir sözlükten göster</string>
+    <string name="yomitan_single_dict_subtitle">Tanımlar, sonuç bulunan en yüksek öncelikli sözlükten gelir; yerleşik sözlük son seçenektir</string>
+    <string name="yomitan_io_error_title">İçe aktarma başarısız</string>
+    <string name="yomitan_io_error_message">Dosya içe aktarılamadı. Depolama alanını kontrol edip tekrar deneyin.</string>
+    <string name="yomitan_duplicate_title">Zaten içe aktarılmış</string>
+    <string name="yomitan_duplicate_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> zaten içe aktarılmış. Tekrar içe aktarmak için önce silin.</string>
+    <string name="yomitan_delete_title"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> silinsin mi?</string>
+    <string name="yomitan_delete_message">Bu, içe aktarılan sözlüğü uygulamadan kaldırır.</string>
+    <string name="yomitan_delete_message_multi">Bu sözlük birden fazla bölümde görünüyor — hepsinden kaldırılacak.</string>
+    <string name="yomitan_delete_confirm">Sil</string>
+    <string name="cd_yomitan_delete">Sözlüğü sil</string>
+    <string name="yomitan_category_recommended">Önerilenler</string>
+    <string name="yomitan_downloading_title">Sözlük indiriliyor</string>
+    <string name="yomitan_downloading_message"><xliff:g id="received" example="3.2 MB">%1$s</xliff:g> / <xliff:g id="total" example="11 MB">%2$s</xliff:g></string>
+    <string name="cd_yomitan_download">Sözlüğü indir</string>
+    <string name="yomitan_download_error_title">İndirme başarısız</string>
+    <string name="yomitan_download_error_message">Sözlük indirilemedi. Bağlantınızı kontrol edip tekrar deneyin.</string>
+    <string name="yomitan_metadata_title">Sözlük</string>
+    <string name="yomitan_metadata_header">Üst veri</string>
+    <string name="yomitan_metadata_unavailable">Bu sözlüğün üst verisi okunamadı.</string>
+    <string name="yomitan_alias_label">Takma ad</string>
+    <string name="yomitan_alias_hint">Bir takma ad ekleyin</string>
+    <string name="yomitan_accent_default_cd">Varsayılan (altyazı metni rengi)</string>
+    <string name="settings_header_tools">Araçlar</string>
+    <string name="settings_cell_dictionary">Sözlük</string>
+    <string name="settings_cell_dictionary_summary">Sözcük tanımlarına bakın</string>
 
     <string name="settings_digest_none">Yok</string>
     <string name="settings_capture_displays_count"><xliff:g id="count" example="2">%1$d</xliff:g> Ekran</string>
@@ -1267,6 +1328,16 @@
     <string name="settings_debug_save_ocr_seed">OCR yakalamalarını tohum olarak kaydet</string>
     <string name="settings_debug_log_grouping">OCR gruplama kararlarını günlüğe kaydet</string>
     <string name="settings_debug_force_crash_title">Çökmeyi zorla</string>
+    <string name="dictionary_screen_title">Sözlük</string>
+    <string name="dictionary_search_hint">Sözcükleri ara</string>
+    <string name="dictionary_clear_query">Temizle</string>
+    <plurals name="dictionary_entries_count">
+        <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> giriş</item>
+        <item quantity="other"><xliff:g id="count" example="5">%d</xliff:g> giriş</item>
+    </plurals>
+    <string name="dictionary_lang_pair"><xliff:g id="source" example="Japanese">%1$s</xliff:g> → <xliff:g id="target" example="English">%2$s</xliff:g></string>
+    <string name="dictionary_status_no_results">Sonuç yok</string>
+    <string name="dictionary_status_error">Aranamadı</string>
 
     <string name="settings_debug_export_logs_title">Günlükleri dışa aktar</string>
 

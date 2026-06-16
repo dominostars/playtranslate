@@ -80,7 +80,15 @@
 
     <string name="onboarding_welcome_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>에 오신 것을 환영합니다!</string>
 
-    <string name="onboarding_welcome_tagline">다른 언어로 게임을 즐기기 위한 컴패니언 앱입니다.</string>
+    <string name="onboarding_welcome_tagline">무엇을 플레이하거나 읽든, 어떤 언어든 이해하세요.</string>
+
+    <string name="onboarding_welcome_play_title">언어를 모르시나요?</string>
+
+    <string name="onboarding_welcome_play_body">자동 번역이 내 언어를 화면에 바로 표시하고, 대사가 바뀔 때마다 업데이트합니다. 오프라인에서도요!</string>
+
+    <string name="onboarding_welcome_learn_title">언어를 배우고 계신가요?</string>
+
+    <string name="onboarding_welcome_learn_body">단어 검색, 후리가나와 병음, 원탭 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 카드 등으로 원할 때만 도움을 받으세요.</string>
 
     <string name="onboarding_welcome_row_placeholder">탭하여 선택</string>
 
@@ -90,10 +98,40 @@
 
     <string name="onboarding_notif_title">알림 허용</string>
 
+    <string name="onboarding_notif_intro">Android에서는 백그라운드에서 실행되는 앱이 활성 상태인 동안 상태 표시줄 알림을 표시하도록 요구합니다.</string>
+
+    <string name="onboarding_notif_row_alerts_title">알림이나 배너 없음</string>
+
+    <string name="onboarding_notif_row_alerts_sub">팝업이 뜨거나 방해하지 않습니다</string>
+
+    <string name="onboarding_notif_row_silent_title">소리나 진동 없음</string>
+
+    <string name="onboarding_notif_row_silent_sub">백그라운드에서 완전히 조용하게 유지됩니다</string>
+
+    <string name="onboarding_notif_row_status_title">상태 표시줄 아이콘만 표시</string>
+
+    <string name="onboarding_notif_row_status_sub"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>가 실행 중임을 알리는 조용한 표시</string>
+
 
     <string name="onboarding_a11y_hint"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b>를 찾으세요</string>
 
     <string name="onboarding_a11y_title">다른 앱 위에 표시</string>
+
+    <string name="onboarding_a11y_enable_title">“<xliff:g id="setting_name" example="Display over other apps">%1$s</xliff:g>” 사용 설정</string>
+
+    <string name="onboarding_a11y_intro"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b>가 다른 앱 위에 표시하려면 다음이 필요합니다:</string>
+
+    <string name="onboarding_a11y_row_translate_title">번역된 텍스트 표시</string>
+
+    <string name="onboarding_a11y_row_translate_sub">번역이 원문 바로 위에 표시됩니다</string>
+
+    <string name="onboarding_a11y_row_menu_title">빠른 액세스 메뉴 표시</string>
+
+    <string name="onboarding_a11y_row_menu_sub">앱을 전환하지 않고 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 기능을 사용하세요</string>
+
+    <string name="onboarding_a11y_row_lookup_title">단어 검색</string>
+
+    <string name="onboarding_a11y_row_lookup_sub">화면의 단어에 대한 정의를 바로 확인하세요</string>
 
 
     <string name="btn_grant_permission">권한 허용</string>
@@ -968,6 +1006,10 @@
 
     <string name="settings_touches_refresh_title">화면을 터치하면 번역 새로 고침</string>
 
+    <string name="settings_vertical_grow_title">세로 텍스트 넓히기</string>
+
+    <string name="settings_vertical_grow_subtitle">좁은 세로 텍스트 상자를 넓혀 번역이 가로로 읽히도록 합니다. 주변 콘텐츠를 가릴 수 있습니다.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
          ═══════════════════════════════════════════════════════════════ -->
@@ -1121,6 +1163,86 @@
     <string name="settings_cell_translation_services">번역 서비스</string>
     <string name="settings_cell_tts">텍스트 음성 변환</string>
 
+    <string name="yomitan_page_description">Yomitan 사전은 Yomitan 브라우저 확장 프로그램에서 사용하는, 커뮤니티에서 만든 사전 파일입니다. 추가 사전, 빈도 데이터, 고저 악센트 등의 기능을 제공합니다. + 버튼으로 사전(.zip)을 가져오면 PlayTranslate가 앱 전체에 자연스럽게 통합합니다.</string>
+
+    <string name="yomitan_import_action">사전 가져오기</string>
+
+    <string name="yomitan_category_terms">용어</string>
+
+    <string name="yomitan_category_kanji">한자</string>
+
+    <string name="yomitan_category_frequency">빈도</string>
+
+    <string name="yomitan_category_kanji_frequency">한자 빈도</string>
+
+    <string name="yomitan_category_pitch_accent">고저 악센트</string>
+
+    <string name="yomitan_category_pronunciation">발음</string>
+
+    <string name="yomitan_importing_title">사전 가져오는 중</string>
+
+    <string name="yomitan_importing_message">사전 파일 확인 중…</string>
+
+    <string name="yomitan_invalid_title">잘못된 파일</string>
+
+    <string name="yomitan_invalid_message">이 파일을 Yomitan 사전으로 읽을 수 없습니다.</string>
+
+    <string name="yomitan_no_space_title">저장공간 부족</string>
+
+    <string name="yomitan_no_space_message">이 사전을 가져오려면 약 <xliff:g id="needed" example="180 MB">%1$s</xliff:g>의 여유 공간이 필요하지만, <xliff:g id="available" example="42 MB">%2$s</xliff:g>만 사용 가능합니다. 공간을 확보하고 다시 시도하세요.</string>
+
+    <string name="yomitan_single_dict_title">한 사전의 정의만 표시</string>
+
+    <string name="yomitan_single_dict_subtitle">결과가 있는 가장 높은 우선순위의 사전에서 정의를 가져오며, 내장 사전이 최종 대체입니다</string>
+
+    <string name="yomitan_io_error_title">가져오기 실패</string>
+
+    <string name="yomitan_io_error_message">파일을 가져올 수 없습니다. 저장공간을 확인하고 다시 시도하세요.</string>
+
+    <string name="yomitan_duplicate_title">이미 가져옴</string>
+
+    <string name="yomitan_duplicate_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>은(는) 이미 가져왔습니다. 다시 가져오려면 삭제하세요.</string>
+
+    <string name="yomitan_delete_title"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>을(를) 삭제하시겠습니까?</string>
+
+    <string name="yomitan_delete_message">가져온 사전을 앱에서 제거합니다.</string>
+
+    <string name="yomitan_delete_message_multi">이 사전은 여러 섹션에 표시됩니다 — 모든 섹션에서 제거됩니다.</string>
+
+    <string name="yomitan_delete_confirm">삭제</string>
+
+    <string name="cd_yomitan_delete">사전 삭제</string>
+
+    <string name="yomitan_category_recommended">추천</string>
+
+    <string name="yomitan_downloading_title">사전 다운로드 중</string>
+
+    <string name="yomitan_downloading_message"><xliff:g id="received" example="3.2 MB">%1$s</xliff:g> / <xliff:g id="total" example="11 MB">%2$s</xliff:g></string>
+
+    <string name="cd_yomitan_download">사전 다운로드</string>
+
+    <string name="yomitan_download_error_title">다운로드 실패</string>
+
+    <string name="yomitan_download_error_message">사전을 다운로드할 수 없습니다. 연결을 확인하고 다시 시도하세요.</string>
+
+    <string name="yomitan_metadata_title">사전</string>
+
+    <string name="yomitan_metadata_header">메타데이터</string>
+
+    <string name="yomitan_metadata_unavailable">이 사전의 메타데이터를 읽을 수 없습니다.</string>
+
+    <string name="yomitan_alias_label">별칭</string>
+
+    <string name="yomitan_alias_hint">별칭 추가</string>
+
+    <string name="yomitan_accent_default_cd">기본값(부제목 텍스트 색상)</string>
+
+    <string name="settings_header_tools">도구</string>
+
+    <string name="settings_cell_dictionary">사전</string>
+
+    <string name="settings_cell_dictionary_summary">단어 정의 검색</string>
+
     <string name="settings_digest_none">없음</string>
     <string name="settings_capture_displays_count">디스플레이 <xliff:g id="count" example="2">%1$d</xliff:g>개</string>
 
@@ -1264,6 +1386,22 @@
     <string name="settings_debug_save_ocr_seed">OCR 캡처를 시드로 저장</string>
     <string name="settings_debug_log_grouping">OCR 그룹화 결정 로깅</string>
     <string name="settings_debug_force_crash_title">강제 충돌</string>
+
+    <string name="dictionary_screen_title">사전</string>
+
+    <string name="dictionary_search_hint">단어 검색</string>
+
+    <string name="dictionary_clear_query">지우기</string>
+
+    <plurals name="dictionary_entries_count">
+        <item quantity="other"><xliff:g id="count" example="5">%d</xliff:g>개 항목</item>
+    </plurals>
+
+    <string name="dictionary_lang_pair"><xliff:g id="source" example="Japanese">%1$s</xliff:g> → <xliff:g id="target" example="English">%2$s</xliff:g></string>
+
+    <string name="dictionary_status_no_results">결과 없음</string>
+
+    <string name="dictionary_status_error">검색할 수 없음</string>
 
     <string name="settings_debug_export_logs_title">로그 내보내기</string>
 

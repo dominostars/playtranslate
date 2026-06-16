@@ -79,7 +79,15 @@
 
     <string name="onboarding_welcome_title">Boas-vindas ao <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>!</string>
 
-    <string name="onboarding_welcome_tagline">Seu app companheiro para jogar em outros idiomas.</string>
+    <string name="onboarding_welcome_tagline">Entenda tudo o que você joga ou lê, em qualquer idioma.</string>
+
+    <string name="onboarding_welcome_play_title">Não fala o idioma?</string>
+
+    <string name="onboarding_welcome_play_body">A tradução automática coloca o seu idioma direto na tela, atualizando conforme os diálogos mudam. Até offline!</string>
+
+    <string name="onboarding_welcome_learn_title">Está aprendendo o idioma?</string>
+
+    <string name="onboarding_welcome_learn_body">Receba ajuda só quando quiser, com consultas de palavras, furigana e pinyin, cartões do <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> com um toque e muito mais.</string>
 
     <string name="onboarding_welcome_row_placeholder">Toque para escolher</string>
 
@@ -89,10 +97,40 @@
 
     <string name="onboarding_notif_title">Permitir notificações</string>
 
+    <string name="onboarding_notif_intro">O Android exige que apps em execução em segundo plano mostrem uma notificação na barra de status enquanto estão ativos.</string>
+
+    <string name="onboarding_notif_row_alerts_title">Sem alertas nem banners</string>
+
+    <string name="onboarding_notif_row_alerts_sub">Nada vai aparecer nem interromper você</string>
+
+    <string name="onboarding_notif_row_silent_title">Sem sons nem vibração</string>
+
+    <string name="onboarding_notif_row_silent_sub">Fica totalmente silenciosa em segundo plano</string>
+
+    <string name="onboarding_notif_row_status_title">Apenas um ícone na barra de status</string>
+
+    <string name="onboarding_notif_row_status_sub">Um indicador discreto de que o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> está em execução</string>
+
 
     <string name="onboarding_a11y_hint">Procure por <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 
     <string name="onboarding_a11y_title">Sobrepor a outros apps</string>
+
+    <string name="onboarding_a11y_enable_title">Ativar \"<xliff:g id="setting_name" example="Display over other apps">%1$s</xliff:g>\"</string>
+
+    <string name="onboarding_a11y_intro">O <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> precisa se sobrepor a outros apps para:</string>
+
+    <string name="onboarding_a11y_row_translate_title">Mostrar o texto traduzido</string>
+
+    <string name="onboarding_a11y_row_translate_sub">As traduções aparecem bem sobre o texto original</string>
+
+    <string name="onboarding_a11y_row_menu_title">Mostrar o menu rápido</string>
+
+    <string name="onboarding_a11y_row_menu_sub">Acesse os recursos do <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> sem trocar de app</string>
+
+    <string name="onboarding_a11y_row_lookup_title">Consultar palavras</string>
+
+    <string name="onboarding_a11y_row_lookup_sub">Receba definições instantâneas das palavras na tela</string>
 
 
     <string name="btn_grant_permission">Conceder permissão</string>
@@ -970,6 +1008,10 @@
 
     <string name="settings_touches_refresh_title">Tocar na tela atualiza a tradução</string>
 
+    <string name="settings_vertical_grow_title">Alargar texto vertical</string>
+
+    <string name="settings_vertical_grow_subtitle">Alarga as caixas estreitas de texto vertical para que a tradução possa ser lida na horizontal. Pode cobrir conteúdo próximo.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
          ═══════════════════════════════════════════════════════════════ -->
@@ -1123,6 +1165,86 @@
     <string name="settings_cell_translation_services">Serviços de tradução</string>
     <string name="settings_cell_tts">Conversão de texto em voz</string>
 
+    <string name="yomitan_page_description">Os dicionários Yomitan são arquivos de dicionário criados pela comunidade e usados pela extensão de navegador Yomitan. Os recursos incluem dicionários adicionais, dados de frequência e acento tonal. Importe um dicionário (.zip) com o botão +, e o PlayTranslate o integrará perfeitamente em todo o app.</string>
+
+    <string name="yomitan_import_action">Importar dicionário</string>
+
+    <string name="yomitan_category_terms">Termos</string>
+
+    <string name="yomitan_category_kanji">Kanji</string>
+
+    <string name="yomitan_category_frequency">Frequência</string>
+
+    <string name="yomitan_category_kanji_frequency">Frequência de kanji</string>
+
+    <string name="yomitan_category_pitch_accent">Acento tonal</string>
+
+    <string name="yomitan_category_pronunciation">Pronúncia</string>
+
+    <string name="yomitan_importing_title">Importando dicionário</string>
+
+    <string name="yomitan_importing_message">Validando os arquivos do dicionário…</string>
+
+    <string name="yomitan_invalid_title">Arquivo inválido</string>
+
+    <string name="yomitan_invalid_message">Não foi possível ler este arquivo como um dicionário Yomitan.</string>
+
+    <string name="yomitan_no_space_title">Espaço insuficiente</string>
+
+    <string name="yomitan_no_space_message">Importar este dicionário precisa de cerca de <xliff:g id="needed" example="180 MB">%1$s</xliff:g> de espaço livre, mas há apenas <xliff:g id="available" example="42 MB">%2$s</xliff:g> disponível. Libere espaço e tente novamente.</string>
+
+    <string name="yomitan_single_dict_title">Mostrar definições de apenas um dicionário</string>
+
+    <string name="yomitan_single_dict_subtitle">As definições vêm do dicionário de maior prioridade que tiver resultados; o dicionário integrado é a alternativa final</string>
+
+    <string name="yomitan_io_error_title">Falha na importação</string>
+
+    <string name="yomitan_io_error_message">Não foi possível importar o arquivo. Verifique o espaço de armazenamento e tente novamente.</string>
+
+    <string name="yomitan_duplicate_title">Já importado</string>
+
+    <string name="yomitan_duplicate_message">O <xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> já foi importado. Exclua-o para importá-lo novamente.</string>
+
+    <string name="yomitan_delete_title">Excluir o <xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>?</string>
+
+    <string name="yomitan_delete_message">Isso remove o dicionário importado do app.</string>
+
+    <string name="yomitan_delete_message_multi">Este dicionário aparece em várias seções — ele será removido de todas elas.</string>
+
+    <string name="yomitan_delete_confirm">Excluir</string>
+
+    <string name="cd_yomitan_delete">Excluir dicionário</string>
+
+    <string name="yomitan_category_recommended">Recomendados</string>
+
+    <string name="yomitan_downloading_title">Baixando dicionário</string>
+
+    <string name="yomitan_downloading_message"><xliff:g id="received" example="3.2 MB">%1$s</xliff:g> / <xliff:g id="total" example="11 MB">%2$s</xliff:g></string>
+
+    <string name="cd_yomitan_download">Baixar dicionário</string>
+
+    <string name="yomitan_download_error_title">Falha no download</string>
+
+    <string name="yomitan_download_error_message">Não foi possível baixar o dicionário. Verifique sua conexão e tente novamente.</string>
+
+    <string name="yomitan_metadata_title">Dicionário</string>
+
+    <string name="yomitan_metadata_header">Metadados</string>
+
+    <string name="yomitan_metadata_unavailable">Não foi possível ler os metadados deste dicionário.</string>
+
+    <string name="yomitan_alias_label">Apelido</string>
+
+    <string name="yomitan_alias_hint">Adicione um apelido</string>
+
+    <string name="yomitan_accent_default_cd">Padrão (cor do texto do subtítulo)</string>
+
+    <string name="settings_header_tools">Ferramentas</string>
+
+    <string name="settings_cell_dictionary">Dicionário</string>
+
+    <string name="settings_cell_dictionary_summary">Consulte definições de palavras</string>
+
     <string name="settings_digest_none">Nenhum</string>
     <string name="settings_capture_displays_count"><xliff:g id="count" example="2">%1$d</xliff:g> telas</string>
 
@@ -1266,6 +1388,23 @@
     <string name="settings_debug_save_ocr_seed">Salvar capturas de OCR como sementes</string>
     <string name="settings_debug_log_grouping">Registrar decisões de agrupamento de OCR</string>
     <string name="settings_debug_force_crash_title">Forçar travamento</string>
+
+    <string name="dictionary_screen_title">Dicionário</string>
+
+    <string name="dictionary_search_hint">Pesquisar palavras</string>
+
+    <string name="dictionary_clear_query">Limpar</string>
+
+    <plurals name="dictionary_entries_count">
+        <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> entrada</item>
+        <item quantity="other"><xliff:g id="count" example="5">%d</xliff:g> entradas</item>
+    </plurals>
+
+    <string name="dictionary_lang_pair"><xliff:g id="source" example="Japanese">%1$s</xliff:g> → <xliff:g id="target" example="English">%2$s</xliff:g></string>
+
+    <string name="dictionary_status_no_results">Nenhum resultado</string>
+
+    <string name="dictionary_status_error">Não foi possível consultar</string>
 
     <string name="settings_debug_export_logs_title">Exportar registros</string>
 
