@@ -1,11 +1,17 @@
 package com.playtranslate.translation
 
-import com.google.gson.Gson
+import com.playtranslate.PtJson
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -63,8 +69,6 @@ class DeepLBackend(
     override val requiresInternet: Boolean = true
     override val isDegradedFallback: Boolean = false
     override val qualityStars: StarRating = 4.5f
-
-    private val gson = Gson()
 
     override fun unavailableUntil(): Long? {
         clearCooldownIfCredentialsChanged()
@@ -198,13 +202,11 @@ class DeepLBackend(
             ?: throw IOException("DeepL API key not configured")
 
         val host = hostFor(apiKey)
-        val body = gson.toJson(
-            mapOf(
-                "text"        to texts,
-                "target_lang" to toDeepLCode(target),
-                "source_lang" to toDeepLCode(source),
-            )
-        )
+        val body = buildJsonObject {
+            putJsonArray("text") { texts.forEach { add(it) } }
+            put("target_lang", toDeepLCode(target))
+            put("source_lang", toDeepLCode(source))
+        }.toString()
         val request = Request.Builder()
             .url("https://$host/v2/translate")
             .addHeader("Authorization", "DeepL-Auth-Key $apiKey")
@@ -250,7 +252,7 @@ class DeepLBackend(
                     }
                 }
                 val responseBody = response.body.string()
-                gson.fromJson(responseBody, DeepLResponse::class.java).translations.map { it.text }
+                PtJson.lenient.decodeFromString<DeepLResponse>(responseBody).translations.map { it.text }
             }
         } catch (e: DeepLAuthException) { throw e }
         catch (e: DeepLRateLimitException) { throw e }
@@ -293,7 +295,7 @@ class DeepLBackend(
                     else -> if (!response.isSuccessful) throw IOException("DeepL usage error ${response.code}")
                 }
                 val body = response.body.string()
-                gson.fromJson(body, DeepLUsageResponse::class.java)
+                PtJson.lenient.decodeFromString<DeepLUsageResponse>(body)
             }
         }
 
@@ -326,7 +328,9 @@ class DeepLBackend(
         else -> mlKitCode.uppercase(Locale.ROOT)
     }
 
-    private data class DeepLResponse(val translations: List<Translation>) {
+    @Serializable
+    private data class DeepLResponse(val translations: List<Translation> = emptyList()) {
+        @Serializable
         data class Translation(val text: String = "", val detected_source_language: String = "")
     }
 
@@ -342,6 +346,7 @@ class DeepLBackend(
         private const val DEEPL_RATE_LIMIT_MS = 10L * 1000
     }
 
+    @Serializable
     private data class DeepLUsageResponse(
         val character_count: Long = 0,
         val character_limit: Long = 0,

@@ -1,14 +1,22 @@
 package com.playtranslate.translation
 
 import android.util.Log
-import com.google.gson.Gson
-import com.google.gson.JsonSyntaxException
+import com.playtranslate.PtJson
 import com.playtranslate.translation.llm.LlmBatchPrompt
 import com.playtranslate.translation.llm.cleanLlmOutput
 import com.playtranslate.translation.qwen.QwenChatTemplate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -83,8 +91,6 @@ class OpenAiBackend(
     override val isDegradedFallback: Boolean = false
     override val qualityStars: StarRating = 4.5f
 
-    private val gson = Gson()
-
     override val status: BackendStatus
         get() {
             val key = keyProvider()
@@ -140,15 +146,13 @@ class OpenAiBackend(
             val translateStart = System.nanoTime()
             Log.i(TAG, "translate begin model=$model textLen=${text.length}")
 
-            val bodyJson = gson.toJson(
-                mapOf(
-                    "model" to model,
-                    "messages" to listOf(
-                        mapOf("role" to "system", "content" to system),
-                        mapOf("role" to "user", "content" to user),
-                    ),
-                )
-            )
+            val bodyJson = buildJsonObject {
+                put("model", model)
+                putJsonArray("messages") {
+                    addJsonObject { put("role", "system"); put("content", system) }
+                    addJsonObject { put("role", "user"); put("content", user) }
+                }
+            }.toString()
 
             val request = Request.Builder()
                 .url("$baseUrl/chat/completions")
@@ -183,7 +187,7 @@ class OpenAiBackend(
                         }
                     }
                     val bodyStr = response.body.string()
-                    val parsed = gson.fromJson(bodyStr, OpenAiChatResponse::class.java)
+                    val parsed = PtJson.lenient.decodeFromString<OpenAiChatResponse>(bodyStr)
                     val raw = parsed.choices.firstOrNull()?.message?.content
                         ?: throw StructuralFailureException("No translation in OpenAI response")
                     parsed.usage?.let { usageTracker.addTokens(it.prompt_tokens, it.completion_tokens) }
@@ -223,34 +227,32 @@ class OpenAiBackend(
         // required[] + strict:true together. Some OpenAI-compatible
         // endpoints (older models, some proxies) reject strict mode
         // with HTTP 400 — registry handles that by falling through.
-        val schema = mapOf(
-            "type" to "object",
-            "additionalProperties" to false,
-            "properties" to mapOf(
-                "translations" to mapOf(
-                    "type" to "array",
-                    "items" to mapOf("type" to "string"),
-                ),
-            ),
-            "required" to listOf("translations"),
-        )
-        val bodyJson = gson.toJson(
-            mapOf(
-                "model" to model,
-                "messages" to listOf(
-                    mapOf("role" to "system", "content" to system),
-                    mapOf("role" to "user", "content" to user),
-                ),
-                "response_format" to mapOf(
-                    "type" to "json_schema",
-                    "json_schema" to mapOf(
-                        "name" to "translations",
-                        "strict" to true,
-                        "schema" to schema,
-                    ),
-                ),
-            )
-        )
+        val schema = buildJsonObject {
+            put("type", "object")
+            put("additionalProperties", false)
+            putJsonObject("properties") {
+                putJsonObject("translations") {
+                    put("type", "array")
+                    putJsonObject("items") { put("type", "string") }
+                }
+            }
+            putJsonArray("required") { add("translations") }
+        }
+        val bodyJson = buildJsonObject {
+            put("model", model)
+            putJsonArray("messages") {
+                addJsonObject { put("role", "system"); put("content", system) }
+                addJsonObject { put("role", "user"); put("content", user) }
+            }
+            putJsonObject("response_format") {
+                put("type", "json_schema")
+                putJsonObject("json_schema") {
+                    put("name", "translations")
+                    put("strict", true)
+                    put("schema", schema)
+                }
+            }
+        }.toString()
 
         val request = Request.Builder()
             .url("$baseUrl/chat/completions")
@@ -298,16 +300,16 @@ class OpenAiBackend(
                     }
                 }
                 val bodyStr = response.body.string()
-                val parsed = gson.fromJson(bodyStr, OpenAiChatResponse::class.java)
+                val parsed = PtJson.lenient.decodeFromString<OpenAiChatResponse>(bodyStr)
                 val rawJson = parsed.choices.firstOrNull()?.message?.content
                     ?: throw BatchParseException("OpenAI batch: empty message content")
                 parsed.usage?.let { usageTracker.addTokens(it.prompt_tokens, it.completion_tokens) }
                 val wrapper = try {
-                    gson.fromJson(rawJson, BatchTranslationsWrapper::class.java)
-                } catch (e: JsonSyntaxException) {
+                    PtJson.lenient.decodeFromString<BatchTranslationsWrapper>(rawJson)
+                } catch (e: SerializationException) {
                     throw BatchParseException("OpenAI batch: response JSON parse failed", e)
                 }
-                val arr = wrapper?.translations
+                val arr = wrapper.translations
                     ?: throw BatchParseException("OpenAI batch: missing translations[]")
                 if (arr.size != texts.size) {
                     throw BatchParseException(
@@ -405,8 +407,11 @@ class OpenAiBackend(
             // /v1/models = 200 + empty body behaviour (now avoided by
             // pointing modelsUrlProvider at the root) and similar
             // misconfigurations on future OpenAI-compatible providers.
-            val parsed = gson.fromJson(body, OpenAiModelsResponse::class.java)
-                ?: throw IOException("Malformed /models response")
+            val parsed = try {
+                PtJson.lenient.decodeFromString<OpenAiModelsResponse>(body)
+            } catch (e: SerializationException) {
+                throw IOException("Malformed /models response", e)
+            }
             val sorted = parsed.data
                 .asSequence()
                 // Drop fine-tunes and user-owned models for OpenAI itself
@@ -452,18 +457,23 @@ class OpenAiBackend(
         }.apply { isDaemon = true; name = "OpenAiBackend-close" }.start()
     }
 
+    @Serializable
     private data class OpenAiChatResponse(
         val choices: List<Choice> = emptyList(),
         val usage: Usage? = null,
     ) {
+        @Serializable
         data class Choice(val message: Message? = null)
+        @Serializable
         data class Message(val content: String = "")
+        @Serializable
         data class Usage(
             val prompt_tokens: Long = 0,
             val completion_tokens: Long = 0,
         )
     }
 
+    @Serializable
     private data class BatchTranslationsWrapper(
         val translations: List<String>? = null,
     )
@@ -496,8 +506,8 @@ class OpenAiBackend(
     ) {
         val state = cooldownState ?: return
         val errorCode = try {
-            gson.fromJson(body, OpenAiErrorEnvelope::class.java)?.error?.code
-        } catch (e: JsonSyntaxException) {
+            PtJson.lenient.decodeFromString<OpenAiErrorEnvelope>(body).error?.code
+        } catch (e: SerializationException) {
             null
         }
         if (errorCode == "insufficient_quota") {
@@ -523,13 +533,17 @@ class OpenAiBackend(
         }
     }
 
+    @Serializable
     private data class OpenAiErrorEnvelope(val error: OpenAiErrorBody? = null) {
+        @Serializable
         data class OpenAiErrorBody(val code: String? = null)
     }
 
+    @Serializable
     private data class OpenAiModelsResponse(
         val data: List<ModelEntry> = emptyList(),
     ) {
+        @Serializable
         data class ModelEntry(
             val id: String = "",
             val created: Long = 0,

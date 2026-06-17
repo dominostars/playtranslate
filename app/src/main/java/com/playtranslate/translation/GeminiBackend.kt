@@ -1,14 +1,26 @@
 package com.playtranslate.translation
 
 import android.util.Log
-import com.google.gson.Gson
-import com.google.gson.JsonSyntaxException
+import com.playtranslate.PtJson
 import com.playtranslate.translation.llm.LlmBatchPrompt
 import com.playtranslate.translation.llm.cleanLlmOutput
 import com.playtranslate.translation.qwen.QwenChatTemplate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -55,8 +67,6 @@ class GeminiBackend(
     override val requiresInternet: Boolean = true
     override val isDegradedFallback: Boolean = false
     override val qualityStars: StarRating = 4.5f
-
-    private val gson = Gson()
 
     override val status: BackendStatus
         get() {
@@ -110,20 +120,18 @@ class GeminiBackend(
             val translateStart = System.nanoTime()
             Log.i(TAG, "translate begin model=$model textLen=${text.length}")
 
-            val bodyJson = gson.toJson(
-                mapOf(
-                    "systemInstruction" to mapOf(
-                        "parts" to listOf(mapOf("text" to system)),
-                    ),
-                    "contents" to listOf(
-                        mapOf(
-                            "role" to "user",
-                            "parts" to listOf(mapOf("text" to user)),
-                        )
-                    ),
-                    "generationConfig" to mapOf("temperature" to 0.2),
-                )
-            )
+            val bodyJson = buildJsonObject {
+                putJsonObject("systemInstruction") {
+                    putJsonArray("parts") { addJsonObject { put("text", system) } }
+                }
+                putJsonArray("contents") {
+                    addJsonObject {
+                        put("role", "user")
+                        putJsonArray("parts") { addJsonObject { put("text", user) } }
+                    }
+                }
+                putJsonObject("generationConfig") { put("temperature", 0.2) }
+            }.toString()
 
             val request = Request.Builder()
                 .url("$ENDPOINT_ROOT/models/$model:generateContent")
@@ -162,7 +170,7 @@ class GeminiBackend(
                         }
                     }
                     if (bodyStr.isEmpty()) throw StructuralFailureException("Empty response from Gemini")
-                    val parsed = gson.fromJson(bodyStr, GeminiResponse::class.java)
+                    val parsed = PtJson.lenient.decodeFromString<GeminiResponse>(bodyStr)
                     val raw = parsed.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.text
                         ?: throw StructuralFailureException("No translation in Gemini response")
                     parsed.usageMetadata?.let {
@@ -207,32 +215,32 @@ class GeminiBackend(
         // generationConfig.responseSchema constrains the model to emit
         // a JSON object of the exact shape we need — OpenAPI-style
         // dialect, "OBJECT"/"ARRAY"/"STRING" type names (uppercase).
-        val responseSchema = mapOf(
-            "type" to "OBJECT",
-            "properties" to mapOf(
-                "translations" to mapOf(
-                    "type" to "ARRAY",
-                    "items" to mapOf("type" to "STRING"),
-                ),
-            ),
-            "required" to listOf("translations"),
-        )
-        val bodyJson = gson.toJson(
-            mapOf(
-                "systemInstruction" to mapOf("parts" to listOf(mapOf("text" to system))),
-                "contents" to listOf(
-                    mapOf(
-                        "role" to "user",
-                        "parts" to listOf(mapOf("text" to user)),
-                    )
-                ),
-                "generationConfig" to mapOf(
-                    "temperature" to 0.2,
-                    "responseMimeType" to "application/json",
-                    "responseSchema" to responseSchema,
-                ),
-            )
-        )
+        val responseSchema = buildJsonObject {
+            put("type", "OBJECT")
+            putJsonObject("properties") {
+                putJsonObject("translations") {
+                    put("type", "ARRAY")
+                    putJsonObject("items") { put("type", "STRING") }
+                }
+            }
+            putJsonArray("required") { add("translations") }
+        }
+        val bodyJson = buildJsonObject {
+            putJsonObject("systemInstruction") {
+                putJsonArray("parts") { addJsonObject { put("text", system) } }
+            }
+            putJsonArray("contents") {
+                addJsonObject {
+                    put("role", "user")
+                    putJsonArray("parts") { addJsonObject { put("text", user) } }
+                }
+            }
+            putJsonObject("generationConfig") {
+                put("temperature", 0.2)
+                put("responseMimeType", "application/json")
+                put("responseSchema", responseSchema)
+            }
+        }.toString()
 
         val request = Request.Builder()
             .url("$ENDPOINT_ROOT/models/$model:generateContent")
@@ -276,18 +284,18 @@ class GeminiBackend(
                     }
                 }
                 if (bodyStr.isEmpty()) throw StructuralFailureException("Empty response from Gemini")
-                val parsed = gson.fromJson(bodyStr, GeminiResponse::class.java)
+                val parsed = PtJson.lenient.decodeFromString<GeminiResponse>(bodyStr)
                 val rawJson = parsed.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.text
                     ?: throw BatchParseException("Gemini batch: empty candidate payload")
                 parsed.usageMetadata?.let {
                     usageTracker.addTokens(it.promptTokenCount, it.candidatesTokenCount)
                 }
                 val wrapper = try {
-                    gson.fromJson(rawJson, BatchTranslationsWrapper::class.java)
-                } catch (e: JsonSyntaxException) {
+                    PtJson.lenient.decodeFromString<BatchTranslationsWrapper>(rawJson)
+                } catch (e: SerializationException) {
                     throw BatchParseException("Gemini batch: response JSON parse failed", e)
                 }
-                val arr = wrapper?.translations
+                val arr = wrapper.translations
                     ?: throw BatchParseException("Gemini batch: missing translations[]")
                 if (arr.size != texts.size) {
                     throw BatchParseException(
@@ -383,7 +391,7 @@ class GeminiBackend(
                 throw IOException("Gemini /models error ${response.code}")
             }
             val body = response.body.string()
-            val parsed = gson.fromJson(body, GeminiModelsResponse::class.java)
+            val parsed = PtJson.lenient.decodeFromString<GeminiModelsResponse>(body)
             val sorted = parsed.models
                 .asSequence()
                 .filter { it.supportedGenerationMethods.contains("generateContent") }
@@ -419,19 +427,25 @@ class GeminiBackend(
         }.apply { isDaemon = true; name = "GeminiBackend-close" }.start()
     }
 
+    @Serializable
     private data class GeminiResponse(
         val candidates: List<Candidate> = emptyList(),
         val usageMetadata: UsageMetadata? = null,
     ) {
+        @Serializable
         data class Candidate(val content: Content? = null)
+        @Serializable
         data class Content(val parts: List<Part> = emptyList())
+        @Serializable
         data class Part(val text: String = "")
+        @Serializable
         data class UsageMetadata(
             val promptTokenCount: Long = 0,
             val candidatesTokenCount: Long = 0,
         )
     }
 
+    @Serializable
     private data class BatchTranslationsWrapper(
         val translations: List<String>? = null,
     )
@@ -442,7 +456,7 @@ class GeminiBackend(
      * exercise it without constructing a full backend.
      */
     private fun recordGemini429(body: String) {
-        val parsed = parseGemini429Body(body, gson)
+        val parsed = parseGemini429Body(body)
         if (parsed != null) {
             cooldownState.recordParsedFailure(parsed.first, parsed.second)
         } else {
@@ -450,9 +464,11 @@ class GeminiBackend(
         }
     }
 
+    @Serializable
     private data class GeminiModelsResponse(
         val models: List<ModelEntry> = emptyList(),
     ) {
+        @Serializable
         data class ModelEntry(
             val name: String = "",
             val supportedGenerationMethods: List<String> = emptyList(),
@@ -518,39 +534,40 @@ class GeminiBackend(
  */
 internal fun parseGemini429Body(
     body: String,
-    gson: Gson = Gson(),
     now: Long = System.currentTimeMillis(),
 ): Pair<Long, String>? {
     val envelope = try {
-        gson.fromJson(body, GeminiErrorEnvelope::class.java)
-    } catch (e: JsonSyntaxException) {
+        PtJson.lenient.decodeFromString<GeminiErrorEnvelope>(body)
+    } catch (e: SerializationException) {
         return null
     }
-    val details = envelope?.error?.details ?: return null
+    val details = envelope.error?.details ?: return null
 
     for (detail in details) {
-        val type = detail["@type"] as? String ?: continue
+        val type = (detail["@type"] as? JsonPrimitive)?.contentOrNull ?: continue
         if (!type.endsWith("QuotaFailure")) continue
-        val violations = detail["violations"] as? List<*> ?: continue
+        val violations = detail["violations"] as? JsonArray ?: continue
         for (v in violations) {
-            val quotaId = (v as? Map<*, *>)?.get("quotaId") as? String ?: continue
+            val quotaId = ((v as? JsonObject)?.get("quotaId") as? JsonPrimitive)?.contentOrNull ?: continue
             if (PER_DAY_QUOTA_PATTERN.containsMatchIn(quotaId)) {
                 return nextMidnightPacific(now) to "Daily quota used"
             }
         }
     }
     for (detail in details) {
-        val type = detail["@type"] as? String ?: continue
+        val type = (detail["@type"] as? JsonPrimitive)?.contentOrNull ?: continue
         if (!type.endsWith("RetryInfo")) continue
-        val delay = detail["retryDelay"] as? String ?: continue
+        val delay = (detail["retryDelay"] as? JsonPrimitive)?.contentOrNull ?: continue
         val ms = GoDuration.parse(delay)?.inWholeMilliseconds ?: continue
         return (now + ms) to "Rate limited"
     }
     return null
 }
 
+@Serializable
 internal data class GeminiErrorEnvelope(val error: GeminiErrorBody? = null) {
-    data class GeminiErrorBody(val details: List<Map<String, Any?>>? = null)
+    @Serializable
+    data class GeminiErrorBody(val details: List<JsonObject>? = null)
 }
 
 /** Loose pattern for Gemini's community-observed per-day quotaId

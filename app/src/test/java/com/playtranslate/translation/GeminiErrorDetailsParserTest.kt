@@ -1,6 +1,5 @@
 package com.playtranslate.translation
 
-import com.google.gson.Gson
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -17,11 +16,9 @@ import org.junit.Test
  */
 class GeminiErrorDetailsParserTest {
 
-    private val gson = Gson()
-
     @Test fun `minimal 429 with no details returns null`() {
         val body = """{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"rate limited"}}"""
-        assertNull(parseGemini429Body(body, gson))
+        assertNull(parseGemini429Body(body))
     }
 
     @Test fun `PerDay quotaId yields nextMidnightPacific and Daily quota used`() {
@@ -45,7 +42,7 @@ class GeminiErrorDetailsParserTest {
             }
         """.trimIndent()
         val now = 1_700_000_000_000L
-        val result = parseGemini429Body(body, gson, now)
+        val result = parseGemini429Body(body, now)
         assertNotNull(result)
         result!!
         assertEquals("Daily quota used", result.second)
@@ -71,7 +68,7 @@ class GeminiErrorDetailsParserTest {
               }
             }
         """.trimIndent()
-        assertNull(parseGemini429Body(body, gson))
+        assertNull(parseGemini429Body(body))
     }
 
     @Test fun `RetryInfo with simple seconds yields parsed timestamp`() {
@@ -89,7 +86,7 @@ class GeminiErrorDetailsParserTest {
             }
         """.trimIndent()
         val now = 1_700_000_000_000L
-        val result = parseGemini429Body(body, gson, now)
+        val result = parseGemini429Body(body, now)
         assertNotNull(result)
         result!!
         assertEquals("Rate limited", result.second)
@@ -119,7 +116,7 @@ class GeminiErrorDetailsParserTest {
             }
         """.trimIndent()
         val now = 1_700_000_000_000L
-        val result = parseGemini429Body(body, gson, now)
+        val result = parseGemini429Body(body, now)
         assertNotNull(result)
         result!!
         assertEquals("Daily quota used", result.second)
@@ -127,13 +124,13 @@ class GeminiErrorDetailsParserTest {
     }
 
     @Test fun `malformed JSON returns null`() {
-        assertNull(parseGemini429Body("<not json>", gson))
-        assertNull(parseGemini429Body("", gson))
+        assertNull(parseGemini429Body("<not json>"))
+        assertNull(parseGemini429Body(""))
     }
 
     @Test fun `empty details array returns null`() {
         val body = """{"error":{"code":429,"details":[]}}"""
-        assertNull(parseGemini429Body(body, gson))
+        assertNull(parseGemini429Body(body))
     }
 
     @Test fun `retryDelay with fractional seconds parses`() {
@@ -148,7 +145,7 @@ class GeminiErrorDetailsParserTest {
             }
         """.trimIndent()
         val now = 1_700_000_000_000L
-        val result = parseGemini429Body(body, gson, now)
+        val result = parseGemini429Body(body, now)
         assertNotNull(result)
         assertEquals(now + 500L, result!!.first)
     }
