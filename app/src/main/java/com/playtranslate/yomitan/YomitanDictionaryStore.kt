@@ -3,11 +3,10 @@ package com.playtranslate.yomitan
 import android.content.Context
 import android.net.Uri
 import android.util.Log
-import com.google.gson.Gson
-import com.google.gson.GsonBuilder
 import com.google.gson.JsonParser
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
+import com.playtranslate.PtJson
 import com.playtranslate.language.PackIntegrity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -15,7 +14,11 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import java.io.File
+import java.io.InputStream
 import java.io.InputStreamReader
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
@@ -27,6 +30,7 @@ import kotlin.coroutines.coroutineContext
  * kanji data), so a dictionary lists every category it matched and the
  * settings page shows it once per matching section.
  */
+@Serializable
 enum class YomitanCategory {
     TERMS,            // term_bank_N.json with ≥1 entry
     KANJI,            // kanji_bank_N.json with ≥1 entry
@@ -38,12 +42,13 @@ enum class YomitanCategory {
 
 /** One imported dictionary. [id] is the first 16 hex chars of the zip's
  *  SHA-256 — stable across re-imports of identical content. */
+@Serializable
 data class YomitanDictionary(
     val id: String,
     val title: String,
-    val revision: String?,
-    val description: String?,
-    val author: String?,
+    val revision: String? = null,
+    val description: String? = null,
+    val author: String? = null,
     val format: Int,
     val categories: List<YomitanCategory>,
     val sizeBytes: Long,
@@ -83,6 +88,7 @@ fun YomitanDictionary.matchesSourceLanguage(lang: String): Boolean =
  * others (a package might be the preferred term dictionary but deprioritized
  * for pitch accent).
  */
+@Serializable
 data class YomitanRegistry(
     val dictionaries: List<YomitanDictionary> = emptyList(),
     val sectionOrder: Map<String, List<String>> = emptyMap(),
@@ -147,11 +153,14 @@ object YomitanDictionaryStore {
     private const val TAG = "YomitanStore"
     private const val ZIP_NAME = "dict.zip"
 
+    /** index.json is dictionary metadata — realistically a few KB. We read it
+     *  whole (bank files are streamed), so cap that one read: an oversized or
+     *  zip-bombed index.json is rejected as InvalidFormat instead of OOMing
+     *  the process during validation. */
+    private const val MAX_INDEX_JSON_BYTES = 256 * 1024
+
     /** Serializes registry mutations (import / delete / reorder). */
     private val mutex = Mutex()
-
-    private val gsonWriter: Gson = GsonBuilder().setPrettyPrinting().create()
-    private val gsonReader: Gson = Gson()
 
     fun rootDir(ctx: Context): File =
         File(ctx.applicationContext.noBackupFilesDir, "yomitan")
@@ -209,11 +218,7 @@ object YomitanDictionaryStore {
     private fun readRegistry(ctx: Context): YomitanRegistry? = try {
         val file = registryFile(ctx)
         if (!file.exists()) YomitanRegistry()
-        else gsonReader.fromJson(file.readText(), YomitanRegistry::class.java)
-            ?: run {
-                Log.w(TAG, "registry file is blank/null — refusing to treat as empty")
-                null
-            }
+        else PtJson.lenient.decodeFromString<YomitanRegistry>(file.readText())
     } catch (e: Exception) {
         Log.w(TAG, "registry read failed — refusing to treat as empty", e)
         null
@@ -224,7 +229,7 @@ object YomitanDictionaryStore {
         val file = registryFile(ctx)
         file.parentFile?.mkdirs()
         val tmp = File(file.parentFile, "registry.json.tmp")
-        tmp.writeText(gsonWriter.toJson(registry))
+        tmp.writeText(PtJson.pretty.encodeToString(registry))
         PackIntegrity.atomicReplace(tmp, file)
     }
 
@@ -482,6 +487,7 @@ object YomitanDictionaryStore {
     )
 
     /** index.json shape — extra fields ignored, [format]/[version] aliased. */
+    @Serializable
     private class IndexJson(
         val title: String? = null,
         val revision: String? = null,
@@ -506,12 +512,16 @@ object YomitanDictionaryStore {
         val indexEntry = zip.getEntry("index.json")
             ?: throw InvalidDictionaryException("No index.json at the zip root")
         val index = try {
-            zip.getInputStream(indexEntry).use {
-                gsonReader.fromJson(InputStreamReader(it, Charsets.UTF_8), IndexJson::class.java)
-            }
+            val text = zip.getInputStream(indexEntry).use { it.readUtf8Capped(MAX_INDEX_JSON_BYTES) }
+                ?: throw InvalidDictionaryException(
+                    "index.json exceeds ${MAX_INDEX_JSON_BYTES / 1024} KB"
+                )
+            PtJson.lenient.decodeFromString<IndexJson>(text)
+        } catch (e: InvalidDictionaryException) {
+            throw e
         } catch (e: Exception) {
             throw InvalidDictionaryException("index.json is not valid JSON", e)
-        } ?: throw InvalidDictionaryException("index.json is empty")
+        }
 
         val title = index.title?.trim().orEmpty()
         val format = index.format ?: index.version
@@ -613,4 +623,20 @@ object YomitanDictionaryStore {
         }
         return count
     }
+}
+
+/** Reads [this] stream as UTF-8 up to [maxBytes]; returns null the moment the
+ *  content would exceed the cap, so an oversized or zip-bombed entry is rejected
+ *  (InvalidFormat) instead of being materialised into memory. The bank files
+ *  are streamed; index.json is the one entry we read whole. Internal for tests. */
+internal fun InputStream.readUtf8Capped(maxBytes: Int): String? {
+    val buf = ByteArray(maxBytes)
+    var off = 0
+    while (off < maxBytes) {
+        val n = read(buf, off, maxBytes - off)
+        if (n < 0) return String(buf, 0, off, Charsets.UTF_8)
+        off += n
+    }
+    // Buffer filled without hitting EOF: if any byte remains, we're over the cap.
+    return if (read() < 0) String(buf, 0, off, Charsets.UTF_8) else null
 }

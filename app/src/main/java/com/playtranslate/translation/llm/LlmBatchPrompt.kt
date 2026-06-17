@@ -1,6 +1,7 @@
 package com.playtranslate.translation.llm
 
-import com.google.gson.Gson
+import com.playtranslate.PtJson
+import kotlinx.serialization.encodeToString
 import java.util.Locale
 
 /**
@@ -17,7 +18,7 @@ import java.util.Locale
  * reuse stays.
  *
  * Encoding choice: the user message embeds the input list as a
- * JSON array via [Gson.toJson] rather than a numbered list
+ * JSON array (kotlinx.serialization) rather than a numbered list
  * (`"1. text\n2. text"`). OCR groups frequently contain digits,
  * newlines, or quote characters that would collide with a numbered
  * format; JSON encoding handles all of that losslessly for free.
@@ -33,7 +34,7 @@ Respond with a JSON object of the form {"translations": [...]} containing exactl
     }
 
     fun userMessage(texts: List<String>): String {
-        val json = Gson().toJson(texts)
+        val json = PtJson.lenient.encodeToString(texts)
         return "Translate each of these ${texts.size} strings:\n$json"
     }
 }

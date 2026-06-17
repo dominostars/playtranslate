@@ -18,6 +18,9 @@ mlkitTextRecognitionChinese = "16.0.1"
 mlkitTextRecognitionKorean = "16.0.1"
 okhttp = "5.4.0"
 gson = "2.14.0"
+# kotlinx-serialization RUNTIME is versioned independently from the Kotlin
+# plugin (which is version.ref = "kotlin"). Pin the runtime explicitly.
+kotlinxSerialization = "1.8.1"
 recyclerview = "1.4.0"
 activityKtx = "1.13.0"
 fragmentKtx = "1.8.9"
@@ -56,6 +59,7 @@ mlkit-text-recognition-chinese = { group = "com.google.mlkit", name = "text-reco
 mlkit-text-recognition-korean = { group = "com.google.mlkit", name = "text-recognition-korean", version.ref = "mlkitTextRecognitionKorean" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 sudachi = { group = "com.worksap.nlp", name = "sudachi", version.ref = "sudachi" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
@@ -75,3 +79,4 @@ opencc4j = { group = "com.github.houbb", name = "opencc4j", version.ref = "openc
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

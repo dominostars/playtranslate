@@ -1,7 +1,9 @@
 package com.playtranslate.language
 
-import com.google.gson.Gson
-import com.google.gson.GsonBuilder
+import com.playtranslate.PtJson
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import java.io.File
 
 /**
@@ -18,6 +20,7 @@ import java.io.File
  * [schemaVersion] is enforced: packs whose schemaVersion exceeds
  * [LanguagePackStore.SUPPORTED_SCHEMA_VERSION] are rejected at install time.
  */
+@Serializable
 data class LanguagePackManifest(
     val langId: String,
     val schemaVersion: Int,   // manifest schema version — enforced at install
@@ -29,6 +32,7 @@ data class LanguagePackManifest(
 )
 
 /** [sha256] is nullable because bundled packs don't need it — APK integrity covers them. */
+@Serializable
 data class ManifestFile(
     val path: String,
     val size: Long,
@@ -36,6 +40,7 @@ data class ManifestFile(
 )
 
 /** License attribution for one component inside a pack. Required by CC-BY-SA-4.0. */
+@Serializable
 data class ManifestLicense(
     val component: String,
     val license: String,
@@ -44,18 +49,15 @@ data class ManifestLicense(
 
 /** Read/write helpers for [LanguagePackManifest] on disk. */
 object LanguagePackManifestIO {
-    private val writer: Gson = GsonBuilder().setPrettyPrinting().create()
-    private val reader: Gson = Gson()
-
     fun read(file: File): LanguagePackManifest? = try {
         if (!file.exists()) null
-        else reader.fromJson(file.readText(), LanguagePackManifest::class.java)
+        else PtJson.lenient.decodeFromString<LanguagePackManifest>(file.readText())
     } catch (_: Exception) {
         null
     }
 
     fun write(file: File, manifest: LanguagePackManifest) {
         file.parentFile?.mkdirs()
-        file.writeText(writer.toJson(manifest))
+        file.writeText(PtJson.pretty.encodeToString(manifest))
     }
 }

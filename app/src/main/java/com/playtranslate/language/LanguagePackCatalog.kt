@@ -2,7 +2,9 @@ package com.playtranslate.language
 
 import android.content.Context
 import android.util.Log
-import com.google.gson.Gson
+import com.playtranslate.PtJson
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 
 /**
  * Parsed form of `assets/langpack_catalog.json`. Bundled inside the APK and
@@ -10,6 +12,7 @@ import com.google.gson.Gson
  * packs. Phase 2 ships a catalog containing only the `ja` entry. Adding a new
  * supported source language requires an app release that updates the JSON.
  */
+@Serializable
 data class LanguagePackCatalog(
     val catalogVersion: Int,
     val packs: Map<String, CatalogEntry>,
@@ -20,6 +23,7 @@ data class LanguagePackCatalog(
  * writer can copy it verbatim when bootstrapping a bundled pack; [url] and
  * [sha256] are null for bundled packs (the APK itself guarantees integrity).
  */
+@Serializable
 data class CatalogEntry(
     val display: String,
     val script: String,
@@ -142,6 +146,7 @@ data class CatalogEntry(
  * before any code touches these as non-null — same pattern the rest of
  * the catalog schema uses.
  */
+@Serializable
 data class CatalogFile(
     val path: String,
     val url: String,
@@ -165,6 +170,7 @@ data class CatalogFile(
  * or non-positive value is treated as absent and falls back to the engine
  * default.
  */
+@Serializable
 data class EngineArch(
     val encoderLayers: Int,
     val decoderLayers: Int,
@@ -187,8 +193,7 @@ object LanguagePackCatalogLoader {
         cached ?: run {
             val json = ctx.applicationContext.assets.open(ASSET_PATH)
                 .bufferedReader().use { it.readText() }
-            val parsed = Gson().fromJson(json, LanguagePackCatalog::class.java)
-                ?: error("langpack_catalog.json parsed to null")
+            val parsed = PtJson.lenient.decodeFromString<LanguagePackCatalog>(json)
             cached = parsed
             Log.d(TAG, "Loaded catalog v${parsed.catalogVersion}, ${parsed.packs.size} pack(s)")
             parsed

@@ -2,6 +2,7 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 val localProps = Properties()
@@ -167,7 +168,8 @@ dependencies {
 
     // Networking
     implementation(libs.okhttp)
-    implementation(libs.gson)
+    implementation(libs.gson)                       // streaming Yomitan bank parsers only
+    implementation(libs.kotlinx.serialization.json) // reflective DTO (de)serialization
 
     // Japanese morphological analysis: Sudachi/UniDic (see docs/sudachi-spike-report.md);
     // replaced the abandoned kuromoji-ipadic (2007 IPADIC).

@@ -1,9 +1,11 @@
 package com.playtranslate.language
 
 import android.util.Log
-import com.google.gson.Gson
+import com.playtranslate.PtJson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -53,9 +55,12 @@ object TatoebaClient {
     data class SentencePair(val source: String, val target: String)
 
     /** Matches the smallest slice of Tatoeba's JSON we need. */
-    private data class ApiResponse(val data: List<ApiSentence>?)
-    private data class ApiSentence(val text: String?, val translations: List<ApiTranslation>?)
-    private data class ApiTranslation(val text: String?, val lang: String?)
+    @Serializable
+    private data class ApiResponse(val data: List<ApiSentence>? = null)
+    @Serializable
+    private data class ApiSentence(val text: String? = null, val translations: List<ApiTranslation>? = null)
+    @Serializable
+    private data class ApiTranslation(val text: String? = null, val lang: String? = null)
 
     private val client by lazy {
         OkHttpClient.Builder()
@@ -63,8 +68,6 @@ object TatoebaClient {
             .readTimeout(10, TimeUnit.SECONDS)
             .build()
     }
-
-    private val gson = Gson()
 
     private val cache = TatoebaCache()
 
@@ -115,8 +118,8 @@ object TatoebaClient {
                         return@withContext null
                     }
                     val body = resp.body.string()
-                    val parsed = gson.fromJson(body, ApiResponse::class.java)
-                    val sentences = parsed?.data ?: return@withContext emptyList()
+                    val parsed = PtJson.lenient.decodeFromString<ApiResponse>(body)
+                    val sentences = parsed.data ?: return@withContext emptyList()
                     sentences.mapNotNull { s ->
                         val source = s.text?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                         val translation = s.translations
